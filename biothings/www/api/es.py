@@ -5,8 +5,7 @@ from biothings.utils.es import get_es
 from elasticsearch import NotFoundError, RequestError
 from biothings.settings import BiothingSettings
 
-ALLOWED_OPTIONS = ['_source', 'start', 'from_', 'size',
-                   'sort', 'explain', 'version', 'facets', 'fetch_all']
+biothing_settings = BiothingSettings()
 
 class QueryError(Exception):
     pass
@@ -18,13 +17,12 @@ class ScrollSetupError(Exception):
 
 class ESQuery():
     def __init__(self):
-        self._settings = BiothingSettings()
-        self._es = get_es(self._settings.es_host())
-        self._index = self._settings.es_index()
-        self._doc_type = self._settings.es_doc_type()
-        self._allowed_options = self._settings.allowed_options()
-        self._scroll_time = self._settings.scroll_time()
-        self._total_scroll_size = self._settings.scroll_size()   # Total number of hits to return per scroll batch
+        self._es = get_es(biothing_settings.es_host)
+        self._index = biothing_settings.es_index
+        self._doc_type = biothing_settings.es_doc_type
+        self._allowed_options = biothing_settings.allowed_options
+        self._scroll_time = biothing_settings.scroll_time
+        self._total_scroll_size = biothing_settings.scroll_size   # Total number of hits to return per scroll batch
 
         if self._total_scroll_size % self.get_number_of_shards() == 0:
             # Total hits per shard per scroll batch
@@ -148,7 +146,7 @@ class ESQuery():
         options.raw = kwargs.pop('raw', False)
         options.rawquery = kwargs.pop('rawquery', False)
         options.fetch_all = kwargs.pop('fetch_all', False)
-        options.host = kwargs.pop('host', self._settings.ga_tracker_url)
+        options.host = kwargs.pop('host', biothing_settings.ga_tracker_url)
         options = self._get_options(options, kwargs)
         scopes = kwargs.pop('scopes', None)
         if scopes:
@@ -278,7 +276,7 @@ class ESQuery():
 
     def status_check(self, bid):
         r = self.get_biothing(bid)
-        return
+        return r
 
 
 class ESQueryBuilder:

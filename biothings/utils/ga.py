@@ -1,13 +1,16 @@
 from tornado.httpclient import HTTPRequest, AsyncHTTPClient
 from pyga.requests import (Tracker, Page, Session, Visitor,
                            Event, PageViewRequest, EventRequest)
+from biothings.settings import BiothingSettings
+
+biothing_settings = BiothingSettings()
 
 class GAMixIn:
-    def ga_track(self, settings, event={}):
+    def ga_track(self, event={}):
         _req_list = []
         no_tracking = self.get_argument('no_tracking', None)
-        is_prod = settings.ga_is_prod
-        if not no_tracking and is_prod and settings.ga_account:
+        is_prod = biothing_settings.ga_is_prod
+        if not no_tracking and is_prod and biothing_settings.ga_account:
             _req = self.request
             remote_ip = _req.headers.get("X-Real-Ip",
                         _req.headers.get("X-Forwarded-For",
@@ -22,7 +25,7 @@ class GAMixIn:
             )
             session = Session()
             page = Page(_req.path)
-            tracker = Tracker(settings.ga_account, settings.ga_tracker_url)
+            tracker = Tracker(biothing_settings.ga_account, biothing_settings.ga_tracker_url)
             # tracker.track_pageview(page, session, visitor)  #this is non-async request
             pvr = PageViewRequest(config=tracker.config,
                                   tracker=tracker,

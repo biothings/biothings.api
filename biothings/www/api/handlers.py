@@ -162,7 +162,7 @@ class FieldsHandler(BaseHandler):
 
     def get(self):
         if biothing_settings.field_notes_path:
-            notes = json.load(open(self._settings.field_notes_path, 'r'))
+            notes = json.load(open(biothing_settings.field_notes_path, 'r'))
         else:
             notes = {}
         es_mapping = self.esq.query_fields()
@@ -202,7 +202,7 @@ class StatusHandler(BaseHandler):
     ''' Handles requests to check the status of the server. '''
 
     def head(self):
-        r = esq.status_check(self._settings.status_check_id)
+        r = esq.status_check(biothing_settings.status_check_id)
 
     def get(self):
         self.head()
