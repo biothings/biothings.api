@@ -4,9 +4,6 @@ import sys
 from string import Template
 from shutil import copytree
 
-def transform_name(s, d):
-    return Template(re.sub(r"\}\}", "}", re.sub(r"\{\{", "${", s))).substitute(d)
-
 def usage():
     return "Usage: python start-project.py < path to project directory > < object name > < OPTIONAL key=value pairs to override template variables >"
 
@@ -21,7 +18,7 @@ def main(args):
         sys.exit(1)
 
     cwd = os.getcwd()
-    template_dir = os.path.join(os.getcwd(), 'biothings_templates')
+    template_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'biothings_templates')
 
     if not os.path.exists(template_dir):
         print("Could not find template directory.  Exiting.")
@@ -41,23 +38,26 @@ def main(args):
 
     # override any key value pairs from the command line
     settings_dict.update(clargs)
+    
+    # Make top level directory
+    pdir = os.path.join(pdir, settings_dict["src_package"])
+    os.mkdir(pdir)
 
+    # Start to template files out
     os.chdir(template_dir)
 
     # Template files out
-    for (index, (dirpath, dirnames, filenames)) in enumerate(list(os.walk(template_dir))):
-        thisdir = os.path.join(pdir, transform_name(os.path.relpath(dirpath), settings_dict))
-        if index > 0:
-            os.mkdir(thisdir)
+    for (index, (dirpath, dirnames, filenames)) in enumerate(list(os.walk('src'))):
+        thisdir = os.path.join(pdir, dirpath)
+        os.mkdir(thisdir)
         for fi in filenames:
-            f = open(os.path.join(thisdir, transform_name(fi, settings_dict)), 'w')
+            f = open(os.path.join(thisdir, fi), 'w')
             g = open(os.path.join(os.path.abspath(dirpath), fi), 'r')
             f.write(Template(g.read()).substitute(settings_dict))
             f.close()
             g.close()
-
     os.chdir(cwd)
-    copytree(os.path.abspath('biothings'), os.path.join(pdir, settings_dict['src_package'], 'src', 'biothings'))
+    copytree(os.path.abspath('biothings'), os.path.join(pdir, 'src', 'biothings'))
 
 if __name__ == '__main__':
     main(sys.argv)
