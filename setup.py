@@ -14,7 +14,7 @@ setup(
     keywords="biology annotation web service client api",
     url="https://github.com/SuLab/biothings.api",
     packages=['biothings'],
-    long_description=read('README.rst'),
+    long_description=read('README.md'),
     classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
