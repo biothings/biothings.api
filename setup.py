@@ -1,19 +1,26 @@
 import os
-from setuptools import setup
+from setuptools import setup, find_packages
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
+EXCLUDE_FROM_PACKAGES = ['biothings.conf',
+                         'biothings.bin']
+
+# Dynamically calculate the version based on biothings.VERSION.
+version = __import__('biothings').get_version()
+
 setup(
     name="biothings",
-    version="0.0.1",
-    author="Chunlei Wu, Cyrus Afrasiabi",
-    author_email="cwu@scripps.edu",
+    version=version,
+    author="Cyrus Afrasiabi, Chunlei Wu",
+    author_email="cyrus@scripps.edu",
     description="Python package for biothings framework",
     license="BSD",
     keywords="biology annotation web service client api",
     url="https://github.com/SuLab/biothings.api",
-    packages=['biothings'],
+    packages=find_packages(exclude=EXCLUDE_FROM_PACKAGES),
+    scripts=['biothings/bin/biothings-admin.py'],
     long_description=read('README.md'),
     classifiers=[
         "Programming Language :: Python",
@@ -29,5 +36,6 @@ setup(
     ],
     install_requires=[
         'requests>=2.3.0',
+        'tornado',
     ],
 )
