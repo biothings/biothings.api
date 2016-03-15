@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import os
-from biothings.settings import default
 from importlib import import_module
 
 # Error class
@@ -14,6 +13,7 @@ except:
     raise BiothingConfigError("Make sure BIOTHING_CONFIG environment variable is set with config module.")
 
 config = import_module(config_module)
+default = import_module('biothings.settings.default')
 
 class BiothingSettings(object):
     config_vars = vars(config)
