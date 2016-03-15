@@ -4,8 +4,7 @@ from setuptools import setup, find_packages
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-EXCLUDE_FROM_PACKAGES = ['biothings.conf',
-                         'biothings.bin']
+EXCLUDE_FROM_PACKAGES = ['biothings.bin']
 
 # Dynamically calculate the version based on biothings.VERSION.
 version = __import__('biothings').get_version()
