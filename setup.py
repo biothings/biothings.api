@@ -2,7 +2,7 @@ import os
 from setuptools import setup, find_packages
 
 # Include the templates directory this way
-data_files = [(d, f) for (d, subd, f) in os.walk('biothings/conf/')]
+data_files = [(d, os.path.join(d, f)) for (d, subd, f) in os.walk('biothings/conf/')]
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
