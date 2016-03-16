@@ -1,13 +1,8 @@
-import os, glob
+import os
 from setuptools import setup, find_packages
 
 # Include the templates directory this way
-data_files = []
-directories = glob.glob('biothings/conf/')
-
-for directory in directories:
-    files = glob.glob(directory+'*')
-    data_files.append((directory, files))
+data_files = [(d, f) for (d, subd, f) in os.walk('biothings/conf/')]
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
