@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-EXCLUDE_FROM_PACKAGES = ['biothings.bin']
+EXCLUDE_FROM_PACKAGES = ['biothings.bin', 'biothings.conf']
 
 # Dynamically calculate the version based on biothings.VERSION.
 version = __import__('biothings').get_version()
@@ -19,6 +19,7 @@ setup(
     keywords="biology annotation web service client api",
     url="https://github.com/SuLab/biothings.api",
     packages=find_packages(exclude=EXCLUDE_FROM_PACKAGES),
+    package_data={'biothings': ['biothings/conf/*']},
     scripts=['biothings/bin/biothings-admin.py'],
     long_description=read('README.md'),
     classifiers=[
