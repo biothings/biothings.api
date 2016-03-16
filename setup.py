@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 # Include the templates directory this way
 data_files = []
-directories = glob.glob('biothings/conf')
+directories = glob.glob('biothings/conf/')
 
 for directory in directories:
     files = glob.glob(directory+'*')
