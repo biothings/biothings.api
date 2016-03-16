@@ -20,7 +20,7 @@ setup(
     url="https://github.com/SuLab/biothings.api",
     packages=find_packages(exclude=EXCLUDE_FROM_PACKAGES),
     package_dir={'biothings': 'biothings'},
-    package_data={'biothings':['conf/biothings_templates/*.py-tpl']},
+    #package_data={'biothings':['conf/biothings_templates/*.py-tpl']},
     include_package_data=True,
     scripts=['biothings/bin/biothings-admin.py'],
     long_description=read('README.md'),
