@@ -1,10 +1,18 @@
-import os
+import os, glob
 from setuptools import setup, find_packages
+
+# Include the templates directory this way
+data_files = []
+directories = glob.glob('biothings/conf')
+
+for directory in directories:
+    files = glob.glob(directory+'*')
+    data_files.append((directory, files))
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-EXCLUDE_FROM_PACKAGES = ['biothings.bin', 'biothings.conf.biothings_templates']
+EXCLUDE_FROM_PACKAGES = ['biothings.bin', 'biothings.conf']
 
 # Dynamically calculate the version based on biothings.VERSION.
 version = __import__('biothings').get_version()
@@ -19,9 +27,7 @@ setup(
     keywords="biology annotation web service client api",
     url="https://github.com/SuLab/biothings.api",
     packages=find_packages(exclude=EXCLUDE_FROM_PACKAGES),
-    package_dir={'biothings': 'biothings'},
-    #package_data={'biothings':['conf/biothings_templates/*.py-tpl']},
-    include_package_data=True,
+    data_files=data_files,
     scripts=['biothings/bin/biothings-admin.py'],
     long_description=read('README.md'),
     classifiers=[
