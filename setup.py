@@ -2,7 +2,7 @@ import os
 from setuptools import setup, find_packages
 
 # Include the templates directory this way
-data_files = [(d, [os.path.join(d, fi) for fi in f]) for (d, subd, f) in os.walk('biothings/conf/')]
+data_files = [d.rstrip('/') + '/*'  for (d, subd, f) in os.walk('biothings/conf/')]
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
@@ -22,7 +22,7 @@ setup(
     keywords="biology annotation web service client api",
     url="https://github.com/SuLab/biothings.api",
     packages=find_packages(exclude=EXCLUDE_FROM_PACKAGES),
-    data_files=data_files,
+    package_data={'biothings': data_files},
     scripts=['biothings/bin/biothings-admin.py'],
     long_description=read('README.md'),
     classifiers=[
