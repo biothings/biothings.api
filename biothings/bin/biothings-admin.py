@@ -53,11 +53,12 @@ def main(args):
         thisdir = os.path.join(pdir, dirpath)
         os.mkdir(thisdir)
         for fi in filenames:
-            f = open(os.path.join(thisdir, fi), 'w')
+            f = open(os.path.join(thisdir, fi.rstrip('-tpl')), 'w')
             g = open(os.path.join(os.path.abspath(dirpath), fi), 'r')
             f.write(Template(g.read()).substitute(settings_dict))
             f.close()
             g.close()
+    os.chdir(cwd)
 
 if __name__ == '__main__':
     main(sys.argv)
