@@ -2,6 +2,7 @@
 import os
 import re
 import sys
+import biothings
 from string import Template
 from shutil import copytree
 
@@ -19,7 +20,7 @@ def main(args):
         sys.exit(1)
 
     cwd = os.getcwd()
-    template_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'biothings_templates')
+    template_dir = os.path.join(os.path.split(biothings.__file__)[0], 'conf', 'biothings_templates')
 
     if not os.path.exists(template_dir):
         print("Could not find template directory.  Exiting.")
