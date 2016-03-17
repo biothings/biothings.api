@@ -58,8 +58,6 @@ def main(args):
             f.write(Template(g.read()).substitute(settings_dict))
             f.close()
             g.close()
-    os.chdir(cwd)
-    copytree(os.path.abspath('biothings'), os.path.join(pdir, 'src', 'biothings'))
 
 if __name__ == '__main__':
     main(sys.argv)
