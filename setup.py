@@ -21,9 +21,9 @@ setup(
     license="BSD",
     keywords="biology annotation web service client api",
     url="https://github.com/SuLab/biothings.api",
-    packages=find_packages(exclude=EXCLUDE_FROM_PACKAGES),
-    package_data={'biothings': data_files},
-    #include_package_data=True,
+    packages=find_packages(),
+    #package_data={'biothings': data_files},
+    include_package_data=True,
     scripts=['biothings/bin/biothings-admin.py'],
     long_description=read('README.md'),
     classifiers=[
