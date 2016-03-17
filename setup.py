@@ -7,7 +7,7 @@ data_files = [d.rstrip('/') + '/*'  for (d, subd, f) in os.walk('biothings/conf/
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-EXCLUDE_FROM_PACKAGES = ['biothings.bin', 'biothings.conf']
+EXCLUDE_FROM_PACKAGES = ['biothings.bin'] #, 'biothings.conf']
 
 # Dynamically calculate the version based on biothings.VERSION.
 version = __import__('biothings').get_version()
@@ -21,7 +21,7 @@ setup(
     license="BSD",
     keywords="biology annotation web service client api",
     url="https://github.com/SuLab/biothings.api",
-    packages=find_packages(),
+    packages=find_packages(exclude=EXCLUDE_FROM_PACKAGES),
     #package_data={'biothings': data_files},
     include_package_data=True,
     scripts=['biothings/bin/biothings-admin.py'],
