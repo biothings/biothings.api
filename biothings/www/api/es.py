@@ -225,6 +225,16 @@ class ESQuery():
                     _res.append(hit)
         return _res
 
+    def _build_query(self, q, kwargs):
+        # can override this function if more query types are to be added
+        return {
+            "query": {
+                "query_string": {
+                    "query": q
+                }
+            }
+        }
+
     def query(self, q, **kwargs):
         facets = self._parse_facets_option(kwargs)
         options = self._get_cleaned_query_options(kwargs)
@@ -232,14 +242,7 @@ class ESQuery():
         if options.fetch_all:
             scroll_options.update({'search_type': 'scan', 'size': self._scroll_size, 'scroll': self._scroll_time})
         options['kwargs'].update(scroll_options)
-        _query = {
-            "query": {
-                "query_string": {
-                    #"default_field" : "content",
-                    "query": q
-                }
-            }
-        }
+        _query = self._build_query(q, kwargs)
         if facets:
             _query['facets'] = facets
         try:
