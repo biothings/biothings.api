@@ -272,6 +272,12 @@ class ESQuery():
                 res.update({'_warning': 'Scroll request has failed on {} shards out of {}.'.format(r['_shards']['failed'], r['_shards']['total'])})
         return res
 
+    def get_mapping_meta(self):
+        """ return the current _meta field."""
+        m = self._es.indices.get_mapping(index=self._index, doc_type=self._doc_type)
+        m = m[list(m.keys())[0]]['mappings'][self._doc_type]
+        return m.get('_meta', {})
+
     def query_fields(self, **kwargs):
         # query the metadata to get the available fields for a biothing object
         r = self._es.indices.get(index=self._index)
