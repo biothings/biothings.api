@@ -2,6 +2,7 @@ import json
 import datetime
 import tornado.web
 from biothings.utils.ga import GAMixIn
+from biothings.settings import BiothingSettings
 from collections import OrderedDict
 
 SUPPORT_MSGPACK = True
@@ -13,6 +14,8 @@ if SUPPORT_MSGPACK:
             return {'__datetime__': True, 'as_str': obj.strftime("%Y%m%dT%H:%M:%S.%f")}
         return obj
 
+
+biothing_settings = BiothingSettings()
 
 class DateTimeJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -47,6 +50,10 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
         if 'from' in kwargs:
             kwargs['from_'] = kwargs['from']   # elasticsearch python module using from_ for from parameter
             del kwargs['from']
+        # cap size
+        if 'size' in kwargs:
+            cap = biothing_settings.size_cap
+            kwargs['size'] = int(kwargs['size']) > cap and cap or kwargs['size']
         return kwargs
 
     def _check_boolean_param(self, kwargs):

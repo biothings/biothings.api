@@ -81,6 +81,10 @@ class BiothingSettings(object):
     def scroll_size(self):
         return self._return_var('ES_SCROLL_SIZE')
 
+    @property
+    def size_cap(self):
+        return self._return_var('ES_SIZE_CAP')
+
     # *************************************************************************
     # * Google Analytics API tracking object functions
     # *************************************************************************

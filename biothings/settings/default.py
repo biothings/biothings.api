@@ -11,6 +11,7 @@ ES_DOC_TYPE = 'biothing'
 ALLOWED_OPTIONS = ['_source', 'start', 'from_', 'size', 'sort', 'explain', 'version', 'facets', 'fetch_all']
 ES_SCROLL_TIME = '1m'
 ES_SCROLL_SIZE = 1000
+ES_SIZE_CAP = 1000
 
 # *****************************************************************************
 # Google Analytics Settings
