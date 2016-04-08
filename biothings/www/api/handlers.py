@@ -202,7 +202,7 @@ class StatusHandler(BaseHandler):
     ''' Handles requests to check the status of the server. '''
 
     def head(self):
-        r = esq.status_check(biothing_settings.status_check_id)
+        r = self.esq.status_check(biothing_settings.status_check_id)
 
     def get(self):
         self.head()
