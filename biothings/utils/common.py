@@ -340,3 +340,25 @@ def get_random_string():
 
 def get_timestamp():
     return time.strftime('%Y%m%d')
+
+def find_doc(k,keys):
+    ''' Used by jsonld insertion in www.api.es._insert_jsonld '''
+    n = len(keys)
+    for i in range(n):
+        # if k is a dictionary, then directly get its value
+        if type(k) == dict:
+            k = k[keys[i]]
+        # if k is a list, then loop through k
+        elif type(k) == list:
+            tmp = []
+            for item in k:
+                try:
+                    if type(item[keys[i]]) == dict:
+                        tmp.append(item[keys[i]])
+                    elif type(item[keys[i]]) == list:
+                        for _item in item[keys[i]]:
+                            tmp.append(_item)
+                except:
+                    continue
+            k = tmp
+    return k

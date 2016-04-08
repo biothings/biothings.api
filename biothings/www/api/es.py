@@ -1,6 +1,6 @@
 #import re
 import json
-from biothings.utils.common import dotdict, is_str, is_seq
+from biothings.utils.common import dotdict, is_str, is_seq, find_doc
 from biothings.utils.es import get_es
 from elasticsearch import NotFoundError, RequestError
 from biothings.settings import BiothingSettings
