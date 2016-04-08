@@ -25,6 +25,7 @@ class ESQuery():
         self._total_scroll_size = biothing_settings.scroll_size   # Total number of hits to return per scroll batch
 
         self._context = json.load(open(biothing_settings.jsonld_context_path, 'r'))
+        self._jsonld = False
         if self._total_scroll_size % self.get_number_of_shards() == 0:
             # Total hits per shard per scroll batch
             self._scroll_size = int(self._total_scroll_size / self.get_number_of_shards())
@@ -42,6 +43,8 @@ class ESQuery():
         if hit.get('found', None) is False:
             # if found is false, pass that to the doc
             doc['found'] = hit['found']
+        if options.jsonld:
+            doc = self._insert_jsonld(doc)
         # add other keys to object, if necessary
         doc = self._modify_biothingdoc(doc=doc, options=options)
         return doc
@@ -148,6 +151,8 @@ class ESQuery():
         options.rawquery = kwargs.pop('rawquery', False)
         options.fetch_all = kwargs.pop('fetch_all', False)
         options.host = kwargs.pop('host', biothing_settings.ga_tracker_url)
+        options.jsonld = kwargs.pop('jsonld', False)
+        self._jsonld = options.jsonld
         options = self._get_options(options, kwargs)
         scopes = kwargs.pop('scopes', None)
         if scopes:
