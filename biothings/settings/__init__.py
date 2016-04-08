@@ -49,6 +49,10 @@ class BiothingSettings(object):
     def field_notes_path(self):
         return self._return_var('FIELD_NOTES_PATH')
 
+    @property
+    def jsonld_context_path(self):
+        return self._return_var('JSONLD_CONTEXT_PATH')
+
     # *************************************************************************
     # * Elasticsearch functions and properties
     # *************************************************************************
