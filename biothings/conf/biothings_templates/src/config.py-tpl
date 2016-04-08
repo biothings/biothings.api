@@ -42,4 +42,5 @@ API_VERSION = 'v1'
 STATUS_CHECK_ID = ''
 # Path to a file containing a json object with information about elasticsearch fields
 FIELD_NOTES_PATH = ''
-
+# Path to a file containing a json object with the json-ld context information
+JSONLD_CONTEXT_PATH = ''
