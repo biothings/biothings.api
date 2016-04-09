@@ -7,7 +7,7 @@ from string import Template
 from shutil import copytree
 
 def usage():
-    return "Usage: python start-project.py < path to project directory > < object name > < OPTIONAL key=value pairs to override template variables >"
+    return "Usage: biothings-admin.py < path to project directory > < object name > < OPTIONAL key=value pairs to override template variables >"
 
 def main(args):
     try:
