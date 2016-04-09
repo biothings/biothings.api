@@ -65,6 +65,14 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
                 kwargs[k] = kwargs[k].lower() in ['1', 'true']
         return kwargs
 
+    def _check_facets_param(self, kwargs):
+        '''Normalize facets params'''
+        # Keep "facets" as part of API but translate to "aggregations" for ES2 compatibility
+        if 'facets' in kwargs:
+            kwargs['aggs'] = kwargs['facets']
+            del kwargs['facets']
+        return kwargs
+
     def get_query_params(self):
         _args = {}
         for k in self.request.arguments:
@@ -80,6 +88,7 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
         self._check_fields_param(_args)
         self._check_paging_param(_args)
         self._check_boolean_param(_args)
+        self._check_facets_param(_args)
         return _args
 
     # def get_current_user(self):

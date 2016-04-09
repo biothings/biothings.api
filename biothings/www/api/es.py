@@ -77,8 +77,26 @@ class ESQuery():
 
            This method is used for self.query method.
         '''
+        if 'aggregations' in res:
+            # need to normalize back to what "facets" used to return
+            # (mostly key renaming + total computation)
+            res["facets"] = res.pop("aggregations")
+            for facet in res["facets"]:
+                # restuls always coming from terms aggregations
+                res["facets"][facet]["_type"] = "terms"
+                res["facets"][facet]["terms"] = res["facets"][facet].pop("buckets")
+                res["facets"][facet]["other"] = res["facets"][facet].pop("sum_other_doc_count")
+                res["facets"][facet]["missing"] = res["facets"][facet].pop("doc_count_error_upper_bound")
+                count = 0
+                for term in res["facets"][facet]["terms"]:
+                    # modif in-place
+                    term["count"] = term.pop("doc_count")
+                    term["term"] = term.pop("key")
+                    count += term["count"]
+                res["facets"][facet]["total"] = count
+
         _res = res['hits']
-        for attr in ['took', 'facets', 'aggregations', '_scroll_id']:
+        for attr in ['took', 'facets', '_scroll_id']:
             if attr in res:
                 _res[attr] = res[attr]
         _res['hits'] = [self._get_biothingdoc(hit=hit, options=options) for hit in _res['hits']]
@@ -133,12 +151,12 @@ class ESQuery():
         return options
 
     def _parse_facets_option(self, kwargs):
-        facets = kwargs.pop('facets', None)
-        if facets:
-            _facets = {}
-            for field in facets.split(','):
-                _facets[field] = {"terms": {"field": field}}
-            return _facets
+        aggs = kwargs.pop('aggs', None)
+        if aggs:
+            _aggs = {}
+            for field in aggs.split(','):
+                _aggs[field] = {"terms": {"field": field}}
+            return _aggs
 
     def _get_options(self, options, kwargs):
         ''' Function to override to add more options to the get_cleaned_query_options function below .'''
@@ -242,16 +260,18 @@ class ESQuery():
         }
 
     def query(self, q, **kwargs):
-        facets = self._parse_facets_option(kwargs)
+        aggs = self._parse_facets_option(kwargs)
         options = self._get_cleaned_query_options(kwargs)
         scroll_options = {}
         if options.fetch_all:
             scroll_options.update({'search_type': 'scan', 'size': self._scroll_size, 'scroll': self._scroll_time})
         options['kwargs'].update(scroll_options)
         _query = self._build_query(q, kwargs)
-        if facets:
-            _query['facets'] = facets
+        if aggs:
+            _query['aggs'] = aggs 
         try:
+            import logging
+            logging.error("q: %s, o: %s" % (_query,options))
             res = self._es.search(index=self._index, doc_type=self._doc_type, body=_query, **options.kwargs)
         except RequestError:
             return {"error": "invalid query term.", "success": False}
