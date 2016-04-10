@@ -297,6 +297,9 @@ class ESQuery():
         # get the context
         context = self._context
 
+        if not context:
+            return k
+
         # set the root
         k.update(context['root'])
 
