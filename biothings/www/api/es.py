@@ -1,4 +1,3 @@
-#import re
 import json
 from biothings.utils.common import dotdict, is_str, is_seq, find_doc
 from biothings.utils.es import get_es
@@ -23,9 +22,10 @@ class ESQuery():
         self._allowed_options = biothing_settings.allowed_options
         self._scroll_time = biothing_settings.scroll_time
         self._total_scroll_size = biothing_settings.scroll_size   # Total number of hits to return per scroll batch
-
-        self._context = json.load(open(biothing_settings.jsonld_context_path, 'r'))
-        self._jsonld = False
+        try:
+            self._context = json.load(open(biothing_settings.jsonld_context_path, 'r'))
+        except FileNotFoundError:
+            self._context = {}
         if self._total_scroll_size % self.get_number_of_shards() == 0:
             # Total hits per shard per scroll batch
             self._scroll_size = int(self._total_scroll_size / self.get_number_of_shards())
@@ -170,7 +170,6 @@ class ESQuery():
         options.fetch_all = kwargs.pop('fetch_all', False)
         options.host = kwargs.pop('host', biothing_settings.ga_tracker_url)
         options.jsonld = kwargs.pop('jsonld', False)
-        self._jsonld = options.jsonld
         options = self._get_options(options, kwargs)
         scopes = kwargs.pop('scopes', None)
         if scopes:
@@ -251,13 +250,8 @@ class ESQuery():
 
     def _build_query(self, q, kwargs):
         # can override this function if more query types are to be added
-        return {
-            "query": {
-                "query_string": {
-                    "query": q
-                }
-            }
-        }
+        esqb = ESQueryBuilder()
+        return esqb.default_query(q)
 
     def query(self, q, **kwargs):
         aggs = self._parse_facets_option(kwargs)
@@ -270,8 +264,8 @@ class ESQuery():
         if aggs:
             _query['aggs'] = aggs 
         try:
-            import logging
-            logging.error("q: %s, o: %s" % (_query,options))
+            #import logging
+            #logging.error("q: %s, o: %s" % (_query,options))
             res = self._es.search(index=self._index, doc_type=self._doc_type, body=_query, **options.kwargs)
         except RequestError:
             return {"error": "invalid query term.", "success": False}
@@ -378,3 +372,12 @@ class ESQueryBuilder:
             _q.extend(['{}', json.dumps(self.build_id_query(id, scopes))])
         _q.append('')
         return '\n'.join(_q)
+        
+    def default_query(self, q):
+        return {
+            "query": {
+                "query_string": {
+                    "query": q.lstrip('*?')
+                }
+            }
+        }
