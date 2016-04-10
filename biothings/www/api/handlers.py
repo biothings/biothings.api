@@ -153,9 +153,10 @@ class QueryHandler(BaseHandler):
 
 
 class MetaDataHandler(BaseHandler):
-
+    
     def get(self):
-        self.return_json({})
+        _meta = self.esq.get_mapping_meta()
+        self.return_json(_meta)
 
 
 class FieldsHandler(BaseHandler):

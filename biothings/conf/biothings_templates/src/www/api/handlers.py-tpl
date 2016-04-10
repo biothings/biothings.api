@@ -25,7 +25,7 @@ class FieldsHandler(FieldsHandler):
 class MetaDataHandler(MetaDataHandler):
     ''' This class is for the /metadata endpoint. '''
     esq = ESQuery()
-
+    disable_caching = True
 
 def return_applist():
     ret = [
