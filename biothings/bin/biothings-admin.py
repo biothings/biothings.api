@@ -35,7 +35,9 @@ def main(args):
         "annotation_handler_name": biothing_name.title() + "Handler",
         "query_handler_name": "QueryHandler",
         "es_doctype": biothing_name.lower(),
-        "base_url": "My" + biothing_name.title() + ".info"
+        "base_url": "My" + biothing_name.title() + ".info",
+        "nosetest_settings_class": biothing_name.title(),
+        "nosetest_envar": "M" + biothing_name.upper()[0] + '_HOST'
     }
 
     # override any key value pairs from the command line

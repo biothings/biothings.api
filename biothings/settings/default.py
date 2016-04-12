@@ -41,4 +41,7 @@ API_VERSION = 'v1'
 STATUS_CHECK_ID = 'status_id'
 # Path to a file containing a json object with information about elasticsearch fields
 FIELD_NOTES_PATH = 'field_notes_path'
+# For the path to the json-ld context
 JSONLD_CONTEXT_PATH = 'context'
+# Module that contains the nosetest config
+NOSETEST_SETTINGS = 'biothings.tests.config'
