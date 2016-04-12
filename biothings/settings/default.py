@@ -44,4 +44,4 @@ FIELD_NOTES_PATH = 'field_notes_path'
 # For the path to the json-ld context
 JSONLD_CONTEXT_PATH = 'context'
 # Module that contains the nosetest config
-NOSETEST_SETTINGS = 'biothings.tests.config'
+NOSETEST_SETTINGS = 'biothings.tests.nosetest_config'
