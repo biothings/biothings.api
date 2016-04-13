@@ -132,33 +132,30 @@ class BiothingTestHelper:
             for i in d:
                 self.check_jsonld(i, k)
         elif isinstance(d, dict):
-            if not k and 'root' in json_context:
+            if not k and 'root' in jsonld_context:
                 assert '@context' in d
-                eq_(json_context['root']['@context'], d['@context'])
+                eq_(jsonld_context['root']['@context'], d['@context'])
                 del(d['@context'])
                 for (tk, tv) in d.items():
                     self.check_jsonld(tv, tk)
-            elif k in json_context:
+            elif k in jsonld_context:
                 assert '@context' in d
-                eq_(json_context[k]['@context'], d['@context'])
+                eq_(jsonld_context[k]['@context'], d['@context'])
                 del(d['@context'])
                 for (tk, tv) in d.items():
                     self.check_jsonld(tv, k + '/' + tk)
                     
 
 class BiothingTests(TestCase):
-    h = BiothingTestHelper()
     __test__ = False # don't run nosetests on this class directly
 
-    # TODO: Figure out how to properly set up the setup/teardown methods....
-    '''@classmethod
-    def setup_class(cls, self):
-        self.h = BiothingTestHelper()
+    @classmethod
+    def setup_class(cls):
+        cls.h = BiothingTestHelper()
     
     @classmethod
-    def teardown_class(cls, self):
-        self.h = None
-    '''    
+    def teardown_class(cls):
+        cls.h = None    
 
     #############################################################
     # Test functions                                            #
@@ -181,7 +178,7 @@ class BiothingTests(TestCase):
             eq_(res['_id'], bid.split('?')[0])
             # Is this a jsonld query?
             if [1 for f in urlparse(base_url).query.split('&') if ((f.split('=')[0] == 'jsonld') 
-                                and (f.split('=')[1].lower() in [1, 'true']))] and 'root' in json_context:
+                                and (f.split('=')[1].lower() in [1, 'true']))] and 'root' in jsonld_context:
                 self.h.check_jsonld(res, '')
 
             if 'fields' in bid or 'filter' in bid:
@@ -200,10 +197,6 @@ class BiothingTests(TestCase):
                 for f in true_filtered_fields:
                     if f.split('.')[0] in res:
                         self.h.check_nested_fields(res.items(), f)
-            # Is this a jsonld query?
-            if [1 for f in urlparse(base_url).query.split('&') if ((f.split('=')[0] == 'jsonld') 
-                                and (f.split('=')[1].lower() in [1, 'true']))] and 'root' in json_context:
-                self.h.check_jsonld(res, '')
 
         # testing non-ascii character
         self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/' + ns.test_na_annotation[:-1] + '\xef\xbf\xbd\xef\xbf\xbd' + ns.test_na_annotation[-1])
@@ -266,7 +259,7 @@ class BiothingTests(TestCase):
                     self.h.check_nested_fields(res.items(), f)
             # Is this a jsonld query?
             if [1 for f in urlparse(base_url).query.split('&') if ((f.split('=')[0] == 'jsonld') 
-                                and (f.split('=')[1].lower() in [1, 'true']))] and 'root' in json_context:
+                                and (f.split('=')[1].lower() in [1, 'true']))] and 'root' in jsonld_context:
                 self.h.check_jsonld(res, '')
             
             
