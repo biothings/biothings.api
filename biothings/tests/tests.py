@@ -150,10 +150,12 @@ class BiothingTests(TestCase):
     
     __test__ = False # don't run nosetests on this class directly
 
-    def setup_class(self):
+    @classmethod
+    def setup_class(cls, self):
         self.h = BiothingTestHelper()
-
-    def teardown_class(self):
+    
+    @classmethod
+    def teardown_class(cls, self):
         self.h = None
     
     #############################################################
