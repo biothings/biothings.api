@@ -147,29 +147,26 @@ class BiothingTestHelper:
 class BiothingTests:
     #h = BiothingTestHelper()
 
-    def setup_func(self):
+    def setup_class(self):
         self.h = BiothingTestHelper()
 
-    def teardown_func(self):
+    def teardown_class(self):
         self.h = None
     
     #############################################################
     # Test functions                                            #
     #############################################################
         
-    @with_setup(self.setup_func, self.teardown_func)
     def test_main(self):
         sys.stderr.write('URL base: {}\n'.format(self.h.api))
         self.h.get_ok(self.h.host)
 
-    @with_setup(self.setup_func, self.teardown_func)
     def test_annotation_object(self):
         res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.annotation_endpoint + '/' + ns.annotation_attribute_query))
         for attr in ns.annotation_attribute_list:
             assert res.get(attr, None) is not None, 'Missing field "{}" in {} "{}"'.format(attr, 
                                                             ns.annotation_endpoint, ns.annotation_attribute_query)
     
-    @with_setup(self.setup_func, self.teardown_func)
     def test_annotation_GET(self):
         # Check some ids to make sure the resulting _id matches
         for bid in ns.annotation_GET:
@@ -211,7 +208,6 @@ class BiothingTests:
         # override to add more tests
         self._extra_annotation_GET()
     
-    @with_setup(self.setup_func, self.teardown_func)
     def test_annotation_POST(self):
         # Test some simple POSTs to the annotation endpoint.
         for ddict in ns.annotation_POST:
@@ -242,7 +238,7 @@ class BiothingTests:
 
         self._extra_annotation_POST()
 
-    '''@with_setup(self.setup_func, self.teardown_func)
+    '''
     def test_query_GET(self):
         # Test some simple GETs to the query endpoint, first check some queries to make sure they return some hits
         for q in ns.query_GET:
@@ -284,7 +280,6 @@ class BiothingTests:
 
         self._extra_query_GET()
     
-    @with_setup(self.setup_func, self.teardown_func)
     def test_query_post(self):
         #query via post
         for ( id_list, ddict ) in ns.query_POST:
@@ -312,7 +307,6 @@ class BiothingTests:
         assert 'error' in res, res
     '''
 
-    @with_setup(self.setup_func, self.teardown_func)
     def test_query_size(self):
         # TODO: port other tests (refactor to biothing.api ?)
         res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.test_query_size))
@@ -324,17 +318,14 @@ class BiothingTests:
         res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.test_query_size + '&size=2000'))
         eq_(len(res['hits']), 1000)
 
-    @with_setup(self.setup_func, self.teardown_func)
     def test_metadata(self):
         self.h.get_ok(self.h.host + '/metadata')
         self.h.get_ok(self.h.api + '/metadata')
     '''
-    @with_setup(self.setup_func, self.teardown_func)
     def test_query_facets(self):
         res = json_ok(get_ok(api + '/query?q=cadd.gene.gene_id:ENSG00000113368&facets=cadd.polyphen.cat&size=0'))
         assert 'facets' in res and 'cadd.polyphen.cat' in res['facets']
 
-    @with_setup(self.setup_func, self.teardown_func)
     def test_unicode(self):
         s = '基因'
 
@@ -359,7 +350,6 @@ class BiothingTests:
         eq_(len(res), 2)
 
 
-    @with_setup(self.setup_func, self.teardown_func)
     def test_get_fields(self):
         res = self.h.json_ok(self.h.get_ok(self.h.api + '/metadata/fields'))
         # Check to see if there are enough keys
@@ -373,7 +363,6 @@ class BiothingTests:
         assert 'clinvar' in res
 
 
-    @with_setup(self.setup_func, self.teardown_func)
     def test_fetch_all(self):
         res = json_ok(get_ok(api + '/query?q=_exists_:wellderly%20AND%20cadd.polyphen.cat:possibly_damaging&fields=wellderly,cadd.polyphen&fetch_all=TRUE'))
         assert '_scroll_id' in res
@@ -383,8 +372,6 @@ class BiothingTests:
         assert 'hits' in res2
         ok_(len(res2['hits']) == 1000)
 
-
-    @with_setup(self.setup_func, self.teardown_func)
     def test_msgpack(self):
         res = json_ok(get_ok(api + '/variant/chr11:g.66397320A>G'))
         res2 = msgpack_ok(get_ok(api + '/variant/chr11:g.66397320A>G?msgpack=true'))
@@ -398,8 +385,6 @@ class BiothingTests:
         res2 = msgpack_ok(get_ok(api + '/metadata?msgpack=true'))
         ok_(res, res2)
 
-
-    @with_setup(self.setup_func, self.teardown_func)
     def test_jsonld(self):
         res = json_ok(get_ok(api + '/variant/chr11:g.66397320A>G?jsonld=true'))
         assert '@context' in res
@@ -433,7 +418,6 @@ class BiothingTests:
         assert 'snpeff' in res[1] and '@context' in res[1]['snpeff']
         assert 'ann' in res[1]['snpeff'] and '@context' in res[1]['snpeff']['ann'][0]
     '''
-    @with_setup(self.setup_func, self.teardown_func)
     def test_status_endpoint(self):
         self.h.get_ok(self.h.host + '/status')
         # (testing failing status would require actually loading tornado app from there 
