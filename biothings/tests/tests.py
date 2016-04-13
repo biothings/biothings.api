@@ -22,6 +22,7 @@ try:
 except ImportError:
     sys.stderr.write("Warning: msgpack is not available.")
 from biothings.tests.settings import NosetestSettings
+from unittest import TestCase
 
 if sys.version_info.major >= 3:
     PY3 = True
@@ -144,7 +145,7 @@ class BiothingTestHelper:
                     self.check_jsonld(tv, k + '/' + tk)
                     
 
-class BiothingTests:
+class BiothingTests(TestCase):
     #h = BiothingTestHelper()
 
     def setup_class(self):
