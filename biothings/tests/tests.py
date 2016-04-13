@@ -242,7 +242,7 @@ class BiothingTests:
 
         self._extra_annotation_POST()
 
-    @with_setup(self.setup_func, self.teardown_func)
+    '''@with_setup(self.setup_func, self.teardown_func)
     def test_query_GET(self):
         # Test some simple GETs to the query endpoint, first check some queries to make sure they return some hits
         for q in ns.query_GET:
@@ -283,7 +283,7 @@ class BiothingTests:
         assert 'error' in res
 
         self._extra_query_GET()
-    '''
+    
     @with_setup(self.setup_func, self.teardown_func)
     def test_query_post(self):
         #query via post
