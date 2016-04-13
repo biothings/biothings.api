@@ -16,6 +16,7 @@ except ImportError:
 import json
 import sys
 import os
+import re
 from nose.tools import ok_, eq_
 try:
     import msgpack
@@ -146,24 +147,24 @@ class BiothingTestHelper:
                     
 
 class BiothingTests(TestCase):
-    #h = BiothingTestHelper()
-    
+    h = BiothingTestHelper()
     __test__ = False # don't run nosetests on this class directly
 
-    @classmethod
+    # TODO: Figure out how to properly set up the setup/teardown methods....
+    '''@classmethod
     def setup_class(cls, self):
         self.h = BiothingTestHelper()
     
     @classmethod
     def teardown_class(cls, self):
         self.h = None
-    
+    '''    
+
     #############################################################
     # Test functions                                            #
     #############################################################
         
     def test_main(self):
-        sys.stderr.write('URL base: {}\n'.format(self.h.api))
         self.h.get_ok(self.h.host)
 
     def test_annotation_object(self):
@@ -429,7 +430,7 @@ class BiothingTests(TestCase):
         #  and deal with config params...)
 
     ###########################################################################
-    # Convenience functions for adding new nosetests
+    # Convenience functions for adding new nosetests/ don't really need these...
     ###########################################################################
     def _extra_annotation_GET(self):
         # override to add extra annotation GET tests here
