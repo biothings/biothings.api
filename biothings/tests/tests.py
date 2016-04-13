@@ -21,7 +21,7 @@ try:
     import msgpack
 except ImportError:
     sys.stderr.write("Warning: msgpack is not available.")
-from biothings.tests.settings import NosetestSettings()
+from biothings.tests.settings import NosetestSettings
 
 if sys.version_info.major >= 3:
     PY3 = True
