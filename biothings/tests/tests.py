@@ -115,6 +115,13 @@ class BiothingTestHelper:
         ok_(d.get('total', 0) > 0 and len(d.get('hits', [])) > 0)
         return d
 
+    def check_boolean_url_option(self, url, option):
+            if [1 for f in urlparse(url).query.split('&') 
+                    if ((f.split('=')[0] == option) and 
+                        (f.split('=')[1].lower() in [1, 'true']))]:
+                return True
+            return False
+
     def check_nested_fields(self, d_items, k):
         # function to recursively test fields in a nested object...this may need to be rewritten for fields that contain lists
         if k:
@@ -144,7 +151,6 @@ class BiothingTestHelper:
                 del(d['@context'])
                 for (tk, tv) in d.items():
                     self.check_jsonld(tv, k + '/' + tk)
-                    
 
 class BiothingTests(TestCase):
     __test__ = False # don't run nosetests on this class directly
@@ -177,10 +183,8 @@ class BiothingTests(TestCase):
             res = self.h.json_ok(self.h.get_ok(base_url))
             eq_(res['_id'], bid.split('?')[0])
             # Is this a jsonld query?
-            if [1 for f in urlparse(base_url).query.split('&') if ((f.split('=')[0] == 'jsonld') 
-                                and (f.split('=')[1].lower() in [1, 'true']))] and 'root' in jsonld_context:
-                self.h.check_jsonld(res, '')
-
+            if self.h.check_boolean_url_option(base_url, 'jsonld') and 'root' in jsonld_context:
+                self.h.check_jsonld(res, '') 
             if 'fields' in bid or 'filter' in bid:
                 # This is a filter query, test it appropriately
                 if 'fields' in bid:
