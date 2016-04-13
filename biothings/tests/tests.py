@@ -147,6 +147,8 @@ class BiothingTestHelper:
 
 class BiothingTests(TestCase):
     #h = BiothingTestHelper()
+    
+    __test__ = False # don't run nosetests on this class directly
 
     def setup_class(self):
         self.h = BiothingTestHelper()
