@@ -1,10 +1,38 @@
-import json
+import json, logging
 from biothings.utils.common import dotdict, is_str, is_seq, find_doc
 from biothings.utils.es import get_es
 from elasticsearch import NotFoundError, RequestError
 from biothings.settings import BiothingSettings
+from biothings.utils.dotfield import compose_dot_fields_by_fields as compose_dot_fields
 
 biothing_settings = BiothingSettings()
+
+# ES related Helper func
+def parse_sort_option(options):
+    sort = options.get('sort', None)
+    if sort:
+        _sort_array = []
+        for field in sort.split(','):
+            field = field.strip()
+            # if field == 'name' or field[1:] == 'name':
+            #     # sorting on "name" field is ignored, as it is a multi-text field.
+            #     continue
+            if field.startswith('-'):
+                _f = "%s:desc" % field[1:]
+            else:
+                _f = "%s:asc" % field
+            _sort_array.append(_f)
+        options["sort"] = ','.join(_sort_array)
+    return options
+
+def parse_facets_option(kwargs):
+    aggs = kwargs.pop('aggs', None)
+    if aggs:
+        _aggs = {}
+        for field in aggs.split(','):
+            _aggs[field] = {"terms": {"field": field}}
+        return _aggs
+
 
 class QueryError(Exception):
     pass
@@ -14,7 +42,7 @@ class ScrollSetupError(Exception):
     pass
 
 
-class ESQuery():
+class ESQuery(object):
     def __init__(self):
         self._es = get_es(biothing_settings.es_host)
         self._index = biothing_settings.es_index
@@ -39,6 +67,12 @@ class ESQuery():
         if hit.get('found', None) is False:
             # if found is false, pass that to the doc
             doc['found'] = hit['found']
+        if options and options.jsonld:
+            doc = self._insert_jsonld(doc)
+        #TODO: normalize, either _source or fields...
+        fields = options.kwargs.fields or options.kwargs._source
+        if options and options.dotfield and options.kwargs and fields:
+            doc = compose_dot_fields(doc,fields)  
         # add other keys to object, if necessary
         doc = self._modify_biothingdoc(doc=doc, options=options)
         return doc
@@ -127,31 +161,6 @@ class ESQuery():
             fields = self._default_fields
         return fields
 
-    def _parse_sort_option(self, options):
-        sort = options.get('sort', None)
-        if sort:
-            _sort_array = []
-            for field in sort.split(','):
-                field = field.strip()
-                # if field == 'name' or field[1:] == 'name':
-                #     # sorting on "name" field is ignored, as it is a multi-text field.
-                #     continue
-                if field.startswith('-'):
-                    _f = "%s:desc" % field[1:]
-                else:
-                    _f = "%s:asc" % field
-                _sort_array.append(_f)
-            options["sort"] = ','.join(_sort_array)
-        return options
-
-    def _parse_facets_option(self, kwargs):
-        aggs = kwargs.pop('aggs', None)
-        if aggs:
-            _aggs = {}
-            for field in aggs.split(','):
-                _aggs[field] = {"terms": {"field": field}}
-            return _aggs
-
     def _get_options(self, options, kwargs):
         ''' Function to override to add more options to the get_cleaned_query_options function below .'''
         return options
@@ -162,6 +171,23 @@ class ESQuery():
         options.raw = kwargs.pop('raw', False)
         options.rawquery = kwargs.pop('rawquery', False)
         options.fetch_all = kwargs.pop('fetch_all', False)
+        options.host = kwargs.pop('host', biothing_settings.ga_tracker_url)
+        options.jsonld = kwargs.pop('jsonld', False)
+        options.dotfield = kwargs.pop('dotfield', False) not in [False, 'false']
+
+        #if no dotfield in "fields", set dotfield always be True, i.e., no need to parse dotfield
+        if not options.dotfield:
+            _found_dotfield = False
+            logging.debug("check %s" % kwargs)
+            if kwargs.get('fields'):
+                for _f in kwargs['fields']:
+                    if _f.find('.') != -1:
+                        logging.debug("force dotfield")
+                        _found_dotfield = True
+                        break
+            if not _found_dotfield:
+                options.dotfield = True
+
         options = self._get_options(options, kwargs)
         scopes = kwargs.pop('scopes', None)
         if scopes:
@@ -171,8 +197,9 @@ class ESQuery():
             fields = self._cleaned_fields(fields)
             if fields:
                 kwargs["_source"] = fields
-        kwargs = self._parse_sort_option(kwargs)
+        kwargs = parse_sort_option(kwargs)
         for key in set(kwargs) - set(self._allowed_options):
+            logging.debug("removing param '%s' from query" % key)
             del kwargs[key]
         options.kwargs = kwargs
         return options
@@ -206,10 +233,13 @@ class ESQuery():
         res = self._get_biothingdoc(res, options=options)
         return res
 
+    def _msearch(self,**kwargs):
+        return self._es.msearch(**kwargs)['responses']
+
     def mget_biothings(self, bid_list, **kwargs):
         '''for /query post request'''
         options = self._get_cleaned_query_options(kwargs)
-        qbdr = ESQueryBuilder(**options.kwargs)
+        qbdr = self._get_query_builder(**options.kwargs)
         try:
             _q = qbdr.build_multiple_id_query(bid_list, scopes=options.scopes)
         except QueryError as err:
@@ -217,7 +247,7 @@ class ESQuery():
                     'error': err.message}
         if options.rawquery:
             return _q
-        res = self._es.msearch(body=_q, index=self._index, doc_type=self._doc_type)['responses']
+        res = self._msearch(body=_q, index=self._index, doc_type=self._doc_type)
         if options.raw:
             return res
 
@@ -240,13 +270,17 @@ class ESQuery():
                     _res.append(hit)
         return _res
 
+    def _get_query_builder(self,**kwargs):
+        '''Subclass to get a custom query builder'''
+        return ESQueryBuilder(**kwargs) 
+
     def _build_query(self, q, kwargs):
         # can override this function if more query types are to be added
-        esqb = ESQueryBuilder()
+        esqb = self._get_query_builder()
         return esqb.default_query(q)
 
     def query(self, q, **kwargs):
-        aggs = self._parse_facets_option(kwargs)
+        aggs = parse_facets_option(kwargs)
         options = self._get_cleaned_query_options(kwargs)
         scroll_options = {}
         if options.fetch_all:
@@ -256,8 +290,6 @@ class ESQuery():
         if aggs:
             _query['aggs'] = aggs 
         try:
-            #import logging
-            #logging.error("q: %s, o: %s" % (_query,options))
             res = self._es.search(index=self._index, doc_type=self._doc_type, body=_query, **options.kwargs)
         except RequestError:
             return {"error": "invalid query term.", "success": False}
@@ -300,7 +332,7 @@ class ESQuery():
         return r
 
 
-class ESQueryBuilder:
+class ESQueryBuilder(object):
     def __init__(self, **query_options):
         self._query_options = query_options
 
@@ -329,6 +361,7 @@ class ESQueryBuilder:
         _q = {"query": _query}
         self._query_options.pop("query", None)    # avoid "query" be overwritten by self.query_options
         _q.update(self._query_options)
+        logging.debug("bt build_id_query: %s" % _q)
         return _q
 
     def build_multiple_id_query(self, bid_list, scopes=None):

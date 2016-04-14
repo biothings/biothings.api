@@ -50,6 +50,14 @@ def timesofar(t0, clock=0, t1=None):
     return t_str
 
 
+def is_int(s):
+    """return True or False if input string is integer or not."""
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
+
 def is_str(s):
     """return True or False if input is a string or not.
         python3 compatible.

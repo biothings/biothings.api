@@ -28,7 +28,7 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
     jsonp_parameter = 'callback'
     cache_max_age = 604800  # 7days
     disable_caching = False
-    boolean_parameters = set(['raw', 'rawquery', 'fetch_all', 'explain', 'jsonld'])
+    boolean_parameters = set(['raw', 'rawquery', 'fetch_all', 'explain', 'jsonld','dotfield'])
     try:
         _context = json.load(open(biothing_settings.jsonld_context_path, 'r'))
     except FileNotFoundError:
@@ -57,7 +57,11 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
         # cap size
         if 'size' in kwargs:
             cap = biothing_settings.size_cap
-            kwargs['size'] = int(kwargs['size']) > cap and cap or kwargs['size']
+            try:
+                kwargs['size'] = int(kwargs['size']) > cap and cap or kwargs['size']
+            except ValueError:
+                # int conversion failure is delegated to later process
+                pass
         return kwargs
 
     def _check_boolean_param(self, kwargs):
