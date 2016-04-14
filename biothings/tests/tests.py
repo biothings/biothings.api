@@ -121,21 +121,21 @@ class BiothingTestHelper:
                 return True
             return False
 
-    def check_nested_fields(self, d, af, rf):
+    def check_fields(self, d, f):
         def expand_requested_fields(fields):
             # find all possible fields from the request
             possible_fields = []
             if fields[0] == 'all':
-                return self.all_available_fields.keys()
+                return self.all_flattened_fields.keys()
             for field in fields:
-                possible_fields += [s for s in self.all_available_fields.keys() 
-                                                if s.startswith(field)]:
+                possible_fields += [s for s in self.all_flattened_fields.keys() 
+                                    if s.startswith(field)]
             return possible_fields
                 
         def flatten_dict(d, p, r):
             if isinstance(d, list):
                 for i in d:
-                    flatten_dict(i, p)
+                    flatten_dict(i, p, r)
             elif isinstance(d, dict):
                 # Add these keys
                 for k in d.keys():
@@ -143,8 +143,9 @@ class BiothingTestHelper:
                         r[p + '.' + k] = 0
                     else:
                         r[k] = 0
-                    flatten_dict(d[k], p + '.' + k)
-    
+                    flatten_dict(d[k], p + '.' + k, r)
+        
+        possible_fields = expand_requested_fields(f)
         actual_flattened_keys = {}
         flatten_dict(d , '', actual_flattened_keys)
         # Make sure that all of the actual keys are among the set of requested fields 
@@ -209,18 +210,9 @@ class BiothingTests(TestCase):
                 # This is a filter query, test it appropriately
                 if 'fields' in bid:
                     true_fields = [g.strip() for g in [f.split('=')[1] for f in urlparse(base_url).query.split('&') if f.split('=')[0] == 'fields'][0].split(',')]
-                    total_url = re.sub(r'jsonld=[\w]*', 'jsonld=false', re.sub(r'fields=[\w\.,]*', 'fields=all', base_url))
                 elif 'filter' in bid:
                     true_fields = [g.strip() for g in [f.split('=')[1] for f in urlparse(base_url).query.split('&') if f.split('=')[0] == 'filter'][0].split(',')]
-                    total_url = re.sub(r'jsonld=[\w]*', 'jsonld=false', re.sub(r'filter=[\w\.,]*', 'filter=all', base_url)) 
-                res_total = self.h.json_ok(self.h.get_ok(total_url))
-                true_filtered_fields = [x for x in true_fields if x.split('.')[0] in res_total.keys()]
-                # Check root level
-                eq_(set(res), set(['_id', '_version'] + [x.split('.')[0] for x in true_filtered_fields]))
-                # Check nested fields
-                for f in true_filtered_fields:
-                    if f.split('.')[0] in res:
-                        self.h.check_nested_fields(res.items(), f)
+                self.h.check_fields(res, true_fields)
 
         # testing non-ascii character
         self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/' + ns.test_na_annotation[:-1] + '\xef\xbf\xbd\xef\xbf\xbd' + ns.test_na_annotation[-1])
