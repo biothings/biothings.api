@@ -126,9 +126,9 @@ class BiothingTestHelper:
             # find all possible fields from the request
             possible_fields = []
             if fields[0] == 'all':
-                return self.all_available_fields.keys()
+                return self.all_flattened_fields.keys()
             for field in fields:
-                possible_fields += [s for s in self.all_available_fields.keys() 
+                possible_fields += [s for s in self.all_flattened_fields.keys() 
                                     if s.startswith(field)]
             return possible_fields
                 
