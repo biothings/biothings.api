@@ -14,7 +14,6 @@ if SUPPORT_MSGPACK:
             return {'__datetime__': True, 'as_str': obj.strftime("%Y%m%dT%H:%M:%S.%f")}
         return obj
 
-
 biothing_settings = BiothingSettings()
 
 class DateTimeJSONEncoder(json.JSONEncoder):
@@ -30,6 +29,11 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
     cache_max_age = 604800  # 7days
     disable_caching = False
     boolean_parameters = set(['raw', 'rawquery', 'fetch_all', 'explain', 'jsonld'])
+    try:
+        _context = json.load(open(biothing_settings.jsonld_context_path, 'r'))
+    except FileNotFoundError:
+        _context = {}
+    jsonld = False
 
     def _check_fields_param(self, kwargs):
         '''support "filter" as an alias of "fields" parameter for back-compatability.'''
@@ -97,17 +101,19 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
     #         return None
     #     return tornado.escape.json_decode(user_json)
 
-    def _sort_response_object(self, d, depth=0):
-        '''sort this dictionary.  max_depth is how many levels deep we should sort
-           dictionary keys.  lists are included as a level.
-           depth is the current depth, pretty basic recursion
-        '''
-        max_depth = 6
-        depth += 1
-        if (depth <= max_depth) and isinstance(d, list):
-            return [self._sort_response_object(ds, depth) for ds in d]
-        elif (depth <= max_depth) and isinstance(d, dict):
-            return OrderedDict([(k, self._sort_response_object(d[k], depth)) for k in sorted(d)])
+    def _form_response_object(self, d, context_key):
+        '''sort this dictionary, and add jsonld.'''
+        if isinstance(d, list):
+            return [self._form_response_object(ds, context_key) for ds in d]
+        elif isinstance(d, dict):
+            this_list = []
+            # Insert jsonld information if necessary
+            if context_key in self._context and self.jsonld:
+                d['@context'] = self._context[context_key]['@context']
+            for k in sorted(d):
+                context_key = k if context_key == 'root' else context_key + '/' + k
+                this_list.append( (k, self._form_response_object(d[k], context_key)) )
+            return OrderedDict(this_list)
         else:
             return d
 
@@ -116,9 +122,9 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
            if <jsonp_parameter> is passed, return a valid JSONP response.
            if encode is False, assumes input data is already a JSON encoded
            string.
-        '''
-        # call the recursive function to sort the data by keys
-        data = self._sort_response_object(data, depth=0)
+        '''    
+        # call the recursive function to sort the data by keys and add the json-ld information
+        data = self._form_response_object(data, 'root')
 
         indent = indent or 2   # tmp settings
         jsoncallback = self.get_argument(self.jsonp_parameter, '')  # return as JSONP

@@ -22,10 +22,6 @@ class ESQuery():
         self._allowed_options = biothing_settings.allowed_options
         self._scroll_time = biothing_settings.scroll_time
         self._total_scroll_size = biothing_settings.scroll_size   # Total number of hits to return per scroll batch
-        try:
-            self._context = json.load(open(biothing_settings.jsonld_context_path, 'r'))
-        except FileNotFoundError:
-            self._context = {}
         if self._total_scroll_size % self.get_number_of_shards() == 0:
             # Total hits per shard per scroll batch
             self._scroll_size = int(self._total_scroll_size / self.get_number_of_shards())
@@ -43,8 +39,6 @@ class ESQuery():
         if hit.get('found', None) is False:
             # if found is false, pass that to the doc
             doc['found'] = hit['found']
-        if options.jsonld:
-            doc = self._insert_jsonld(doc)
         # add other keys to object, if necessary
         doc = self._modify_biothingdoc(doc=doc, options=options)
         return doc
@@ -168,8 +162,6 @@ class ESQuery():
         options.raw = kwargs.pop('raw', False)
         options.rawquery = kwargs.pop('rawquery', False)
         options.fetch_all = kwargs.pop('fetch_all', False)
-        options.host = kwargs.pop('host', biothing_settings.ga_tracker_url)
-        options.jsonld = kwargs.pop('jsonld', False)
         options = self._get_options(options, kwargs)
         scopes = kwargs.pop('scopes', None)
         if scopes:
@@ -291,35 +283,6 @@ class ESQuery():
             if r['_shards']['failed']:
                 res.update({'_warning': 'Scroll request has failed on {} shards out of {}.'.format(r['_shards']['failed'], r['_shards']['total'])})
         return res
-
-    def _insert_jsonld(self, k):
-        ''' Insert the jsonld links into this document.  Called by _get_variantdoc. '''
-        # get the context
-        context = self._context
-
-        if not context:
-            return k
-
-        # set the root
-        k.update(context['root'])
-
-        for key in context:
-            if key != 'root':
-                keys = key.split('/')
-                try:
-                    doc = find_doc(k, keys)
-                    if type(doc) == list:
-                        for _d in doc:
-                            _d.update(context[key])
-                    elif type(doc) == dict:
-                        doc.update(context[key])
-                    else:
-                        continue
-                        #print('error')
-                except:
-                    continue
-                    #print('keyerror')
-        return k
 
     def get_mapping_meta(self):
         """ return the current _meta field."""
