@@ -148,10 +148,10 @@ class BiothingTestHelper:
         actual_flattened_keys = {}
         flatten_dict(d , '', actual_flattened_keys)
         # Make sure that all of the actual keys are among the set of requested fields 
-        assert set(actual_flattened_keys).issubset(set(possible_fields + ['_id', '_version', 'query']))
+        assert set(actual_flattened_keys.keys()).issubset(set(possible_fields + ['_id', '_version', 'query']))
         # Also make sure that the difference between the actual keys and the possible keys is
         # nothing, i.e. a field wasn't returned that wasn't requested
-        assert eq_(len(set(actual_flattened_keys).difference(set(possible_fields + ['_id', '_version', 'query']))), 0) 
+        assert eq_(len(set(actual_flattened_keys.keys()).difference(set(possible_fields + ['_id', '_version', 'query']))), 0) 
 
     def check_jsonld(self, d, k):
         # recursively test for jsonld context
