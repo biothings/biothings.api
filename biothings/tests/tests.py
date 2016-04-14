@@ -47,10 +47,9 @@ class BiothingTestHelper:
         if not self.host:
             self.host = ns.nosetest_default_url
         self.host = self.host.rstrip('/')
-
         self.api = self.host + '/' + ns.api_version
-
         self.h = httplib2.Http()
+        self.all_flattened_fields = self.json_ok(self.get_ok(self.api + '/metadata/fields'))
 
     #############################################################
     # Hepler functions                                          #
@@ -122,17 +121,38 @@ class BiothingTestHelper:
                 return True
             return False
 
-    def check_nested_fields(self, d_items, k):
-        # function to recursively test fields in a nested object...this may need to be rewritten for fields that contain lists
-        if k:
-            tk = k.split('.')[0]
-            assert tk in dict(d_items)
-            if isinstance((dict(d_items)[tk]), []):
-                # Check the first element only, maybe should change this...
-                self.h.check_nested_fields(dict(d_items).get(tk, [{}])[0].items(), '.'.join(k.split('.')[1:]))
-            else:
-                self.h.check_nested_fields(dict(d_items).get(tk, {}).items(), '.'.join(k.split('.')[1:]))
+    def check_nested_fields(self, d, af, rf):
+        def expand_requested_fields(fields):
+            # find all possible fields from the request
+            possible_fields = []
+            if fields[0] == 'all':
+                return self.all_available_fields.keys()
+            for field in fields:
+                possible_fields += [s for s in self.all_available_fields.keys() 
+                                                if s.startswith(field)]:
+            return possible_fields
                 
+        def flatten_dict(d, p, r):
+            if isinstance(d, list):
+                for i in d:
+                    flatten_dict(i, p)
+            elif isinstance(d, dict):
+                # Add these keys
+                for k in d.keys():
+                    if p:
+                        r[p + '.' + k] = 0
+                    else:
+                        r[k] = 0
+                    flatten_dict(d[k], p + '.' + k)
+    
+        actual_flattened_keys = {}
+        flatten_dict(d , '', actual_flattened_keys)
+        # Make sure that all of the actual keys are among the set of requested fields 
+        assert set(actual_flattened_keys).issubset(set(possible_fields + ['_id', '_version', 'query']))
+        # Also make sure that the difference between the actual keys and the possible keys is
+        # nothing, i.e. a field wasn't returned that wasn't requested
+        assert eq_(len(set(actual_flattened_keys).difference(set(possible_fields + ['_id', '_version', 'query']))), 0) 
+
     def check_jsonld(self, d, k):
         # recursively test for jsonld context
         if isinstance(d, list):
