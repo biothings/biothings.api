@@ -135,7 +135,7 @@ class BiothingTestHelper:
         def flatten_dict(d, p, r):
             if isinstance(d, list):
                 for i in d:
-                    flatten_dict(i, p)
+                    flatten_dict(i, p, r)
             elif isinstance(d, dict):
                 # Add these keys
                 for k in d.keys():
@@ -143,7 +143,7 @@ class BiothingTestHelper:
                         r[p + '.' + k] = 0
                     else:
                         r[k] = 0
-                    flatten_dict(d[k], p + '.' + k)
+                    flatten_dict(d[k], p + '.' + k, r)
         
         possible_fields = expand_requested_fields(f)
         actual_flattened_keys = {}
