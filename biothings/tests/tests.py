@@ -129,7 +129,7 @@ class BiothingTestHelper:
                 return self.all_available_fields.keys()
             for field in fields:
                 possible_fields += [s for s in self.all_available_fields.keys() 
-                                                if s.startswith(field)]:
+                                    if s.startswith(field)]
             return possible_fields
                 
         def flatten_dict(d, p, r):
