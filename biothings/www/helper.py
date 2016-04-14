@@ -111,8 +111,8 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
             if context_key in self._context and self.jsonld:
                 d['@context'] = self._context[context_key]['@context']
             for k in sorted(d):
-                context_key = k if context_key == 'root' else context_key + '/' + k
-                this_list.append( (k, self._form_response_object(d[k], context_key)) )
+                new_key = k if context_key == 'root' else context_key + '/' + k
+                this_list.append( (k, self._form_response_object(d[k], new_key)) )
             return OrderedDict(this_list)
         else:
             return d
