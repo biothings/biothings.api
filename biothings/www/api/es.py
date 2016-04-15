@@ -1,4 +1,4 @@
-import json, logging
+import json, logging, re
 from biothings.utils.common import dotdict, is_str, is_seq, find_doc
 from biothings.utils.es import get_es
 from elasticsearch import NotFoundError, RequestError
@@ -178,11 +178,9 @@ class ESQuery(object):
         #if no dotfield in "fields", set dotfield always be True, i.e., no need to parse dotfield
         if not options.dotfield:
             _found_dotfield = False
-            logging.debug("check %s" % kwargs)
             if kwargs.get('fields'):
                 for _f in kwargs['fields']:
                     if _f.find('.') != -1:
-                        logging.debug("force dotfield")
                         _found_dotfield = True
                         break
             if not _found_dotfield:
@@ -276,23 +274,40 @@ class ESQuery(object):
 
     def _build_query(self, q, kwargs):
         # can override this function if more query types are to be added
-        esqb = self._get_query_builder()
+        esqb = self._get_query_builder(**kwargs)
         return esqb.default_query(q)
 
+    def _search(self,q,**kwargs):
+        '''Subclass to get a custom search query'''
+        return self._es.search(index=self._index, doc_type=self._doc_type, body=q, **kwargs)
+
     def query(self, q, **kwargs):
+        # clean
+        q = re.sub(u'[\t\n\x0b\x0c\r\x00]+', ' ', q)
+        q = q.strip()
+
         aggs = parse_facets_option(kwargs)
         options = self._get_cleaned_query_options(kwargs)
         scroll_options = {}
         if options.fetch_all:
+            # TODO: ES2 compatible ?
             scroll_options.update({'search_type': 'scan', 'size': self._scroll_size, 'scroll': self._scroll_time})
         options['kwargs'].update(scroll_options)
-        _query = self._build_query(q, kwargs)
-        if aggs:
-            _query['aggs'] = aggs 
         try:
-            res = self._es.search(index=self._index, doc_type=self._doc_type, body=_query, **options.kwargs)
-        except RequestError:
-            return {"error": "invalid query term.", "success": False}
+            _query = self._build_query(q, kwargs)
+            if aggs:
+                _query['aggs'] = aggs
+            logging.debug("options: %s" % options)
+            res = self._search(_query,scroll_options=scroll_options,**options.kwargs)
+        except QueryError as e:
+            msg = str(e)
+            return {'success': False,
+                    'error': msg}
+        except RequestError as e:
+            return {"error": "invalid query term: %s" % str(e), "success": False}
+        except Exception as e:
+            logging.debug("%s" % e)
+            return {'success': False, 'error': "Something is wrong with query '%s'" % q}
 
         # if options.fetch_all:
         #     return res
@@ -361,7 +376,6 @@ class ESQueryBuilder(object):
         _q = {"query": _query}
         self._query_options.pop("query", None)    # avoid "query" be overwritten by self.query_options
         _q.update(self._query_options)
-        logging.debug("bt build_id_query: %s" % _q)
         return _q
 
     def build_multiple_id_query(self, bid_list, scopes=None):

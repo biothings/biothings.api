@@ -167,11 +167,11 @@ class MetaDataHandler(BaseHandler):
 class FieldsHandler(BaseHandler):
 
     def get(self):
+        es_mapping = self.esq.query_fields()
         if biothing_settings.field_notes_path:
             notes = json.load(open(biothing_settings.field_notes_path, 'r'))
         else:
             notes = {}
-        es_mapping = self.esq.query_fields()
         kwargs = self.get_query_params()
 
         def get_indexed_properties_in_dict(d, prefix):
