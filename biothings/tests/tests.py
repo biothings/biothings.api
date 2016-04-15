@@ -121,16 +121,26 @@ class BiothingTestHelper:
                 return True
             return False
 
-    def check_fields(self, d, f):
-        def expand_requested_fields(fields):
-            # find all possible fields from the request
+    def check_fields(self, o, t, f):
+        # o is the original request (with fields)
+        # t is the total request (with fields = all)
+        # f is the list of requested fields e.g. ['cadd.gene']
+        
+        def expand_requested_fields(requested_fields, all_fields):
+            # find all possible fields from the request,
             possible_fields = []
-            if fields[0] == 'all':
-                return self.all_flattened_fields.keys()
-            for field in fields:
-                possible_fields += [s for s in self.all_flattened_fields.keys() 
-                                    if s.startswith(field)]
-            return possible_fields
+            if requested_fields[0] == 'all':
+                return all_fields
+            for field in requested_fields:
+                possible_fields += [s for s in all_fields if s == field or s.startswith(field + '.')]
+            # Go through and add parent nodes, which must be in the object....
+            pfs = set(possible_fields)
+            for f in possible_fields:
+                tk = ''
+                for path in f.split('.'):
+                    tk = tk + '.' + path if tk else path
+                    pfs.add(tk)
+            return list(pfs)
                 
         def flatten_dict(d, p, r):
             if isinstance(d, list):
@@ -139,20 +149,18 @@ class BiothingTestHelper:
             elif isinstance(d, dict):
                 # Add these keys
                 for k in d.keys():
-                    if p:
-                        r[p + '.' + k] = 0
-                    else:
-                        r[k] = 0
+                    r[p + '.' + k] = 0
                     flatten_dict(d[k], p + '.' + k, r)
         
-        possible_fields = expand_requested_fields(f)
+        possible_fields = {}
+        flatten_dict(t, '', possible_fields)
+        true_fields = expand_requested_fields(f, [x.lstrip('.') for x in possible_fields.keys()])
         actual_flattened_keys = {}
-        flatten_dict(d , '', actual_flattened_keys)
+        flatten_dict(o, '', actual_flattened_keys)
+        actual_flattened_keys = [x.lstrip('.') for x in actual_flattened_keys.keys()]
+        print("actual_flattened_keys.keys(): {}\n".format(actual_flattened_keys))
         # Make sure that all of the actual keys are among the set of requested fields 
-        assert set(actual_flattened_keys.keys()).issubset(set(possible_fields + ['_id', '_version', 'query']))
-        # Also make sure that the difference between the actual keys and the possible keys is
-        # nothing, i.e. a field wasn't returned that wasn't requested
-        assert eq_(len(set(actual_flattened_keys.keys()).difference(set(possible_fields + ['_id', '_version', 'query']))), 0) 
+        assert set(actual_flattened_keys).issubset(set(true_fields + ['_id', '_version', 'query'])), "The returned keys of object {} have extra keys than expected, the offending keys are: {}".format(o['_id'], set(actual_flattened_keys).difference(true_fields))
 
     def check_jsonld(self, d, k):
         # recursively test for jsonld context
@@ -210,9 +218,12 @@ class BiothingTests(TestCase):
                 # This is a filter query, test it appropriately
                 if 'fields' in bid:
                     true_fields = [g.strip() for g in [f.split('=')[1] for f in urlparse(base_url).query.split('&') if f.split('=')[0] == 'fields'][0].split(',')]
+                    total_url = re.sub(r'jsonld=[\w]*', 'jsonld=false', re.sub(r'fields=[\w\.,]*', 'fields=all', base_url))
                 elif 'filter' in bid:
                     true_fields = [g.strip() for g in [f.split('=')[1] for f in urlparse(base_url).query.split('&') if f.split('=')[0] == 'filter'][0].split(',')]
-                self.h.check_fields(res, true_fields)
+                    total_url = re.sub(r'jsonld=[\w]*', 'jsonld=false', re.sub(r'filter=[\w\.,]*', 'filter=all', base_url))
+                res_total = self.h.json_ok(self.h.get_ok(total_url))
+                self.h.check_fields(res, res_total, true_fields)
 
         # testing non-ascii character
         self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/' + ns.test_na_annotation[:-1] + '\xef\xbf\xbd\xef\xbf\xbd' + ns.test_na_annotation[-1])
