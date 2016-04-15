@@ -60,3 +60,9 @@ QUERY_CALLBACK_TEST = ''
 # This is a sample query to test the query size cap.  This query should be one that has more than 1000 total hits.
 QUERY_SIZE_TEST = ''
 
+# -----------------------------------------------------------------------------------
+
+# This is the minimum number of unique field keys (from /metadata/fields)
+MINIMUM_NUMBER_OF_ACCEPTABLE_FIELDS = 1 
+
+

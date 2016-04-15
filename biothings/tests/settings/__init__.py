@@ -83,3 +83,7 @@ class NosetestSettings(object):
     @property
     def test_query_size(self):
         return self._return_var('QUERY_SIZE_TEST')
+    
+    @property
+    def minimum_acceptable_fields(self):
+        return self._return_var('MINIMUM_NUMBER_OF_ACCEPTABLE_FIELDS')

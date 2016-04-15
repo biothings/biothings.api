@@ -158,7 +158,6 @@ class BiothingTestHelper:
         actual_flattened_keys = {}
         flatten_dict(o, '', actual_flattened_keys)
         actual_flattened_keys = [x.lstrip('.') for x in actual_flattened_keys.keys()]
-        print("actual_flattened_keys.keys(): {}\n".format(actual_flattened_keys))
         # Make sure that all of the actual keys are among the set of requested fields 
         assert set(actual_flattened_keys).issubset(set(true_fields + ['_id', '_version', 'query'])), "The returned keys of object {} have extra keys than expected, the offending keys are: {}".format(o['_id'], set(actual_flattened_keys).difference(true_fields))
 
@@ -244,27 +243,24 @@ class BiothingTests(TestCase):
             eq_(len(res), len(ddict['ids'].split(',')))
             # Check that all of the supplied ids are in the returned ids list
             for bid in [g.strip() for g in ddict['ids'].split(',')]:
-                assert bid in returned_ids
-            # If its a filtered query, check the return objects fields
-            if 'filter' in ddict or 'fields' in ddict: 
-                for o in res:
+                assert bid in returned_ids, "ID: {} was in the input list, but was not found in the list of returned hits.".format(bid)
+            for hit in res:
+                # If it's a jsonld query, check that
+                if 'jsonld' in ddict and ddict['jsonld'].lower() in [true, 1]:
+                    self.check_jsonld(hit, '')
+                # If its a filtered query, check the return objects fields
+                if 'filter' in ddict or 'fields' in ddict: 
                     true_fields = []
                     if 'fields' in ddict:
                         true_fields = [f.strip() for f in ddict.get('fields').split(',')]
                     elif 'filter' in ddict:
                         true_fields = [f.strip() for f in ddict.get('filter').split(',')]
-                    # check root level
-                    eq_(set(o), set(['_id', '_score', 'query'] + [x.split('.')[0] for x in true_fields]))
-                    for f in true_fields:
-                        self.h.check_nested_fields(res.items(), f)
-            # If it's a jsonld query, check that
-            if 'jsonld' in ddict and ddict['jsonld'].lower() in [true, 1]:
-                for o in res:
-                    self.check_jsonld(o, '')
+                    total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + hit['_id']
+                    res_total = self.h.json_ok(self.h.get_ok(total_url))
+                    self.h.check_fields(hit, res_total, true_fields)
 
         self._extra_annotation_POST()
 
-    '''
     def test_query_GET(self):
         # Test some simple GETs to the query endpoint, first check some queries to make sure they return some hits
         for q in ns.query_GET:
@@ -331,10 +327,8 @@ class BiothingTests(TestCase):
 
         res = self.h.json_ok(self.h.post_ok(self.h.api + '/query', {}), checkerror=False)
         assert 'error' in res, res
-    '''
 
     def test_query_size(self):
-        # TODO: port other tests (refactor to biothing.api ?)
         res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.test_query_size))
         eq_(len(res['hits']), 10) # default
         res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.test_query_size + '&size=1000'))
@@ -347,7 +341,7 @@ class BiothingTests(TestCase):
     def test_metadata(self):
         self.h.get_ok(self.h.host + '/metadata')
         self.h.get_ok(self.h.api + '/metadata')
-    '''
+    
     def test_query_facets(self):
         res = json_ok(get_ok(api + '/query?q=cadd.gene.gene_id:ENSG00000113368&facets=cadd.polyphen.cat&size=0'))
         assert 'facets' in res and 'cadd.polyphen.cat' in res['facets']
@@ -379,7 +373,7 @@ class BiothingTests(TestCase):
     def test_get_fields(self):
         res = self.h.json_ok(self.h.get_ok(self.h.api + '/metadata/fields'))
         # Check to see if there are enough keys
-        ok_(len(res) > 480)
+        ok_(len(res) > ns.minimum_acceptable_fields)
 
         # Check some specific keys
         assert 'cadd' in res
@@ -411,39 +405,6 @@ class BiothingTests(TestCase):
         res2 = msgpack_ok(get_ok(api + '/metadata?msgpack=true'))
         ok_(res, res2)
 
-    def test_jsonld(self):
-        res = json_ok(get_ok(api + '/variant/chr11:g.66397320A>G?jsonld=true'))
-        assert '@context' in res
-
-        # Check some subfields
-        assert 'snpeff' in res and '@context' in res['snpeff']
-
-        assert 'ann' in res['snpeff'] and '@context' in res['snpeff']['ann'][0]
-
-        # Check a post with jsonld
-        res = json_ok(post_ok(api + '/variant', {'ids': 'chr16:g.28883241A>G, chr11:g.66397320A>G', 'jsonld': 'true'}))
-        for r in res:
-            assert '@context' in r
-
-        # Check a query get with jsonld
-        res = json_ok(get_ok(api + '/query?q=_exists_:clinvar&fields=clinvar&size=1&jsonld=true'))
-
-        assert '@context' in res['hits'][0]
-
-        # subfields
-        assert 'clinvar' in res['hits'][0] and '@context' in res['hits'][0]['clinvar']
-        assert 'gene' in res['hits'][0]['clinvar'] and '@context' in res['hits'][0]['clinvar']['gene']
-
-        # Check query post with jsonld
-        res = json_ok(post_ok(api + '/query', {'q': 'rs58991260,rs2500',
-                                               'scopes': 'dbsnp.rsid',
-                                               'jsonld': 'true'}))
-
-        assert len(res) == 2
-        assert '@context' in res[0] and '@context' in res[1]
-        assert 'snpeff' in res[1] and '@context' in res[1]['snpeff']
-        assert 'ann' in res[1]['snpeff'] and '@context' in res[1]['snpeff']['ann'][0]
-    '''
     def test_status_endpoint(self):
         self.h.get_ok(self.h.host + '/status')
         # (testing failing status would require actually loading tornado app from there 
