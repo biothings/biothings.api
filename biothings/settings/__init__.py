@@ -27,6 +27,10 @@ class BiothingSettings(object):
             return self.default_vars[key]
 
     @property
+    def static_path(self):
+        return self._return_var('STATIC_PATH')
+
+    @property
     def _annotation_endpoint(self):
         return self._return_var('ANNOTATION_ENDPOINT')
 

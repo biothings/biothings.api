@@ -394,3 +394,94 @@ class ESQueryBuilder(object):
                 }
             }
         }
+
+    def get_query_filters(self):
+        '''Subclass to add specific filters'''
+        return []
+
+    def add_query_filters(self, _query):
+        '''filters added here will be applied in a filtered query,
+           thus will affect the facet counts.
+        '''
+        filters = self.get_query_filters()
+        if not filters:
+            return _query
+
+        #add filters as filtered query
+        #this will apply to facet counts
+        _query = {
+            'filtered': {
+                'query': _query,
+                'filter': filters
+            }
+        }
+
+        return _query
+
+
+    def generate_query(self,q):
+        '''
+        Return query dict according to passed arg "q". Can be:
+            - match query
+            - wildcard query
+            - raw_string query
+            - "match all" query
+        Also add query filters
+        '''
+        # Check if fielded/boolean query, excluding special goid query
+        # raw_string_query should be checked ahead of wildcard query, as raw_string may contain wildcard as well # e.g., a query "symbol:CDK?", should be treated as raw_string_query.
+        logging.debug("onela: %s" % q)
+        if q == '__all__':
+            _query = {"match_all": {}}
+        elif self._is_raw_string_query(q) and not q.lower().startswith('go:'):
+            _query = self.raw_string_query(q)
+        elif self._is_wildcard_query(q):
+            _query = self.wildcard_query(q)
+        else:
+            _query = self.dis_max_query(q)
+
+        _query = self.add_query_filters(_query)
+
+        return _query
+
+
+    def _is_wildcard_query(self, query):
+        '''Return True if input query is a wildcard query.'''
+        return query.find('*') != -1 or query.find('?') != -1
+
+
+    def _is_raw_string_query(self, query):
+        '''Return True if input query is a wildchar/fielded/boolean query.'''
+        for v in [':', '~', ' AND ', ' OR ', 'NOT ']:
+            if query.find(v) != -1:
+                return True
+        if query.startswith('"') and query.endswith('"'):
+            return True
+        return False
+
+
+    def raw_string_query(self, q):
+        logging.debug("raw string qeury: %s" % q)
+        _query = {
+            "query_string": {
+                "query": "%(q)s",
+                # "analyzer": "string_lowercase",
+                "default_operator": "AND",
+                "auto_generate_phrase_queries": True
+            }
+        }
+        _query = json.dumps(_query)
+        try:
+            _query = json.loads(_query % {'q': q.replace('"', '\\"')})
+        except ValueError:
+            raise QueryError("invalid query term.")
+        return _query
+
+
+    def wildcard_query(self, q):
+        raise NotImplemented("Wildcard queries not supported (or implement in subclass)")
+
+
+    def dis_max_query(self, q):
+        raise NotImplemented("Dis max queries not supported (or implement in subclass)")
+

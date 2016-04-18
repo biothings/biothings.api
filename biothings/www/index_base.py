@@ -18,14 +18,11 @@ import tornado.options
 import tornado.web
 import tornado.escape
 from tornado.options import define, options
-from __main__ import *
-#from config import INCLUDE_DOCS
+
+from ..settings import BiothingSettings
+btsettings = BiothingSettings()
 
 __USE_WSGI__ = False
-#DOCS_STATIC_PATH = os.path.join(src_path, 'docs/_build/html')
-#if INCLUDE_DOCS and not os.path.exists(DOCS_STATIC_PATH):
-#    raise IOError('Run "make html" to generate sphinx docs first.')
-STATIC_PATH = os.path.join(src_path, 'www/static')
 
 define("port", default=8000, help="run on the given port", type=int)
 define("address", default="127.0.0.1", help="run on localhost")
@@ -41,7 +38,7 @@ settings = {}
 if options.debug:
     # from config import STATIC_PATH
     settings.update({
-        "static_path": STATIC_PATH,
+        "static_path": btsettings.static_path,
     })
     # from config import auth_settings
     # settings.update(auth_settings)
@@ -54,7 +51,7 @@ def main(APP_LIST):
     loop = tornado.ioloop.IOLoop.instance()
     if options.debug:
         tornado.autoreload.start(loop)
-        tornado.autoreload.watch(os.path.join(STATIC_PATH, 'index.html'))
+        tornado.autoreload.watch(os.path.join(btsettings.static_path, 'index.html'))
         logging.info('Server is running on "%s:%s"...' % (options.address, options.port))
 
     loop.start()
