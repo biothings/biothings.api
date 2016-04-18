@@ -65,4 +65,4 @@ QUERY_SIZE_TEST = ''
 # This is the minimum number of unique field keys (from /metadata/fields)
 MINIMUM_NUMBER_OF_ACCEPTABLE_FIELDS = 1 
 
-
+TEST_FIELDS_GET_FIELDS_ENDPOINT = []
