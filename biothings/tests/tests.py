@@ -24,6 +24,7 @@ except ImportError:
     sys.stderr.write("Warning: msgpack is not available.")
 from biothings.tests.settings import NosetestSettings
 from unittest import TestCase
+import pprint
 
 if sys.version_info.major >= 3:
     PY3 = True
@@ -80,7 +81,7 @@ class BiothingTestHelper:
             ok_(not (isinstance(d, dict) and 'error' in d), self.truncate(str(d), 100))
         return d
 
-    def msgpack_ok(b, checkerror=True):
+    def msgpack_ok(self, b, checkerror=True):
         d = msgpack.unpackb(b)
         if checkerror:
             ok_(not (isinstance(d, dict) and 'error' in d), self.truncate(str(d), 100))
@@ -105,7 +106,7 @@ class BiothingTestHelper:
 
     def post_ok(self, url, params):
         headers = {'Content-type': 'application/x-www-form-urlencoded'}
-        res, con = self.h.request(url, 'POST', urlencode(encode_dict(params)), headers=headers)
+        res, con = self.h.request(url, 'POST', urlencode(self.encode_dict(params)), headers=headers)
         eq_(res.status, 200)
         return con
     
@@ -114,12 +115,40 @@ class BiothingTestHelper:
         ok_(d.get('total', 0) > 0 and len(d.get('hits', [])) > 0)
         return d
 
+    def convert_msgpack(self, d):
+        # convert d to a proper json object
+        def convert_str(k):
+            if isinstance(k, bytes):
+                return k.decode('utf-8')
+            else:
+                return k
+
+        def traverse(d):
+            # decode the key
+            if isinstance(d, list):
+                return [traverse(i) for i in d]
+            elif isinstance(d, dict):
+                return dict([(convert_str(tk), traverse(tv)) for (tk,tv) in d.items()])
+            elif isinstance(d, bytes):
+                return d.decode('utf-8')
+            else:
+                return d
+
+        return traverse(d)
+
     def check_boolean_url_option(self, url, option):
-            if [1 for f in urlparse(url).query.split('&') 
-                    if ((f.split('=')[0] == option) and 
-                        (f.split('=')[1].lower() in [1, 'true']))]:
-                return True
-            return False
+        # for boolean params
+        if self.parse_url(url, option) and self.parse_url(url, option).lower() in [1, 'true']:
+            return True
+        return False
+
+    def parse_url(self, url, option):
+        # parse the url string to see if option is specified, if so return it, if not return ''
+        options = urlparse(url).query.split('&')
+        for o in options:
+            if o.split('=')[0] == option:
+                return o.split('=')[1]
+        return ''
 
     def check_fields(self, o, t, f):
         # o is the original request (with fields)
@@ -159,22 +188,31 @@ class BiothingTestHelper:
         flatten_dict(o, '', actual_flattened_keys)
         actual_flattened_keys = [x.lstrip('.') for x in actual_flattened_keys.keys()]
         # Make sure that all of the actual keys are among the set of requested fields 
-        assert set(actual_flattened_keys).issubset(set(true_fields + ['_id', '_version', 'query'])), "The returned keys of object {} have extra keys than expected, the offending keys are: {}".format(o['_id'], set(actual_flattened_keys).difference(true_fields))
+        assert set(actual_flattened_keys).issubset(set(true_fields + ['_id', '_version', 'query', '_score'])), "The returned keys of object {} have extra keys than expected, the offending keys are: {}".format(o['_id'], set(actual_flattened_keys).difference(true_fields))
 
     def check_jsonld(self, d, k):
         # recursively test for jsonld context
+        # valid jsonld context?
+        if 'root' not in jsonld_context:
+            return d # can't check anything
         if isinstance(d, list):
             for i in d:
                 self.check_jsonld(i, k)
         elif isinstance(d, dict):
-            if not k and 'root' in jsonld_context:
-                assert '@context' in d
+            if not k:
+                # Root
+                assert '@context' in d, "JSON-LD context not found in {}.  Expected: {}".format(d, jsonld_context['root'])
                 eq_(jsonld_context['root']['@context'], d['@context'])
                 del(d['@context'])
                 for (tk, tv) in d.items():
                     self.check_jsonld(tv, tk)
+            elif k in jsonld_context['root']['@context'] and k not in jsonld_context:
+                # No context, but defined in root context
+                for (tk, tv) in d.items():
+                    self.check_jsonld(tv, k + '/' + tk)
             elif k in jsonld_context:
-                assert '@context' in d
+                # Context inserted, test it, and remove it
+                assert '@context' in d, "JSON-LD context not found in {}.  Expected: {}".format(d, jsonld_context[k])
                 eq_(jsonld_context[k]['@context'], d['@context'])
                 del(d['@context'])
                 for (tk, tv) in d.items():
@@ -205,10 +243,32 @@ class BiothingTests(TestCase):
                                                             ns.annotation_endpoint, ns.annotation_attribute_query)
     
     def test_annotation_GET(self):
+        ''' Function to test GETs to the annotation endpoint. 
+
+            Currently supports automatic testing of:
+                fields
+                filter
+                jsonld
+                callback
+        '''
         # Check some ids to make sure the resulting _id matches
-        for bid in ns.annotation_GET:
+
+        for (test_number, bid) in enumerate(ns.annotation_GET):
             base_url = self.h.api + '/' + ns.annotation_endpoint + '/' + bid
-            res = self.h.json_ok(self.h.get_ok(base_url))
+            # if it specifies a callback function, make sure it works
+            if self.h.parse_url(base_url, 'callback'):
+                c = self.h.get_ok(base_url).decode('utf-8')
+                f = self.h.parse_url(base_url, 'callback')
+                assert c.startswith(f), 'JSONP callback function "{}" not detected'.format(f)
+                c = re.sub('\n', '', c)
+                p = r'^(?P<callback>' + f + '\()(?P<res>\{.*\})\)$'
+                m = re.search(p, c)
+                assert m, 'JSONP object malformed'  # Probably don't need both of these tests
+                r = m.groupdict()
+                res = _d(r['res']) # get the json object out of the callback so we can test it
+            else:
+                res = self.h.json_ok(self.h.get_ok(base_url))
+            # Check that the returned ID matches 
             eq_(res['_id'], bid.split('?')[0])
             # Is this a jsonld query?
             if self.h.check_boolean_url_option(base_url, 'jsonld') and 'root' in jsonld_context:
@@ -216,26 +276,39 @@ class BiothingTests(TestCase):
             if 'fields' in bid or 'filter' in bid:
                 # This is a filter query, test it appropriately
                 if 'fields' in bid:
-                    true_fields = [g.strip() for g in [f.split('=')[1] for f in urlparse(base_url).query.split('&') if f.split('=')[0] == 'fields'][0].split(',')]
-                    total_url = re.sub(r'jsonld=[\w]*', 'jsonld=false', re.sub(r'fields=[\w\.,]*', 'fields=all', base_url))
+                    true_fields = [x.strip() for x in self.h.parse_url(base_url, 'fields').split(',')]
                 elif 'filter' in bid:
-                    true_fields = [g.strip() for g in [f.split('=')[1] for f in urlparse(base_url).query.split('&') if f.split('=')[0] == 'filter'][0].split(',')]
-                    total_url = re.sub(r'jsonld=[\w]*', 'jsonld=false', re.sub(r'filter=[\w\.,]*', 'filter=all', base_url))
+                    true_fields = [x.strip() for x in self.h.parse_url(base_url, 'filter').split(',')]
+                total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + bid.split('?')[0]
                 res_total = self.h.json_ok(self.h.get_ok(total_url))
                 self.h.check_fields(res, res_total, true_fields)
+            # insert gibberish on first id, also test msgpack
+            if test_number == 0:
+                self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/' + bid[:-1] + '\xef\xbf\xbd\xef\xbf\xbd' + bid[-1])
+                # Get true query results
+                res_t = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.annotation_endpoint + '/' + bid.split('?')[0]))
+                # Get same query results with messagepack
+                res_msgpack = self.h.convert_msgpack(self.h.msgpack_ok(self.h.get_ok(self.h.api + '/' + ns.annotation_endpoint + '/' + bid.split('?')[0] +'?msgpack=true')))
+                assert res_t == res_msgpack, 'Results with msgpack differ from original for ID: "{}"'.format(bid.split('?')[0])
+            
+            # override to add more tests
+            self._extra_annotation_GET(bid, res)
 
-        # testing non-ascii character
-        self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/' + ns.test_na_annotation[:-1] + '\xef\xbf\xbd\xef\xbf\xbd' + ns.test_na_annotation[-1])
         # test empties 
         self.h.get_404(self.h.api + '/' + ns.annotation_endpoint)
         self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/')
 
-        # override to add more tests
-        self._extra_annotation_GET()
     
     def test_annotation_POST(self):
-        # Test some simple POSTs to the annotation endpoint.
-        for ddict in ns.annotation_POST:
+        ''' Function to test POSTs to the annotation endpoint.
+            
+            Currently supports automatic testing of:
+                ids
+                fields
+                filters
+                jsonld
+        '''
+        for (test_number, ddict) in enumerate(ns.annotation_POST):
             res = self.h.json_ok(self.h.post_ok(self.h.api + '/' + ns.annotation_endpoint, ddict))
             returned_ids = [h['_id'] for h in res]
             # Check that the number of returned objects matches the number of inputs
@@ -259,54 +332,98 @@ class BiothingTests(TestCase):
                     res_total = self.h.json_ok(self.h.get_ok(total_url))
                     self.h.check_fields(hit, res_total, true_fields)
 
-        self._extra_annotation_POST()
+                self._extra_annotation_POST(ddict, hit)
 
     def test_query_GET(self):
+        ''' Function to test GETs to the query endpoint.
+
+            Automatically tested parameters:
+            
+            fields
+            filters
+            size
+            fetch_all/scroll_id
+            facets
+            callback
+
+            Separately tested:
+
+            from
+        ''' 
         # Test some simple GETs to the query endpoint, first check some queries to make sure they return some hits
-        for q in ns.query_GET:
+        for (test_number, q) in enumerate(ns.query_GET):
             base_url = self.h.api + '/' + ns.query_endpoint + '/?q=' + q
-            res = self.h.has_hits(q)
-            total = res['total']
+            # parse callback
+            if self.h.parse_url(base_url, 'callback'):
+                c = self.h.get_ok(base_url).decode('utf-8')
+                f = self.h.parse_url(base_url, 'callback')
+                assert c.startswith(f), 'JSONP callback function "{}" not detected'.format(f)
+                p = r'^(?P<callback>' + f + '\()(?P<res>\{.*\})\)$'
+                m = re.search(p, c)
+                assert m, 'JSONP object malformed'  # Probably don't need both of these tests
+                r = m.groupdict()
+                res = _d(r['res']) # get the json object out of the callback so we can test it
+            elif self.h.check_boolean_url_option(base_url, 'fetch_all'):
+                # Is this a fetch all query?
+                sres = self.h.json_ok(get_ok(base_url))
+                assert '_scroll_id' in sres, "_scroll_id not found for fetch_all query: {}".format(q)
+                scroll_hits = sres['total'] if sres['total'] <= 1000 else 1000
+                res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?scroll_id=' + sres['_scroll_id']))
+                assert 'hits' in res, "No hits found for query: {}\nScroll ID: {}".format(q, sres['_scroll_id'])
+                assert len(res['hits']) == scroll_hits, "Expected a scroll size of {}, got a scroll size of {}".format(scroll_hits, len(res['hits']))
+            else:
+                # does this query have hits?
+                res = self.h.has_hits(q)
+            # Test the size/size cap
+            total_hits = int(res['total'])
             ret_size = len(res.get('hits', []))
-            req_size = [g.strip() for g in [f.split('=')[1] for f in urlparse(base_url).query.split('&') if
-            if 'fields' in q or 'filter' in q:
-                # This is a filter query, test it appropriately
-                if 'fields' in q:
-                    true_fields = [g.strip() for g in [f.split('=')[1] for f in urlparse(base_url).query.split('&') if f.split('=')[0] == 'fields'][0].split(',')]
-                elif 'filter' in bid:
-                    true_fields = [g.strip() for g in [f.split('=')[1] for f in urlparse(base_url).query.split('&') if f.split('=')[0] == 'filter'][0].split(',')]
-                # Check root level
-                eq_(set(res), set(['_id', '_version'] + [x.split('.')[0] for x in true_fields]))
-                # Check nested fields
-                for f in true_fields:
-                    self.h.check_nested_fields(res.items(), f)
-            # Is this a jsonld query?
-            if [1 for f in urlparse(base_url).query.split('&') if ((f.split('=')[0] == 'jsonld') 
-                                and (f.split('=')[1].lower() in [1, 'true']))] and 'root' in jsonld_context:
-                self.h.check_jsonld(res, '')
-            
-            
-        
-
-        # Test a query with some callback
-        con = self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.callback_query + '&callback=mycallback')
-        ok_(con.startswith('mycallback('.encode('utf-8')))
-
-        # testing non-ascii character
-        res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.test_na_query[:-1] + '\xef\xbf\xbd\xef\xbf\xbd' + ns.test_na_query[-1]))
-        eq_(res['hits'], [])
-
+            req_size = int(self.h.parse_url(base_url, 'size')) if self.h.parse_url(base_url, 'size') else 10
+            if self.h.check_boolean_url_option(base_url, 'fetch_all'):
+                true_size = scroll_hits
+            else:
+                true_size = req_size if req_size <= 1000 else 1000
+            assert ret_size == true_size, 'Expected {} hits for query "{}", got {} hits instead'.format(true_size, q, ret_size)
+            # Test facets, maybe we should make it a subset test, i.e., set(returned facets) must be a subset of set(requested facets)
+            if 'facets' in q:
+                facets = [x.strip() for x in self.h.parse_url(base_url, 'facets').split(',')]
+                assert 'facets' in res, "Facets were expected in the response object, but none were found."
+                for facet in facets:
+                    assert facet in res['facets'], 'Expected facet "{}" in response object, but it was not found'.format(facet)
+            for hit in res['hits']:
+                # Make sure correct jsonld is in res
+                if self.h.check_boolean_url_option(base_url, 'jsonld') and 'root' in jsonld_context:
+                    self.h.check_jsonld(res, '')
+                if 'fields' in q or 'filter' in q:
+                    # This is a filter query, test it appropriately
+                    if 'fields' in q:
+                        true_fields = [x.strip() for x in self.h.parse_url(base_url, 'fields').split(',')]
+                    elif 'filter' in bid:
+                        true_fields = [x.strip() for x in self.h.parse_url(base_url, 'filter').split(',')]
+                    # 
+                    total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + hit['_id']
+                    res_total = self.h.json_ok(self.h.get_ok(total_url))
+                    self.h.check_fields(res, res_total, true_fields)
+            # insert gibberish on first id, test msgpack
+            if test_number == 0:
+                res_f = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '/?q=' + q[:-1] + '\xef\xbf\xbd\xef\xbf\xbd' + q[-1]))
+                assert res_f['hits'] == [], 'Query with non ASCII characters injected failed'
+                # Get true query results
+                res_t = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '/?q=' + q))
+                # Get same query results with messagepack
+                res_msgpack = self.h.msgpack_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '/?q=' + q +'&msgpack=true'))
+                assert res_t == res_msgpack, 'Results differ using msgpack for query "{}"'.format(q)
+            # extra tests
+            self._extra_query_GET(q, res)
+ 
         # test empty/error
         res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint), checkerror=False)
         assert 'error' in res
-
-        self._extra_query_GET()
     
     def test_query_post(self):
         #query via post
-        for ( id_list, ddict ) in ns.query_POST:
-
-            
+        for ( ddict ) in ns.query_POST:
+            pass
+        '''    
         json_ok(post_ok(api + '/query', {'q': 'rs58991260'}))
 
         res = json_ok(post_ok(api + '/query', {'q': 'rs58991260',
@@ -327,25 +444,12 @@ class BiothingTests(TestCase):
 
         res = self.h.json_ok(self.h.post_ok(self.h.api + '/query', {}), checkerror=False)
         assert 'error' in res, res
-
-    def test_query_size(self):
-        res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.test_query_size))
-        eq_(len(res['hits']), 10) # default
-        res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.test_query_size + '&size=1000'))
-        eq_(len(res['hits']), 1000)
-        res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.test_query_size + '&size=1001'))
-        eq_(len(res['hits']), 1000)
-        res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.test_query_size + '&size=2000'))
-        eq_(len(res['hits']), 1000)
+        '''
 
     def test_metadata(self):
         self.h.get_ok(self.h.host + '/metadata')
         self.h.get_ok(self.h.api + '/metadata')
-    
-    def test_query_facets(self):
-        res = json_ok(get_ok(api + '/query?q=cadd.gene.gene_id:ENSG00000113368&facets=cadd.polyphen.cat&size=0'))
-        assert 'facets' in res and 'cadd.polyphen.cat' in res['facets']
-
+    '''
     def test_unicode(self):
         s = '基因'
 
@@ -368,42 +472,15 @@ class BiothingTests(TestCase):
         res = json_ok(post_ok(api + '/query', {"q": 'rs2500+' + s}))
         eq_(res[1]['notfound'], True)
         eq_(len(res), 2)
-
+    '''
 
     def test_get_fields(self):
         res = self.h.json_ok(self.h.get_ok(self.h.api + '/metadata/fields'))
         # Check to see if there are enough keys
         ok_(len(res) > ns.minimum_acceptable_fields)
 
-        # Check some specific keys
-        assert 'cadd' in res
-        assert 'dbnsfp' in res
-        assert 'dbsnp' in res
-        assert 'wellderly' in res
-        assert 'clinvar' in res
-
-
-    def test_fetch_all(self):
-        res = json_ok(get_ok(api + '/query?q=_exists_:wellderly%20AND%20cadd.polyphen.cat:possibly_damaging&fields=wellderly,cadd.polyphen&fetch_all=TRUE'))
-        assert '_scroll_id' in res
-
-        # get one set of results
-        res2 = json_ok(get_ok(api + '/query?scroll_id=' + res['_scroll_id']))
-        assert 'hits' in res2
-        ok_(len(res2['hits']) == 1000)
-
-    def test_msgpack(self):
-        res = json_ok(get_ok(api + '/variant/chr11:g.66397320A>G'))
-        res2 = msgpack_ok(get_ok(api + '/variant/chr11:g.66397320A>G?msgpack=true'))
-        ok_(res, res2)
-
-        res = json_ok(get_ok(api + '/query?q=rs2500'))
-        res2 = msgpack_ok(get_ok(api + '/query?q=rs2500&msgpack=true'))
-        ok_(res, res2)
-
-        res = json_ok(get_ok(api + '/metadata'))
-        res2 = msgpack_ok(get_ok(api + '/metadata?msgpack=true'))
-        ok_(res, res2)
+        for field in ns.test_fields_get_fields_endpoint:
+            assert field in res, '"{}" expected in response from /metadata/fields, but not found'.format(field)
 
     def test_status_endpoint(self):
         self.h.get_ok(self.h.host + '/status')
@@ -413,10 +490,18 @@ class BiothingTests(TestCase):
     ###########################################################################
     # Convenience functions for adding new nosetests/ don't really need these...
     ###########################################################################
-    def _extra_annotation_GET(self):
+    def _extra_annotation_GET(self, bid, res):
         # override to add extra annotation GET tests here
         pass
 
-    def _extra_annotation_POST(self):
+    def _extra_annotation_POST(self, ddict, res):
         # override to add extra annotation POST tests here
+        pass
+
+    def _extra_query_GET(self, q, res):
+        # override to add extra query GET tests here
+        pass
+
+    def _extra_query_POST(self, ddict, res):
+        # override to add extra query POST tests here
         pass
