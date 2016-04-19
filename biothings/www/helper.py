@@ -4,6 +4,7 @@ import tornado.web
 from biothings.utils.ga import GAMixIn
 from biothings.settings import BiothingSettings
 from collections import OrderedDict
+from importlib import import_module
 
 SUPPORT_MSGPACK = True
 if SUPPORT_MSGPACK:
@@ -15,6 +16,7 @@ if SUPPORT_MSGPACK:
         return obj
 
 biothing_settings = BiothingSettings()
+es_biothings = import_module(biothing_settings.es_query_module)
 
 class DateTimeJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -29,6 +31,7 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
     cache_max_age = 604800  # 7days
     disable_caching = False
     boolean_parameters = set(['raw', 'rawquery', 'fetch_all', 'explain', 'jsonld','dotfield'])
+    esq = es_biothings.ESQuery()
     try:
         _context = json.load(open(biothing_settings.jsonld_context_path, 'r'))
     except FileNotFoundError:

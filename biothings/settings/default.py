@@ -12,7 +12,7 @@ ALLOWED_OPTIONS = ['_source', 'start', 'from_', 'size', 'sort', 'explain', 'vers
 ES_SCROLL_TIME = '1m'
 ES_SCROLL_SIZE = 1000
 ES_SIZE_CAP = 1000
-
+ES_QUERY_MODULE = 'api.es'
 # default static path, relative to current working dir
 # (from where app is launched)
 STATIC_PATH = "static"

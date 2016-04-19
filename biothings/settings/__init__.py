@@ -66,6 +66,10 @@ class BiothingSettings(object):
     # *************************************************************************
 
     @property
+    def es_query_module(self):
+        return self._return_var('ES_QUERY_MODULE')
+
+    @property
     def es_host(self):
         return self._return_var('ES_HOST')
 
