@@ -4,6 +4,7 @@ from biothings.utils.es import get_es
 from elasticsearch import NotFoundError, RequestError
 from biothings.settings import BiothingSettings
 from biothings.utils.dotfield import compose_dot_fields_by_fields as compose_dot_fields
+from collections import OrderedDict
 
 biothing_settings = BiothingSettings()
 
@@ -50,12 +51,31 @@ class ESQuery(object):
         self._allowed_options = biothing_settings.allowed_options
         self._scroll_time = biothing_settings.scroll_time
         self._total_scroll_size = biothing_settings.scroll_size   # Total number of hits to return per scroll batch
+        try:
+            self._context = json.load(open(biothing_settings.jsonld_context_path, 'r'))
+        except FileNotFoundError:
+            self._context = {}
         if self._total_scroll_size % self.get_number_of_shards() == 0:
             # Total hits per shard per scroll batch
             self._scroll_size = int(self._total_scroll_size / self.get_number_of_shards())
         else:
             raise ScrollSetupError("_total_scroll_size of {} can't be ".format(self._total_scroll_size) +
                                      "divided evenly among {} shards.".format(self.get_number_of_shards()))
+
+    def _traverse_biothingdoc(self, doc, context_key, options=None):
+        # Traverses through all levels of biothing doc to add jsonld context and sort the dictionaries
+        if isinstance(doc, list):
+            return [self._traverse_biothingdoc(d, context_key, options) for d in doc]
+        elif isinstance(doc, dict):
+            this_list = []
+            if context_key in self._context and options and options.jsonld:
+                doc['@context'] = self._context[context_key]['@context']
+            for key in sorted(doc):
+                new_key = key if context_key == 'root' else context_key + '/' + key
+                this_list.append( (key, self._traverse_biothingdoc(doc[key], new_key, options)) )
+            return OrderedDict(this_list)
+        else:
+            return doc
 
     def _get_biothingdoc(self, hit, options=None):
         doc = hit.get('_source', hit.get('fields', {}))
@@ -67,14 +87,14 @@ class ESQuery(object):
         if hit.get('found', None) is False:
             # if found is false, pass that to the doc
             doc['found'] = hit['found']
-        if options and options.jsonld:
-            doc = self._insert_jsonld(doc)
         #TODO: normalize, either _source or fields...
         fields = options.kwargs.fields or options.kwargs._source
         if options and options.dotfield and options.kwargs and fields:
             doc = compose_dot_fields(doc,fields)  
         # add other keys to object, if necessary
         doc = self._modify_biothingdoc(doc=doc, options=options)
+        # Sort keys, and add jsonld
+        doc = self._traverse_biothingdoc(doc=doc, context_key='root', options=options)
         return doc
 
     def _modify_biothingdoc(self, doc, options=None):

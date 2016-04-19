@@ -3,7 +3,6 @@ import datetime
 import tornado.web
 from biothings.utils.ga import GAMixIn
 from biothings.settings import BiothingSettings
-from collections import OrderedDict
 from importlib import import_module
 
 SUPPORT_MSGPACK = True
@@ -32,11 +31,6 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
     disable_caching = False
     boolean_parameters = set(['raw', 'rawquery', 'fetch_all', 'explain', 'jsonld','dotfield'])
     esq = es_biothings.ESQuery()
-    try:
-        _context = json.load(open(biothing_settings.jsonld_context_path, 'r'))
-    except FileNotFoundError:
-        _context = {}
-    jsonld = False
 
     def _check_fields_param(self, kwargs):
         '''support "filter" as an alias of "fields" parameter for back-compatability.'''
@@ -108,22 +102,6 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
     #         return None
     #     return tornado.escape.json_decode(user_json)
 
-    def _form_response_object(self, d, context_key):
-        '''sort this dictionary, and add jsonld.'''
-        if isinstance(d, list):
-            return [self._form_response_object(ds, context_key) for ds in d]
-        elif isinstance(d, dict):
-            this_list = []
-            # Insert jsonld information if necessary
-            if context_key in self._context and self.jsonld:
-                d['@context'] = self._context[context_key]['@context']
-            for k in sorted(d):
-                new_key = k if context_key == 'root' else context_key + '/' + k
-                this_list.append( (k, self._form_response_object(d[k], new_key)) )
-            return OrderedDict(this_list)
-        else:
-            return d
-
     def return_json(self, data, encode=True, indent=None):
         '''return passed data object as JSON response.
            if <jsonp_parameter> is passed, return a valid JSONP response.
@@ -131,8 +109,6 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
            string.
         '''    
         # call the recursive function to sort the data by keys and add the json-ld information
-        data = self._form_response_object(data, 'root')
-
         indent = indent or 2   # tmp settings
         jsoncallback = self.get_argument(self.jsonp_parameter, '')  # return as JSONP
         if SUPPORT_MSGPACK:
