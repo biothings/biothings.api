@@ -28,7 +28,6 @@ class BiothingHandler(BaseHandler):
         '''
         if bid:
             kwargs = self.get_query_params()
-            self.jsonld = kwargs.pop('jsonld', False)
             self._examine_kwargs('GET', kwargs)
             biothing_object = self.esq.get_biothing(bid, **kwargs)
             if biothing_object:
@@ -50,7 +49,6 @@ class BiothingHandler(BaseHandler):
             jsonld
         '''
         kwargs = self.get_query_params()
-        self.jsonld = kwargs.pop('jsonld', False)
         self._examine_kwargs('POST', kwargs)
         ids = kwargs.pop('ids', None)
         if ids:
@@ -95,7 +93,6 @@ class QueryHandler(BaseHandler):
             raw
         '''
         kwargs = self.get_query_params()
-        self.jsonld = kwargs.pop('jsonld', False)
         self._examine_kwargs('GET', kwargs)
         q = kwargs.pop('q', None)
         scroll_id = kwargs.pop('scroll_id', None)
@@ -132,7 +129,6 @@ class QueryHandler(BaseHandler):
             jsoninput   if true, input "q" is a json string, must be decoded as a list.
         '''
         kwargs = self.get_query_params()
-        self.jsonld = kwargs.pop('jsonld', False)
         self._examine_kwargs('POST', kwargs)
         q = kwargs.pop('q', None)
         jsoninput = kwargs.pop('jsoninput', None) in ('1', 'true')

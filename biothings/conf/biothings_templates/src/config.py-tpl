@@ -14,6 +14,8 @@ ALLOWED_OPTIONS = ['_source', 'start', 'from_', 'size',
 ES_SCROLL_TIME = '1m'
 ES_SCROLL_SIZE = 1000
 ES_SIZE_CAP = 1000
+# This is the module for loading the esq variable in handlers
+ES_QUERY_MODULE = 'api.es'
 
 # *****************************************************************************
 # Google Analytics Settings
