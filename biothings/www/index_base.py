@@ -43,9 +43,11 @@ if options.debug:
     # from config import auth_settings
     # settings.update(auth_settings)
 
+def get_app(APP_LIST):
+    return tornado.web.Application(APP_LIST, **settings)
 
 def main(APP_LIST):
-    application = tornado.web.Application(APP_LIST, **settings)
+    application = get_app(APP_LIST)
     http_server = tornado.httpserver.HTTPServer(application)
     http_server.listen(options.port, address=options.address)
     loop = tornado.ioloop.IOLoop.instance()
