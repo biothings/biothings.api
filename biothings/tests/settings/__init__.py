@@ -91,3 +91,7 @@ class NosetestSettings(object):
     @property
     def test_fields_get_fields_endpoint(self):
         return self._return_var('TEST_FIELDS_GET_FIELDS_ENDPOINT')
+    
+    @property
+    def additional_fields_for_check_fields_subset(self):
+        return self._return_var('CHECK_FIELDS_SUBSET_ADDITIONAL_FIELDS')

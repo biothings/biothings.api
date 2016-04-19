@@ -298,7 +298,8 @@ class ESQuery(object):
             if aggs:
                 _query['aggs'] = aggs
             logging.debug("options: %s" % options)
-            res = self._search(_query,scroll_options=scroll_options,**options.kwargs)
+            #res = self._search(_query,scroll_options=scroll_options,**options.kwargs)
+            res = self._search(_query,**options.kwargs)
         except QueryError as e:
             msg = str(e)
             return {'success': False,

@@ -64,4 +64,14 @@ QUERY_SIZE_TEST = ''
 # This is the minimum number of unique field keys (from /metadata/fields)
 MINIMUM_NUMBER_OF_ACCEPTABLE_FIELDS = 0
 
+# -----------------------------------------------------------------------------------
+
+# Some random fields to spot check the return from /metadata/fields
+
 TEST_FIELDS_GET_FIELDS_ENDPOINT = []
+
+# -----------------------------------------------------------------------------------
+
+# Any additional fields added for check_fields subset test
+CHECK_FIELDS_SUBSET_ADDITIONAL_FIELDS = []
+
