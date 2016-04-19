@@ -327,7 +327,6 @@ class ESQuery(object):
         except RequestError as e:
             return {"error": "invalid query term: %s" % str(e), "success": False}
         except Exception as e:
-            logging.debug("%s" % e)
             return {'success': False, 'error': "Something is wrong with query '%s'" % q}
 
         # if options.fetch_all:
@@ -451,7 +450,6 @@ class ESQueryBuilder(object):
         '''
         # Check if fielded/boolean query, excluding special goid query
         # raw_string_query should be checked ahead of wildcard query, as raw_string may contain wildcard as well # e.g., a query "symbol:CDK?", should be treated as raw_string_query.
-        logging.debug("onela: %s" % q)
         if q == '__all__':
             _query = {"match_all": {}}
         elif self._is_raw_string_query(q) and not q.lower().startswith('go:'):
