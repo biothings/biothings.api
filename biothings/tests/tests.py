@@ -13,6 +13,10 @@ try:
     from urllib.parse import urlparse
 except ImportError:
     from urlparse import urlparse
+try:
+    from urllib.parse import quote_plus
+except ImportError:
+    from urllib import quote_plus
 import json
 import sys
 import os
@@ -34,6 +38,7 @@ else:
 ns = NosetestSettings()
 _d = json.loads    # shorthand for json decode
 _e = json.dumps    # shorthand for json encode
+_q = quote_plus     # shorthand for url encoding
 
 try:
     jsonld_context = json.load(open(ns.jsonld_context_path, 'r'))
@@ -87,20 +92,20 @@ class BiothingTestHelper:
         return d
 
     def get_ok(self, url):
-        res, con = self.h.request(url)
+        res, con = self.h.request((url))
         eq_(res.status, 200)
         return con
 
     def get_404(self, url):
-        res, con = self.h.request(url)
+        res, con = self.h.request((url))
         eq_(res.status, 404)
 
     def get_405(self, url):
-        res, con = self.h.request(url)
+        res, con = self.h.request((url))
         eq_(res.status, 405)
 
     def head_ok(self, url):
-        res, con = self.h.request(url, 'HEAD')
+        res, con = self.h.request((url), 'HEAD')
         eq_(res.status, 200)
 
     def post_ok(self, url, params):
@@ -227,7 +232,8 @@ class BiothingTestHelper:
 
     def extract_results_from_callback(self, base_url):
         '''
-            given a base query (with callback), test the response and return the JSON object inside
+            given a base query (with callback), the corresponding escaped GET url, test the response and 
+            return the JSON object inside
         '''
         c = self.get_ok(base_url).decode('utf-8')
         f = self.parse_url(base_url, 'callback')
@@ -310,11 +316,12 @@ class BiothingTests(TestCase):
 
         for (test_number, bid) in enumerate(ns.annotation_GET):
             base_url = self.h.api + '/' + ns.annotation_endpoint + '/' + bid
+            get_url = self.h.api + '/' + ns.annotation_endpoint + '/' + _q(bid.split('?')[0]) + '?' + '?'.join(bid.split('?')[1:])
             # if it specifies a callback function, make sure it works
             if self.h.parse_url(base_url, 'callback'):
-                res = self.h.extract_results_from_callback(base_url)
+                res = self.h.extract_results_from_callback(get_url)
             else:
-                res = self.h.json_ok(self.h.get_ok(base_url))
+                res = self.h.json_ok(self.h.get_ok(get_url))
             # Check that the returned ID matches 
             eq_(res['_id'], bid.split('?')[0])
             # Is this a jsonld query?
@@ -327,14 +334,14 @@ class BiothingTests(TestCase):
                 elif 'filter' in bid:
                     true_fields = [x.strip() for x in self.h.parse_url(base_url, 'filter').split(',')]
                 # Next get the object with no fields specified
-                total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + bid.split('?')[0]
+                total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + _q(bid.split('?')[0])
                 res_total = self.h.json_ok(self.h.get_ok(total_url))
                 # Check the fields
                 self.h.check_fields(res, res_total, true_fields)
             # insert gibberish on first id, also test msgpack
             if test_number == 0:
-                self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/' + bid[:-1] + '\xef\xbf\xbd\xef\xbf\xbd' + bid[-1])
-                self.h.test_msgpack(self.h.api + '/' + ns.annotation_endpoint + '/' + bid.split('?')[0])
+                self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/' + _q(bid[:-1] + '\xef\xbf\xbd\xef\xbf\xbd' + bid[-1]))
+                self.h.test_msgpack(self.h.api + '/' + ns.annotation_endpoint + '/' + _q(bid.split('?')[0]))
             
             # override to add more tests
             self._extra_annotation_GET(bid, res)
@@ -371,7 +378,7 @@ class BiothingTests(TestCase):
                         true_fields = [f.strip() for f in ddict.get('fields').split(',')]
                     elif 'filter' in ddict:
                         true_fields = [f.strip() for f in ddict.get('filter').split(',')]
-                    total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + hit['_id']
+                    total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + _q(hit['_id'])
                     res_total = self.h.json_ok(self.h.get_ok(total_url))
                     self.h.check_fields(hit, res_total, true_fields)
 
@@ -395,6 +402,7 @@ class BiothingTests(TestCase):
         ''' 
         # Test some simple GETs to the query endpoint, first check some queries to make sure they return some hits
         for (test_number, q) in enumerate(ns.query_GET):
+            #print('q= "{}"\n'.format(q))
             base_url = self.h.api + '/' + ns.query_endpoint + '?q=' + q
             # parse callback
             if self.h.parse_url(base_url, 'callback'):
@@ -409,7 +417,7 @@ class BiothingTests(TestCase):
                 assert len(res['hits']) == scroll_hits, "Expected a scroll size of {}, got a scroll size of {}".format(scroll_hits, len(res['hits']))
             else:
                 # does this query have hits?
-                res = self.h.has_hits(q)
+                res = self.h.has_hits((q))
             # Test the size/size cap
             total_hits = int(res['total'])
             ret_size = len(res.get('hits', []))
@@ -438,16 +446,9 @@ class BiothingTests(TestCase):
                         true_fields = [x.strip() for x in self.h.parse_url(base_url, 'fields').split(',')]
                     elif 'filter' in bid:
                         true_fields = [x.strip() for x in self.h.parse_url(base_url, 'filter').split(',')]
-                    # 
-                    total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + hit['_id']
-                    # This should not fail, but it does so for now we'll try-except it. Utlimately, this probably speaks
-                    # to data-loading inconsistencies....
-                    # TODO:  Why does this fail, i.e. get a 404 sometimes?
-                    try:
-                        res_total = self.h.json_ok(self.h.get_ok(total_url))
-                    except AssertionError:
-                        sys.stderr.write("Couldn't look up variant: '{}' from query '{}'\n".format(hit['_id'], base_url))
-                        res_total = {}
+                    total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + _q(hit['_id'])
+                    res_total = {}
+                    res_total = self.h.json_ok(self.h.get_ok(total_url))
                     if res_total:
                         self.h.check_fields(hit, res_total, true_fields)
             # insert gibberish on first id, test msgpack

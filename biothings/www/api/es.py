@@ -310,15 +310,14 @@ class ESQuery(object):
         options = self._get_cleaned_query_options(kwargs)
         scroll_options = {}
         if options.fetch_all:
-            # TODO: ES2 compatible ?
-            scroll_options.update({'search_type': 'scan', 'size': self._scroll_size, 'scroll': self._scroll_time})
+            #scroll_options.update({'search_type': 'scan', 'size': self._scroll_size, 'scroll': self._scroll_time})
+            scroll_options.update({'size': self._total_scroll_size, 'scroll': self._scroll_time})
         options['kwargs'].update(scroll_options)
         try:
             _query = self._build_query(q, kwargs)
             if aggs:
                 _query['aggs'] = aggs
             logging.debug("options: %s" % options)
-            #res = self._search(_query,scroll_options=scroll_options,**options.kwargs)
             res = self._search(_query,**options.kwargs)
         except QueryError as e:
             msg = str(e)
@@ -347,7 +346,7 @@ class ESQuery(object):
         else:
             if not options.raw:
                 res = self._cleaned_res2(r, options=options)
-            # res.update({'_scroll_id': scroll_id})
+            #res.update({'_scroll_id': scroll_id})
             if r['_shards']['failed']:
                 res.update({'_warning': 'Scroll request has failed on {} shards out of {}.'.format(r['_shards']['failed'], r['_shards']['total'])})
         return res
