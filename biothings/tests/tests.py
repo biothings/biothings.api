@@ -28,7 +28,6 @@ except ImportError:
     sys.stderr.write("Warning: msgpack is not available.")
 from biothings.tests.settings import NosetestSettings
 from unittest import TestCase
-import pprint
 
 if sys.version_info.major >= 3:
     PY3 = True
@@ -272,27 +271,25 @@ class BiothingTestHelper:
         if 'root' not in jsonld_context:
             return d # can't check anything
         if isinstance(d, list):
-            for i in d:
-                self.check_jsonld(i, k)
+            return [self.check_jsonld(i, k) for i in d]
         elif isinstance(d, dict):
             if not k:
                 # Root
-                assert '@context' in d, "JSON-LD context not found in {}.  Expected: {}".format(d, jsonld_context['root'])
+                assert '@context' in d, "JSON-LD context not found in {}.  Expected: {}".format('root', jsonld_context['root'])
                 eq_(jsonld_context['root']['@context'], d['@context'])
                 del(d['@context'])
-                for (tk, tv) in d.items():
-                    self.check_jsonld(tv, tk)
+                return dict([(tk, self.check_jsonld(tv, tk)) for (tk, tv) in d.items()])
             elif k in jsonld_context['root']['@context'] and k not in jsonld_context:
                 # No context, but defined in root context
-                for (tk, tv) in d.items():
-                    self.check_jsonld(tv, k + '/' + tk)
+                return dict([(tk, self.check_jsonld(tv, k + '/' + tk)) for (tk, tv) in d.items()])
             elif k in jsonld_context:
                 # Context inserted, test it, and remove it
-                assert '@context' in d, "JSON-LD context not found in {}.  Expected: {}".format(d, jsonld_context[k])
+                assert '@context' in d, "JSON-LD context not found in {}.  Expected: {}".format(k, jsonld_context[k])
                 eq_(jsonld_context[k]['@context'], d['@context'])
                 del(d['@context'])
-                for (tk, tv) in d.items():
-                    self.check_jsonld(tv, k + '/' + tk)
+                return dict([(tk, self.check_jsonld(tv, k + '/' + tk)) for (tk, tv) in d.items()])
+        else:
+            return d
 
 class BiothingTests(TestCase):
     __test__ = False # don't run nosetests on this class directly
@@ -417,7 +414,6 @@ class BiothingTests(TestCase):
         ''' 
         # Test some simple GETs to the query endpoint, first check some queries to make sure they return some hits
         for (test_number, q) in enumerate(ns.query_GET):
-            #print('q= "{}"\n'.format(q))
             base_url = self.h.api + '/' + ns.query_endpoint + '?q=' + q
             # parse callback
             if self.h.parse_url(base_url, 'callback'):
@@ -454,7 +450,7 @@ class BiothingTests(TestCase):
             for hit in res['hits'][:10]:
                 # Make sure correct jsonld is in res
                 if self.h.check_boolean_url_option(base_url, 'jsonld') and 'root' in jsonld_context:
-                    self.h.check_jsonld(res, '')
+                    hit = self.h.check_jsonld(hit, '')
                 if self.h.parse_url(base_url, 'fields') or self.h.parse_url(base_url, 'filter'):
                     # This is a filter query, test it appropriately
                     if 'fields' in q:
