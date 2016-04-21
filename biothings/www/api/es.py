@@ -297,8 +297,10 @@ class ESQuery(object):
         esqb = self._get_query_builder(**kwargs)
         return esqb.default_query(q)
 
-    def _search(self,q,**kwargs):
+    def _search(self,q,scroll_options={},**kwargs):
         '''Subclass to get a custom search query'''
+        # since all args are ES compatible, we can send them all
+        kwargs.update(scroll_options)
         return self._es.search(index=self._index, doc_type=self._doc_type, body=q, **kwargs)
 
     def query(self, q, **kwargs):
@@ -312,13 +314,11 @@ class ESQuery(object):
         if options.fetch_all:
             #scroll_options.update({'search_type': 'scan', 'size': self._scroll_size, 'scroll': self._scroll_time})
             scroll_options.update({'size': self._total_scroll_size, 'scroll': self._scroll_time})
-        options['kwargs'].update(scroll_options)
         try:
             _query = self._build_query(q, kwargs)
             if aggs:
                 _query['aggs'] = aggs
-            logging.debug("options: %s" % options)
-            res = self._search(_query,**options.kwargs)
+            res = self._search(_query,scroll_options=scroll_options,**options.kwargs)
         except QueryError as e:
             msg = str(e)
             return {'success': False,
@@ -479,7 +479,6 @@ class ESQueryBuilder(object):
 
 
     def raw_string_query(self, q):
-        logging.debug("raw string qeury: %s" % q)
         _query = {
             "query_string": {
                 "query": "%(q)s",

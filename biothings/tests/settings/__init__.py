@@ -6,11 +6,18 @@ from biothings.settings import BiothingSettings
 bs = BiothingSettings()
 
 # Import the biothing settings module
-nosetest_config = import_module(bs.nosetest_settings)
+nosetest_config = None
+try:
+    nosetest_config = import_module(bs.nosetest_settings)
+except ImportError:
+    pass
+
 default = import_module('biothings.tests.settings.default')
 
 class NosetestSettings(object):
-    config_vars = vars(nosetest_config)
+    config_vars = {}
+    if nosetest_config:
+        config_vars = vars(nosetest_config)
     default_vars = vars(default)
 
     def _return_var(self, key):
