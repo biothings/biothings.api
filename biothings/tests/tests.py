@@ -165,10 +165,8 @@ class BiothingTestHelper:
                 return [traverse(i) for i in d]
             elif isinstance(d, dict):
                 return dict([(convert_str(tk), traverse(tv)) for (tk,tv) in d.items()])
-            elif isinstance(d, bytes):
-                return d.decode('utf-8')
             else:
-                return d
+                return convert_str(d)
 
         return traverse(d)
 
@@ -358,6 +356,9 @@ class BiothingTests(TestCase):
             # override to add more tests
             self._extra_annotation_GET(bid, res)
 
+        # test unicode string handling
+        self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/' + ns.unicode_test_string)
+
         # test empties 
         self.h.get_404(self.h.api + '/' + ns.annotation_endpoint)
         self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/')
@@ -372,12 +373,13 @@ class BiothingTests(TestCase):
                 filters
                 jsonld
         '''
+        base_url = self.h.api + '/' + ns.annotation_endpoint
         for (test_number, ddict) in enumerate(ns.annotation_POST):
-            res = self.h.json_ok(self.h.post_ok(self.h.api + '/' + ns.annotation_endpoint, ddict))
+            res = self.h.json_ok(self.h.post_ok(base_url, ddict))
             returned_ids = [h['_id'] if '_id' in h else h['query'] for h in res]
             assert set(returned_ids) == set([x.strip() for x in ddict['ids'].split(',')]), "Set of returned ids doesn't match set of requested ids for annotation POST"
             # Check that the number of returned objects matches the number of inputs
-            # Probably not needed given the next test
+            # Probably not needed given the previous test
             eq_(len(res), len(ddict['ids'].split(',')))
             for hit in res:
                 # If it's a jsonld query, check that
@@ -390,11 +392,18 @@ class BiothingTests(TestCase):
                         true_fields = [f.strip() for f in ddict.get('fields').split(',')]
                     elif 'filter' in ddict:
                         true_fields = [f.strip() for f in ddict.get('filter').split(',')]
-                    total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + _q(hit['_id'])
+                    total_url = base_url + '/' + _q(hit['_id'])
                     res_total = self.h.json_ok(self.h.get_ok(total_url))
                     self.h.check_fields(hit, res_total, true_fields)
 
                 self._extra_annotation_POST(ddict, hit)
+
+        # Check unicode handling on first test
+        res_empty = self.h.json_ok(self.h.post_ok(base_url, {'ids': ns.unicode_test_string}))
+        assert (len(res_empty) == 1) and (res_empty[0]['notfound']), "POST to annotation endpoint failed with unicode test string"
+        # Check unicode test string as the second id in the list
+        res_second_empty = self.h.json_ok(self.h.post_ok(base_url, {'ids': ns.annotation_POST[0]['ids'].split(',')[0] + ',' + ns.unicode_test_string}))
+        assert (len(res_second_empty) == 2) and (res_second_empty[1]['notfound']), "POST to annotation endpoint failed with unicode test string"
 
     def test_query_GET(self):
         ''' Function to test GETs to the query endpoint.
@@ -420,6 +429,7 @@ class BiothingTests(TestCase):
                 res = self.h.extract_results_from_callback(base_url)
             elif self.h.check_boolean_url_option(base_url, 'fetch_all'):
                 # Is this a fetch all query?
+                # TODO:  make this less crappy.
                 sres = self.h.json_ok(self.h.get_ok(base_url))
                 assert '_scroll_id' in sres, "_scroll_id not found for fetch_all query: {}".format(q)
                 scroll_hits = int(sres['total']) if int(sres['total']) <= 1000 else 1000
@@ -464,19 +474,23 @@ class BiothingTests(TestCase):
                         self.h.check_fields(hit, res_total, true_fields)
             # insert gibberish on first id, test msgpack
             if test_number == 0:
-                res_f = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '/?q=' + q[:-1] + '\xef\xbf\xbd\xef\xbf\xbd' + q[-1]))
+                res_f = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + q[:-1] + '\xef\xbf\xbd\xef\xbf\xbd' + q[-1]))
                 assert res_f['hits'] == [], 'Query with non ASCII characters injected failed'
                 self.h.test_msgpack(base_url)
             # extra tests
             self._extra_query_GET(q, res)
  
+        # test unicode insertion
+        res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.unicode_test_string))
+        assert res['hits'] == [], "GET to query endpoint failed with unicode test string"
+
         # test empty/error
         res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint), checkerror=False)
         assert 'error' in res
     
     def test_query_post(self):
         #query via post
-        for ( ddict ) in ns.query_POST:
+        for (test_number, ddict) in enumerate(ns.query_POST):
             pass
         '''    
         json_ok(post_ok(api + '/query', {'q': 'rs58991260'}))
@@ -504,30 +518,6 @@ class BiothingTests(TestCase):
     def test_metadata(self):
         self.h.get_ok(self.h.host + '/metadata')
         self.h.get_ok(self.h.api + '/metadata')
-    '''
-    def test_unicode(self):
-        s = '基因'
-
-        get_404(api + '/variant/' + s)
-
-        res = json_ok(post_ok(api + '/variant', {'ids': s}))
-        eq_(res[0]['notfound'], True)
-        eq_(len(res), 1)
-        res = json_ok(post_ok(api + '/variant', {'ids': 'rs2500, ' + s}))
-        eq_(res[1]['notfound'], True)
-        eq_(len(res), 2)
-
-        res = json_ok(get_ok(api + '/query?q=' + s))
-        eq_(res['hits'], [])
-
-        res = json_ok(post_ok(api + '/query', {"q": s, "scopes": 'dbsnp'}))
-        eq_(res[0]['notfound'], True)
-        eq_(len(res), 1)
-
-        res = json_ok(post_ok(api + '/query', {"q": 'rs2500+' + s}))
-        eq_(res[1]['notfound'], True)
-        eq_(len(res), 2)
-    '''
 
     def test_get_fields(self):
         res = self.h.json_ok(self.h.get_ok(self.h.api + '/metadata/fields'))
