@@ -73,5 +73,10 @@ TEST_FIELDS_GET_FIELDS_ENDPOINT = []
 
 # -----------------------------------------------------------------------------------
 
-# This is a list of keys that should be in the /metadata/fields
+# This is a list of additional fields that get passed into the check_fields subset assertion
 CHECK_FIELDS_SUBSET_ADDITIONAL_FIELDS = []
+
+# -----------------------------------------------------------------------------------
+
+# This is a list of additional fields that get passed into the check_fields subset assertion
+UNICODE_TEST_STRING = '基因'
