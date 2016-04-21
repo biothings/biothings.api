@@ -486,34 +486,50 @@ class BiothingTests(TestCase):
 
         # test empty/error
         res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint), checkerror=False)
-        assert 'error' in res
+        assert 'error' in res, "GET to query endpoint failed with empty query"
     
     def test_query_post(self):
-        #query via post
-        for (test_number, ddict) in enumerate(ns.query_POST):
-            pass
-        '''    
-        json_ok(post_ok(api + '/query', {'q': 'rs58991260'}))
+        ''' 
+            Test POSTS to the query endpoint.
 
-        res = json_ok(post_ok(api + '/query', {'q': 'rs58991260',
-                                               'scopes': 'dbsnp.rsid'}))
-        eq_(len(res), 1)
-        eq_(res[0]['_id'], 'chr1:g.218631822G>A')
-
-        res = json_ok(post_ok(api + '/query', {'q': 'rs58991260,rs2500',
-                                               'scopes': 'dbsnp.rsid'}))
-        eq_(len(res), 2)
-        eq_(res[0]['_id'], 'chr1:g.218631822G>A')
-        eq_(res[1]['_id'], 'chr11:g.66397320A>G')
-
-        res = json_ok(post_ok(api + '/query', {'q': 'rs58991260',
-                                               'scopes': 'dbsnp.rsid',
-                                               'fields': 'dbsnp.chrom,dbsnp.alleles'}))
-        assert len(res) == 1, (res, len(res))
-
-        res = self.h.json_ok(self.h.post_ok(self.h.api + '/query', {}), checkerror=False)
-        assert 'error' in res, res
         '''
+        #query via post
+        base_url = self.h.api + '/' + ns.query_endpoint
+        for (test_number, ddict) in enumerate(ns.query_POST):
+            res = self.h.json_ok(self.h.post_ok(base_url, ddict))
+            returned_queries = [h['query'] for h in res]
+            assert set(returned_queries) == set([x.strip() for x in ddict['q'].split(',')]), "Set of returned queries doesn't match set of requested queries for annotation POST"
+            # Check that the number of returned objects matches the number of inputs
+            # Probably not needed given the previous test
+            eq_(len(res), len(ddict['q'].split(',')))
+            for hit in res:
+                # If it's a jsonld query, check that
+                if 'jsonld' in ddict and ddict['jsonld'].lower() in ['true', 1]:
+                    self.h.check_jsonld(hit, '')
+                # If its a filtered query, check the return objects fields
+                if 'filter' in ddict or 'fields' in ddict: 
+                    true_fields = []
+                    if 'fields' in ddict:
+                        true_fields = [f.strip() for f in ddict.get('fields').split(',')]
+                    elif 'filter' in ddict:
+                        true_fields = [f.strip() for f in ddict.get('filter').split(',')]
+                    total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + _q(hit['_id'])
+                    res_total = self.h.json_ok(self.h.get_ok(total_url))
+                    self.h.check_fields(hit, res_total, true_fields)
+
+                self._extra_query_POST(ddict, hit)
+
+        # test unicode insertion
+        res = self.h.json_ok(self.h.post_ok(base_url, {'q': ns.unicode_test_string}), checkerror=False)
+        assert (len(res) == 1) and (res[0]['notfound']), "POST to query endpoint failed with unicode test string"
+
+        res = self.h.json_ok(self.h.post_ok(base_url, {'q': ns.query_POST[0]['q'].split(',')[0] + ',' + 
+                                ns.unicode_test_string, 'scopes': ns.query_POST[0]['scopes']}), checkerror=False)
+        assert (len(res) == 2) and (res[1]['notfound']), "POST to query endpoint failed with unicode test string"
+
+        # test empty post
+        res = self.h.json_ok(self.h.post_ok(base_url, {'q': ''}), checkerror=False)
+        assert 'error' in res, "POST to query endpoint failed with empty query"
 
     def test_metadata(self):
         self.h.get_ok(self.h.host + '/metadata')
