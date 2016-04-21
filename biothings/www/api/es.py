@@ -299,7 +299,9 @@ class ESQuery(object):
 
     def _search(self,q,scroll_options={},**kwargs):
         '''Subclass to get a custom search query'''
-        return self._es.search(index=self._index, doc_type=self._doc_type, body=q, **scroll_options, **kwargs)
+        # since all args are ES compatible, we can send them all
+        kwargs.update(scroll_options)
+        return self._es.search(index=self._index, doc_type=self._doc_type, body=q, **kwargs)
 
     def query(self, q, **kwargs):
         # clean
