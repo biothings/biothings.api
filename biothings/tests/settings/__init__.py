@@ -104,5 +104,5 @@ class NosetestSettings(object):
         return self._return_var('CHECK_FIELDS_SUBSET_ADDITIONAL_FIELDS')
     
     @property
-    def additional_fields_for_check_fields_subset(self):
+    def unicode_test_string(self):
         return self._return_var('UNICODE_TEST_STRING')
