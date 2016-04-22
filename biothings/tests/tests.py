@@ -348,13 +348,15 @@ class BiothingTests(TestCase):
                 res_total = self.h.json_ok(self.h.get_ok(total_url))
                 # Check the fields
                 self.h.check_fields(res, res_total, true_fields)
-            # insert gibberish on first id, also test msgpack
-            if test_number == 0:
-                self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/' + _q(bid[:-1] + '\xef\xbf\xbd\xef\xbf\xbd' + bid[-1]))
-                self.h.test_msgpack(self.h.api + '/' + ns.annotation_endpoint + '/' + _q(bid.split('?')[0]))
             
             # override to add more tests
             self._extra_annotation_GET(bid, res)
+        
+        # insert non ascii characters
+        self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/' + '\xef\xbf\xbd\xef\xbf\xbd')
+        
+        # test msgpack on first ID
+        self.h.test_msgpack(self.h.api + '/' + ns.annotation_endpoint + '/' + _q(ns.annotation_GET[0].split('?')[0]))
 
         # test unicode string handling
         self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/' + ns.unicode_test_string)
@@ -472,14 +474,16 @@ class BiothingTests(TestCase):
                     res_total = self.h.json_ok(self.h.get_ok(total_url))
                     if res_total:
                         self.h.check_fields(hit, res_total, true_fields)
-            # insert gibberish on first id, test msgpack
-            if test_number == 0:
-                res_f = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + q[:-1] + '\xef\xbf\xbd\xef\xbf\xbd' + q[-1]))
-                assert res_f['hits'] == [], 'Query with non ASCII characters injected failed'
-                self.h.test_msgpack(base_url)
             # extra tests
             self._extra_query_GET(q, res)
- 
+        
+        # test non-ascii characters
+        res_f = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + '\xef\xbf\xbd\xef\xbf\xbd'))
+        assert res_f['hits'] == [], 'Query with non ASCII characters injected failed'
+        
+        # test msgpack on first query only
+        self.h.test_msgpack(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.query_GET[0])
+
         # test unicode insertion
         res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.unicode_test_string))
         assert res['hits'] == [], "GET to query endpoint failed with unicode test string"
@@ -520,12 +524,12 @@ class BiothingTests(TestCase):
                 self._extra_query_POST(ddict, hit)
 
         # test unicode insertion
-        res = self.h.json_ok(self.h.post_ok(base_url, {'q': ns.unicode_test_string}), checkerror=False)
-        assert (len(res) == 1) and (res[0]['notfound']), "POST to query endpoint failed with unicode test string"
+        res = self.h.json_ok(self.h.post_ok(base_url, {'q': ns.unicode_test_string, 'scopes': ns.query_POST[0]['scopes']}), checkerror=False)
+        assert (len(res) == 1) and (res[0]['error']), "POST to query endpoint failed with unicode test string"
 
         res = self.h.json_ok(self.h.post_ok(base_url, {'q': ns.query_POST[0]['q'].split(',')[0] + ',' + 
                                 ns.unicode_test_string, 'scopes': ns.query_POST[0]['scopes']}), checkerror=False)
-        assert (len(res) == 2) and (res[1]['notfound']), "POST to query endpoint failed with unicode test string"
+        assert (len(res) == 2) and (res[1]['error']), "POST to query endpoint failed with unicode test string"
 
         # test empty post
         res = self.h.json_ok(self.h.post_ok(base_url, {'q': ''}), checkerror=False)
