@@ -185,8 +185,8 @@ class ESQuery(object):
         ''' Function to override to add more options to the get_cleaned_query_options function below .'''
         return options
 
-    def _get_cleaned_query_options(self, kwargs):
-        """common helper for processing fields, kwargs and other options passed to ESQueryBuilder."""
+    def _get_cleaned_common_options(self, kwargs):
+        '''process options whatever the type of query (/query or annotation)'''
         options = dotdict()
         options.raw = kwargs.pop('raw', False)
         options.rawquery = kwargs.pop('rawquery', False)
@@ -210,15 +210,32 @@ class ESQuery(object):
         scopes = kwargs.pop('scopes', None)
         if scopes:
             options.scopes = self._cleaned_scopes(scopes)
+        kwargs = parse_sort_option(kwargs)
+        for key in set(kwargs) - set(self._allowed_options):
+            logging.debug("removing param '%s' from query" % key)
+            del kwargs[key]
+        return options
+
+    def _get_cleaned_query_options(self, kwargs):
+        """common helper for processing fields, kwargs and other options passed to ESQueryBuilder."""
+        options = self._get_cleaned_common_options(kwargs)
+        fields = kwargs.pop('fields', None)
+        # this will force returning default fields if none were passed
+        fields = self._cleaned_fields(fields)
+        if fields:
+            kwargs["_source"] = fields
+        options.kwargs = kwargs
+        return options
+
+    def _get_cleaned_annotation_options(self, kwargs):
+        """common helper for processing fields, kwargs and other options passed to ESQueryBuilder."""
+        options = self._get_cleaned_common_options(kwargs)
+        # return all fields if none were passed
         fields = kwargs.pop('fields', None)
         if fields:
             fields = self._cleaned_fields(fields)
             if fields:
                 kwargs["_source"] = fields
-        kwargs = parse_sort_option(kwargs)
-        for key in set(kwargs) - set(self._allowed_options):
-            logging.debug("removing param '%s' from query" % key)
-            del kwargs[key]
         options.kwargs = kwargs
         return options
 
@@ -238,7 +255,7 @@ class ESQuery(object):
 
     def get_biothing(self, bid, **kwargs):
         '''unknown vid return None'''
-        options = self._get_cleaned_query_options(kwargs)
+        options = self._get_cleaned_annotation_options(kwargs)
         kwargs = {"_source": options.kwargs["_source"]} if "_source" in options.kwargs else {}
         try:
             res = self._es.get(index=self._index, id=bid, doc_type=self._doc_type, **kwargs)
@@ -256,7 +273,7 @@ class ESQuery(object):
 
     def mget_biothings(self, bid_list, **kwargs):
         '''for /query post request'''
-        options = self._get_cleaned_query_options(kwargs)
+        options = self._get_cleaned_annotation_options(kwargs)
         qbdr = self._get_query_builder(**options.kwargs)
         try:
             _q = qbdr.build_multiple_id_query(bid_list, scopes=options.scopes)
@@ -326,6 +343,7 @@ class ESQuery(object):
         except RequestError as e:
             return {"error": "invalid query term: %s" % str(e), "success": False}
         except Exception as e:
+            # logging.debug("%s" % str(e))
             return {'success': False, 'error': "Something is wrong with query '%s'" % q}
 
         # if options.fetch_all:
@@ -437,8 +455,7 @@ class ESQueryBuilder(object):
 
         return _query
 
-
-    def generate_query(self,q):
+    def generate_query(self, q):
         '''
         Return query dict according to passed arg "q". Can be:
             - match query
@@ -448,25 +465,28 @@ class ESQueryBuilder(object):
         Also add query filters
         '''
         # Check if fielded/boolean query, excluding special goid query
-        # raw_string_query should be checked ahead of wildcard query, as raw_string may contain wildcard as well # e.g., a query "symbol:CDK?", should be treated as raw_string_query.
+        # raw_string_query should be checked ahead of wildcard query, as
+        # raw_string may contain wildcard as well # e.g., a query
+        # "symbol:CDK?", should be treated as raw_string_query.
         if q == '__all__':
             _query = {"match_all": {}}
         elif self._is_raw_string_query(q) and not q.lower().startswith('go:'):
+            # logging.debug("this is raw string query")
             _query = self.raw_string_query(q)
         elif self._is_wildcard_query(q):
+            # logging.debug("this is wildcard query")
             _query = self.wildcard_query(q)
         else:
+            # logging.debug("this is dis max query")
             _query = self.dis_max_query(q)
 
         _query = self.add_query_filters(_query)
 
         return _query
 
-
     def _is_wildcard_query(self, query):
         '''Return True if input query is a wildcard query.'''
         return query.find('*') != -1 or query.find('?') != -1
-
 
     def _is_raw_string_query(self, query):
         '''Return True if input query is a wildchar/fielded/boolean query.'''
@@ -476,7 +496,6 @@ class ESQueryBuilder(object):
         if query.startswith('"') and query.endswith('"'):
             return True
         return False
-
 
     def raw_string_query(self, q):
         _query = {
