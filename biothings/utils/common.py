@@ -58,6 +58,7 @@ def is_int(s):
     except ValueError:
         return False
 
+
 def is_str(s):
     """return True or False if input is a string or not.
         python3 compatible.
@@ -95,6 +96,43 @@ def iter_n(iterable, n, with_cnt=False):
             yield (chunk, cnt)
         else:
             yield chunk
+
+
+def addsuffix(filename, suffix, noext=False):
+    '''Add suffix in front of ".extension", so keeping the same extension.
+       if noext is True, remove extension from the filename.'''
+    if noext:
+        return os.path.splitext(filename)[0] + suffix
+    else:
+        return suffix.join(os.path.splitext(filename))
+
+
+def safewfile(filename, prompt=True, default='C', mode='w'):
+    '''return a file handle in 'w' mode,use alternative name if same name exist.
+       if prompt == 1, ask for overwriting,appending or changing name,
+       else, changing to available name automatically.'''
+    suffix = 1
+    while 1:
+        if not os.path.exists(filename):
+            break
+        print('Warning:"%s" exists.' % filename, end='')
+        if prompt:
+            option = ask('Overwrite,Append or Change name?', 'OAC')
+        else:
+            option = default
+        if option == 'O':
+            if not prompt or ask('You sure?') == 'Y':
+                print("Overwritten.")
+                break
+        elif option == 'A':
+            print("Append to original file.")
+            f = open(filename, 'a')
+            f.write('\n' + "=" * 20 + 'Appending on ' + time.ctime() + "=" * 20 + '\n')
+            return f, filename
+        print('Use "%s" instead.' % addsuffix(filename, '_' + str(suffix)))
+        filename = addsuffix(filename, '_' + str(suffix))
+        suffix += 1
+    return open(filename, mode), filename
 
 
 def anyfile(infile, mode='r'):
@@ -343,14 +381,17 @@ def list2dict(a_list, keyitem, alwayslist=False):
             _dict[key] = current_value
     return _dict
 
+
 def get_random_string():
     strb = base64.b64encode(os.urandom(6), "".join(random.sample(string.ascii_letters, 2)).encode("ascii"))
     return strb.decode("ascii")
 
+
 def get_timestamp():
     return time.strftime('%Y%m%d')
 
-def find_doc(k,keys):
+
+def find_doc(k, keys):
     ''' Used by jsonld insertion in www.api.es._insert_jsonld '''
     n = len(keys)
     for i in range(n):
