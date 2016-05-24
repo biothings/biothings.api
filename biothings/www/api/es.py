@@ -51,6 +51,7 @@ class ESQuery(object):
         self._allowed_options = biothing_settings.allowed_options
         self._scroll_time = biothing_settings.scroll_time
         self._total_scroll_size = biothing_settings.scroll_size   # Total number of hits to return per scroll batch
+        self._default_fields = []
         try:
             self._context = json.load(open(biothing_settings.jsonld_context_path, 'r'))
         except FileNotFoundError:
