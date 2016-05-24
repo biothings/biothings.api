@@ -153,6 +153,31 @@ class QueryHandler(BaseHandler):
         self.ga_track(event=self._ga_event_object('POST', {'qsize': len(q) if q else 0}))
 
 
+class Neo4jQueryHandler(BaseHandler):
+    ''' Implements a graph query endpoint for HTML GET. '''
+
+    def _ga_event_object(self, action, data={}):
+        ''' Returns the google analytics object for requests on this endpoint (query handler).'''
+        return biothing_settings.ga_event_object(endpoint=biothing_settings._graph_query_endpoint, action=action, data=data)
+
+    def _examine_kwargs(self, action, kwargs):
+        ''' A function for sub-classing.  This will be run after the get_query_params but before the actual
+            elasticsearch querying. '''
+        pass
+
+    def get(self):
+        kwargs = self.get_query_params()
+        self._examine_kwargs('GET', kwargs)
+        q = kwargs.pop('q', None)
+        if q:
+            res = self.neo4jq.query(q, **kwargs)
+        else:
+            res = {'success': False, 'error': "Missing required parameters."}
+
+        self.return_json(res)
+        self.ga_track(event=self._ga_event_object('GET'))
+
+
 class MetaDataHandler(BaseHandler):
     
     def get(self):

@@ -39,6 +39,10 @@ class BiothingSettings(object):
         return self._return_var('QUERY_ENDPOINT')
 
     @property
+    def _graph_query_endpoint(self):
+        return self._return_var('GRAPH_QUERY_ENDPOINT')
+
+    @property
     def _api_version(self):
         if self._return_var('API_VERSION'):
             return self._return_var('API_VERSION')
@@ -69,6 +73,7 @@ class BiothingSettings(object):
     def es_query_module(self):
         return self._return_var('ES_QUERY_MODULE')
 
+
     @property
     def es_host(self):
         return self._return_var('ES_HOST')
@@ -96,6 +101,33 @@ class BiothingSettings(object):
     @property
     def size_cap(self):
         return self._return_var('ES_SIZE_CAP')
+    
+    # *************************************************************************
+    # * neo4j settings wrappers
+    # *************************************************************************
+    
+    @property
+    def neo4j_query_module(self):
+        return self._return_var('NEO4J_QUERY_MODULE')
+
+    @property
+    def is_neo4j_app(self):
+        iga = self._return_var('NEO4J_APP')
+        if (isinstance(iga, int) and iga == 1) or (isinstance(iga, str) and iga.lower() == 'true') or (isinstance(iga, bool) and iga):
+            return True
+        return False
+
+    @property
+    def neo4j_host(self):
+        return self._return_var('NEO4J_CYPHER_ENDPOINT')
+
+    @property
+    def neo4j_username(self):
+        return self._return_var('NEO4J_USERNAME')
+
+    @property
+    def neo4j_password(self):
+        return self._return_var('NEO4J_PASSWORD')
 
     # *************************************************************************
     # * Google Analytics API tracking object functions

@@ -14,8 +14,12 @@ if SUPPORT_MSGPACK:
             return {'__datetime__': True, 'as_str': obj.strftime("%Y%m%dT%H:%M:%S.%f")}
         return obj
 
+# TODO: Modify this to take 1 backend... i.e. a self.backend rather than
+# a self.esq for es queries and a self.neo4jq for neo4j queries
 biothing_settings = BiothingSettings()
 es_biothings = import_module(biothing_settings.es_query_module)
+if biothing_settings.is_neo4j_app:
+    neo4j_biothings = import_module(biothing_settings.neo4j_query_module)
 
 class DateTimeJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -31,6 +35,8 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
     disable_caching = False
     boolean_parameters = set(['raw', 'rawquery', 'fetch_all', 'explain', 'jsonld','dotfield'])
     esq = es_biothings.ESQuery()
+    if biothing_settings.is_neo4j_app:
+        neo4jq = neo4j_biothings.Neo4jQuery()
 
     def _check_fields_param(self, kwargs):
         '''support "filter" as an alias of "fields" parameter for back-compatability.'''

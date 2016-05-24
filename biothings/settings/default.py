@@ -13,6 +13,18 @@ ES_SCROLL_TIME = '1m'
 ES_SCROLL_SIZE = 1000
 ES_SIZE_CAP = 1000
 ES_QUERY_MODULE = 'biothings.www.api.es'
+
+# Graph defaults
+# By default turn graph app off
+NEO4J_APP = False
+# Default neo4j query module
+NEO4J_QUERY_MODULE = 'biothings.www.api.neo4j'
+# Address to query neo4j cypher endpoint
+NEO4J_CYPHER_ENDPOINT = 'http://localhost:7474/db/data/cypher'
+# Username/password for neo4j
+NEO4J_USERNAME = 'neo4j'
+NEO4J_PASSWORD = 'neo4j'
+
 # default static path, relative to current working dir
 # (from where app is launched)
 STATIC_PATH = "static"
@@ -40,6 +52,7 @@ GA_TRACKER_URL = 'mybiothing.info'
 # For URL stuff
 ANNOTATION_ENDPOINT = 'biothing'
 QUERY_ENDPOINT = 'query'
+GRAPH_QUERY_ENDPOINT = 'graph_query'
 API_VERSION = 'v1'
 # TODO Fill in a status id here
 STATUS_CHECK_ID = 'status_id'
