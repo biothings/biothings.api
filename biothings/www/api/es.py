@@ -342,7 +342,7 @@ class ESQuery(object):
             return {'success': False,
                     'error': msg}
         except RequestError as e:
-            return {"error": "invalid query term: %s" % str(e), "success": False}
+            return {"error": "invalid query term: %s" % repr(e), "success": False}
         except Exception as e:
             # logging.debug("%s" % str(e))
             return {'success': False, 'error': "Something is wrong with query '%s'" % q}
