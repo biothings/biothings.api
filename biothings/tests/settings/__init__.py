@@ -1,23 +1,31 @@
 # -*- coding: utf-8 -*-
 import os
 from importlib import import_module
-from biothings.settings import BiothingSettings
 
-bs = BiothingSettings()
-
-# Import the biothing settings module
-nosetest_config = None
-try:
-    nosetest_config = import_module(bs.nosetest_settings)
-except ImportError:
+# Error class
+class BiothingNosetestConfigError(Exception):
     pass
 
+# Bad.
+#from biothings.settings import BiothingSettings
+
+# Bad bad.
+#bs = BiothingSettings()
+
+# Import the test settings module
+try:
+    nosetest_config_module = os.environ['BT_TEST_CONFIG']
+except:
+    raise BiothingNosetestConfigError("Make sure BT_TEST_CONFIG environment variable is set with the nosetest config module")
+
+config = import_module(nosetest_config_module)
+# Not sure if this should even be done here...
 default = import_module('biothings.tests.settings.default')
 
 class NosetestSettings(object):
     config_vars = {}
-    if nosetest_config:
-        config_vars = vars(nosetest_config)
+    if nosetest_config_module:
+        config_vars = vars(config)
     default_vars = vars(default)
 
     def _return_var(self, key):
@@ -29,8 +37,8 @@ class NosetestSettings(object):
 
     @property
     def jsonld_context_path(self):
-        return bs.jsonld_context_path
-
+        return self._return_var('JSONLD_CONTEXT_PATH')
+    
     @property
     def nosetest_envar(self):
         return self._return_var('HOST_ENVAR_NAME')
@@ -41,15 +49,18 @@ class NosetestSettings(object):
 
     @property
     def api_version(self):
-        return bs._api_version
+        if self._return_var('API_VERSION'):
+            return self._return_var('API_VERSION')
+        else:
+            return ''
 
     @property
     def query_endpoint(self):
-        return bs._query_endpoint
+        return self._return_var('QUERY_ENDPOINT')
 
     @property
     def annotation_endpoint(self):
-        return bs._annotation_endpoint
+        return self._return_var('ANNOTATION_ENDPOINT')
 
     @property
     def annotation_attribute_query(self):

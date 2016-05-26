@@ -47,5 +47,3 @@ STATUS_CHECK_ID = ''
 FIELD_NOTES_PATH = ''
 # Path to a file containing a json object with the json-ld context information
 JSONLD_CONTEXT_PATH = ''
-# Nosetest config path
-NOSETEST_SETTINGS = 'tests.nosetest_config'

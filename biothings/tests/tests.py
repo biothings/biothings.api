@@ -42,7 +42,7 @@ _q = quote_plus     # shorthand for url encoding
 try:
     jsonld_context = json.load(open(ns.jsonld_context_path, 'r'))
 except:
-    sys.stderr.write("Couldn't load JSON-LD context.")
+    sys.stderr.write("Couldn't load JSON-LD context.\n")
     jsonld_context = {}
 
 
