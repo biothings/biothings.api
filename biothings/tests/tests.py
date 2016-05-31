@@ -49,7 +49,7 @@ except:
     jsonld_context = {}
 
 
-class BiothingTestHelper:
+"""class BiothingTestHelper:
     def __init__(self):
         self.host = os.getenv(ns.nosetest_envar)
         if not self.host:
@@ -276,20 +276,24 @@ class BiothingTestHelper:
                 return dict([(tk, self.check_jsonld(tv, k + '/' + tk)) for (tk, tv) in d.items()])
         else:
             return d
+"""
 
 class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
     __test__ = False # don't run nosetests on this class directly
+
+    # Make these class variables so that tornadorequesthelper plays nice.    
+    host = os.getenv(ns.nosetest_envar, '')
+    if not host:
+        host = ns.nosetest_default_url
+    host = host.rstrip('/')
+    api = host + '/' + ns.api_version
+    h = httplib2.Http()
 
     # Setup/tear down class for unittest
     @classmethod
     def setUpClass(cls):
         # get host and urls, etc
-        cls.host = os.getenv(ns.nosetest_envar, '')
-        if not cls.host:
-            cls.host = ns.nosetest_default_url
-        cls.host = cls.host.rstrip('/')
-        cls.api = cls.host + '/' + ns.api_version
-        cls.h = httplib2.Http()
+        pass
 
     @classmethod
     def tearDownClass(cls):
@@ -494,7 +498,7 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
         res = self.json_ok(self.get_ok(self.api + '/' + ns.query_endpoint), checkerror=False)
         assert 'error' in res, "GET to query endpoint failed with empty query"
     
-    def test_query_post(self):
+    def test_query_POST(self):
         ''' 
             Test POSTS to the query endpoint.
 
@@ -573,10 +577,11 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
         # override to add extra query POST tests here
         pass
 
-def suite():
-    # tests included in base biothings suite
-    tests = ['test_annotation_GET', 'test_annotation_POST', 'test_query_GET', 'test_query_POST',
-             'test_annotation_object', 'test_get_fields', 'test_main', 'test_metadata',
-             'test_status_endpoint']
-    
-    return unittest.TestSuite(map(BiothingTests, tests))
+    @classmethod
+    def suite(cls, extra_tests=[]):
+        # tests included in base biothings suite
+        tests = ['test_annotation_GET', 'test_annotation_POST', 'test_query_GET', 'test_query_POST',
+                 'test_annotation_object', 'test_get_fields', 'test_main', 'test_metadata',
+                 'test_status_endpoint'] + extra_tests
+        
+        return unittest.TestSuite(map(cls, tests))
