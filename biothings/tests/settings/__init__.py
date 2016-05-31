@@ -16,7 +16,7 @@ class BiothingNosetestConfigError(Exception):
 try:
     nosetest_config_module = os.environ['BT_TEST_CONFIG']
 except:
-    raise BiothingNosetestConfigError("Make sure BT_TEST_CONFIG environment variable is set with the nosetest config module")
+    #raise BiothingNosetestConfigError("Make sure BT_TEST_CONFIG environment variable is set with the nosetest config module")
 
 config = import_module(nosetest_config_module)
 # Not sure if this should even be done here...
@@ -36,8 +36,8 @@ class NosetestSettings(object):
             return self.default_vars[key]
 
     @property
-    def jsonld_context_path(self):
-        return self._return_var('JSONLD_CONTEXT_PATH')
+    def jsonld_context_url(self):
+        return self._return_var('JSONLD_CONTEXT_URL')
     
     @property
     def nosetest_envar(self):

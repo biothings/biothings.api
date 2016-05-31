@@ -21,13 +21,15 @@ import json
 import sys
 import os
 import re
+import requests
+import unittest
 from nose.tools import ok_, eq_
 try:
     import msgpack
 except ImportError:
     sys.stderr.write("Warning: msgpack is not available.")
 from biothings.tests.settings import NosetestSettings
-from unittest import TestCase
+from biothings.tests.test_helper import BiothingTestHelperMixin
 
 if sys.version_info.major >= 3:
     PY3 = True
@@ -35,12 +37,13 @@ else:
     PY3 = False
 
 ns = NosetestSettings()
+
 _d = json.loads    # shorthand for json decode
 _e = json.dumps    # shorthand for json encode
 _q = quote_plus     # shorthand for url encoding
 
 try:
-    jsonld_context = json.load(open(ns.jsonld_context_path, 'r'))
+    jsonld_context = requests.get(ns.jsonld_context_url).json()
 except:
     sys.stderr.write("Couldn't load JSON-LD context.\n")
     jsonld_context = {}
@@ -289,29 +292,43 @@ class BiothingTestHelper:
         else:
             return d
 
-class BiothingTests(TestCase):
+class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
     __test__ = False # don't run nosetests on this class directly
 
+    # Setup/tear down class for unittest
     @classmethod
-    def setup_class(cls):
-        cls.h = BiothingTestHelper()
-    
+    def setUpClass(cls):
+        # get host and urls, etc
+        cls.host = os.getenv(ns.nosetest_envar, '')
+        if not cls.host:
+            cls.host = ns.nosetest_default_url
+        cls.host = cls.host.rstrip('/')
+        cls.api = cls.host + '/' + ns.api_version
+        cls.h = httplib2.Http()
+
     @classmethod
-    def teardown_class(cls):
-        cls.h = None    
+    def tearDownClass(cls):
+        pass
+
+    # setup tear down test for unittest
+    def setUp(self):
+        pass
+
+    def tearDown(self):
+        pass
 
     #############################################################
     # Test functions                                            #
     #############################################################
         
     def test_main(self):
-        self.h.get_ok(self.h.host)
+        self.get_ok(self.host)
 
     def test_annotation_object(self):
-        res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.annotation_endpoint + '/' + ns.annotation_attribute_query))
+        res = self.json_ok(self.get_ok(self.api + '/' + ns.annotation_endpoint + '/' + ns.annotation_attribute_query))
         for attr in ns.annotation_attribute_list:
             assert res.get(attr, None) is not None, 'Missing field "{}" in {} "{}"'.format(attr, 
-                                                            ns.annotation_endpoint, ns.annotation_attribute_query)
+                            ns.annotation_endpoint, ns.annotation_attribute_query)
     
     def test_annotation_GET(self):
         ''' Function to test GETs to the annotation endpoint. 
@@ -325,45 +342,45 @@ class BiothingTests(TestCase):
         # Check some ids to make sure the resulting _id matches
 
         for (test_number, bid) in enumerate(ns.annotation_GET):
-            base_url = self.h.api + '/' + ns.annotation_endpoint + '/' + bid
-            get_url = self.h.api + '/' + ns.annotation_endpoint + '/' + _q(bid.split('?')[0]) + '?' + '?'.join(bid.split('?')[1:])
+            base_url = self.api + '/' + ns.annotation_endpoint + '/' + bid
+            get_url = self.api + '/' + ns.annotation_endpoint + '/' + _q(bid.split('?')[0]) + '?' + '?'.join(bid.split('?')[1:])
             # if it specifies a callback function, make sure it works
-            if self.h.parse_url(base_url, 'callback'):
-                res = self.h.extract_results_from_callback(get_url)
+            if self.parse_url(base_url, 'callback'):
+                res = self.extract_results_from_callback(get_url)
             else:
-                res = self.h.json_ok(self.h.get_ok(get_url))
+                res = self.json_ok(self.get_ok(get_url))
             # Check that the returned ID matches 
             eq_(res['_id'], bid.split('?')[0])
             # Is this a jsonld query?
-            if self.h.check_boolean_url_option(base_url, 'jsonld') and 'root' in jsonld_context:
-                self.h.check_jsonld(res, '') 
+            if self.check_boolean_url_option(base_url, 'jsonld') and 'root' in jsonld_context:
+                self.check_jsonld(res, '', jsonld_context) 
             if 'fields' in bid or 'filter' in bid:
                 # This is a filter query, test it appropriately.  First get a list of fields the user specified
                 if 'fields' in bid:
-                    true_fields = [x.strip() for x in self.h.parse_url(base_url, 'fields').split(',')]
+                    true_fields = [x.strip() for x in self.parse_url(base_url, 'fields').split(',')]
                 elif 'filter' in bid:
-                    true_fields = [x.strip() for x in self.h.parse_url(base_url, 'filter').split(',')]
+                    true_fields = [x.strip() for x in self.parse_url(base_url, 'filter').split(',')]
                 # Next get the object with no fields specified
-                total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + _q(bid.split('?')[0])
-                res_total = self.h.json_ok(self.h.get_ok(total_url))
+                total_url = self.api + '/' + ns.annotation_endpoint + '/' + _q(bid.split('?')[0])
+                res_total = self.json_ok(self.get_ok(total_url))
                 # Check the fields
-                self.h.check_fields(res, res_total, true_fields)
+                self.check_fields(res, res_total, true_fields, ns.additional_fields_for_check_fields_subset)
             
             # override to add more tests
             self._extra_annotation_GET(bid, res)
         
         # insert non ascii characters
-        self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/' + '\xef\xbf\xbd\xef\xbf\xbd')
+        self.get_404(self.api + '/' + ns.annotation_endpoint + '/' + '\xef\xbf\xbd\xef\xbf\xbd')
         
         # test msgpack on first ID
-        self.h.test_msgpack(self.h.api + '/' + ns.annotation_endpoint + '/' + _q(ns.annotation_GET[0].split('?')[0]))
+        self.check_msgpack(self.api + '/' + ns.annotation_endpoint + '/' + _q(ns.annotation_GET[0].split('?')[0]))
 
         # test unicode string handling
-        self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/' + ns.unicode_test_string)
+        self.get_404(self.api + '/' + ns.annotation_endpoint + '/' + ns.unicode_test_string)
 
         # test empties 
-        self.h.get_404(self.h.api + '/' + ns.annotation_endpoint)
-        self.h.get_404(self.h.api + '/' + ns.annotation_endpoint + '/')
+        self.get_404(self.api + '/' + ns.annotation_endpoint)
+        self.get_404(self.api + '/' + ns.annotation_endpoint + '/')
 
     
     def test_annotation_POST(self):
@@ -375,9 +392,9 @@ class BiothingTests(TestCase):
                 filters
                 jsonld
         '''
-        base_url = self.h.api + '/' + ns.annotation_endpoint
+        base_url = self.api + '/' + ns.annotation_endpoint
         for (test_number, ddict) in enumerate(ns.annotation_POST):
-            res = self.h.json_ok(self.h.post_ok(base_url, ddict))
+            res = self.json_ok(self.post_ok(base_url, ddict))
             returned_ids = [h['_id'] if '_id' in h else h['query'] for h in res]
             assert set(returned_ids) == set([x.strip() for x in ddict['ids'].split(',')]), "Set of returned ids doesn't match set of requested ids for annotation POST"
             # Check that the number of returned objects matches the number of inputs
@@ -386,7 +403,7 @@ class BiothingTests(TestCase):
             for hit in res:
                 # If it's a jsonld query, check that
                 if 'jsonld' in ddict and ddict['jsonld'].lower() in ['true', 1]:
-                    self.h.check_jsonld(hit, '')
+                    self.check_jsonld(hit, '', jsonld_context=jsonld_context)
                 # If its a filtered query, check the return objects fields
                 if 'filter' in ddict or 'fields' in ddict: 
                     true_fields = []
@@ -395,16 +412,16 @@ class BiothingTests(TestCase):
                     elif 'filter' in ddict:
                         true_fields = [f.strip() for f in ddict.get('filter').split(',')]
                     total_url = base_url + '/' + _q(hit['_id'])
-                    res_total = self.h.json_ok(self.h.get_ok(total_url))
-                    self.h.check_fields(hit, res_total, true_fields)
+                    res_total = self.json_ok(self.get_ok(total_url))
+                    self.check_fields(hit, res_total, true_fields, ns.additional_fields_for_check_fields_subset)
 
                 self._extra_annotation_POST(ddict, hit)
 
         # Check unicode handling on first test
-        res_empty = self.h.json_ok(self.h.post_ok(base_url, {'ids': ns.unicode_test_string}))
+        res_empty = self.json_ok(self.post_ok(base_url, {'ids': ns.unicode_test_string}))
         assert (len(res_empty) == 1) and (res_empty[0]['notfound']), "POST to annotation endpoint failed with unicode test string"
         # Check unicode test string as the second id in the list
-        res_second_empty = self.h.json_ok(self.h.post_ok(base_url, {'ids': ns.annotation_POST[0]['ids'].split(',')[0] + ',' + ns.unicode_test_string}))
+        res_second_empty = self.json_ok(self.post_ok(base_url, {'ids': ns.annotation_POST[0]['ids'].split(',')[0] + ',' + ns.unicode_test_string}))
         assert (len(res_second_empty) == 2) and (res_second_empty[1]['notfound']), "POST to annotation endpoint failed with unicode test string"
 
     def test_query_GET(self):
@@ -425,27 +442,27 @@ class BiothingTests(TestCase):
         ''' 
         # Test some simple GETs to the query endpoint, first check some queries to make sure they return some hits
         for (test_number, q) in enumerate(ns.query_GET):
-            base_url = self.h.api + '/' + ns.query_endpoint + '?q=' + q
+            base_url = self.api + '/' + ns.query_endpoint + '?q=' + q
             # parse callback
-            if self.h.parse_url(base_url, 'callback'):
-                res = self.h.extract_results_from_callback(base_url)
-            elif self.h.check_boolean_url_option(base_url, 'fetch_all'):
+            if self.parse_url(base_url, 'callback'):
+                res = self.extract_results_from_callback(base_url)
+            elif self.check_boolean_url_option(base_url, 'fetch_all'):
                 # Is this a fetch all query?
                 # TODO:  make this less crappy.
-                sres = self.h.json_ok(self.h.get_ok(base_url))
+                sres = self.json_ok(self.get_ok(base_url))
                 assert '_scroll_id' in sres, "_scroll_id not found for fetch_all query: {}".format(q)
                 scroll_hits = int(sres['total']) if int(sres['total']) <= 1000 else 1000
-                res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?scroll_id=' + sres['_scroll_id']))
+                res = self.json_ok(self.get_ok(self.api + '/' + ns.query_endpoint + '?scroll_id=' + sres['_scroll_id']))
                 assert 'hits' in res, "No hits found for query: {}\nScroll ID: {}".format(q, sres['_scroll_id'])
                 assert len(res['hits']) == scroll_hits, "Expected a scroll size of {}, got a scroll size of {}".format(scroll_hits, len(res['hits']))
             else:
                 # does this query have hits?
-                res = self.h.has_hits((q))
+                res = self.query_has_hits(q, ns.query_endpoint)
             # Test the size/size cap
             total_hits = int(res['total'])
             ret_size = len(res.get('hits', []))
-            req_size = int(self.h.parse_url(base_url, 'size')) if self.h.parse_url(base_url, 'size') else 10
-            if self.h.check_boolean_url_option(base_url, 'fetch_all'):
+            req_size = int(self.parse_url(base_url, 'size')) if self.parse_url(base_url, 'size') else 10
+            if self.check_boolean_url_option(base_url, 'fetch_all'):
                 true_size = scroll_hits
             elif total_hits < req_size:
                 true_size = total_hits
@@ -454,42 +471,42 @@ class BiothingTests(TestCase):
             assert ret_size == true_size, 'Expected {} hits for query "{}", got {} hits instead'.format(true_size, q, ret_size)
             # Test facets, maybe we should make it a subset test, i.e., set(returned facets) must be a subset of set(requested facets)
             if 'facets' in q:
-                facets = [x.strip() for x in self.h.parse_url(base_url, 'facets').split(',')]
+                facets = [x.strip() for x in self.parse_url(base_url, 'facets').split(',')]
                 assert 'facets' in res, "Facets were expected in the response object, but none were found."
                 for facet in facets:
                     assert facet in res['facets'], 'Expected facet "{}" in response object, but it was not found'.format(facet)
             # Exhaustively test the first 10?
             for hit in res['hits'][:10]:
                 # Make sure correct jsonld is in res
-                if self.h.check_boolean_url_option(base_url, 'jsonld') and 'root' in jsonld_context:
-                    hit = self.h.check_jsonld(hit, '')
-                if self.h.parse_url(base_url, 'fields') or self.h.parse_url(base_url, 'filter'):
+                if self.check_boolean_url_option(base_url, 'jsonld') and 'root' in jsonld_context:
+                    hit = self.check_jsonld(hit, '', jsonld_context)
+                if self.parse_url(base_url, 'fields') or self.parse_url(base_url, 'filter'):
                     # This is a filter query, test it appropriately
                     if 'fields' in q:
-                        true_fields = [x.strip() for x in self.h.parse_url(base_url, 'fields').split(',')]
+                        true_fields = [x.strip() for x in self.parse_url(base_url, 'fields').split(',')]
                     elif 'filter' in bid:
-                        true_fields = [x.strip() for x in self.h.parse_url(base_url, 'filter').split(',')]
-                    total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + _q(hit['_id'])
+                        true_fields = [x.strip() for x in self.parse_url(base_url, 'filter').split(',')]
+                    total_url = self.api + '/' + ns.annotation_endpoint + '/' + _q(hit['_id'])
                     res_total = {}
-                    res_total = self.h.json_ok(self.h.get_ok(total_url))
+                    res_total = self.json_ok(self.get_ok(total_url))
                     if res_total:
-                        self.h.check_fields(hit, res_total, true_fields)
+                        self.check_fields(hit, res_total, true_fields, ns.additional_fields_for_check_fields_subset)
             # extra tests
             self._extra_query_GET(q, res)
         
         # test non-ascii characters
-        res_f = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + '\xef\xbf\xbd\xef\xbf\xbd'))
+        res_f = self.json_ok(self.get_ok(self.api + '/' + ns.query_endpoint + '?q=' + '\xef\xbf\xbd\xef\xbf\xbd'))
         assert res_f['hits'] == [], 'Query with non ASCII characters injected failed'
         
         # test msgpack on first query only
-        self.h.test_msgpack(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.query_GET[0])
+        self.check_msgpack(self.api + '/' + ns.query_endpoint + '?q=' + ns.query_GET[0])
 
         # test unicode insertion
-        res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint + '?q=' + ns.unicode_test_string))
+        res = self.json_ok(self.get_ok(self.api + '/' + ns.query_endpoint + '?q=' + ns.unicode_test_string))
         assert res['hits'] == [], "GET to query endpoint failed with unicode test string"
 
         # test empty/error
-        res = self.h.json_ok(self.h.get_ok(self.h.api + '/' + ns.query_endpoint), checkerror=False)
+        res = self.json_ok(self.get_ok(self.api + '/' + ns.query_endpoint), checkerror=False)
         assert 'error' in res, "GET to query endpoint failed with empty query"
     
     def test_query_post(self):
@@ -498,9 +515,9 @@ class BiothingTests(TestCase):
 
         '''
         #query via post
-        base_url = self.h.api + '/' + ns.query_endpoint
+        base_url = self.api + '/' + ns.query_endpoint
         for (test_number, ddict) in enumerate(ns.query_POST):
-            res = self.h.json_ok(self.h.post_ok(base_url, ddict))
+            res = self.json_ok(self.post_ok(base_url, ddict))
             returned_queries = [h['query'] for h in res]
             assert set(returned_queries) == set([x.strip() for x in ddict['q'].split(',')]), "Set of returned queries doesn't match set of requested queries for annotation POST"
             # Check that the number of returned objects matches the number of inputs
@@ -509,7 +526,7 @@ class BiothingTests(TestCase):
             for hit in res:
                 # If it's a jsonld query, check that
                 if 'jsonld' in ddict and ddict['jsonld'].lower() in ['true', 1]:
-                    self.h.check_jsonld(hit, '')
+                    self.check_jsonld(hit, '', jsonld_context)
                 # If its a filtered query, check the return objects fields
                 if 'filter' in ddict or 'fields' in ddict: 
                     true_fields = []
@@ -517,30 +534,30 @@ class BiothingTests(TestCase):
                         true_fields = [f.strip() for f in ddict.get('fields').split(',')]
                     elif 'filter' in ddict:
                         true_fields = [f.strip() for f in ddict.get('filter').split(',')]
-                    total_url = self.h.api + '/' + ns.annotation_endpoint + '/' + _q(hit['_id'])
-                    res_total = self.h.json_ok(self.h.get_ok(total_url))
-                    self.h.check_fields(hit, res_total, true_fields)
+                    total_url = self.api + '/' + ns.annotation_endpoint + '/' + _q(hit['_id'])
+                    res_total = self.json_ok(self.get_ok(total_url))
+                    self.check_fields(hit, res_total, true_fields, ns.additional_fields_for_check_fields_subset)
 
                 self._extra_query_POST(ddict, hit)
 
-        # test unicode insertion
-        res = self.h.json_ok(self.h.post_ok(base_url, {'q': ns.unicode_test_string, 'scopes': ns.query_POST[0]['scopes']}), checkerror=False)
-        assert (len(res) == 1) and (res[0]['error']), "POST to query endpoint failed with unicode test string"
+        # test unicode insertion, make sure scopes points to a field that is string indexed or else these will fail...
+        res = self.json_ok(self.post_ok(base_url, {'q': ns.unicode_test_string, 'scopes': ns.query_POST[0]['scopes']}), checkerror=False)
+        assert (len(res) == 1) and (res[0]['notfound']), "POST to query endpoint failed with unicode test string"
 
-        res = self.h.json_ok(self.h.post_ok(base_url, {'q': ns.query_POST[0]['q'].split(',')[0] + ',' + 
+        res = self.json_ok(self.post_ok(base_url, {'q': ns.query_POST[0]['q'].split(',')[0] + ',' + 
                                 ns.unicode_test_string, 'scopes': ns.query_POST[0]['scopes']}), checkerror=False)
-        assert (len(res) == 2) and (res[1]['error']), "POST to query endpoint failed with unicode test string"
+        assert (len(res) == 2) and (res[1]['notfound']), "POST to query endpoint failed with unicode test string"
 
         # test empty post
-        res = self.h.json_ok(self.h.post_ok(base_url, {'q': ''}), checkerror=False)
+        res = self.json_ok(self.post_ok(base_url, {'q': ''}), checkerror=False)
         assert 'error' in res, "POST to query endpoint failed with empty query"
 
     def test_metadata(self):
-        self.h.get_ok(self.h.host + '/metadata')
-        self.h.get_ok(self.h.api + '/metadata')
+        self.get_ok(self.host + '/metadata')
+        self.get_ok(self.api + '/metadata')
 
     def test_get_fields(self):
-        res = self.h.json_ok(self.h.get_ok(self.h.api + '/metadata/fields'))
+        res = self.json_ok(self.get_ok(self.api + '/metadata/fields'))
         # Check to see if there are enough keys
         ok_(len(res) > ns.minimum_acceptable_fields)
 
@@ -548,7 +565,7 @@ class BiothingTests(TestCase):
             assert field in res, '"{}" expected in response from /metadata/fields, but not found'.format(field)
 
     def test_status_endpoint(self):
-        self.h.get_ok(self.h.host + '/status')
+        self.get_ok(self.host + '/status')
         # (testing failing status would require actually loading tornado app from there 
         #  and deal with config params...)
 
@@ -570,3 +587,11 @@ class BiothingTests(TestCase):
     def _extra_query_POST(self, ddict, res):
         # override to add extra query POST tests here
         pass
+
+def suite():
+    # tests included in base biothings suite
+    tests = ['test_annotation_GET', 'test_annotation_POST', 'test_query_GET', 'test_query_POST',
+             'test_annotation_object', 'test_get_fields', 'test_main', 'test_metadata',
+             'test_status_endpoint']
+    
+    return unittest.TestSuite(map(BiothingTests, tests))

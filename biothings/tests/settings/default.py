@@ -6,7 +6,7 @@
 # you are testing for...  For example, JSONLD_CONTEXT_PATH should point to a file
 # with contents identical to the file pointed to by JSONLD_CONTEXT_PATH on the 
 # production server (if your intention is to test the production server).
-JSONLD_CONTEXT_PATH = ""
+JSONLD_CONTEXT_URL = ""
 API_VERSION = ""
 QUERY_ENDPOINT = "query"
 ANNOTATION_ENDPOINT = "biothing"
