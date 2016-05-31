@@ -17,9 +17,10 @@ try:
     nosetest_config_module = os.environ['BT_TEST_CONFIG']
 except:
     #raise BiothingNosetestConfigError("Make sure BT_TEST_CONFIG environment variable is set with the nosetest config module")
-    pass
+    nosetest_config_module = ''
 
-config = import_module(nosetest_config_module)
+if nosetest_config_module:
+    config = import_module(nosetest_config_module)
 # Not sure if this should even be done here...
 default = import_module('biothings.tests.settings.default')
 
