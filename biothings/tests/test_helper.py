@@ -21,6 +21,22 @@ else:
 _d = json.loads    # shorthand for json decode
 _e = json.dumps    # shorthand for json encode
 
+class TornadoRequestHelper(object):
+    def __init__(self,biothing_test_helpermixin_instance):
+        self.testinst = biothing_test_helpermixin_instance
+        # remove host part (http://localhost:8000) as test client require URLs
+        # starting with "/..."
+        self.testinst.api = self.testinst.api.replace(self.testinst.host,'')
+        self.testinst.host = ''
+
+    def request(self,url,method="GET",body=None,headers=None):#, body=None, headers=None, redirections=5,
+        '''This simulates httplib2.Http.request() calls'''
+        res = self.testinst.fetch(url,method=method,body=body,headers=headers)#,body=body,headers=headers)
+        res.status = res.code
+        return res,res.body
+
+
+
 class BiothingTestHelperMixin(object):
     ''' Contains common functions to help facilitate testing.  Assumes that this class will be
     subclassed by a class that inherits from both this mixin and from unittest.TestCase.

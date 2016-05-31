@@ -49,21 +49,6 @@ except:
     jsonld_context = {}
 
 
-class TornadoRequestHelper(object):
-    def __init__(self,biothing_test_helper_instance):
-        self.testinst = biothing_test_helper_instance
-        # remove host part (http://localhost:8000) as test client require URLs
-        # starting with "/..."
-        self.testinst.api = self.testinst.api.replace(self.testinst.host,'')
-        self.testinst.host = ''
-
-    def request(self,url,method="GET",body=None,headers=None):#, body=None, headers=None, redirections=5,
-        '''This simulates httplib2.Http.request() calls'''
-        res = self.testinst.fetch(url,method=method,body=body,headers=headers)#,body=body,headers=headers)
-        res.status = res.code
-        return res,res.body
-
-
 class BiothingTestHelper:
     def __init__(self):
         self.host = os.getenv(ns.nosetest_envar)
