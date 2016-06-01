@@ -15,15 +15,15 @@ def parse_sort_option(options):
         _sort_array = []
         for field in sort.split(','):
             field = field.strip()
-            # if field == 'name' or field[1:] == 'name':
-            #     # sorting on "name" field is ignored, as it is a multi-text field.
-            #     continue
+            if field == 'name' or field[1:] == 'name':
+                 # sorting on "name" field is ignored, as it is a multi-text field.
+                 continue
             if field.startswith('-'):
-                _f = "%s:desc" % field[1:]
+                _f = {"%s" % field[1:]: "desc"}
             else:
-                _f = "%s:asc" % field
+                _f = {"%s" % field: "asc"}
             _sort_array.append(_f)
-        options["sort"] = ','.join(_sort_array)
+        options["sort"] = _sort_array
     return options
 
 def parse_facets_option(kwargs):
