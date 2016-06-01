@@ -190,9 +190,6 @@ class MetaDataHandler(BaseHandler):
         }
         self.return_json(_meta)
 
-    def get_python_package_info(self):
-        
-
 
 class FieldsHandler(BaseHandler):
 
