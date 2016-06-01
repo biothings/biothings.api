@@ -1,16 +1,23 @@
 import os
 from setuptools import setup, find_packages
+from subprocess import check_output
+from subprocess import CalledProcessError
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-# Dynamically calculate the version based on biothings.VERSION.
-version = __import__('biothings').get_version()
+# Calculate version
+try:
+    # make the biothings version the commit hash
+    __version__ = check_output("git rev-parse HEAD", shell=True).decode('utf-8').strip('\n')
+except CalledProcessError:
+    # of course it's 0.0.2, what else would it be?
+    __version__ = '0.0.2'
 
 setup(
     name="biothings",
-    version=version,
-    author="Cyrus Afrasiabi, Chunlei Wu",
+    version=__version__,
+    author="Cyrus Afrasiabi, Chunlei Wu, Sebastien Lelong, Kevin Xin",
     author_email="cyrus@scripps.edu",
     description="Python package for biothings framework",
     license="BSD",
