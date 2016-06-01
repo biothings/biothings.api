@@ -1,12 +1,20 @@
 ''' Functions to return versions of things. '''
 from subprocess import check_output
+from io import StringIO
+from context_lib import redirect_stdout
+import pip
 
 def get_python_version():
     ''' Get a list of python packages installed and their versions. '''
-    try:
-        return check_output("pip freeze", shell=True).decode('utf-8').strip('\n').split('\n')
-    except:
-        return []
+    so = StringIO()
+
+    with redirect_stdout(so):
+        pip.main(['freeze'])
+    
+    if so.getvalue():
+        return so.getvalue().strip('\n').split('\n')
+    
+    return []
 
 def get_repository_information():
     ''' Get the repository information for the local repository. '''
