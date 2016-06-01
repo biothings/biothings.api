@@ -185,7 +185,7 @@ class MetaDataHandler(BaseHandler):
     def get(self):
         _meta = self.esq.get_mapping_meta()
         _meta['software'] = {
-            'python-package-info' = get_python_version(),
+            'python-package-info': get_python_version(),
             'codebase': get_repository_information()
         }
         self.return_json(_meta)
