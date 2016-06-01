@@ -3,6 +3,8 @@ import json
 from tornado.web import HTTPError
 from biothings.www.helper import BaseHandler
 from biothings.utils.common import split_ids
+from biothings.utils.version import get_python_version
+from biothings.utils.version import get_repository_information
 from biothings.settings import BiothingSettings
 
 biothing_settings = BiothingSettings()
@@ -182,7 +184,14 @@ class MetaDataHandler(BaseHandler):
     
     def get(self):
         _meta = self.esq.get_mapping_meta()
+        _meta['software'] = {
+            'python-package-info' = get_python_version(),
+            'codebase': get_repository_information()
+        }
         self.return_json(_meta)
+
+    def get_python_package_info(self):
+        
 
 
 class FieldsHandler(BaseHandler):
