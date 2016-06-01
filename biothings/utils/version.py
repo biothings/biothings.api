@@ -1,7 +1,7 @@
 ''' Functions to return versions of things. '''
 from subprocess import check_output
 from io import StringIO
-from context_lib import redirect_stdout
+from contextlib import redirect_stdout
 import pip
 
 def get_python_version():
