@@ -5,6 +5,7 @@ from biothings.www.helper import BaseHandler
 from biothings.utils.common import split_ids
 from biothings.utils.version import get_python_version
 from biothings.utils.version import get_repository_information
+from biothings.utils.version import get_biothings_commit
 from biothings.settings import BiothingSettings
 
 biothing_settings = BiothingSettings()
@@ -186,7 +187,8 @@ class MetaDataHandler(BaseHandler):
         _meta = self.esq.get_mapping_meta()
         _meta['software'] = {
             'python-package-info': get_python_version(),
-            'codebase': get_repository_information()
+            'codebase': get_repository_information(),
+            'biothings': get_biothings_commit()
         }
         self.return_json(_meta)
 
