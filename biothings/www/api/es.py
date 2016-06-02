@@ -336,6 +336,8 @@ class ESQuery(object):
             _query = self._build_query(q, kwargs)
             if aggs:
                 _query['aggs'] = aggs
+            if options.rawquery:
+                return _query
             res = self._search(_query,scroll_options=scroll_options,**options.kwargs)
         except QueryError as e:
             msg = str(e)
