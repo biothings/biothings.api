@@ -412,4 +412,6 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
 
     @classmethod
     def suite(cls):
-        return unittest.defaultTestLoader.loadTestsFromModule(cls)
+        tests = unittest.defaultTestLoader.getTestCaseNames(cls)
+        return unittest.TestSuite(map(cls,tests))
+        return unittest.defaultTestLoader.loadTestsFromName(cls)
