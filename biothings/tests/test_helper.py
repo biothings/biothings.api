@@ -2,6 +2,7 @@ import sys
 import json
 import re
 import msgpack
+from functools import wraps
 
 try:
     from urllib.parse import urlencode
@@ -89,37 +90,31 @@ class BiothingTestHelperMixin(object):
 
     def get_ok(self, url):
         res, con = self.h.request((url))
-        assert res.status == 200, "%r != 200" % (res.status)
+        assert res.status == 200, "status {} != 200 for GET to url: {}".format(res.status, url)
         return con
 
     def get_404(self, url):
         res, con = self.h.request((url))
-        assert res.status == 404, "%r != 404" % (res.status)
+        assert res.status == 404, "status {} != 404 for GET to url: {}".format(res.status, url)
 
     def get_405(self, url):
         res, con = self.h.request((url))
-        assert res.status == 405, "%r != 405" % (res.status)
+        assert res.status == 405, "status {} != 405 for GET to url: {}".format(res.status, url)
 
     def head_ok(self, url):
         res, con = self.h.request((url), 'HEAD')
-        assert res.status == 200, "%r != 200" % (res.status)
+        assert res.status == 200, "status {} != 200 for HEAD to url: {}".format(res.status, url)
 
     def post_ok(self, url, params):
         headers = {'Content-type': 'application/x-www-form-urlencoded'}
         res, con = self.h.request(url, 'POST', urlencode(self.encode_dict(params)), headers=headers)
-        assert res.status == 200, "%r != 200" % (res.status)
+        assert res.status == 200, "status {} != 200 for url: {}\nparams: {}".format(res.status, url, params)
         return con
 
     def query_has_hits(self, q, query_endpoint='query'):
         d = self.json_ok(self.get_ok(self.api + '/' + query_endpoint + '?q=' + q))
         assert d.get('total', 0) > 0 and len(d.get('hits', [])) > 0
         return d
-
-    def check_boolean_url_option(self, url, option):
-        # for boolean params
-        if self.parse_url(url, option) and self.parse_url(url, option).lower() in [1, 'true']:
-            return True
-        return False
 
     def parse_url(self, url, option):
         # parse the url string to see if option is specified, if so return it, if not return ''
@@ -151,20 +146,6 @@ class BiothingTestHelperMixin(object):
                 return convert_str(d)
 
         return traverse(d)
-
-    def check_msgpack(self, url):
-        ''' Test msgpack with GET request.  Given a url, get the non msgpack results,
-            and the msgpack results (after conversion), assert they are equal.
-        '''
-        separator = '?' if urlparse(url).query == '' else '&'
-        # Get true query results
-        res_t = self.json_ok(self.get_ok(url))
-        # took is different between these requests, so messes up the equality assertion, just remove it
-        res_t.pop('took', None)
-        # Get same query results with messagepack
-        res_msgpack = self.convert_msgpack(self.msgpack_ok(self.get_ok(url + separator + 'msgpack=true')))
-        res_msgpack.pop('took', None)
-        assert res_t == res_msgpack, 'Results with msgpack differ from original for: "{}"'.format(url)
 
     def check_fields(self, o, t, f, a=[]):
         ''' Tests the fields parameter.  Currently this takes these parameters:
@@ -240,7 +221,7 @@ class BiothingTestHelperMixin(object):
         r = m.groupdict()
         return _d(r['res']) # get the json object out of the callback so we can test it
 
-    def check_jsonld(self, d, k, jsonld_context):
+    def check_jsonld(self, d, jsonld_context):
         '''
             Traverse through d and assert that JSON-LD contexts are inserted and then remove them.
         should leave d a context-less JSON object...(no guarantee of this though, see below)
@@ -248,28 +229,72 @@ class BiothingTestHelperMixin(object):
         #TODO:  Currently only tests that contexts in context file are in the object, and 
         #removes them.  Maybe should add an else to the if not k: clause, and test that no 
         #@context are in objects where they shouldn't be, to be really complete
-
+        def traverse(d, k):
         # valid jsonld context?
+            if isinstance(d, list):
+                return [traverse(i, k) for i in d]
+            elif isinstance(d, dict):
+                if not k:
+                    # Root
+                    self.assertIn('@context', d, "JSON-LD context not found in root.  Expected: {}".format(jsonld_context['root']))
+                    self.assertDictEqual(jsonld_context['root']['@context'], d['@context'])
+                    del(d['@context'])
+                    return dict([(tk, traverse(tv, tk)) for (tk, tv) in d.items()])
+                elif k in jsonld_context['root']['@context'] and k not in jsonld_context:
+                    # No context, but defined in root context
+                    return dict([(tk, traverse(tv, k + '/' + tk)) for (tk, tv) in d.items()])
+                elif k in jsonld_context:
+                    # Context inserted, test it, and remove it
+                    self.assertIn('@context', d, "JSON-LD context not found in {}.  Expected: {}".format(k, jsonld_context[k]))
+                    self.assertDictEqual(jsonld_context[k]['@context'], d['@context'])
+                    del(d['@context'])
+                    return dict([(tk, traverse(tv, k + '/' + tk)) for (tk, tv) in d.items()])
+            else:
+                return d
+
         if 'root' not in jsonld_context:
             return d # can't check anything
-        if isinstance(d, list):
-            return [self.check_jsonld(i, k, jsonld_context) for i in d]
-        elif isinstance(d, dict):
-            if not k:
-                # Root
-                assert '@context' in d, "JSON-LD context not found in {}.  Expected: {}".format('root', jsonld_context['root'])
-                self.assertDictEqual(jsonld_context['root']['@context'], d['@context'])
-                del(d['@context'])
-                return dict([(tk, self.check_jsonld(tv, tk, jsonld_context)) for (tk, tv) in d.items()])
-            elif k in jsonld_context['root']['@context'] and k not in jsonld_context:
-                # No context, but defined in root context
-                return dict([(tk, self.check_jsonld(tv, k + '/' + tk, jsonld_context)) for (tk, tv) in d.items()])
-            elif k in jsonld_context:
-                # Context inserted, test it, and remove it
-                assert '@context' in d, "JSON-LD context not found in {}.  Expected: {}".format(k, jsonld_context[k])
-                self.assertDictEqual(jsonld_context[k]['@context'], d['@context'])
-                del(d['@context'])
-                return dict([(tk, self.check_jsonld(tv, k + '/' + tk, jsonld_context)) for (tk, tv) in d.items()])
-        else:
-            return d
+
+        jsonld_context = jsonld_context # maybe not needed...
+        traverse(d, '')
+
+#############################################
+# Decorators for easy parameterized testing
+#############################################
+
+PATTR = '%values'
+
+# decorator to create a new test function
+def feed(f, new_test_name, v):
+    @wraps(f)
+    def wrapper(self):
+        return f(self, v)
+    wrapper.__name__ = new_test_name
+    if f.__doc__:
+        try:
+            wrapper.__doc__ = f.__doc__
+        except:
+            pass
+    return wrapper
+
+def add_test(cls, new_test_name, f, v):
+    # add test case with new_test_name to class cls
+    setattr(cls, new_test_name, feed(f, new_test_name, v))
+
+# decorator to add parameter lists to tests in unittest.TestCase
+def parameters(*values):
+    def wrapper(f):
+        setattr(f, PATTR, values)
+        return f
+    return wrapper
+
+# class decorator to go through and actually add all parameterized test cases to class
+def parameterized(cls):
+    for name, f in list(cls.__dict__.items()):
+        if hasattr(f, PATTR):
+            for i, v in enumerate(getattr(f, PATTR)[0]):
+                new_test_name = "{}_{}".format(name, i + 1)
+                add_test(cls, new_test_name, f, v)
+            delattr(cls, name)
+    return cls
 

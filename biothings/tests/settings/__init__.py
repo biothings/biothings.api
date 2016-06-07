@@ -6,28 +6,19 @@ from importlib import import_module
 class BiothingNosetestConfigError(Exception):
     pass
 
-# Bad.
-#from biothings.settings import BiothingSettings
-
-# Bad bad.
-#bs = BiothingSettings()
-
 # Import the test settings module
 try:
     nosetest_config_module = os.environ['BT_TEST_CONFIG']
 except:
-    #raise BiothingNosetestConfigError("Make sure BT_TEST_CONFIG environment variable is set with the nosetest config module")
-    nosetest_config_module = ''
+    raise BiothingNosetestConfigError("Make sure BT_TEST_CONFIG environment variable is set with the nosetest config module")
 
-if nosetest_config_module:
-    config = import_module(nosetest_config_module)
+config = import_module(nosetest_config_module)
 # Not sure if this should even be done here...
 default = import_module('biothings.tests.settings.default')
 
-class NosetestSettings(object):
+class BiothingTestSettings(object):
     config_vars = {}
-    if nosetest_config_module:
-        config_vars = vars(config)
+    config_vars = vars(config)
     default_vars = vars(default)
 
     def _return_var(self, key):
@@ -47,7 +38,7 @@ class NosetestSettings(object):
 
     @property
     def nosetest_default_url(self):
-        return self._return_var('NOSETEST_DEFAULT_URL')
+        return self._return_var('SERVER_DEFAULT_URL')
 
     @property
     def api_version(self):
@@ -76,6 +67,22 @@ class NosetestSettings(object):
     def annotation_GET(self):
         return self._return_var('ANNOTATION_GET_IDS')
     
+    @property
+    def annotation_GET_msgpack(self):
+        return self._return_var('ANNOTATION_GET_MSGPACK')
+    
+    @property
+    def annotation_GET_jsonld(self):
+        return self._return_var('ANNOTATION_GET_JSONLD')
+    
+    @property
+    def annotation_GET_fields(self):
+        return self._return_var('ANNOTATION_GET_FIELDS')
+    
+    @property
+    def annotation_GET_filter(self):
+        return self._return_var('ANNOTATION_GET_FILTER')
+
     @property
     def annotation_POST(self):
         return self._return_var('ANNOTATION_POST_DATA')

@@ -23,276 +23,51 @@ import os
 import re
 import requests
 import unittest
-from nose.tools import ok_, eq_
 try:
     import msgpack
 except ImportError:
     sys.stderr.write("Warning: msgpack is not available.")
-from biothings.tests.settings import NosetestSettings
+from biothings.tests.settings import BiothingTestSettings
 from biothings.tests.test_helper import BiothingTestHelperMixin
+from biothings.tests.test_helper import parameters, parameterized
+from functools import wraps
 
 if sys.version_info.major >= 3:
     PY3 = True
 else:
     PY3 = False
 
-ns = NosetestSettings()
+bts = BiothingTestSettings()
 
 _d = json.loads    # shorthand for json decode
 _e = json.dumps    # shorthand for json encode
 _q = quote_plus     # shorthand for url encoding
 
 try:
-    jsonld_context = requests.get(ns.jsonld_context_url).json()
+    jsonld_context = requests.get(bts.jsonld_context_url).json()
 except:
     sys.stderr.write("Couldn't load JSON-LD context.\n")
     jsonld_context = {}
 
+PATTR = '%values'
 
-"""class BiothingTestHelper:
-    def __init__(self):
-        self.host = os.getenv(ns.nosetest_envar)
-        if not self.host:
-            self.host = ns.nosetest_default_url
-        self.host = self.host.rstrip('/')
-        self.api = self.host + '/' + ns.api_version
-        self.h = httplib2.Http()
-
-    #############################################################
-    # Hepler functions                                          #
-    #############################################################
-    def encode_dict(self, d):
-        '''urllib.urlencode (python 2.x) cannot take unicode string.
-           encode as utf-8 first to get it around.
-        '''
-        if PY3:
-            # no need to do anything
-            return d
-        else:
-            def smart_encode(s):
-                return s.encode('utf-8') if isinstance(s, unicode) else s   # noqa
-
-            return dict([(key, smart_encode(val)) for key, val in d.items()])
-
-    def truncate(self, s, limit):
-        '''truncate a string.'''
-        if len(s) <= limit:
-            return s
-        else:
-            return s[:limit] + '...'
-
-    def json_ok(self, s, checkerror=True):
-        d = _d(s.decode('utf-8'))
-        if checkerror:
-            ok_(not (isinstance(d, dict) and 'error' in d), self.truncate(str(d), 100))
-        return d
-
-    def msgpack_ok(self, b, checkerror=True):
-        d = msgpack.unpackb(b)
-        if checkerror:
-            ok_(not (isinstance(d, dict) and 'error' in d), self.truncate(str(d), 100))
-        return d
-
-    def get_ok(self, url):
-        res, con = self.h.request((url))
-        eq_(res.status, 200)
-        return con
-
-    def get_404(self, url):
-        res, con = self.h.request((url))
-        eq_(res.status, 404)
-
-    def get_405(self, url):
-        res, con = self.h.request((url))
-        eq_(res.status, 405)
-
-    def head_ok(self, url):
-        res, con = self.h.request((url), 'HEAD')
-        eq_(res.status, 200)
-
-    def post_ok(self, url, params):
-        headers = {'Content-type': 'application/x-www-form-urlencoded'}
-        res, con = self.h.request(url, 'POST', urlencode(self.encode_dict(params)), headers=headers)
-        eq_(res.status, 200)
-        return con
-    
-    def has_hits(self, q):
-        d = self.json_ok(self.get_ok(self.api + '/' + ns.query_endpoint + '?q=' + q))
-        ok_(d.get('total', 0) > 0 and len(d.get('hits', [])) > 0)
-        return d
-    
-    def check_boolean_url_option(self, url, option):
-        # for boolean params
-        if self.parse_url(url, option) and self.parse_url(url, option).lower() in [1, 'true']:
-            return True
-        return False
-
-    def parse_url(self, url, option):
-        # parse the url string to see if option is specified, if so return it, if not return ''
-        options = urlparse(url).query.split('&')
-        for o in options:
-            if o.split('=')[0] == option:
-                return o.split('=')[1]
-        return ''
-
-    def convert_msgpack(self, d):
-        ''' d is a msgpack decoded dict (strings are still byte objects).
-
-            Traverse through d and decode all bytes into python strings.  Return the result.
-        '''
-        # convert d to a proper json object
-        def convert_str(k):
-            if isinstance(k, bytes):
-                return k.decode('utf-8')
-            else:
-                return k
-
-        def traverse(d):
-            # decode the key
-            if isinstance(d, list):
-                return [traverse(i) for i in d]
-            elif isinstance(d, dict):
-                return dict([(convert_str(tk), traverse(tv)) for (tk,tv) in d.items()])
-            else:
-                return convert_str(d)
-
-        return traverse(d)
-
-    def test_msgpack(self, url):
-        ''' Test msgpack with GET request.  Given a url, get the non msgpack results,
-            and the msgpack results (after conversion), assert they are equal.
-        '''
-        separator = '?' if urlparse(url).query == '' else '&'
-        # Get true query results
-        res_t = self.json_ok(self.get_ok(url))
-        # took is different between these requests, so messes up the equality assertion, just remove it
-        res_t.pop('took', None)
-        # Get same query results with messagepack
-        res_msgpack = self.convert_msgpack(self.msgpack_ok(self.get_ok(url + separator + 'msgpack=true')))
-        res_msgpack.pop('took', None)
-        assert res_t == res_msgpack, 'Results with msgpack differ from original for: "{}"'.format(url)
-
-    def check_fields(self, o, t, f):
-        ''' Tests the fields parameter.  Currently this takes these parameters:
-                o is the dict with original request (with fields)
-                t is the dict with total request (with fields = all)
-                f is the list of requested fields e.g. ['cadd.gene']
-        
-            expand_requested_fields: gives the list of all possible keys in an object,
-            based on the users fields input, e.g.: cadd.gene means that cadd and cadd.gene
-            should be in the output (if available), similarly, if clinvar is not in the total
-            object, then it should not be in the output (even if the user specifies it).
-
-            flatten_dict: this flattens a json objects keys using dot notation, returns a 
-            list of all dotted keys in the object, written poorly, so it leaves a . in front :)
-
-            The test basically works like this: it flattens the total request (all possible fields),
-            and then uses it in expand_requested_fields (as all_fields).  This returns the list of
-            fields which should be in the o object (with fields f).  Next we flatten o, and make sure that
-            flattened o is a subset of the list of fields which should be in the object + the root fields 
-            (_id, _version, query, _score).  Can do a more strict test with set equality, 
-            but this is fine for now....
-        '''
-        
-        def expand_requested_fields(requested_fields, all_fields):
-            # find all possible fields from the request,
-            possible_fields = []
-            if requested_fields[0] == 'all':
-                return all_fields
-            for field in requested_fields:
-                possible_fields += [s for s in all_fields if s == field or s.startswith(field + '.')]
-            # Go through and add parent nodes, which must be in the object....
-            pfs = set(possible_fields)
-            for f in possible_fields:
-                tk = ''
-                for path in f.split('.'):
-                    tk = tk + '.' + path if tk else path
-                    pfs.add(tk)
-            return list(pfs)
-                
-        def flatten_dict(d, p, r):
-            if isinstance(d, list):
-                for i in d:
-                    flatten_dict(i, p, r)
-            elif isinstance(d, dict):
-                # Add these keys
-                for k in d.keys():
-                    r[p + '.' + k] = 0
-                    flatten_dict(d[k], p + '.' + k, r)
-        
-        possible_fields = {}
-        flatten_dict(t, '', possible_fields)
-        true_fields = expand_requested_fields(f, [x.lstrip('.') for x in possible_fields.keys()])
-        actual_flattened_keys = {}
-        flatten_dict(o, '', actual_flattened_keys)
-        actual_flattened_keys = [x.lstrip('.') for x in actual_flattened_keys.keys()]
-        additional_fields = ['_id', '_version', 'query', '_score'] + ns.additional_fields_for_check_fields_subset
-        # Make sure that all of the actual keys are among the set of requested fields 
-        assert set(actual_flattened_keys).issubset(set(true_fields + additional_fields)), "The returned keys of object {} have extra keys than expected, the offending keys are: {}".format(o['_id'], set(actual_flattened_keys).difference(set(true_fields + additional_fields)))
-
-    def extract_results_from_callback(self, base_url):
-        '''
-            given a base query (with callback), the corresponding escaped GET url, test the response and 
-            return the JSON object inside
-        '''
-        c = self.get_ok(base_url).decode('utf-8')
-        f = self.parse_url(base_url, 'callback')
-        c = re.sub('\n', '', c)
-        p = r'^(?P<callback>' + f + '\()(?P<res>\{.*\})\)$'
-        m = re.search(p, c)
-        assert m, 'JSONP object malformed'
-        r = m.groupdict()
-        return _d(r['res']) # get the json object out of the callback so we can test it
-
-    def check_jsonld(self, d, k):
-        '''
-            Traverse through d and assert that JSON-LD contexts are inserted and then remove them.
-        should leave d a context-less JSON object...(no guarantee of this though, see below)
-        '''
-        #TODO:  Currently only tests that contexts in context file are in the object, and 
-        #removes them.  Maybe should add an else to the if not k: clause, and test that no 
-        #@context are in objects where they shouldn't be, to be really complete
-        
-        # valid jsonld context?
-        if 'root' not in jsonld_context:
-            return d # can't check anything
-        if isinstance(d, list):
-            return [self.check_jsonld(i, k) for i in d]
-        elif isinstance(d, dict):
-            if not k:
-                # Root
-                assert '@context' in d, "JSON-LD context not found in {}.  Expected: {}".format('root', jsonld_context['root'])
-                eq_(jsonld_context['root']['@context'], d['@context'])
-                del(d['@context'])
-                return dict([(tk, self.check_jsonld(tv, tk)) for (tk, tv) in d.items()])
-            elif k in jsonld_context['root']['@context'] and k not in jsonld_context:
-                # No context, but defined in root context
-                return dict([(tk, self.check_jsonld(tv, k + '/' + tk)) for (tk, tv) in d.items()])
-            elif k in jsonld_context:
-                # Context inserted, test it, and remove it
-                assert '@context' in d, "JSON-LD context not found in {}.  Expected: {}".format(k, jsonld_context[k])
-                eq_(jsonld_context[k]['@context'], d['@context'])
-                del(d['@context'])
-                return dict([(tk, self.check_jsonld(tv, k + '/' + tk)) for (tk, tv) in d.items()])
-        else:
-            return d
-"""
-
+@parameterized
 class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
     __test__ = False # don't run nosetests on this class directly
 
     # Make these class variables so that tornadorequesthelper plays nice.    
-    host = os.getenv(ns.nosetest_envar, '')
+    host = os.getenv(bts.nosetest_envar, '')
     if not host:
-        host = ns.nosetest_default_url
+        host = bts.nosetest_default_url
     host = host.rstrip('/')
-    api = host + '/' + ns.api_version
+    api = host + '/' + bts.api_version
     h = httplib2.Http()
 
     # Setup/tear down class for unittest
     @classmethod
     def setUpClass(cls):
         # get host and urls, etc
+        sys.stderr.write("Running tests on {}\n".format(cls.api))
         pass
 
     @classmethod
@@ -313,12 +88,88 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
     def test_main(self):
         self.get_ok(self.host)
 
+    #############################################################
+    # Annotation endpoint GET tests                             #
+    #############################################################
+
     def test_annotation_object(self):
-        res = self.json_ok(self.get_ok(self.api + '/' + ns.annotation_endpoint + '/' + ns.annotation_attribute_query))
-        for attr in ns.annotation_attribute_list:
-            assert res.get(attr, None) is not None, 'Missing field "{}" in {} "{}"'.format(attr, 
-                            ns.annotation_endpoint, ns.annotation_attribute_query)
-    
+        ''' Test that annotation object contains expected fields. '''
+        url = self.api + '/' + bts.annotation_endpoint + '/' + bts.annotation_attribute_query
+        res = self.json_ok(self.get_ok(url))
+        for attr in bts.annotation_attribute_list:
+            self.assertIn(attr, res, 'Expected field "{}" in returned object of query: {}'.format(attr, url))
+
+    def test_annotation_GET_empty(self):
+        ''' Test that the annotation GET endpoint handles empty inputs correctly. '''
+        self.get_404(self.api + '/' + bts.annotation_endpoint)
+        self.get_404(self.api + '/' + bts.annotation_endpoint + '/')
+
+    def test_annotation_GET_unicode(self):
+        ''' Test that the annotation GET endpoint handles unicode string inputs correctly. '''
+        self.get_404(self.api + '/' + bts.annotation_endpoint + '/' + bts.unicode_test_string)
+
+    @parameters(bts.annotation_GET_fields)
+    def test_annotation_GET_fields(self, bid):
+        ''' Test that the fields parameter on the annotation GET endpoint works as expected. '''
+        url = self.api + '/' + bts.annotation_endpoint + '/' + bid
+        # Test setup correctly?
+        self.assertRegexpMatches(bid, r'fields=.+', 
+            'Test setup error, "fields" parameter not specified or empty in url: {}'.format(url))
+        # get the url with all fields
+        total_url = self.api + '/' + bts.annotation_endpoint + '/' + _q(bid.split('?')[0])
+        # get the user specified fields
+        true_fields = [x.strip() for x in self.parse_url(url, 'fields').split(',')]
+        # get the original and total request (with specified fields, and all fields, respectively)
+        res = self.json_ok(self.get_ok(url))
+        res_total = self.json_ok(self.get_ok(total_url))
+        # check the fields
+        self.check_fields(res, res_total, true_fields,
+            bts.additional_fields_for_check_fields_subset)
+
+    @parameters(bts.annotation_GET_filter)
+    def test_annotation_GET_filter(self, bid):
+        ''' Test that the filter parameter on the annotation GET endpoint works as expected. '''
+        url = self.api + '/' + bts.annotation_endpoint + '/' + bid
+        # Test setup correctly?
+        self.assertRegexpMatches(bid, r'filter=.+', 
+            'Test setup error, "filter" parameter not specified or empty in url: {}'.format(url))
+        # get the url with all fields
+        total_url = self.api + '/' + bts.annotation_endpoint + '/' + _q(bid.split('?')[0])
+        # get the user specified fields
+        true_filter = [x.strip() for x in self.parse_url(url, 'filter').split(',')]
+        # get the original and total request (with specified fields, and all fields, respectively)
+        res = self.json_ok(self.get_ok(url))
+        res_total = self.json_ok(self.get_ok(total_url))
+        # check the fields
+        self.check_fields(res, res_total, true_filter,
+            bts.additional_fields_for_check_fields_subset)
+
+    @parameters(bts.annotation_GET_jsonld)
+    def test_annotation_GET_jsonld(self, bid):
+        ''' Test that the annotation GET endpoint correctly returns the JSON-LD context information. '''
+        url = self.api + '/' + bts.annotation_endpoint + '/' + bid
+        self.assertRegexpMatches(bid, r'jsonld=((1)|([Tt][Rr][Uu][Ee]))',
+            'Test setup error, "jsonld" parameter not specified or false in url: {}'.format(url))
+        res = self.json_ok(self.get_ok(url))
+        self.check_jsonld(res, jsonld_context)
+
+    @parameters(bts.annotation_GET_msgpack)
+    def test_annotation_GET_msgpack(self, bid):
+        ''' Test that the annotation GET endpoint correctly returns msgpack format. '''
+        url = self.api + '/' + bts.annotation_endpoint + '/' + bid
+        # Test must be set up correctly
+        self.assertRegexpMatches(bid, r'msgpack=((1)|([Tt][Rr][Uu][Ee]))',
+            'Test setup error, "msgpack" parameter not specified or false in url: {}\n'.format(url))
+        # Get object without msgpack
+        total_url = re.sub(r'[?&]msgpack=((1)|([Tt][Rr][Uu][Ee]))', '', url)
+        # get the total and msgpack results
+        res_t = self.json_ok(self.get_ok(total_url))
+        res_msgpack = self.convert_msgpack(self.msgpack_ok(self.get_ok(url)))
+        # remove took from both (should be different)
+        res_t.pop('took', None)
+        res_msgpack.pop('took', None)
+        self.assertDictEqual(res_t, res_msgpack, "msgpacked results and non-msgpacked results differ for query: {}".format(url))    
+    """ 
     def test_annotation_GET(self):
         ''' Function to test GETs to the annotation endpoint. 
 
@@ -372,7 +223,7 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
         self.get_404(self.api + '/' + ns.annotation_endpoint + '/')
 
     
-    def test_annotation_POST(self):
+        def test_annotation_POST(self):
         ''' Function to test POSTs to the annotation endpoint.
             
             Currently supports automatic testing of:
@@ -540,6 +391,7 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
         # test empty post
         res = self.json_ok(self.post_ok(base_url, {'q': ''}), checkerror=False)
         assert 'error' in res, "POST to query endpoint failed with empty query"
+    """
 
     def test_metadata(self):
         self.get_ok(self.host + '/metadata')
@@ -548,34 +400,15 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
     def test_get_fields(self):
         res = self.json_ok(self.get_ok(self.api + '/metadata/fields'))
         # Check to see if there are enough keys
-        ok_(len(res) > ns.minimum_acceptable_fields)
+        self.assertGreater(len(res), bts.minimum_acceptable_fields, 'Too few fields returned in the /metadata/fields endpoint')
 
-        for field in ns.test_fields_get_fields_endpoint:
-            assert field in res, '"{}" expected in response from /metadata/fields, but not found'.format(field)
+        for field in bts.test_fields_get_fields_endpoint:
+            self.assertIn(field, res, '"{}" expected in response from /metadata/fields, but not found'.format(field))
 
     def test_status_endpoint(self):
         self.get_ok(self.host + '/status')
         # (testing failing status would require actually loading tornado app from there 
         #  and deal with config params...)
-
-    ###########################################################################
-    # Convenience functions for adding new nosetests/ don't really need these...
-    ###########################################################################
-    def _extra_annotation_GET(self, bid, res):
-        # override to add extra annotation GET tests here
-        pass
-
-    def _extra_annotation_POST(self, ddict, res):
-        # override to add extra annotation POST tests here
-        pass
-
-    def _extra_query_GET(self, q, res):
-        # override to add extra query GET tests here
-        pass
-
-    def _extra_query_POST(self, ddict, res):
-        # override to add extra query POST tests here
-        pass
 
     @classmethod
     def suite(cls, extra_tests=[]):

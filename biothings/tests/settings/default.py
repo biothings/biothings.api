@@ -14,7 +14,7 @@ ANNOTATION_ENDPOINT = "biothing"
 # This is the name of the environment variable to load for testing
 HOST_ENVAR_NAME = 'BT_HOST'
 # This is the URL of the production server, if the above envar can't be loaded, nosetest defaults to this
-NOSETEST_DEFAULT_URL = ""
+SERVER_DEFAULT_URL = ""
 
 ###################################################################################
 # Nosetests used in tests.py, fill these in with IDs/queries.
@@ -30,7 +30,10 @@ ANNOTATION_OBJECT_EXPECTED_ATTRIBUTE_LIST = []
 
 # This is a list of IDs (& options) to test a GET to the annotation endpoint
 ANNOTATION_GET_IDS = []
-
+ANNOTATION_GET_JSONLD = []
+ANNOTATION_GET_MSGPACK = []
+ANNOTATION_GET_FIELDS = []
+ANNOTATION_GET_FILTER = []
 # -----------------------------------------------------------------------------------
 
 # This is a list of dictionaries to test a POST to the annotation endpoint
