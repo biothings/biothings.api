@@ -473,14 +473,14 @@ class ESQueryBuilder(object):
         # "symbol:CDK?", should be treated as raw_string_query.
         if q == '__all__':
             _query = {"match_all": {}}
-        elif self._is_raw_string_query(q) and not q.lower().startswith('go:'):
-            # logging.debug("this is raw string query")
+        elif self._is_raw_string_query(q):
+            #logging.debug("this is raw string query")
             _query = self.raw_string_query(q)
         elif self._is_wildcard_query(q):
-            # logging.debug("this is wildcard query")
+            #logging.debug("this is wildcard query")
             _query = self.wildcard_query(q)
         else:
-            # logging.debug("this is dis max query")
+            #logging.debug("this is dis max query")
             _query = self.dis_max_query(q)
 
         _query = self.add_query_filters(_query)
