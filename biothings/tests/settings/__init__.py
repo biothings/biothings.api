@@ -3,16 +3,16 @@ import os
 from importlib import import_module
 
 # Error class
-class BiothingNosetestConfigError(Exception):
+class BiothingTestConfigError(Exception):
     pass
 
 # Import the test settings module
 try:
-    nosetest_config_module = os.environ['BT_TEST_CONFIG']
+    config_module = os.environ['BT_TEST_CONFIG']
 except:
-    raise BiothingNosetestConfigError("Make sure BT_TEST_CONFIG environment variable is set with the nosetest config module")
+    raise BiothingTestConfigError("Make sure BT_TEST_CONFIG environment variable is set with the test config module")
 
-config = import_module(nosetest_config_module)
+config = import_module(config_module)
 # Not sure if this should even be done here...
 default = import_module('biothings.tests.settings.default')
 

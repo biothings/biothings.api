@@ -411,10 +411,5 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
         #  and deal with config params...)
 
     @classmethod
-    def suite(cls, extra_tests=[]):
-        # tests included in base biothings suite
-        tests = ['test_annotation_GET', 'test_annotation_POST', 'test_query_GET', 'test_query_POST',
-                 'test_annotation_object', 'test_get_fields', 'test_main', 'test_metadata',
-                 'test_status_endpoint'] + extra_tests
-        
-        return unittest.TestSuite(map(cls, tests))
+    def suite(cls):
+        return unittest.defaultTestLoader.loadTestsFromModule(cls)
