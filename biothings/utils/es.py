@@ -275,7 +275,7 @@ class ESIndexer():
 
             time.sleep(1)
             print("Validating...", end='')
-            src_cnt = collection.find(query).count()
+            src_cnt = collection.count(query)
             es_cnt = self.count()
             if src_cnt == es_cnt:
                 print("OK [total count={}]".format(src_cnt))
