@@ -65,8 +65,9 @@ class GAMixIn:
                 bts.ga_account, generate_unique_id(user_agent=user_agent), remote_ip, _q(user_agent), 
                 get_user_language(ln), bts.ga_tracker_url, bts._api_version, host, path)
                 # add event information also
-                request_body += '&ec={}&ea={}&el={}&ev={}'.format(event['category'], event['action'],
-                    event['label'], event['value'])
+                request_body += '&ec={}&ea={}'.format(event['category'], event['action'])
+                if event['label'] and event['value']:
+                    request_body += '&el={}&ev={}'.format(event['label'], event['value'])
 
             req = HTTPRequest('http://www.google-analytics.com/batch', method='POST', body=request_body)
 
