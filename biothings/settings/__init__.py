@@ -165,7 +165,6 @@ class BiothingSettings(object):
             ret['action'] = '_'.join([endpoint, self.ga_event_for_get_action])
         elif action == 'POST':
             ret['action'] = '_'.join([endpoint, self.ga_event_for_post_action])
-        for (k,v) in data.items():
-            ret['label'] = k
-            ret['value'] = v
+        ret['label'] = list(data.keys()).pop()
+        ret['value'] = list(data.values()).pop()
         return ret
