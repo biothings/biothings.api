@@ -151,7 +151,20 @@ class BiothingSettings(object):
 
     @property
     def ga_account(self):
-        return self._return_var('GA_ACCOUNT')
+        # Get from config file first
+        try:
+            return self.config_vars['GA_ACCOUNT']
+        except KeyError:
+            pass
+        
+        # Try to get from a private submodule on the server
+        try:
+            return vars(import_module('ansible_deploy.production_vars'))['ANALYTICS'][self.es_doc_type]
+        except (ImportError, KeyError):
+            pass
+        
+        # Fallback to default
+        return self.default_vars['GA_ACCOUNT']
 
     @property
     def ga_tracker_url(self):
