@@ -56,5 +56,6 @@ def get_software_info():
     return {
             'python-package-info': get_python_version(),
             'codebase': get_repository_information(),
-            'biothings': get_biothings_commit()
+            'biothings': get_biothings_commit(),
+            'python-info' : get_python_exec_version(),
             }
