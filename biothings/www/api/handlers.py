@@ -7,6 +7,7 @@ from biothings.utils.version import get_python_version
 from biothings.utils.version import get_repository_information
 from biothings.utils.version import get_biothings_commit
 from biothings.settings import BiothingSettings
+from collections import OrderedDict
 
 biothing_settings = BiothingSettings()
 
@@ -231,7 +232,7 @@ class FieldsHandler(BaseHandler):
                 r[k1] = v
                 if k1 in notes:
                     r[k1]['notes'] = notes[k1]
-        self.return_json(r)
+        self.return_json(OrderedDict(sorted(r.items(), key=lambda x: x[0])))
 
 class StatusHandler(BaseHandler):
     ''' Handles requests to check the status of the server. '''
