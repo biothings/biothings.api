@@ -1,6 +1,7 @@
 from tornado.httpclient import HTTPRequest, AsyncHTTPClient
 from biothings.settings import BiothingSettings
 from random import randint
+from operator import itemgetter
 import re
 from urllib.parse import quote_plus as _q
 
@@ -66,7 +67,7 @@ class GAMixIn:
                 get_user_language(ln), bts.ga_tracker_url, bts._api_version, host, path)
                 # add event information also
                 request_body += '&ec={}&ea={}'.format(event['category'], event['action'])
-                if event['label'] and event['value']:
+                if event.get('label', False) and event.get('value', False):
                     request_body += '&el={}&ev={}'.format(event['label'], event['value'])
 
             req = HTTPRequest('http://www.google-analytics.com/batch', method='POST', body=request_body)
