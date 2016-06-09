@@ -3,7 +3,7 @@ from subprocess import check_output
 from io import StringIO
 from contextlib import redirect_stdout
 import pip
-import os
+import os, sys
 import biothings
 
 def get_python_version():
@@ -12,10 +12,10 @@ def get_python_version():
 
     with redirect_stdout(so):
         pip.main(['freeze'])
-    
+
     if so.getvalue():
         return so.getvalue().strip('\n').split('\n')
-    
+
     return []
 
 def get_biothings_commit():
@@ -41,3 +41,20 @@ def get_repository_information():
         commit_hash = ''
 
     return {'repository-url': repository_url, 'commit-hash': commit_hash}
+
+def get_python_exec_version():
+    return {
+            'version' : sys.version,
+            'version_info' : {
+                "major" : sys.version_info[0],
+                "minor" : sys.version_info[1],
+                "micro" : sys.version_info[2]
+                }
+            }
+
+def get_software_info():
+    return {
+            'python-package-info': get_python_version(),
+            'codebase': get_repository_information(),
+            'biothings': get_biothings_commit()
+            }
