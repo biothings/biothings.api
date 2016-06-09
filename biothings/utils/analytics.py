@@ -55,16 +55,19 @@ class GAMixIn:
                         _req.remote_ip))
             user_agent = _req.headers.get("User-Agent", None)
             host = _req.headers.get("Host", "N/A")
+            this_user = generate_unique_id(user_agent=user_agent)
+            user_agent = _q(user_agent)
+            langua = get_user_language(ln)
             # compile measurement protocol string for google
             # first do the pageview hit type
             request_body = 'v=1&t=pageview&tid={}&ds=web&cid={}&uip={}&ua={}&geoid={}&an={}&av={}&dh={}&dp={}'.format(
-                bts.ga_account, generate_unique_id(user_agent=user_agent), remote_ip, _q(user_agent), 
-                get_user_language(ln), bts.ga_tracker_url, bts._api_version, host, path)
+                bts.ga_account, this_user, remote_ip, user_agent, 
+                langua, bts.ga_tracker_url, bts._api_version, host, path)
             # add the event, if applicable
             if event:
                 request_body += '\nv=1&t=event&tid={}&ds=web&cid={}&uip={}&ua={}&geoid={}&an={}&av={}&dh={}&dp={}'.format(
-                bts.ga_account, generate_unique_id(user_agent=user_agent), remote_ip, _q(user_agent), 
-                get_user_language(ln), bts.ga_tracker_url, bts._api_version, host, path)
+                bts.ga_account, this_user, remote_ip, user_agent, 
+                langua, bts.ga_tracker_url, bts._api_version, host, path)
                 # add event information also
                 request_body += '&ec={}&ea={}'.format(event['category'], event['action'])
                 if event.get('label', False) and event.get('value', False):
