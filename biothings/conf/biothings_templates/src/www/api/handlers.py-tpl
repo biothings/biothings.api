@@ -38,8 +38,8 @@ def return_applist():
         ]
     else:
         ret += [
-            (r"/${annotation_endpoint}/(.+)/?", ${annotation_handler_name}),
-            (r"/${annotation_endpoint}/?$$", ${annotation_handler_name}),
-            (r"/${query_endpoint}/?", ${query_handler_name}),
+            (r"/" + bts._annotation_endpoint + "/(.+)/?", ${annotation_handler_name}),
+            (r"/" + bts._annotation_endpoint + "/?$$", ${annotation_handler_name}),
+            (r"/" + bts._query_endpoint + "/?", ${query_handler_name}),
         ]
     return ret
