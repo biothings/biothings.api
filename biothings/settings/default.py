@@ -62,3 +62,4 @@ FIELD_NOTES_PATH = 'field_notes_path'
 JSONLD_CONTEXT_PATH = 'context'
 # Module that contains the nosetest config
 NOSETEST_SETTINGS = 'tests.nosetest_config'
+PRIVATE_MODULE = 'prmod'

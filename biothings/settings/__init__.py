@@ -134,6 +134,10 @@ class BiothingSettings(object):
     # *************************************************************************
 
     @property
+    def private_module(self):
+        return self._return_var('PRIVATE_MODULE')
+
+    @property
     def ga_event_for_get_action(self):
         return self._return_var('GA_EVENT_GET_ACTION')
 
@@ -159,7 +163,7 @@ class BiothingSettings(object):
         
         # Try to get from a private submodule on the server
         try:
-            return vars(import_module('ansible_deploy.production_vars'))['ANALYTICS'][self.es_doc_type]
+            return vars(import_module(self.private_module))['ANALYTICS'][self.es_doc_type]
         except (ImportError, KeyError):
             pass
         
