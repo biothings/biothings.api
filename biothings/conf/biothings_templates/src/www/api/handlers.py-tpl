@@ -2,7 +2,6 @@
 from biothings.www.api.handlers import MetaDataHandler, BiothingHandler, QueryHandler, StatusHandler, FieldsHandler
 from biothings.settings import BiothingSettings
 from www.api.es import ESQuery
-import config
 
 bts = BiothingSettings()
 
