@@ -1,7 +1,8 @@
 import json
 import datetime
 import tornado.web
-from biothings.utils.ga import GAMixIn
+#from biothings.utils.ga import GAMixIn
+from biothings.utils.analytics import GAMixIn
 from biothings.settings import BiothingSettings
 from importlib import import_module
 
