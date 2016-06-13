@@ -186,6 +186,14 @@ class ESQuery(object):
         ''' Function to override to add more options to the get_cleaned_query_options function below .'''
         return options
 
+    def _get_cleaned_metadata_options(self, kwargs):
+        ''' Process options for /metadata query. '''
+        options = dotdict()
+        # Delete all keys, can override this to add arguments to metadata endpoint
+        for key in set(kwargs.keys()):
+            del(kwargs[key])
+        return options
+
     def _get_cleaned_common_options(self, kwargs):
         '''process options whatever the type of query (/query or annotation)'''
         options = dotdict()
@@ -254,15 +262,20 @@ class ESQuery(object):
         except NotFoundError:
             return False
 
+    def _get(self, **kwargs):
+        """ Subclass for /annotation GET es query override. """
+        options = kwargs.pop('options', {})
+        return self._es.get(**kwargs)
+
     def get_biothing(self, bid, **kwargs):
         '''unknown vid return None'''
         options = self._get_cleaned_annotation_options(kwargs)
         kwargs = {"_source": options.kwargs["_source"]} if "_source" in options.kwargs else {}
         try:
-            res = self._es.get(index=self._index, id=bid, doc_type=self._doc_type, **kwargs)
+            res = self._get(index=self._index, id=bid, doc_type=self._doc_type, options=options, **kwargs)
         except NotFoundError:
             return
-
+        
         if options.raw:
             return res
 
@@ -270,6 +283,7 @@ class ESQuery(object):
         return res
 
     def _msearch(self,**kwargs):
+        kwargs.pop('options', {})
         return self._es.msearch(**kwargs)['responses']
 
     def mget_biothings(self, bid_list, **kwargs):
@@ -283,7 +297,9 @@ class ESQuery(object):
                     'error': err.message}
         if options.rawquery:
             return _q
-        res = self._msearch(body=_q, index=self._index, doc_type=self._doc_type)
+
+        res = self._msearch(body=_q, index=self._index, doc_type=self._doc_type, options=options)
+        
         if options.raw:
             return res
 
@@ -310,15 +326,15 @@ class ESQuery(object):
         '''Subclass to get a custom query builder'''
         return ESQueryBuilder(**kwargs) 
 
-    def _build_query(self, q, kwargs):
+    def _build_query(self, q, **kwargs):
         # can override this function if more query types are to be added
         esqb = self._get_query_builder(**kwargs)
         return esqb.default_query(q)
 
-    def _search(self,q,scroll_options={},**kwargs):
+    def _search(self, q, **kwargs):
         '''Subclass to get a custom search query'''
+        options = kwargs.pop('options', {})
         # since all args are ES compatible, we can send them all
-        kwargs.update(scroll_options)
         return self._es.search(index=self._index, doc_type=self._doc_type, body=q, **kwargs)
 
     def query(self, q, **kwargs):
@@ -328,23 +344,26 @@ class ESQuery(object):
 
         aggs = parse_facets_option(kwargs)
         options = self._get_cleaned_query_options(kwargs)
+        # for scroll type
         scroll_options = {}
         if options.fetch_all:
-            #scroll_options.update({'search_type': 'scan', 'size': self._scroll_size, 'scroll': self._scroll_time})
             scroll_options.update({'size': self._total_scroll_size, 'scroll': self._scroll_time})
+        options.kwargs.update(scroll_options)
         try:
-            _query = self._build_query(q, kwargs)
+            _query = self._build_query(q, options=options, **kwargs)
             if aggs:
                 _query['aggs'] = aggs
             if options.rawquery:
                 return _query
-            res = self._search(_query,scroll_options=scroll_options,**options.kwargs)
+            res = self._search(_query, options=options, **options.kwargs)
         except QueryError as e:
             msg = str(e)
             return {'success': False,
                     'error': msg}
         except RequestError as e:
             return {"error": "invalid query term: %s" % repr(e), "success": False}
+        except NotFoundError as e:
+            return {"error": e.error, "success": False}
         except Exception as e:
             # logging.debug("%s" % str(e))
             return {'success': False, 'error': "Something is wrong with query '%s'" % q}
@@ -371,15 +390,26 @@ class ESQuery(object):
                 res.update({'_warning': 'Scroll request has failed on {} shards out of {}.'.format(r['_shards']['failed'], r['_shards']['total'])})
         return res
 
-    def get_mapping_meta(self):
+    def _get_mapping(self, **kwargs):
+        options = kwargs.pop('options', {})
+        return self._es.indices.get_mapping(**kwargs)
+
+    def get_mapping_meta(self, **kwargs):
         """ return the current _meta field."""
-        m = self._es.indices.get_mapping(index=self._index, doc_type=self._doc_type)
+        options = self._get_cleaned_metadata_options(kwargs)
+        m = self._get_mapping(index=self._index, doc_type=self._doc_type, options=options, **kwargs)
         m = m[list(m.keys())[0]]['mappings'][self._doc_type]
         return m.get('_meta', {})
 
+    def _get_fields(self, **kwargs):
+        """ override for custom get_fields. """
+        options = kwargs.pop('options', {})
+        return self._es.indices.get(**kwargs)
+
     def query_fields(self, **kwargs):
         # query the metadata to get the available fields for a biothing object
-        r = self._es.indices.get(index=self._index)
+        options = self._get_cleaned_metadata_options(kwargs)
+        r = self._get_fields(index=self._index, options=options, **kwargs)
         return r[list(r.keys())[0]]['mappings'][self._doc_type]['properties']
 
     def status_check(self, bid):

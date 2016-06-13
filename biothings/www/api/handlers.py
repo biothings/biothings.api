@@ -183,7 +183,8 @@ class Neo4jQueryHandler(BaseHandler):
 class MetaDataHandler(BaseHandler):
     
     def get(self):
-        _meta = self.esq.get_mapping_meta()
+        kwargs = self.get_query_params()
+        _meta = self.esq.get_mapping_meta(**kwargs)
         _meta['software'] = get_software_info()
         self.return_json(_meta)
 
@@ -191,12 +192,14 @@ class MetaDataHandler(BaseHandler):
 class FieldsHandler(BaseHandler):
 
     def get(self):
-        es_mapping = self.esq.query_fields()
+        kwargs = self.get_query_params()
+        search = kwargs.pop('search', None)
+        prefix = kwargs.pop('prefix', None)
+        es_mapping = self.esq.query_fields(**kwargs)
         if biothing_settings.field_notes_path:
             notes = json.load(open(biothing_settings.field_notes_path, 'r'))
         else:
             notes = {}
-        kwargs = self.get_query_params()
 
         def get_indexed_properties_in_dict(d, prefix):
             r = {}
@@ -218,8 +221,6 @@ class FieldsHandler(BaseHandler):
             return r
 
         r = {}
-        search = kwargs.pop('search', None)
-        prefix = kwargs.pop('prefix', None)
         for (k, v) in get_indexed_properties_in_dict(es_mapping, '').items():
             k1 = k.lstrip('.')
             if (search and search in k1) or (prefix and k1.startswith(prefix)) or (not search and not prefix):
