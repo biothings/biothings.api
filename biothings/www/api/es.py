@@ -348,7 +348,7 @@ class ESQuery(object):
         scroll_options = {}
         if options.fetch_all:
             scroll_options.update({'size': self._total_scroll_size, 'scroll': self._scroll_time})
-        options.kwargs.update(scroll_options)
+        options["kwargs"].update(scroll_options)
         try:
             _query = self._build_query(q, options=options, **kwargs)
             if aggs:
@@ -365,7 +365,7 @@ class ESQuery(object):
         except NotFoundError as e:
             return {"error": e.error, "success": False}
         except Exception as e:
-            # logging.debug("%s" % str(e))
+            logging.error("%s" % str(e))
             return {'success': False, 'error': "Something is wrong with query '%s'" % q}
 
         # if options.fetch_all:
