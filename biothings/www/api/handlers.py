@@ -181,11 +181,12 @@ class Neo4jQueryHandler(BaseHandler):
 
 
 class MetaDataHandler(BaseHandler):
-    
+    boolean_parameters = set(['debug'])
+
     def get(self):
         kwargs = self.get_query_params()
         _meta = self.esq.get_mapping_meta(**kwargs)
-        debug = kwargs.pop('debug', 'false').lower() in ['true', '1', 't', 'y']
+        debug = kwargs.pop('debug', False)
         if debug:
             _meta['software'] = get_software_info()
         self.return_json(_meta)
