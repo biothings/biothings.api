@@ -190,8 +190,9 @@ class MetaDataHandler(BaseHandler):
             _meta['software'] = get_software_info()
 
     def get(self):
-        self._fill_software_info(_meta)
+        kwargs = self.get_query_params()
         _meta = self.esq.get_mapping_meta(**kwargs)
+        self._fill_software_info(_meta)
         self.return_json(_meta)
 
 
