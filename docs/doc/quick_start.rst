@@ -35,7 +35,7 @@ This startup script will create a skeleton project directory based on the input 
 Biothings project directory structure
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
 
-A bare biothings project consists of
+A bare biothings project consists of:
 
 * **requirements_web.txt** - list of python dependencies required to run API
 * **src** - folder of all project-specific source code
@@ -44,9 +44,13 @@ A bare biothings project consists of
     * **dataload** - all code to load data into elasticsearch
     * **www** - front-end code, handlers and elasticsearch querying
     
-        * **index.py** - 
-        * **api** - 
+        * **index.py** - API start script 
+        * **api** - API front and back-end code
 
-            * **es.py** -
-            * **handlers.py** -
+            * **es.py** - Elasticsearch database querying
+            * **handlers.py** - HTTP request handling
 
+Modifying biothings.api functionality
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A biothings-based project can extend and/or override any function to add project-specific options.  For more information on how to do this, check out the `biothings repository <https://github.com/SuLab/biothings.api>`_, especially the *es.py* and *handlers.py* modules.  Existing projects implemented using biothings can also be useful guides.  See for example, `a genetic variant API <https://github.com/SuLab/myvariant.info/tree/biothings.variant>`_, `a taxonomy API <https://github.com/SuLab/biothings.species>`_, or `a chemical API <https://github.com/SuLab/biothings.drugs>
