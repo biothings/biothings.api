@@ -6,17 +6,24 @@
 Welcome to biothings.api's documentation!
 =========================================
 
+biothings.api is a python framework for creating high performance
+
+.. include:: doc/quick_start.rst
+
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+    :maxdepth: 2
+    doc/quick_start
 
+.. raw :: html
 
+    <div id="spacer" style="height:300px"></div>
 
-Indices and tables
-==================
+.. Indices and tables
+.. ==================
 
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+.. * :ref:`genindex`
+.. * :ref:`modindex`
+.. * :ref:`search`
 
