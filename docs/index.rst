@@ -3,14 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to biothings.api's documentation!
-=========================================
-
-biothings.api is a python framework for creating high performance
-
 .. include:: doc/quick_start.rst
-
-Contents:
 
 .. toctree::
     :maxdepth: 2
