@@ -53,7 +53,7 @@ class GAMixIn:
             remote_ip = _req.headers.get("X-Real-Ip",
                         _req.headers.get("X-Forwarded-For",
                         _req.remote_ip))
-            user_agent = _req.headers.get("User-Agent", None)
+            user_agent = _req.headers.get("User-Agent", "")
             host = _req.headers.get("Host", "N/A")
             this_user = generate_unique_id(user_agent=user_agent)
             user_agent = _q(user_agent)
