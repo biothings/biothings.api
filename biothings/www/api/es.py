@@ -286,9 +286,16 @@ class ESQuery(object):
         kwargs.pop('options', {})
         return self._es.msearch(**kwargs)['responses']
 
+    def mquery_biothings(self,bid_list, **kwargs):
+        options = self._get_cleaned_query_options(kwargs)
+        return self.mcommon_biothings(bid_list, options, **kwargs)
+
     def mget_biothings(self, bid_list, **kwargs):
         '''for /query post request'''
         options = self._get_cleaned_annotation_options(kwargs)
+        return self.mcommon_biothings(bid_list, options, **kwargs)
+
+    def mcommon_biothings(self,bid_list, options, **kwargs):
         qbdr = self._get_query_builder(**options.kwargs)
         try:
             _q = qbdr.build_multiple_id_query(bid_list, scopes=options.scopes)

@@ -146,7 +146,7 @@ class QueryHandler(BaseHandler):
             if ids:
                 scopes = kwargs.pop('scopes', None)
                 fields = kwargs.pop('fields', None)
-                res = self.esq.mget_biothings(ids, fields=fields, scopes=scopes, **kwargs)
+                res = self.esq.mquery_biothings(ids, fields=fields, scopes=scopes, **kwargs)
         else:
             res = {'success': False, 'error': "Missing required parameters."}
 
