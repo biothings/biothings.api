@@ -60,14 +60,14 @@ class GAMixIn:
             langua = get_user_language(ln)
             # compile measurement protocol string for google
             # first do the pageview hit type
-            request_body = 'v=1&t=pageview&tid={}&ds=web&cid={}&uip={}&ua={}&geoid={}&an={}&av={}&dh={}&dp={}'.format(
+            request_body = 'v=1&t=pageview&tid={}&ds=web&cid={}&uip={}&ua={}&an={}&av={}&dh={}&dp={}'.format(
                 bts.ga_account, this_user, remote_ip, user_agent, 
-                langua, bts.ga_tracker_url, bts._api_version, host, path)
+                bts.ga_tracker_url, bts._api_version, host, path)
             # add the event, if applicable
             if event:
-                request_body += '\nv=1&t=event&tid={}&ds=web&cid={}&uip={}&ua={}&geoid={}&an={}&av={}&dh={}&dp={}'.format(
+                request_body += '\nv=1&t=event&tid={}&ds=web&cid={}&uip={}&ua={}&an={}&av={}&dh={}&dp={}'.format(
                 bts.ga_account, this_user, remote_ip, user_agent, 
-                langua, bts.ga_tracker_url, bts._api_version, host, path)
+                bts.ga_tracker_url, bts._api_version, host, path)
                 # add event information also
                 request_body += '&ec={}&ea={}'.format(event['category'], event['action'])
                 if event.get('label', False) and event.get('value', False):
