@@ -101,7 +101,7 @@ class ESQuery(object):
         doc = self._traverse_biothingdoc(doc=doc, context_key='root', 
             dotfield_ret=dotfield_ret, options=options)
         if options.dotfield:
-            return OrderedDict([(k, v[0]) if len(v) == 1 else (k,v) for (k,v) in sorted(dotfield_ret.items(), lambda i: i[0])])
+            return OrderedDict([(k, v[0]) if len(v) == 1 else (k,v) for (k,v) in sorted(dotfield_ret.items(), key=lambda i: i[0])])
         return doc
 
     def _modify_biothingdoc(self, doc, options=None):
