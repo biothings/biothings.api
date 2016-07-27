@@ -181,11 +181,11 @@ class Neo4jQueryHandler(BaseHandler):
 
 
 class MetaDataHandler(BaseHandler):
-    boolean_parameters = set(['debug'])
+    boolean_parameters = set(['dev'])
 
     def _fill_software_info(self,_meta):
         kwargs = self.get_query_params()
-        debug = kwargs.pop('debug', False)
+        debug = kwargs.pop('dev', False)
         if debug:
             _meta['software'] = get_software_info()
 

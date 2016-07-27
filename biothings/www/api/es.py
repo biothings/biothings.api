@@ -92,8 +92,6 @@ class ESQuery(object):
             doc['found'] = hit['found']
         #TODO: normalize, either _source or fields...
         fields = options.kwargs.fields or options.kwargs._source
-        #if options and options.dotfield and options.kwargs and fields:
-        #    doc = compose_dot_fields(doc,fields)  
         # add other keys to object, if necessary
         doc = self._modify_biothingdoc(doc=doc, options=options)
         # Sort keys, and add jsonld
@@ -209,18 +207,7 @@ class ESQuery(object):
         options.host = kwargs.pop('host', biothing_settings.ga_tracker_url)
         options.jsonld = kwargs.pop('jsonld', False)
         options.dotfield = kwargs.pop('dotfield', False)
-
-        #if no dotfield in "fields", set dotfield always be True, i.e., no need to parse dotfield
-        #if not options.dotfield:
-        #    _found_dotfield = False
-        #    if kwargs.get('fields'):
-        #        for _f in kwargs['fields']:
-        #            if _f.find('.') != -1:
-        #                _found_dotfield = True
-        #                break
-        #    if not _found_dotfield:
-        #        options.dotfield = True
-
+        # override to add more options
         options = self._get_options(options, kwargs)
         scopes = kwargs.pop('scopes', None)
         if scopes:
