@@ -3,7 +3,7 @@ from biothings.utils.common import dotdict, is_str, is_seq, find_doc
 from biothings.utils.es import get_es
 from elasticsearch import NotFoundError, RequestError
 from biothings.settings import BiothingSettings
-from biothings.utils.dotfield import compose_dot_fields_by_fields as compose_dot_fields
+#from biothings.utils.dotfield import compose_dot_fields_by_fields as compose_dot_fields
 from collections import OrderedDict
 
 biothing_settings = BiothingSettings()
@@ -63,19 +63,21 @@ class ESQuery(object):
             raise ScrollSetupError("_total_scroll_size of {} can't be ".format(self._total_scroll_size) +
                                      "divided evenly among {} shards.".format(self.get_number_of_shards()))
 
-    def _traverse_biothingdoc(self, doc, context_key, options=None):
+    def _traverse_biothingdoc(self, doc, context_key, dotfield_ret, options=None):
         # Traverses through all levels of biothing doc to add jsonld context and sort the dictionaries
         if isinstance(doc, list):
-            return [self._traverse_biothingdoc(d, context_key, options) for d in doc]
+            return [self._traverse_biothingdoc(d, context_key, dotfield_ret, options) for d in doc]
         elif isinstance(doc, dict):
             this_list = []
             if context_key in self._context and options and options.jsonld:
                 doc['@context'] = self._context[context_key]['@context']
             for key in sorted(doc):
                 new_key = key if context_key == 'root' else context_key + '/' + key
-                this_list.append( (key, self._traverse_biothingdoc(doc[key], new_key, options)) )
+                this_list.append( (key, self._traverse_biothingdoc(doc[key], new_key, dotfield_ret, options)) )
             return OrderedDict(this_list)
         else:
+            if options.dotfield:
+                dotfield_ret.setdefault(re.sub(r'/', '.', context_key), []).append(doc)
             return doc
 
     def _get_biothingdoc(self, hit, options=None):
@@ -90,12 +92,16 @@ class ESQuery(object):
             doc['found'] = hit['found']
         #TODO: normalize, either _source or fields...
         fields = options.kwargs.fields or options.kwargs._source
-        if options and options.dotfield and options.kwargs and fields:
-            doc = compose_dot_fields(doc,fields)  
+        #if options and options.dotfield and options.kwargs and fields:
+        #    doc = compose_dot_fields(doc,fields)  
         # add other keys to object, if necessary
         doc = self._modify_biothingdoc(doc=doc, options=options)
         # Sort keys, and add jsonld
-        doc = self._traverse_biothingdoc(doc=doc, context_key='root', options=options)
+        dotfield_ret = {}
+        doc = self._traverse_biothingdoc(doc=doc, context_key='root', 
+            dotfield_ret=dotfield_ret, options=options)
+        if options.dotfield:
+            return OrderedDict([(k, v[0]) if len(v) == 1 else (k,v) for (k,v) in sorted(dotfield_ret.items(), lambda i: i[0])])
         return doc
 
     def _modify_biothingdoc(self, doc, options=None):
@@ -202,18 +208,18 @@ class ESQuery(object):
         options.fetch_all = kwargs.pop('fetch_all', False)
         options.host = kwargs.pop('host', biothing_settings.ga_tracker_url)
         options.jsonld = kwargs.pop('jsonld', False)
-        options.dotfield = kwargs.pop('dotfield', False) not in [False, 'false']
+        options.dotfield = kwargs.pop('dotfield', False)
 
         #if no dotfield in "fields", set dotfield always be True, i.e., no need to parse dotfield
-        if not options.dotfield:
-            _found_dotfield = False
-            if kwargs.get('fields'):
-                for _f in kwargs['fields']:
-                    if _f.find('.') != -1:
-                        _found_dotfield = True
-                        break
-            if not _found_dotfield:
-                options.dotfield = True
+        #if not options.dotfield:
+        #    _found_dotfield = False
+        #    if kwargs.get('fields'):
+        #        for _f in kwargs['fields']:
+        #            if _f.find('.') != -1:
+        #                _found_dotfield = True
+        #                break
+        #    if not _found_dotfield:
+        #        options.dotfield = True
 
         options = self._get_options(options, kwargs)
         scopes = kwargs.pop('scopes', None)
