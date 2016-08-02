@@ -394,12 +394,21 @@ class ESQuery(object):
         options = kwargs.pop('options', {})
         return self._es.indices.get_mapping(**kwargs)
 
+    def _populate_metadata(self):
+        ''' override to load metadata into ES mapping if it doesn't exist '''
+        return {}
+
     def get_mapping_meta(self, **kwargs):
         """ return the current _meta field."""
         options = self._get_cleaned_metadata_options(kwargs)
         m = self._get_mapping(index=self._index, doc_type=self._doc_type, options=options, **kwargs)
         m = m[list(m.keys())[0]]['mappings'][self._doc_type]
-        return m.get('_meta', {})
+        m = m.get('_meta', {})
+        if m:
+            return m
+        else:
+            # override to lazy-load metadata...
+            return self._populate_metadata()
 
     def _get_fields(self, **kwargs):
         """ override for custom get_fields. """
