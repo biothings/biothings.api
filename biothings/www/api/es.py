@@ -76,7 +76,8 @@ class ESQuery(object):
                 this_list.append( (key, self._traverse_biothingdoc(doc[key], new_key, dotfield_ret, options)) )
             return OrderedDict(this_list)
         else:
-            if options.dotfield:
+            if options.dotfield and not options.jsonld:
+                # jsonld option doesn't play nice with dotfields, if jsonld=true is set it overrides dotfield
                 dotfield_ret.setdefault(re.sub(r'/', '.', context_key), []).append(doc)
             return doc
 
@@ -98,7 +99,8 @@ class ESQuery(object):
         dotfield_ret = {}
         doc = self._traverse_biothingdoc(doc=doc, context_key='root', 
             dotfield_ret=dotfield_ret, options=options)
-        if options.dotfield:
+        if options.dotfield and not options.jsonld:
+            # jsonld option doesn't play nice with dotfields, if jsonld=true is set it overrides dotfield
             return OrderedDict([(k, v[0]) if len(v) == 1 else (k,v) for (k,v) in sorted(dotfield_ret.items(), key=lambda i: i[0])])
         return doc
 
