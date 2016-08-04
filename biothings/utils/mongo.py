@@ -26,7 +26,7 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
        batch_callback is a callback function as fn(cnt, t), called after every batch
        fields is optional parameter passed to find to restrict fields to return.
     '''
-    cur = collection.find(query, timeout=False, fields=fields)
+    cur = collection.find(query, no_cursor_timeout=False, projection=fields)
     n = cur.count()
     s = s or 0
     e = e or n
