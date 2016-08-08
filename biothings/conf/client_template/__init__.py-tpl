@@ -1,5 +1,5 @@
 '''
-Python Client for {% full_url %} services
+Python Client for ${full_url} services
 '''
 from __future__ import print_function
 import sys
@@ -89,12 +89,12 @@ def iter_n(iterable, n, with_cnt=False):
         else:
             yield chunk
 
-class {% client_class_name %}:
-    '''This is the client for {% full_url %} web services.
+class ${client_class_name}:
+    '''This is the client for ${full_url} web services.
     Example:
-        >>> client ={% client_class_name %}()
+        >>> client =${client_class_name}()
     '''
-    def __init__(self, url='{% default_server_url %}'):
+    def __init__(self, url='${default_server_url}'):
         self.url = url
         if self.url[-1] == '/':
             self.url = self.url[:-1]
@@ -104,7 +104,7 @@ class {% client_class_name %}:
         self.step = 1000
         self.scroll_size = 1000
         # raise requests.exceptions.HTTPError for status_code > 400
-        #   but not for 404 on get{% annotation_type %}
+        #   but not for 404 on get${annotation_type}
         #   set to False to surpress the exceptions.
         self.raise_for_status = True
         self._cached = False
@@ -136,7 +136,7 @@ class {% client_class_name %}:
     def _get(self, url, params={}, none_on_404=False, verbose=True):
         debug = params.pop('debug', False)
         return_raw = params.pop('return_raw', False)
-        headers = {'user-agent': "Python-requests_{% client_user_agent_header %}/%s (gzip)" % requests.__version__}
+        headers = {'user-agent': "Python-requests_${client_user_agent_header}/%s (gzip)" % requests.__version__}
         res = requests.get(url, params=params, headers=headers)
         from_cache = getattr(res, 'from_cache', False)
         if debug:
@@ -154,7 +154,7 @@ class {% client_class_name %}:
     def _post(self, url, params, verbose=True):
         return_raw = params.pop('return_raw', False)
         headers = {'content-type': 'application/x-www-form-urlencoded',
-                   'user-agent': "Python-requests_{% client_user_agent_header %}/%s (gzip)" % requests.__version__}
+                   'user-agent': "Python-requests_${client_user_agent_header}/%s (gzip)" % requests.__version__}
         res = requests.post(url, data=params, headers=headers)
         from_cache = getattr(res, 'from_cache', False)
         if self.raise_for_status:
@@ -216,7 +216,7 @@ class {% client_class_name %}:
         return "[ from cache ]"
 
     def metadata(self, verbose=True, **kwargs):
-        '''Return a dictionary of {% full_url %} metadata.
+        '''Return a dictionary of ${full_url} metadata.
         Example:
         >>> metadata = client.metadata()
         '''
@@ -226,7 +226,7 @@ class {% client_class_name %}:
             print(self._from_cache_notification)
         return ret
 
-    def set_caching(self, cache_db='{% default_cache_name %}', verbose=True, **kwargs):
+    def set_caching(self, cache_db='${default_cache_name}', verbose=True, **kwargs):
         ''' Installs a local cache for all requests.
             **cache_db** is the path to the local sqlite cache database.'''
         if caching_avail:
@@ -254,7 +254,7 @@ class {% client_class_name %}:
             pass
 
     def get_fields(self, search_term=None, verbose=True):
-        ''' Wrapper for {% default_server_url %}/metadata/fields
+        ''' Wrapper for ${default_server_url}/metadata/fields
             **search_term** is a case insensitive string to search for in available field names.
             If not provided, all available fields will be returned.
         Example:
@@ -277,47 +277,47 @@ class {% client_class_name %}:
             print(self._from_cache_notification)
         return ret
 
-    def get{% annotation_type %}(self, oid, fields=None, **kwargs):
-        '''Return the {% annotation_type %} object for the given id.
-        This is a wrapper for GET query of "/{% annotation_endpoint %}/<id>" service.
+    def get${annotation_type}(self, oid, fields=None, **kwargs):
+        '''Return the ${annotation_type} object for the given id.
+        This is a wrapper for GET query of "/${annotation_endpoint}/<id>" service.
         :param id: 
         :param fields: fields to return, a list or a comma-separated string.
                        If not provided or **fields="all"**, all available fields
                        are returned. Use get_fields() to see all available fields.
-        :return: a {% annotation_type %} object as a dictionary, or None if id is not found.
+        :return: a ${annotation_type} object as a dictionary, or None if id is not found.
         Example:
-        >>> mv.get{% annotation_type %}('')
-        >>> mv.get{% annotation_type %}('', fields='')
-        >>> mv.get{% annotation_type %}('', fields=['', ''])
-        >>> mv.get{% annotation_type %}('', fields='all')
+        >>> mv.get${annotation_type}('')
+        >>> mv.get${annotation_type}('', fields='')
+        >>> mv.get${annotation_type}('', fields=['', ''])
+        >>> mv.get${annotation_type}('', fields='all')
         .. Hint:: The supported field names passed to **fields** parameter can be found from
-                  any full {% annotation_type %} object (without **fields**, or **fields="all"**). Note that field name supports dot
+                  any full ${annotation_type} object (without **fields**, or **fields="all"**). Note that field name supports dot
                   notation for nested data structure as well.
         '''
         verbose = kwargs.pop('verbose', True)
         if fields:
             kwargs['fields'] = self._format_list(fields)
-        _url = self.url + '/{% annotation_endpoint %}/' + str(oid)
+        _url = self.url + '/${annotation_endpoint}/' + str(oid)
         from_cache, ret = self._get(_url, kwargs, none_on_404=True, verbose=verbose)
         if verbose and from_cache:
             print(self._from_cache_notification)
         return ret
 
-    def _get{% annotation_type %}s_inner(self, oids, verbose=True, **kwargs):
+    def _get${annotation_type}s_inner(self, oids, verbose=True, **kwargs):
         _kwargs = {'ids': self._format_list(oids)}
         _kwargs.update(kwargs)
-        _url = self.url + '/{% annotation_endpoint %}/'
+        _url = self.url + '/${annotation_endpoint}/'
         return self._post(_url, _kwargs, verbose=verbose)
 
-    def _{% annotation_type %}s_generator(self, query_fn, oids, verbose=True, **kwargs):
+    def _${annotation_type}s_generator(self, query_fn, oids, verbose=True, **kwargs):
         ''' Convenience function to yield a batch of hits one at a yime. '''
         for hits in self._repeated_query(query_fn, oids, verbose=verbose):
             for hit in hits:
                 yield hit
 
-    def get{% annotation_type %}s(self, oids, fields=None, **kwargs):
-        '''Return the list of {% annotation_type %} annotation objects for the given list of ids.
-        This is a wrapper for POST query of "/{% annotation_endpoint %}" service.
+    def get${annotation_type}s(self, oids, fields=None, **kwargs):
+        '''Return the list of ${annotation_type} annotation objects for the given list of ids.
+        This is a wrapper for POST query of "/${annotation_endpoint}" service.
         :param oids: a list/tuple/iterable or a string of comma-separated ids.
         :param fields: fields to return, a list or a comma-separated string.
                        If not provided or **fields="all"**, all available fields
@@ -329,7 +329,7 @@ class {% client_class_name %}:
                                   otherwise: return original json
         :param df_index: if True (default), index returned DataFrame by 'query',
                          otherwise, index by number. Only applicable if as_dataframe=True.
-        :return: a list of {% annotation_type %} objects or a pandas DataFrame object (when **as_dataframe** is True)
+        :return: a list of ${annotation_type} objects or a pandas DataFrame object (when **as_dataframe** is True)
         Example:
         >>> vars = ['',
         ...         '',
@@ -340,9 +340,9 @@ class {% client_class_name %}:
         ...         '',
         ...         '',
         ...         '']
-        >>> mv.get{% annotation_type %}s(vars, fields="")
-        >>> mv.get{% annotation_type %}s(',', fields="all")
-        >>> mv.get{% annotation_type %}s(['', ''], as_dataframe=True)
+        >>> mv.get${annotation_type}s(vars, fields="")
+        >>> mv.get${annotation_type}s(',', fields="all")
+        >>> mv.get${annotation_type}s(['', ''], as_dataframe=True)
         .. Hint:: A large list of more than 1000 input ids will be sent to the backend
                   web service in batches (1000 at a time), and then the results will be
                   concatenated together. So, from the user-end, it's exactly the same as
@@ -369,9 +369,9 @@ class {% client_class_name %}:
         if return_raw:
             dataframe = None
 
-        query_fn = lambda oids: self._get{% annotation_type %}s_inner(oids, verbose=verbose, **kwargs)
+        query_fn = lambda oids: self._get${annotation_type}s_inner(oids, verbose=verbose, **kwargs)
         if generator:
-            return self._{% annotation_type %}s_generator(query_fn, oids, verbose=verbose, **kwargs)
+            return self._${annotation_type}s_generator(query_fn, oids, verbose=verbose, **kwargs)
         out = []
         for hits in self._repeated_query(query_fn, oids, verbose=verbose):
             if return_raw:
@@ -404,7 +404,7 @@ class {% client_class_name %}:
                           return of all hits from a large query.
                           Server requests are done in blocks of 1000 and yielded individually.  Each 1000 block of
                           results must be yielded within 1 minute, otherwise the request will expire at server side.
-        :return: a dictionary with returned {% annotation_type %} hits or a pandas DataFrame object (when **as_dataframe** is True)
+        :return: a dictionary with returned ${annotation_type} hits or a pandas DataFrame object (when **as_dataframe** is True)
                  or a generator of all hits (when **fetch_all** is True)
         Example:
         >>> mv.query('')
@@ -452,7 +452,7 @@ class {% client_class_name %}:
             return ret
         batch = _batch()
         if verbose:
-            print("Fetching {} {% annotation_type %}(s) . . .".format(batch['total']))
+            print("Fetching {} ${annotation_type}(s) . . .".format(batch['total']))
         for key in ['q', 'fetch_all']:
             kwargs.pop(key)
         while not batch.get('error', '').startswith('No results to return.'):
@@ -490,15 +490,15 @@ class {% client_class_name %}:
                                   otherwise: return original json
         :param df_index: if True (default), index returned DataFrame by 'query',
                          otherwise, index by number. Only applicable if as_dataframe=True.
-        :return: a list of matching {% annotation_type %} objects or a pandas DataFrame object.
+        :return: a list of matching ${annotation_type} objects or a pandas DataFrame object.
         Example:
         >>> mv.querymany(['', ''], scopes='')
         >>> mv.querymany(['', '', ''], scopes='')
         >>> mv.querymany(['', '', ''], scopes='', fields='')
         >>> mv.querymany(['', '', ''], scopes='',
         ...              fields='', as_dataframe=True)
-        .. Hint:: :py:meth:`querymany` is perfect for query {% annotation_type %}s based different ids, e.g. rsid, clinvar ids, etc.
-        .. Hint:: Just like :py:meth:`get{% annotation_type %}s`, passing a large list of ids (>1000) to :py:meth:`querymany` is perfectly fine.
+        .. Hint:: :py:meth:`querymany` is perfect for query ${annotation_type}s based different ids, e.g. rsid, clinvar ids, etc.
+        .. Hint:: Just like :py:meth:`get${annotation_type}s`, passing a large list of ids (>1000) to :py:meth:`querymany` is perfectly fine.
         .. Hint:: If you need to pass a very large list of input qterms, you can pass a generator
                   instead of a full list, which is more memory efficient.
         '''
