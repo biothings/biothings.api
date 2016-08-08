@@ -40,7 +40,7 @@ setup(
     url=REPO_URL,
     packages=find_packages(),
     include_package_data=True,
-    scripts=['biothings/bin/biothings-admin.py'],
+    scripts=['biothings/bin/biothings-admin.py','biothings/bin/generate-client.py'],
     long_description=read('README.md'),
     classifiers=[
         "Programming Language :: Python",
