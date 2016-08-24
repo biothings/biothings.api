@@ -382,7 +382,10 @@ class ESQuery(object):
     def scroll(self, scroll_id, **kwargs):
         '''return the results from a scroll ID, recognizes options.raw'''
         options = self._get_cleaned_query_options(kwargs)
-        r = self._es.scroll(scroll_id, scroll=self._scroll_time)
+        try:
+            r = self._es.scroll(scroll_id, scroll=self._scroll_time)
+        except (NotFoundError, RequestError):
+            return {'success': False, 'error': 'Invalid or stale scroll_id.'}
         scroll_id = r.get('_scroll_id')
         if scroll_id is None or not r['hits']['hits']:
             return {'success': False, 'error': 'No results to return.'}
