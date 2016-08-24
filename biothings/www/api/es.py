@@ -341,6 +341,8 @@ class ESQuery(object):
 
     def query(self, q, **kwargs):
         # clean
+        if type(q) == list:
+            return {"success" : False, "error": "Only one 'q' parameter allowed"}
         q = re.sub(u'[\t\n\x0b\x0c\r\x00]+', ' ', q)
         q = q.strip()
 
