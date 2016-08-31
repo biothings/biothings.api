@@ -30,8 +30,11 @@ def _store_index(a, x, v):
     hi = len(a)
     while lo < hi:
         mid = (lo+hi)//2
-        if a[mid][0] < x: lo = mid+1
-        else: hi = mid
+        try:
+            if a[mid][0] < x: lo = mid+1
+            else: hi = mid
+        except TypeError:
+            hi = mid
     if lo < len(a) and a[lo][0] == x:
         a[lo][1].append(v)
     else:
@@ -42,8 +45,11 @@ def _take_index(a, x):
     hi = len(a)
     while lo < hi:
         mid = (lo+hi)//2
-        if a[mid][0] < x: lo = mid+1
-        else: hi = mid
+        try:
+            if a[mid][0] < x: lo = mid+1
+            else: hi = mid
+        except TypeError:
+            hi = mid
     if lo < len(a) and a[lo][0] == x:
         if a[lo][1]:
             return a[lo][1].pop()
@@ -239,20 +245,20 @@ def _item_replaced(path, key, info, item):
     info.insert(_op_replace(path, key, item))
 
 def _compare_dicts(path, info, src, dst):
-    added_keys = dst.viewkeys() - src.viewkeys()
-    removed_keys = src.viewkeys() - dst.viewkeys()
+    added_keys = dst.keys() - src.keys()
+    removed_keys = src.keys() - dst.keys()
     for key in removed_keys:
         _item_removed(path, str(key), info, src[key])
     for key in added_keys:
         _item_added(path, str(key), info, dst[key])
-    for key in src.viewkeys() & dst.viewkeys():
+    for key in src.keys() & dst.keys():
         _compare_values(path, key, info, src[key], dst[key])
 
 def _compare_lists(path, info, src, dst):
     len_src, len_dst = len(src), len(dst)
     max_len = max(len_src, len_dst)
     min_len = min(len_src, len_dst)
-    for key in xrange(max_len):
+    for key in range(max_len):
         if key < min_len:
             old, new = src[key], dst[key]
             if old == new:
