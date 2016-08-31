@@ -256,19 +256,21 @@ def _compare_dicts(path, info, src, dst):
 
 def _compare_lists(path, info, src, dst):
     len_src, len_dst = len(src), len(dst)
-    max_len = max(len_src, len_dst)
-    min_len = min(len_src, len_dst)
-    for key in range(max_len):
-        if key < min_len:
-            old, new = src[key], dst[key]
-            if old == new:
-                continue
-            _item_removed(path, key, info, old)
-            _item_added(path, key, info, new)
-        elif len_src > len_dst:
-            _item_removed(path, len_dst, info, src[key])
-        else:
-            _item_added(path, key, info, dst[key])
+    #max_len = max(len_src, len_dst)
+    #min_len = min(len_src, len_dst)
+    #for key in range(max_len):
+    #    if key < min_len:
+    #        old, new = src[key], dst[key]
+    #        if old == new:
+    #            continue
+    #        _item_removed(path, key, info, old)
+    #        _item_added(path, key, info, new)
+    #    elif len_src > len_dst:
+    #        _item_removed(path, len_dst, info, src[key])
+    #    else:
+    #        _item_added(path, key, info, dst[key])
+    if len_src != len_dst or src != dst:
+        _item_replaced(path, None , info, dst)
 
 def _compare_values(path, key, info, src, dst):
     if src == dst:

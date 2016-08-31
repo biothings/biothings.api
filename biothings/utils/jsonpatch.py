@@ -117,7 +117,7 @@ def get_loadjson():
 json.load = get_loadjson()
 
 
-def apply_patch(doc, patch, in_place=False):
+def apply_patch(doc, patch, in_place=False, ignore_conflicts=False, verify=False):
     """Apply list of patches to specified json document.
 
     :param doc: Document object.
@@ -129,6 +129,17 @@ def apply_patch(doc, patch, in_place=False):
     :param in_place: While :const:`True` patch will modify target document.
                      By default patch will be applied to document copy.
     :type in_place: bool
+
+    :param ignore_conflicts: Ignore JsonConflicts errors
+    :type ignore_conflicts: bool
+
+    :param verify: works with `ignore_conflicts` = True, if errors and `verify` is
+                  True (recommanded), make sure the resulting objects is the same
+                  as the original one. `ignore_conflicts` and `verify` are used to 
+                  run patches multiple times and get rif of errors when operations can't
+                  be performed multiple times because the object has already been patched
+                  This will force `in_place` to False in order the comparison to occur.
+    :type verify: bool
 
     :return: Patched document object.
     :rtype: dict
@@ -151,8 +162,11 @@ def apply_patch(doc, patch, in_place=False):
         patch = JsonPatch.from_string(patch)
     else:
         patch = JsonPatch(patch)
-    return patch.apply(doc, in_place)
+    return patch.apply(doc, in_place, ignore_conflicts)
 
+def reapply_patch(doc, patch):
+    """Apply or (safely) re-apply patch to doc"""
+    return apply_patch(doc,patch,ignore_conflicts=True, verify=True)
 
 def make_patch(src, dst):
     """Generates patch by comparing of two document objects. Actually is
@@ -332,7 +346,7 @@ class JsonPatch(object):
     def _ops(self):
         return tuple(map(self._get_operation, self.patch))
 
-    def apply(self, obj, in_place=False):
+    def apply(self, orig_obj, in_place=False, ignore_conflicts=False, verify=False):
         """Applies the patch to given object.
 
         :param obj: Document object.
@@ -342,14 +356,38 @@ class JsonPatch(object):
                          specified `obj` or to his copy.
         :type in_place: bool
 
+        :type ignore_conflicts: Ignore JsonConflicts errors
+
+        :type verify: works with `ignore_conflicts` = True, if errors and `verify` is
+                      True (recommanded), make sure the resulting objects is the same
+                      as the original one. `ignore_conflicts` and `verify` are used to 
+                      run patches multiple times and get rif of errors when operations can't
+                      be performed multiple times because the object has already been patched
+
         :return: Modified `obj`.
         """
 
+        if verify:
+            in_place = False
         if not in_place:
-            obj = copy.deepcopy(obj)
+            obj = copy.deepcopy(orig_obj)
+        else:
+            obj = orig_obj
 
+        got_conflicts = False
         for operation in self._ops:
-            obj = operation.apply(obj)
+            try:
+                obj = operation.apply(obj)
+            except JsonPatchConflict as e:
+                if ignore_conflicts:
+                    got_conflicts = True
+                else:
+                    raise
+        # it you're gonna ignore conflicts you'll have to make
+        # sure the resulting document is the same as the passed-one
+        # (patch run mutiple times)
+        if got_conflicts and verify:
+            assert obj == orig_obj, "Resulting object is different from original but got conflict errors, this is not good..."
 
         return obj
 

@@ -1,0 +1,706 @@
+{
+  "HGNC": "3806",
+  "HPRD": "06188",
+  "MIM": "602617",
+  "Vega": "OTTHUMG00000020333",
+  "_id": "2304",
+  "_score": 21.77648,
+  "accession": {
+    "genomic": [
+      "AL499604.9",
+      "AMYH02021312.1",
+      "CH471105.1",
+      "NC_000009.12",
+      "NC_018920.2",
+      "NG_011979.1",
+      "Y13386.1"
+    ],
+    "protein": [
+      "AAC51294.1",
+      "AAI52745.1",
+      "CAA64246.1",
+      "CAA73816.1",
+      "EAW58856.1",
+      "NP_004464.2",
+      "O00358.3"
+    ],
+    "rna": [
+      "BC152744.1",
+      "NM_004473.3",
+      "U89995.1",
+      "X94553.1"
+    ],
+    "translation": [
+      {
+        "protein": "NP_004464.2",
+        "rna": "NM_004473.3"
+      },
+      {
+        "protein": "AAC51294.1",
+        "rna": "U89995.1"
+      },
+      {
+        "protein": "CAA64246.1",
+        "rna": "X94553.1"
+      },
+      {
+        "protein": "AAI52745.1",
+        "rna": "BC152744.1"
+      }
+    ]
+  },
+  "alias": [
+    "FKHL15",
+    "FOXE2",
+    "HFKH4",
+    "HFKL5",
+    "NMTC4",
+    "TITF2",
+    "TTF-2",
+    "TTF2"
+  ],
+  "ensembl": {
+    "gene": "ENSG00000178919",
+    "protein": "ENSP00000364265",
+    "transcript": "ENST00000375123",
+    "translation": [
+      {
+        "protein": "ENSP00000364265",
+        "rna": "ENST00000375123"
+      }
+    ]
+  },
+  "entrezgene": 2304,
+  "exons": [
+    {
+      "cdsend": 97855036,
+      "cdsstart": 97853914,
+      "chr": "9",
+      "position": [
+        [
+          97853254,
+          97856715
+        ]
+      ],
+      "strand": 1,
+      "transcript": "NM_004473",
+      "txend": 97856715,
+      "txstart": 97853254
+    }
+  ],
+  "exons_hg19": [
+    {
+      "cdsend": 100617318,
+      "cdsstart": 100616196,
+      "chr": "9",
+      "position": [
+        [
+          100615536,
+          100618997
+        ]
+      ],
+      "strand": 1,
+      "transcript": "NM_004473",
+      "txend": 100618997,
+      "txstart": 100615536
+    }
+  ],
+  "generif": [
+    {
+      "pubmed": 11580993,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 11762722,
+      "text": "Compared with normal thyroids, transcripts were more abundant in 24% of thyroid lesions"
+    },
+    {
+      "pubmed": 12165566,
+      "text": "Loss of function mutation of TTF-2 is associated with congenital hypothyroidism, thyroid agenesis and cleft palate"
+    },
+    {
+      "pubmed": 14611701,
+      "text": "By means of a polyclonal antibody, TTF2 is identified in adult human thyroid and hair follicles and prepubertal testis."
+    },
+    {
+      "pubmed": 14654228,
+      "text": "a basic amino acid stretch present at both ends of the DNA-binding domain is a bona fide nuclear localization signal, able to bind the nuclear import receptor importin alpha"
+    },
+    {
+      "pubmed": 15140221,
+      "text": "a putative role of FOXE1 in mediating hedgehog signaling in the human epidermis downstream of GLI2."
+    },
+    {
+      "pubmed": 15320969,
+      "text": "no genetic alteration was present in the TTF-2 gene of congenital hypothyroid and cleft palate patients, suggesting that defects in the TTF-2 gene are a rare event."
+    },
+    {
+      "pubmed": 15367491,
+      "text": "FOXE1 is required for hair follicle morphogenesis."
+    },
+    {
+      "pubmed": 15367491,
+      "text": "Foxe1 expression in the hair follicle is dependent on the Shh pathway. Loss of Foxe1 expression in skin causes aberrant hair formation with disoriented, misalignment and aberrantly shaped hair follicles."
+    },
+    {
+      "pubmed": 16327884,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 16481406,
+      "text": "Results provided evidence to suggest that variation in FOXE1 polyalanine tract length predisposes to premature ovarian failure."
+    },
+    {
+      "pubmed": 16584930,
+      "text": "Observational study of genetic testing. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 17318017,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 17717707,
+      "text": "FOXE1 through its alanine containing stretch modulates significantly the risk of thyroid dysgenesis occurrence, enhancing a mechanism linking an alanine containing transcription factor to disease."
+    },
+    {
+      "pubmed": 17717707,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 18978678,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 19192046,
+      "text": "A novel homozygous polymorphism that prevented the binding of MYF-5 to FOXE1 promoter and affected the FOXE1 expression was found in 45% nonsyndromic cleft palate."
+    },
+    {
+      "pubmed": 19192046,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 19198613,
+      "text": "Observational study and genome-wide association study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 19730683,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 19730683,
+      "text": "USF1 and USF2 regulate transcriptional activity of the FOXE1 promoter."
+    },
+    {
+      "pubmed": 19779022,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 19779022,
+      "text": "These data indicate that FOXE1 is a major gene for cleft lip with or without cleft palate and provides new insights for improved counseling and genetic interaction studies."
+    },
+    {
+      "pubmed": 19845668,
+      "text": "given the seemingly relevant role that FOXE1 plays in the development of cutaneous SCC, these results may lead to the development of novel therapies that replace or mimic FOXE1 function to treat this form of cancer."
+    },
+    {
+      "pubmed": 19930442,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 19930442,
+      "text": "results imply that another tumour suppressor gene at this locus may be more important than FOXE1 in skin carcinogenesis and suggest that variation in the FOXE1 polyalanine tract length predisposes to cutaneous squamous cell carcinoma."
+    },
+    {
+      "pubmed": 20094846,
+      "text": "Binding ability of mutant FOXE1 protein to the human thyroperoxidase promoter is reduced compared with the wild-type FOXE1 in patients with thyroid diseases."
+    },
+    {
+      "pubmed": 20094846,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 20157192,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 20200978,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 20350937,
+      "text": "FOXE1 is unlikely to be the only key player in radiation-related thyroid carcinogenesis."
+    },
+    {
+      "pubmed": 20350937,
+      "text": "Observational study and genome-wide association study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 20453517,
+      "text": "Review. Describes spectrum of human Foxe1/TTF2 mutations."
+    },
+    {
+      "pubmed": 20544801,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 20572854,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 20583170,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 20634891,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 20672350,
+      "text": "Observational study of gene-disease association. (HuGE Navigator)"
+    },
+    {
+      "pubmed": 21177256,
+      "text": "MSX1 and TGF-beta3 are direct targets of FOXE1."
+    },
+    {
+      "pubmed": 21311165,
+      "text": "FOXE1-polyAla tract expansion may contribute to the molecular background of familial but not sporadic forms of thyroid hemiagenesis."
+    },
+    {
+      "pubmed": 21367965,
+      "text": "Effects of genetic variation in FOXE1 on serum free thyroxine (FT4) levels in Caucasian populations are demonstrated, as well as borderline significant effects on serum thyroid hormone (TSH) levels."
+    },
+    {
+      "pubmed": 21462296,
+      "text": "Polymorphisms in TIMP2 and WNT9B are novel loci predisposing to cleft palate."
+    },
+    {
+      "pubmed": 21730105,
+      "text": "Both FOXE1 and NKX2-1 were associated with the increased risk of sporadic Japanese PTC."
+    },
+    {
+      "pubmed": 21896990,
+      "text": "these results excluded the association of poly (Ala) polymorphism with autoimmune thyroid diseases; however it confirms the involvement of FOXE1 in the genesis of thyroid carcinoma."
+    },
+    {
+      "pubmed": 22177572,
+      "text": "Polyalanine repeat expansions in FOXE1 is associated with the genetic aetiology of POF in Chinese women."
+    },
+    {
+      "pubmed": 22493691,
+      "text": "Novel associations for hypothyroidism and autoimmune risk loci include SNPs near the FOXE1 gene."
+    },
+    {
+      "pubmed": 22521644,
+      "text": "these data suggest that TTF-2 may modulate the function of ERalpha as a corepressor and play a role in ER-dependent proliferation of mammary cells."
+    },
+    {
+      "pubmed": 22736773,
+      "text": "coding polyalanine expansion in FOXE1 may be responsible for the observed association between FOXE1 and papillary thyroid cancer"
+    },
+    {
+      "pubmed": 22753311,
+      "text": "FOXE1 genes suggest a role for orofacial clefting in hispanic polulation."
+    },
+    {
+      "pubmed": 22882326,
+      "text": "study showed evidence of association between forkhead box E1 (FOXE1) variants and thyroid cancer risk in the Portuguese population"
+    },
+    {
+      "pubmed": 23327367,
+      "text": "Nuclear FOXE1 expression in tumor cells in vicinity of the PTC border is associated with presence of a risk allele of rs1867277 (c.-238G>A) in the 5' untranslated region of the FOXE1 gene, as well as with pathological characteristics of PTC."
+    },
+    {
+      "pubmed": 23512105,
+      "text": "In addition, eight genes classified as 'second tier' hits in the original study (PAX7, THADA, COL8A1/FILIP1L, DCAF4L2, GADD45G, NTN1, RBFOX3 and FOXE1) showed evidence of linkage and association in this replication sample."
+    },
+    {
+      "pubmed": 23715628,
+      "text": "the FOXE1 gene exhibits significant differential expression levels between PTC tissues and adjacent non-tumor thyroid tissues."
+    },
+    {
+      "pubmed": 24105688,
+      "text": "Significant association with PTC was found for rs1801516 (D1853N) in ATM and rs1867277 in the promoter region of FOXE1 (OR = 1.55, 95% CI 1.03, 2.34)."
+    },
+    {
+      "pubmed": 24127282,
+      "text": "single nucleotide polymorphisms at 9q22.33 near FOXE1 showed convincing evidence of association with nonmedullary thyroid carcinoma risk in high-risk families"
+    },
+    {
+      "pubmed": 24252547,
+      "text": "study identifies probable susceptibility variants of FOXE1 for oral clefts in the Thai population"
+    },
+    {
+      "pubmed": 24280874,
+      "text": "FOXE1 and SYNE1 hypermethylation markers demonstrated significantly increased expression in neoplastic tissue."
+    },
+    {
+      "pubmed": 24325646,
+      "text": "genetic association studies in population in Germany: Data suggest that an SNP in FOXE1 (rs965513) is associated with increased risk for differentiated thyroid cancer (of an aggressive nature) in the population studied."
+    },
+    {
+      "pubmed": 24489898,
+      "text": "Common variations of FOXE1 are a risk factor associated with increased thyroid cancer susceptibility."
+    },
+    {
+      "pubmed": 24563486,
+      "text": "These results strongly support the FOXE1 locus as a risk factor for nsOFC. With the data of the initial study, there is now considerable evidence that this locus is the first conclusive risk factor shared between nsCL/P and nsCPO."
+    },
+    {
+      "pubmed": 24646064,
+      "text": "A tissue-dependent differentially methylated regions (DMR) in the FOXE1 promoter. This DMR contains two consecutive CpG dinucleotides, which are epigenetic modifiers of FOXE1 expression in nontumoral tissues."
+    },
+    {
+      "pubmed": 24744143,
+      "text": "three common variations on FOXE1 is a risk factor associated with increased thyroid cancer susceptibility, but these associations vary in different ethnic populations"
+    },
+    {
+      "pubmed": 24756757,
+      "text": "The current meta-analysis provided evidence that FOXE1 genetic polymorphisms may contribute to increased papillary thyroid carcinoma risk..ATM genetic polymorphisms may not be important dominants of susceptibility to this neoplasm."
+    },
+    {
+      "pubmed": 24852370,
+      "text": "Findings suggest that the SNPs in XKR4 and near FOXE1 are involved in the regulation of TSH levels."
+    },
+    {
+      "pubmed": 25251503,
+      "text": "critical role in the regulation of hepatocellular carcinoma development"
+    },
+    {
+      "pubmed": 25303483,
+      "text": "Our data suggest a role for PTCSC2, FOXE1, and TSHR in the predisposition to papillary thyroid carcinoma."
+    },
+    {
+      "pubmed": 25381600,
+      "text": "FOXE1 germline rare variant is involved in familal non-medullary thyroid carcinoma."
+    },
+    {
+      "pubmed": 25538088,
+      "text": "our data suggest that SYNE1 and FOXE1 are promising markers for colorectal cancer detection."
+    },
+    {
+      "pubmed": 25652407,
+      "text": "Causal mutations for orofacial clefting and thyroid diseases occur within cis-regulatory elements at the human FOXE1 locus."
+    },
+    {
+      "pubmed": 25950909,
+      "text": "analysis of novel somatic mutations of FOXE1 in papillary thyroid cancer"
+    },
+    {
+      "pubmed": 26013125,
+      "text": "In pancreatic cancer cells, AF6 is expressed at reduced levels, causing Dvl2 to be upregulated and available to bind and enhance FOXE1-induced trans-activation of Snail, which promotes proliferation and metastasis."
+    }
+  ],
+  "genomic_pos": {
+    "chr": "9",
+    "end": 97856715,
+    "start": 97853254,
+    "strand": 1
+  },
+  "genomic_pos_hg19": {
+    "chr": "9",
+    "end": 100618986,
+    "start": 100615536,
+    "strand": 1
+  },
+  "go": {
+    "BP": [
+      {
+        "evidence": "ISS",
+        "id": "GO:0000122",
+        "term": "negative regulation of transcription from RNA polymerase II promoter"
+      },
+      {
+        "evidence": "NAS",
+        "id": "GO:0000122",
+        "pubmed": 9169137,
+        "term": "negative regulation of transcription from RNA polymerase II promoter"
+      },
+      {
+        "evidence": "IEA",
+        "id": "GO:0006351",
+        "term": "transcription, DNA-templated"
+      },
+      {
+        "evidence": "IDA",
+        "id": "GO:0006357",
+        "pubmed": 24219130,
+        "term": "regulation of transcription from RNA polymerase II promoter"
+      },
+      {
+        "evidence": "IMP",
+        "id": "GO:0006357",
+        "pubmed": [
+          12165566,
+          16882747,
+          20094846,
+          20484477,
+          21177256
+        ],
+        "term": "regulation of transcription from RNA polymerase II promoter"
+      },
+      {
+        "evidence": "ISS",
+        "id": "GO:0006590",
+        "term": "thyroid hormone generation"
+      },
+      {
+        "evidence": "NAS",
+        "id": "GO:0009653",
+        "pubmed": 9169137,
+        "term": "anatomical structure morphogenesis"
+      },
+      {
+        "evidence": "ISS",
+        "id": "GO:0016477",
+        "term": "cell migration"
+      },
+      {
+        "evidence": "IEP",
+        "id": "GO:0030878",
+        "pubmed": 15494458,
+        "term": "thyroid gland development"
+      },
+      {
+        "evidence": "IMP",
+        "id": "GO:0030878",
+        "pubmed": 9697705,
+        "term": "thyroid gland development"
+      },
+      {
+        "evidence": "ISS",
+        "id": "GO:0031069",
+        "term": "hair follicle morphogenesis"
+      },
+      {
+        "evidence": "ISS",
+        "id": "GO:0045892",
+        "term": "negative regulation of transcription, DNA-templated"
+      },
+      {
+        "evidence": "IDA",
+        "id": "GO:0045893",
+        "pubmed": 9697705,
+        "term": "positive regulation of transcription, DNA-templated"
+      },
+      {
+        "evidence": "IEP",
+        "id": "GO:0048538",
+        "pubmed": 15494458,
+        "term": "thymus development"
+      },
+      {
+        "evidence": "ISS",
+        "id": "GO:0048562",
+        "term": "embryonic organ morphogenesis"
+      },
+      {
+        "evidence": "IMP",
+        "id": "GO:0060022",
+        "pubmed": 12165566,
+        "term": "hard palate development"
+      },
+      {
+        "evidence": "IMP",
+        "id": "GO:0060023",
+        "pubmed": 12165566,
+        "term": "soft palate development"
+      },
+      {
+        "evidence": "IEP",
+        "id": "GO:0060465",
+        "pubmed": 15494458,
+        "term": "pharynx development"
+      }
+    ],
+    "CC": {
+      "evidence": "IDA",
+      "id": "GO:0005634",
+      "pubmed": [
+        9697705,
+        21177256
+      ],
+      "term": "nucleus"
+    },
+    "MF": [
+      {
+        "evidence": "IBA",
+        "id": "GO:0000981",
+        "term": "RNA polymerase II transcription factor activity, sequence-specific DNA binding"
+      },
+      {
+        "evidence": "IDA",
+        "id": "GO:0000981",
+        "pubmed": 24219130,
+        "term": "RNA polymerase II transcription factor activity, sequence-specific DNA binding"
+      },
+      {
+        "evidence": "IMP",
+        "id": "GO:0000981",
+        "pubmed": [
+          12165566,
+          16882747,
+          20094846,
+          20484477,
+          21177256
+        ],
+        "term": "RNA polymerase II transcription factor activity, sequence-specific DNA binding"
+      },
+      {
+        "evidence": "IDA",
+        "id": "GO:0003700",
+        "pubmed": 9697705,
+        "term": "transcription factor activity, sequence-specific DNA binding"
+      },
+      {
+        "evidence": "IDA",
+        "id": "GO:0043565",
+        "pubmed": [
+          9697705,
+          24219130
+        ],
+        "term": "sequence-specific DNA binding"
+      },
+      {
+        "evidence": "IMP",
+        "id": "GO:0043565",
+        "pubmed": [
+          12165566,
+          16882747,
+          20094846,
+          20484477,
+          21177256
+        ],
+        "term": "sequence-specific DNA binding"
+      }
+    ]
+  },
+  "homologene": {
+    "genes": [
+      [
+        9606,
+        2304
+      ],
+      [
+        10090,
+        110805
+      ],
+      [
+        10116,
+        192274
+      ],
+      [
+        7955,
+        567676
+      ],
+      [
+        8364,
+        100038190
+      ],
+      [
+        9031,
+        768789
+      ],
+      [
+        9544,
+        715656
+      ],
+      [
+        9913,
+        616734
+      ]
+    ],
+    "id": 3291
+  },
+  "interpro": [
+    {
+      "desc": "Fork head domain conserved site1",
+      "id": "IPR018122",
+      "short_desc": "TF_fork_head_CS_1"
+    },
+    {
+      "desc": "Fork head domain",
+      "id": "IPR001766",
+      "short_desc": "Fork_head_dom"
+    },
+    {
+      "desc": "Fork head domain conserved site 2",
+      "id": "IPR030456",
+      "short_desc": "TF_fork_head_CS_2"
+    },
+    {
+      "desc": "Winged helix-turn-helix DNA-binding domain",
+      "id": "IPR011991",
+      "short_desc": "WHTH_DNA-bd_dom"
+    }
+  ],
+  "ipi": "IPI00879523",
+  "map_location": "9q22",
+  "name": "forkhead box E1",
+  "pfam": "PF00250",
+  "pharmgkb": "PA28223",
+  "prosite": "PS50039",
+  "reagent": {
+    "GNF_Qia_hs-genome_v1_siRNA": [
+      {
+        "id": "GNF249455",
+        "relationship": "is"
+      },
+      {
+        "id": "GNF249456",
+        "relationship": "is"
+      },
+      {
+        "id": "GNF249457",
+        "relationship": "is"
+      },
+      {
+        "id": "GNF249458",
+        "relationship": "is"
+      }
+    ]
+  },
+  "refseq": {
+    "genomic": [
+      "NC_000009.12",
+      "NC_018920.2",
+      "NG_011979.1"
+    ],
+    "protein": "NP_004464.2",
+    "rna": "NM_004473.3",
+    "translation": {
+      "protein": "NP_004464.2",
+      "rna": "NM_004473.3"
+    }
+  },
+  "reporter": {
+    "HG-U133_Plus_2": [
+      "206912_at",
+      "208239_at"
+    ],
+    "HG-U95Av2": [
+      "31353_f_at",
+      "31354_r_at",
+      "36370_at"
+    ],
+    "HTA-2_0": "TC09000493.hg.1",
+    "HuEx-1_0": "3181374",
+    "HuGene-1_1": "8156743",
+    "HuGene-2_1": "17087374"
+  },
+  "retired": [
+    7081,
+    27021
+  ],
+  "summary": "This intronless gene belongs to the forkhead family of transcription factors, which is characterized by a distinct forkhead domain. This gene functions as a thyroid transcription factor which likely plays a crucial role in thyroid morphogenesis. Mutations in this gene are associated with congenital hypothyroidism and cleft palate with thyroid dysgenesis. The map localization of this gene suggests it may also be a candidate gene for squamous cell epithelioma and hereditary sensory neuropathy type I.",
+  "symbol": "FOXE1",
+  "taxid": 9606,
+  "type_of_gene": "protein-coding",
+  "unigene": "Hs.159234",
+  "uniprot": {
+    "Swiss-Prot": "O00358"
+  },
+  "wikipedia": {
+    "url_stub": "FOXE1"
+  }
+}
