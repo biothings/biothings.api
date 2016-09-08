@@ -16,7 +16,7 @@ def dict_sweep(d, vals=[".", "-", "", "NA", "none", " ", "Not Available", "unkno
     @param d: a dictionary
     @param vals: a string or list of strings to sweep
     """
-    for key, val in d.items():
+    for key, val in list(d.items()):
         if val in vals:
             del d[key]
         elif isinstance(val, list):
