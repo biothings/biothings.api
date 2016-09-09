@@ -240,3 +240,11 @@ def backup_src_configs():
         send_s3_file(bakfile, bakfile_key, overwrite=True)
         os.remove(bakfile)
         print('Done.')
+
+
+def get_data_folder(src_name):
+    src_dump = get_src_dump()
+    src_doc = src_dump.find_one({'_id': src_name})
+    assert src_doc['status'] == 'success', "Source files are not ready yet [status: \"%s\"]." % src_doc['status']
+    return src_doc['data_folder']
+

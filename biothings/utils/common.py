@@ -390,6 +390,43 @@ def get_random_string():
 def get_timestamp():
     return time.strftime('%Y%m%d')
 
+class LogPrint:
+    def __init__(self, log_f, log=1, timestamp=0):
+        '''If this class is set to sys.stdout, it will output both log_f and __stdout__.
+           log_f is a file handler.
+        '''
+        self.log_f = log_f
+        self.log = log
+        self.timestamp = timestamp
+        if self.timestamp:
+            self.log_f.write('*'*10 + 'Log starts at ' + time.ctime() + '*'*10 + '\n')
+
+    def write(self, text):
+        sys.__stdout__.write(text)
+        if self.log:
+            self.log_f.write(text)
+            self.flush()
+
+    def flush(self):
+        self.log_f.flush()
+
+    def start(self):
+        sys.stdout = self
+
+    def pause(self):
+        sys.stdout = sys.__stdout__
+
+    def resume(self):
+        sys.stdout = self
+
+    def close(self):
+        if self.timestamp:
+            self.log_f.write('*'*10 + 'Log ends at ' + time.ctime() + '*'*10 + '\n')
+        sys.stdout = sys.__stdout__
+        self.log_f.close()
+
+    def fileno(self):
+        return self.log_f.fileno()
 
 def find_doc(k, keys):
     ''' Used by jsonld insertion in www.api.es._insert_jsonld '''
