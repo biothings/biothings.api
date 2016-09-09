@@ -10,6 +10,8 @@ from contextlib import contextmanager
 import os.path
 from shlex import shlex
 import pickle
+import json
+import logging
 
 if sys.version_info.major == 3:
     str_types = str
@@ -257,10 +259,10 @@ def get_compressed_outfile(filename, compress='gzip'):
         out_f = gzip.GzipFile(filename, 'wb')
     elif compress == 'bz2':
         import bz2
-        out_f = bz2.BZ2File(filename, 'w')
+        out_f = bz2.BZ2File(filename, 'wb')
     elif compress == 'lzma':
         import lzma
-        out_f = lzma.LZMAFile(filename, 'w')
+        out_f = lzma.LZMAFile(filename, 'wb')
     else:
         raise ValueError("Invalid compress parameter.")
     return out_f
@@ -334,9 +336,6 @@ def loadobj(filename, mode='file'):
     else:
         if is_str(filename):
             fobj = open_compressed_file(filename)
-            # fobj = gzip.GzipFile(filename, 'rb')
-            # fobj = bz2.BZ2File(filename, 'r')
-            # fobj = lzma.LZMAFile(filename, 'r')
         else:
             fobj = filename   # input is a file-like handler
     try:
@@ -428,6 +427,11 @@ class LogPrint:
     def fileno(self):
         return self.log_f.fileno()
 
+def setup_logfile(logfile):
+    fh = logging.FileHandler(logfile)
+    fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logging.getLogger().addHandler(fh)
+
 def find_doc(k, keys):
     ''' Used by jsonld insertion in www.api.es._insert_jsonld '''
     n = len(keys)
@@ -449,3 +453,102 @@ def find_doc(k, keys):
                     continue
             k = tmp
     return k
+
+def SubStr(input_string, start_string='', end_string='', include=0):
+    '''Return the substring between start_string and end_string.
+        If start_string is '', cut string from the beginning of input_string.
+        If end_string is '', cut string to the end of input_string.
+        If either start_string or end_string can not be found from input_string, return ''.
+        The end_pos is the first position of end_string after start_string.
+        If multi-occurence,cut at the first position.
+        include=0(default), does not include start/end_string;
+        include=1:          include start/end_string.'''
+
+    start_pos = input_string.find(start_string)
+    if start_pos == -1:
+        return ''
+    start_pos += len(start_string)
+    if end_string == '':
+        end_pos = len(input_string)
+    else:
+        end_pos = input_string[start_pos:].find(end_string)   # get the end_pos relative with the start_pos
+        if end_pos == -1:
+            return ''
+        else:
+            end_pos += start_pos  # get actual end_pos
+    if include == 1:
+        return input_string[start_pos - len(start_string): end_pos + len(end_string)]
+    else:
+        return input_string[start_pos:end_pos]
+
+def safe_unicode(s, mask='#'):
+    '''replace non-decodable char into "#".'''
+    try:
+        _s = str(s)
+    except UnicodeDecodeError as e:
+        pos = e.args[2]
+        _s = s.replace(s[pos], mask)
+        print('Warning: invalid character "%s" is masked as "%s".' % (s[pos], mask))
+        return safe_unicode(_s, mask)
+
+    return _s
+
+def file_newer(source, target):
+    '''return True if source file is newer than target file.'''
+    return os.stat(source)[-2] > os.stat(target)[-2]
+
+def newer(t0, t1, format='%Y%m%d'):
+    '''t0 and t1 are string of timestamps matching "format" pattern.
+       Return True if t1 is newer than t0.
+    '''
+    return datetime.strptime(t0, format) < datetime.strptime(t1, format)
+
+def hipchat_msg(msg, color='yellow', message_format='text'):
+    import requests
+    from config import HIPCHAT_CONFIG
+    if not HIPCHAT_CONFIG or not HIPCHAT_CONFIG.get("token"):
+        return
+
+    url = 'https://sulab.hipchat.com/v2/room/{roomid}/notification?auth_token={token}'.format(**HIPCHAT_CONFIG)
+    headers = {'content-type': 'application/json'}
+    _msg = msg.lower()
+    for keyword in ['fail', 'error']:
+        if _msg.find(keyword) != -1:
+            color = 'red'
+            break
+    params = {"from" : HIPCHAT_CONFIG['from'], "message" : msg,
+              "color" : color, "message_format" : message_format}
+    res = requests.post(url,json.dumps(params), headers=headers)
+    # hipchat replis with "no content"
+    assert res.status_code == 200 or res.status_code == 204, (str(res), res.text)
+
+def send_s3_file(localfile, s3key, overwrite=False):
+    '''save a localfile to s3 bucket with the given key.
+       bucket is set via S3_BUCKET
+       it also save localfile's lastmodified time in s3 file's metadata
+    '''
+    try:
+        from config import AWS_KEY, AWS_SECRET, S3_BUCKET
+        from boto import connect_s3
+
+        assert os.path.exists(localfile), 'localfile "{}" does not exist.'.format(localfile)
+        s3 = connect_s3(AWS_KEY, AWS_SECRET)
+        bucket = s3.get_bucket(S3_BUCKET)
+        k = bucket.new_key(s3key)
+        if not overwrite:
+            assert not k.exists(), 's3key "{}" already exists.'.format(s3key)
+        lastmodified = os.stat(localfile)[-2]
+        k.set_metadata('lastmodified', lastmodified)
+        k.set_contents_from_filename(localfile)
+    except ImportError:
+        logging.info("Skip sending file to S3, missing information in config file: AWS_KEY, AWS_SECRET or S3_BUCKET")
+
+class DateTimeJSONEncoder(json.JSONEncoder):
+    '''A class to dump Python Datetime object.
+        json.dumps(data, cls=DateTimeJSONEncoder, indent=indent)
+    '''
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        else:
+            return super(DateTimeJSONEncoder, self).default(obj)
