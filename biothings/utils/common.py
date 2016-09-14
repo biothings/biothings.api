@@ -20,6 +20,10 @@ else:
     str_types = (str, unicode)    # noqa
     import cPickle as pickle
 
+try:
+    from biothings import config
+except ImportError:
+    raise Exception("call biothings.config_for_app() first")
 
 # ===============================================================================
 # Misc. Utility functions
@@ -505,18 +509,17 @@ def newer(t0, t1, format='%Y%m%d'):
 
 def hipchat_msg(msg, color='yellow', message_format='text'):
     import requests
-    from config import HIPCHAT_CONFIG
-    if not HIPCHAT_CONFIG or not HIPCHAT_CONFIG.get("token"):
+    if not config.HIPCHAT_CONFIG or not config.HIPCHAT_CONFIG.get("token"):
         return
 
-    url = 'https://sulab.hipchat.com/v2/room/{roomid}/notification?auth_token={token}'.format(**HIPCHAT_CONFIG)
+    url = 'https://sulab.hipchat.com/v2/room/{roomid}/notification?auth_token={token}'.format(**config.HIPCHAT_CONFIG)
     headers = {'content-type': 'application/json'}
     _msg = msg.lower()
     for keyword in ['fail', 'error']:
         if _msg.find(keyword) != -1:
             color = 'red'
             break
-    params = {"from" : HIPCHAT_CONFIG['from'], "message" : msg,
+    params = {"from" : config.HIPCHAT_CONFIG['from'], "message" : msg,
               "color" : color, "message_format" : message_format}
     res = requests.post(url,json.dumps(params), headers=headers)
     # hipchat replis with "no content"
@@ -528,12 +531,11 @@ def send_s3_file(localfile, s3key, overwrite=False):
        it also save localfile's lastmodified time in s3 file's metadata
     '''
     try:
-        from config import AWS_KEY, AWS_SECRET, S3_BUCKET
         from boto import connect_s3
 
         assert os.path.exists(localfile), 'localfile "{}" does not exist.'.format(localfile)
-        s3 = connect_s3(AWS_KEY, AWS_SECRET)
-        bucket = s3.get_bucket(S3_BUCKET)
+        s3 = connect_s3(config.AWS_KEY, config.AWS_SECRET)
+        bucket = s3.get_bucket(config.S3_BUCKET)
         k = bucket.new_key(s3key)
         if not overwrite:
             assert not k.exists(), 's3key "{}" already exists.'.format(s3key)

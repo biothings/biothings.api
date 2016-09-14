@@ -1,14 +1,11 @@
 from __future__ import print_function
 import time
 from pymongo import MongoClient
-from config import (DATA_SRC_SERVER, DATA_SRC_PORT, DATA_SRC_DATABASE,
-                    DATA_SRC_MASTER_COLLECTION, DATA_SRC_DUMP_COLLECTION,
-                    DATA_SRC_BUILD_COLLECTION,
-                    DATA_SERVER_USERNAME, DATA_SERVER_PASSWORD,
-                    DATA_TARGET_SERVER, DATA_TARGET_PORT, DATA_TARGET_DATABASE,
-                    DATA_TARGET_MASTER_COLLECTION)
+try:
+    from biothings import config
+except ImportError:
+    raise Exception("call biothings.config_for_app() first")
 from biothings.utils.common import timesofar
-
 
 class Connection(MongoClient):
     """
@@ -32,9 +29,9 @@ class Connection(MongoClient):
 
 def get_conn(server, port):
     # TODO: split username/passwd for src/target server
-    if DATA_SERVER_USERNAME and DATA_SERVER_PASSWORD:
-        uri = "mongodb://{}:{}@{}:{}".format(DATA_SERVER_USERNAME,
-                                             DATA_SERVER_PASSWORD,
+    if config.DATA_SERVER_USERNAME and config.DATA_SERVER_PASSWORD:
+        uri = "mongodb://{}:{}@{}:{}".format(config.DATA_SERVER_USERNAME,
+                                             config.DATA_SERVER_PASSWORD,
                                              server, port)
     else:
         uri = "mongodb://{}:{}".format(server, port)
@@ -43,41 +40,41 @@ def get_conn(server, port):
 
 
 def get_src_conn():
-    return get_conn(DATA_SRC_SERVER, DATA_SRC_PORT)
+    return get_conn(config.DATA_SRC_SERVER, config.DATA_SRC_PORT)
 
 
 def get_src_db(conn=None):
     conn = conn or get_src_conn()
-    return conn[DATA_SRC_DATABASE]
+    return conn[config.DATA_SRC_DATABASE]
 
 
 def get_src_master(conn=None):
     conn = conn or get_src_conn()
-    return conn[DATA_SRC_DATABASE][DATA_SRC_MASTER_COLLECTION]
+    return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_MASTER_COLLECTION]
 
 
 def get_src_dump(conn=None):
     conn = conn or get_src_conn()
-    return conn[DATA_SRC_DATABASE][DATA_SRC_DUMP_COLLECTION]
+    return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_DUMP_COLLECTION]
 
 
 def get_src_build(conn=None):
     conn = conn or get_src_conn()
-    return conn[DATA_SRC_DATABASE][DATA_SRC_BUILD_COLLECTION]
+    return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
 
 
 def get_target_conn():
-    return get_conn(DATA_TARGET_SERVER, DATA_TARGET_PORT)
+    return get_conn(config.DATA_TARGET_SERVER, config.DATA_TARGET_PORT)
 
 
 def get_target_db(conn=None):
     conn = conn or get_target_conn()
-    return conn[DATA_TARGET_DATABASE]
+    return conn[config.DATA_TARGET_DATABASE]
 
 
 def get_target_master(conn=None):
     conn = conn or get_target_conn()
-    return conn[DATA_TARGET_DATABASE][DATA_TARGET_MASTER_COLLECTION]
+    return conn[config.DATA_TARGET_DATABASE][config.DATA_TARGET_MASTER_COLLECTION]
 
 
 def doc_feeder0(collection, step=1000, s=None, e=None, inbatch=False):
