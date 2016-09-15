@@ -41,7 +41,7 @@ def dispatch(src):
         upload_logfile = os.path.join(config.DATA_ARCHIVE_ROOT, '{}_upload.log'.format(src))
 
     log_f, logfile = safewfile(upload_logfile, prompt=False, default='O')
-    p = Popen(['python', '-u', '-m', 'biothings.dataload.start', src],
+    p = Popen(['python', '-u', 'biothings/dataload/start.py', src],
               stdout=log_f, stderr=STDOUT, cwd=config.APP_PATH)
     p.logfile = logfile
     p.log_f = log_f
