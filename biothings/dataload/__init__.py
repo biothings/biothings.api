@@ -3,7 +3,7 @@ import time, sys, os, importlib, copy
 import datetime, types
 from biothings import config
 from biothings.utils.common import get_timestamp, get_random_string, timesofar, iter_n
-from biothings.utils.mongo import get_src_db, get_src_master, get_src_conn
+from biothings.utils.mongo import get_src_conn
 
 
 class SourceUploader(object):
@@ -17,7 +17,7 @@ class SourceUploader(object):
     def register_sources(self):
         for src in self.__sources__:
             src_m = importlib.import_module('dataload.sources.' + src)
-            metadata = src_m.__METADATA__
+            metadata = src_m.__metadata__
             name = src + '_doc'
             metadata['load_data'] = src_m.load_data
             metadata['get_mapping'] = src_m.get_mapping
@@ -50,7 +50,6 @@ class DocSourceMaster(dict):
     }
 
 class DocSource(dict):
-
     __collection__ = None      # should be specified individually
     __database__ = config.DATA_SRC_DATABASE
     temp_collection = None     # temp collection is for dataloading
@@ -105,41 +104,55 @@ class DocSource(dict):
             if batch:
                 yield doc_li
 
+    def post_update_data(self):
+        """Override as needed to perform operations after
+           date has been uploaded"""
+        pass
+
+    def update_data(self, doc_d, step):
+        doc_d = doc_d or self.load_data()
+        print("doc_d mem: %s" % sys.getsizeof(doc_d))
+
+        print("Uploading to the DB...", end='')
+        t0 = time.time()
+        for doc_li in self.doc_iterator(doc_d, batch=True, step=step):
+            self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
+        print('Done[%s]' % timesofar(t0))
+        self.switch_collection()
+        self.post_update_data()
+
+    def generate_doc_src_master(self):
+        _doc = {"_id": str(self.__collection__),
+                "name": str(self.__collection__),
+                "timestamp": datetime.datetime.now()}
+        if hasattr(self, 'get_mapping'):
+            _doc['mapping'] = getattr(self, 'get_mapping')()
+        return _doc
+
+    def update_master(self):
+        _doc = self.generate_doc_src_master()
+        self.save_doc_src_master(_doc)
+
+    def save_doc_src_master(self,_doc):
+        coll = self.conn[DocSourceMaster.__database__][DocSourceMaster.__collection__]
+        dkey = {"_id": _doc["_id"]}
+        prev = coll.find_one(dkey)
+        if prev:
+            coll.replace_one(dkey, _doc)
+        else:
+            coll.insert_one(_doc)
+
     def load(self, doc_d=None, update_data=True, update_master=True, test=False, step=10000):
         if not self.temp_collection:
             self.make_temp_collection()
-
         self.temp_collection.drop()       # drop all existing records just in case.
 
         if update_data:
-            print("self %s" % self.load_data)
-            doc_d = doc_d or self.load_data()
-            print("doc_d mem: %s" % sys.getsizeof(doc_d))
-
-            print("Uploading to the DB...", end='')
-            t0 = time.time()
-            for doc_li in self.doc_iterator(doc_d, batch=True, step=step):
-                if not test:
-                    self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
-            print('Done[%s]' % timesofar(t0))
-            self.switch_collection()
-
+            self.update_data(doc_d,step)
         if update_master:
             # update src_master collection
             if not test:
-                _doc = {"_id": str(self.__collection__),
-                        "name": str(self.__collection__),
-                        "timestamp": datetime.datetime.now()}
-                if hasattr(self, 'get_mapping'):
-                    _doc['mapping'] = getattr(self, 'get_mapping')()
-
-                coll = self.conn[DocSourceMaster.__database__][DocSourceMaster.__collection__]
-                dkey = {"_id": _doc["_id"]}
-                prev = coll.find_one(dkey)
-                if prev:
-                    coll.replace_one(dkey, _doc)
-                else:
-                    coll.insert_one(_doc)
+                self.update_master()
 
     @property
     def collection(self):
