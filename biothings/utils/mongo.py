@@ -223,7 +223,8 @@ def target_clean_collections(keep_last=2, target=None, verbose=True, noconfirm=F
 def backup_src_configs():
     import json
     import os
-    from utils.common import send_s3_file, get_timestamp, DateTimeJSONEncoder
+    from .common import get_timestamp, DateTimeJSONEncoder
+    from .aws import send_s3_file
 
     db = get_src_db()
     for cfg in ['src_dump', 'src_master', 'src_build']:

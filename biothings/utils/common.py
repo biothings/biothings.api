@@ -20,10 +20,6 @@ else:
     str_types = (str, unicode)    # noqa
     import cPickle as pickle
 
-try:
-    from biothings import config
-except ImportError:
-    raise Exception("call biothings.config_for_app() first")
 
 # ===============================================================================
 # Misc. Utility functions
@@ -507,43 +503,6 @@ def newer(t0, t1, format='%Y%m%d'):
     '''
     return datetime.strptime(t0, format) < datetime.strptime(t1, format)
 
-def hipchat_msg(msg, color='yellow', message_format='text'):
-    import requests
-    if not config.HIPCHAT_CONFIG or not config.HIPCHAT_CONFIG.get("token"):
-        return
-
-    url = 'https://sulab.hipchat.com/v2/room/{roomid}/notification?auth_token={token}'.format(**config.HIPCHAT_CONFIG)
-    headers = {'content-type': 'application/json'}
-    _msg = msg.lower()
-    for keyword in ['fail', 'error']:
-        if _msg.find(keyword) != -1:
-            color = 'red'
-            break
-    params = {"from" : config.HIPCHAT_CONFIG['from'], "message" : msg,
-              "color" : color, "message_format" : message_format}
-    res = requests.post(url,json.dumps(params), headers=headers)
-    # hipchat replis with "no content"
-    assert res.status_code == 200 or res.status_code == 204, (str(res), res.text)
-
-def send_s3_file(localfile, s3key, overwrite=False):
-    '''save a localfile to s3 bucket with the given key.
-       bucket is set via S3_BUCKET
-       it also save localfile's lastmodified time in s3 file's metadata
-    '''
-    try:
-        from boto import connect_s3
-
-        assert os.path.exists(localfile), 'localfile "{}" does not exist.'.format(localfile)
-        s3 = connect_s3(config.AWS_KEY, config.AWS_SECRET)
-        bucket = s3.get_bucket(config.S3_BUCKET)
-        k = bucket.new_key(s3key)
-        if not overwrite:
-            assert not k.exists(), 's3key "{}" already exists.'.format(s3key)
-        lastmodified = os.stat(localfile)[-2]
-        k.set_metadata('lastmodified', lastmodified)
-        k.set_contents_from_filename(localfile)
-    except ImportError:
-        logging.info("Skip sending file to S3, missing information in config file: AWS_KEY, AWS_SECRET or S3_BUCKET")
 
 class DateTimeJSONEncoder(json.JSONEncoder):
     '''A class to dump Python Datetime object.
