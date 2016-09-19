@@ -109,20 +109,20 @@ class GeneDocDispatcher:
         src_clean_archives(noconfirm=True)
         target_clean_collections(noconfirm=True)
 
-        for config in ('mygene', 'mygene_allspecies'):
+        for conf in ('mygene', 'mygene_allspecies'):
             t0 = time.time()
-            p = Popen(['python', '-m', 'databuild.builder', config], cwd=config.APP_PATH)
+            p = Popen(['python', '-m', 'databuild.builder', conf], cwd=config.APP_PATH)
             returncode = p.wait()
             t = timesofar(t0)
             if returncode == 0:
-                msg = 'Dispatcher:  "{}" builder finished successfully with code {} (time: {})'.format(config, returncode, t)
+                msg = 'Dispatcher:  "{}" builder finished successfully with code {} (time: {})'.format(conf, returncode, t)
                 color = "green"
             else:
-                msg = 'Dispatcher:  "{}" builder failed successfully with code {} (time: {})'.format(config, returncode, t)
+                msg = 'Dispatcher:  "{}" builder failed successfully with code {} (time: {})'.format(conf, returncode, t)
                 color = "red"
             print(msg)
             if hipchat_msg:
-                msg += '<a href="{}/log/build/{}">build log</a>'.format(DATA_WWW_ROOT_URL,config)
+                msg += '<a href="{}/log/build/{}">build log</a>'.format(DATA_WWW_ROOT_URL,conf)
                 hipchat_msg(msg, message_format='html',color=color)
 
             assert returncode == 0, "Subprocess failed. Check error above."
@@ -130,20 +130,20 @@ class GeneDocDispatcher:
 
     @classmethod
     def handle_genedoc_merged(self, **kwargs):
-        for config in ('mygene', 'mygene_allspecies'):
+        for conf in ('mygene', 'mygene_allspecies'):
             t0 = time.time()
-            p = Popen(['python', '-m', 'databuild.sync', config, '-p', '-b'], cwd=config.APP_PATH)
+            p = Popen(['python', '-m', 'databuild.sync', conf, '-p', '-b'], cwd=config.APP_PATH)
             returncode = p.wait()
             t = timesofar(t0)
             if returncode == 0:
-                msg = 'Dispatcher:  "{}" syncer finished successfully with code {} (time: {})'.format(config, returncode, t)
+                msg = 'Dispatcher:  "{}" syncer finished successfully with code {} (time: {})'.format(conf, returncode, t)
                 color = "green"
             else:
-                msg = 'Dispatcher:  "{}" syncer failed successfully with code {} (time: {})'.format(config, returncode, t)
+                msg = 'Dispatcher:  "{}" syncer failed successfully with code {} (time: {})'.format(conf, returncode, t)
                 color = "red"
             print(msg)
             if hipchat_msg:
-                msg += '<a href="{}/log/sync/{}">sync log</a>'.format(DATA_WWW_ROOT_URL,config)
+                msg += '<a href="{}/log/sync/{}">sync log</a>'.format(DATA_WWW_ROOT_URL,conf)
                 hipchat_msg(msg, message_format='html',color=color)
 
             assert returncode == 0, "Subprocess failed. Check error above."

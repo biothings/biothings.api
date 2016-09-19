@@ -1,6 +1,7 @@
 from __future__ import print_function
 import base64
 import os
+import io
 import random
 import string
 import sys
@@ -326,6 +327,7 @@ def loadobj(filename, mode='file'):
 
            obj = loadobj(('data.pyobj', mongo_db), mode='gridfs')
     '''
+    import gzip
     if mode == 'gridfs':
         import gridfs
         filename, db = filename   # input is a tuple of (filename, mongo_db)
@@ -333,14 +335,16 @@ def loadobj(filename, mode='file'):
         fobj = fs.get(filename)
     else:
         if is_str(filename):
-            fobj = open_compressed_file(filename)
+            fobj = open(filename, 'rb')
         else:
             fobj = filename   # input is a file-like handler
+    gzfobj = gzip.GzipFile(fileobj=fobj)
     try:
-        object = pickle.load(fobj)
+        obj = pickle.load(gzfobj)
     finally:
+        gzfobj.close()
         fobj.close()
-    return object
+    return obj
 
 
 def list2dict(a_list, keyitem, alwayslist=False):
