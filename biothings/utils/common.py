@@ -152,22 +152,20 @@ def anyfile(infile, mode='r'):
     filetype = os.path.splitext(infile)[1].lower()
     if filetype == '.gz':
         import gzip
-        #in_f = gzip.GzipFile(infile, 'r')
-        in_f = gzip.open(infile, 'rt')
+        in_f = io.TextIOWrapper(gzip.GzipFile(infile, 'r'))
     elif filetype == '.zip':
         import zipfile
-        in_f = zipfile.ZipFile(infile, 'r').open(rawfile, 'r')
+        in_f = io.TextIOWrapper(zipfile.ZipFile(infile, 'r').open(rawfile, 'r'))
     else:
         in_f = open(infile, mode)
     return in_f
-
 
 def is_filehandle(fh):
     '''return True/False if fh is a file-like object'''
     return hasattr(fh, 'read') and hasattr(fh, 'close')
 
 
-class open_anyfile():
+class open_anyfile(object):
     '''a context manager can be used in "with" stmt.
        accepts a filehandle or anything accepted by anyfile function.
 
