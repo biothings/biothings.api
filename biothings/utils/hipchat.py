@@ -1,4 +1,4 @@
-import requests
+import requests, json
 
 try:
     from biothings import config

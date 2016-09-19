@@ -4,9 +4,6 @@ from subprocess import Popen
 from datetime import datetime
 import dispatch
 
-src_path = os.path.split(os.path.split(os.path.abspath(__file__))[0])[0] 
-# TODO:needed ?
-sys.path.insert(0,src_path)
 import biothings, config
 biothings.config_for_app(config)
 
@@ -114,7 +111,7 @@ class GeneDocDispatcher:
 
         for config in ('mygene', 'mygene_allspecies'):
             t0 = time.time()
-            p = Popen(['python', '-m', 'databuild.builder', config], cwd=src_path)
+            p = Popen(['python', '-m', 'databuild.builder', config], cwd=config.APP_PATH)
             returncode = p.wait()
             t = timesofar(t0)
             if returncode == 0:
@@ -135,7 +132,7 @@ class GeneDocDispatcher:
     def handle_genedoc_merged(self, **kwargs):
         for config in ('mygene', 'mygene_allspecies'):
             t0 = time.time()
-            p = Popen(['python', '-m', 'databuild.sync', config, '-p', '-b'], cwd=src_path)
+            p = Popen(['python', '-m', 'databuild.sync', config, '-p', '-b'], cwd=config.APP_PATH)
             returncode = p.wait()
             t = timesofar(t0)
             if returncode == 0:
