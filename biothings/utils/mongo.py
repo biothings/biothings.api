@@ -153,7 +153,7 @@ def src_clean_archives(keep_last=1, src=None, verbose=True, noconfirm=False):
     '''clean up archive collections in src db, only keep last <kepp_last>
        number of archive.
     '''
-    from utils.dataload import list2dict
+    from biothings.utils.dataload import list2dict
     from biothings.utils.common import ask
 
     src = src or get_src_db()
