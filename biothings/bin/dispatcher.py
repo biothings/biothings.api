@@ -132,7 +132,7 @@ class GeneDocDispatcher:
     def handle_genedoc_merged(self, **kwargs):
         for conf in ('mygene', 'mygene_allspecies'):
             t0 = time.time()
-            p = Popen(['python', '-m', 'databuild.sync', conf, '-p', '-b'], cwd=config.APP_PATH)
+            p = Popen(['python', '-m', 'biothings.databuild.sync', conf, '-p', '-b'], cwd=config.APP_PATH)
             returncode = p.wait()
             t = timesofar(t0)
             if returncode == 0:
