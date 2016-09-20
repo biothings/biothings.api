@@ -22,5 +22,5 @@ def send_s3_file(localfile, s3key, overwrite=False):
         lastmodified = os.stat(localfile)[-2]
         k.set_metadata('lastmodified', lastmodified)
         k.set_contents_from_filename(localfile)
-    except ImportError:
+    except AttributeError:
         logging.info("Skip sending file to S3, missing information in config file: AWS_KEY, AWS_SECRET or S3_BUCKET")
