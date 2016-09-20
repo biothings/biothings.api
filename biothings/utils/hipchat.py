@@ -6,7 +6,7 @@ except ImportError:
     raise Exception("call biothings.config_for_app() first")
 
 def hipchat_msg(msg, color='yellow', message_format='text'):
-    if not config.HIPCHAT_CONFIG or not config.HIPCHAT_CONFIG.get("token"):
+    if not hasattr(config,"HIPCHAT_CONFIG") or not config.HIPCHAT_CONFIG or not config.HIPCHAT_CONFIG.get("token"):
         return
 
     url = 'https://sulab.hipchat.com/v2/room/{roomid}/notification?auth_token={token}'.format(**config.HIPCHAT_CONFIG)
