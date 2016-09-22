@@ -1,7 +1,7 @@
 import json, logging, re
 from biothings.utils.common import dotdict, is_str, is_seq, find_doc
 from biothings.utils.es import get_es
-from elasticsearch import NotFoundError, RequestError
+from elasticsearch import NotFoundError, RequestError, TransportError
 from biothings.settings import BiothingSettings
 #from biothings.utils.dotfield import compose_dot_fields_by_fields as compose_dot_fields
 from collections import OrderedDict
@@ -384,7 +384,7 @@ class ESQuery(object):
         options = self._get_cleaned_query_options(kwargs)
         try:
             r = self._es.scroll(scroll_id, scroll=self._scroll_time)
-        except (NotFoundError, RequestError):
+        except (NotFoundError, RequestError, TransportError):
             return {'success': False, 'error': 'Invalid or stale scroll_id.'}
         scroll_id = r.get('_scroll_id')
         if scroll_id is None or not r['hits']['hits']:
