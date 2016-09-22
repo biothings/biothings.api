@@ -1,11 +1,9 @@
 from __future__ import print_function
 import time
 from pymongo import MongoClient
-try:
-    from biothings import config
-except ImportError:
-    raise Exception("call biothings.config_for_app() first")
 from biothings.utils.common import timesofar
+# stub, until set to real config module
+config = None
 
 class Connection(MongoClient):
     """
@@ -27,6 +25,19 @@ class Connection(MongoClient):
             except Exception:
                 raise AttributeError(key)
 
+def requires_config(func):
+    def func_wrapper(*args,**kwargs):
+        global config
+        if not config:
+            try:
+                from biothings import config as config_mod
+                config = config_mod
+            except ImportError:
+                raise Exception("call biothings.config_for_app() first")
+        return func(*args,**kwargs)
+    return func_wrapper
+
+@requires_config
 def get_conn(server, port):
     # TODO: split username/passwd for src/target server
     if config.DATA_SERVER_USERNAME and config.DATA_SERVER_PASSWORD:
@@ -39,6 +50,7 @@ def get_conn(server, port):
     return conn
 
 
+@requires_config
 def get_src_conn():
     return get_conn(config.DATA_SRC_SERVER, config.DATA_SRC_PORT)
 
@@ -243,6 +255,7 @@ def backup_src_configs():
 def get_data_folder(src_name):
     src_dump = get_src_dump()
     src_doc = src_dump.find_one({'_id': src_name})
-    assert src_doc['status'] == 'success', "Source files are not ready yet [status: \"%s\"]." % src_doc['status']
+    # ensure we're not in a transient state
+    assert src_doc['status'] in ['success','failed'], "Source files are not ready yet [status: \"%s\"]." % src_doc['status']
     return src_doc['data_folder']
 
