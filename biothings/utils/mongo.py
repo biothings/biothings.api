@@ -55,35 +55,42 @@ def get_src_conn():
     return get_conn(config.DATA_SRC_SERVER, config.DATA_SRC_PORT)
 
 
+@requires_config
 def get_src_db(conn=None):
     conn = conn or get_src_conn()
     return conn[config.DATA_SRC_DATABASE]
 
 
+@requires_config
 def get_src_master(conn=None):
     conn = conn or get_src_conn()
     return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_MASTER_COLLECTION]
 
 
+@requires_config
 def get_src_dump(conn=None):
     conn = conn or get_src_conn()
     return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_DUMP_COLLECTION]
 
 
+@requires_config
 def get_src_build(conn=None):
     conn = conn or get_src_conn()
     return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
 
 
+@requires_config
 def get_target_conn():
     return get_conn(config.DATA_TARGET_SERVER, config.DATA_TARGET_PORT)
 
 
+@requires_config
 def get_target_db(conn=None):
     conn = conn or get_target_conn()
     return conn[config.DATA_TARGET_DATABASE]
 
 
+@requires_config
 def get_target_master(conn=None):
     conn = conn or get_target_conn()
     return conn[config.DATA_TARGET_DATABASE][config.DATA_TARGET_MASTER_COLLECTION]
