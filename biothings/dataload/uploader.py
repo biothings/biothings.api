@@ -4,37 +4,6 @@ from biothings.utils.common import get_timestamp, get_random_string, timesofar, 
 from biothings.utils.mongo import get_src_conn
 
 
-class SourceUploader(object):
-    __sources__ = {}
-
-    def __init__(self,sources):
-        self.__class__.__sources__ = sources
-        self.doc_register = {}
-        self.conn = get_src_conn()
-
-    def register_sources(self):
-        for src in self.__sources__:
-            src_m = importlib.import_module('dataload.sources.' + src)
-            metadata = src_m.__metadata__
-            name = src + '_doc'
-            metadata['load_data'] = src_m.load_data
-            metadata['get_mapping'] = src_m.get_mapping
-            metadata['conn'] = self.conn
-            src_cls = type(name, (DocSource,), metadata)
-            # manually propagate db attr
-            src_cls.db = self.conn[src_cls.__database__]
-            self.doc_register[name] = src_cls
-            self.conn.register(src_cls)
-
-    def upload_all(self,**kwargs):
-        for src in self.__sources__:
-            print("src: %s" % src)
-            self.upload_src(src, **kwargs)
-
-    def upload_src(self, src, **kwargs):
-        _src = self.doc_register[src + '_doc']()
-        _src.load(**kwargs)
-
 
 class DocSourceMaster(dict):
     '''A class to manage various doc data sources.'''
@@ -160,4 +129,37 @@ class DocSource(dict):
     def collection(self):
         return self.db[self.__collection__]
 
+
+class SourceUploader(object):
+    __sources__ = {}
+
+    __doc_source_class__ = DocSource
+
+    def __init__(self,sources):
+        self.__class__.__sources__ = sources
+        self.doc_register = {}
+        self.conn = get_src_conn()
+
+    def register_sources(self):
+        for src in self.__sources__:
+            src_m = importlib.import_module('dataload.sources.' + src)
+            metadata = src_m.__metadata__
+            name = src + '_doc'
+            metadata['load_data'] = src_m.load_data
+            metadata['get_mapping'] = src_m.get_mapping
+            metadata['conn'] = self.conn
+            src_cls = type(name, (self.__class__.__doc_source_class__,), metadata)
+            # manually propagate db attr
+            src_cls.db = self.conn[src_cls.__database__]
+            self.doc_register[name] = src_cls
+            self.conn.register(src_cls)
+
+    def upload_all(self,**kwargs):
+        for src in self.__sources__:
+            print("src: %s" % src)
+            self.upload_src(src, **kwargs)
+
+    def upload_src(self, src, **kwargs):
+        _src = self.doc_register[src + '_doc']()
+        _src.load(**kwargs)
 
