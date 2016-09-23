@@ -52,21 +52,6 @@ def to_number(val):
     return val
 
 
-def value_convert(d, skipped_keys=[]):
-    """convert string numbers into integers or floats
-       skip converting certain keys in skipped_keys list"""
-    for key, val in d.items():
-        if isinstance(val, dict):
-            value_convert(val, skipped_keys)
-        if key not in skipped_keys:
-            if isinstance(val, list):
-                d[key] = [to_number(x) for x in val]
-            elif isinstance(val, tuple):
-                d[key] = tuple([to_number(x) for x in val])
-            else:
-                d[key] = to_number(val)
-    return d
-
 
 
 def merge_duplicate_rows(rows, db):
@@ -443,6 +428,7 @@ class MinType(object):
         return (self is other)
 Min = MinType()
 
+# from mygene, originally
 def value_convert(_dict, fn, traverse_list=True):
     '''For each value in _dict, apply fn and then update
        _dict with return the value.
@@ -455,6 +441,25 @@ def value_convert(_dict, fn, traverse_list=True):
         else:
             _dict[k] = fn(_dict[k])
     return _dict
+
+# from biothings, originally
+# closed to value_convert, could be refactored except this one
+# is recursive for dict typed values
+def value_convert_to_number(d, skipped_keys=[]):
+    """convert string numbers into integers or floats
+       skip converting certain keys in skipped_keys list"""
+    for key, val in d.items():
+        if isinstance(val, dict):
+            value_convert(val, skipped_keys)
+        if key not in skipped_keys:
+            if isinstance(val, list):
+                d[key] = [to_number(x) for x in val]
+            elif isinstance(val, tuple):
+                d[key] = tuple([to_number(x) for x in val])
+            else:
+                d[key] = to_number(val)
+    return d
+
 
 
 def dict_convert(_dict, keyfn=None, valuefn=None):
