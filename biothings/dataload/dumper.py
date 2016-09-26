@@ -5,6 +5,7 @@ from datetime import datetime
 from biothings.utils.mongo import get_src_dump
 from biothings.utils.common import timesofar
 
+
 class BaseDumper(object):
     # override in subclass accordingly
     SRC_NAME = None
@@ -12,6 +13,7 @@ class BaseDumper(object):
 
     def __init__(self, no_confirm=True, archive=True):
         self.client = None
+        self.logger = None
         self.src_dump = None
         self.src_doc = None
         self.no_confirm = no_confirm
@@ -65,15 +67,12 @@ class BaseDumper(object):
         fh.name = "logfile"
         sh = logging_mod.StreamHandler()
         sh.name = "logstream"
-        logger = logging_mod.getLogger("%s_dump" % self.SRC_NAME)
-        logger.setLevel(logging_mod.DEBUG)
-        if not fh.name in [h.name for h in logger.handlers]:
-            logger.addHandler(fh)
-        if not sh.name in [h.name for h in logger.handlers]:
-            logger.addHandler(sh)
-        # propagate to global "logging" var for convenience
-        global logging
-        logging = logger
+        self.logger = logging_mod.getLogger("%s_dump" % self.SRC_NAME)
+        self.logger.setLevel(logging_mod.DEBUG)
+        if not fh.name in [h.name for h in self.logger.handlers]:
+            self.logger.addHandler(fh)
+        if not sh.name in [h.name for h in self.logger.handlers]:
+            self.logger.addHandler(sh)
 
     def prepare(self):
         self.prepare_client()
@@ -117,9 +116,9 @@ class BaseDumper(object):
                 self.do_dump()
                 self.register_status("success",pending_to_upload=True)
         except (KeyboardInterrupt,Exception) as e:
-            logging.error("Error while dumping source: %s" % e)
+            self.logger.error("Error while dumping source: %s" % e)
             import traceback
-            logging.error(traceback.format_exc())
+            self.logger.error(traceback.format_exc())
             self.register_status("failed")
         finally:
             if self.client:
@@ -132,7 +131,7 @@ class BaseDumper(object):
             return os.path.join(self.SRC_ROOT_FOLDER, 'latest')
 
     def do_dump(self):
-        logging.info("%d files to download" % len(self.to_dump))
+        self.logger.info("%d files to download" % len(self.to_dump))
         for todo in self.to_dump:
             remote = todo["remote"]
             local = todo["local"]
@@ -167,7 +166,7 @@ class FTPDumper(BaseDumper):
 
     def download(self,remotefile,localfile):
         self.prepare_local_folders(localfile)
-        logging.debug("Downloading '%s'" % remotefile)
+        self.logger.debug("Downloading '%s'" % remotefile)
         with open(localfile,"wb") as out_f:
             self.client.retrbinary('RETR %s' % remotefile, out_f.write)
         # set the mtime to match remote ftp server
@@ -187,7 +186,7 @@ class FTPDumper(BaseDumper):
         remote_lastmodified = int(time.mktime(datetime.strptime(remote_lastmodified, '%Y%m%d%H%M%S').timetuple()))
 
         if remote_lastmodified > local_lastmodified:
-            logging.debug("Remote file '%s' is newer (remote: %s, local: %s)" %
+            self.logger.debug("Remote file '%s' is newer (remote: %s, local: %s)" %
                     (remotefile,remote_lastmodified,local_lastmodified))
             return True
         local_size = res.st_size
@@ -195,9 +194,9 @@ class FTPDumper(BaseDumper):
         response = self.client.sendcmd('SIZE ' + remotefile)
         code, remote_size= map(int,response.split())
         if remote_size > local_size:
-            logging.debug("Remote file '%s' is bigger (remote: %s, local: %s)" % (remotefile,remote_size,local_size))
+            self.logger.debug("Remote file '%s' is bigger (remote: %s, local: %s)" % (remotefile,remote_size,local_size))
             return True
-        logging.debug("'%s' is up-to-date, no need to download" % remotefile)
+        self.logger.debug("'%s' is up-to-date, no need to download" % remotefile)
         return False
 
 
@@ -230,7 +229,7 @@ class WgetDumper(BaseDumper):
         cmdline = "wget %s -O %s" % (remoteurl, localfile)
         return_code = os.system(cmdline)
         if return_code == 0:
-            logging.info("Success.")
+            self.logger.info("Success.")
         else:
-            logging.error("Failed with return code (%s)." % return_code)
+            self.logger.error("Failed with return code (%s)." % return_code)
 

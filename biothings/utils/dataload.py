@@ -450,7 +450,7 @@ def value_convert_to_number(d, skipped_keys=[]):
        skip converting certain keys in skipped_keys list"""
     for key, val in d.items():
         if isinstance(val, dict):
-            value_convert(val, skipped_keys)
+            value_convert_to_number(val, skipped_keys)
         if key not in skipped_keys:
             if isinstance(val, list):
                 d[key] = [to_number(x) for x in val]

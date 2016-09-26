@@ -22,7 +22,10 @@ def main(source):
     import biothings.dataload as btdataload
 
     # package1.module1.Class1
-    klass_path = config.SOURCE_UPLOADER_CLASS
+    default_klass = "biothings.dataload.uploader.SourceStorage"
+    klass_path = getattr(config,"SOURCE_STORAGE_CLASS",default_klass)
+    if not klass_path:
+        klass_path = default_klass
     str_mod,str_klass = ".".join(klass_path.split(".")[:-1]),klass_path.split(".")[-1]
     mod = importlib.import_module(str_mod)
     klass = getattr(mod,str_klass)
