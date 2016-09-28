@@ -9,6 +9,8 @@ from biothings import config
 
 logging = config.logger
 
+class ResourceNotReady(Exception):
+    pass
 
 class DocSourceMaster(dict):
     '''A class to manage various doc data sources.'''
@@ -23,7 +25,7 @@ class DocSourceMaster(dict):
         'timestamp': datetime.datetime,
     }
 
-class DefaultSourceUploader(dict):
+class BaseSourceUploader(object):
     '''
     Default datasource uploader. Database storage can be done
     in batch or line by line. Duplicated records aren't not allowed
@@ -33,6 +35,39 @@ class DefaultSourceUploader(dict):
     __database__ = config.DATA_SRC_DATABASE
     temp_collection = None     # temp collection is for dataloading
 
+    # Will be override in subclasses
+    name = None
+    main_source =None
+
+    def __init__(self,db_conn,data_root):
+        """db_conn is a database connection to fetch/store information about the datasource's state
+        data_root is the root folder containing all resources. It will generate its own
+        data folder from this point"""
+        self.conn = db_conn
+        self.timestamp = datetime.datetime.now()
+        self.t0 = time.time()
+        self.db = self.conn[self.__class__.__database__]
+        self.__class__.main_source = self.__class__.main_source or self.__class__.name
+        self.src_root_folder=os.path.join(data_root, self.__class__.main_source)
+        self.prepare_src_dump()
+        self.setup_log()
+
+    def check_ready(self):
+        if not self.src_doc.get("data_folder"):
+            raise ResourceNotReady("No data folder found")
+        if not self.src_doc.get("download",{}).get("status") == "success":
+            raise ResourceNotReady("No successful download found, src_doc: %s" % self.src_doc)
+        if not os.path.exists(self.src_root_folder):
+            raise ResourceNotReady("Data folder '%s' doesn't exist")
+
+    def load_data(self,data_folder):
+        """Parse data inside data_folder and return structure ready to be
+        inserted in database"""
+        raise NotImplementedError("Implement in subclass")
+
+    def get_mapping(self):
+        """Return ES mapping"""
+        raise NotImplementedError("Implement in subclass")
 
     def make_temp_collection(self):
         '''Create a temp collection for dataloading, e.g., entrez_geneinfo_INEMO.'''
@@ -90,9 +125,8 @@ class DefaultSourceUploader(dict):
         pass
 
     def update_data(self, doc_d, step):
-        doc_d = doc_d or self.load_data()
+        doc_d = doc_d or self.load_data(data_folder=self.data_folder)
         self.logger.debug("doc_d mem: %s" % sys.getsizeof(doc_d))
-
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         for doc_li in self.doc_iterator(doc_d, batch=True, step=step):
@@ -124,7 +158,7 @@ class DefaultSourceUploader(dict):
 
     def register_status(self,status,transient=False,**extra):
         upload_info = {
-                'timestamp': self.timestamp,
+                'started_at': self.timestamp,
                 'logfile': self.logfile,
                 'status': status}
 
@@ -153,6 +187,8 @@ class DefaultSourceUploader(dict):
         self.src_dump.save(self.src_doc)
 
     def load(self, doc_d=None, update_data=True, update_master=True, test=False, step=10000, progress=None, total=None):
+        # sanity check before running
+        self.check_ready()
         try:
             self.unset_pending_upload()
             if not self.temp_collection:
@@ -202,8 +238,12 @@ class DefaultSourceUploader(dict):
         if not sh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(sh)
 
+    @property
+    def data_folder(self):
+        return self.src_doc.get("data_folder")
 
-class NoBatchIgnoreDuplicatedSourceUploader(DefaultSourceUploader):
+
+class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
     '''Same as default uploader, but will store records and ignore if
     any duplicated error occuring (use with caution...). Storage
     is done line by line (slow, not using a batch) but preserve order
@@ -211,7 +251,7 @@ class NoBatchIgnoreDuplicatedSourceUploader(DefaultSourceUploader):
     '''
 
     def update_data(self, doc_d, step):
-        doc_d = doc_d or self.load_data()
+        doc_d = doc_d or self.load_data(data_folder=self.data_folder)
         self.logger.debug("doc_d mem: %s" % sys.getsizeof(doc_d))
 
         self.logger.info("Uploading to the DB...")
@@ -232,7 +272,7 @@ class SourceStorage(object):
     for a datasource. Otherwise, when registering a datasource, a specific
     datasource can be specfied.
     '''
-    __DEFAULT_SOURCE_UPLOADER__ = "biothings.dataload.uploader.DefaultSourceUploader"
+    __DEFAULT_SOURCE_UPLOADER__ = "biothings.dataload.uploader.BaseSourceUploader"
 
     def __init__(self, datasource_path="dataload.sources"):
         self.doc_register = {}
@@ -244,9 +284,22 @@ class SourceStorage(object):
     def get_source_uploader(self,src_module):
         return src_module.__metadata__.get("uploader",self.__class__.__DEFAULT_SOURCE_UPLOADER__)
 
-    def add_custom_source_metadata(self,metadata):
-        """Subclass to customize source uploader metadata"""
-        pass
+    def generate_uploader_instance(self,src_module):
+        # try to find a uploader class in the module
+        uploader_klass = None
+        for attr in dir(src_module):
+            something = getattr(src_module,attr)
+            if type(something) == type and issubclass(something,BaseSourceUploader):
+                uploader_klass = something
+                logging.debug("Found uploader class '%s'" % uploader_klass)
+                break
+        if not uploader_klass:
+            raise AttributeError("Can't find an uploader class in module '%s'" % src_module)
+        uploader_inst = uploader_klass(
+                db_conn=self.conn,
+                data_root=config.DATA_ARCHIVE_ROOT
+                )
+        return uploader_inst
 
     def register_source(self,src_data):
         """Register a new data source. src_data can be a module where some
@@ -272,39 +325,12 @@ class SourceStorage(object):
             return
         else:
             src_m = src_data
-        assert hasattr(src_m,"__metadata__"), "'%s' module has no __metadata__" % src_m
-        src_name = src_m.__metadata__["name"]
-        main_source = src_m.__metadata__.get("main_source",src_name)
-        src_uploader = self.get_source_uploader(src_m)
-        metadata = src_m.__metadata__
-        # TODO: use standard class() to create new instances
-        metadata['load_data'] = src_m.load_data
-        metadata['get_mapping'] = src_m.get_mapping
-        metadata['conn'] = self.conn
-        metadata['name'] = src_name
-        metadata['main_source'] = main_source
-        metadata['timestamp'] = datetime.datetime.now()
-        metadata['t0'] = time.time()
-        # src_name can be main_source.sub_source (like entrez.entrez_gene), only keep main source here
-        metadata['src_root_folder'] = os.path.join(config.DATA_ARCHIVE_ROOT, main_source)
-        # let subclasses enrich metadata as needed
-        self.add_custom_source_metadata(metadata)
-        # dynamically load uploader class
-        str_mod,str_klass = ".".join(src_uploader.split(".")[:-1]),src_uploader.split(".")[-1]
-        mod = importlib.import_module(str_mod)
-        klass = getattr(mod,str_klass)
-        logging.debug("Source: %s will use uploader %s" % (src_name,klass))
-        src_class_name = src_name
-        src_cls = type(src_class_name, (klass,), metadata)
-        # manually propagate db attr
-        src_cls.db = self.conn[src_cls.__database__]
-        src_cls.setup_log(src_cls)
-        src_cls.prepare_src_dump(src_cls)
-        if main_source:
-            self.doc_register.setdefault(main_source,[]).append(src_cls)
+        uploader_inst = self.generate_uploader_instance(src_m)
+        if uploader_inst.main_source:
+            self.doc_register.setdefault(uploader_inst.main_source,[]).append(uploader_inst)
         else:
-            self.doc_register[src_class_name] = src_cls
-        self.conn.register(src_cls)
+            self.doc_register[updloader_inst.name] = uploader_inst
+        self.conn.register(uploader_inst.__class__)
 
     def register_sources(self, sources):
         for src_data in sources:
@@ -315,9 +341,9 @@ class SourceStorage(object):
             self.upload_src(src, **kwargs)
 
     def upload_src(self, src, **kwargs):
-        klass = None
+        uploaders = None
         if src in self.doc_register:
-            klass = self.doc_register[src]
+            uploaders = self.doc_register[src]
         else:
             # maybe src is a sub-source ?
             for main_src in self.doc_register:
@@ -325,20 +351,21 @@ class SourceStorage(object):
                     # search for "sub_src" or "main_src.sub_src"
                     main_sub = "%s.%s" % (main_src,sub_src.name)
                     if (src == sub_src.name) or (src == main_sub):
-                        klass = sub_src
-                        logging.info("Found uploader '%s' for '%s'" % (klass,src))
+                        uploaders = sub_src
+                        logging.info("Found uploader '%s' for '%s'" % (uploaders,src))
                         break
-        if not klass:
+        if not uploaders:
             raise ValueError("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
 
-        if isinstance(klass,list):
+        if isinstance(uploaders,list):
             # this is a resource composed by several sub-resources
             # let's mention intermediate step (so "success" means all subsources
             # have been uploaded correctly
-            for i,one in enumerate(klass):
-                one().load(progress=i+1,total=len(klass),**kwargs)
+            for i,one in enumerate(uploaders):
+                one.load(progress=i+1,total=len(uploaders),**kwargs)
         else:
-            klass().load(**kwargs)
+            uploader = uploaders # for the sake of readability...
+            uploader.load(**kwargs)
 
     def __repr__(self):
         return "<%s [%d registered]: %s>" % (self.__class__.__name__,len(self.doc_register), list(self.doc_register.keys()))

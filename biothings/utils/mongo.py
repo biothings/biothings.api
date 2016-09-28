@@ -262,6 +262,8 @@ def backup_src_configs():
 def get_data_folder(src_name):
     src_dump = get_src_dump()
     src_doc = src_dump.find_one({'_id': src_name})
+    if not src_doc:
+        raise ValueError("Can't find any datasource information for '%s'" % src_name)
     # ensure we're not in a transient state
     assert src_doc.get("download",{}).get('status') in ['success','failed'], "Source files are not ready yet [status: \"%s\"]." % src_doc['status']
     return src_doc['data_folder']

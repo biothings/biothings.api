@@ -9,13 +9,7 @@ sys.path.append(src_path)
 
 
 def main(source):
-    '''
-    Example:
-        python -m dataload/start ensembl
-        python -m dataload/start entrez
-        python -m dataload/start pharmgkb
 
-    '''
     import biothings, config
     biothings.config_for_app(config)
     import dataload
@@ -31,10 +25,7 @@ def main(source):
     klass = getattr(mod,str_klass)
     uploader = klass()
     uploader.register_sources(dataload.__sources_dict__)
-    if "." in source:
-        uploader.upload_src(source)
-    else:
-        uploader.upload_all()
+    uploader.upload_src(source)
 
 if __name__ == '__main__':
     main(sys.argv[1])

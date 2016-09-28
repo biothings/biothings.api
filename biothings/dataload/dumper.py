@@ -93,7 +93,7 @@ class BaseDumper(object):
                'release': self.release,
                'download' : {
                    'logfile': self.logfile,
-                   'timestamp': self.timestamp,
+                   'started_at': datetime.now(),
                    'status': status}
                }
         # only register time when it's a final state
