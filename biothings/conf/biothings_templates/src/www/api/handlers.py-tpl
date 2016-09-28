@@ -27,7 +27,7 @@ def return_applist():
         (r"/metadata", MetaDataHandler),
         (r"/metadata/fields", FieldsHandler),
     ]
-    if biothing_settings._api_version:
+    if bts._api_version:
         ret += [
             (r"/" + bts._api_version + "/metadata", MetaDataHandler),
             (r"/" + bts._api_version + "/metadata/fields", FieldsHandler),
