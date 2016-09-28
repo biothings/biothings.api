@@ -97,7 +97,9 @@ class BaseDumper(object):
                    'status': status}
                }
         # only register time when it's a final state
-        if not transient:
+        if transient:
+            self.src_doc["download"]["pid"] = os.getpid()
+        else:
             self.src_doc["download"]["time"] = timesofar(self.t0)
         if "download" in extra:
             self.src_doc["download"].update(extra["download"])

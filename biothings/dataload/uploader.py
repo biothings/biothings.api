@@ -131,7 +131,8 @@ class DefaultSourceUploader(dict):
         if transient:
             # record some "in-progress" information
             upload_info['step'] = self.name
-            upload_info['collection'] = self.temp_collection and self.temp_collection.name
+            upload_info['temp_collection'] = self.temp_collection and self.temp_collection.name
+            upload_info['pid'] = os.getpid()
         else:
             # only register time when it's a final state
             t1 = round(time.time() - self.t0, 0)
@@ -273,7 +274,7 @@ class SourceStorage(object):
             src_m = src_data
         assert hasattr(src_m,"__metadata__"), "'%s' module has no __metadata__" % src_m
         src_name = src_m.__metadata__["name"]
-        main_source = src_m.__metadata__["main_source"]
+        main_source = src_m.__metadata__.get("main_source",src_name)
         src_uploader = self.get_source_uploader(src_m)
         metadata = src_m.__metadata__
         # TODO: use standard class() to create new instances
@@ -281,6 +282,7 @@ class SourceStorage(object):
         metadata['get_mapping'] = src_m.get_mapping
         metadata['conn'] = self.conn
         metadata['name'] = src_name
+        metadata['main_source'] = main_source
         metadata['timestamp'] = datetime.datetime.now()
         metadata['t0'] = time.time()
         # src_name can be main_source.sub_source (like entrez.entrez_gene), only keep main source here
@@ -313,14 +315,28 @@ class SourceStorage(object):
             self.upload_src(src, **kwargs)
 
     def upload_src(self, src, **kwargs):
-        assert "%s" % src in self.doc_register, "'%s' has not been registered first, can't launch upload" % src
-        klass = self.doc_register[src]
+        klass = None
+        if src in self.doc_register:
+            klass = self.doc_register[src]
+        else:
+            # maybe src is a sub-source ?
+            for main_src in self.doc_register:
+                for sub_src in self.doc_register[main_src]:
+                    # search for "sub_src" or "main_src.sub_src"
+                    main_sub = "%s.%s" % (main_src,sub_src.name)
+                    if (src == sub_src.name) or (src == main_sub):
+                        klass = sub_src
+                        logging.info("Found uploader '%s' for '%s'" % (klass,src))
+                        break
+        if not klass:
+            raise ValueError("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
+
         if isinstance(klass,list):
             # this is a resource composed by several sub-resources
             # let's mention intermediate step (so "success" means all subsources
             # have been uploaded correctly
             for i,one in enumerate(klass):
-                one().load(progress=i,total=len(klass),**kwargs)
+                one().load(progress=i+1,total=len(klass),**kwargs)
         else:
             klass().load(**kwargs)
 
