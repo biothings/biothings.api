@@ -32,6 +32,7 @@ def check_mongo():
 def dispatch_src_upload(src):
     src_doc = src_dump.find_one({'_id': src})
     datadump_logfile = src_doc.get('logfile', '')
+    # TODO: logfile will be used by logging module, does the following interfer with it ?
     if datadump_logfile:
         upload_logfile = os.path.join(os.path.split(datadump_logfile)[0], '{}_upload.log'.format(src))
     else:
@@ -40,21 +41,17 @@ def dispatch_src_upload(src):
     log_f, logfile = safewfile(upload_logfile, prompt=False, default='O')
     p = Popen(['python', '-u', 'biothings/bin/upload.py', src],
               stdout=log_f, stderr=STDOUT, cwd=config.APP_PATH)
-    p.logfile = logfile
     p.log_f = log_f
     return p
 
 
 def mark_upload_started(src):
+    # TODO: unset pending_to_upload is done in uploader too, but we need to 
+    # keep it here as well as the time required for the uploader to unset it, dispatcher
+    # may decide to run the same uploader again as the flag is still there. Ideally
+    # this shouldn't be needed there
     src_dump.update({'_id': src}, {"$unset": {'pending_to_upload': "",
                                               'upload': ""}})
-    src_dump.update({'_id': src}, {"$set": {"upload.status": "uploading",
-                                            "upload.started_at": datetime.now()}})
-
-
-def mark_upload_done(src, d):
-    src_dump.update({'_id': src}, {"$set": d})
-
 
 def get_process_info(running_processes):
     name_d = dict([(str(p.pid), name) for name, p in running_processes.items()])
@@ -81,7 +78,6 @@ def main(daemon=False):
                 if src_to_update not in running_processes:
                     mark_upload_started(src_to_update)
                     p = dispatch(src_to_update)
-                    src_dump.update({'_id': src_to_update}, {"$set": {"upload.pid": p.pid}})
                     p.t0 = time.time()
                     running_processes[src_to_update] = p
 
@@ -95,20 +91,11 @@ def main(daemon=False):
             returncode = p.poll()
             if returncode is not None:
                 t1 = round(time.time() - p.t0, 0)
-                d = {'upload.returncode': returncode,
-                     'upload.timestamp': datetime.now(),
-                     'upload.time_in_s': t1,
-                     'upload.time': timesofar(p.t0),
-                     'upload.logfile': p.logfile,
-                     }
                 if returncode == 0:
                     print('Dispatcher:  {} finished successfully with code {} (time: {}s)'.format(src, returncode, t1))
-                    d['upload.status'] = "success"
                 else:
                     print('Dispatcher:  {} failed with code {} (time: {}s)'.format(src, returncode, t1))
-                    d['upload.status'] = "failed"
 
-                mark_upload_done(src, d)
                 jobs_finished.append(src)
                 p.log_f.close()
             else:
@@ -172,7 +159,6 @@ class DocDispatcher(object):
     def handle_src_upload(self, src_to_update, **kwargs):
         mark_upload_started(src_to_update)
         p = dispatch_src_upload(src_to_update)
-        src_dump.update({'_id': src_to_update}, {"$set": {"upload.pid": p.pid}})
         p.t0 = time.time()
         self.running_processes_upload[src_to_update] = p
 
@@ -191,15 +177,6 @@ class DocDispatcher(object):
                 p.log_f.flush()
             else:
                 t1 = round(time.time() - p.t0, 0)
-                d = {
-                    'upload.returncode': returncode,
-                    'upload.timestamp': datetime.now(),
-                    'upload.time_in_s': t1,
-                    'upload.time': timesofar(p.t0),
-                    'upload.logfile': p.logfile,
-                    'upload.status': "success" if returncode == 0 else "failed"
-                }
-                mark_upload_done(src, d)
                 jobs_finished.append(src)
                 p.log_f.close()
 

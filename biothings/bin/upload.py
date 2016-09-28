@@ -29,16 +29,12 @@ def main(source):
     str_mod,str_klass = ".".join(klass_path.split(".")[:-1]),klass_path.split(".")[-1]
     mod = importlib.import_module(str_mod)
     klass = getattr(mod,str_klass)
+    uploader = klass()
+    uploader.register_sources(dataload.__sources_dict__)
     if "." in source:
-        # partial upload of a datasource (only a sub-datasource)
-        uploader = klass([source])
+        uploader.upload_src(source)
     else:
-        if source not in dataload.__sources_dict__:
-            raise ValueError('Unknown source "%s". Should be one of %s' % (source, dataload.__sources_dict__.keys()))
-        # full upload of a datasource
-        uploader = klass(dataload.__sources_dict__[source])
-    uploader.register_sources()
-    uploader.upload_all()
+        uploader.upload_all()
 
 if __name__ == '__main__':
     main(sys.argv[1])
