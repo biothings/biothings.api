@@ -87,16 +87,22 @@ class BaseDumper(object):
         self.src_doc = self.src_dump.find_one({'_id': self.SRC_NAME}) or {}
 
     def register_status(self,status,transient=False,**extra):
-        self.src_doc = {'_id': self.SRC_NAME,
-               'timestamp': self.timestamp,
+        self.src_doc = {
+                '_id': self.SRC_NAME,
                'data_folder': self.new_data_folder,
                'release': self.release,
-               'logfile': self.logfile,
-               'status': status}
+               'download' : {
+                   'logfile': self.logfile,
+                   'timestamp': self.timestamp,
+                   'status': status}
+               }
         # only register time when it's a final state
         if not transient:
-            self.src_doc["time"] = timesofar(self.t0)
-        self.src_doc.update(extra)
+            self.src_doc["download"]["time"] = timesofar(self.t0)
+        if "download" in extra:
+            self.src_doc["download"].update(extra["download"])
+        else:
+            self.src_doc.update(extra)
         self.src_dump.save(self.src_doc)
 
     def dump(self,force=False):
@@ -119,7 +125,7 @@ class BaseDumper(object):
             self.logger.error("Error while dumping source: %s" % e)
             import traceback
             self.logger.error(traceback.format_exc())
-            self.register_status("failed")
+            self.register_status("failed",download={"err" : repr(e)})
         finally:
             if self.client:
                 self.release_client()
@@ -132,10 +138,11 @@ class BaseDumper(object):
 
     def do_dump(self):
         self.logger.info("%d files to download" % len(self.to_dump))
-        for todo in self.to_dump:
+        for todo in [f for f in self.to_dump]:
             remote = todo["remote"]
             local = todo["local"]
             self.download(remote,local)
+            self.to_dump.remove(todo)
 
     def prepare_local_folders(self,localfile):
         localdir = os.path.dirname(localfile)

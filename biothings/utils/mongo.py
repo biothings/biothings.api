@@ -263,6 +263,6 @@ def get_data_folder(src_name):
     src_dump = get_src_dump()
     src_doc = src_dump.find_one({'_id': src_name})
     # ensure we're not in a transient state
-    assert src_doc['status'] in ['success','failed'], "Source files are not ready yet [status: \"%s\"]." % src_doc['status']
+    assert src_doc.get("download",{}).get('status') in ['success','failed'], "Source files are not ready yet [status: \"%s\"]." % src_doc['status']
     return src_doc['data_folder']
 
