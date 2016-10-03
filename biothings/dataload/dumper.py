@@ -78,7 +78,7 @@ class BaseDumper(object):
         self.prepare_client()
         self.prepare_src_dump()
         self.new_data_folder = self.get_new_data_folder()
-        self.current_data_folder = self.src_doc.get("data_folder")
+        self.current_data_folder = self.src_doc.get("data_folder") or self.new_data_folder
         self.to_dump = []
 
     def prepare_src_dump(self):
