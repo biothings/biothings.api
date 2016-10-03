@@ -1,110 +1,41 @@
-from __future__ import print_function
 import sys
 import os.path
 import time
 import copy
+import importlib
 from datetime import datetime
 from pprint import pformat
+import logging
 
-import biothings, config
-biothings.config_for_app(config)
-
-from biothings.utils.mongo import (get_src_db, get_target_db, get_src_master,
-                         get_src_build, get_src_dump, doc_feeder)
 from biothings.utils.common import (timesofar, ask, safewfile,
                                     dump2gridfs, get_timestamp, get_random_string,
-                                    setup_logfile, loadobj)
+                                    setup_logfile, loadobj, get_class_from_classpath)
 from biothings.utils.dataload import list2dict, alwayslist
 from utils.es import ESIndexer
 import biothings.databuild.backend as btbackend
-from config import LOG_FOLDER, logger as logging
-
-'''
-#Build_Config example
-
-Build_Config = {
-    "name":     "test",          #target_collection will be called "genedoc_test"
-    "sources" : ['entrez_gene', 'reporter'],
-    "gene_root": ['entrez_gene', 'ensembl_gene']     #either entrez_gene or ensembl_gene or both
-}
-
-#for genedoc at mygene.info
-Build_Config = {
-    "name":     "mygene",          #target_collection will be called "genedoc_mygene"
-    "sources":  [u'ensembl_acc',
-                 u'ensembl_gene',
-                 u'ensembl_genomic_pos',
-                 u'ensembl_interpro',
-                 u'ensembl_prosite',
-                 u'entrez_accession',
-                 u'entrez_ec',
-                 u'entrez_gene',
-                 u'entrez_genesummary',
-                 u'entrez_go',
-                 u'entrez_homologene',
-                 u'entrez_refseq',
-                 u'entrez_retired',
-                 u'entrez_unigene',
-                 u'pharmgkb',
-                 u'reagent',
-                 u'reporter',
-                 u'uniprot',
-                 u'uniprot_ipi',
-                 u'uniprot_pdb',
-                 u'uniprot_pir'],
-    "gene_root": ['entrez_gene', 'ensembl_gene']
-}
-'''
 
 
 class DataBuilder(object):
 
-    def __init__(self, build_config=None, backend='mongodb'):
-        self.src = get_src_db()
-        self.step = 10000
-        self.use_parallel = False
-        self.merge_logging = True     # save output into a logging file when merge is called.
-        self.max_build_status = 10    # max no. of records kept in "build" field of src_build collection.
+    def __init__(self, build_name, source_backend, target_backend,
+                 doc_root_key="root", parallel_engine=None, max_build_status=10, **kwargs):
+        self.build_name = build_name
+        self.source_backend = source_backend
+        self.target_backend = target_backend
+        self.doc_root_key = doc_root_key
+        self.t0 = time.time()
+        self.logfile = None
 
-        self.using_ipython_cluster = False
-        self.shutdown_ipengines_after_done = False
-        self.log_folder = LOG_FOLDER
+        #self.src_db = source_backend.get_src_db()
+        #self.src_build = source_backend.get_src_build()
+        self.step = kwargs.get("step",10000)
+        self.parallel_engine = parallel_engine
+        # max no. of records kept in "build" field of src_build collection.
+        self.max_build_status = max_build_status
 
-        self._build_config = build_config
         self._entrez_geneid_d = None
         self._idmapping_d_cache = {}
-
-        self.get_src_master()
-
-        if backend == 'mongodb':
-            self.target = btbackend.GeneDocMongoDBBackend()
-        elif backend == 'es':
-            self.target = btbackend.GeneDocESBackend(ESIndexer())
-        elif backend == 'couchdb':
-            from config import COUCHDB_URL
-            import couchdb
-            self.target = btbackend.GeneDocCouchDBBackend(couchdb.Server(COUCHDB_URL))
-        elif backend == 'memory':
-            self.target = btbackend.GeneDocMemeoryBackend()
-        else:
-            raise ValueError('Invalid backend "%s".' % backend)
-
-    def make_build_config_for_all(self):
-        _cfg = {"sources": list(self.src_master.keys()),
-                "gene_root": ['entrez_gene', 'ensembl_gene']}
-        self._build_config = _cfg
-        return _cfg
-
-    def load_build_config(self, build):
-        '''Load build config from src_build collection.'''
-        src_build = get_src_build()
-        self.src_build = src_build
-        _cfg = src_build.find_one({'_id': build})
-        if _cfg:
-            self._build_config = _cfg
-        else:
-            raise ValueError('Cannot find build config named "%s"' % build)
-        return _cfg
+        self._build_config = self.source_backend.get_build_configuration(build_name)
 
     def log_src_build(self, dict):
         '''put logging dictionary into the corresponding doc in src_build collection.
@@ -116,76 +47,41 @@ class DataBuilder(object):
             _cfg['build'][-1].update(dict)
             src_build.update({'_id': self._build_config['_id']}, {"$set": {'build': _cfg['build']}})
 
-    def log_building_start(self):
-        if self.merge_logging:
-            #setup logging
-            logfile = 'databuild_{}_{}.log'.format('genedoc' + '_' + self._build_config['name'],
-                                                   time.strftime('%Y%m%d'))
-            logfile = os.path.join(self.log_folder, logfile)
-            setup_logfile(logfile)
-
-        src_build = getattr(self, 'src_build', None)
-        if src_build:
-            #src_build.update({'_id': self._build_config['_id']}, {"$unset": {"build": ""}})
-            d = {'status': 'building',
-                 'started_at': datetime.now(),
-                 'logfile': logfile,
-                 'target_backend': self.target.name}
-            if self.target.name == 'mongodb':
-                d['target'] = self.target.target_collection.name
-            elif self.target.name == 'es':
-                d['target'] = self.target.target_esidxer.ES_INDEX_NAME
-            logging.info(pformat(d))
-            src_build.update({'_id': self._build_config['_id']}, {"$push": {'build': d}})
-            _cfg = src_build.find_one({'_id': self._build_config['_id']})
-            if len(_cfg['build']) > self.max_build_status:
-                #remove the first build status record
+    def register_status(self,status,transient=False,**extra):
+        assert self._build_config, "build_config needs to be specified first"
+        # get it from source_backend, kind of weird...
+        src_build = self.source_backend.build_collection
+        build_info = {'status': status,
+             'started_at': datetime.now(),
+             'logfile': self.logfile,
+             'target_backend': self.target_backend.name,
+             'target_name': self.target_backend.target_name}
+        if transient:
+            # record some "in-progress" information
+            build_info['pid'] = os.getpid()
+        else:
+            # only register time when it's a final state
+            t1 = round(time.time() - self.t0, 0)
+            build_info["time"] = timesofar(self.t0)
+            build_info["time_in_s"] = t1
+        # merge extra at root or upload level
+        # (to keep building data...)
+        if "build" in extra:
+            build_info.update(extra["build"])
+        logging.info(pformat(build_info))
+        src_build.update({'_id': self._build_config['_id']}, {"$push": {'build': build_info}})
+        _cfg = src_build.find_one({'_id': self._build_config['_id']})
+        if len(_cfg['build']) > self.max_build_status:
+            howmany = len(_cfg['build']) - self.max_build_status
+            #remove the first build status record
+            for _ in range(howmany):
                 src_build.update({'_id': self._build_config['_id']}, {"$pop": {'build': -1}})
 
-    def _get_target_name(self):
-        return 'genedoc_{}_{}_{}'.format(self._build_config['name'],
-                                         get_timestamp(), get_random_string()).lower()
-
-    def prepare_target(self, target_name=None):
-        '''call self.update_backend() after validating self._build_config.'''
-        if self.target.name == 'mongodb':
-            _db = get_target_db()
-            target_collection_name = target_name or self._get_target_name()
-            self.target.target_collection = _db[target_collection_name]
-            logging.info("Target: %s" % repr(target_collection_name))
-        elif self.target.name == 'es':
-            self.target.target_esidxer.ES_INDEX_NAME = target_name or self._get_target_name()
-            self.target.target_esidxer._mapping = self.get_mapping()
-        elif self.target.name == 'couchdb':
-            self.target.db_name = target_name or ('genedoc' + '_' + self._build_config['name'])
-        elif self.target.name == 'memory':
-            self.target.target_name = target_name or ('genedoc' + '_' + self._build_config['name'])
-
-    def get_src_master(self):
-        src_master = get_src_master(self.src.client)
-        self.src_master = dict([(src['_id'], src) for src in list(src_master.find())])
-
-    def validate_src_collections(self,collection_list=None):
-        if not collection_list:
-            collection_list = set(self.src.collection_names())
-            self.get_src_master()
-            build_conf_src = self._build_config['sources']
-        else:
-            build_conf_src = collection_list
-
-        logging.info("Sources: %s" % repr(build_conf_src))
-        if self._build_config:
-            for src in build_conf_src:
-                assert src in self.src_master, '"%s" not found in "src_master"' % src
-                assert src in collection_list, '"%s" not an existing collection in "%s"' % (src, self.src.name)
-        else:
-            raise ValueError('"build_config" cannot be empty.')
-
     def _load_entrez_geneid_d(self):
-        self._entrez_geneid_d = loadobj(("entrez_gene__geneid_d.pyobj", self.src), mode='gridfs')
+        self._entrez_geneid_d = loadobj(("entrez_gene__geneid_d.pyobj", self.src_db), mode='gridfs')
 
     def _load_ensembl2entrez_li(self):
-        ensembl2entrez_li = loadobj(("ensembl_gene__2entrezgene_list.pyobj", self.src), mode='gridfs')
+        ensembl2entrez_li = loadobj(("ensembl_gene__2entrezgene_list.pyobj", self.src_db), mode='gridfs')
         #filter out those deprecated entrez gene ids
         logging.info(len(ensembl2entrez_li))
         ensembl2entrez_li = [(ensembl_id, self._entrez_geneid_d[int(entrez_id)]) for (ensembl_id, entrez_id) in ensembl2entrez_li
@@ -200,15 +96,15 @@ class DataBuilder(object):
         if self._idmapping_d_cache:
             for id_type in self._idmapping_d_cache:
                 filename = 'tmp_idmapping_d_cache_' + id_type
-                dump2gridfs(self._idmapping_d_cache[id_type], filename, self.src)
+                dump2gridfs(self._idmapping_d_cache[id_type], filename, self.src_db)
                 idmapping_gridfs_d[id_type] = filename
         return idmapping_gridfs_d
 
-    def make_genedoc_root(self):
+    def make_doc_root(self):
         if not self._entrez_geneid_d:
             self._load_entrez_geneid_d()
 
-        if 'ensembl_gene' in self._build_config['gene_root']:
+        if 'ensembl_gene' in self._build_config[self.doc_root_key]:
             self._load_ensembl2entrez_li()
             ensembl2entrez = self._idmapping_d_cache['ensembl_gene']
 
@@ -221,8 +117,8 @@ class DataBuilder(object):
 
         geneid_set = []
         species_set = set()
-        if "entrez_gene" in self._build_config['gene_root']:
-            for doc_li in doc_feeder(self.src['entrez_gene'], inbatch=True, step=self.step, query=_query):
+        if "entrez_gene" in self._build_config[self.doc_root_key]:
+            for doc_li in doc_feeder(self.src_db['entrez_gene'], inbatch=True, step=self.step, query=_query):
                 #target_collection.insert(doc_li, manipulate=False, check_keys=False)
                 self.target.insert(doc_li)
                 geneid_set.extend([doc['_id'] for doc in doc_li])
@@ -232,10 +128,10 @@ class DataBuilder(object):
             logging.info('# of entrez Gene IDs in total: %d' % cnt_total_entrez_genes)
             logging.info('# of species in total: %d' % cnt_total_species)
 
-        if "ensembl_gene" in self._build_config['gene_root']:
+        if "ensembl_gene" in self._build_config[self.doc_root_key]:
             cnt_ensembl_only_genes = 0
             cnt_total_ensembl_genes = 0
-            for doc_li in doc_feeder(self.src['ensembl_gene'], inbatch=True, step=self.step, query=_query):
+            for doc_li in doc_feeder(self.src_db['ensembl_gene'], inbatch=True, step=self.step, query=_query):
                 _doc_li = []
                 for _doc in doc_li:
                     cnt_total_ensembl_genes += 1
@@ -275,29 +171,32 @@ class DataBuilder(object):
             return self._idmapping_d_cache[src]
             #raise ValueError('cannot load "idmapping_d" for "%s"' % src)
 
-    def merge(self, step=100000, restart_at=0,sources=None,target=None):
-        t0 = time.time()
-        self.validate_src_collections(sources)
-        self.prepare_target(target_name=target)
-        self.log_building_start()
+    def prepare(self,sources=None, target_name=None):
+        self.source_backend.validate_sources(sources)
+        self.target_backend.set_target_name(target_name, self.build_name)
+
+    def merge(self, step=100000, restart_at=0, sources=None, target_name=None):
+        self.t0 = time.time()
+        self.prepare(sources,target_name)
+        self.register_status("building",transient=True,build={"step":"init"})
         try:
-            if self.using_ipython_cluster:
+            if self.parallel_engine:
                 if sources:
                     raise NotImplemented("merge speficic sources not supported when using parallel")
-                self._merge_ipython_cluster(step=step)
+                #self._merge_ipython_cluster(step=step)
+                raise NotImplementedError("not yet")
             else:
                 self._merge_local(step=step, restart_at=restart_at,src_collection_list=sources)
 
-            if self.target.name == 'es':
-                logging.info("Updating metadata...")
-                self.update_mapping_meta()
+            self.post_merge()
 
-            t1 = round(time.time() - t0, 0)
-            t = timesofar(t0)
-            self.log_src_build({'status': 'success',
-                                'time': t,
-                                'time_in_s': t1,
-                                'timestamp': datetime.now()})
+            self.register_status('success')
+
+        except Exception as e:
+            import traceback
+            logging.error(traceback.format_exc())
+            self.register_status("failed",build={"err": repr(e)})
+            raise
 
         finally:
             #do a simple validation here
@@ -309,170 +208,167 @@ class DataBuilder(object):
                 else:
                     logging.info("Warning: total count of gene documents does not match [{}, should be {}]".format(target_cnt, self._stats['total_genes']))
 
-            if self.merge_logging:
-                sys.stdout.close()
+    #def merge_resume(self, build_config, at_collection, step=10000):
+    #    '''resume a merging process after a failure.
+    #         .merge_resume('mygene_allspecies', 'reporter')
+    #    '''
+    #    assert not self.parallel_engine, "Abort. Can only resume merging in non-parallel mode."
+    #    self.load_build_config(build_config)
+    #    last_build = self._build_config['build'][-1]
+    #    logging.info("Last build record:")
+    #    logging.info(pformat(last_build))
+    #    assert last_build['status'] == 'building', \
+    #        "Abort. Last build does not need to be resumed."
+    #    assert at_collection in self._build_config['sources'], \
+    #        'Abort. Cannot resume merging from a unknown collection "{}"'.format(at_collection)
+    #    assert last_build['target_backend'] == self.target.name, \
+    #        'Abort. Re-initialized DataBuilder class using matching backend "{}"'.format(last_build['backend'])
+    #    assert last_build.get('stats', None), \
+    #        'Abort. Intital build stats are not available. You should restart the build from the scratch.'
+    #    self._stats = last_build['stats']
 
-    def merge_resume(self, build_config, at_collection, step=10000):
-        '''resume a merging process after a failure.
-             .merge_resume('mygene_allspecies', 'reporter')
-        '''
-        assert not self.using_ipython_cluster, "Abort. Can only resume merging in non-parallel mode."
-        self.load_build_config(build_config)
-        last_build = self._build_config['build'][-1]
-        logging.info("Last build record:")
-        logging.info(pformat(last_build))
-        assert last_build['status'] == 'building', \
-            "Abort. Last build does not need to be resumed."
-        assert at_collection in self._build_config['sources'], \
-            'Abort. Cannot resume merging from a unknown collection "{}"'.format(at_collection)
-        assert last_build['target_backend'] == self.target.name, \
-            'Abort. Re-initialized DataBuilder class using matching backend "{}"'.format(last_build['backend'])
-        assert last_build.get('stats', None), \
-            'Abort. Intital build stats are not available. You should restart the build from the scratch.'
-        self._stats = last_build['stats']
+    #    if ask('Continue to resume merging from "{}"?'.format(at_collection)) == 'Y':
+    #        #TODO: resume logging
+    #        target_name = last_build['target']
+    #        self.source_backend.validate_sources()
+    #        self.prepare_target(target_name=target_name)
+    #        src_cnt = 0
+    #        for collection in self._build_config['sources']:
+    #            if collection in ['entrez_gene', 'ensembl_gene']:
+    #                continue
+    #            src_cnt += 1
+    #            if collection == at_collection:
+    #                break
+    #        self._merge_local(step=step, restart_at=src_cnt)
+    #        if self.target.name == 'es':
+    #            logging.info("Updating metadata...")
+    #            self.update_mapping_meta()
+    #        self.log_src_build({'status': 'success',
+    #                            'timestamp': datetime.now()})
 
-        if ask('Continue to resume merging from "{}"?'.format(at_collection)) == 'Y':
-            #TODO: resume logging
-            target_name = last_build['target']
-            self.validate_src_collections()
-            self.prepare_target(target_name=target_name)
-            src_cnt = 0
-            for collection in self._build_config['sources']:
-                if collection in ['entrez_gene', 'ensembl_gene']:
-                    continue
-                src_cnt += 1
-                if collection == at_collection:
-                    break
-            self._merge_local(step=step, restart_at=src_cnt)
-            if self.target.name == 'es':
-                logging.info("Updating metadata...")
-                self.update_mapping_meta()
-            self.log_src_build({'status': 'success',
-                                'timestamp': datetime.now()})
+    #def _merge_ipython_cluster(self, step=100000):
+    #    '''Do the merging on ipython cluster.'''
+    #    from ipyparallel import Client, require
+    #    from config import CLUSTER_CLIENT_JSON
 
-    def _merge_ipython_cluster(self, step=100000):
-        '''Do the merging on ipython cluster.'''
-        from ipyparallel import Client, require
-        from config import CLUSTER_CLIENT_JSON
+    #    t0 = time.time()
+    #    src_collection_list = [collection for collection in self._build_config['sources']
+    #                           if collection not in ['entrez_gene', 'ensembl_gene']]
 
-        t0 = time.time()
-        src_collection_list = [collection for collection in self._build_config['sources']
-                               if collection not in ['entrez_gene', 'ensembl_gene']]
+    #    self.target.drop()
+    #    self.target.prepare()
+    #    geneid_set = self.make_doc_root()
 
-        self.target.drop()
-        self.target.prepare()
-        geneid_set = self.make_genedoc_root()
+    #    idmapping_gridfs_d = self._save_idmapping_gridfs()
 
-        idmapping_gridfs_d = self._save_idmapping_gridfs()
+    #    logging.info(timesofar(t0))
 
-        logging.info(timesofar(t0))
+    #    rc = Client(CLUSTER_CLIENT_JSON)
+    #    lview = rc.load_balanced_view()
+    #    logging.info("\t# nodes in use: {}".format(len(lview.targets or rc.ids)))
+    #    lview.block = False
+    #    kwargs = {}
+    #    target_collection = self.target.target_collection
+    #    kwargs['server'], kwargs['port'] = target_collection.database.client.address
+    #    kwargs['src_db'] = self.src_db.name
+    #    kwargs['target_db'] = target_collection.database.name
+    #    kwargs['target_collection_name'] = target_collection.name
+    #    kwargs['limit'] = step
 
-        rc = Client(CLUSTER_CLIENT_JSON)
-        lview = rc.load_balanced_view()
-        logging.info("\t# nodes in use: {}".format(len(lview.targets or rc.ids)))
-        lview.block = False
-        kwargs = {}
-        target_collection = self.target.target_collection
-        kwargs['server'], kwargs['port'] = target_collection.database.client.address
-        kwargs['src_db'] = self.src.name
-        kwargs['target_db'] = target_collection.database.name
-        kwargs['target_collection_name'] = target_collection.name
-        kwargs['limit'] = step
+    #    @require('pymongo', 'time', 'types')
+    #    def worker(kwargs):
+    #        server = kwargs['server']
+    #        port = kwargs['port']
+    #        src_db = kwargs['src_db']
+    #        target_db = kwargs['target_db']
+    #        target_collection_name = kwargs['target_collection_name']
 
-        @require('pymongo', 'time', 'types')
-        def worker(kwargs):
-            server = kwargs['server']
-            port = kwargs['port']
-            src_db = kwargs['src_db']
-            target_db = kwargs['target_db']
-            target_collection_name = kwargs['target_collection_name']
+    #        src_collection = kwargs['src_collection']
+    #        skip = kwargs['skip']
+    #        limit = kwargs['limit']
 
-            src_collection = kwargs['src_collection']
-            skip = kwargs['skip']
-            limit = kwargs['limit']
+    #        def load_from_gridfs(filename, db):
+    #            import gzip
+    #            import pickle
+    #            import gridfs
+    #            fs = gridfs.GridFS(db)
+    #            fobj = fs.get(filename)
+    #            gzfobj = gzip.GzipFile(fileobj=fobj)
+    #            try:
+    #                object = pickle.load(gzfobj)
+    #            finally:
+    #                gzfobj.close()
+    #                fobj.close()
+    #            return object
 
-            def load_from_gridfs(filename, db):
-                import gzip
-                import pickle
-                import gridfs
-                fs = gridfs.GridFS(db)
-                fobj = fs.get(filename)
-                gzfobj = gzip.GzipFile(fileobj=fobj)
-                try:
-                    object = pickle.load(gzfobj)
-                finally:
-                    gzfobj.close()
-                    fobj.close()
-                return object
+    #        def alwayslist(value):
+    #            if value is None:
+    #                return []
+    #            if isinstance(value, (list, tuple)):
+    #                return value
+    #            else:
+    #                return [value]
 
-            def alwayslist(value):
-                if value is None:
-                    return []
-                if isinstance(value, (list, tuple)):
-                    return value
-                else:
-                    return [value]
+    #        conn = pymongo.MongoClient(server, port)
+    #        src = conn[src_db]
+    #        target_collection = conn[target_db][target_collection_name]
 
-            conn = pymongo.MongoClient(server, port)
-            src = conn[src_db]
-            target_collection = conn[target_db][target_collection_name]
+    #        idmapping_gridfs_name = kwargs.get('idmapping_gridfs_name', None)
+    #        if idmapping_gridfs_name:
+    #            idmapping_d = load_from_gridfs(idmapping_gridfs_name, src)
+    #        else:
+    #            idmapping_d = None
 
-            idmapping_gridfs_name = kwargs.get('idmapping_gridfs_name', None)
-            if idmapping_gridfs_name:
-                idmapping_d = load_from_gridfs(idmapping_gridfs_name, src)
-            else:
-                idmapping_d = None
+    #        cur = src[src_collection].find(skip=skip, limit=limit, timeout=False)
+    #        cur.batch_size(1000)
+    #        try:
+    #            for doc in cur:
+    #                _id = doc['_id']
+    #                if idmapping_d:
+    #                    _id = idmapping_d.get(_id, None) or _id
+    #                # there could be cases that idmapping returns multiple entrez_gene id.
+    #                for __id in alwayslist(_id): 
+    #                    __id = str(__id)
+    #                    doc.pop('_id', None)
+    #                    doc.pop('taxid', None)
+    #                    target_collection.update({'_id': __id}, doc, manipulate=False, upsert=False)
+    #                    #target_collection.update({'_id': __id}, {'$set': doc},
+    #        finally:
+    #            cur.close()
 
-            cur = src[src_collection].find(skip=skip, limit=limit, timeout=False)
-            cur.batch_size(1000)
-            try:
-                for doc in cur:
-                    _id = doc['_id']
-                    if idmapping_d:
-                        _id = idmapping_d.get(_id, None) or _id
-                    # there could be cases that idmapping returns multiple entrez_gene id.
-                    for __id in alwayslist(_id): 
-                        __id = str(__id)
-                        doc.pop('_id', None)
-                        doc.pop('taxid', None)
-                        target_collection.update({'_id': __id}, doc, manipulate=False, upsert=False)
-                        #target_collection.update({'_id': __id}, {'$set': doc},
-            finally:
-                cur.close()
+    #    t0 = time.time()
+    #    task_list = []
+    #    for src_collection in src_collection_list:
+    #        _kwargs = copy.copy(kwargs)
+    #        _kwargs['src_collection'] = src_collection
+    #        id_type = self.src_master[src_collection].get('id_type', None)
+    #        if id_type:
+    #            idmapping_gridfs_name = idmapping_gridfs_d[id_type]
+    #            _kwargs['idmapping_gridfs_name'] = idmapping_gridfs_name
+    #        cnt = self.src_db[src_collection].count()
+    #        for s in range(0, cnt, step):
+    #            __kwargs = copy.copy(_kwargs)
+    #            __kwargs['skip'] = s
+    #            task_list.append(__kwargs)
 
-        t0 = time.time()
-        task_list = []
-        for src_collection in src_collection_list:
-            _kwargs = copy.copy(kwargs)
-            _kwargs['src_collection'] = src_collection
-            id_type = self.src_master[src_collection].get('id_type', None)
-            if id_type:
-                idmapping_gridfs_name = idmapping_gridfs_d[id_type]
-                _kwargs['idmapping_gridfs_name'] = idmapping_gridfs_name
-            cnt = self.src[src_collection].count()
-            for s in range(0, cnt, step):
-                __kwargs = copy.copy(_kwargs)
-                __kwargs['skip'] = s
-                task_list.append(__kwargs)
+    #    logging.info("\t# of tasks: {}".format(len(task_list)))
+    #    logging.info("\tsubmitting...")
+    #    job = lview.map_async(worker, task_list)
+    #    logging.info("done.")
+    #    job.wait_interactive()
+    #    logging.info("\t# of results returned: {}".format(len(job.result())))
+    #    logging.info("\ttotal time: {}".format(timesofar(t0)))
 
-        logging.info("\t# of tasks: {}".format(len(task_list)))
-        logging.info("\tsubmitting...")
-        job = lview.map_async(worker, task_list)
-        logging.info("done.")
-        job.wait_interactive()
-        logging.info("\t# of results returned: {}".format(len(job.result())))
-        logging.info("\ttotal time: {}".format(timesofar(t0)))
-
-        if self.shutdown_ipengines_after_done:
-            logging.info("\tshuting down all ipengine nodes...")
-            lview.shutdown()
-            logging.info('Done.')
+    #    if self.shutdown_ipengines_after_done:
+    #        logging.info("\tshuting down all ipengine nodes...")
+    #        lview.shutdown()
+    #        logging.info('Done.')
 
     def _merge_local(self, step=100000, restart_at=0, src_collection_list=None):
         if restart_at == 0 and src_collection_list is None:
-            self.target.drop()
-            self.target.prepare()
-            geneid_set = self.make_genedoc_root()
+            self.target_backend.drop()
+            self.target_backend.prepare()
+            geneid_set = self.make_doc_root()
         else:
             if not self._entrez_geneid_d:
                 self._load_entrez_geneid_d()
@@ -489,7 +385,7 @@ class DataBuilder(object):
 
             src_cnt += 1
 
-            id_type = self.src_master[collection].get('id_type', None)
+            id_type = self.src_masterdocs[collection].get('id_type', None)
             flag_need_id_conversion = id_type is not None
             if flag_need_id_conversion:
                 idmapping_d = self.get_idmapping_d(id_type)
@@ -507,7 +403,7 @@ class DataBuilder(object):
         self.target.finalize()
 
     def _merge_sequential(self, collection, geneid_set, step=100000, idmapping_d=None):
-        for doc in doc_feeder(self.src[collection], step=step):
+        for doc in doc_feeder(self.src_db[collection], step=step):
             _id = doc['_id']
             if idmapping_d:
                 _id = idmapping_d.get(_id, None) or _id
@@ -544,7 +440,7 @@ class DataBuilder(object):
         for i in range(NUMBER_OF_PROCESSES):
             Process(target=worker, args=(input_queue, self.target)).start()
 
-        for doc in doc_feeder(self.src[collection], step=step):
+        for doc in doc_feeder(self.src_db[collection], step=step):
             _id = doc['_id']
             if idmapping_d:
                 _id = idmapping_d.get(_id, None) or _id
@@ -588,7 +484,7 @@ class DataBuilder(object):
                                          upsert=False)  # ,safe=True)
             logging.info('Done. [%.1fs]' % (time.time() - t0))
 
-        for doc in doc_feeder(self.src[collection], step=step):
+        for doc in doc_feeder(self.src_db[collection], step=step):
             _id = doc['_id']
             if idmapping_d:
                 _id = idmapping_d.get(_id, None) or _id
@@ -604,15 +500,6 @@ class DataBuilder(object):
                         dview.map_async(worker, partition(self.doc_queue, len(rc.ids)))
                         self.doc_queue = []
                         logging.info("!")
-
-    def get_src_version(self):
-        src_dump = get_src_dump(self.src.client)
-        src_version = {}
-        for src in src_dump.find():
-            version = src.get('release', src.get('timestamp', None))
-            if version:
-                src_version[src['_id']] = version
-        return src_version
 
     def get_last_src_build_stats(self):
         src_build = getattr(self, 'src_build', None)
@@ -663,10 +550,10 @@ class DataBuilder(object):
 
     def get_mapping(self, enable_timestamp=True):
         '''collect mapping data from data sources.
-           This is for GeneDocESBackend only.
+           This is for DocESBackend only.
         '''
         mapping = {}
-        src_master = get_src_master(self.src.client)
+        src_master = get_src_master(self.src_db.client)
         for collection in self._build_config['sources']:
             meta = src_master.find_one({"_id" : collection})
             if 'mapping' in meta:
@@ -685,20 +572,6 @@ class DataBuilder(object):
         #                      'compress_threshold': '1kb'}
         return mapping
 
-    def update_mapping_meta(self):
-        '''updating _meta field of ES mapping data, including index stats, versions.
-           This is for GeneDocESBackend only.
-        '''
-        _meta = {}
-        src_version = self.get_src_version()
-        if src_version:
-            _meta['src_version'] = src_version
-        if getattr(self, '_stats', None):
-            _meta['stats'] = self._stats
-
-        if _meta:
-            self.target.target_esidxer.update_mapping_meta({'_meta': _meta})
-
     def validate(self, build_config='mygene_allspecies', n=10):
         '''Validate merged genedoc, currently for ES backend only.'''
         import random
@@ -712,7 +585,7 @@ class DataBuilder(object):
         #assert last_build['target_backend'] == 'es', '"validate" currently works for "es" backend only'
 
         target_name = last_build['target']
-        self.validate_src_collections()
+        self.source.backend.validate_sources()
         self.prepare_target(target_name=target_name)
         logging.info("Validating...")
         target_cnt = self.target.count()
@@ -728,10 +601,10 @@ class DataBuilder(object):
                 # if 'id_type' in self.src_master[src] and self.src_master[src]['id_type'] != 'entrez_gene':
                 #     print "skipped."
                 #     continue
-                cnt = self.src[src].count()
-                fdr1 = doc_feeder(self.src[src], step=10000, s=cnt - n)
+                cnt = self.src_db[src].count()
+                fdr1 = doc_feeder(self.src_db[src], step=10000, s=cnt - n)
                 rand_s = random.randint(0, cnt - n)
-                fdr2 = doc_feeder(self.src[src], step=n, s=rand_s, e=rand_s + n)
+                fdr2 = doc_feeder(self.src_db[src], step=n, s=rand_s, e=rand_s + n)
                 _first_exception = True
                 for doc in itertools.chain(fdr1, fdr2):
                     _id = doc['_id']
@@ -777,8 +650,8 @@ class DataBuilder(object):
         logging.info(pformat(last_build))
         assert last_build['status'] == 'success', \
             "Abort. Last build did not success."
-        assert last_build['target_backend'] == "mongodb", \
-            'Abort. Last build need to be built using "mongodb" backend.'
+        assert last_build['target_backend'] == "mongo", \
+            'Abort. Last build need to be built using "mongo" backend.'
         assert last_build.get('stats', None), \
             'Abort. Last build stats are not available.'
         self._stats = last_build['stats']
@@ -831,43 +704,17 @@ class DataBuilder(object):
             # if es_idxer.wait_till_all_shards_ready():
             #     print "Optimizing...", es_idxer.optimize()
 
-    def sync_index(self, use_parallel=True):
-        from utils import diff
+    #def sync_index(self, use_parallel=True):
+    #    from utils import diff
 
-        sync_src = self.get_target_collection()
+    #    sync_src = self.get_target_collection()
 
-        es_idxer = ESIndexer(self.get_mapping())
-        es_idxer.ES_INDEX_NAME = sync_src.target_collection.name
-        es_idxer.step = 10000
-        es_idxer.use_parallel = use_parallel
-        sync_target = btbackend.GeneDocESBackend(es_idxer)
+    #    es_idxer = ESIndexer(self.get_mapping())
+    #    es_idxer.ES_INDEX_NAME = sync_src.target_collection.name
+    #    es_idxer.step = 10000
+    #    es_idxer.use_parallel = use_parallel
+    #    sync_target = btbackend.DocESBackend(es_idxer)
 
-        changes = diff.diff_collections(sync_src, sync_target)
-        return changes
+    #    changes = diff.diff_collections(sync_src, sync_target)
+    #    return changes
 
-
-def main():
-    if len(sys.argv) > 1:
-        config = sys.argv[1]
-    else:
-        config = 'mygene_allspecies'
-    use_parallel = '-p' in sys.argv
-    sources = None  # will build all sources
-    target = None   # will generate a new collection name
-    # "target_col:src_col1,src_col2" will specifically merge src_col1
-    # and src_col2 into existing target_col (instead of merging everything)
-    if not use_parallel and len(sys.argv) > 2:
-        target,tmp = sys.argv[2].split(":")
-        sources = tmp.split(",")
-
-    t0 = time.time()
-    bdr = DataBuilder(backend='mongodb')
-    bdr.load_build_config(config)
-    bdr.using_ipython_cluster = use_parallel
-    bdr.merge(sources=sources,target=target)
-
-    logging.info("Finished. %s" % timesofar(t0))
-
-
-if __name__ == '__main__':
-    main()

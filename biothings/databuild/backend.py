@@ -2,10 +2,11 @@
 Backend for storing merged genedoc after building.
 Support MongoDB, ES, CouchDB
 '''
-from __future__ import print_function
+from biothings.utils.common import get_timestamp, get_random_string
 
 
-class GeneDocBackendBase:
+# Generic base backend
+class DocBackendBase(object):
     name = 'Undefined'
 
     def prepare(self):
@@ -35,8 +36,51 @@ class GeneDocBackendBase:
         '''
         pass
 
+# Source specific backend (deals with build config, master docs, etc...)
+class SourceDocBackendBase(DocBackendBase):
 
-class GeneDocMemeoryBackend(GeneDocBackendBase):
+    def __init__(self,build_collection, master_collection, src_db):
+        self.build_collection = build_collection
+        self.master_collection = master_collection
+        self.src_db = src_db
+        self._build_config = None
+        self.src_masterdocs = None
+
+    def get_build_configuration(self, build):
+        raise NotImplementedError("sub-class and implement me")
+
+    def get_src_master_docs(self):
+        raise NotImplementedError("sub-class and implement me")
+
+    def validate_sources(self,sources=None):
+        raise NotImplementedError("sub-class and implement me")
+
+# Target specific backend
+class TargetDocBackend(DocBackendBase):
+
+    def __init__(self,*args,**kwargs):
+        super(TargetDocBackend,self).__init__(*args,**kwargs)
+        self.target_name = None
+
+    def set_target_name(self,target_name, build_name):
+        """
+        Create/prepare a target backend, either strictly named "target_name"
+        or named derived from "build_name" (for temporary backends)
+        """
+        self.target_name = target_name or self.generate_target_name(build_name)
+
+    def generate_target_name(self,build_config_name):
+        return 'genedoc_{}_{}_{}'.format(build_config_name,
+                                         get_timestamp(), get_random_string()).lower()
+
+    def post_merge(self):
+        pass
+
+###################
+# Implementations #
+###################
+
+class DocMemoryBackend(DocBackendBase):
     name = 'memory'
 
     def __init__(self, target_name=None):
@@ -69,31 +113,22 @@ class GeneDocMemeoryBackend(GeneDocBackendBase):
         dump(self.target_dict, self.target_name + '.pyobj')
 
 
-class GeneDocMongoDBBackend(GeneDocBackendBase):
-    name = 'mongodb'
 
-    def __init__(self, target_collection=None):
+class DocMongoBackend(DocBackendBase):
+    name = 'mongo'
+
+    def __init__(self, target_db, target_collection=None):
         """target_collection is a pymongo collection object."""
-        self.target_collection = target_collection
-
-    @property
-    def target_name(self):
-        return self.target_collection.name
+        self.target_db = target_db
+        if target_collection:
+            self.target_collection = target_collection
 
     def count(self):
         return self.target_collection.count()
 
-    def insert(self, doc_li, add_padding=False):
-        # if add_padding:
-        #     for doc in doc_li:
-        #         doc['temp_padding'] = 'a'*1000
+    def insert(self, doc_li):
         self.target_collection.insert(doc_li, manipulate=False,
                                       check_keys=False, w=0)
-        # if add_padding:
-        #    for doc in doc_li:
-        #        self.target_collection.update({'_id': doc['_id']},
-        #                                      {'$unset': {'temp_padding': ''}},
-        #                                      check_keys=False, w=0)
 
     def update(self, id, extra_doc):
         '''if id does not exist in the target_collection,
@@ -141,10 +176,6 @@ class GeneDocMongoDBBackend(GeneDocBackendBase):
         del _d
         return iter(doc_li) if asiter else doc_li
 
-        # This following query can perserve the order of ids, but too slow
-        #cur = self.target_collection.find({'$or': [{'_id': _id} for _id in ids]})
-        #return cur if asiter else list(cur)
-
     def count_from_ids(self, ids, step=100000):
         '''return the count of docs matching with input ids
            normally, it does not need to query in batches, but MongoDB
@@ -166,17 +197,39 @@ class GeneDocMongoDBBackend(GeneDocBackendBase):
         for i in range(0, len(ids), step):
             self.target_collection.remove({'_id': {'$in': ids[i:i + step]}})
 
+# backward-compatible
+DocMongoDBBackend = DocMongoBackend
 
-class GeneDocESBackend(GeneDocBackendBase):
+class SourceDocMongoBackend(SourceDocBackendBase):
+
+    def get_build_configuration(self, build):
+        self._build_config = self.build_collection.find_one({'_id' : build})
+        return self._build_config
+
+    def validate_sources(self,sources=None):
+        assert self._build_config, "'self._build_config' cannot be empty."
+        if self.src_masterdocs is None:
+            self.src_masterdocs = self.get_src_master_docs()
+        if not sources:
+            sources = set(self.src_db.collection_names())
+            build_conf_src = self._build_config['sources']
+        else:
+            build_conf_src = collection_list
+        # check interseciton between what's needed and what's existing
+        for src in build_conf_src:
+            assert src in self.src_masterdocs, '"%s" not found in "src_master"' % src
+            assert src in sources, '"%s" not an existing collection in "%s"' % (src, self.src_db.name)
+
+    def get_src_master_docs(self):
+        return dict([(src['_id'], src) for src in list(self.master_collection.find())])
+
+
+class DocESBackend(DocBackendBase):
     name = 'es'
 
     def __init__(self, esidxer=None):
         """esidxer is an instance of utils.es.ESIndexer class."""
         self.target_esidxer = esidxer
-
-    @property
-    def target_name(self):
-        return self.target_esidxer.ES_INDEX_NAME
 
     def prepare(self, update_mapping=True):
         self.target_esidxer.create_index()
@@ -187,14 +240,6 @@ class GeneDocESBackend(GeneDocBackendBase):
 
     def insert(self, doc_li):
         self.target_esidxer.add_docs(doc_li)
-
-        # conn = self.target_esidxer.add_docs(doc_li).conn
-        # index_name = self.target_esidxer.ES_INDEX_NAME
-        # index_type = self.target_esidxer.ES_INDEX_TYPE
-        # for doc in doc_li:
-        #     conn.index(doc, index_name, index_type, doc['_id'], bulk=True)
-        # conn.indices.flush()
-        # conn.indices.refresh()
 
     def update(self, id, extra_doc):
         self.target_esidxer.update(id, extra_doc, bulk=True)
@@ -224,10 +269,6 @@ class GeneDocESBackend(GeneDocBackendBase):
 
     def get_from_id(self, id):
         return self.target_esidxer.get(id)
-        # conn = self.target_esidxer.conn
-        # index_name = self.target_esidxer.ES_INDEX_NAME
-        # index_type = self.target_esidxer.ES_INDEX_TYPE
-        # return conn.get(index_name, index_type, id)
 
     def mget_from_ids(self, ids, step=100000):
         '''ids is an id list. always return a generator'''
@@ -235,17 +276,9 @@ class GeneDocESBackend(GeneDocBackendBase):
 
     def remove_from_ids(self, ids, step=10000):
         self.target_esidxer.delete_docs(ids, step=step)
-        # conn = self.target_esidxer.conn
-        # index_type = self.target_esidxer.ES_INDEX_TYPE
-        # for i in range(0, len(ids), step):
-        #     for _id in ids[i:i+step]:
-        #         self.target_esidxer.delete_doc(index_type=index_type, id=_id, bulk=True)
-        #     conn.flush_bulk()
-        # conn.indices.flush()
-        # conn.indices.refresh()
 
 
-class GeneDocCouchDBBackend(GeneDocBackendBase):
+class DocCouchDBBackend(DocBackendBase):
     name = 'couchdb'
 
     def __init__(self, target_server=None, db_name=None):
@@ -309,17 +342,10 @@ class GeneDocCouchDBBackend(GeneDocBackendBase):
     def update(self, id, extra_doc):
         if not self._doc_cache:
             self._doc_cache = dict([(item.id, item.doc) for item in self.target_db.view('_all_docs', include_docs=True)])
-        #current_doc = self._doc_cache.get(id, self.target_db[id])
         current_doc = self._doc_cache.get(id, None)
         if current_doc:
             current_doc.update(extra_doc)
             self._doc_cache[id] = current_doc
-            #self.target_db[id] = current_doc
-
-        # if len(self._doc_cache) >= self.bulk_step:
-        #     #perform actual updates now
-        #     self.target_db.update(self._doc_cache.values())
-        #     self._doc_cache = {}
 
     def drop(self):
         from couchdb import ResourceNotFound
@@ -346,3 +372,49 @@ class GeneDocCouchDBBackend(GeneDocBackendBase):
 
     def get_from_id(self, id):
         return self.target_db[id]
+
+
+
+class TargetDocMongoBackend(TargetDocBackend,DocMongoBackend):
+
+    def set_target_name(self,target_name=None, build_name=None):
+        super(TargetDocMongoBackend,self).set_target_name(target_name,build_name)
+        self.target_collection = self.target_db[self.target_name]
+
+
+class TargetDocESBackend(TargetDocBackend, DocESBackend):
+
+    def __init__(self,*args,**kwargs):
+        raise NotImplementedError("ES backend for building/merging isn't implemented")
+
+    def set_target_name(self,name):
+        raise NotImplementedError("Unsupported")
+        self.target_esidxer.ES_INDEX_NAME = name
+        self.target_esidxer._mapping = self.get_mapping()
+
+    def post_merge(self):
+        self.update_mapping_meta()
+
+    def update_mapping_meta(self):
+        '''updating _meta field of ES mapping data, including index stats, versions.
+           This is for DocESBackend only.
+        '''
+        _meta = {}
+        src_version = self.get_src_version()
+        if src_version:
+            _meta['src_version'] = src_version
+        if getattr(self, '_stats', None):
+            _meta['stats'] = self._stats
+
+        if _meta:
+            self.target.target_esidxer.update_mapping_meta({'_meta': _meta})
+
+    def get_src_version(self):
+        src_dump = get_src_dump(self.src_db.client)
+        src_version = {}
+        for src in src_dump.find():
+            version = src.get('release', src.get('timestamp', None))
+            if version:
+                src_version[src['_id']] = version
+        return src_version
+
