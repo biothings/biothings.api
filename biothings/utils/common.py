@@ -1,4 +1,3 @@
-from __future__ import print_function
 import base64
 import os
 import io
@@ -13,6 +12,7 @@ from shlex import shlex
 import pickle
 import json
 import logging
+import importlib
 
 if sys.version_info.major == 3:
     str_types = str
@@ -528,3 +528,10 @@ def rmdashfr(top):
     except FileNotFoundError:
         # top did not exist, silently ignore
         pass
+
+def get_class_from_classpath(class_path):
+    str_mod, str_klass = ".".join(target_backend.split(".")[:-1]), target_backend.split(".")[-1]
+    mod = importlib.import_module(str_mod)
+    return getattr(mod,str_klass)
+
+
