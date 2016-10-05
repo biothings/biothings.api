@@ -55,6 +55,9 @@ class SourceDocBackendBase(DocBackendBase):
     def validate_sources(self,sources=None):
         raise NotImplementedError("sub-class and implement me")
 
+    def __getitem__(self,src_name):
+        return self.src_db[src_name]
+
 # Target specific backend
 class TargetDocBackend(DocBackendBase):
 
@@ -134,7 +137,7 @@ class DocMongoBackend(DocBackendBase):
         '''if id does not exist in the target_collection,
             the update will be ignored.
         '''
-        self.target_collection.update({'_id': id}, {'$set': extra_doc},
+        return self.target_collection.update({'_id': id}, {'$set': extra_doc},
                                       manipulate=False, check_keys=False,
                                       upsert=False, w=0)
 
@@ -221,7 +224,9 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             assert src in sources, '"%s" not an existing collection in "%s"' % (src, self.src_db.name)
 
     def get_src_master_docs(self):
-        return dict([(src['_id'], src) for src in list(self.master_collection.find())])
+        if self.src_masterdocs is None:
+            self.src_masterdocs = dict([(src['_id'], src) for src in list(self.master_collection.find())])
+        return self.src_masterdocs
 
 
 class DocESBackend(DocBackendBase):
