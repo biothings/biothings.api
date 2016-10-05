@@ -66,7 +66,7 @@ class DataBuilder(object):
     def register_status(self,status,transient=False,**extra):
         assert self._build_config, "build_config needs to be specified first"
         # get it from source_backend, kind of weird...
-        src_build = self.source_backend.build_collection
+        src_build = self.source_backend.build
         build_info = {'status': status,
              'started_at': datetime.now(),
              'logfile': self.logfile,
@@ -99,17 +99,10 @@ class DataBuilder(object):
             self.id_mappers[name].load()
 
     def generate_root_document_query(self):
-        if "species" in self._build_config:
-            _query = {'taxid': {'$in': self._build_config['species']}}
-        elif "species_to_exclude" in self._build_config:
-            _query = {'taxid': {'$nin': self._build_config['species_to_exclude']}}
-        else:
-            _query = None
-        return _query
+        return None
 
     def create_root_documents(self):
         self.init_mappers()
-        geneid_set = []
 
         _query = self.generate_root_document_query()
         #species_set = set()
@@ -124,11 +117,9 @@ class DataBuilder(object):
                 if mapper:
                     doc_li = mapper.convert(doc_li,'_id',transparent=False)
                 self.target_backend.insert(doc_li)
-                #geneid_set.extend([doc['_id'] for doc in doc_li])
 
         # TODO: create stats
-
-        return geneid_set
+        return {}
 
         #if "entrez_gene" in self._build_config[self.doc_root_key]:
         #    for doc_li in doc_feeder(self.src_db['entrez_gene'], inbatch=True, step=self.step, query=_query):
@@ -170,7 +161,7 @@ class DataBuilder(object):
         #              'total_ensembl_only_genes': cnt_ensembl_only_genes,
         #              'total_genes': len(geneid_set)}
         #    self._stats = _stats
-        #    self._src_version = self.get_src_version()
+        #    self._src_version = self.source_backend.get_src_versions()
         #    self.log_src_build({'stats': _stats, 'src_version': self._src_version})
         #    return geneid_set
 
@@ -206,7 +197,7 @@ class DataBuilder(object):
             if getattr(self, '_stats', None):
                 self.logger.info("Validating...")
                 target_cnt = self.target_backend.count()
-                if target_cnt == self._stats['total_genes']:
+                if target_cnt == self._stats['total_documents']:
                     self.logger.info("OK [total count={}]".format(target_cnt))
                 else:
                     self.logger.info("Warning: total count of gene documents does not match [{}, should be {}]".format(target_cnt, self._stats['total_genes']))
@@ -631,7 +622,7 @@ class DataBuilder(object):
         self.logger.info('Source: %s' % target_collection.name)
         _mapping = self.get_mapping()
         _meta = {}
-        src_version = self.get_src_version()
+        src_version = self.source_backend.get_src_versions()
         if src_version:
             _meta['src_version'] = src_version
         if getattr(self, '_stats', None):

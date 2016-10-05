@@ -4,7 +4,6 @@ Support MongoDB, ES, CouchDB
 '''
 from biothings.utils.common import get_timestamp, get_random_string
 
-
 # Generic base backend
 class DocBackendBase(object):
     name = 'Undefined'
@@ -39,10 +38,11 @@ class DocBackendBase(object):
 # Source specific backend (deals with build config, master docs, etc...)
 class SourceDocBackendBase(DocBackendBase):
 
-    def __init__(self,build_collection, master_collection, src_db):
-        self.build_collection = build_collection
-        self.master_collection = master_collection
-        self.src_db = src_db
+    def __init__(self, build, master, dump, sources):
+        self.build = build
+        self.master = master
+        self.dump = dump
+        self.sources = sources
         self._build_config = None
         self.src_masterdocs = None
 
@@ -55,8 +55,12 @@ class SourceDocBackendBase(DocBackendBase):
     def validate_sources(self,sources=None):
         raise NotImplementedError("sub-class and implement me")
 
+    def get_src_versions(self):
+        raise NotImplementedError("sub-class and implement me")
+
     def __getitem__(self,src_name):
-        return self.src_db[src_name]
+        return self.sources[src_name]
+
 
 # Target specific backend
 class TargetDocBackend(DocBackendBase):
@@ -206,7 +210,7 @@ DocMongoDBBackend = DocMongoBackend
 class SourceDocMongoBackend(SourceDocBackendBase):
 
     def get_build_configuration(self, build):
-        self._build_config = self.build_collection.find_one({'_id' : build})
+        self._build_config = self.build.find_one({'_id' : build})
         return self._build_config
 
     def validate_sources(self,sources=None):
@@ -214,19 +218,27 @@ class SourceDocMongoBackend(SourceDocBackendBase):
         if self.src_masterdocs is None:
             self.src_masterdocs = self.get_src_master_docs()
         if not sources:
-            sources = set(self.src_db.collection_names())
+            sources = set(self.sources.collection_names())
             build_conf_src = self._build_config['sources']
         else:
             build_conf_src = collection_list
         # check interseciton between what's needed and what's existing
         for src in build_conf_src:
             assert src in self.src_masterdocs, '"%s" not found in "src_master"' % src
-            assert src in sources, '"%s" not an existing collection in "%s"' % (src, self.src_db.name)
+            assert src in sources, '"%s" not an existing collection in "%s"' % (src, self.sources.name)
 
     def get_src_master_docs(self):
         if self.src_masterdocs is None:
-            self.src_masterdocs = dict([(src['_id'], src) for src in list(self.master_collection.find())])
+            self.src_masterdocs = dict([(src['_id'], src) for src in list(self.master.find())])
         return self.src_masterdocs
+
+    def get_src_versions(self):
+        src_version = {}
+        for src in self.dump.find():
+            version = src.get('release', src.get('timestamp', None))
+            if version:
+                src_version[src['_id']] = version
+        return src_version
 
 
 class DocESBackend(DocBackendBase):
@@ -414,12 +426,4 @@ class TargetDocESBackend(TargetDocBackend, DocESBackend):
         if _meta:
             self.target.target_esidxer.update_mapping_meta({'_meta': _meta})
 
-    def get_src_version(self):
-        src_dump = get_src_dump(self.src_db.client)
-        src_version = {}
-        for src in src_dump.find():
-            version = src.get('release', src.get('timestamp', None))
-            if version:
-                src_version[src['_id']] = version
-        return src_version
 
