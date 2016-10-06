@@ -283,8 +283,8 @@ class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
         self.post_update_data()
 
 
-class SourceStorage(object):
-    '''After registering datasources, storage will orchestrate
+class SourceManager(object):
+    '''After registering datasources, manager will orchestrate
     source uploading. Default source uploader is used when none specified
     for a datasource. Otherwise, when registering a datasource, a specific
     datasource can be specfied.
@@ -464,3 +464,17 @@ class MergerSourceUploader(BaseSourceUploader):
         self.logger.info('Done[%s]' % timesofar(t0))
         self.switch_collection()
         self.post_update_data()
+
+
+class DummySourceUploader(BaseSourceUploader):
+    """
+    Dummy uploader, won't upload any data, assuming data is already there
+    but make sure every other bit of information is there for the overall process
+    (usefull when online data isn't available anymore)
+    """
+
+    def update_data(self, doc_d, step):
+        self.logger.info("Dummy uploader, nothing to upload")
+        # sanity check, dummy uploader, yes, but make sure data is there
+        assert self.collection.count() > 0, "No data found in collection '%s' !!!" % self.name
+

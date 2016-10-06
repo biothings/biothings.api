@@ -139,7 +139,7 @@ class BaseDumper(object):
             return os.path.join(self.SRC_ROOT_FOLDER, 'latest')
 
     def do_dump(self):
-        self.logger.info("%d files to download" % len(self.to_dump))
+        self.logger.info("%d file(s) to download" % len(self.to_dump))
         for todo in [f for f in self.to_dump]:
             remote = todo["remote"]
             local = todo["local"]
@@ -158,11 +158,13 @@ from ftplib import FTP
 class FTPDumper(BaseDumper):
     FTP_HOST = 'ftp.ncbi.nlm.nih.gov'
     CWD_DIR = '/snp/organisms'
+    FTP_USER = ''
+    FTP_PASSWD = ''
 
     def prepare_client(self):
         # FTP side
         self.client = FTP(self.FTP_HOST)
-        self.client.login()
+        self.client.login(self.FTP_USER,self.FTP_PASSWD)
         if self.CWD_DIR:
             self.client.cwd(self.CWD_DIR)
 
@@ -242,3 +244,25 @@ class WgetDumper(BaseDumper):
         else:
             self.logger.error("Failed with return code (%s)." % return_code)
 
+class DummyDumper(BaseDumper):
+    """DummyDumper will do nothing...
+    (useful for datasources that can't be downloaded anymore
+    but still need to be integrated, ie. fill src_dump, etc...)
+    """
+
+    def __init__(self, *args, **kwargs):
+        # make sure we don't create empty directory each time it's launched
+        # so create a non-archiving dumper
+        super(DummyDumper,self).__init__(archive=False, *args, **kwargs)
+        self.release = "dummy"
+
+    def prepare_client(self):
+        self.logger.info("Dummy dumper, will do nothing")
+        pass
+
+    def dump(self,force=False):
+        self.logger.debug("Dummy dumper, nothing to download...")
+        self.prepare_local_folders(os.path.join(self.new_data_folder,"dummy_file"))
+        # this is the only interesting thing happening here
+        self.logger.info("Registering success")
+        self.register_status("success",pending_to_upload=True)

@@ -17,8 +17,8 @@ def main(source):
     import biothings.dataload as btdataload
 
     # package1.module1.Class1
-    default_klass = "biothings.dataload.uploader.SourceStorage"
-    klass_path = getattr(config,"SOURCE_STORAGE_CLASS",default_klass)
+    default_klass = "biothings.dataload.uploader.SourceManager"
+    klass_path = getattr(config,"SOURCE_MANAGER_CLASS",default_klass)
     if not klass_path:
         klass_path = default_klass
     klass = get_class_from_classpath(klass_path)
