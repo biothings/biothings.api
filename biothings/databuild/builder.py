@@ -23,7 +23,7 @@ class BuilderException(Exception):
 class DataBuilder(object):
 
     def __init__(self, build_name, source_backend, target_backend, log_folder,
-                 doc_root_key="root", parallel_engine=None, max_build_status=10,
+                 doc_root_key=None, parallel_engine=None, max_build_status=10,
                  id_mappers=[], sources=None, target_name=None,**kwargs):
         self.build_name = build_name
         self.source_backend = source_backend
@@ -95,17 +95,17 @@ class DataBuilder(object):
 
     def init_mappers(self):
         for name in self.id_mappers:
-            self.logger.info("Initializing %s" % name)
+            self.logger.info("Initializing mapper '%s'" % name)
             self.id_mappers[name].load()
 
     def generate_root_document_query(self):
         return None
 
     def create_root_documents(self):
-        self.init_mappers()
 
         _query = self.generate_root_document_query()
         #species_set = set()
+        stats = {}
         for src_name in self._build_config.get(self.doc_root_key):
             self.register_status("building",transient=True,build={"step":src_name})
             mapper = None
@@ -116,10 +116,10 @@ class DataBuilder(object):
                                      logger=self.logger):
                 if mapper:
                     doc_li = mapper.convert(doc_li,'_id',transparent=False)
-                self.target_backend.insert(doc_li)
+                cnt = self.target_backend.insert(doc_li)
+                stats["root_%s" % src_name] = cnt
 
-        # TODO: create stats
-        return {}
+        return stats
 
         #if "entrez_gene" in self._build_config[self.doc_root_key]:
         #    for doc_li in doc_feeder(self.src_db['entrez_gene'], inbatch=True, step=self.step, query=_query):
@@ -168,7 +168,8 @@ class DataBuilder(object):
     def prepare(self,sources=None, target_name=None):
         self.source_backend.validate_sources(sources)
         self.target_backend.set_target_name(target_name, self.build_name)
-        if not self.doc_root_key in self._build_config:
+        # root key is optional but if set, it must exist in build config
+        if self.doc_root_key and not self.doc_root_key in self._build_config:
             raise BuilderException("Root document key '%s' can't be found in build configuration" % self.doc_root_key)
 
     def merge(self, step=100000, sources=None, target_name=None):
@@ -181,10 +182,10 @@ class DataBuilder(object):
                 #self._merge_ipython_cluster(step=step)
                 raise NotImplementedError("not yet")
             else:
-                self.merge_sources(step=step, source_names=sources)
+                _stats = self.merge_sources(step=step, source_names=sources)
 
             self.target_backend.post_merge()
-            self.register_status('success')
+            self.register_status('success',build={"stats" : _stats})
 
         except Exception as e:
             import traceback
@@ -264,10 +265,16 @@ class DataBuilder(object):
         return mapper
 
     def merge_sources(self, step=100000, source_names=None):
+        self.init_mappers()
+
+        total_docs = 0
+        _stats = {}
         if source_names is None:
             self.target_backend.drop()
             self.target_backend.prepare()
-            geneid_set = self.create_root_documents()
+            if self.doc_root_key:
+                root_stats = self.create_root_documents()
+                _stats.update(root_stats)
             source_names = self._build_config['sources']
 
         for i,src_name in enumerate(source_names):
@@ -276,9 +283,15 @@ class DataBuilder(object):
             progress = "%s/%s" % (i+1,len(source_names))
             self.register_status("building",transient=True,
                                  build={"step":src_name,"progress":progress})
-            self.merge_source(src_name, step=step)
+            src_stats =self.merge_source(src_name, step=step)
+            _stats.update(src_stats)
 
         self.target_backend.finalize()
+
+        return _stats
+
+    def clean_document_to_merge(self,doc):
+        return doc
 
     def merge_source(self, src_name, step=100000):
         mapper = self.get_mapper_for_source(src_name)
@@ -289,15 +302,15 @@ class DataBuilder(object):
                 _id = mapper.translate(_id, transparent=True)
             for __id in alwayslist(_id):    # there could be cases that idmapping returns multiple entrez_gene ids.
                 __id = str(__id)
-                #if __id in geneid_set:
-                doc.pop('_id', None)
-                doc.pop('taxid', None)
+                doc = self.clean_document_to_merge(doc)
                 # Note: no need to check if there's an existing document with _id (we want to merge only with an existing document)
                 # if the document doesn't exist then the update() call will silently fail.
-                self.target_backend.update(__id, doc)
-                cnt += 1
+                # That being said... if no root documents, then there won't be any previously inserted
+                # documents, and this update() would just do nothing. So if no root docs, then upsert
+                # (update or insert, but do something)
+                cnt += self.target_backend.update(__id, doc, upsert=self.doc_root_key is None)
 
-        return cnt
+        return {"total_%s" % src_name : cnt}
 
     #def _merge_ipython_cluster(self, step=100000):
     #    '''Do the merging on ipython cluster.'''

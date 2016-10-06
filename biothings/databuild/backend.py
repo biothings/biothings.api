@@ -77,7 +77,7 @@ class TargetDocBackend(DocBackendBase):
         self.target_name = target_name or self.generate_target_name(build_name)
 
     def generate_target_name(self,build_config_name):
-        return 'genedoc_{}_{}_{}'.format(build_config_name,
+        return '{}_{}_{}'.format(build_config_name,
                                          get_timestamp(), get_random_string()).lower()
 
     def post_merge(self):
@@ -133,17 +133,20 @@ class DocMongoBackend(DocBackendBase):
     def count(self):
         return self.target_collection.count()
 
-    def insert(self, doc_li):
-        self.target_collection.insert(doc_li, manipulate=False,
-                                      check_keys=False, w=0)
+    def insert(self, docs):
+        res = self.target_collection.insert_many(documents=docs)
+        return len(res.inserted_ids)
 
-    def update(self, id, extra_doc):
+    def update(self, id, extra_doc, upsert=False):
         '''if id does not exist in the target_collection,
             the update will be ignored.
         '''
-        return self.target_collection.update({'_id': id}, {'$set': extra_doc},
-                                      manipulate=False, check_keys=False,
-                                      upsert=False, w=0)
+        res = self.target_collection.update_one({'_id': id}, {'$set': extra_doc},
+                                             upsert=upsert)
+        # if it matches but data was the same, modified_count will be zero
+        # but we're still considering the operation a success.
+        # so just condider match count
+        return res.modified_count
 
     def update_diff(self, diff, extra={}):
         '''update a doc based on the diff returned from diff.diff_doc
@@ -158,9 +161,8 @@ class DocMongoBackend(DocBackendBase):
             _updates['$set'] = _add_d
         if diff.get('delete', None):
             _updates['$unset'] = dict([(x, 1) for x in diff['delete']])
-        self.target_collection.update({'_id': diff['_id']}, _updates,
-                                      manipulate=False, check_keys=False,
-                                      upsert=False, w=0)
+        res = self.target_collection.update_one({'_id': diff['_id']}, _updates, upsert=False)
+        return res.modified_count
 
     def drop(self):
         self.target_collection.drop()
