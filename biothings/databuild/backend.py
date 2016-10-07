@@ -134,19 +134,29 @@ class DocMongoBackend(DocBackendBase):
         return self.target_collection.count()
 
     def insert(self, docs):
-        res = self.target_collection.insert_many(documents=docs)
-        return len(res.inserted_ids)
+        try:
+            res = self.target_collection.insert_many(documents=docs)
+            return len(res.inserted_ids)
+        except Exception as e:
+            import pickle
+            pickle.dump(e,open("err","wb"))
 
-    def update(self, id, extra_doc, upsert=False):
+    def update(self, docs, upsert=False):
         '''if id does not exist in the target_collection,
-            the update will be ignored.
+            the update will be ignored except if upsert is True
         '''
-        res = self.target_collection.update_one({'_id': id}, {'$set': extra_doc},
-                                             upsert=upsert)
-        # if it matches but data was the same, modified_count will be zero
-        # but we're still considering the operation a success.
-        # so just condider match count
-        return res.modified_count
+        bulk = self.target_collection.initialize_ordered_bulk_op()
+        for doc in docs:
+            op = bulk.find({'_id':doc["_id"]})
+            if upsert:
+                op = op.upsert()
+            op.update({"$set":doc})
+        res = bulk.execute()
+        # if doc is the same, it'll be matched but not modified.
+        # but for us, it's been processed. if upserted, then it can't be matched
+        # before (so matched cound doesn't include upserted). finally, it's only update
+        # ops, so don't count nInserted and nRemoved
+        return res["nMatched"] + res["nUpserted"]
 
     def update_diff(self, diff, extra={}):
         '''update a doc based on the diff returned from diff.diff_doc

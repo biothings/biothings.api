@@ -11,9 +11,9 @@ from biothings.utils.common import (timesofar, ask, safewfile,
                                     dump2gridfs, get_timestamp, get_random_string,
                                     setup_logfile, loadobj, get_class_from_classpath)
 from biothings.utils.mongo import doc_feeder
-from biothings.utils.dataload import list2dict, alwayslist
 from utils.es import ESIndexer
 import biothings.databuild.backend as btbackend
+from biothings.databuild.mapper import TransparentMapper
 
 
 class BuilderException(Exception):
@@ -24,7 +24,8 @@ class DataBuilder(object):
 
     def __init__(self, build_name, source_backend, target_backend, log_folder,
                  doc_root_key=None, parallel_engine=None, max_build_status=10,
-                 id_mappers=[], sources=None, target_name=None,**kwargs):
+                 id_mappers=[], default_mapper_class=TransparentMapper,
+                 sources=None, target_name=None,**kwargs):
         self.build_name = build_name
         self.source_backend = source_backend
         self.target_backend = target_backend
@@ -35,7 +36,7 @@ class DataBuilder(object):
         self.id_mappers = {}
         self.timestamp = datetime.now()
 
-        for mapper in id_mappers:
+        for mapper in id_mappers + [default_mapper_class()]:
             self.id_mappers[mapper.name] = mapper
 
         self.step = kwargs.get("step",10000)
@@ -67,7 +68,8 @@ class DataBuilder(object):
         assert self._build_config, "build_config needs to be specified first"
         # get it from source_backend, kind of weird...
         src_build = self.source_backend.build
-        build_info = {'status': status,
+        build_info = {
+             'status': status,
              'started_at': datetime.now(),
              'logfile': self.logfile,
              'target_backend': self.target_backend.name,
@@ -80,90 +82,34 @@ class DataBuilder(object):
             t1 = round(time.time() - self.t0, 0)
             build_info["time"] = timesofar(self.t0)
             build_info["time_in_s"] = t1
-        # merge extra at root or upload level
+        # merge extra at root or "build" level
         # (to keep building data...)
+        # it also means we want to merge the last one in "build" list
+        self.logger.info("Registered status:\n%s" % pformat(build_info))
+        _cfg = src_build.find_one({'_id': self._build_config['_id']})
         if "build" in extra:
             build_info.update(extra["build"])
-        self.logger.info("Registered status:\n%s" % pformat(build_info))
-        src_build.update({'_id': self._build_config['_id']}, {"$push": {'build': build_info}})
-        _cfg = src_build.find_one({'_id': self._build_config['_id']})
-        if len(_cfg['build']) > self.max_build_status:
-            howmany = len(_cfg['build']) - self.max_build_status
-            #remove any status not needed anymore
-            for _ in range(howmany):
-                src_build.update({'_id': self._build_config['_id']}, {"$pop": {'build': -1}})
+            _cfg["build"][-1].update(build_info)
+            src_build.replace_one({'_id': self._build_config['_id']},_cfg)
+        else:
+            # create a new build entre at the end and clean extra one (not needed/wanted)
+            src_build.update({'_id': self._build_config['_id']}, {"$push": {'build': build_info}})
+            if len(_cfg['build']) > self.max_build_status:
+                howmany = len(_cfg['build']) - self.max_build_status
+                #remove any status not needed anymore
+                for _ in range(howmany):
+                    src_build.update({'_id': self._build_config['_id']}, {"$pop": {'build': -1}})
 
-    def init_mappers(self):
-        for name in self.id_mappers:
-            self.logger.info("Initializing mapper '%s'" % name)
-            self.id_mappers[name].load()
+    def init_mapper(self,id_type):
+        if self.id_mappers[id_type].need_load():
+            self.logger.info("Initializing mapper '%s'" % id_type)
+            self.id_mappers[id_type].load()
 
-    def generate_root_document_query(self):
+    def generate_document_query(self, src_name):
         return None
 
-    def create_root_documents(self):
-
-        _query = self.generate_root_document_query()
-        #species_set = set()
-        stats = {}
-        for src_name in self._build_config.get(self.doc_root_key):
-            self.register_status("building",transient=True,build={"step":src_name})
-            mapper = None
-            # any mapper (_id translators available ?)
-            if src_name in self.id_mappers:
-                mapper = self.id_mappers[src_name]
-            for doc_li in doc_feeder(self.source_backend[src_name], inbatch=True, step=self.step, query=_query,
-                                     logger=self.logger):
-                if mapper:
-                    doc_li = mapper.convert(doc_li,'_id',transparent=False)
-                cnt = self.target_backend.insert(doc_li)
-                stats["root_%s" % src_name] = cnt
-
-        return stats
-
-        #if "entrez_gene" in self._build_config[self.doc_root_key]:
-        #    for doc_li in doc_feeder(self.src_db['entrez_gene'], inbatch=True, step=self.step, query=_query):
-        #        #target_collection.insert(doc_li, manipulate=False, check_keys=False)
-        #        #species_set |= set([doc['taxid'] for doc in doc_li])
-        #    #cnt_total_entrez_genes = len(geneid_set)
-        #    #cnt_total_species = len(species_set)
-        #    #self.logger.info('# of entrez Gene IDs in total: %d' % cnt_total_entrez_genes)
-        #    #self.logger.info('# of species in total: %d' % cnt_total_species)
-
-        #if "ensembl_gene" in self._build_config[self.doc_root_key]:
-        #    cnt_ensembl_only_genes = 0
-        #    cnt_total_ensembl_genes = 0
-        #    for doc_li in doc_feeder(self.src_db['ensembl_gene'], inbatch=True, step=self.step, query=_query):
-        #        _doc_li = []
-        #        for _doc in doc_li:
-        #            cnt_total_ensembl_genes += 1
-        #            ensembl_id = _doc['_id']
-        #            entrez_gene = ensembl2entrez.get(ensembl_id, None)
-        #            if entrez_gene is None:
-        #                #this is an Ensembl only gene
-        #                _doc_li.append(_doc)
-        #                cnt_ensembl_only_genes += 1
-        #                geneid_set.append(_doc['_id'])
-        #        if _doc_li:
-        #            #target_collection.insert(_doc_li, manipulate=False, check_keys=False)
-        #            self.target.insert(_doc_li)
-        #    cnt_matching_ensembl_genes = cnt_total_ensembl_genes - cnt_ensembl_only_genes
-        #    self.logger.info('# of ensembl Gene IDs in total: %d' % cnt_total_ensembl_genes)
-        #    self.logger.info('# of ensembl Gene IDs match entrez Gene IDs: %d' % cnt_matching_ensembl_genes)
-        #    self.logger.info('# of ensembl Gene IDs DO NOT match entrez Gene IDs: %d' % cnt_ensembl_only_genes)
-
-        #    geneid_set = set(geneid_set)
-        #    self.logger.info('# of total Root Gene IDs: %d' % len(geneid_set))
-        #    _stats = {'total_entrez_genes': cnt_total_entrez_genes,
-        #              'total_species': cnt_total_species,
-        #              'total_ensembl_genes': cnt_total_ensembl_genes,
-        #              'total_ensembl_genes_mapped_to_entrez': cnt_matching_ensembl_genes,
-        #              'total_ensembl_only_genes': cnt_ensembl_only_genes,
-        #              'total_genes': len(geneid_set)}
-        #    self._stats = _stats
-        #    self._src_version = self.source_backend.get_src_versions()
-        #    self.log_src_build({'stats': _stats, 'src_version': self._src_version})
-        #    return geneid_set
+    def get_root_document_sources(self):
+        return self._build_config.get(self.doc_root_key,[])
 
     def prepare(self,sources=None, target_name=None):
         self.source_backend.validate_sources(sources)
@@ -172,22 +118,31 @@ class DataBuilder(object):
         if self.doc_root_key and not self.doc_root_key in self._build_config:
             raise BuilderException("Root document key '%s' can't be found in build configuration" % self.doc_root_key)
 
-    def merge(self, step=100000, sources=None, target_name=None):
+    def merge(self, sources=None, target_name=None, batch_size=100000,):
+
         self.t0 = time.time()
-        self.register_status("building",transient=True,build={"step":"init"})
+        # normalize
+        if sources is None:
+            self.target_backend.drop()
+            self.target_backend.prepare()
+            sources = self._build_config['sources']
+        elif isinstance(sources,str):
+            sources = [sources]
+
         try:
+            self.register_status("building",transient=True)
             if self.parallel_engine:
                 if sources:
                     raise NotImplemented("merge speficic sources not supported when using parallel")
-                #self._merge_ipython_cluster(step=step)
                 raise NotImplementedError("not yet")
             else:
-                _stats = self.merge_sources(step=step, source_names=sources)
-
+                _stats = self.merge_sources(source_names=sources, batch_size=batch_size)
             self.target_backend.post_merge()
-            self.register_status('success',build={"stats" : _stats})
 
-        except Exception as e:
+            _src_versions = self.source_backend.get_src_versions()
+            self.register_status('success',build={"stats" : _stats, "src_versions" : _src_versions})
+
+        except (KeyboardInterrupt,Exception) as e:
             import traceback
             self.logger.error(traceback.format_exc())
             self.register_status("failed",build={"err": repr(e)})
@@ -255,35 +210,38 @@ class DataBuilder(object):
 
 
     def get_mapper_for_source(self,src_name):
-        mapper = None
         id_type = self.source_backend.get_src_master_docs()[src_name].get('id_type')
-        if id_type:
-            try:
-                mapper = self.id_mappers[id_type]
-            except KeyError:
-                raise BuilderException("Found id_type '%s' but no mapper associated" % id_type)
-        return mapper
+        try:
+            self.init_mapper(id_type)
+            mapper = self.id_mappers[id_type]
+            self.logger.info("Found mapper '%s' for source '%s'" % (mapper,src_name))
+            return mapper
+        except KeyError:
+            raise BuilderException("Found id_type '%s' but no mapper associated" % id_type)
 
-    def merge_sources(self, step=100000, source_names=None):
-        self.init_mappers()
-
+    def merge_sources(self, source_names, batch_size=100000):
+        """
+        Merge resources from given source_names or from build config.
+        Identify root document sources from the list to first process them.
+        """
         total_docs = 0
         _stats = {}
-        if source_names is None:
-            self.target_backend.drop()
-            self.target_backend.prepare()
-            if self.doc_root_key:
-                root_stats = self.create_root_documents()
-                _stats.update(root_stats)
-            source_names = self._build_config['sources']
+        # try to identify root document sources amongst the list to first
+        # process them (if any)
+        root_sources = list(set(source_names).intersection(set(self.get_root_document_sources())))
+        other_sources = list(set(source_names).difference(set(root_sources)))
+        # now re-order
+        source_names = root_sources + other_sources
+
+        self.logger.info("Merging following sources: %s" % repr(source_names))
 
         for i,src_name in enumerate(source_names):
-            if src_name in self._build_config.get(self.doc_root_key,[]):
-                continue
+            #if src_name in self._build_config.get(self.doc_root_key,[]):
+            #    continue
             progress = "%s/%s" % (i+1,len(source_names))
-            self.register_status("building",transient=True,
+            self.register_status("success",transient=True,
                                  build={"step":src_name,"progress":progress})
-            src_stats =self.merge_source(src_name, step=step)
+            src_stats =self.merge_source(src_name, batch_size=batch_size)
             _stats.update(src_stats)
 
         self.target_backend.finalize()
@@ -293,24 +251,29 @@ class DataBuilder(object):
     def clean_document_to_merge(self,doc):
         return doc
 
-    def merge_source(self, src_name, step=100000):
+    def merge_source(self, src_name, batch_size=100000):
+
         mapper = self.get_mapper_for_source(src_name)
         cnt = 0
-        for doc in doc_feeder(self.source_backend[src_name], step=step, logger=self.logger):
-            _id = doc['_id']
-            if mapper:
-                _id = mapper.translate(_id, transparent=True)
-            for __id in alwayslist(_id):    # there could be cases that idmapping returns multiple entrez_gene ids.
-                __id = str(__id)
-                doc = self.clean_document_to_merge(doc)
-                # Note: no need to check if there's an existing document with _id (we want to merge only with an existing document)
-                # if the document doesn't exist then the update() call will silently fail.
-                # That being said... if no root documents, then there won't be any previously inserted
-                # documents, and this update() would just do nothing. So if no root docs, then upsert
-                # (update or insert, but do something)
-                cnt += self.target_backend.update(__id, doc, upsert=self.doc_root_key is None)
+        _query = self.generate_document_query(src_name)
+        for docs in doc_feeder(self.source_backend[src_name], inbatch=True,
+                               step=batch_size, logger=self.logger, query=_query):
+            # prepare batch
+            docs = mapper.process(docs)
+            newdocs = map(self.clean_document_to_merge,docs)
+            # Note: no need to check if there's an existing document with _id (we want to merge only with an existing document)
+            # if the document doesn't exist then the update() call will silently fail.
+            # That being said... if no root documents, then there won't be any previously inserted
+            # documents, and this update() would just do nothing. So if no root docs, then upsert
+            # (update or insert, but do something)
+            upsert = (self.doc_root_key is None) or src_name in self.get_root_document_sources()
+            if not upsert:
+                self.logger.debug("Documents from source '%s' will be stored only " + \
+                                  "if a previous document exist with same _id" % src_name)
+            cnt += self.target_backend.update(newdocs, upsert=upsert)
 
         return {"total_%s" % src_name : cnt}
+
 
     #def _merge_ipython_cluster(self, step=100000):
     #    '''Do the merging on ipython cluster.'''
