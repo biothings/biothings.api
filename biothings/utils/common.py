@@ -530,7 +530,7 @@ def rmdashfr(top):
         pass
 
 def get_class_from_classpath(class_path):
-    str_mod, str_klass = ".".join(target_backend.split(".")[:-1]), target_backend.split(".")[-1]
+    str_mod, str_klass = ".".join(class_path.split(".")[:-1]), class_path.split(".")[-1]
     mod = importlib.import_module(str_mod)
     return getattr(mod,str_klass)
 
