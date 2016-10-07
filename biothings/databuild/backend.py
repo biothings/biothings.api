@@ -69,7 +69,7 @@ class TargetDocBackend(DocBackendBase):
         super(TargetDocBackend,self).__init__(*args,**kwargs)
         self.target_name = None
 
-    def set_target_name(self,target_name, build_name):
+    def set_target_name(self,target_name, build_name=None):
         """
         Create/prepare a target backend, either strictly named "target_name"
         or named derived from "build_name" (for temporary backends)
@@ -77,6 +77,7 @@ class TargetDocBackend(DocBackendBase):
         self.target_name = target_name or self.generate_target_name(build_name)
 
     def generate_target_name(self,build_config_name):
+        assert not build_config_name is None
         return '{}_{}_{}'.format(build_config_name,
                                          get_timestamp(), get_random_string()).lower()
 
@@ -233,7 +234,7 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             sources = set(self.sources.collection_names())
             build_conf_src = self._build_config['sources']
         else:
-            build_conf_src = collection_list
+            build_conf_src = sources
         # check interseciton between what's needed and what's existing
         for src in build_conf_src:
             assert src in self.src_masterdocs, '"%s" not found in "src_master"' % src

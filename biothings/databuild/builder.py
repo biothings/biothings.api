@@ -18,6 +18,8 @@ from biothings.databuild.mapper import TransparentMapper
 
 class BuilderException(Exception):
     pass
+class ResumeException(Exception):
+    pass
 
 
 class DataBuilder(object):
@@ -64,7 +66,7 @@ class DataBuilder(object):
         if not sh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(sh)
 
-    def register_status(self,status,transient=False,**extra):
+    def register_status(self,status,transient=False,init=False,**extra):
         assert self._build_config, "build_config needs to be specified first"
         # get it from source_backend, kind of weird...
         src_build = self.source_backend.build
@@ -91,8 +93,8 @@ class DataBuilder(object):
             build_info.update(extra["build"])
             _cfg["build"][-1].update(build_info)
             src_build.replace_one({'_id': self._build_config['_id']},_cfg)
-        else:
-            # create a new build entre at the end and clean extra one (not needed/wanted)
+        # create a new build entre at the end and clean extra one (not needed/wanted)
+        if init:
             src_build.update({'_id': self._build_config['_id']}, {"$push": {'build': build_info}})
             if len(_cfg['build']) > self.max_build_status:
                 howmany = len(_cfg['build']) - self.max_build_status
@@ -129,8 +131,12 @@ class DataBuilder(object):
         elif isinstance(sources,str):
             sources = [sources]
 
+        if target_name:
+            self.target_backend.set_target_name(target_name)
+
         try:
-            self.register_status("building",transient=True)
+            self.register_status("building",transient=True,init=True,
+                                 build={"step":"init","sources":sources})
             if self.parallel_engine:
                 if sources:
                     raise NotImplemented("merge speficic sources not supported when using parallel")
@@ -157,6 +163,37 @@ class DataBuilder(object):
                     self.logger.info("OK [total count={}]".format(target_cnt))
                 else:
                     self.logger.info("Warning: total count of gene documents does not match [{}, should be {}]".format(target_cnt, self._stats['total_genes']))
+
+    def merge_resume(self):
+        src_build = self.source_backend.build
+        cfg = src_build.find_one({'_id': self._build_config['_id']})
+        if len(cfg.get("build",[])) == 0:
+            raise ResumeException("No build bound for configuration '%s', can't resume" % cfg["name"])
+        # resume on latest build
+        build = cfg["build"][-1]
+        # first make sure we can actually resume
+        sources = build.get("sources")
+        if not sources:
+            raise ResumeException("No 'sources' found")
+        step = build.get("step")
+        if not step:
+            raise ResumeException("No 'step' found")
+        if not step in sources:
+            raise ResumeException("Step '%s' isn't part of sources used for the merge ('%s')" % (step,sources))
+        target_name = build.get("target_name")
+        if not target_name:
+            raise ResumeException("No target_name found")
+        status = build.get("status","success") # default: we don't care, we resume
+        if not status == "failed":
+            raise ResumeException("Nothing to resume")
+        # compute new sources remaining for processing
+        # note: current step has failed so it's part of the resume
+        sources = sources[sources.index(step):]
+        # re-validate source just in case
+        self.source_backend.validate_sources(sources)
+        self.logger.info("Resuming build: %s" % build)
+        self.merge(sources,target_name)
+
 
     def validate(self, build_config='mygene_allspecies', n=10):
         '''Validate merged genedoc, currently for ES backend only.'''
@@ -256,20 +293,19 @@ class DataBuilder(object):
         mapper = self.get_mapper_for_source(src_name)
         cnt = 0
         _query = self.generate_document_query(src_name)
+        # Note: no need to check if there's an existing document with _id (we want to merge only with an existing document)
+        # if the document doesn't exist then the update() call will silently fail.
+        # That being said... if no root documents, then there won't be any previously inserted
+        # documents, and this update() would just do nothing. So if no root docs, then upsert
+        # (update or insert, but do something)
+        upsert = (self.doc_root_key is None) or src_name in self.get_root_document_sources()
+        if not upsert:
+            self.logger.debug("Documents from source '%s' will be stored only if a previous document exist with same _id" % src_name)
         for docs in doc_feeder(self.source_backend[src_name], inbatch=True,
                                step=batch_size, logger=self.logger, query=_query):
             # prepare batch
             docs = mapper.process(docs)
             newdocs = map(self.clean_document_to_merge,docs)
-            # Note: no need to check if there's an existing document with _id (we want to merge only with an existing document)
-            # if the document doesn't exist then the update() call will silently fail.
-            # That being said... if no root documents, then there won't be any previously inserted
-            # documents, and this update() would just do nothing. So if no root docs, then upsert
-            # (update or insert, but do something)
-            upsert = (self.doc_root_key is None) or src_name in self.get_root_document_sources()
-            if not upsert:
-                self.logger.debug("Documents from source '%s' will be stored only " + \
-                                  "if a previous document exist with same _id" % src_name)
             cnt += self.target_backend.update(newdocs, upsert=upsert)
 
         return {"total_%s" % src_name : cnt}
