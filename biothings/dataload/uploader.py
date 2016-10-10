@@ -301,22 +301,23 @@ class SourceManager(object):
     def get_source_uploader(self,src_module):
         return src_module.__metadata__.get("uploader",self.__class__.__DEFAULT_SOURCE_UPLOADER__)
 
-    def generate_uploader_instance(self,src_module):
+    def generate_uploader_instances(self,src_module):
         # try to find a uploader class in the module
-        uploader_klass = None
+        uploader_klasses = []
         for attr in dir(src_module):
             something = getattr(src_module,attr)
             if type(something) == type and issubclass(something,BaseSourceUploader):
                 uploader_klass = something
                 logging.debug("Found uploader class '%s'" % uploader_klass)
-                break
-        if not uploader_klass:
+                uploader_klasses.append(something)
+        if not uploader_klasses:
             raise UnknownResource("Can't find an uploader class in module '%s'" % src_module)
-        uploader_inst = uploader_klass(
-                db_conn=self.conn,
-                data_root=config.DATA_ARCHIVE_ROOT
-                )
-        return uploader_inst
+        for uploader_klass in uploader_klasses:
+            uploader_inst = uploader_klass(
+                    db_conn=self.conn,
+                    data_root=config.DATA_ARCHIVE_ROOT
+                    )
+            yield uploader_inst
 
     def register_source(self,src_data):
         """Register a new data source. src_data can be a module where some
@@ -329,7 +330,6 @@ class SourceManager(object):
                 src_m = importlib.import_module(src_data)
             except ImportError:
                 try:
-                    print("onela %s.%s" % (self.default_src_path,src_data))
                     src_m = importlib.import_module("%s.%s" % (self.default_src_path,src_data))
                 except ImportError:
                     logging.error("Can't find module '%s', even in '%s'" % (src_data,self.default_src_path))
@@ -343,12 +343,13 @@ class SourceManager(object):
             return
         else:
             src_m = src_data
-        uploader_inst = self.generate_uploader_instance(src_m)
-        if uploader_inst.main_source:
-            self.doc_register.setdefault(uploader_inst.main_source,[]).append(uploader_inst)
-        else:
-            self.doc_register[updloader_inst.name] = uploader_inst
-        self.conn.register(uploader_inst.__class__)
+        uploader_insts = self.generate_uploader_instances(src_m)
+        for uploader_inst in uploader_insts:
+            if uploader_inst.main_source:
+                self.doc_register.setdefault(uploader_inst.main_source,[]).append(uploader_inst)
+            else:
+                self.doc_register[updloader_inst.name] = uploader_inst
+            self.conn.register(uploader_inst.__class__)
 
     def register_sources(self, sources):
         assert not isinstance(sources,str), "sources argument is a string, should pass a list"
