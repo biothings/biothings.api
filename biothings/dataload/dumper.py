@@ -6,12 +6,17 @@ from biothings.utils.mongo import get_src_dump
 from biothings.utils.common import timesofar
 
 
+class DumperException(Exception):
+    pass
+
 class BaseDumper(object):
     # override in subclass accordingly
     SRC_NAME = None
-    SRC_ROOT_FOLDER = None #se  source folder (without version/dates)
+    SRC_ROOT_FOLDER = None # source folder (without version/dates)
 
-    def __init__(self, no_confirm=True, archive=True):
+    def __init__(self, src_name=None, src_root_folder=None, no_confirm=True, archive=True):
+        self.src_name = src_name or self.SRC_NAME
+        self.src_root_folder = src_root_folder or self.SRC_ROOT_FOLDER
         self.client = None
         self.logger = None
         self.src_dump = None
@@ -59,15 +64,15 @@ class BaseDumper(object):
 
     def setup_log(self):
         import logging as logging_mod
-        if not os.path.exists(self.SRC_ROOT_FOLDER):
-            os.makedirs(self.SRC_ROOT_FOLDER)
-        self.logfile = os.path.join(self.SRC_ROOT_FOLDER, '%s_%s_dump.log' % (self.SRC_NAME,self.timestamp))
+        if not os.path.exists(self.src_root_folder):
+            os.makedirs(self.src_root_folder)
+        self.logfile = os.path.join(self.src_root_folder, '%s_%s_dump.log' % (self.src_name,self.timestamp))
         fh = logging_mod.FileHandler(self.logfile)
         fh.setFormatter(logging_mod.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         fh.name = "logfile"
         sh = logging_mod.StreamHandler()
         sh.name = "logstream"
-        self.logger = logging_mod.getLogger("%s_dump" % self.SRC_NAME)
+        self.logger = logging_mod.getLogger("%s_dump" % self.src_name)
         self.logger.setLevel(logging_mod.DEBUG)
         if not fh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(fh)
@@ -84,11 +89,11 @@ class BaseDumper(object):
     def prepare_src_dump(self):
         # Mongo side
         self.src_dump = get_src_dump()
-        self.src_doc = self.src_dump.find_one({'_id': self.SRC_NAME}) or {}
+        self.src_doc = self.src_dump.find_one({'_id': self.src_name}) or {}
 
     def register_status(self,status,transient=False,**extra):
         self.src_doc = {
-                '_id': self.SRC_NAME,
+                '_id': self.src_name,
                'data_folder': self.new_data_folder,
                'release': self.release,
                'download' : {
@@ -132,11 +137,11 @@ class BaseDumper(object):
             if self.client:
                 self.release_client()
 
-    def get_new_data_folder(self):
+    def get_new_data_folder(self,suffix="timestamp"):
         if self.archive:
-            return os.path.join(self.SRC_ROOT_FOLDER, self.timestamp)
+            return os.path.join(self.src_root_folder, getattr(self,suffix))
         else:
-            return os.path.join(self.SRC_ROOT_FOLDER, 'latest')
+            return os.path.join(self.src_root_folder, 'latest')
 
     def do_dump(self):
         self.logger.info("%d file(s) to download" % len(self.to_dump))
@@ -224,7 +229,7 @@ class WgetDumper(BaseDumper):
         """Check if 'wget' executable exists"""
         ret = os.system("type wget 2>&1 > /dev/null")
         if not ret == 0:
-            raise Exception("Can't find wget executable")
+            raise DumperException("Can't find wget executable")
 
     def need_prepare(self):
         return False
@@ -266,3 +271,40 @@ class DummyDumper(BaseDumper):
         # this is the only interesting thing happening here
         self.logger.info("Registering success")
         self.register_status("success",pending_to_upload=True)
+
+class ManualDumper(BaseDumper):
+    '''
+    This dumper will assist user to dump a resource. It will usually expect the files
+    to be downloaded first (sometimes there's no easy way to automate this process).
+    Once downloaded, a call to dump() will make sure everything is fine in terms of
+    files and metadata
+    '''
+
+    def prepare(self):
+        self.prepare_client()
+        self.prepare_src_dump()
+
+    def prepare_client(self):
+        self.logger.info("Manual dumper, assuming data will be downloaded manually")
+
+    def dump(self,path,release=None):
+        if os.path.isabs(path):
+            self.new_data_folder = path
+        elif path:
+            self.new_data_folder = os.path.join(self.src_root_folder,path)
+        else:
+            self.new_data_folder = self.src_root_folder
+        if release is None:
+            # take latest path part, usually it's the release
+            self.release = os.path.basename(self.new_data_folder)
+        else:
+            self.release = release
+        # sanity check
+        if not os.path.exists(self.new_data_folder):
+            raise DumperException("Can't find folder '%s' (did you download data first ?)" % self.new_data_folder)
+        if not os.listdir(self.new_data_folder):
+            raise DumperException("Directory '%s' is empty (did you download data first ?)" % self.new_data_folder)
+        # ok, good to go
+        self.register_status("success",pending_to_upload=True)
+        self.logger.info("Manually dumped resource (data_folder: '%s')" % self.new_data_folder)
+
