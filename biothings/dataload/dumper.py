@@ -157,7 +157,6 @@ class BaseDumper(object):
             os.makedirs(localdir)
 
 
-
 from ftplib import FTP
 
 class FTPDumper(BaseDumper):
@@ -215,6 +214,35 @@ class FTPDumper(BaseDumper):
         self.logger.debug("'%s' is up-to-date, no need to download" % remotefile)
         return False
 
+
+import requests
+
+class HTTPDumper(BaseDumper):
+    """Dumper using HTTP protocol and "requests" library"""
+
+    def prepare_client(self):
+        self.client = requests.Session()
+
+    def need_prepare(self):
+        return not self.client
+
+    def release_client(self):
+        self.client.close()
+        self.client = None
+
+    def remote_is_better(self,remotefile,localfile):
+        return True
+
+    def download(self,remoteurl,localfile,headers={}):
+        """kwargs will be passed to requests.Session.get()"""
+        self.prepare_local_folders(localfile)
+        self.logger.debug("Downloading '%s'" % remoteurl)
+        res = self.client.get(remoteurl,stream=True,headers=headers)
+        fout = open(localfile, 'wb')
+        for chunk in res.iter_content(chunk_size=512 * 1024):
+            if chunk:
+                fout.write(chunk)
+        fout.close()
 
 class WgetDumper(BaseDumper):
 
@@ -308,3 +336,58 @@ class ManualDumper(BaseDumper):
         self.register_status("success",pending_to_upload=True)
         self.logger.info("Manually dumped resource (data_folder: '%s')" % self.new_data_folder)
 
+
+from urllib import parse as urlparse
+from bs4 import BeautifulSoup
+
+class GoogleDriveDumper(HTTPDumper):
+
+    def prepare_client(self):
+        super(GoogleDriveDumper,self).prepare_client()
+
+    def remote_is_better(self,remotefile,localfile):
+        return True
+
+    def get_document_id(self,url):
+        pr = urlparse.urlparse(url)
+        if "drive.google.com/open" in url or "docs.google.com/uc" in url:
+            q = urlparse.parse_qs(pr.query)
+            doc_id = q.get("id")
+            if not doc_id:
+                raise DumperException("Can't extract document ID from URL '%s'" % url)
+            return doc_id.pop()
+        elif "drive.google.com/file" in url:
+            frags = pr.path.split("/")
+            ends = ["view","edit"]
+            if frags[-1] in ends:
+                doc_id = frags[-2]
+                return doc_id
+            else:
+                raise DumperException("URL '%s' doesn't end with %s, can't extract document ID" % (url,ends))
+
+        raise DumperException("Don't know how to extract document ID from URL '%s'" % url)
+
+
+    def download(self,remoteurl,localfile):
+        '''
+        remoteurl is a google drive link containing a document ID, such as:
+            - https://drive.google.com/open?id=<1234567890ABCDEF>
+            - https://drive.google.com/file/d/<1234567890ABCDEF>/view
+        It can also be just a document ID
+        '''
+        self.prepare_local_folders(localfile)
+        if remoteurl.startswith("http"):
+            doc_id = self.get_document_id(remoteurl)
+        else:
+            doc_id = remoteurl
+        self.logger.info("Found document ID: %s" % doc_id)
+        # first pass: get download URL with "confirm" code
+        dl_url = "https://docs.google.com/uc?id=%s" % doc_id
+        res = requests.get(dl_url)
+        html = BeautifulSoup(res.text,"html.parser")
+        link = html.find("a",{"id":"uc-download-link"})
+        if not link:
+            raise DumperException("Can't find a download link from '%s': %s" % (dl_url,html))
+        href = link.get("href")
+        # now build the final GET request, using cookies to simulate browser
+        super(GoogleDriveDumper,self).download("https://docs.google.com" + href, localfile, headers={"cookie": res.headers["set-cookie"]})
