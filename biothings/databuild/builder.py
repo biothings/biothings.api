@@ -87,7 +87,6 @@ class DataBuilder(object):
         # merge extra at root or "build" level
         # (to keep building data...)
         # it also means we want to merge the last one in "build" list
-        self.logger.info("Registered status:\n%s" % pformat(build_info))
         _cfg = src_build.find_one({'_id': self._build_config['_id']})
         if "build" in extra:
             build_info.update(extra["build"])
@@ -104,7 +103,10 @@ class DataBuilder(object):
 
     def init_mapper(self,id_type):
         if self.id_mappers[id_type].need_load():
-            self.logger.info("Initializing mapper '%s'" % id_type)
+            if id_type is None:
+                self.logger.info("Initializing default mapper")
+            else:
+                self.logger.info("Initializing mapper '%s'" % id_type)
             self.id_mappers[id_type].load()
 
     def generate_document_query(self, src_name):

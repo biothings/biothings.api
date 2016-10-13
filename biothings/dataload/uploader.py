@@ -169,8 +169,7 @@ class BaseSourceUploader(object):
                 "name": str(self.name), # TODO: remove ?
                 "timestamp": datetime.datetime.now()}
         # store mapping
-        if hasattr(self, 'get_mapping'):
-            _doc['mapping'] = getattr(self, 'get_mapping')()
+        _doc['mapping'] = self.__class__.get_mapping()
         # type of id being stored in these docs
         if hasattr(self, 'id_type'):
             _doc['id_type'] = getattr(self, 'id_type')
