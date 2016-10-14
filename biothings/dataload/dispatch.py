@@ -77,7 +77,7 @@ def main(daemon=False):
             for src_to_update in src_to_update_li:
                 if src_to_update not in running_processes:
                     mark_upload_started(src_to_update)
-                    p = dispatch(src_to_update)
+                    p = dispatch_src_upload(src_to_update)
                     p.t0 = time.time()
                     running_processes[src_to_update] = p
 

@@ -288,11 +288,41 @@ class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
 
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
+        tinner = time.time()
         for doc_li in self.doc_iterator(doc_d, batch=True, step=step):
             try:
                 self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
+                self.logger.info("Inserted %s records [%s]" % (step,timesofar(tinner)))
             except DuplicateKeyError:
                 pass
+            tinner = time.time()
+        self.logger.info('Done[%s]' % timesofar(t0))
+        self.switch_collection()
+        self.post_update_data()
+
+class IgnoreDuplicatedSourceUploader(BaseSourceUploader):
+    '''Same as default uploader, but will store records and ignore if
+    any duplicated error occuring (use with caution...). Storage
+    is done using batch and unordered bulk operations.
+    '''
+
+    def update_data(self, doc_d, step):
+        doc_d = doc_d or self.load_data(data_folder=self.data_folder)
+        self.logger.debug("doc_d mem: %s" % sys.getsizeof(doc_d))
+
+        self.logger.info("Uploading to the DB...")
+        t0 = time.time()
+        tinner = time.time()
+        for doc_li in self.doc_iterator(doc_d, batch=True, step=step):
+            try:
+                bob = self.temp_collection.initialize_unordered_bulk_op()
+                for d in doc_li:
+                    bob.insert(d)
+                res = bob.execute()
+                self.logger.info("Inserted %s records [%s]" % (res['nInserted'],timesofar(tinner)))
+            except BulkWriteError as e:
+                self.logger.info("Inserted %s records, ignoring %d [%s]" % (e.details['nInserted'],len(e.details["writeErrors"]),timesofar(tinner)))
+            tinner = time.time()
         self.logger.info('Done[%s]' % timesofar(t0))
         self.switch_collection()
         self.post_update_data()
