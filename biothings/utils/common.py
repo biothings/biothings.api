@@ -535,3 +535,13 @@ def get_class_from_classpath(class_path):
     return getattr(mod,str_klass)
 
 
+import zipfile, glob
+def unzipall(folder):
+    '''
+    unzip all zip files in "folder", in "folder"
+    '''
+    for zfile in glob.glob(os.path.join(folder,"*.zip")):
+        zf = zipfile.ZipFile(zfile)
+        logging.info("Unzipping '%s'" % zf.filename)
+        zf.extractall(folder)
+

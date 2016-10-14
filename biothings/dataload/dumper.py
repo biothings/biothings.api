@@ -62,6 +62,18 @@ class BaseDumper(object):
         """Download "remotefile' to local location defined by 'localfile'"""
         raise NotImplementedError("Define in subclass")
 
+    def post_download(self, remotefile, localfile):
+        """Placeholder to add a custom process once a file is downloaded.
+        This is a good place to check file's integrity. Optional"""
+        pass
+
+    def post_dump(self):
+        """
+        Placeholder to add a custom process once the whole resource 
+        has been dumped. Optional.
+        """
+        pass
+
     def setup_log(self):
         import logging as logging_mod
         if not os.path.exists(self.src_root_folder):
@@ -127,6 +139,7 @@ class BaseDumper(object):
                 # mark the download starts
                 self.register_status("downloading",transient=True)
                 self.do_dump()
+                self.post_dump()
                 self.register_status("success",pending_to_upload=True)
         except (KeyboardInterrupt,Exception) as e:
             self.logger.error("Error while dumping source: %s" % e)
@@ -149,6 +162,7 @@ class BaseDumper(object):
             remote = todo["remote"]
             local = todo["local"]
             self.download(remote,local)
+            self.post_download(remote,local)
             self.to_dump.remove(todo)
 
     def prepare_local_folders(self,localfile):
@@ -297,6 +311,7 @@ class DummyDumper(BaseDumper):
         self.logger.debug("Dummy dumper, nothing to download...")
         self.prepare_local_folders(os.path.join(self.new_data_folder,"dummy_file"))
         # this is the only interesting thing happening here
+        self.post_dump()
         self.logger.info("Registering success")
         self.register_status("success",pending_to_upload=True)
 
@@ -332,6 +347,8 @@ class ManualDumper(BaseDumper):
             raise DumperException("Can't find folder '%s' (did you download data first ?)" % self.new_data_folder)
         if not os.listdir(self.new_data_folder):
             raise DumperException("Directory '%s' is empty (did you download data first ?)" % self.new_data_folder)
+
+        self.post_dump()
         # ok, good to go
         self.register_status("success",pending_to_upload=True)
         self.logger.info("Manually dumped resource (data_folder: '%s')" % self.new_data_folder)
@@ -391,3 +408,4 @@ class GoogleDriveDumper(HTTPDumper):
         href = link.get("href")
         # now build the final GET request, using cookies to simulate browser
         super(GoogleDriveDumper,self).download("https://docs.google.com" + href, localfile, headers={"cookie": res.headers["set-cookie"]})
+
