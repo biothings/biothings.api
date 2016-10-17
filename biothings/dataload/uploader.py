@@ -434,8 +434,11 @@ class SourceManager(object):
         for attr in dir(src_module):
             something = getattr(src_module,attr)
             if type(something) == type and issubclass(something,BaseSourceUploader):
-                found_one = True
                 uploader_klass = something
+                if uploader_klass.name is None:
+                    logging.debug("%s has no 'name' defined, skip it" % uploader_klass)
+                    continue
+                found_one = True
                 logging.debug("Found uploader class '%s'" % uploader_klass)
                 res = uploader_klass.create(db_conn=self.conn,data_root=config.DATA_ARCHIVE_ROOT)
                 if isinstance(res,list):
@@ -541,5 +544,33 @@ class SourceManager(object):
 
     def __repr__(self):
         return "<%s [%d registered]: %s>" % (self.__class__.__name__,len(self.doc_register), list(self.doc_register.keys()))
+
+    def __getitem__(self,src_name):
+        try:
+            # as a main-source
+            return self.doc_register[src_name]
+        except KeyError:
+            try:
+                # as a sub-source
+                main,sub = src_name.split(".")
+                srcs = self.doc_register[main]
+                # there can be many uploader for one resource (when each is dealing
+                # with one specific file but upload to the same collection for instance)
+                # so we want to make sure user is aware of this and not just return one
+                # uploader when many are needed
+                # on the other hand, if only one avail, just return it
+                res = []
+                for src in srcs:
+                    if src.name == sub:
+                        res.append(src)
+                if len(res) == 1:
+                    return res.pop()
+                elif len(res) == 0:
+                    raise KeyError(src_name)
+                else:
+                    return res
+            except (ValueError,KeyError):
+                # nope, can't find it...
+                raise KeyError(src_name)
 
 
