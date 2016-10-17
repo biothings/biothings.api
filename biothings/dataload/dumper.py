@@ -150,9 +150,10 @@ class BaseDumper(object):
             if self.client:
                 self.release_client()
 
-    def get_new_data_folder(self,suffix="timestamp"):
+    def get_new_data_folder(self,suffix="release"):
+        suffix = getattr(self,suffix,None) or self.timestamp
         if self.archive:
-            return os.path.join(self.src_root_folder, getattr(self,suffix))
+            return os.path.join(self.src_root_folder, suffix)
         else:
             return os.path.join(self.src_root_folder, 'latest')
 
