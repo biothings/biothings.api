@@ -536,12 +536,37 @@ def get_class_from_classpath(class_path):
 
 
 import zipfile, glob
-def unzipall(folder):
+def unzipall(folder,pattern="*.zip"):
     '''
     unzip all zip files in "folder", in "folder"
     '''
-    for zfile in glob.glob(os.path.join(folder,"*.zip")):
+    for zfile in glob.glob(os.path.join(folder,pattern)):
         zf = zipfile.ZipFile(zfile)
         logging.info("Unzipping '%s'" % zf.filename)
         zf.extractall(folder)
 
+import tarfile, gzip
+def untargzall(folder,pattern="*.tar.gz"):
+    '''
+    gunzip and untar all *.tar.gz files in "folder"
+    '''
+
+    for tgz in glob.glob(os.path.join(folder,pattern)):
+        gz = gzip.GzipFile(tgz)
+        tf = tarfile.TarFile(fileobj=gz)
+        logging.info("untargz '%s'" % tf.name)
+        tf.extractall(folder)
+
+def gunzipall(folder,pattern="*.gz"):
+    '''
+    gunzip all *.gz files in "folder"
+    '''
+
+    for f in glob.glob(os.path.join(folder,pattern)):
+        # build uncompress filename from gz file and pattern
+        destf = f.replace(pattern.replace("*",""),"")
+        fout = open(destf,"wb")
+        with gzip.GzipFile(f) as gz:
+            logging.info("gunzip '%s'" % gz.name)
+            fout.write(gz.read())
+        fout.close()
