@@ -10,6 +10,8 @@ import time
 #agg_by_sum = lambda prev, curr: prev + curr
 #agg_by_append = lambda prev, curr: prev + [curr]
 
+ret = None
+
 def agg_by_sum(prev, curr):
     return prev + curr
 
@@ -119,11 +121,12 @@ def run_parallel_by_query(fun, backend_options=None, query=None, agg_function=ag
     ''' Insert comments here. '''
     
     # Initialize return type
+    global ret
     ret = agg_function_init
 
     # callback function for each chunk
     def _apply_callback(result):
-        #global ret
+        global ret
         ret = agg_function(ret, result)
     
     # assert backend_options is correct
