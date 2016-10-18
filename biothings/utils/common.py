@@ -568,5 +568,6 @@ def gunzipall(folder,pattern="*.gz"):
         fout = open(destf,"wb")
         with gzip.GzipFile(f) as gz:
             logging.info("gunzip '%s'" % gz.name)
-            fout.write(gz.read())
+            for line in gz:
+                fout.write(line)
         fout.close()
