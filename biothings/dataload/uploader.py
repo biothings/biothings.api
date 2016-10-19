@@ -289,13 +289,22 @@ class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
-        for doc_li in self.doc_iterator(doc_d, batch=True, step=step):
+        # force step = 1
+        cnt = 0
+        dups = 0
+        for doc_li in self.doc_iterator(doc_d, batch=True, step=1):
             try:
-                self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
-                self.logger.info("Inserted %s records [%s]" % (step,timesofar(tinner)))
+                res = self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
+                cnt += 1
+                if (cnt + dups) % step == 0:
+                    # we insert one by one but display progress on a "step" base
+                    self.logger.info("Inserted %s records, ignoring %s [%s]" % (cnt,dups,timesofar(tinner)))
+                    cnt = 0
+                    dups = 0
+                    tinner = time.time()
             except DuplicateKeyError:
+                dups += 1
                 pass
-            tinner = time.time()
         self.logger.info('Done[%s]' % timesofar(t0))
         self.switch_collection()
         self.post_update_data()
