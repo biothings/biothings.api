@@ -430,7 +430,9 @@ class ESIndexer():
                 break
             else:
                 for doc in res['hits']['hits']:
-                    yield doc['_source']
+                    if doc.get('_source', False):
+                        yield doc['_source']
+                    yield doc
                     cnt += 1
                 if verbose:
                     print('done.[%.1f%%,%s]' % (min(cnt, n)*100./n, timesofar(t1)))
@@ -445,6 +447,34 @@ class ESIndexer():
         cur = self.doc_feeder(step=step, _source=False, verbose=verbose)
         id_li = [doc['_id'] for doc in cur]
         return id_li
+
+    def get_docs(self, ids, step=10000, **mget_args):
+        # chunkify, for iterators
+        this_chunk = []
+        this_len = 0
+        for tid in ids:
+            this_chunk.append(tid)
+            this_len += 1
+            if this_len < step:
+                continue
+            # process chunk
+            chunk_res = self._es.mget(body={"ids": this_chunk}, index=self._index, doc_type=self._doc_type, **mget_args)
+            this_chunk = []
+            this_len = 0
+            if 'docs' not in chunk_res:
+                continue
+            for doc in chunk_res['docs']:
+                if (('found' not in doc) or (('found' in doc) and not doc['found'])):
+                    continue
+                yield doc
+        if this_chunk:
+            chunk_res = self._es.mget(body={"ids": this_chunk}, index=self._index, doc_type=self._doc_type, **mget_args)
+            if 'docs' not in chunk_res:
+                raise StopIteration
+            for doc in chunk_res['docs']:
+                if (('found' not in doc) or (('found' in doc) and not doc['found'])):
+                    continue
+                yield doc
 
     def find_biggest_doc(self, fields_li, min=5, return_doc=False):
         """return the doc with the max number of fields from fields_li."""
