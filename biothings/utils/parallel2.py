@@ -1,8 +1,16 @@
 from biothings.utils.backend import DocESBackend, DocMongoBackend, DocMemoryBackend, DocBackendOptions
 from biothings.utils.es import ESIndexer
+from biothings.utils.common import iter_n
 from multiprocessing import Pool
 from glob import glob
-from os.path import abspath
+from os.path import abspath, isdir, join
+from os import cpu_count
+
+# How many cpus on this machine?
+DEFAULT_THREADS_WITHOUT_MASTER = cpu_count()
+DEFAULT_THREADS_WITH_MASTER = DEFAULT_THREADS_WITHOUT_MASTER
+if DEFAULT_THREADS_WITHOUT_MASTER > 1:
+    DEFAULT_THREADS_WITHOUT_MASTER -= 1
 
 # simple aggregation functions
 def agg_by_sum(prev, curr):
@@ -37,11 +45,50 @@ class ErrorHandler(object):
             f.close()
         pass
 
+def run_parallel_by_ids_file(fun, ids_file, backend_options=None, agg_function=agg_by_append, agg_function_init=[],
+                            chunk_size=1000000, num_workers=DEFAULT_THREADS_WITH_MASTER, outpath=None, 
+                            mget_chunk_size=10000, ignore_None=True, error_path=None, **query_kwargs):
+    ''' Basically the same as run_parallel_by_query, but using a list of ids in a file instead of a query result. '''
+    # Initialize return type
+    ret = ParallelResult(agg_function, agg_function_init)
+
+    # assert backend_options is correct
+    if not backend_options or not isinstance(backend_options, DocBackendOptions):
+        raise Exception("backend_options must be a biothings.databuild.parallel2.DocBackendOptions class")
+
+    # build backend from options
+    backend = backend_options.cls.create_from_options(backend_options)
+
+    if not ids_file:
+        raise Exception("ids_file must be a path to a file with ids, one per line")
+
+    ids_file = abspath(ids_file)
+
+    # normalize path for out files
+    if outpath:
+        outpath = abspath(outpath)
+
+    if error_path:
+        error_path = abspath(error_path)
+
+    chunk_num = 0
+    
+    with open(ids_file, 'r') as ids_handle, Pool(processes=num_workers) as p:
+        for (chunk_num, chunk) in enumerate(iter_n(_file_iterator(ids_handle), chunk_size)):
+            # apply function to chunk
+            p.apply_async(_run_one_chunk_ids_list, 
+                    args=(chunk_num, chunk, fun, backend_options, agg_function, agg_function_init, 
+                    outpath, mget_chunk_size, ignore_None), callback=ret.aggregate, 
+                    error_callback=ErrorHandler(error_path, chunk_num).handle)
+        # close pool and wait for completion of all workers
+        p.close()
+        p.join()
+    return ret.res
+
 # TODO: allow mget args to be passed
 def run_parallel_by_query(fun, backend_options=None, query=None, agg_function=agg_by_append, 
-                        agg_function_init=[], chunk_size=1000000, num_workers=16, outpath=None, 
-                        mget_chunk_size=10000, ignore_None=True, error_path=None, ids_output=None, 
-                        ids_chunk_size=0, **query_kwargs):
+                        agg_function_init=[], chunk_size=1000000, num_workers=DEFAULT_THREADS_WITH_MASTER, 
+                        outpath=None, mget_chunk_size=10000, ignore_None=True, error_path=None, **query_kwargs):
     ''' This function will run a user function on all documents in a backend database in parallel using
         multiprocessing.Pool.  The overview of the process looks like this:  
 
@@ -94,16 +141,10 @@ def run_parallel_by_query(fun, backend_options=None, query=None, agg_function=ag
         :param ignore_None:
                 If set, then falsy values will not be aggregated (0, [], None, etc) in the aggregation step.
                 Default True.
-        :param ids_output:
-                If set, this is the path to a file (or base path for many files) that contain a list of ids, one
-                per line.  If ids_chunk_size is 0, all ids are in 1 file (specified by ids_output).  If ids_chunk_size
-                is not zero, it specifies how many lines should be in each id list chunk.
-        :param ids_chunk_size:
-                This controls how big each ids list chunk is, see ids_output above.
 
         All other parameters are fed to the backend query.
       '''
-    
+   
     # Initialize return type
     ret = ParallelResult(agg_function, agg_function_init)
 
@@ -118,69 +159,59 @@ def run_parallel_by_query(fun, backend_options=None, query=None, agg_function=ag
     if outpath:
         outpath = abspath(outpath)
 
-    # if we are caching ids, set that up
-    if ids_output:
-        ids_output = abspath(ids_output)
-        ids_chunk_counter = 0
-        this_ids_chunk_size = 0
-        if ids_chunk_size:
-            _ids_file = open(ids_output + '_{}'.format(ids_chunk_counter), 'w')
-        else:
-            _ids_file = open(ids_output, 'w')
-
     if error_path:
         error_path = abspath(error_path)
 
-    chunk_num = 0
-    this_chunk = []
-    this_chunk_size = 0
-    
     # Initialize pool
-    p = Pool(processes=num_workers)
-
-    # Should make backend return chunks instead...
-    for doc in backend.query(query, _source=False, **query_kwargs):
-        # chunkify for parallelization
-        this_chunk.append(doc['_id'])
-        this_chunk_size += 1
-
-        # chunkify separately for caching ids to file, if requested
-        if ids_output:
-            _ids_file.write('{}\n'.format(doc['_id']))
-            this_ids_chunk_size += 1
-            if this_ids_chunk_size == ids_chunk_size:
-                this_ids_chunk_size = 0
-                ids_chunk_counter += 1
-                _ids_file.close()
-                _ids_file = open(ids_output + '_{}'.format(ids_chunk_counter), 'w')
-
-        if this_chunk_size < chunk_size:
-            continue
-
-        # apply function to chunk
-        p.apply_async(_run_one_chunk_ids_list, 
-                args=(chunk_num, this_chunk, fun, backend_options, agg_function, agg_function_init, 
-                outpath, mget_chunk_size, ignore_None), callback=ret.aggregate, 
-                error_callback=ErrorHandler(error_path, chunk_num).handle)
-        this_chunk = []
-        this_chunk_size = 0
-        chunk_num += 1
-
-    # do final chunk if necessary
-    if this_chunk:
-        p.apply_async(_run_one_chunk_ids_list, 
-                args=(chunk_num, this_chunk, fun, backend_options, agg_function, agg_function_init, 
-                outpath, mget_chunk_size, ignore_None), callback=ret.aggregate,
-                error_callback=ErrorHandler(error_path, chunk_num).handle)
-
-    # close id caching file handle
-    if ids_output:
-        _ids_file.close()
-
-    # close pool and wait for completion of all workers
-    p.close()
-    p.join()
+    with Pool(processes=num_workers) as p:
+        for (chunk_num, chunk) in enumerate(iter_n(backend.query(query, _source=False, **query_kwargs), chunk_size)):
+            # apply function to chunk
+            p.apply_async(_run_one_chunk_ids_list, 
+                    args=(chunk_num, chunk, fun, backend_options, agg_function, agg_function_init, 
+                    outpath, mget_chunk_size, ignore_None), callback=ret.aggregate, 
+                    error_callback=ErrorHandler(error_path, chunk_num).handle)
+            #p.starmap_async(_run_one_chunk_ids_list, 
+            #    _create_iterator(backend.query(query, _source=False, **query_kwargs)),
+            #    chunksize=chunk_size, callback=ret.aggregate) #
+        p.close()
+        p.join()
     return ret.res
+
+def run_parallel_by_ids_dir(fun, ids_dir, backend_options=None, agg_function=agg_by_append, 
+                        agg_function_init=[], chunk_size=1000000, outpath=None
+                        num_workers=DEFAULT_THREADS_WITHOUT_MASTER, mget_chunk_size=10000, 
+                        ignore_None=True, error_path=None, **query_kwargs):
+    ''' This function will run function fun on chunks defined by the files in ids_dir.
+        
+    '''
+    # Initialize return type
+    ret = ParallelResult(agg_function, agg_function_init)
+
+    # assert backend_options is correct
+    if not backend_options or not isinstance(backend_options, DocBackendOptions):
+        raise Exception("backend_options must be a biothings.databuild.parallel2.DocBackendOptions class")
+
+    # build backend from options
+    backend = backend_options.cls.create_from_options(backend_options)
+
+    # normalize path for directory containing id files
+    ids_dir = abspath(ids_dir)
+    assert isdir(ids_dir)
+    # get the path to the files
+    files = enumerate(glob.glob(join(ids_dir), '*'))
+ 
+    # normalize path for out files, if requested
+    if outpath:
+        outpath = abspath(outpath)
+    
+    # and error files, if requested
+    if error_path:
+        error_path = abspath(error_path)
+
+    with Pool(processes=num_workers) as p:
+        pass
+
+    return ret.res 
 
 def _run_one_chunk_ids_list(chunk_num, chunk, fun, backend_options, agg_function, 
                             agg_function_init, outpath, mget_chunk_size, ignore_None):
@@ -210,6 +241,10 @@ def _run_one_chunk_ids_list(chunk_num, chunk, fun, backend_options, agg_function
     if outpath and _file:
         _file.close()
     return ret.res
+
+def _file_iterator(chunk_file):
+    for line in chunk_file:
+        yield line.strip('\n')
 
 """def _run_one_chunk_ids_dir(chunk_num, chunk_path, fun, backend, agg_function, agg_function_init, outpath, mget_chunk_size, ignore_None):
 
@@ -268,7 +303,4 @@ def _chunk_iterator(chunk_list):
     for tid in chunk_list:
         yield tid
 
-def _file_iterator(chunk_file):
-    for line in chunk_file:
-        yield line.strip('\n')
 """
