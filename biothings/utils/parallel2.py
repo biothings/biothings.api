@@ -45,11 +45,10 @@ class ErrorHandler(object):
             f.close()
         pass
 
-def run_parallel_by_ids_file(fun, ids_file, backend_options=None, agg_function=agg_by_append, agg_function_init=[],
-                            chunk_size=1000000, num_workers=DEFAULT_THREADS_WITH_MASTER, outpath=None, 
+def run_parallel_on_ids_iterable(fun, iterable, backend_options=None, agg_function=agg_by_append, agg_function_init=[],
+                            chunk_size=1000000, num_workers=DEFAULT_THREADS_WITH_MASTER, outpath=None,
                             mget_chunk_size=10000, ignore_None=True, error_path=None, **query_kwargs):
-    ''' Basically the same as run_parallel_by_query, but using a list of ids in a file instead of a query result. '''
-    # Initialize return type
+
     ret = ParallelResult(agg_function, agg_function_init)
 
     # assert backend_options is correct
@@ -59,11 +58,6 @@ def run_parallel_by_ids_file(fun, ids_file, backend_options=None, agg_function=a
     # build backend from options
     backend = backend_options.cls.create_from_options(backend_options)
 
-    if not ids_file:
-        raise Exception("ids_file must be a path to a file with ids, one per line")
-
-    ids_file = abspath(ids_file)
-
     # normalize path for out files
     if outpath:
         outpath = abspath(outpath)
@@ -71,10 +65,8 @@ def run_parallel_by_ids_file(fun, ids_file, backend_options=None, agg_function=a
     if error_path:
         error_path = abspath(error_path)
 
-    chunk_num = 0
-    
-    with open(ids_file, 'r') as ids_handle, Pool(processes=num_workers) as p:
-        for (chunk_num, chunk) in enumerate(iter_n(_file_iterator(ids_handle), chunk_size)):
+    with Pool(processes=num_workers) as p:
+        for (chunk_num, chunk) in enumerate(iter_n(iterable, chunk_size)):
             # apply function to chunk
             p.apply_async(_run_one_chunk_ids_list, 
                     args=(chunk_num, chunk, fun, backend_options, agg_function, agg_function_init, 
@@ -84,9 +76,25 @@ def run_parallel_by_ids_file(fun, ids_file, backend_options=None, agg_function=a
         p.close()
         p.join()
     return ret.res
+       
+
+def run_parallel_on_ids_file(fun, ids_file, backend_options=None, agg_function=agg_by_append, agg_function_init=[],
+                            chunk_size=1000000, num_workers=DEFAULT_THREADS_WITH_MASTER, outpath=None, 
+                            mget_chunk_size=10000, ignore_None=True, error_path=None, **query_kwargs):
+    ''' Basically the same as run_parallel_by_query, but using a list of ids in a file instead of a query result. '''
+
+    def _file_iterator(fh):
+        for line in fh:
+            yield line.strip('\n')
+
+    ids_file = abspath(ids_file)
+    with open(ids_file, 'r') as ids_handle:
+        return run_parallel_on_ids_iterable(fun, _file_iterator(ids_handle), backend_options, agg_function,
+                            agg_function_init, chunk_size, num_workers, outpath, mget_chunk_size, ignore_None,
+                            error_path=None, **query_kwargs)
 
 # TODO: allow mget args to be passed
-def run_parallel_by_query(fun, backend_options=None, query=None, agg_function=agg_by_append, 
+def run_parallel_on_query(fun, backend_options=None, query=None, agg_function=agg_by_append, 
                         agg_function_init=[], chunk_size=1000000, num_workers=DEFAULT_THREADS_WITH_MASTER, 
                         outpath=None, mget_chunk_size=10000, ignore_None=True, error_path=None, **query_kwargs):
     ''' This function will run a user function on all documents in a backend database in parallel using
@@ -144,40 +152,22 @@ def run_parallel_by_query(fun, backend_options=None, query=None, agg_function=ag
 
         All other parameters are fed to the backend query.
       '''
-   
-    # Initialize return type
-    ret = ParallelResult(agg_function, agg_function_init)
+    def _query_iterator(q):
+        for doc in q:
+            yield doc['_id']
 
     # assert backend_options is correct
     if not backend_options or not isinstance(backend_options, DocBackendOptions):
         raise Exception("backend_options must be a biothings.databuild.parallel2.DocBackendOptions class")
-
+    
     # build backend from options
     backend = backend_options.cls.create_from_options(backend_options)
 
-    # normalize path for out files
-    if outpath:
-        outpath = abspath(outpath)
+    return run_parallel_on_ids_iterable(fun, _query_iterator(backend.query(query, _source=False, **query_kwargs)),
+                            backend_options, agg_function, agg_function_init, chunk_size, outpath,
+                            num_workers, mget_chunk_size, ignore_None, error_path, **query_kwargs)
 
-    if error_path:
-        error_path = abspath(error_path)
-
-    # Initialize pool
-    with Pool(processes=num_workers) as p:
-        for (chunk_num, chunk) in enumerate(iter_n(backend.query(query, _source=False, **query_kwargs), chunk_size)):
-            # apply function to chunk
-            p.apply_async(_run_one_chunk_ids_list, 
-                    args=(chunk_num, chunk, fun, backend_options, agg_function, agg_function_init, 
-                    outpath, mget_chunk_size, ignore_None), callback=ret.aggregate, 
-                    error_callback=ErrorHandler(error_path, chunk_num).handle)
-            #p.starmap_async(_run_one_chunk_ids_list, 
-            #    _create_iterator(backend.query(query, _source=False, **query_kwargs)),
-            #    chunksize=chunk_size, callback=ret.aggregate) #
-        p.close()
-        p.join()
-    return ret.res
-
-def run_parallel_by_ids_dir(fun, ids_dir, backend_options=None, agg_function=agg_by_append, 
+def run_parallel_on_ids_dir(fun, ids_dir, backend_options=None, agg_function=agg_by_append, 
                         agg_function_init=[], chunk_size=1000000, outpath=None
                         num_workers=DEFAULT_THREADS_WITHOUT_MASTER, mget_chunk_size=10000, 
                         ignore_None=True, error_path=None, **query_kwargs):
@@ -241,66 +231,3 @@ def _run_one_chunk_ids_list(chunk_num, chunk, fun, backend_options, agg_function
     if outpath and _file:
         _file.close()
     return ret.res
-
-def _file_iterator(chunk_file):
-    for line in chunk_file:
-        yield line.strip('\n')
-
-"""def _run_one_chunk_ids_dir(chunk_num, chunk_path, fun, backend, agg_function, agg_function_init, outpath, mget_chunk_size, ignore_None):
-
-
-    if isinstance(chunk, str) and os.path.exists(chunk):
-        chunk_file = open(chunk, 'r')
-        iterator = _file_iterator(chunk_file)
-    else:
-        chunk_file = None
-        iterator = backend.mget_from_ids(chunk, step=mget_chunk_size)
-    
-
-    this_chunk = []
-    this_chunk_len = 0
-    ret = agg_function_init
-    for this_id in iterator:
-        this_chunk.append(this_id)
-        this_chunk_len += 1
-        if this_chunk_len < mget_chunk_size:
-            continue
-        # Chunk full, get the docs from ES with mget and continue this chunk
-        chunk_res = backend.mget_from_ids(this_chunk, mget_chunk_size)
-        this_chunk_len = 0
-        this_chunk = []
-        if 'docs' not in chunk_res:
-            continue
-        ret_dict = _process_chunk(chunk_num, chunk_res, test_conf, files, ret_dict)
-    # do partial chunks
-    if this_chunk:
-        chunk_res = _get_chunk(this_chunk, es, test_conf)
-        this_chunk = []
-        if 'docs' in chunk_res:
-            ret_dict = _process_chunk(chunk_num, chunk_res, test_conf, files, ret_dict)
-    # close files
-    _close_file_struct(files)
-    if chunk_file:
-        chunk_file.close()
-    return ret_dict
-
-def _process_chunk(chunk_num, chunk_res, test_conf, files, ret_dict):
-    for doc in chunk_res['docs']:
-        if (('found' not in doc) or (('found' in doc) and not doc['found'])):
-            continue
-        for (index, test) in enumerate(test_conf.tests):
-            # Run this test on the doc
-            if index in files:
-                test_ret = test.f(doc, chunk_num, files[index])
-            else:
-                test_ret = test.f(doc, chunk_num)
-            if test_ret and test.ret_key:
-                # TODO: Maybe should allow an aggregation function...
-                ret_dict.setdefault(test.ret_key, []).append(test_ret)
-    return ret_dict
-
-def _chunk_iterator(chunk_list):
-    for tid in chunk_list:
-        yield tid
-
-"""
