@@ -208,17 +208,18 @@ class DocESBackend(DocBackendBase):
     def get_from_id(self, id):
         return self.target_esidxer.get(id)
 
-    def mget_from_ids(self, ids, step=100000):
+    def mget_from_ids(self, ids, step=100000, only_source=True, **kwargs):
         '''ids is an id list. always return a generator'''
-        return self.target_esidxer.get_docs(ids, step=step)
+        return self.target_esidxer.get_docs(ids, step=step, only_source=only_source, **kwargs)
 
     def remove_from_ids(self, ids, step=10000):
         self.target_esidxer.delete_docs(ids, step=step)
 
-    def query(self, query=None, verbose=False, step=10000, scroll="10m", **kwargs):
+    def query(self, query=None, verbose=False, step=10000, scroll="10m", 
+              only_source=True, **kwargs):
         ''' Function that takes a query and returns an iterator to query results. '''
         try:
-            return self.target_esidxer.doc_feeder(query=query, verbose=verbose, step=step, scroll=scroll, **kwargs)
+            return self.target_esidxer.doc_feeder(query=query, verbose=verbose, step=step, scroll=scroll, only_source=only_source, **kwargs)
         except Exception as e:
             pass
 

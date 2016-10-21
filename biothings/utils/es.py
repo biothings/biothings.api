@@ -401,12 +401,26 @@ class ESIndexer():
             print("This is a dryrun, so no actual document operations.")
 
     @wrapper
-    def doc_feeder(self, step=10000, verbose=True, query=None, scroll='10m', **kwargs):
+    def doc_feeder_using_helper(self, step=None, verbose=True, query=None, scroll='10m', **kwargs):
+        # verbose unimplemented
+        step = step or self.step
+        q = query if query else {'query': {'match_all': {}}}
+        for doc in helpers.scan(client=self._es, query=q, scroll=scroll, index=self._index,
+                        doc_type=self._doc_type,  **kwargs): 
+            if doc.get('_source', False):
+                yield doc['_source']
+            else:
+                yield doc
+
+    @wrapper
+    def doc_feeder(self, step=None, verbose=True, query=None, scroll='10m', only_source=True, **kwargs):
+        step = step or self.step
         q = query if query else {'query': {'match_all': {}}}
         _q_cnt = self.count(q=q, raw=True)
         n = _q_cnt['count']
         n_shards = _q_cnt['_shards']['total']
         assert n_shards == _q_cnt['_shards']['successful']
+        # Not sure if scroll size is per shard anymore in the new ES...should check this
         _size = int(step / n_shards)
         assert _size * n_shards == step
         cnt = 0
@@ -430,9 +444,10 @@ class ESIndexer():
                 break
             else:
                 for doc in res['hits']['hits']:
-                    if doc.get('_source', False):
+                    if doc.get('_source', False) and only_source:
                         yield doc['_source']
-                    yield doc
+                    else:
+                        yield doc
                     cnt += 1
                 if verbose:
                     print('done.[%.1f%%,%s]' % (min(cnt, n)*100./n, timesofar(t1)))
@@ -443,38 +458,29 @@ class ESIndexer():
         assert cnt == n, "Error: scroll query terminated early [{}, {}], please retry.\nLast response:\n{}".format(cnt, n, res)
 
     @wrapper
-    def get_id_list(self, step=100000, verbose=True):
+    def get_id_list(self, step=None, verbose=True):
+        step = step or self.step
         cur = self.doc_feeder(step=step, _source=False, verbose=verbose)
         id_li = [doc['_id'] for doc in cur]
         return id_li
 
-    def get_docs(self, ids, step=10000, **mget_args):
-        # chunkify, for iterators
-        this_chunk = []
-        this_len = 0
-        for tid in ids:
-            this_chunk.append(tid)
-            this_len += 1
-            if this_len < step:
-                continue
-            # process chunk
-            chunk_res = self._es.mget(body={"ids": this_chunk}, index=self._index, doc_type=self._doc_type, **mget_args)
-            this_chunk = []
-            this_len = 0
-            if 'docs' not in chunk_res:
-                continue
+    @wrapper
+    def get_docs(self, ids, step=None, only_source=True, **mget_args):
+        ''' Return matching docs for given ids iterable, if not found return None.
+            A generator is returned to the matched docs.  If only_source is False,
+            the entire document is returned, otherwise only the source is returned. '''
+        # chunkify
+        step = step or self.step
+        for chunk in iter_n(ids, step):
+            chunk_res = self._es.mget(body={"ids": chunk}, index=self._index, 
+                                      doc_type=self._doc_type, **mget_args)
             for doc in chunk_res['docs']:
                 if (('found' not in doc) or (('found' in doc) and not doc['found'])):
-                    continue
-                yield doc
-        if this_chunk:
-            chunk_res = self._es.mget(body={"ids": this_chunk}, index=self._index, doc_type=self._doc_type, **mget_args)
-            if 'docs' not in chunk_res:
-                raise StopIteration
-            for doc in chunk_res['docs']:
-                if (('found' not in doc) or (('found' in doc) and not doc['found'])):
-                    continue
-                yield doc
+                    yield None
+                elif not only_source:
+                    yield doc
+                else:
+                    yield doc['_source']
 
     def find_biggest_doc(self, fields_li, min=5, return_doc=False):
         """return the doc with the max number of fields from fields_li."""
@@ -496,41 +502,6 @@ class ESIndexer():
                     print('.', end='')
             print()
 
-
-def duplicate_index_with_new_settings(old_index, new_index, settings):
-    ''' This function will create a new index and copy the mappings from the old index
-    with the settings dict, you can change any of the settings, e.g. number of primary
-    shards.'''
-    m = es.indices.get_mapping(index=old_index)
-    mappings = m[old_index]['mappings']
-    es.indices.create(index=new_index, body='{"settings":' + json.dumps(settings) + ', "mappings":' + json.dumps(mappings) + '}')
-
-
-def reindex(old_index, new_index, s):
-    ''' Function to reindex by scan and scroll combined with a bulk insert.
-    old_index is the index to take docs from, new_index is the one the docs go to.
-    s is the size of each bulk insert - should set this as high as the RAM
-    on the machine you run it on allows.  500-1000 seems reasonable for t2.medium '''
-    def create_bulk_insert_string(results, index):
-        ret_str = ''
-        for hit in results:
-            ret_str += '{"create":{"_index":"' + index + '","_type":"variant","_id":"' + hit['_id'] + '"}}\n'
-            ret_str += json.dumps(hit) + '\n'
-        return ret_str
-
-    es = Elasticsearch('localhost:9200')
-    s = es.search(index=old_index, body='{"query": {"match_all": {}}}', search_type='scan', scroll='5m', size=s)
-    curr_done = 0
-
-    try:
-        while True:  # do this loop until failure
-            r = es.scroll(s['_scroll_id'], scroll='5m')
-            this_l = [res['_source'] for res in r['hits']['hits']]
-            this_str = create_bulk_insert_string(this_l, new_index)
-            es.bulk(body=this_str, index=new_index, doc_type='variant')
-            curr_done += len(this_l)
-    except:
-        print('{} documents inserted'.format(curr_done))
 
 
 #def get_metadata(index):
