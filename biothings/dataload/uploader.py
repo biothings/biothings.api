@@ -1,11 +1,12 @@
 import time, sys, os, importlib, copy
 import datetime, types, pprint
-
-from pymongo.errors import DuplicateKeyError, BulkWriteError
+import asyncio
 
 from biothings.utils.common import get_timestamp, get_random_string, timesofar, iter_n
 from biothings.utils.mongo import get_src_conn, get_src_dump
 from biothings.utils.dataload import merge_struct
+from .storage import IgnoreDuplicatedStorage, MergerStorage, \
+                     BasicStorage, NoBatchIgnoreDuplicatedStorage
 
 from biothings import config
 
@@ -31,6 +32,21 @@ class DocSourceMaster(dict):
         'timestamp': datetime.datetime,
     }
 
+
+def ensure_prepared(func):
+    """
+    decorator to make sure source is ready to be used.
+    db connections creation and other unpicklable stuff are postponed
+    up to the last time where it's needed so source can be used in a
+    multiprocessing env.
+    """
+    def wrapper(self, *args, **kwargs):
+        if not self.prepared:
+            self.prepare()
+        func(self,*args, **kwargs)
+    return wrapper
+
+
 class BaseSourceUploader(object):
     '''
     Default datasource uploader. Database storage can be done
@@ -46,23 +62,26 @@ class BaseSourceUploader(object):
                       # it's also the _id of the resource in src_dump collection
                       # if set to None, it will be set to the value of variable "name"
 
-    def __init__(self, db_conn, data_root, collection_name=None, *args, **kwargs):
-        """db_conn is a database connection to fetch/store information about the datasource's state
-        data_root is the root folder containing all resources. It will generate its own
-        data folder from this point"""
-        self.conn = db_conn
+    def __init__(self, db_conn_info, data_root, collection_name=None, *args, **kwargs):
+        """db_conn_info is a database connection info tuple (host,port) to fetch/store 
+        information about the datasource's state data_root is the root folder containing
+        all resources. It will generate its own data folder from this point"""
+        self.db_conn_info = db_conn_info
         self.timestamp = datetime.datetime.now()
         self.t0 = time.time()
-        self.db = self.conn[self.__class__.__database__]
+        self.conn = None
+        self.db = None
         self.__class__.main_source = self.__class__.main_source or self.__class__.name
         self.src_root_folder=os.path.join(data_root, self.__class__.main_source)
-        self.prepare_src_dump()
-        self.setup_log()
+        self.logfile = None
         self.temp_collection = None
+        self.collection = None # final collection
         self.collection_name = collection_name or self.name
+        self.data_folder = None
+        self.prepared = False
 
     @classmethod
-    def create(klass, db_conn, data_root, *args, **kwargs):
+    def create(klass, db_conn_info, data_root, *args, **kwargs):
         """
         Factory-like method, just return an instance of this uploader
         (used by SourceManager, may be overridden in sub-class to generate
@@ -73,9 +92,19 @@ class BaseSourceUploader(object):
         Instead of having actual class for each split collection, factory
         will generate them on-the-fly.
         """
-        return klass(db_conn, data_root, *args, **kwargs)
+        return klass(db_conn_info, data_root, *args, **kwargs)
 
-    def check_ready(self):
+    def prepare(self):
+        self.conn = get_src_conn()
+        self.db = self.conn[self.__class__.__database__]
+        self.collection = self.db[self.collection_name]
+        self.prepare_src_dump()
+        self.data_folder = self.src_doc.get("data_folder")
+        self.setup_log()
+        # flag ready
+        self.prepared = True
+
+    def check_ready(self,force=False):
         if not self.src_doc:
             raise ResourceNotReady("Missing information for source '%s' to start upload" % self.main_source)
         if not self.src_doc.get("data_folder"):
@@ -84,10 +113,11 @@ class BaseSourceUploader(object):
             raise ResourceNotReady("No successful download found for resource '%s'" % self.name)
         if not os.path.exists(self.src_root_folder):
             raise ResourceNotReady("Data folder '%s' doesn't exist for resource '%s'" % self.name)
-        if self.src_doc.get("upload",{}).get("status") == "uploading":
+        if not force and self.src_doc.get("upload",{}).get("status") == "uploading":
             pid = self.src_doc.get("upload",{}).get("pid","unknown")
             raise ResourceNotReady("Resource '%s' is already being uploaded (pid: %s)" % (self.name,pid))
 
+    @ensure_prepared
     def load_data(self,data_folder):
         """Parse data inside data_folder and return structure ready to be
         inserted in database"""
@@ -121,36 +151,9 @@ class BaseSourceUploader(object):
         else:
             raise ResourceError("No temp collection (or it's empty)")
 
-    def doc_iterator(self, doc_d, batch=True, step=10000):
-        if isinstance(doc_d, types.GeneratorType) and batch:
-            for doc_li in iter_n(doc_d, n=step):
-                yield doc_li
-        else:
-            if batch:
-                doc_li = []
-                i = 0
-            for _id, doc in doc_d.items():
-                doc['_id'] = _id
-                _doc = {}
-                #_doc.clear()
-                _doc.update(doc)
-                #if validate:
-                #    _doc.validate()
-                if batch:
-                    doc_li.append(_doc)
-                    i += 1
-                    if i % step == 0:
-                        yield doc_li
-                        doc_li = []
-                else:
-                    yield _doc
-
-            if batch:
-                yield doc_li
-
     def post_update_data(self):
         """Override as needed to perform operations after
-           date has been uploaded"""
+           data has been uploaded"""
         pass
 
     def update_data(self, doc_d, step):
@@ -218,10 +221,13 @@ class BaseSourceUploader(object):
         self.src_doc.pop("pending_to_upload",None)
         self.src_dump.save(self.src_doc)
 
-    def load(self, doc_d=None, update_data=True, update_master=True, test=False, step=10000, progress=None, total=None):
+    @ensure_prepared
+    def load(self, doc_d=None, update_data=True, update_master=True, force=False, step=10000, progress=None, total=None):
+        # postponed until now !
+        self.prepare()
         # sanity check before running
         self.logger.info("Uploading '%s' (collection: %s)" % (self.name, self.collection_name))
-        self.check_ready()
+        self.check_ready(force)
         try:
             self.unset_pending_upload()
             if not self.temp_collection:
@@ -234,9 +240,7 @@ class BaseSourceUploader(object):
             if update_data:
                 self.update_data(doc_d,step)
             if update_master:
-                # update src_master collection
-                if not test:
-                    self.update_master()
+                self.update_master()
             if progress == total:
                 self.register_status("success")
         except (KeyboardInterrupt,Exception) as e:
@@ -244,10 +248,6 @@ class BaseSourceUploader(object):
             self.logger.error(traceback.format_exc())
             self.register_status("failed",upload={"err": repr(e)})
             raise
-
-    @property
-    def collection(self):
-        return self.db[self.collection_name]
 
     def prepare_src_dump(self):
         self.src_dump = get_src_dump()
@@ -270,10 +270,6 @@ class BaseSourceUploader(object):
         if not sh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(sh)
 
-    @property
-    def data_folder(self):
-        return self.src_doc.get("data_folder")
-
 
 class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
     '''Same as default uploader, but will store records and ignore if
@@ -285,29 +281,11 @@ class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
     def update_data(self, doc_d, step):
         doc_d = doc_d or self.load_data(data_folder=self.data_folder)
         self.logger.debug("doc_d mem: %s" % sys.getsizeof(doc_d))
-
-        self.logger.info("Uploading to the DB...")
-        t0 = time.time()
-        tinner = time.time()
-        # force step = 1
-        cnt = 0
-        dups = 0
-        for doc_li in self.doc_iterator(doc_d, batch=True, step=1):
-            try:
-                res = self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
-                cnt += 1
-                if (cnt + dups) % step == 0:
-                    # we insert one by one but display progress on a "step" base
-                    self.logger.info("Inserted %s records, ignoring %s [%s]" % (cnt,dups,timesofar(tinner)))
-                    cnt = 0
-                    dups = 0
-                    tinner = time.time()
-            except DuplicateKeyError:
-                dups += 1
-                pass
-        self.logger.info('Done[%s]' % timesofar(t0))
+        self.storage = NoBatchIgnoreDuplicatedStorage(self.temp_collection,self.logger)
+        self.storage.process(doc_d,step)
         self.switch_collection()
         self.post_update_data()
+
 
 class IgnoreDuplicatedSourceUploader(BaseSourceUploader):
     '''Same as default uploader, but will store records and ignore if
@@ -318,86 +296,21 @@ class IgnoreDuplicatedSourceUploader(BaseSourceUploader):
     def update_data(self, doc_d, step):
         doc_d = doc_d or self.load_data(data_folder=self.data_folder)
         self.logger.debug("doc_d mem: %s" % sys.getsizeof(doc_d))
-
-        self.logger.info("Uploading to the DB...")
-        t0 = time.time()
-        tinner = time.time()
-        for doc_li in self.doc_iterator(doc_d, batch=True, step=step):
-            try:
-                bob = self.temp_collection.initialize_unordered_bulk_op()
-                for d in doc_li:
-                    bob.insert(d)
-                res = bob.execute()
-                self.logger.info("Inserted %s records [%s]" % (res['nInserted'],timesofar(tinner)))
-            except BulkWriteError as e:
-                self.logger.info("Inserted %s records, ignoring %d [%s]" % (e.details['nInserted'],len(e.details["writeErrors"]),timesofar(tinner)))
-            tinner = time.time()
-        self.logger.info('Done[%s]' % timesofar(t0))
+        self.storage = IgnoreDuplicatedStorage(self.temp_collection,self.logger)
+        self.storage.process(doc_d,step)
         self.switch_collection()
         self.post_update_data()
 
 
 class MergerSourceUploader(BaseSourceUploader):
-    """
-    This uploader will try to merge documents when finding duplicated errors.
-    It's useful when data is parsed using iterator. A record can be stored in database,
-    then later, another record with the same ID is sent to the db, raising a duplicated error.
-    These two documents would have been merged before using a 'put all in memory' parser. 
-    Since data is here read line by line, the merge is done while storing
-    """
 
     def update_data(self, doc_d, step):
         doc_d = doc_d or self.load_data(data_folder=self.data_folder)
-        self.logger.info("Uploading to the DB...")
-        t0 = time.time()
-        tinner = time.time()
-        aslistofdict = None
-        for doc_li in self.doc_iterator(doc_d, batch=True, step=step):
-            toinsert = len(doc_li)
-            nbinsert = 0
-            self.logger.info("Inserting %s records ... " % toinsert)
-            try:
-                bob = self.temp_collection.initialize_unordered_bulk_op()
-                for d in doc_li:
-                    aslistofdict = d.pop("__aslistofdict__",None)
-                    bob.insert(d)
-                res = bob.execute()
-                nbinsert += res["nInserted"]
-                self.logger.info("OK [%s]" % timesofar(tinner))
-            except BulkWriteError as e:
-                inserted = e.details["nInserted"]
-                nbinsert += inserted
-                self.logger.info("Fixing %d records " % len(e.details["writeErrors"]))
-                ids = [d["op"]["_id"] for d in e.details["writeErrors"]]
-                # build hash of existing docs
-                docs = self.temp_collection.find({"_id" : {"$in" : ids}})
-                hdocs = {}
-                for doc in docs:
-                    hdocs[doc["_id"]] = doc
-                bob2 = self.temp_collection.initialize_unordered_bulk_op()
-                for err in e.details["writeErrors"]:
-                    errdoc = err["op"]
-                    existing = hdocs[errdoc["_id"]]
-                    assert "_id" in existing
-                    _id = errdoc.pop("_id")
-                    merged = merge_struct(errdoc, existing,aslistofdict=aslistofdict)
-                    bob2.find({"_id" : _id}).update_one({"$set" : merged})
-                    # update previously fetched doc. if several errors are about the same doc id,
-                    # we would't merged things properly without an updated document
-                    assert "_id" in merged
-                    hdocs[_id] = merged
-                    nbinsert += 1
-
-                res = bob2.execute()
-                self.logger.info("OK [%s]" % timesofar(tinner))
-            assert nbinsert == toinsert, "nb %s to %s" % (nbinsert,toinsert)
-            # end of loop so it counts the time spent in doc_iterator
-            tinner = time.time()
-
-        self.logger.info('Done[%s]' % timesofar(t0))
+        self.logger.debug("doc_d mem: %s" % sys.getsizeof(doc_d))
+        self.storage = MergerStorage(self.temp_collection,self.logger)
+        self.storage.process(doc_d,step)
         self.switch_collection()
         self.post_update_data()
-
 
 class DummySourceUploader(BaseSourceUploader):
     """
@@ -449,7 +362,7 @@ class SourceManager(object):
                     continue
                 found_one = True
                 logging.debug("Found uploader class '%s'" % uploader_klass)
-                res = uploader_klass.create(db_conn=self.conn,data_root=config.DATA_ARCHIVE_ROOT)
+                res = uploader_klass.create(db_conn_info=self.conn.address,data_root=config.DATA_ARCHIVE_ROOT)
                 if isinstance(res,list):
                     # a true factory may return several instances
                     for inst in res:
