@@ -3,11 +3,17 @@ import types, copy, datetime, time
 import asyncio
 from pymongo.errors import DuplicateKeyError, BulkWriteError
 
+from biothings.utils.common import timesofar, iter_n
+from biothings.utils.mongo import get_src_db
+
+class StorageException(Exception):
+    pass
 
 class BaseStorage(object):
 
-    def __init__(self,collection,logger):
-        self.temp_collection = collection
+    def __init__(self,db_info,dest_col_name,logger):
+        db = get_src_db()
+        self.temp_collection = db[dest_col_name]
         self.logger = logger
 
     def process(self,iterable,*args,**kwargs):
@@ -44,6 +50,13 @@ class BasicStorage(BaseStorage):
 
             if batch:
                 yield doc_li
+
+    def process(self, doc_d, step):
+        self.logger.info("Uploading to the DB...")
+        t0 = time.time()
+        for doc_li in self.doc_iterator(doc_d, batch=True, step=step):
+            self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
+        self.logger.info('Done[%s]' % timesofar(t0))
 
 class MergerStorage(BasicStorage):
     """
@@ -121,6 +134,8 @@ class IgnoreDuplicatedStorage(BasicStorage):
                 self.logger.info("Inserted %s records [%s]" % (res['nInserted'],timesofar(tinner)))
             except BulkWriteError as e:
                 self.logger.info("Inserted %s records, ignoring %d [%s]" % (e.details['nInserted'],len(e.details["writeErrors"]),timesofar(tinner)))
+            except Exception as e:
+                raise
             tinner = time.time()
         self.logger.info('Done[%s]' % timesofar(t0))
 
