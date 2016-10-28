@@ -22,15 +22,6 @@ class ResourceError(Exception):
     pass
 
 
-def ensure_prepared(func):
-    @wraps(func)
-    def wrapper(self, *args, **kwargs):
-        if not self.prepared:
-            self.prepare()
-        return func(self,*args, **kwargs)
-    return wrapper
-
-
 def upload_worker(storage_class,loaddata_func,col_name,step,*args):
     """
     Pickable job launcher, typically running from multiprocessing.
@@ -79,19 +70,19 @@ class BaseSourceUploader(object):
         """db_conn_info is a database connection info tuple (host,port) to fetch/store 
         information about the datasource's state data_root is the root folder containing
         all resources. It will generate its own data folder from this point"""
+        print("call init")
         self.db_conn_info = db_conn_info
         self.timestamp = datetime.datetime.now()
         self.t0 = time.time()
-        self.conn = None
-        self.db = None
         self.__class__.main_source = self.__class__.main_source or self.__class__.name
         self.src_root_folder=os.path.join(data_root, self.__class__.main_source)
         self.logfile = None
         self.temp_collection_name = None
-        self.collection = None # final collection
         self.collection_name = collection_name or self.name
         self.data_folder = None
         self.prepared = False
+        # non-pickable attributes (see __getattr__, sync() and unsync())
+        self.init_state()
 
     @classmethod
     def create(klass, db_conn_info, data_root, *args, **kwargs):
@@ -107,37 +98,49 @@ class BaseSourceUploader(object):
         """
         return klass(db_conn_info, data_root, *args, **kwargs)
 
-    def prepare(self,state={}):
+    def init_state(self):
+        self._state = {
+                "db" : None,
+                "conn" : None,
+                "collection" : None,
+                "src_dump" : None,
+                "logger" : None
+        }
+
+    def sync(self,state={}):
+        """Sync uploader information with database (or given state dict)"""
         if self.prepared:
             return
         if state:
-            for k in state:
-                setattr(self,k,state[k])
+            # let's be explicit, _state takes what it wants
+            for k in self._state:
+                self._state[k] = state[k]
             return
 
-        self.conn = get_src_conn()
-        self.db = self.conn[self.__class__.__database__]
-        self.collection = self.db[self.collection_name]
-        self.prepare_src_dump()
+        self._state["conn"] = get_src_conn()
+        self._state["db"] = self.conn[self.__class__.__database__]
+        self._state["collection"] = self.db[self.collection_name]
+        self._state["src_dump"] = self.prepare_src_dump()
+        self._state["logger"] = self.setup_log()
         self.data_folder = self.src_doc.get("data_folder")
-        self.setup_log()
         # flag ready
         self.prepared = True
 
-    def unprepare(self):
+    def unsync(self):
         """
         reset anything that's not pickable (so self can be pickled)
         return what's been reset as a dict, so self can be restored
         once pickled
         """
-        state = {"db" : self.db,
-                 "conn" : self.conn,
-                 "collection" : self.collection,
-                 "src_dump" : self.src_dump,
-                 "logger" : self.logger,
-                 "prepared" : self.prepared}
+        state = {
+            "db" : self._state["db"],
+            "conn" : self._state["conn"],
+            "collection" : self._state["collection"],
+            "src_dump" : self._state["src_dump"],
+            "logger" : self._state["logger"]
+        }
         for k in state:
-            setattr(self,k,None)
+            self._state[k] = None
         self.prepared = False
         return state
 
@@ -195,10 +198,6 @@ class BaseSourceUploader(object):
     def update_data(self, doc_d, step, loop=None):
         f = loop.run_in_executor(None,upload_worker,BasicStorage,self.load_data,self.temp_collection_name,step,self.data_folder)
         yield from f
-        #doc_d = doc_d or self.load_data(data_folder=self.data_folder)
-        #self.logger.debug("doc_d mem: %s" % sys.getsizeof(doc_d))
-        #self.storage = BasicStorage(self.db.client.address,self.temp_collection_name,self.logger)
-        #self.storage.process(doc_d,step)
         self.switch_collection()
         self.post_update_data()
 
@@ -258,8 +257,6 @@ class BaseSourceUploader(object):
 
     @asyncio.coroutine
     def load(self, doc_d=None, update_data=True, update_master=True, force=False, step=10000, progress=None, total=None, loop=None):
-        # postponed until now !
-        self.prepare()
         # sanity check before running
         self.logger.info("Uploading '%s' (collection: %s)" % (self.name, self.collection_name))
         self.check_ready(force)
@@ -273,9 +270,11 @@ class BaseSourceUploader(object):
                 upload = {"progress" : "%s/%s" % (progress,total)}
             self.register_status("uploading",transient=True,upload=upload)
             if update_data:
-                state = self.unprepare()
+                # unsync to make it pickable
+                state = self.unsync()
                 yield from self.update_data(doc_d,step,loop)
-                self.prepare(state)
+                # then restore state
+                self.sync(state)
                 #self.update_data(doc_d,step)
             if update_master:
                 self.update_master()
@@ -288,25 +287,48 @@ class BaseSourceUploader(object):
             raise
 
     def prepare_src_dump(self):
-        self.src_dump = get_src_dump()
-        self.src_doc = self.src_dump.find_one({'_id': self.main_source})
+        """Sync with src_dump collection, collection information (src_doc)
+        Return src_dump collection"""
+        src_dump = get_src_dump()
+        self.src_doc = src_dump.find_one({'_id': self.main_source})
+        return src_dump
 
     def setup_log(self):
+        """Setup and return a logger instance"""
         import logging as logging_mod
         if not os.path.exists(self.src_root_folder):
             os.makedirs(self.src_root_folder)
         self.logfile = os.path.join(self.src_root_folder, '%s_%s_upload.log' % (self.main_source,time.strftime("%Y%m%d",self.timestamp.timetuple())))
         fh = logging_mod.FileHandler(self.logfile)
-        fh.setFormatter(logging_mod.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        fh.setFormatter(logging_mod.Formatter('%(asctime)s [%(process)d] %(name)s - %(levelname)s - %(message)s'))
         fh.name = "logfile"
         sh = logging_mod.StreamHandler()
         sh.name = "logstream"
-        self.logger = logging_mod.getLogger("%s_upload" % self.main_source)
-        self.logger.setLevel(logging_mod.DEBUG)
-        if not fh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(fh)
-        if not sh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(sh)
+        logger = logging_mod.getLogger("%s_upload" % self.main_source)
+        logger.setLevel(logging_mod.DEBUG)
+        if not fh.name in [h.name for h in logger.handlers]:
+            logger.addHandler(fh)
+        if not sh.name in [h.name for h in logger.handlers]:
+            logger.addHandler(sh)
+        return logger
+
+    def __getattr__(self,attr):
+        """This catches access to unpicabkle attributes. If unset,
+        will call sync to restore them."""
+        # tricky: self._state will always exist when the instance is create
+        # through __init__(). But... when pickling the instance, __setstate__
+        # is used to restore attribute on an instance that's hasn't been though
+        # __init__() constructor. So we raise an error here to tell pickle not 
+        # to restore this attribute (it'll be set after)
+        if attr == "_state":
+            raise AttributeError(attr)
+        if attr in self._state:
+            if not self._state[attr]:
+                self.sync()
+            return self._state[attr]
+        else:
+            raise AttributeError(attr)
+#return getattr(self,attr)
 
 
 class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
@@ -339,16 +361,18 @@ class DummySourceUploader(BaseSourceUploader):
     """
 
     def prepare_src_dump(self):
-        self.src_dump = get_src_dump()
+        src_dump = get_src_dump()
         # just populate/initiate an src_dump record (b/c no dump before)
-        self.src_dump.save({"_id":self.main_source})
-        self.src_doc = self.src_dump.find_one({'_id': self.main_source})
+        src_dump.save({"_id":self.main_source})
+        self.src_doc = src_dump.find_one({'_id': self.main_source})
+        return src_dump
 
     def check_ready(self,force=False):
         # bypass checks about src_dump
         pass
 
-    def update_data(self, doc_d, step):
+    @asyncio.coroutine
+    def update_data(self, doc_d, step, loop=None):
         self.logger.info("Dummy uploader, nothing to upload")
         # sanity check, dummy uploader, yes, but make sure data is there
         assert self.collection.count() > 0, "No data found in collection '%s' !!!" % self.collection_name
@@ -356,9 +380,8 @@ class DummySourceUploader(BaseSourceUploader):
 
 class ParallelizedSourceUploader(BaseSourceUploader):
 
-    @ensure_prepared
     def jobs(self):
-        """Return list of (func,*arguments) passed to self.load_data, in order. for
+        """Return list of (*arguments) passed to self.load_data, in order. for
         each parallelized jobs. Ex: [(x,1),(y,2),(z,3)]"""
         raise NotImplementedError("implement me in subclass")
 
@@ -366,7 +389,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
     def update_data(self, doc_d, step, loop=None):
         fs = []
         jobs = self.jobs()
-        state = self.unprepare()
+        state = self.unsync()
         for args in jobs:
             f = loop.run_in_executor(None,
                     # pickable worker
@@ -383,7 +406,6 @@ class ParallelizedSourceUploader(BaseSourceUploader):
                     *args)
             fs.append(f)
         yield from asyncio.wait(fs)
-        self.prepare(state)
         self.switch_collection()
         self.post_update_data()
 
@@ -485,7 +507,6 @@ class SourceManager(object):
             logging.warning("Found errors while uploading:\n%s" % pprint.pformat(errors))
             return errors
 
-    #@asyncio.coroutine
     def upload_src(self, src, **kwargs):
         uploaders = None
         if src in self.doc_register:
