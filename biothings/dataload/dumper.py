@@ -16,12 +16,14 @@ class BaseDumper(object):
     SRC_NAME = None
     SRC_ROOT_FOLDER = None # source folder (without version/dates)
 
+    # attribute used to generate data folder path suffix
+    SUFFIX_ATTR = "release"
+
     def __init__(self, src_name=None, src_root_folder=None, no_confirm=True, archive=True):
         # unpickable attrs, grouped
         self.init_state()
         self.src_name = src_name or self.SRC_NAME
         self.src_root_folder = src_root_folder or self.SRC_ROOT_FOLDER
-        self.src_doc = None
         self.no_confirm = no_confirm
         self.archive = archive
         self.to_dump = []
@@ -36,7 +38,8 @@ class BaseDumper(object):
         self._state = {
                 "client" : None,
                 "src_dump" : None,
-                "logger" : None
+                "logger" : None,
+                "src_doc" : None,
         }
     # specific setters for attrs that can't be pickled
     # note: we can't use a generic __setattr__ as it collides
@@ -58,6 +61,13 @@ class BaseDumper(object):
         if not self._state["logger"]:
             self.prepare()
         return self._state["logger"]
+    @property
+    def src_doc(self):
+        # this one is pickable but it's a lazy load
+        # (based on non-pickable src_dump)
+        if not self._state["src_doc"]:
+            self.prepare()
+        return self._state["src_doc"]
     @client.setter
     def client(self, value):
         self._state["client"] = value
@@ -67,6 +77,9 @@ class BaseDumper(object):
     @logger.setter
     def logger(self, value):
         self._state["logger"] = value
+    @src_doc.setter
+    def src_doc(self, value):
+        self._state["src_doc"] = value
 
     def create_todump_list(self,force=False):
         """Fill self.to_dump list with dict("remote":remote_path,"local":local_path)
@@ -147,7 +160,8 @@ class BaseDumper(object):
         state = {
             "client" : self._state["client"],
             "src_dump" : self._state["src_dump"],
-            "logger" : self._state["logger"]
+            "logger" : self._state["logger"],
+            "src_doc" : self._state["src_doc"],
         }
         for k in state:
             self._state[k] = None
@@ -211,7 +225,8 @@ class BaseDumper(object):
             if self.client:
                 self.release_client()
 
-    def prepare_data_folder(self,suffix_attr="release"):
+    @property
+    def new_data_folder(self):
         """Generate a new data folder path using src_root_folder and
         specified suffix attribute. Also sync current (aka previous) data
         folder previously registeted in database.
@@ -219,14 +234,17 @@ class BaseDumper(object):
         when the dumper actually knows some information about the resource,
         like the actual release.
         """
-        if not getattr(self,suffix_attr):
-            raise DumperException("Cannot use '%s' as suffix attribute, it's not set" % suffix_attr)
-        suffix = getattr(self,suffix_attr,None) or self.timestamp
+        if not getattr(self,self.__class__.SUFFIX_ATTR):
+            raise DumperException("Can't generate new data folder, attribute used to suffix (%s) isn't set" % self.__class__.SUFFIX_ATTR)
+        suffix = getattr(self,self.__class__.SUFFIX_ATTR)
         if self.archive:
-            self.new_data_folder = os.path.join(self.src_root_folder, suffix)
+            return os.path.join(self.src_root_folder, suffix)
         else:
-            self.new_data_folder = os.path.join(self.src_root_folder, 'latest')
-        self.current_data_folder = self.src_doc.get("data_folder") or self.new_data_folder
+            return  os.path.join(self.src_root_folder, 'latest')
+
+    @property
+    def current_data_folder(self):
+        return self.src_doc.get("data_folder") or self.new_data_folder
 
     @asyncio.coroutine
     def do_dump(self,loop=None):
