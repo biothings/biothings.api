@@ -1,5 +1,5 @@
-import time, sys, os, importlib, copy
-import datetime, types, pprint
+import time, sys, os, copy
+import datetime, pprint
 import asyncio
 import logging as loggingmod
 from functools import wraps
@@ -15,8 +15,6 @@ from biothings import config
 logging = config.logger
 
 class ResourceNotReady(Exception):
-    pass
-class UnknownResource(Exception):
     pass
 class ResourceError(Exception):
     pass
@@ -409,90 +407,39 @@ class ParallelizedSourceUploader(BaseSourceUploader):
 
 ##############################
 
-class SourceManager(object):
-    '''After registering datasources, manager will orchestrate
-    source uploading. Default source uploader is used when none specified
-    for a datasource. Otherwise, when registering a datasource, a specific
-    datasource can be specfied.
+from biothings.utils.manager import BaseSourceManager
+
+class SourceManager(BaseSourceManager):
+    '''
+    After registering datasources, manager will orchestrate source uploading.
     '''
 
-    def __init__(self, event_loop=None, datasource_path="dataload.sources"):
-        self.doc_register = {}
-        self.conn = get_src_conn()
-        self.default_src_path = datasource_path
-        self.loop = event_loop
+    SOURCE_CLASS = BaseSourceUploader
 
-    def generate_uploader_instances(self,src_module):
-        # try to find a uploader class in the module
-        uploader_klasses = []
-        found_one = False
-        for attr in dir(src_module):
-            something = getattr(src_module,attr)
-            if type(something) == type and issubclass(something,BaseSourceUploader):
-                uploader_klass = something
-                if uploader_klass.name is None:
-                    logging.debug("%s has no 'name' defined, skip it" % uploader_klass)
-                    continue
-                found_one = True
-                logging.debug("Found uploader class '%s'" % uploader_klass)
-                res = uploader_klass.create(db_conn_info=self.conn.address,data_root=config.DATA_ARCHIVE_ROOT)
-                if isinstance(res,list):
-                    # a true factory may return several instances
-                    for inst in res:
-                        yield inst
-                else:
-                    yield res
-        if not found_one:
-            raise UnknownResource("Can't find an uploader class in module '%s'" % src_module)
-
-    def register_source(self,src_data):
-        """Register a new data source. src_data can be a module where some
-        __metadata__ about the source can be found. It can also be a module path
-        as a string, or just a source name in which case it will try to find
-        information from default path.
-        """
-        if isinstance(src_data,str):
-            try:
-                src_m = importlib.import_module(src_data)
-            except ImportError:
-                try:
-                    src_m = importlib.import_module("%s.%s" % (self.default_src_path,src_data))
-                except ImportError:
-                    msg = "Can't find module '%s', even in '%s'" % (src_data,self.default_src_path)
-                    logging.error(msg)
-                    raise UnknownResource(msg)
-
-        elif isinstance(src_data,dict):
-            # source is comprised of several other sub sources
-            assert len(src_data) == 1, "Should have only one element in source dict '%s'" % src_data
-            _, sub_srcs = list(src_data.items())[0]
-            for src in sub_srcs:
-                self.register_source(src)
-            return
+    def filter_class(self,klass):
+        if klass.name is None:
+            # usually a base defined in an uploader, which then is subclassed in same
+            # module. Kind of intermediate, not fully functional class
+            logging.debug("%s has no 'name' defined, skip it" % klass)
+            return None
         else:
-            src_m = src_data
-        uploader_insts = self.generate_uploader_instances(src_m)
-        for uploader_inst in uploader_insts:
-            if uploader_inst.main_source:
-                self.doc_register.setdefault(uploader_inst.main_source,[]).append(uploader_inst)
-            else:
-                self.doc_register[updloader_inst.name] = uploader_inst
-            self.conn.register(uploader_inst.__class__)
+            return klass
 
-    def register_sources(self, sources):
-        assert not isinstance(sources,str), "sources argument is a string, should pass a list"
-        self.doc_register.clear()
-        for src_data in sources:
-            try:
-                self.register_source(src_data)
-            except UnknownResource as e:
-                logging.info("Can't register source '%s', skip it; %s" % (src_data,e))
-                import traceback
-                logging.error(traceback.format_exc())
+    def create_instance(self,klass):
+        res = klass.create(db_conn_info=self.conn.address,data_root=config.DATA_ARCHIVE_ROOT)
+        return res
+
+    def register_instances(self,insts):
+        for inst in insts:
+            if inst.main_source:
+                self.src_register.setdefault(inst.main_source,[]).append(inst)
+            else:
+                self.src_register[inst.name] = inst
+            self.conn.register(inst.__class__)
 
     def upload_all(self,raise_on_error=False,**kwargs):
         errors = {}
-        for src in self.doc_register:
+        for src in self.src_register:
             try:
                 self.upload_src(src, **kwargs)
             except Exception as e:
@@ -505,12 +452,12 @@ class SourceManager(object):
 
     def upload_src(self, src, **kwargs):
         uploaders = None
-        if src in self.doc_register:
-            uploaders = self.doc_register[src]
+        if src in self.src_register:
+            uploaders = self.src_register[src]
         else:
             # maybe src is a sub-source ?
-            for main_src in self.doc_register:
-                for sub_src in self.doc_register[main_src]:
+            for main_src in self.src_register:
+                for sub_src in self.src_register[main_src]:
                     # search for "sub_src" or "main_src.sub_src"
                     main_sub = "%s.%s" % (main_src,sub_src.name)
                     if (src == sub_src.name) or (src == main_sub):
@@ -540,44 +487,4 @@ class SourceManager(object):
         except Exception as e:
             logging.error("Error while uploading '%s': %s" % (src,e))
             raise
-
-    def submit(self,f,*args,**kwargs):
-        if self.loop:
-            logging.info("Building task: %s(*args=%s,**kwargs=%s)" % (f,args,kwargs))
-            ff = asyncio.ensure_future(f(*args,**kwargs))
-            return ff
-        else:
-            return f(*args,**kwargs)
-
-    def __repr__(self):
-        return "<%s [%d registered]: %s>" % (self.__class__.__name__,len(self.doc_register), list(self.doc_register.keys()))
-
-    def __getitem__(self,src_name):
-        try:
-            # as a main-source
-            return self.doc_register[src_name]
-        except KeyError:
-            try:
-                # as a sub-source
-                main,sub = src_name.split(".")
-                srcs = self.doc_register[main]
-                # there can be many uploader for one resource (when each is dealing
-                # with one specific file but upload to the same collection for instance)
-                # so we want to make sure user is aware of this and not just return one
-                # uploader when many are needed
-                # on the other hand, if only one avail, just return it
-                res = []
-                for src in srcs:
-                    if src.name == sub:
-                        res.append(src)
-                if len(res) == 1:
-                    return res.pop()
-                elif len(res) == 0:
-                    raise KeyError(src_name)
-                else:
-                    return res
-            except (ValueError,KeyError):
-                # nope, can't find it...
-                raise KeyError(src_name)
-
 

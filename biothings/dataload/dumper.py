@@ -1,4 +1,4 @@
-import time
+import time, logging
 import os
 from datetime import datetime
 import asyncio
@@ -242,12 +242,17 @@ class BaseDumper(object):
             job.add_done_callback(done)
             jobs.append(job)
         yield from asyncio.wait(jobs)
+        self.logger.info("%s successfully downloaded" % self.SRC_NAME)
         self.to_dump = []
 
     def prepare_local_folders(self,localfile):
         localdir = os.path.dirname(localfile)
         if not os.path.exists(localdir):
-            os.makedirs(localdir)
+            try:
+                os.makedirs(localdir)
+            except FileExistsError:
+                # ignore, might exist now (parallelization occuring...)
+                pass
 
 
 from ftplib import FTP
@@ -489,4 +494,58 @@ class GoogleDriveDumper(HTTPDumper):
         href = link.get("href")
         # now build the final GET request, using cookies to simulate browser
         super(GoogleDriveDumper,self).download("https://docs.google.com" + href, localfile, headers={"cookie": res.headers["set-cookie"]})
+
+####################
+
+from biothings.utils.manager import BaseSourceManager
+
+class SourceManager(BaseSourceManager):
+
+    SOURCE_CLASS = BaseDumper
+
+    def create_instance(self,klass):
+        return klass()
+
+    def register_instances(self,insts):
+        for inst in insts:
+            if inst.SRC_NAME:
+                self.src_register.setdefault(inst.SRC_NAME,[]).append(inst)
+            else:
+                self.src_register[inst.name] = inst
+            self.conn.register(inst.__class__)
+
+    def dump_all(self,force=False,raise_on_error=False,**kwargs):
+        errors = {}
+        for src in self.src_register:
+            try:
+                self.dump_src(src, force=force, **kwargs)
+            except Exception as e:
+                errors[src] = e
+                if raise_on_error:
+                    raise
+        if errors:
+            logging.warning("Found errors while dumping:\n%s" % pprint.pformat(errors))
+            return errors
+
+    def dump_src(self, src, force=False, **kwargs):
+        dumpers = None
+        if src in self.src_register:
+            dumpers = self.src_register[src]
+        else:
+            raise ResourceError("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
+
+        jobs = []
+        try:
+            if isinstance(dumpers,list):
+                for i,one in enumerate(dumpers):
+                    job = self.submit(one.dump,force,self.loop)
+                    jobs.append(job)
+            else:
+                dumper = dumpers # for the sake of readability...
+                job = self.submit(dumper.dump,force,self.loop)
+                jobs.append(job)
+            return jobs
+        except Exception as e:
+            logging.error("Error while dumping '%s': %s" % (src,e))
+            raise
 
