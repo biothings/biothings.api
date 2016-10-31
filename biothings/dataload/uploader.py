@@ -2,7 +2,7 @@ import time, sys, os, copy
 import datetime, pprint
 import asyncio
 import logging as loggingmod
-from functools import wraps
+from functools import wraps, partial
 
 from biothings.utils.common import get_timestamp, get_random_string, timesofar, iter_n
 from biothings.utils.mongo import get_src_conn, get_src_dump
@@ -477,11 +477,11 @@ class SourceManager(BaseSourceManager):
                     # FIXME: load() will call update_master_data(), which calls get_mapping()
                     # which is a class-method. should iterate over instances' class and 
                     # call update_master_data() for each class, not each instance
-                    job = self.submit(one.load,None,True,True,False,10000,i+1,len(uploaders),self.loop)
+                    job = self.submit(partial(one.load,progress=i+1,total=len(uploaders),loop=self.loop,**kwargs))
                     jobs.append(job)
             else:
                 uploader = uploaders # for the sake of readability...
-                job = self.submit(uploader.load,None,True,True,False,10000,None,None,self.loop)
+                job = self.submit(partial(uploader.load,loop=self.loop,**kwargs))
                 jobs.append(job)
             return jobs
         except Exception as e:

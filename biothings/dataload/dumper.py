@@ -2,6 +2,7 @@ import time, logging
 import os
 from datetime import datetime
 import asyncio
+from functools import partial
 
 from biothings.utils.mongo import get_src_dump
 from biothings.utils.common import timesofar
@@ -408,7 +409,15 @@ class ManualDumper(BaseDumper):
     files and metadata
     '''
 
-    def prepare(self):
+    def prepare(self,state={}):
+        self.setup_log()
+        if self.prepared:
+            return
+        if state:
+            # let's be explicit, _state takes what it wants
+            for k in self._state:
+                self._state[k] = state[k]
+            return
         self.prepare_client()
         self.prepare_src_dump()
 
@@ -416,7 +425,7 @@ class ManualDumper(BaseDumper):
         self.logger.info("Manual dumper, assuming data will be downloaded manually")
 
     @asyncio.coroutine
-    def dump(self,path,release=None):
+    def dump(self,path, release=None, force=False, loop=None):
         if os.path.isabs(path):
             self.new_data_folder = path
         elif path:
@@ -538,11 +547,11 @@ class SourceManager(BaseSourceManager):
         try:
             if isinstance(dumpers,list):
                 for i,one in enumerate(dumpers):
-                    job = self.submit(one.dump,force,self.loop)
+                    job = self.submit(partial(one.dump,force=force,loop=self.loop,**kwargs))
                     jobs.append(job)
             else:
                 dumper = dumpers # for the sake of readability...
-                job = self.submit(dumper.dump,force,self.loop)
+                job = self.submit(partial(dumper.dump,force=force,loop=self.loop,**kwargs))
                 jobs.append(job)
             return jobs
         except Exception as e:
