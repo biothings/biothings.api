@@ -70,7 +70,8 @@ class BaseSourceUploader(object):
         """db_conn_info is a database connection info tuple (host,port) to fetch/store 
         information about the datasource's state data_root is the root folder containing
         all resources. It will generate its own data folder from this point"""
-        print("call init")
+        # non-pickable attributes (see __getattr__, prepare() and unprepare())
+        self.init_state()
         self.db_conn_info = db_conn_info
         self.timestamp = datetime.datetime.now()
         self.t0 = time.time()
@@ -81,8 +82,6 @@ class BaseSourceUploader(object):
         self.collection_name = collection_name or self.name
         self.data_folder = None
         self.prepared = False
-        # non-pickable attributes (see __getattr__, sync() and unsync())
-        self.init_state()
 
     @classmethod
     def create(klass, db_conn_info, data_root, *args, **kwargs):
@@ -107,7 +106,7 @@ class BaseSourceUploader(object):
                 "logger" : None
         }
 
-    def sync(self,state={}):
+    def prepare(self,state={}):
         """Sync uploader information with database (or given state dict)"""
         if self.prepared:
             return
@@ -116,7 +115,6 @@ class BaseSourceUploader(object):
             for k in self._state:
                 self._state[k] = state[k]
             return
-
         self._state["conn"] = get_src_conn()
         self._state["db"] = self.conn[self.__class__.__database__]
         self._state["collection"] = self.db[self.collection_name]
@@ -126,7 +124,7 @@ class BaseSourceUploader(object):
         # flag ready
         self.prepared = True
 
-    def unsync(self):
+    def unprepare(self):
         """
         reset anything that's not pickable (so self can be pickled)
         return what's been reset as a dict, so self can be restored
@@ -271,11 +269,10 @@ class BaseSourceUploader(object):
             self.register_status("uploading",transient=True,upload=upload)
             if update_data:
                 # unsync to make it pickable
-                state = self.unsync()
+                state = self.unprepare()
                 yield from self.update_data(doc_d,step,loop)
                 # then restore state
-                self.sync(state)
-                #self.update_data(doc_d,step)
+                self.prepare(state)
             if update_master:
                 self.update_master()
             if progress == total:
@@ -324,11 +321,10 @@ class BaseSourceUploader(object):
             raise AttributeError(attr)
         if attr in self._state:
             if not self._state[attr]:
-                self.sync()
+                self.prepare()
             return self._state[attr]
         else:
             raise AttributeError(attr)
-#return getattr(self,attr)
 
 
 class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
@@ -389,7 +385,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
     def update_data(self, doc_d, step, loop=None):
         fs = []
         jobs = self.jobs()
-        state = self.unsync()
+        state = self.unprepare()
         for args in jobs:
             f = loop.run_in_executor(None,
                     # pickable worker

@@ -1,6 +1,7 @@
 import time
 import os
 from datetime import datetime
+import asyncio
 
 from biothings.utils.mongo import get_src_dump
 from biothings.utils.common import timesofar
@@ -15,11 +16,10 @@ class BaseDumper(object):
     SRC_ROOT_FOLDER = None # source folder (without version/dates)
 
     def __init__(self, src_name=None, src_root_folder=None, no_confirm=True, archive=True):
+        # unpickable attrs, grouped
+        self.init_state()
         self.src_name = src_name or self.SRC_NAME
         self.src_root_folder = src_root_folder or self.SRC_ROOT_FOLDER
-        self.client = None
-        self.logger = None
-        self.src_dump = None
         self.src_doc = None
         self.no_confirm = no_confirm
         self.archive = archive
@@ -29,9 +29,43 @@ class BaseDumper(object):
         self.logfile = None
         self.prev_data_folder = None
         self.timestamp = time.strftime('%Y%m%d')
-        # init
-        self.setup_log()
-        self.prepare()
+        self.prepared = False
+
+    def init_state(self):
+        self._state = {
+                "client" : None,
+                "src_dump" : None,
+                "logger" : None
+        }
+    # specific setters for attrs that can't be pickled
+    # note: we can't use a generic __setattr__ as it collides
+    # (infinite recursion) with __getattr__, and we can't use
+    # __getattr__ as well as @x.setter required @property(x) to
+    # be defined. We'll be explicit there...
+    @property
+    def client(self):
+        if not self._state["client"]:
+            self.prepare()
+        return self._state["client"]
+    @property
+    def src_dump(self):
+        if not self._state["src_dump"]:
+            self.prepare()
+        return self._state["src_dump"]
+    @property
+    def logger(self):
+        if not self._state["logger"]:
+            self.prepare()
+        return self._state["logger"]
+    @client.setter
+    def client(self, value):
+        self._state["client"] = value
+    @src_dump.setter
+    def src_dump(self, value):
+        self._state["src_dump"] = value
+    @logger.setter
+    def logger(self, value):
+        self._state["logger"] = value
 
     def create_todump_list(self,force=False):
         """Fill self.to_dump list with dict("remote":remote_path,"local":local_path)
@@ -91,12 +125,33 @@ class BaseDumper(object):
         if not sh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(sh)
 
-    def prepare(self):
+    def prepare(self,state={}):
+        if self.prepared:
+            return
+        if state:
+            # let's be explicit, _state takes what it wants
+            for k in self._state:
+                self._state[k] = state[k]
+            return
         self.prepare_client()
         self.prepare_src_dump()
-        self.new_data_folder = self.get_new_data_folder()
-        self.current_data_folder = self.src_doc.get("data_folder") or self.new_data_folder
-        self.to_dump = []
+        self.setup_log()
+
+    def unprepare(self):
+        """
+        reset anything that's not pickable (so self can be pickled)
+        return what's been reset as a dict, so self can be restored
+        once pickled
+        """
+        state = {
+            "client" : self._state["client"],
+            "src_dump" : self._state["src_dump"],
+            "logger" : self._state["logger"]
+        }
+        for k in state:
+            self._state[k] = None
+        self.prepared = False
+        return state
 
     def prepare_src_dump(self):
         # Mongo side
@@ -124,7 +179,8 @@ class BaseDumper(object):
             self.src_doc.update(extra)
         self.src_dump.save(self.src_doc)
 
-    def dump(self,force=False):
+    @asyncio.coroutine
+    def dump(self,force=False,loop=None):
         '''
         Dump (ie. download) resource as needed
         this should be called after instance creation
@@ -138,7 +194,11 @@ class BaseDumper(object):
             if self.to_dump:
                 # mark the download starts
                 self.register_status("downloading",transient=True)
-                self.do_dump()
+                # unsync to make it pickable
+                state = self.unprepare()
+                yield from self.do_dump(loop=loop)
+                # then restore state
+                self.prepare(state)
                 self.post_dump()
                 self.register_status("success",pending_to_upload=True)
         except (KeyboardInterrupt,Exception) as e:
@@ -150,21 +210,39 @@ class BaseDumper(object):
             if self.client:
                 self.release_client()
 
-    def get_new_data_folder(self,suffix="release"):
-        suffix = getattr(self,suffix,None) or self.timestamp
+    def prepare_data_folder(self,suffix_attr="release"):
+        """Generate a new data folder path using src_root_folder and
+        specified suffix attribute. Also sync current (aka previous) data
+        folder previously registeted in database.
+        This method typically has to be called in create_todump_list()
+        when the dumper actually knows some information about the resource,
+        like the actual release.
+        """
+        if not getattr(self,suffix_attr):
+            raise DumperException("Cannot use '%s' as suffix attribute, it's not set" % suffix_attr)
+        suffix = getattr(self,suffix_attr,None) or self.timestamp
         if self.archive:
-            return os.path.join(self.src_root_folder, suffix)
+            self.new_data_folder = os.path.join(self.src_root_folder, suffix)
         else:
-            return os.path.join(self.src_root_folder, 'latest')
+            self.new_data_folder = os.path.join(self.src_root_folder, 'latest')
+        self.current_data_folder = self.src_doc.get("data_folder") or self.new_data_folder
 
-    def do_dump(self):
+    @asyncio.coroutine
+    def do_dump(self,loop=None):
         self.logger.info("%d file(s) to download" % len(self.to_dump))
-        for todo in [f for f in self.to_dump]:
+        jobs = []
+        state = self.unprepare()
+        for todo in self.to_dump:
             remote = todo["remote"]
             local = todo["local"]
-            self.download(remote,local)
-            self.post_download(remote,local)
-            self.to_dump.remove(todo)
+            #self.download(remote,local)
+            def done(job):
+                self.post_download(remote,local)
+            job = loop.run_in_executor(None,self.download,remote,local)
+            job.add_done_callback(done)
+            jobs.append(job)
+        yield from asyncio.wait(jobs)
+        self.to_dump = []
 
     def prepare_local_folders(self,localfile):
         localdir = os.path.dirname(localfile)
@@ -308,7 +386,8 @@ class DummyDumper(BaseDumper):
         self.logger.info("Dummy dumper, will do nothing")
         pass
 
-    def dump(self,force=False):
+    @asyncio.coroutine
+    def dump(self,force=False,loop=None):
         self.logger.debug("Dummy dumper, nothing to download...")
         self.prepare_local_folders(os.path.join(self.new_data_folder,"dummy_file"))
         # this is the only interesting thing happening here
@@ -331,6 +410,7 @@ class ManualDumper(BaseDumper):
     def prepare_client(self):
         self.logger.info("Manual dumper, assuming data will be downloaded manually")
 
+    @asyncio.coroutine
     def dump(self,path,release=None):
         if os.path.isabs(path):
             self.new_data_folder = path
