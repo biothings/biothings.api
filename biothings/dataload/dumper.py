@@ -427,6 +427,20 @@ class ManualDumper(BaseDumper):
     files and metadata
     '''
 
+    def __init__(self,*args,**kwargs):
+        super(ManualDumper,self).__init__(*args,**kwargs)
+        # overide @property, it'll be set manually in this case (ie. not dynamically generated)
+        # because it's a manual dumper and user specifies data folder path explicitely
+        # (and see below)
+        self._new_data_folder = None
+
+    @property
+    def new_data_folder(self):
+        return self._new_data_folder
+    @new_data_folder.setter
+    def new_data_folder(self,value):
+        self._new_data_folder = value
+
     def prepare(self,state={}):
         self.setup_log()
         if self.prepared:
@@ -542,10 +556,13 @@ class SourceManager(BaseSourceManager):
             self.conn.register(inst.__class__)
 
     def dump_all(self,force=False,raise_on_error=False,**kwargs):
+        """
+        Run all dumpers, except manual ones
+        """
         errors = {}
         for src in self.src_register:
             try:
-                self.dump_src(src, force=force, **kwargs)
+                self.dump_src(src, force=force, skip_manual=True, **kwargs)
             except Exception as e:
                 errors[src] = e
                 if raise_on_error:
@@ -554,7 +571,7 @@ class SourceManager(BaseSourceManager):
             logging.warning("Found errors while dumping:\n%s" % pprint.pformat(errors))
             return errors
 
-    def dump_src(self, src, force=False, **kwargs):
+    def dump_src(self, src, force=False, skip_manual=False, **kwargs):
         dumpers = None
         if src in self.src_register:
             dumpers = self.src_register[src]
@@ -565,6 +582,9 @@ class SourceManager(BaseSourceManager):
         try:
             if isinstance(dumpers,list):
                 for i,one in enumerate(dumpers):
+                    if isinstance(one,ManualDumper) and skip_manual:
+                        logging.warning("Skip %s, it's a manual dumper" % one)
+                        continue
                     job = self.submit(partial(one.dump,force=force,loop=self.loop,**kwargs))
                     jobs.append(job)
             else:

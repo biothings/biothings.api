@@ -49,7 +49,7 @@ class BaseSourceManager(object):
         """
         raise NotImplementedError("implement me in sub-class")
 
-    def find_classes(self,src_module):
+    def find_classes(self,src_module,fail_on_notfound=True):
         """
         Given a python module, return a list of classes in this module, matching
         SOURCE_CLASS (must inherit from)
@@ -66,10 +66,12 @@ class BaseSourceManager(object):
                 logging.debug("Found a class based on %s: '%s'" % (self.__class__.SOURCE_CLASS.__name__,klass))
                 yield klass
         if not found_one:
-            raise UnknownResource("Can't find a class based on %s in module '%s'" % (self.__class__.SOURCE_CLASS.__name__,src_module))
+            if fail_on_notfound:
+                raise UnknownResource("Can't find a class based on %s in module '%s'" % (self.__class__.SOURCE_CLASS.__name__,src_module))
+            return []
 
 
-    def register_source(self,src_data):
+    def register_source(self,src_data,fail_on_notfound=True):
         """Register a new data source. src_data can be a module where some classes
         are defined. It can also be a module path as a string, or just a source name
         in which case it will try to find information from default path.
@@ -90,11 +92,11 @@ class BaseSourceManager(object):
             assert len(src_data) == 1, "Should have only one element in source dict '%s'" % src_data
             _, sub_srcs = list(src_data.items())[0]
             for src in sub_srcs:
-                self.register_source(src)
+                self.register_source(src,fail_on_notfound)
             return
         else:
             src_m = src_data
-        klasses = self.find_classes(src_m)
+        klasses = self.find_classes(src_m,fail_on_notfound)
         instances = self.create_instances(klasses)
         self.register_instances(instances)
 
@@ -103,7 +105,8 @@ class BaseSourceManager(object):
         self.src_register.clear()
         for src_data in sources:
             try:
-                self.register_source(src_data)
+# batch registration, we'll silently ignore not-found sources
+                self.register_source(src_data,fail_on_notfound=False)
             except UnknownResource as e:
                 logging.info("Can't register source '%s', skip it; %s" % (src_data,e))
                 import traceback
@@ -119,7 +122,7 @@ class BaseSourceManager(object):
             return f(*args,**kwargs)
 
     def __repr__(self):
-        return "<%s [%d registered]: %s>" % (self.__class__.__name__,len(self.src_register), list(self.src_register.keys()))
+        return "<%s [%d registered]: %s>" % (self.__class__.__name__,len(self.src_register), sorted(list(self.src_register.keys())))
 
     def __getitem__(self,src_name):
         try:
