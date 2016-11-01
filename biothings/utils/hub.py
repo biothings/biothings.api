@@ -9,8 +9,9 @@ from IPython import InteractiveShell
 
 
 class HubSSHServerSession(asyncssh.SSHServerSession):
-    def __init__(self, commands):
+    def __init__(self, name, commands):
         self.shell = InteractiveShell(user_ns=commands)
+        self.name = name
         self._input = ''
 
     def connection_made(self, chan):
@@ -24,8 +25,7 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         return True
 
     def session_started(self):
-        self._chan.write('Welcome to MyVariant hub, %s!\n' %
-                          self._chan.get_extra_info('username'))
+        self._chan.write('Welcome to %s, %s!\n' % (self.name,self._chan.get_extra_info('username')))
         self._chan.write('hub> ')
 
     def data_received(self, data, datatype):
@@ -68,7 +68,7 @@ class HubSSHServer(asyncssh.SSHServer):
     PASSWORDS = {}
 
     def session_requested(self):
-        return HubSSHServerSession(self.__class__.COMMANDS)
+        return HubSSHServerSession(self.__class__.NAME, self.__class__.COMMANDS)
 
     def connection_made(self, conn):
         print('SSH connection received from %s.' %
@@ -91,8 +91,9 @@ class HubSSHServer(asyncssh.SSHServer):
         pw = self.__class__.PASSWORDS.get(username, '*')
         return crypt.crypt(password, pw) == pw
 
-async def start_server(passwords,key='bin/ssh_host_key',host='',port=8022,commands={}):
+async def start_server(name,passwords,key='bin/ssh_host_key',host='',port=8022,commands={}):
     HubSSHServer.PASSWORDS = passwords
+    HubSSHServer.NAME = name
     if commands:
         HubSSHServer.COMMANDS = commands
     await asyncssh.create_server(HubSSHServer, '', 8022, server_host_keys=['bin/ssh_host_key'])

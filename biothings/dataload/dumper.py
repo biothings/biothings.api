@@ -204,9 +204,14 @@ class BaseDumper(object):
         'force' argument will force dump, passing this to
         create_todump_list() method.
         '''
+        # signature says it's optional but for now it's not...
+        assert loop
         try:
-            if self.need_prepare():
-                self.prepare()
+            #state = self.unprepare()
+            #f = loop.run_in_executor(None,self.create_todump_list,force)
+            #yield from f
+            #self.to_dump = f.result()
+            #self.prepare(state)
             self.create_todump_list(force=force)
             if self.to_dump:
                 # mark the download starts
@@ -259,7 +264,7 @@ class BaseDumper(object):
             #self.download(remote,local)
             def done(job):
                 self.post_download(remote,local)
-            job = loop.run_in_executor(None,self.download,remote,local)
+            job = loop.run_in_executor(None,partial(self.download,remote,local))
             job.add_done_callback(done)
             jobs.append(job)
         yield from asyncio.wait(jobs)
