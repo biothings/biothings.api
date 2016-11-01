@@ -1,10 +1,12 @@
 import importlib
 import logging
-import asyncio
+import asyncio, aiocron
 
 from biothings.utils.mongo import get_src_conn
 
 class UnknownResource(Exception):
+    pass
+class ResourceError(Exception):
     pass
 
 class BaseSourceManager(object):
@@ -112,14 +114,28 @@ class BaseSourceManager(object):
                 import traceback
                 logging.error(traceback.format_exc())
 
-    def submit(self,f,*args,**kwargs):
-        """Helper to submit and run tasks. If self.loop defined, tasks will run async'ly"""
+    def submit(self,pfunc,schedule=None):
+        """
+        Helper to submit and run tasks. If self.loop defined, tasks will run async'ly.
+        pfunc is a functools.partial
+        schedule is a string representing a cron schedule, task will then be scheduled 
+        accordingly.
+        """
+        if schedule and not self.loop:
+            raise ResourceError("Cannot schedule without an event loop")
         if self.loop:
-            logging.info("Building task: %s(*args=%s,**kwargs=%s)" % (f,args,kwargs))
-            ff = asyncio.ensure_future(f(*args,**kwargs))
-            return ff
+            logging.info("Building task: %s" % pfunc)
+            if schedule:
+                logging.info("Scheduling task %s: %s" % (pfunc,schedule))
+                print("Scheduling task %s: %s" % (pfunc,schedule))
+                cron = aiocron.crontab(schedule,func=pfunc, start=True, loop=self.loop)
+                print(cron)
+                return cron
+            else:
+                ff = asyncio.ensure_future(pfunc())
+                return ff
         else:
-            return f(*args,**kwargs)
+                return pfunc()
 
     def __repr__(self):
         return "<%s [%d registered]: %s>" % (self.__class__.__name__,len(self.src_register), sorted(list(self.src_register.keys())))

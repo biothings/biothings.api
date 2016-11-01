@@ -1,5 +1,5 @@
 import time, logging
-import os
+import os, pprint
 from datetime import datetime
 import asyncio
 from functools import partial
@@ -18,6 +18,8 @@ class BaseDumper(object):
 
     # attribute used to generate data folder path suffix
     SUFFIX_ATTR = "release"
+
+    SCHEDULE = None # crontab format schedule, if None, won't be scheduled
 
     def __init__(self, src_name=None, src_root_folder=None, no_confirm=True, archive=True):
         # unpickable attrs, grouped
@@ -571,7 +573,7 @@ class SourceManager(BaseSourceManager):
             logging.warning("Found errors while dumping:\n%s" % pprint.pformat(errors))
             return errors
 
-    def dump_src(self, src, force=False, skip_manual=False, **kwargs):
+    def dump_src(self, src, force=False, skip_manual=False, schedule=False, **kwargs):
         dumpers = None
         if src in self.src_register:
             dumpers = self.src_register[src]
@@ -585,14 +587,35 @@ class SourceManager(BaseSourceManager):
                     if isinstance(one,ManualDumper) and skip_manual:
                         logging.warning("Skip %s, it's a manual dumper" % one)
                         continue
-                    job = self.submit(partial(one.dump,force=force,loop=self.loop,**kwargs))
+                    crontab = None
+                    if schedule:
+                        if one.__class__.SCHEDULE:
+                            crontab = one.__class__.SCHEDULE
+                        else:
+                            raise DumperException("Missing scheduling information")
+                    job = self.submit(partial(one.dump,force=force,loop=self.loop,**kwargs),schedule=crontab)
                     jobs.append(job)
             else:
                 dumper = dumpers # for the sake of readability...
-                job = self.submit(partial(dumper.dump,force=force,loop=self.loop,**kwargs))
+                job = self.submit(partial(dumper.dump,force=force,loop=self.loop,**kwargs),schedule)
                 jobs.append(job)
             return jobs
         except Exception as e:
             logging.error("Error while dumping '%s': %s" % (src,e))
             raise
 
+    def schedule_all(self, raise_on_error=False, **kwargs):
+        """
+        Run all dumpers, except manual ones
+        """
+        errors = {}
+        for src in self.src_register:
+            try:
+                self.dump_src(src, skip_manual=True, schedule=True, **kwargs)
+            except Exception as e:
+                errors[src] = e
+                if raise_on_error:
+                    raise
+        if errors:
+            logging.warning("Found errors while scheduling:\n%s" % pprint.pformat(errors))
+            return errors
