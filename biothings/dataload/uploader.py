@@ -408,6 +408,11 @@ class ParallelizedSourceUploader(BaseSourceUploader):
 ##############################
 
 from biothings.utils.manager import BaseSourceManager
+import aiocron
+class ManagerError(Exception):
+    pass
+class ResourceNotFound(Exception):
+    pass
 
 class SourceManager(BaseSourceManager):
     '''
@@ -415,6 +420,10 @@ class SourceManager(BaseSourceManager):
     '''
 
     SOURCE_CLASS = BaseSourceUploader
+
+    def __init__(self,poll_schedule=None,*args,**kwargs):
+        super(SourceManager,self).__init__(*args,**kwargs)
+        self.poll_schedule = poll_schedule
 
     def filter_class(self,klass):
         if klass.name is None:
@@ -465,7 +474,7 @@ class SourceManager(BaseSourceManager):
                         logging.info("Found uploader '%s' for '%s'" % (uploaders,src))
                         break
         if not uploaders:
-            raise ResourceError("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
+            raise ResourceNotFound("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
 
         jobs = []
         try:
@@ -488,3 +497,18 @@ class SourceManager(BaseSourceManager):
             logging.error("Error while uploading '%s': %s" % (src,e))
             raise
 
+    def poll(self):
+        if not self.poll_schedule:
+            raise ManagerError("poll_schedule is not defined")
+        src_dump = get_src_dump()
+        @asyncio.coroutine
+        def do():
+            sources = [src['_id'] for src in src_dump.find({'pending_to_upload': True}) if type(src['_id']) == str]
+            logging.info("Found %d resources to upload (%s)" % (len(sources),repr(sources)))
+            for src_name in sources:
+                logging.info("Launch upload for '%s'" % src_name)
+                try:
+                    self.upload_src(src_name)
+                except ResourceNotFound:
+                    logging.error("Resource '%s' needs upload but is not registerd in manager" % src_name)
+        cron = aiocron.crontab(self.poll_schedule,func=do, start=True, loop=self.loop)

@@ -127,9 +127,7 @@ class BaseSourceManager(object):
             logging.info("Building task: %s" % pfunc)
             if schedule:
                 logging.info("Scheduling task %s: %s" % (pfunc,schedule))
-                print("Scheduling task %s: %s" % (pfunc,schedule))
                 cron = aiocron.crontab(schedule,func=pfunc, start=True, loop=self.loop)
-                print(cron)
                 return cron
             else:
                 ff = asyncio.ensure_future(pfunc())
