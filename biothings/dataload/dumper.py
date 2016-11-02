@@ -1,4 +1,4 @@
-import time, logging
+import time
 import os, pprint
 from datetime import datetime
 import asyncio
@@ -6,6 +6,7 @@ from functools import partial
 
 from biothings.utils.mongo import get_src_dump
 from biothings.utils.common import timesofar
+from config import logger as logging
 
 
 class DumperException(Exception):
@@ -547,20 +548,21 @@ class GoogleDriveDumper(HTTPDumper):
 
 from biothings.utils.manager import BaseSourceManager
 
-class SourceManager(BaseSourceManager):
+class DumperManager(BaseSourceManager):
 
     SOURCE_CLASS = BaseDumper
 
     def create_instance(self,klass):
+        logging.debug("Creating new %s instance" % klass.__name__)
         return klass()
 
-    def register_instances(self,insts):
-        for inst in insts:
-            if inst.SRC_NAME:
-                self.src_register.setdefault(inst.SRC_NAME,[]).append(inst)
+    def register_classes(self,klasses):
+        for klass in klasses:
+            if klass.SRC_NAME:
+                self.src_register.setdefault(klass.SRC_NAME,[]).append(klass)
             else:
-                self.src_register[inst.name] = inst
-            self.conn.register(inst.__class__)
+                self.src_register[klass.name] = klass 
+            self.conn.register(klass)
 
     def dump_all(self,force=False,raise_on_error=False,**kwargs):
         """
@@ -579,35 +581,34 @@ class SourceManager(BaseSourceManager):
             return errors
 
     def dump_src(self, src, force=False, skip_manual=False, schedule=False, **kwargs):
-        dumpers = None
         if src in self.src_register:
-            dumpers = self.src_register[src]
+            klasses = self.src_register[src]
         else:
             raise ResourceError("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
 
         jobs = []
         try:
-            if isinstance(dumpers,list):
-                for i,one in enumerate(dumpers):
-                    if isinstance(one,ManualDumper) and skip_manual:
-                        logging.warning("Skip %s, it's a manual dumper" % one)
-                        continue
-                    crontab = None
-                    if schedule:
-                        if one.__class__.SCHEDULE:
-                            crontab = one.__class__.SCHEDULE
-                        else:
-                            raise DumperException("Missing scheduling information")
-                    job = self.submit(partial(one.dump,force=force,loop=self.loop,**kwargs),schedule=crontab)
-                    jobs.append(job)
-            else:
-                dumper = dumpers # for the sake of readability...
-                job = self.submit(partial(dumper.dump,force=force,loop=self.loop,**kwargs),schedule)
+            for i,klass in enumerate(klasses):
+                if issubclass(klass,ManualDumper) and skip_manual:
+                    logging.warning("Skip %s, it's a manual dumper" % klass)
+                    continue
+                crontab = None
+                if schedule:
+                    if klass.SCHEDULE:
+                        crontab = klass.SCHEDULE
+                    else:
+                        raise DumperException("Missing scheduling information")
+                job = self.submit(partial(self.create_and_dump,klass,force=force,loop=self.loop,**kwargs),schedule=crontab)
                 jobs.append(job)
             return jobs
         except Exception as e:
             logging.error("Error while dumping '%s': %s" % (src,e))
             raise
+
+    @asyncio.coroutine
+    def create_and_dump(self,klass,*args,**kwargs):
+        inst = self.create_instance(klass)
+        yield from inst.dump(*args,**kwargs)
 
     def schedule_all(self, raise_on_error=False, **kwargs):
         """

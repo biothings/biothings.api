@@ -24,16 +24,6 @@ class BaseSourceManager(object):
         self.default_src_path = datasource_path
         self.loop = event_loop
 
-    def create_instances(self,klasses):
-        for klass in klasses:
-            res = self.create_instance(klass)
-            # a true factory may return several instances
-            if isinstance(res,list):
-                for inst in res:
-                    yield inst
-            else:
-                yield res
-
     def filter_class(self,klass):
         """
         Gives opportunity for subclass to check given class and decide to
@@ -42,12 +32,12 @@ class BaseSourceManager(object):
         # keep it by default
         return klass
 
-    def register_instances(self,insts):
+    def register_classes(self,klasses):
         """
-        Register each instances in self.src_register dict. Key will be used
-        to retrieve the source object and run method from it. It must be implemented
-        in subclass as each manager may need to access its sources differently,based
-        on different keys.
+        Register each class in self.src_register dict. Key will be used
+        to retrieve the source class, create an instance and run method from it.
+        It must be implemented in subclass as each manager may need to access 
+        its sources differently,based on different keys.
         """
         raise NotImplementedError("implement me in sub-class")
 
@@ -99,8 +89,7 @@ class BaseSourceManager(object):
         else:
             src_m = src_data
         klasses = self.find_classes(src_m,fail_on_notfound)
-        instances = self.create_instances(klasses)
-        self.register_instances(instances)
+        self.register_classes(klasses)
 
     def register_sources(self, sources):
         assert not isinstance(sources,str), "sources argument is a string, should pass a list"

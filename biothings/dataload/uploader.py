@@ -414,7 +414,7 @@ class ManagerError(Exception):
 class ResourceNotFound(Exception):
     pass
 
-class SourceManager(BaseSourceManager):
+class UploaderManager(BaseSourceManager):
     '''
     After registering datasources, manager will orchestrate source uploading.
     '''
@@ -422,7 +422,7 @@ class SourceManager(BaseSourceManager):
     SOURCE_CLASS = BaseSourceUploader
 
     def __init__(self,poll_schedule=None,*args,**kwargs):
-        super(SourceManager,self).__init__(*args,**kwargs)
+        super(UploaderManager,self).__init__(*args,**kwargs)
         self.poll_schedule = poll_schedule
 
     def filter_class(self,klass):
@@ -438,13 +438,13 @@ class SourceManager(BaseSourceManager):
         res = klass.create(db_conn_info=self.conn.address,data_root=config.DATA_ARCHIVE_ROOT)
         return res
 
-    def register_instances(self,insts):
-        for inst in insts:
-            if inst.main_source:
-                self.src_register.setdefault(inst.main_source,[]).append(inst)
+    def register_classes(self,klasses):
+        for klass in klasses:
+            if klass.main_source:
+                self.src_register.setdefault(klass.main_source,[]).append(klass)
             else:
-                self.src_register[inst.name] = inst
-            self.conn.register(inst.__class__)
+                self.src_register[klass.name] =klass 
+            self.conn.register(klass)
 
     def upload_all(self,raise_on_error=False,**kwargs):
         errors = {}
@@ -460,9 +460,9 @@ class SourceManager(BaseSourceManager):
             return errors
 
     def upload_src(self, src, **kwargs):
-        uploaders = None
+        klasses = None
         if src in self.src_register:
-            uploaders = self.src_register[src]
+            klasses = self.src_register[src]
         else:
             # maybe src is a sub-source ?
             for main_src in self.src_register:
@@ -470,32 +470,29 @@ class SourceManager(BaseSourceManager):
                     # search for "sub_src" or "main_src.sub_src"
                     main_sub = "%s.%s" % (main_src,sub_src.name)
                     if (src == sub_src.name) or (src == main_sub):
-                        uploaders = sub_src
+                        klasses = sub_src
                         logging.info("Found uploader '%s' for '%s'" % (uploaders,src))
                         break
-        if not uploaders:
+        if not klasses:
             raise ResourceNotFound("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
 
         jobs = []
         try:
-            if isinstance(uploaders,list):
-                # this is a resource composed by several sub-resources
-                # let's mention intermediate step (so "success" means all subsources
-                # have been uploaded correctly
-                for i,one in enumerate(uploaders):
-                    # FIXME: load() will call update_master_data(), which calls get_mapping()
-                    # which is a class-method. should iterate over instances' class and 
-                    # call update_master_data() for each class, not each instance
-                    job = self.submit(partial(one.load,progress=i+1,total=len(uploaders),loop=self.loop,**kwargs))
-                    jobs.append(job)
-            else:
-                uploader = uploaders # for the sake of readability...
-                job = self.submit(partial(uploader.load,loop=self.loop,**kwargs))
+            # this is a resource composed by several sub-resources
+            # let's mention intermediate step (so "success" means all subsources
+            # have been uploaded correctly
+            for i,klass in enumerate(klasses):
+                job = self.submit(partial(self.create_and_load,klass,progress=i+1,total=len(klasses),loop=self.loop,**kwargs))
                 jobs.append(job)
             return jobs
         except Exception as e:
             logging.error("Error while uploading '%s': %s" % (src,e))
             raise
+
+    @asyncio.coroutine
+    def create_and_load(self,klass,*args,**kwargs):
+        inst = self.create_instance(klass)
+        yield from inst.load(*args,**kwargs)
 
     def poll(self):
         if not self.poll_schedule:
