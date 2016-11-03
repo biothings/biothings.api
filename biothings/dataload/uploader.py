@@ -73,8 +73,12 @@ class BaseSourceUploader(object):
         self.db_conn_info = db_conn_info
         self.timestamp = datetime.datetime.now()
         self.t0 = time.time()
-        self.__class__.main_source = self.__class__.main_source or self.__class__.name
-        self.src_root_folder=os.path.join(data_root, self.__class__.main_source)
+        # main_source at object level so it's part of pickling data
+        # otherwise it won't be set properly when using multiprocessing
+        # note: "name" is always defined at class level so pickle knows
+        # how to restore it
+        self.main_source = self.__class__.main_source or self.__class__.name
+        self.src_root_folder=os.path.join(data_root, self.main_source)
         self.logfile = None
         self.temp_collection_name = None
         self.collection_name = collection_name or self.name
@@ -195,7 +199,8 @@ class BaseSourceUploader(object):
         f = loop.run_in_executor(None,upload_worker,BasicStorage,self.load_data,self.temp_collection_name,step,self.data_folder)
         yield from f
         self.switch_collection()
-        self.post_update_data()
+        f2 = loop.run_in_executor(None,self.post_update_data)
+        yield from f2
 
     def generate_doc_src_master(self):
         _doc = {"_id": str(self.name),
@@ -443,7 +448,7 @@ class UploaderManager(BaseSourceManager):
             if klass.main_source:
                 self.src_register.setdefault(klass.main_source,[]).append(klass)
             else:
-                self.src_register[klass.name] =klass 
+                self.src_register.setdefault(klass.name,[]).append(klass)
             self.conn.register(klass)
 
     def upload_all(self,raise_on_error=False,**kwargs):
@@ -478,9 +483,6 @@ class UploaderManager(BaseSourceManager):
 
         jobs = []
         try:
-            # this is a resource composed by several sub-resources
-            # let's mention intermediate step (so "success" means all subsources
-            # have been uploaded correctly
             for i,klass in enumerate(klasses):
                 job = self.submit(partial(self.create_and_load,klass,progress=i+1,total=len(klasses),loop=self.loop,**kwargs))
                 jobs.append(job)

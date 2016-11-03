@@ -11,7 +11,7 @@ class IDMapperBase(object):
         will be applied to any document from a resource without id_type argument
         """
         self.map = None
-        self.convert_func = convert_func or (lambda x: x)
+        self.convert_func = convert_func
         self.name = name
 
     def load(self):
@@ -29,7 +29,8 @@ class IDMapperBase(object):
         if self.need_load():
             self.load()
         default = transparent and _id or None
-        return self.map.get(self.convert_func(_id),default)
+        conv = self.convert_func or (lambda x: x)
+        return self.map.get(self.conv(_id),default)
 
     def __contains__(self,_id):
         if self.need_load():
