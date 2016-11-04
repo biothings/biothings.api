@@ -5,8 +5,14 @@
 
 
 import asyncio, asyncssh, crypt, sys, io
+import types, aiocron, time
+from functools import partial
 from IPython import InteractiveShell
 
+
+##############
+# HUB SERVER #
+##############
 
 class HubSSHServerSession(asyncssh.SSHServerSession):
     def __init__(self, name, commands):
@@ -16,7 +22,6 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
 
     def connection_made(self, chan):
         self._chan = chan
-
         self.origout = sys.stdout
         self.buf = io.StringIO()
         sys.stdout = self.buf
@@ -64,11 +69,12 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
 
 class HubSSHServer(asyncssh.SSHServer):
 
-    COMMANDS = globals()
+    COMMANDS = {}
     PASSWORDS = {}
 
     def session_requested(self):
-        return HubSSHServerSession(self.__class__.NAME, self.__class__.COMMANDS)
+        return HubSSHServerSession(self.__class__.NAME,
+                                   self.__class__.COMMANDS)
 
     def connection_made(self, conn):
         print('SSH connection received from %s.' %
@@ -91,11 +97,85 @@ class HubSSHServer(asyncssh.SSHServer):
         pw = self.__class__.PASSWORDS.get(username, '*')
         return crypt.crypt(password, pw) == pw
 
-async def start_server(name,passwords,key='bin/ssh_host_key',host='',port=8022,commands={}):
+
+async def start_server(loop,name,passwords,keys=['bin/ssh_host_key'],
+                        host='',port=8022,commands={}):
     HubSSHServer.PASSWORDS = passwords
     HubSSHServer.NAME = name
     if commands:
-        HubSSHServer.COMMANDS = commands
-    await asyncssh.create_server(HubSSHServer, '', 8022, server_host_keys=['bin/ssh_host_key'])
+        HubSSHServer.COMMANDS.update(commands)
+    await asyncssh.create_server(HubSSHServer, host, port, loop=loop,
+                                 server_host_keys=keys)
 
+
+####################
+# DEFAULT HUB CMDS #
+####################
+# these can be used in client code to define
+# commands. partial should be used to pass the
+# required arguments, eg.:
+# {"schedule" ; partial(schedule,loop)}
+
+class JobRenderer(object):
+
+    def __init__(self):
+        self.rendered = {
+                types.FunctionType : self.render_func,
+                types.MethodType : self.render_method,
+                partial : self.render_partial,
+                types.LambdaType: self.render_lambda,
+        }
+
+    def render(self,job):
+        r = self.rendered.get(type(job._callback))#,print)
+        rstr = r(job._callback)
+        delta = job._when - job._loop.time()
+        strdelta = time.strftime("%Hh:%Mm:%Ss", time.gmtime(int(delta)))
+        return "%s {run in %s}" % (rstr,strdelta)
+
+    def render_partial(self,p):
+        # class.method(args)
+        return self.rendered[type(p.func)](p.func) + "%s" % str(p.args)
+
+    def render_cron(self,c):
+        # func type associated to cron can vary
+        return self.rendered[type(c.func)](c.func) + " [%s]" % c.spec
+
+    def render_func(self,f):
+        return f.__name__
+
+    def render_method(self,m):
+        # what is self ? cron ?
+        if type(m.__self__) == aiocron.Cron:
+            return self.render_cron(m.__self__)
+        else:
+            return "%s.%s" % (m.__self__.__class__.__name__,
+                              m.__name__)
+
+    def render_lambda(self,l):
+        return l.__name__
+
+renderer = JobRenderer()
+
+def schedule(loop):
+    jobs = {}
+    # try to render job in a human-readable way...
+    for sch in loop._scheduled:
+        if type(sch) != asyncio.events.TimerHandle:
+            continue
+        if sch._cancelled:
+            continue
+        try:
+            info = renderer.render(sch)
+            print(info)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(sch)
+
+def top(executor):
+    pass
+
+def stats(src_dump):
+    pass
 

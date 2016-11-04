@@ -501,7 +501,7 @@ class UploaderManager(BaseSourceManager):
             raise ManagerError("poll_schedule is not defined")
         src_dump = get_src_dump()
         @asyncio.coroutine
-        def do():
+        def check_pending_to_upload():
             sources = [src['_id'] for src in src_dump.find({'pending_to_upload': True}) if type(src['_id']) == str]
             logging.info("Found %d resources to upload (%s)" % (len(sources),repr(sources)))
             for src_name in sources:
@@ -510,4 +510,4 @@ class UploaderManager(BaseSourceManager):
                     self.upload_src(src_name)
                 except ResourceNotFound:
                     logging.error("Resource '%s' needs upload but is not registerd in manager" % src_name)
-        cron = aiocron.crontab(self.poll_schedule,func=do, start=True, loop=self.loop)
+        cron = aiocron.crontab(self.poll_schedule,func=partial(check_pending_to_upload), start=True, loop=self.loop)
