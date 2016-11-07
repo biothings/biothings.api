@@ -196,9 +196,11 @@ class BaseSourceUploader(object):
 
     @asyncio.coroutine
     def update_data(self, doc_d, step, loop=None):
+        self.unprepare()
         f = loop.run_in_executor(None,upload_worker,BasicStorage,self.load_data,self.temp_collection_name,step,self.data_folder)
         yield from f
         self.switch_collection()
+        self.unprepare()
         f2 = loop.run_in_executor(None,self.post_update_data)
         yield from f2
 
@@ -406,18 +408,16 @@ class ParallelizedSourceUploader(BaseSourceUploader):
             fs.append(f)
         yield from asyncio.wait(fs)
         self.switch_collection()
-        self.post_update_data()
-
+        self.unprepare()
+        f2 = loop.run_in_executor(None,self.post_update_data)
+        yield from f2
 
 
 ##############################
 
-from biothings.utils.manager import BaseSourceManager
+from biothings.utils.manager import BaseSourceManager, \
+                                    ManagerError, ResourceNotFound
 import aiocron
-class ManagerError(Exception):
-    pass
-class ResourceNotFound(Exception):
-    pass
 
 class UploaderManager(BaseSourceManager):
     '''
@@ -446,14 +446,14 @@ class UploaderManager(BaseSourceManager):
     def register_classes(self,klasses):
         for klass in klasses:
             if klass.main_source:
-                self.src_register.setdefault(klass.main_source,[]).append(klass)
+                self.register.setdefault(klass.main_source,[]).append(klass)
             else:
-                self.src_register.setdefault(klass.name,[]).append(klass)
+                self.register.setdefault(klass.name,[]).append(klass)
             self.conn.register(klass)
 
     def upload_all(self,raise_on_error=False,**kwargs):
         errors = {}
-        for src in self.src_register:
+        for src in self.register:
             try:
                 self.upload_src(src, **kwargs)
             except Exception as e:
@@ -466,12 +466,12 @@ class UploaderManager(BaseSourceManager):
 
     def upload_src(self, src, **kwargs):
         klasses = None
-        if src in self.src_register:
-            klasses = self.src_register[src]
+        if src in self.register:
+            klasses = self.register[src]
         else:
             # maybe src is a sub-source ?
-            for main_src in self.src_register:
-                for sub_src in self.src_register[main_src]:
+            for main_src in self.register:
+                for sub_src in self.register[main_src]:
                     # search for "sub_src" or "main_src.sub_src"
                     main_sub = "%s.%s" % (main_src,sub_src.name)
                     if (src == sub_src.name) or (src == main_sub):

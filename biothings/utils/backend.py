@@ -69,9 +69,19 @@ class DocMongoBackend(DocBackendBase):
 
     def __init__(self, target_db, target_collection=None):
         """target_collection is a pymongo collection object."""
-        self.target_db = target_db
+        if callable(target_db):
+            self._target_db_provider = target_db
+            self._target_db = None
+        else:
+            self._target_db = target_db
         if target_collection:
             self.target_collection = target_collection
+
+    @property
+    def target_db(self):
+        if self._target_db is None:
+            self._target_db = self._target_db_provider()
+        return self._target_db
 
     def count(self):
         return self.target_collection.count()

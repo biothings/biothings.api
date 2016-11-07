@@ -208,11 +208,6 @@ class BaseDumper(object):
         # signature says it's optional but for now it's not...
         assert loop
         try:
-            #state = self.unprepare()
-            #f = loop.run_in_executor(None,self.create_todump_list,force)
-            #yield from f
-            #self.to_dump = f.result()
-            #self.prepare(state)
             self.create_todump_list(force=force)
             if self.to_dump:
                 # mark the download starts
@@ -262,7 +257,6 @@ class BaseDumper(object):
         for todo in self.to_dump:
             remote = todo["remote"]
             local = todo["local"]
-            #self.download(remote,local)
             def done(job):
                 self.post_download(remote,local)
             job = loop.run_in_executor(None,partial(self.download,remote,local))
@@ -559,9 +553,9 @@ class DumperManager(BaseSourceManager):
     def register_classes(self,klasses):
         for klass in klasses:
             if klass.SRC_NAME:
-                self.src_register.setdefault(klass.SRC_NAME,[]).append(klass)
+                self.register.setdefault(klass.SRC_NAME,[]).append(klass)
             else:
-                self.src_register[klass.name] = klass 
+                self.register[klass.name] = klass 
             self.conn.register(klass)
 
     def dump_all(self,force=False,raise_on_error=False,**kwargs):
@@ -569,7 +563,7 @@ class DumperManager(BaseSourceManager):
         Run all dumpers, except manual ones
         """
         errors = {}
-        for src in self.src_register:
+        for src in self.register:
             try:
                 self.dump_src(src, force=force, skip_manual=True, **kwargs)
             except Exception as e:
@@ -581,8 +575,8 @@ class DumperManager(BaseSourceManager):
             return errors
 
     def dump_src(self, src, force=False, skip_manual=False, schedule=False, **kwargs):
-        if src in self.src_register:
-            klasses = self.src_register[src]
+        if src in self.register:
+            klasses = self.register[src]
         else:
             raise ResourceError("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
 
@@ -615,7 +609,7 @@ class DumperManager(BaseSourceManager):
         Run all dumpers, except manual ones
         """
         errors = {}
-        for src in self.src_register:
+        for src in self.register:
             try:
                 self.dump_src(src, skip_manual=True, schedule=True, **kwargs)
             except Exception as e:

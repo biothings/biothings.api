@@ -8,8 +8,72 @@ class UnknownResource(Exception):
     pass
 class ResourceError(Exception):
     pass
+class ManagerError(Exception):
+    pass
+class ResourceNotFound(Exception):
+    pass
 
-class BaseSourceManager(object):
+class BaseManager(object):
+
+    def __init__(self, event_loop=None):
+        self.register = {}
+        self.loop = event_loop
+
+    def submit(self,pfunc,schedule=None):
+        """
+        Helper to submit and run tasks. If self.loop defined, tasks will run async'ly.
+        pfunc is a functools.partial
+        schedule is a string representing a cron schedule, task will then be scheduled 
+        accordingly.
+        """
+        if schedule and not self.loop:
+            raise ResourceError("Cannot schedule without an event loop")
+        if self.loop:
+            logging.info("Building task: %s" % pfunc)
+            if schedule:
+                logging.info("Scheduling task %s: %s" % (pfunc,schedule))
+                cron = aiocron.crontab(schedule,func=pfunc, start=True, loop=self.loop)
+                return cron
+            else:
+                ff = asyncio.ensure_future(pfunc())
+                return ff
+        else:
+                return pfunc()
+
+    def __repr__(self):
+        return "<%s [%d registered]: %s>" % (self.__class__.__name__,len(self.register), sorted(list(self.register.keys())))
+
+    def __getitem__(self,src_name):
+        try:
+            # as a main-source
+            return self.register[src_name]
+        except KeyError:
+            try:
+                # as a sub-source
+                main,sub = src_name.split(".")
+                srcs = self.register[main]
+                # there can be many uploader for one resource (when each is dealing
+                # with one specific file but upload to the same collection for instance)
+                # so we want to make sure user is aware of this and not just return one
+                # uploader when many are needed
+                # on the other hand, if only one avail, just return it
+                res = []
+                for src in srcs:
+                    if src.name == sub:
+                        res.append(src)
+                if len(res) == 1:
+                    return res.pop()
+                elif len(res) == 0:
+                    raise KeyError(src_name)
+                else:
+                    return res
+            except (ValueError,KeyError):
+                # nope, can't find it...
+                raise KeyError(src_name)
+
+
+
+class BaseSourceManager(BaseManager):
     """
     Base class to provide source management: discovery, registration
     Actual launch of tasks must be defined in subclasses
@@ -18,11 +82,10 @@ class BaseSourceManager(object):
     # define the class manager will look for. Set in a subclass
     SOURCE_CLASS = None
 
-    def __init__(self, event_loop=None, datasource_path="dataload.sources"):
-        self.src_register = {}
+    def __init__(self, event_loop=None, datasource_path="dataload.sources", *args, **kwargs):
+        super(BaseSourceManager,self).__init__(event_loop,*args,**kwargs)
         self.conn = get_src_conn()
         self.default_src_path = datasource_path
-        self.loop = event_loop
 
     def filter_class(self,klass):
         """
@@ -34,7 +97,7 @@ class BaseSourceManager(object):
 
     def register_classes(self,klasses):
         """
-        Register each class in self.src_register dict. Key will be used
+        Register each class in self.register dict. Key will be used
         to retrieve the source class, create an instance and run method from it.
         It must be implemented in subclass as each manager may need to access 
         its sources differently,based on different keys.
@@ -93,7 +156,7 @@ class BaseSourceManager(object):
 
     def register_sources(self, sources):
         assert not isinstance(sources,str), "sources argument is a string, should pass a list"
-        self.src_register.clear()
+        self.register.clear()
         for src_data in sources:
             try:
 # batch registration, we'll silently ignore not-found sources
@@ -102,57 +165,4 @@ class BaseSourceManager(object):
                 logging.info("Can't register source '%s', skip it; %s" % (src_data,e))
                 import traceback
                 logging.error(traceback.format_exc())
-
-    def submit(self,pfunc,schedule=None):
-        """
-        Helper to submit and run tasks. If self.loop defined, tasks will run async'ly.
-        pfunc is a functools.partial
-        schedule is a string representing a cron schedule, task will then be scheduled 
-        accordingly.
-        """
-        if schedule and not self.loop:
-            raise ResourceError("Cannot schedule without an event loop")
-        if self.loop:
-            logging.info("Building task: %s" % pfunc)
-            if schedule:
-                logging.info("Scheduling task %s: %s" % (pfunc,schedule))
-                cron = aiocron.crontab(schedule,func=pfunc, start=True, loop=self.loop)
-                return cron
-            else:
-                ff = asyncio.ensure_future(pfunc())
-                return ff
-        else:
-                return pfunc()
-
-    def __repr__(self):
-        return "<%s [%d registered]: %s>" % (self.__class__.__name__,len(self.src_register), sorted(list(self.src_register.keys())))
-
-    def __getitem__(self,src_name):
-        try:
-            # as a main-source
-            return self.src_register[src_name]
-        except KeyError:
-            try:
-                # as a sub-source
-                main,sub = src_name.split(".")
-                srcs = self.src_register[main]
-                # there can be many uploader for one resource (when each is dealing
-                # with one specific file but upload to the same collection for instance)
-                # so we want to make sure user is aware of this and not just return one
-                # uploader when many are needed
-                # on the other hand, if only one avail, just return it
-                res = []
-                for src in srcs:
-                    if src.name == sub:
-                        res.append(src)
-                if len(res) == 1:
-                    return res.pop()
-                elif len(res) == 0:
-                    raise KeyError(src_name)
-                else:
-                    return res
-            except (ValueError,KeyError):
-                # nope, can't find it...
-                raise KeyError(src_name)
-
 

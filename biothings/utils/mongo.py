@@ -1,5 +1,7 @@
 import time, logging
+from functools import wraps
 from pymongo import MongoClient
+
 from biothings.utils.common import timesofar
 # stub, until set to real config module
 config = None
@@ -25,6 +27,7 @@ class Connection(MongoClient):
                 raise AttributeError(key)
 
 def requires_config(func):
+    @wraps(func)
     def func_wrapper(*args,**kwargs):
         global config
         if not config:

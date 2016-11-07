@@ -9,12 +9,37 @@ from biothings.utils.backend import DocBackendBase, DocMongoBackend, DocESBacken
 class SourceDocBackendBase(DocBackendBase):
 
     def __init__(self, build, master, dump, sources):
-        self.build = build
-        self.master = master
-        self.dump = dump
-        self.sources = sources
+        if callable(build):
+            self._build_provider = build
+            self._build = None
+        else:
+            self._build = build
+        if callable(master):
+            self._master_provider = master
+            self._master = None
+        else:
+            self._master = master
+        if callable(dump):
+            self._dump_provider = dump
+            self._dump = None
+        else:
+            self._dump = dump
+        if callable(sources):
+            self._sources_provider = sources
+            self._sources = None
+        else:
+            self._sources = sources
         self._build_config = None
         self.src_masterdocs = None
+
+    def __getattr__(self,attr):
+        if attr not in ["build","dump","master","sources"]:
+            return AttributeError(attr)
+        privattr = "_" + attr
+        if getattr(self,privattr) is None:
+            res= getattr(self,privattr + "_provider")()
+            setattr(self,privattr,res)
+        return getattr(self,privattr)
 
     def get_build_configuration(self, build):
         raise NotImplementedError("sub-class and implement me")
