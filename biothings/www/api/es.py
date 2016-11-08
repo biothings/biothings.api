@@ -1,6 +1,7 @@
 import json, logging, re
 from biothings.utils.common import dotdict, is_str, is_seq, find_doc
 from biothings.utils.es import get_es
+from biothings.utils.userquery import get_userquery
 from elasticsearch import NotFoundError, RequestError, TransportError
 from biothings.settings import BiothingSettings
 #from biothings.utils.dotfield import compose_dot_fields_by_fields as compose_dot_fields
@@ -209,6 +210,9 @@ class ESQuery(object):
         options.host = kwargs.pop('host', biothing_settings.ga_tracker_url)
         options.jsonld = kwargs.pop('jsonld', False)
         options.dotfield = kwargs.pop('dotfield', False)
+        options.userquery = kwargs.pop('userquery', False)
+        options.userquery_args = sorted([x[1] for x in kwargs.items() if re.match(r'q[2-9]', x[0])],
+                                key=lambda x: int(x[0].lstrip('q')))
         # override to add more options
         options = self._get_options(options, kwargs)
         scopes = kwargs.pop('scopes', None)
@@ -353,6 +357,7 @@ class ESQuery(object):
         if options.fetch_all:
             scroll_options.update({'size': self._total_scroll_size, 'scroll': self._scroll_time})
         options["kwargs"].update(scroll_options)
+        _query = self._build_query(q, options=options, **kwargs)
         try:
             _query = self._build_query(q, options=options, **kwargs)
             if aggs:
@@ -436,7 +441,8 @@ class ESQuery(object):
 class ESQueryBuilder(object):
     def __init__(self, **query_options):
         self._query_options = query_options
-
+        self._options = self._query_options.pop('options', {})
+            
     def build_id_query(self, bid, scopes=None):
         _default_scopes = '_id'
         scopes = scopes or _default_scopes
@@ -481,6 +487,11 @@ class ESQueryBuilder(object):
             }
         }
 
+    def user_query(self, q):
+        args = [q]
+        args.extend(self._options.userquery_args)
+        return json.loads(get_userquery(biothing_settings.userquery_dir, self._options.userquery).format(*args))
+
     def get_query_filters(self):
         '''Subclass to add specific filters'''
         return []
@@ -517,7 +528,9 @@ class ESQueryBuilder(object):
         # raw_string_query should be checked ahead of wildcard query, as
         # raw_string may contain wildcard as well # e.g., a query
         # "symbol:CDK?", should be treated as raw_string_query.
-        if q == '__all__':
+        if self._is_user_query():
+            _query = self.user_query(q)
+        elif q == '__all__':
             _query = {"match_all": {}}
         elif self._is_raw_string_query(q):
             #logging.debug("this is raw string query")
@@ -532,6 +545,12 @@ class ESQueryBuilder(object):
         _query = self.add_query_filters(_query)
 
         return _query
+
+    def _is_user_query(self):
+        ''' Return True if query is a userquery '''
+        if self._options.userquery:
+            return True
+        return False
 
     def _is_wildcard_query(self, query):
         '''Return True if input query is a wildcard query.'''

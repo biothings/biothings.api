@@ -101,6 +101,10 @@ class BiothingSettings(object):
     @property
     def size_cap(self):
         return self._return_var('ES_SIZE_CAP')
+
+    @property
+    def userquery_dir(self):
+        return self._return_var('USERQUERY_DIR')
     
     # *************************************************************************
     # * neo4j settings wrappers

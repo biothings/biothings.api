@@ -13,7 +13,8 @@ ES_SCROLL_TIME = '1m'
 ES_SCROLL_SIZE = 1000
 ES_SIZE_CAP = 1000
 ES_QUERY_MODULE = 'biothings.www.api.es'
-
+# For the userquery folder for this app
+USERQUERY_DIR = 'biothings.userqueries'
 # Graph defaults
 # By default turn graph app off
 NEO4J_APP = False
