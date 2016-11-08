@@ -357,7 +357,6 @@ class ESQuery(object):
         if options.fetch_all:
             scroll_options.update({'size': self._total_scroll_size, 'scroll': self._scroll_time})
         options["kwargs"].update(scroll_options)
-        _query = self._build_query(q, options=options, **kwargs)
         try:
             _query = self._build_query(q, options=options, **kwargs)
             if aggs:
