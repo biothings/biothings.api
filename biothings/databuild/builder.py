@@ -336,16 +336,7 @@ class DataBuilder(object):
         return {"total_%s" % src_name : cnt}
 
     def post_merge(self):
-        # naive post-merge validation. assuming all merge processes have inserted
-        # distinct data (only inserts, ni updates)
-        total = sum(self.stats.values())
-        self.logger.info("Validating...")
-        target_cnt = self.target_backend.count()
-        if target_cnt == total:
-            self.logger.info("OK [total count={}]".format(target_cnt))
-        else:
-            self.logger.info("Warning: total count of documents does not match [{}, should be {}]".format(target_cnt, total))
-
+        pass
 
 
 
@@ -376,7 +367,7 @@ class BuilderManager(BaseManager):
 
     def __init__(self,source_backend_factory=None,
                       target_backend_factory=None,
-                      builder_factory=None,
+                      builder_class=None,
                       *args,**kwargs):
         """
         BuilderManager deals with the different builders used to merge datasources.
@@ -384,15 +375,15 @@ class BuilderManager(BaseManager):
         and register builder classes, ready to be instantiate when triggering builds.
         source_backend_factory can be a optional factory function (like a partial) that
         builder can call without any argument to generate a SourceBackend.
-        Same for target_backend_factory for the TargetBackend and builder_factory for
-        the actual Builder class used for the merge. If those are None, default ones will
-        be used.
+        Same for target_backend_factory for the TargetBackend. builder_class if given
+        will be used as the actual Builder class used for the merge and will be passed
+        same arguments as the base DataBuilder
         """
         super(BuilderManager,self).__init__(*args,**kwargs)
         self.src_build = mongo.get_src_build()
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
-        self.builder_factory = builder_factory
+        self.builder_class = builder_class
 
     def register_builder(self,build_name):
         # will use partial to postponse object creations and their db connection
@@ -415,13 +406,15 @@ class BuilderManager(BaseManager):
                                             target_db=partial(mongo.get_target_db))
 
             # assemble the whole
-            bdr = self.builder_factory and self.builder_factory() or \
-                        DataBuilder(
-                            build_name,
-                            source_backend=source_backend,
-                            target_backend=target_backend,
-                            log_folder=config.LOG_FOLDER)
+            klass = self.builder_class and self.builder_class or DataBuilder
+            bdr = klass(
+                    build_name,
+                    source_backend=source_backend,
+                    target_backend=target_backend,
+                    log_folder=config.LOG_FOLDER)
+
             return bdr
+
         self.register[build_name] = partial(create,build_name)
 
     def __getitem__(self,build_name):
