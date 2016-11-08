@@ -27,7 +27,7 @@ class ResumeException(Exception):
 class DataBuilder(object):
 
     def __init__(self, build_name, source_backend, target_backend, log_folder,
-                 doc_root_key="root", max_build_status=10, loop=None,
+                 doc_root_key="root", max_build_status=10,
                  id_mappers=[], default_mapper_class=TransparentMapper,
                  sources=None, target_name=None,**kwargs):
         self.init_state()
@@ -48,7 +48,7 @@ class DataBuilder(object):
         self.log_folder = log_folder
         self.id_mappers = {}
         self.timestamp = datetime.now()
-        self.loop = loop
+        self.stats = {} # keep track of cnt per source, etc...
 
         for mapper in id_mappers + [default_mapper_class()]:
             self.id_mappers[mapper.name] = mapper
@@ -198,6 +198,11 @@ class DataBuilder(object):
         if self.doc_root_key and not self.doc_root_key in self.build_config:
             raise BuilderException("Root document key '%s' can't be found in build configuration" % self.doc_root_key)
 
+    def store_stats(self,future=None):
+        self.target_backend.post_merge()
+        _src_versions = self.source_backend.get_src_versions()
+        self.register_status('success',build={"stats" : self.stats, "src_versions" : _src_versions})
+
     def merge(self, sources=None, target_name=None, batch_size=100000, loop=None):
         loop = loop and loop or asyncio.get_event_loop()
         self.t0 = time.time()
@@ -215,32 +220,20 @@ class DataBuilder(object):
 
         self.logger.info("Merging into target collection '%s'" % self.target_backend.target_collection.name)
         try:
+
             self.register_status("building",transient=True,init=True,
                                  build={"step":"init","sources":sources})
-            job = self.merge_sources(source_names=sources, batch_size=batch_size)
+            job = self.merge_sources(source_names=sources, batch_size=batch_size, loop=loop)
             job = asyncio.ensure_future(job)
-            def merged(f):
-                stats = f.result()
-                self.target_backend.post_merge()
-                _src_versions = self.source_backend.get_src_versions()
-                self.register_status('success',build={"stats" : stats, "src_versions" : _src_versions})
-            job.add_done_callback(merged)
+            job.add_done_callback(self.store_stats)
+
+            return job
 
         except (KeyboardInterrupt,Exception) as e:
             import traceback
             self.logger.error(traceback.format_exc())
             self.register_status("failed",build={"err": repr(e)})
             raise
-
-        finally:
-            #do a simple validation here
-            if getattr(self, '_stats', None):
-                self.logger.info("Validating...")
-                target_cnt = self.target_backend.count()
-                if target_cnt == self._stats['total_documents']:
-                    self.logger.info("OK [total count={}]".format(target_cnt))
-                else:
-                    self.logger.info("Warning: total count of gene documents does not match [{}, should be {}]".format(target_cnt, self._stats['total_genes']))
 
     def get_mapper_for_source(self,src_name,init=True):
         id_type = self.source_backend.get_src_master_docs()[src_name].get('id_type')
@@ -260,7 +253,7 @@ class DataBuilder(object):
         """
         loop = loop and loop or asyncio.get_event_loop()
         total_docs = 0
-        _stats = {}
+        self.stats = {}
         # try to identify root document sources amongst the list to first
         # process them (if any)
         root_sources = list(set(source_names).intersection(set(self.get_root_document_sources())))
@@ -273,12 +266,12 @@ class DataBuilder(object):
         def merge(src_names):
             jobs = []
             for i,src_name in enumerate(src_names):
-                job = self.merge_source(src_name, batch_size=batch_size)
+                job = self.merge_source(src_name, batch_size=batch_size, loop=loop)
                 job = asyncio.ensure_future(job)
                 def merged(f,stats):
                     self.logger.info("f: %s" % f.result())
                     stats.update(f.result())
-                job.add_done_callback(partial(merged,stats=_stats))
+                job.add_done_callback(partial(merged,stats=self.stats))
                 jobs.append(job)
             yield from asyncio.wait(jobs)
 
@@ -289,22 +282,33 @@ class DataBuilder(object):
         self.logger.info("Merging other resources: %s" % other_sources)
         yield from merge(other_sources)
 
-        self.logger.info("Running post-merging process")
+        self.logger.info("Finalizing target backend")
         self.target_backend.finalize()
 
-        return _stats
+        self.logger.info("Running post-merge process")
+        # can't really run post_merge in a multiprocessing queue as we would loose
+        # object state, such as target collection name (it'd be generated again). It
+        # would be really dirty to have this information synced while pickled, I think
+        # it's better to have a blocking call for now, until a loop wrapper
+        # is implemented, so we could submit this is a thread-pool (no pickle) instead
+        # of a process-poll (need pickle). This wrapper needs to be implemented to
+        # hide any pool complexity
+        self.post_merge()
+
+        return self.stats
 
     def clean_document_to_merge(self,doc):
         return doc
 
     @asyncio.coroutine
-    def merge_source(self, src_name, batch_size=100000):
+    def merge_source(self, src_name, batch_size=100000, loop=None):
         _query = self.generate_document_query(src_name)
         # Note: no need to check if there's an existing document with _id (we want to merge only with an existing document)
         # if the document doesn't exist then the update() call will silently fail.
         # That being said... if no root documents, then there won't be any previously inserted
         # documents, and this update() would just do nothing. So if no root docs, then upsert
         # (update or insert, but do something)
+        loop = loop and loop or asyncio.get_event_loop()
         upsert = not self.get_root_document_sources() or src_name in self.get_root_document_sources()
         if not upsert:
             self.logger.debug("Documents from source '%s' will be stored only if a previous document exist with same _id" % src_name)
@@ -315,7 +319,7 @@ class DataBuilder(object):
             cnt += len(doc_ids)
             self.logger.info("Creating merger job to process '%s' %d/%d" % (src_name,cnt,total))
             ids = [doc["_id"] for doc in doc_ids]
-            job = self.loop.run_in_executor(None,
+            job = loop.run_in_executor(None,
                     partial(merger_worker,
                         self.source_backend[src_name].name,
                         self.target_backend.target_name,
@@ -330,6 +334,17 @@ class DataBuilder(object):
         self.logger.info("%d jobs created for merging step" % len(jobs))
         yield from asyncio.wait(jobs)
         return {"total_%s" % src_name : cnt}
+
+    def post_merge(self):
+        # naive post-merge validation. assuming all merge processes have inserted
+        # distinct data (only inserts, ni updates)
+        total = sum(self.stats.values())
+        self.logger.info("Validating...")
+        target_cnt = self.target_backend.count()
+        if target_cnt == total:
+            self.logger.info("OK [total count={}]".format(target_cnt))
+        else:
+            self.logger.info("Warning: total count of documents does not match [{}, should be {}]".format(target_cnt, total))
 
 
 
@@ -405,8 +420,7 @@ class BuilderManager(BaseManager):
                             build_name,
                             source_backend=source_backend,
                             target_backend=target_backend,
-                            log_folder=config.LOG_FOLDER,
-                            loop=self.loop)
+                            log_folder=config.LOG_FOLDER)
             return bdr
         self.register[build_name] = partial(create,build_name)
 
