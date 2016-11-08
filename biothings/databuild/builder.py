@@ -20,12 +20,14 @@ from biothings.databuild.mapper import TransparentMapper
 
 class BuilderException(Exception):
     pass
+class ResumeException(Exception):
+    pass
 
 
 class DataBuilder(object):
 
     def __init__(self, build_name, source_backend, target_backend, log_folder,
-                 doc_root_key=None, max_build_status=10, loop=None,
+                 doc_root_key="root", max_build_status=10, loop=None,
                  id_mappers=[], default_mapper_class=TransparentMapper,
                  sources=None, target_name=None,**kwargs):
         self.init_state()
@@ -82,7 +84,6 @@ class DataBuilder(object):
         return self._state["target_backend"]
     @property
     def build_config(self):
-        self.prepare()
         self._state["build_config"] = self.source_backend.get_build_configuration(self.build_name)
         return self._state["build_config"]
     @logger.setter
@@ -187,7 +188,7 @@ class DataBuilder(object):
         return None
 
     def get_root_document_sources(self):
-        return self.build_config.get(self.doc_root_key,[])
+        return self.build_config.get(self.doc_root_key,[]) or []
 
     def setup(self,sources=None, target_name=None):
         sources = sources or self.sources
@@ -215,7 +216,7 @@ class DataBuilder(object):
         self.logger.info("Merging into target collection '%s'" % self.target_backend.target_collection.name)
         try:
             self.register_status("building",transient=True,init=True,
-                                 build={"sources":sources})
+                                 build={"step":"init","sources":sources})
             job = self.merge_sources(source_names=sources, batch_size=batch_size)
             job = asyncio.ensure_future(job)
             def merged(f):
@@ -264,24 +265,31 @@ class DataBuilder(object):
         # process them (if any)
         root_sources = list(set(source_names).intersection(set(self.get_root_document_sources())))
         other_sources = list(set(source_names).difference(set(root_sources)))
-        # now re-order
-        source_names = root_sources + other_sources
+        # got root doc sources but not part of the merge ? that's weird...
+        if self.get_root_document_sources() and not root_sources:
+            self.logger.warning("Root document sources found (%s) for not part of the merge..." % self.get_root_document_sources())
 
-        self.logger.info("Merging following sources: %s" % repr(source_names))
+        @asyncio.coroutine
+        def merge(src_names):
+            jobs = []
+            for i,src_name in enumerate(src_names):
+                job = self.merge_source(src_name, batch_size=batch_size)
+                job = asyncio.ensure_future(job)
+                def merged(f,stats):
+                    self.logger.info("f: %s" % f.result())
+                    stats.update(f.result())
+                job.add_done_callback(partial(merged,stats=_stats))
+                jobs.append(job)
+            yield from asyncio.wait(jobs)
 
-        jobs = []
-        for i,src_name in enumerate(source_names):
-            #if src_name in self.build_config.get(self.doc_root_key,[]):
-            #    continue
-            progress = "%s/%s" % (i+1,len(source_names))
-            job = self.merge_source(src_name, batch_size=batch_size)
-            job = asyncio.ensure_future(job)
-            def merged(f,stats):
-                self.logger.info("f: %s" % f.result())
-                stats.update(f.result())
-            job.add_done_callback(partial(merged,stats=_stats))
-            jobs.append(job)
-        yield from asyncio.wait(jobs)
+        self.logger.info("Merging root document sources: %s" % root_sources)
+        if root_sources:
+            yield from merge(root_sources)
+
+        self.logger.info("Merging other resources: %s" % other_sources)
+        yield from merge(other_sources)
+
+        self.logger.info("Running post-merging process")
         self.target_backend.finalize()
 
         return _stats
@@ -297,7 +305,7 @@ class DataBuilder(object):
         # That being said... if no root documents, then there won't be any previously inserted
         # documents, and this update() would just do nothing. So if no root docs, then upsert
         # (update or insert, but do something)
-        upsert = (self.doc_root_key is None) or src_name in self.get_root_document_sources()
+        upsert = not self.get_root_document_sources() or src_name in self.get_root_document_sources()
         if not upsert:
             self.logger.debug("Documents from source '%s' will be stored only if a previous document exist with same _id" % src_name)
         jobs = []
@@ -322,6 +330,8 @@ class DataBuilder(object):
         self.logger.info("%d jobs created for merging step" % len(jobs))
         yield from asyncio.wait(jobs)
         return {"total_%s" % src_name : cnt}
+
+
 
 
 from biothings.utils.backend import DocMongoBackend
@@ -349,9 +359,25 @@ from biothings.databuild.builder import DataBuilder
 
 class BuilderManager(BaseManager):
 
-    def __init__(self,*args,**kwargs):
+    def __init__(self,source_backend_factory=None,
+                      target_backend_factory=None,
+                      builder_factory=None,
+                      *args,**kwargs):
+        """
+        BuilderManager deals with the different builders used to merge datasources.
+        It is connected to src_build() via sync(), where it grabs build information
+        and register builder classes, ready to be instantiate when triggering builds.
+        source_backend_factory can be a optional factory function (like a partial) that
+        builder can call without any argument to generate a SourceBackend.
+        Same for target_backend_factory for the TargetBackend and builder_factory for
+        the actual Builder class used for the merge. If those are None, default ones will
+        be used.
+        """
         super(BuilderManager,self).__init__(*args,**kwargs)
         self.src_build = mongo.get_src_build()
+        self.source_backend_factory = source_backend_factory
+        self.target_backend_factory = target_backend_factory
+        self.builder_factory = builder_factory
 
     def register_builder(self,build_name):
         # will use partial to postponse object creations and their db connection
@@ -361,28 +387,34 @@ class BuilderManager(BaseManager):
             # postpone config import so app had time to set it up
             # before actual call time
             from biothings import config
-            source_backend =  partial(backend.SourceDocMongoBackend,
-                                    build=partial(mongo.get_src_build),
-                                    master=partial(mongo.get_src_master),
-                                    dump=partial(mongo.get_src_dump),
-                                    sources=partial(mongo.get_src_db))
+            source_backend =  self.source_backend_factory and self.source_backend_factory() or \
+                                    partial(backend.SourceDocMongoBackend,
+                                            build=partial(mongo.get_src_build),
+                                            master=partial(mongo.get_src_master),
+                                            dump=partial(mongo.get_src_dump),
+                                            sources=partial(mongo.get_src_db))
 
             # declare target backend
-            target_backend = partial(TargetDocMongoBackend,target_db=partial(mongo.get_target_db))
+            target_backend = self.target_backend_factory and self.target_backend_factory() or \
+                                    partial(TargetDocMongoBackend,
+                                            target_db=partial(mongo.get_target_db))
 
             # assemble the whole
-            bdr = DataBuilder(
-                    build_name,
-                    doc_root_key=None, # there's no root document concept in myvariant
-                                       # _id are already normalized in individual collections
-                    source_backend=source_backend,
-                    target_backend=target_backend,
-                    log_folder=config.LOG_FOLDER,
-                    loop=self.loop)
+            bdr = self.builder_factory and self.builder_factory() or \
+                        DataBuilder(
+                            build_name,
+                            source_backend=source_backend,
+                            target_backend=target_backend,
+                            log_folder=config.LOG_FOLDER,
+                            loop=self.loop)
             return bdr
         self.register[build_name] = partial(create,build_name)
 
     def __getitem__(self,build_name):
+        """
+        Return an instance of a builder for the build named 'build_name'
+        Note: each call returns a different instance (factory call behind the scene...)
+        """
         # we'll get a partial class but will return an instance
         pclass = BaseManager.__getitem__(self,build_name)
         return pclass()
@@ -393,6 +425,11 @@ class BuilderManager(BaseManager):
             self.register_builder(conf["_id"])
 
     def merge(self,build_name,sources=None,target_name=None):
+        """
+        Trigger a merge for build named 'build_name'. Optional list of sources can be
+        passed (one single or a list). target_name is the target collection name used
+        to store to merge data. If none, each call will generate a unique target_name.
+        """
         try:
             bdr = self[build_name]
             job = bdr.merge(sources,target_name,loop=self.loop)
@@ -401,6 +438,9 @@ class BuilderManager(BaseManager):
             raise BuilderException("No such builder for '%s'" % build_name)
 
     def list_sources(self,build_name):
+        """
+        List all registered sources used to trigger a build named 'build_name'
+        """
         info = self.src_build.find_one({"_id":build_name})
         return info and info["sources"] or []
 
