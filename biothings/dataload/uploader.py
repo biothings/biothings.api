@@ -55,8 +55,8 @@ class BaseSourceUploader(object):
     from biothings import config
     __database__ = config.DATA_SRC_DATABASE
 
-# define storage strategy, set in subclass
-    storage_class = None
+    # define storage strategy, override in subclass as necessary
+    storage_class = BasicStorage
 
     # Will be override in subclasses
     name = None # name of the resource and collection name used to store data
@@ -84,6 +84,14 @@ class BaseSourceUploader(object):
         self.collection_name = collection_name or self.name
         self.data_folder = None
         self.prepared = False
+
+    @property
+    def fullname(self):
+        if self.main_source != self.name:
+            name = "%s.%s" % (self.main_source,self.name)
+        else:
+            name = self.name
+        return name
 
     @classmethod
     def create(klass, db_conn_info, data_root, *args, **kwargs):
@@ -196,8 +204,18 @@ class BaseSourceUploader(object):
 
     @asyncio.coroutine
     def update_data(self, doc_d, step, loop=None):
+        """
+        Iterate over doc_d to pull data and store it using 
+        """
         self.unprepare()
-        f = loop.run_in_executor(None,upload_worker,BasicStorage,self.load_data,self.temp_collection_name,step,self.data_folder)
+        f = loop.run_in_executor(
+                None,
+                upload_worker,
+                self.__class__.storage_class,
+                self.load_data,
+                self.temp_collection_name,
+                step,
+                self.data_folder)
         yield from f
         self.switch_collection()
         self.unprepare()
@@ -377,6 +395,9 @@ class DummySourceUploader(BaseSourceUploader):
         self.logger.info("Dummy uploader, nothing to upload")
         # sanity check, dummy uploader, yes, but make sure data is there
         assert self.collection.count() > 0, "No data found in collection '%s' !!!" % self.collection_name
+        self.unprepare()
+        f = loop.run_in_executor(None,self.post_update_data)
+        yield from f
 
 
 class ParallelizedSourceUploader(BaseSourceUploader):
@@ -465,20 +486,9 @@ class UploaderManager(BaseSourceManager):
             return errors
 
     def upload_src(self, src, **kwargs):
-        klasses = None
-        if src in self.register:
-            klasses = self.register[src]
-        else:
-            # maybe src is a sub-source ?
-            for main_src in self.register:
-                for sub_src in self.register[main_src]:
-                    # search for "sub_src" or "main_src.sub_src"
-                    main_sub = "%s.%s" % (main_src,sub_src.name)
-                    if (src == sub_src.name) or (src == main_sub):
-                        klasses = sub_src
-                        logging.info("Found uploader '%s' for '%s'" % (uploaders,src))
-                        break
-        if not klasses:
+        try:
+            klasses = self[src]
+        except KeyError:
             raise ResourceNotFound("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
 
         jobs = []
@@ -493,8 +503,11 @@ class UploaderManager(BaseSourceManager):
 
     @asyncio.coroutine
     def create_and_load(self,klass,*args,**kwargs):
-        inst = self.create_instance(klass)
-        yield from inst.load(*args,**kwargs)
+        insts = self.create_instance(klass)
+        if type(insts) != list:
+            insts = [insts]
+        for inst in insts:
+            yield from inst.load(*args,**kwargs)
 
     def poll(self):
         if not self.poll_schedule:

@@ -3,7 +3,7 @@
 # To run this program, the file ``ssh_host_key`` must exist with an SSH
 # private key in it to use as a server host key.
 
-
+import os
 import asyncio, asyncssh, crypt, sys, io
 import types, aiocron, time
 from functools import partial
@@ -100,6 +100,8 @@ class HubSSHServer(asyncssh.SSHServer):
 
 async def start_server(loop,name,passwords,keys=['bin/ssh_host_key'],
                         host='',port=8022,commands={}):
+    for key in keys:
+        assert os.path.exists(key),"Missing key '%s' (use: 'ssh-keygen -f %s' to generate it" % (key,key)
     HubSSHServer.PASSWORDS = passwords
     HubSSHServer.NAME = name
     if commands:

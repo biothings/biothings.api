@@ -61,11 +61,10 @@ class BaseManager(object):
                 for src in srcs:
                     if src.name == sub:
                         res.append(src)
-                if len(res) == 1:
-                    return res.pop()
-                elif len(res) == 0:
+                if len(res) == 0:
                     raise KeyError(src_name)
                 else:
+                    print("res %s" % res)
                     return res
             except (ValueError,KeyError):
                 # nope, can't find it...
