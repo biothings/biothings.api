@@ -203,6 +203,29 @@ class DataBuilder(object):
         _src_versions = self.source_backend.get_src_versions()
         self.register_status('success',build={"stats" : self.stats, "src_versions" : _src_versions})
 
+    def resolve_sources(self,sources):
+        """
+        Source can be a string that may contain regex chars. It's usefull
+        when you have plenty of sub-collections prefixed with a source name.
+        For instance, given a source named 'blah' stored in as many collections
+        as chromosomes, insteand of passing each name as 'blah_1', 'blah_2', etc...
+        'blah_.*' can be specified in build_config. This method resolves potential
+        regexed source name into real, existing collection names
+        """
+        if type(sources) == str:
+            sources = [sources]
+        src_db = mongo.get_src_db()
+        cols = src_db.collection_names()
+        found = []
+        for src in sources:
+            # restrict pattern to minimal match
+            pat = re.compile("^%s$" % src)
+            for col in cols:
+                if pat.match(col):
+                    found.append(col)
+        return found
+
+
     def merge(self, sources=None, target_name=None, batch_size=100000, loop=None):
         loop = loop and loop or asyncio.get_event_loop()
         self.t0 = time.time()
@@ -213,6 +236,8 @@ class DataBuilder(object):
             sources = self.build_config['sources']
         elif isinstance(sources,str):
             sources = [sources]
+
+        sources = self.resolve_sources(sources)
 
         if target_name:
             self.target_name = target_name
