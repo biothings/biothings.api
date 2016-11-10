@@ -28,7 +28,7 @@ class DataBuilder(object):
 
     def __init__(self, build_name, source_backend, target_backend, log_folder,
                  doc_root_key="root", max_build_status=10,
-                 id_mappers=[], default_mapper_class=TransparentMapper,
+                 mappers=[], default_mapper_class=TransparentMapper,
                  sources=None, target_name=None,**kwargs):
         self.init_state()
         self.build_name = build_name
@@ -46,12 +46,12 @@ class DataBuilder(object):
         self.t0 = time.time()
         self.logfile = None
         self.log_folder = log_folder
-        self.id_mappers = {}
+        self.mappers = {}
         self.timestamp = datetime.now()
         self.stats = {} # keep track of cnt per source, etc...
 
-        for mapper in id_mappers + [default_mapper_class()]:
-            self.id_mappers[mapper.name] = mapper
+        for mapper in mappers + [default_mapper_class()]:
+            self.mappers[mapper.name] = mapper
 
         self.step = kwargs.get("step",10000)
         # max no. of records kept in "build" field of src_build collection.
@@ -177,12 +177,12 @@ class DataBuilder(object):
                     src_build.update({'_id': self.build_config['_id']}, {"$pop": {'build': -1}})
 
     def init_mapper(self,id_type):
-        if self.id_mappers[id_type].need_load():
+        if self.mappers[id_type].need_load():
             if id_type is None:
                 self.logger.info("Initializing default mapper")
             else:
                 self.logger.info("Initializing mapper '%s'" % id_type)
-            self.id_mappers[id_type].load()
+            self.mappers[id_type].load()
 
     def generate_document_query(self, src_name):
         return None
@@ -264,7 +264,7 @@ class DataBuilder(object):
         id_type = self.source_backend.get_src_master_docs()[src_name].get('id_type')
         try:
             init and self.init_mapper(id_type)
-            mapper = self.id_mappers[id_type]
+            mapper = self.mappers[id_type]
             self.logger.info("Found mapper '%s' for source '%s'" % (mapper,src_name))
             return mapper
         except KeyError:
@@ -353,7 +353,11 @@ class DataBuilder(object):
                         upsert))
             def processed(f,cnt):
                 # collect result ie. number of inserted
-                cnt += f.result()
+                # TODO: check for exceptions
+                try:
+                    cnt += f.result()
+                except Exception as e:
+                    self.logger.error(e)
             job.add_done_callback(partial(processed,cnt=cnt))
             jobs.append(job)
         self.logger.info("%d jobs created for merging step" % len(jobs))
@@ -362,7 +366,6 @@ class DataBuilder(object):
 
     def post_merge(self):
         pass
-
 
 
 from biothings.utils.backend import DocMongoBackend
@@ -387,6 +390,7 @@ import biothings.utils.mongo as mongo
 import biothings.databuild.backend as backend
 from biothings.databuild.backend import TargetDocMongoBackend
 from biothings.databuild.builder import DataBuilder
+
 
 class BuilderManager(BaseManager):
 

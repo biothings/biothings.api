@@ -1,6 +1,32 @@
 from biothings.utils.dataload import alwayslist
 
-class IDMapperBase(object):
+
+class BaseMapper(object):
+    """
+    Basic mapper used to convert documents.
+    if mapper's name matches source's id_type,
+    mapper.convert(docs) call will be used to 
+    process/convert/whatever passed documents
+    """
+
+    def __init__(self, name=None, *args, **kwargs):
+        self.name = name
+
+    def load(self):
+        """
+        Do whatever is required to fill mapper with mapping data
+        Can be called multiple time, the first time only will load data
+        """
+        raise NotImplementedError("sub-class and implement me")
+
+    def process(self,docs):
+        """
+        Convert given docs into other docs.
+        """
+        raise NotImplementedError("sub-class and implement me")
+
+
+class IDBaseMapper(BaseMapper):
     """
     Provide mapping between different sources
     """
@@ -10,16 +36,9 @@ class IDMapperBase(object):
         'name' may match an id_type (see uploaders). If None, mapper 
         will be applied to any document from a resource without id_type argument
         """
+        super(IDBaseMapper,self).__init__(self,name=name)
         self.map = None
         self.convert_func = convert_func
-        self.name = name
-
-    def load(self):
-        """
-        Do whatever is required to fill mapper with mapping data
-        Can be called multiple time, the first time only will load data
-        """
-        raise NotImplementedError("sub-class and implement me")
 
     def translate(self,_id,transparent=False):
         """
@@ -65,11 +84,10 @@ class IDMapperBase(object):
         return self.map is None
 
 
-
-class TransparentMapper(IDMapperBase):
+class TransparentMapper(BaseMapper):
 
     def load(self, *args, **kwargs):
-        self.map = {} # dummy mapping dict
+        pass
 
     def process(self, docs, *args, **kwargs):
         return docs

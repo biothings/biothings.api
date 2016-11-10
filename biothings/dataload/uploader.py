@@ -473,6 +473,10 @@ class UploaderManager(BaseSourceManager):
             self.conn.register(klass)
 
     def upload_all(self,raise_on_error=False,**kwargs):
+        """
+        Trigger upload processes for all registered resources.
+        **kwargs are passed to upload_src() method
+        """
         errors = {}
         for src in self.register:
             try:
@@ -486,6 +490,10 @@ class UploaderManager(BaseSourceManager):
             return errors
 
     def upload_src(self, src, **kwargs):
+        """
+        Trigger upload for registered resource named 'src'.
+        **kwargs are passed to uploader's load() method
+        """
         try:
             klasses = self[src]
         except KeyError:
