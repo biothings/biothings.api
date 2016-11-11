@@ -161,9 +161,9 @@ class BaseSourceUploader(object):
             raise ResourceNotReady("No successful download found for resource '%s'" % self.name)
         if not os.path.exists(self.src_root_folder):
             raise ResourceNotReady("Data folder '%s' doesn't exist for resource '%s'" % self.name)
-        ##if not force and self.src_doc.get("upload",{}).get("status") == "uploading":
-        ##    pid = self.src_doc.get("upload",{}).get("pid","unknown")
-        ##    raise ResourceNotReady("Resource '%s' is already being uploaded (pid: %s)" % (self.name,pid))
+        job = self.src_doc.get("upload",{}).get("job",{}).get(self.name)
+        if not force and job:
+            raise ResourceNotReady("Resource '%s' is already being uploaded (job: %s)" % (self.name,job))
 
     def load_data(self,data_folder):
         """Parse data inside data_folder and return structure ready to be
@@ -246,50 +246,45 @@ class BaseSourceUploader(object):
         else:
             coll.insert_one(_doc)
 
-    def register_status(self,status,transient=False,**extra):
-        upload_info = {
-                'started_at': datetime.datetime.now(),
-                'logfile': self.logfile,
-                'status': status}
+    def register_status(self,status,**extra):
+        """
+        Register step statu, ie. status for a sub-resource
+        """
+        upload_info = {"status" : status}
+        upload_info.update(extra)
+        job_key = "upload.jobs.%s" % self.name
 
-        if transient:
+        if status == "uploading":
             # record some "in-progress" information
             upload_info['step'] = self.name
             upload_info['temp_collection'] = self.temp_collection_name
             upload_info['pid'] = os.getpid()
+            upload_info['logfile'] = self.logfile
+            upload_info['started_at'] = datetime.datetime.now()
+            self.src_dump.update({"_id":self.main_source},{"$set" : {job_key : upload_info}})
         else:
             # only register time when it's a final state
+            # also, keep previous uploading information
+            upd = {}
+            for k,v in upload_info.items():
+                upd["%s.%s" % (job_key,k)] = v
             t1 = round(time.time() - self.t0, 0)
-            upload_info["time"] = timesofar(self.t0)
-            upload_info["time_in_s"] = t1
-
-        # merge extra at root or upload level
-        # (to keep upload data...)
-        if "upload" in extra:
-            upload_info.update(extra["upload"])
-        else:
-            self.src_doc.update(extra)
-        self.src_doc.update({"upload" : upload_info})
-        self.src_dump.save(self.src_doc)
-
-    def unset_pending_upload(self):
-        self.src_doc.pop("pending_to_upload",None)
-        self.src_dump.save(self.src_doc)
+            upd["%s.status" % job_key] = status
+            upd["%s.time" % job_key] = timesofar(self.t0)
+            upd["%s.time_in_s" % job_key] = t1
+            self.src_dump.update({"_id" : self.main_source},{"$set" : upd})
 
     @asyncio.coroutine
     def load(self, doc_d=None, update_data=True, update_master=True, force=False, step=10000, progress=None, total=None, loop=None):
         # sanity check before running
         self.logger.info("Uploading '%s' (collection: %s)" % (self.name, self.collection_name))
+        # TODO: register step
         self.check_ready(force)
+        self.register_status("uploading")
         try:
-            self.unset_pending_upload()
             if not self.temp_collection_name:
                 self.make_temp_collection()
             self.db[self.temp_collection_name].drop()       # drop all existing records just in case.
-            upload = {}
-            if total:
-                upload = {"progress" : "%s/%s" % (progress,total)}
-            self.register_status("uploading",transient=True,upload=upload)
             if update_data:
                 # unsync to make it pickable
                 state = self.unprepare()
@@ -298,13 +293,11 @@ class BaseSourceUploader(object):
                 self.prepare(state)
             if update_master:
                 self.update_master()
-            if progress == total:
-                self.register_status("success")
-        except (KeyboardInterrupt,Exception) as e:
-            import traceback
-            self.logger.error(traceback.format_exc())
-            self.register_status("failed",upload={"err": repr(e)})
+            self.register_status("success")
+        except Exception as e:
+            self.register_status("failed",err=str(e))
             raise
+
 
     def prepare_src_dump(self):
         """Sync with src_dump collection, collection information (src_doc)
@@ -318,7 +311,7 @@ class BaseSourceUploader(object):
         import logging as logging_mod
         if not os.path.exists(self.src_root_folder):
             os.makedirs(self.src_root_folder)
-        self.logfile = os.path.join(self.src_root_folder, '%s_%s_upload.log' % (self.main_source,time.strftime("%Y%m%d",self.timestamp.timetuple())))
+        self.logfile = os.path.join(self.src_root_folder, '%s-%s_%s_upload.log' % (self.main_source,self.name,time.strftime("%Y%m%d",self.timestamp.timetuple())))
         fh = logging_mod.FileHandler(self.logfile)
         fh.setFormatter(logging_mod.Formatter('%(asctime)s [%(process)d] %(name)s - %(levelname)s - %(message)s'))
         fh.name = "logfile"
@@ -472,6 +465,26 @@ class UploaderManager(BaseSourceManager):
                 self.register.setdefault(klass.name,[]).append(klass)
             self.conn.register(klass)
 
+    def register_status(self,src_name,status,**extra):
+        """
+        Register overall status for resource
+        """
+        src_dump = get_src_dump()
+        upload_info = {'status': status}
+        upload_info.update(extra)
+        if status == "uploading":
+            upload_info["jobs"] = {}
+            # unflag "need upload"
+            src_dump.update({"_id" : src_name},{"$unset" : {"pending_to_upload":None}})
+            src_dump.update({"_id" : src_name},{"$set" : {"upload" : upload_info}})
+        else:
+            # we want to keep information
+            upd = {}
+            for k,v in upload_info.items():
+                upd["upload.%s" % k] = v
+            src_dump.update({"_id" : src_name},{"$set" : upd})
+
+
     def upload_all(self,raise_on_error=False,**kwargs):
         """
         Trigger upload processes for all registered resources.
@@ -501,12 +514,23 @@ class UploaderManager(BaseSourceManager):
 
         jobs = []
         try:
+            self.register_status(src,"uploading")
             for i,klass in enumerate(klasses):
                 job = self.submit(partial(self.create_and_load,klass,progress=i+1,total=len(klasses),loop=self.loop,**kwargs))
                 jobs.append(job)
+            tasks = asyncio.gather(*jobs)
+            def done(f):
+                try:
+                    print(f.result())
+                    self.register_status(src,"success")
+                except Exception as e:
+                    self.register_status(src,"failed",err=repr(e))
+            tasks.add_done_callback(done)
             return jobs
         except Exception as e:
-            logging.error("Error while uploading '%s': %s" % (src,e))
+            import traceback
+            logging.error("Error while uploading '%s': %s\n%s" % (src,e,traceback.format_exc()))
+            self.register_status(src,"failed",err=repr(e))
             raise
 
     @asyncio.coroutine
