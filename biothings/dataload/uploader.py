@@ -280,11 +280,11 @@ class BaseSourceUploader(object):
         self.logger.info("Uploading '%s' (collection: %s)" % (self.name, self.collection_name))
         # TODO: register step
         self.check_ready(force)
-        self.register_status("uploading")
         try:
             if not self.temp_collection_name:
                 self.make_temp_collection()
             self.db[self.temp_collection_name].drop()       # drop all existing records just in case.
+            self.register_status("uploading")
             if update_data:
                 # unsync to make it pickable
                 state = self.unprepare()
@@ -293,7 +293,8 @@ class BaseSourceUploader(object):
                 self.prepare(state)
             if update_master:
                 self.update_master()
-            self.register_status("success")
+            cnt = self.db[self.collection_name].count()
+            self.register_status("success",count=cnt)
         except Exception as e:
             self.register_status("failed",err=str(e))
             raise
@@ -521,7 +522,6 @@ class UploaderManager(BaseSourceManager):
             tasks = asyncio.gather(*jobs)
             def done(f):
                 try:
-                    print(f.result())
                     self.register_status(src,"success")
                 except Exception as e:
                     self.register_status(src,"failed",err=repr(e))
