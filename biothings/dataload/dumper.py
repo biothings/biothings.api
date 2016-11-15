@@ -219,7 +219,10 @@ class BaseDumper(object):
                 yield from self.do_dump(job_manager=job_manager)
                 # then restore state
                 self.prepare(state)
-                self.post_dump()
+                # for some reason (like maintaining object's state between pickling).
+                # we can't use process there. Need to use thread to maintain that state without
+                # building an unmaintainable monster
+                job_manager.defer_to_thread(self.post_dump)
                 self.register_status("success",pending_to_upload=True)
         except (KeyboardInterrupt,Exception) as e:
             self.logger.error("Error while dumping source: %s" % e)
@@ -419,7 +422,7 @@ class DummyDumper(BaseDumper):
         self.logger.debug("Dummy dumper, nothing to download...")
         self.prepare_local_folders(os.path.join(self.new_data_folder,"dummy_file"))
         # this is the only interesting thing happening here
-        self.post_dump()
+        job_manager.defer_to_thread(self.post_dump)
         self.logger.info("Registering success")
         self.register_status("success",pending_to_upload=True)
 
@@ -479,7 +482,7 @@ class ManualDumper(BaseDumper):
         if not os.listdir(self.new_data_folder):
             raise DumperException("Directory '%s' is empty (did you download data first ?)" % self.new_data_folder)
 
-        self.post_dump()
+        job_manager.defer_to_thread(self.post_dump)
         # ok, good to go
         self.register_status("success",pending_to_upload=True)
         self.logger.info("Manually dumped resource (data_folder: '%s')" % self.new_data_folder)
