@@ -1,8 +1,47 @@
 import importlib
 import logging
 import asyncio, aiocron
+import os, pickle, inspect
+from functools import wraps, partial
+import time
 
 from biothings.utils.mongo import get_src_conn
+from biothings import config
+
+
+def track_process(func):
+    @wraps(func)
+    def func_wrapper(*args,**kwargs):
+        # func is the do_work wrapper, we want the actual partial
+        print("func %s" % func)
+        if type(args[0]) == partial:
+            fname = args[0].func.__name__
+            fargs = args[0].args
+            fkwargs = args[0].keywords
+        else:
+            fname = args[0].__name__
+            fargs = args[1:]
+            fkwargs = kwargs
+        pinfo = {'func_name' : fname,
+                 'args': fargs, 'kwargs' : fkwargs,
+                 'time': time.time()}
+        try:
+            pid = os.getpid()
+            pidfile = os.path.join(config.RUN_DIR,"%s.pickle" % pid)
+            pickle.dump(pinfo,open(pidfile,"wb"))
+            func(*args,**kwargs)
+        finally:
+            if os.path.exists(pidfile):
+                os.unlink(pidfile)
+    return func_wrapper
+
+@track_process
+def do_work(func,*args,**kwargs):
+    # need to wrap calls otherwise multiprocessing could have
+    # issue pickling directly the passed func because of some import
+    # issues ("can't pickle ... object is not the same as ...")
+    return func(*args,**kwargs)
+
 
 class UnknownResource(Exception):
     pass
@@ -15,30 +54,9 @@ class ResourceNotFound(Exception):
 
 class BaseManager(object):
 
-    def __init__(self, event_loop=None):
+    def __init__(self, job_manager):
         self.register = {}
-        self.loop = event_loop
-
-    def submit(self,pfunc,schedule=None):
-        """
-        Helper to submit and run tasks. If self.loop defined, tasks will run async'ly.
-        pfunc is a functools.partial
-        schedule is a string representing a cron schedule, task will then be scheduled 
-        accordingly.
-        """
-        if schedule and not self.loop:
-            raise ResourceError("Cannot schedule without an event loop")
-        if self.loop:
-            logging.info("Building task: %s" % pfunc)
-            if schedule:
-                logging.info("Scheduling task %s: %s" % (pfunc,schedule))
-                cron = aiocron.crontab(schedule,func=pfunc, start=True, loop=self.loop)
-                return cron
-            else:
-                ff = asyncio.ensure_future(pfunc())
-                return ff
-        else:
-                return pfunc()
+        self.job_manager = job_manager
 
     def __repr__(self):
         return "<%s [%d registered]: %s>" % (self.__class__.__name__,len(self.register), sorted(list(self.register.keys())))
@@ -64,7 +82,6 @@ class BaseManager(object):
                 if len(res) == 0:
                     raise KeyError(src_name)
                 else:
-                    print("res %s" % res)
                     return res
             except (ValueError,KeyError):
                 # nope, can't find it...
@@ -81,8 +98,8 @@ class BaseSourceManager(BaseManager):
     # define the class manager will look for. Set in a subclass
     SOURCE_CLASS = None
 
-    def __init__(self, event_loop=None, datasource_path="dataload.sources", *args, **kwargs):
-        super(BaseSourceManager,self).__init__(event_loop,*args,**kwargs)
+    def __init__(self, job_manager, datasource_path="dataload.sources", *args, **kwargs):
+        super(BaseSourceManager,self).__init__(job_manager,*args,**kwargs)
         self.conn = get_src_conn()
         self.default_src_path = datasource_path
 
@@ -164,4 +181,34 @@ class BaseSourceManager(BaseManager):
                 logging.info("Can't register source '%s', skip it; %s" % (src_data,e))
                 import traceback
                 logging.error(traceback.format_exc())
+
+
+class JobManager(object):
+
+    def __init__(self, loop, process_queue=None,thread_queue=None):
+        self.loop = loop
+        self.process_queue = process_queue
+        self.thread_queue = thread_queue
+
+    def defer_to_process(self,func,*args):
+        return self.loop.run_in_executor(self.process_queue,partial(do_work,func,*args))
+
+    def defer_to_thread(self,func,*args):
+        return self.loop.run_in_executor(self.thread_queue,func,*args)
+
+    def submit(self,pfunc,schedule=None):
+        """
+        Helper to submit and run tasks. Tasks will run async'ly.
+        pfunc is a functools.partial
+        schedule is a string representing a cron schedule, task will then be scheduled
+        accordingly.
+        """
+        logging.info("Building task: %s" % pfunc)
+        if schedule:
+            logging.info("Scheduling task %s: %s" % (pfunc,schedule))
+            cron = aiocron.crontab(schedule,func=pfunc, start=True, loop=self.loop)
+            return cron
+        else:
+            ff = asyncio.ensure_future(pfunc())
+            return ff
 

@@ -226,8 +226,8 @@ class DataBuilder(object):
         return found
 
 
-    def merge(self, sources=None, target_name=None, batch_size=100000, loop=None):
-        loop = loop and loop or asyncio.get_event_loop()
+    def merge(self, sources=None, target_name=None, batch_size=100000, job_manager=None):
+        assert job_manager
         self.t0 = time.time()
         # normalize
         if sources is None:
@@ -248,7 +248,7 @@ class DataBuilder(object):
 
             self.register_status("building",transient=True,init=True,
                                  build={"step":"init","sources":sources})
-            job = self.merge_sources(source_names=sources, batch_size=batch_size, loop=loop)
+            job = self.merge_sources(source_names=sources, batch_size=batch_size, job_manager=job_manager)
             job = asyncio.ensure_future(job)
             job.add_done_callback(self.store_stats)
 
@@ -271,12 +271,12 @@ class DataBuilder(object):
             raise BuilderException("Found id_type '%s' but no mapper associated" % id_type)
 
     @asyncio.coroutine
-    def merge_sources(self, source_names, batch_size=100000, loop=None):
+    def merge_sources(self, source_names, batch_size=100000, job_manager=None):
         """
         Merge resources from given source_names or from build config.
         Identify root document sources from the list to first process them.
         """
-        loop = loop and loop or asyncio.get_event_loop()
+        assert job_manager
         total_docs = 0
         self.stats = {}
         # try to identify root document sources amongst the list to first
@@ -291,7 +291,7 @@ class DataBuilder(object):
         def merge(src_names):
             jobs = []
             for i,src_name in enumerate(src_names):
-                job = self.merge_source(src_name, batch_size=batch_size, loop=loop)
+                job = self.merge_source(src_name, batch_size=batch_size, job_manager=job_manager)
                 job = asyncio.ensure_future(job)
                 def merged(f,stats):
                     self.logger.info("f: %s" % f.result())
@@ -326,14 +326,15 @@ class DataBuilder(object):
         return doc
 
     @asyncio.coroutine
-    def merge_source(self, src_name, batch_size=100000, loop=None):
+    def merge_source(self, src_name, batch_size=100000, job_manager=None):
+        # it's actually not optional
+        assert job_manager
         _query = self.generate_document_query(src_name)
         # Note: no need to check if there's an existing document with _id (we want to merge only with an existing document)
         # if the document doesn't exist then the update() call will silently fail.
         # That being said... if no root documents, then there won't be any previously inserted
         # documents, and this update() would just do nothing. So if no root docs, then upsert
         # (update or insert, but do something)
-        loop = loop and loop or asyncio.get_event_loop()
         upsert = not self.get_root_document_sources() or src_name in self.get_root_document_sources()
         if not upsert:
             self.logger.debug("Documents from source '%s' will be stored only if a previous document exist with same _id" % src_name)
@@ -344,7 +345,7 @@ class DataBuilder(object):
             cnt += len(doc_ids)
             self.logger.info("Creating merger job to process '%s' %d/%d" % (src_name,cnt,total))
             ids = [doc["_id"] for doc in doc_ids]
-            job = loop.run_in_executor(None,
+            job = job_manager.defer_to_process(
                     partial(merger_worker,
                         self.source_backend[src_name].name,
                         self.target_backend.target_name,
@@ -468,7 +469,7 @@ class BuilderManager(BaseManager):
         """
         try:
             bdr = self[build_name]
-            job = bdr.merge(sources,target_name,loop=self.loop)
+            job = bdr.merge(sources,target_name,job_manager=self.job_manager)
             return job
         except KeyError as e:
             raise BuilderException("No such builder for '%s'" % build_name)

@@ -7,6 +7,8 @@ from functools import wraps, partial
 from biothings.utils.common import get_timestamp, get_random_string, timesofar, iter_n
 from biothings.utils.mongo import get_src_conn, get_src_dump
 from biothings.utils.dataload import merge_struct
+from biothings.utils.manager import BaseSourceManager, track_process, \
+                                    ManagerError, ResourceNotFound
 from .storage import IgnoreDuplicatedStorage, MergerStorage, \
                      BasicStorage, NoBatchIgnoreDuplicatedStorage
 
@@ -20,7 +22,7 @@ class ResourceError(Exception):
     pass
 
 
-def upload_worker(storage_class,loaddata_func,col_name,step,*args):
+def upload_worker(name,storage_class,loaddata_func,col_name,step,*args):
     """
     Pickable job launcher, typically running from multiprocessing.
     storage_class will instanciate with col_name, the destination 
@@ -63,6 +65,8 @@ class BaseSourceUploader(object):
     main_source =None # if several resources, this one if the main name,
                       # it's also the _id of the resource in src_dump collection
                       # if set to None, it will be set to the value of variable "name"
+
+    keep_archive = 10 # number of archived collection to keep. Oldest get dropped first.
 
     def __init__(self, db_conn_info, data_root, collection_name=None, *args, **kwargs):
         """db_conn_info is a database connection info tuple (host,port) to fetch/store 
@@ -157,7 +161,7 @@ class BaseSourceUploader(object):
             raise ResourceNotReady("Missing information for source '%s' to start upload" % self.main_source)
         if not self.src_doc.get("data_folder"):
             raise ResourceNotReady("No data folder found for resource '%s'" % self.name)
-        if not self.src_doc.get("download",{}).get("status") == "success":
+        if not force and not self.src_doc.get("download",{}).get("status") == "success":
             raise ResourceNotReady("No successful download found for resource '%s'" % self.name)
         if not os.path.exists(self.src_root_folder):
             raise ResourceNotReady("Data folder '%s' doesn't exist for resource '%s'" % self.name)
@@ -184,6 +188,17 @@ class BaseSourceUploader(object):
         self.temp_collection_name = self.collection_name + '_temp_' + get_random_string()
         return self.temp_collection_name
 
+    def clean_archived_collections(self):
+        # archived collections look like...
+        prefix = "%s_archive_" % self.name
+        cols = [c for c in self.db.collection_names() if c.startswith(prefix)]
+        # timestamp is what's after _archive_, YYYYMMDD, so we can sort it safely
+        cols = sorted(cols,reverse=True)
+        to_drop = cols[self.keep_archive:]
+        for colname in to_drop:
+            self.logger.info("Cleaning old archive collection '%s'" % colname)
+            self.db[colname].drop()
+
     def switch_collection(self):
         '''after a successful loading, rename temp_collection to regular collection name,
            and renaming existing collection to a temp name for archiving purpose.
@@ -203,14 +218,14 @@ class BaseSourceUploader(object):
         pass
 
     @asyncio.coroutine
-    def update_data(self, doc_d, step, loop=None):
+    def update_data(self, doc_d, step, job_manager):
         """
         Iterate over doc_d to pull data and store it using 
         """
         self.unprepare()
-        f = loop.run_in_executor(
-                None,
+        f = job_manager.defer_to_process(
                 upload_worker,
+                self.fullname,
                 self.__class__.storage_class,
                 self.load_data,
                 self.temp_collection_name,
@@ -218,8 +233,9 @@ class BaseSourceUploader(object):
                 self.data_folder)
         yield from f
         self.switch_collection()
+        self.clean_archived_collections()
         self.unprepare()
-        f2 = loop.run_in_executor(None,self.post_update_data)
+        f2 = job_manager.defer_to_process(self.post_update_data)
         yield from f2
 
     def generate_doc_src_master(self):
@@ -275,7 +291,8 @@ class BaseSourceUploader(object):
             self.src_dump.update({"_id" : self.main_source},{"$set" : upd})
 
     @asyncio.coroutine
-    def load(self, doc_d=None, update_data=True, update_master=True, force=False, step=10000, progress=None, total=None, loop=None):
+    def load(self, doc_d=None, update_data=True, update_master=True, force=False,
+             step=10000, progress=None, total=None, job_manager=None):
         # sanity check before running
         self.logger.info("Uploading '%s' (collection: %s)" % (self.name, self.collection_name))
         # TODO: register step
@@ -288,7 +305,7 @@ class BaseSourceUploader(object):
             if update_data:
                 # unsync to make it pickable
                 state = self.unprepare()
-                yield from self.update_data(doc_d,step,loop)
+                yield from self.update_data(doc_d,step,job_manager)
                 # then restore state
                 self.prepare(state)
             if update_master:
@@ -385,12 +402,12 @@ class DummySourceUploader(BaseSourceUploader):
         pass
 
     @asyncio.coroutine
-    def update_data(self, doc_d, step, loop=None):
+    def update_data(self, doc_d, step, job_manager=None):
         self.logger.info("Dummy uploader, nothing to upload")
         # sanity check, dummy uploader, yes, but make sure data is there
         assert self.collection.count() > 0, "No data found in collection '%s' !!!" % self.collection_name
         self.unprepare()
-        f = loop.run_in_executor(None,self.post_update_data)
+        f = job_manager.defer_to_process(self.post_update_data)
         yield from f
 
 
@@ -402,14 +419,16 @@ class ParallelizedSourceUploader(BaseSourceUploader):
         raise NotImplementedError("implement me in subclass")
 
     @asyncio.coroutine
-    def update_data(self, doc_d, step, loop=None):
+    def update_data(self, doc_d, step, job_manager=None):
         fs = []
         jobs = self.jobs()
         state = self.unprepare()
         for args in jobs:
-            f = loop.run_in_executor(None,
+            f = job_manager.defer_to_process(
                     # pickable worker
                     upload_worker,
+                    # worker name
+                    self.fullname,
                     # storage class
                     self.__class__.storage_class,
                     # loading func
@@ -423,15 +442,14 @@ class ParallelizedSourceUploader(BaseSourceUploader):
             fs.append(f)
         yield from asyncio.wait(fs)
         self.switch_collection()
+        self.clean_archived_collections()
         self.unprepare()
-        f2 = loop.run_in_executor(None,self.post_update_data)
+        f2 = job_manager.defer_to_process(self.post_update_data)
         yield from f2
 
 
 ##############################
 
-from biothings.utils.manager import BaseSourceManager, \
-                                    ManagerError, ResourceNotFound
 import aiocron
 
 class UploaderManager(BaseSourceManager):
@@ -517,7 +535,9 @@ class UploaderManager(BaseSourceManager):
         try:
             self.register_status(src,"uploading")
             for i,klass in enumerate(klasses):
-                job = self.submit(partial(self.create_and_load,klass,progress=i+1,total=len(klasses),loop=self.loop,**kwargs))
+                job = self.job_manager.submit(partial(
+                        self.create_and_load,klass,progress=i+1,total=len(klasses),
+                        job_manager=self.job_manager,**kwargs))
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
             def done(f):
@@ -555,4 +575,5 @@ class UploaderManager(BaseSourceManager):
                     self.upload_src(src_name)
                 except ResourceNotFound:
                     logging.error("Resource '%s' needs upload but is not registerd in manager" % src_name)
-        cron = aiocron.crontab(self.poll_schedule,func=partial(check_pending_to_upload), start=True, loop=self.loop)
+        cron = aiocron.crontab(self.poll_schedule,func=partial(check_pending_to_upload),
+                start=True, loop=self.job_manager.loop)

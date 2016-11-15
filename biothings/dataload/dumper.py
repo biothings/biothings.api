@@ -8,6 +8,8 @@ from biothings.utils.mongo import get_src_dump
 from biothings.utils.common import timesofar
 from config import logger as logging
 
+from biothings.utils.manager import BaseSourceManager, track_process
+
 
 class DumperException(Exception):
     pass
@@ -198,7 +200,7 @@ class BaseDumper(object):
         self.src_dump.save(self.src_doc)
 
     @asyncio.coroutine
-    def dump(self,force=False,loop=None):
+    def dump(self,force=False,job_manager=None):
         '''
         Dump (ie. download) resource as needed
         this should be called after instance creation
@@ -206,7 +208,7 @@ class BaseDumper(object):
         create_todump_list() method.
         '''
         # signature says it's optional but for now it's not...
-        assert loop
+        assert job_manager
         try:
             self.create_todump_list(force=force)
             if self.to_dump:
@@ -214,7 +216,7 @@ class BaseDumper(object):
                 self.register_status("downloading",transient=True)
                 # unsync to make it pickable
                 state = self.unprepare()
-                yield from self.do_dump(loop=loop)
+                yield from self.do_dump(job_manager=job_manager)
                 # then restore state
                 self.prepare(state)
                 self.post_dump()
@@ -250,7 +252,7 @@ class BaseDumper(object):
         return self.src_doc.get("data_folder") or self.new_data_folder
 
     @asyncio.coroutine
-    def do_dump(self,loop=None):
+    def do_dump(self,job_manager=None):
         self.logger.info("%d file(s) to download" % len(self.to_dump))
         jobs = []
         state = self.unprepare()
@@ -259,7 +261,7 @@ class BaseDumper(object):
             local = todo["local"]
             def done(job):
                 self.post_download(remote,local)
-            job = loop.run_in_executor(None,partial(self.download,remote,local))
+            job = job_manager.defer_to_process(partial(self.download,remote,local))
             job.add_done_callback(done)
             jobs.append(job)
         yield from asyncio.wait(jobs)
@@ -413,7 +415,7 @@ class DummyDumper(BaseDumper):
         pass
 
     @asyncio.coroutine
-    def dump(self,force=False,loop=None):
+    def dump(self,force=False,job_manager=None):
         self.logger.debug("Dummy dumper, nothing to download...")
         self.prepare_local_folders(os.path.join(self.new_data_folder,"dummy_file"))
         # this is the only interesting thing happening here
@@ -459,7 +461,7 @@ class ManualDumper(BaseDumper):
         self.logger.info("Manual dumper, assuming data will be downloaded manually")
 
     @asyncio.coroutine
-    def dump(self,path, release=None, force=False, loop=None):
+    def dump(self,path, release=None, force=False, job_manager=None):
         if os.path.isabs(path):
             self.new_data_folder = path
         elif path:
@@ -540,8 +542,6 @@ class GoogleDriveDumper(HTTPDumper):
 
 ####################
 
-from biothings.utils.manager import BaseSourceManager
-
 class DumperManager(BaseSourceManager):
 
     SOURCE_CLASS = BaseDumper
@@ -592,7 +592,7 @@ class DumperManager(BaseSourceManager):
                         crontab = klass.SCHEDULE
                     else:
                         raise DumperException("Missing scheduling information")
-                job = self.submit(partial(self.create_and_dump,klass,force=force,loop=self.loop,**kwargs),schedule=crontab)
+                job = self.job_manager.submit(partial(self.create_and_dump,klass,force=force,job_manager=self.job_manager,**kwargs),schedule=crontab)
                 jobs.append(job)
             return jobs
         except Exception as e:
