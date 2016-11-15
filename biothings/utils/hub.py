@@ -3,11 +3,17 @@
 # To run this program, the file ``ssh_host_key`` must exist with an SSH
 # private key in it to use as a server host key.
 
-import os
+import os, glob, re, pickle
 import asyncio, asyncssh, crypt, sys, io
 import types, aiocron, time
 from functools import partial
 from IPython import InteractiveShell
+import psutil
+from pprint import pprint
+from collections import OrderedDict
+
+from biothings import config
+from biothings.utils.common import timesofar, sizeof_fmt
 
 
 ##############
@@ -175,8 +181,95 @@ def schedule(loop):
             traceback.print_exc()
             print(sch)
 
-def top(executor):
-    pass
+def find_process(pid):
+    g = psutil.process_iter()
+    for p in g:
+        if p.pid == pid:
+            break
+    return p
+
+def top(pid=None):
+
+    def extract_info(worker):
+        info = OrderedDict()
+        proc = worker["process"]
+        info["pid"] = proc.pid
+        info["func_name"] = worker.get("func_name"," ")
+        args = worker.get("args")
+        info["arg1"] = ""
+        if args:
+            info["arg1"] = str(args[0])
+        info["mem"] = sizeof_fmt(proc.memory_info().rss)
+        info["duration"] = timesofar(worker.get("time",0)) 
+        info["files"] = []
+        info["progress"] = ""
+        for pfile in proc.open_files():
+            # skip 'a' (logger)
+            if pfile.mode == 'r':
+                finfo = OrderedDict()
+                finfo["path"] = pfile.path
+                finfo["read"] = sizeof_fmt(pfile.position)
+                size = os.path.getsize(pfile.path)
+                finfo["size"] = sizeof_fmt(size)
+                finfo["progress"] = "%.2f%%" % (pfile.position*100./size)
+                info["files"].append(finfo)
+        # propagate progress
+        if info["files"]:
+            info["progress"] = ",".join([f["progress"] for f in info["files"]])
+        return info
+
+    def print_workers(workers):
+        for pid in workers:
+            worker = workers[pid]
+            info = extract_info(worker)
+            try:
+                print('{pid: >7} | {func_name:>15} | {arg1: >20} | {mem: >10} | {progress: >12} | {duration: >10}'.format(**info))
+            except TypeError:
+                pprint(info)
+
+    def print_detailed_worker(worker):
+        info = extract_info(worker)
+        pprint(info)
+
+    def get_pid_files(children,child):
+        pat = re.compile(".*/(\d+)\.pickle")
+        children_pids = [p.pid for p in children]
+        pids = {}
+        for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
+            try:
+                pid = int(pat.findall(fn)[0])
+                if not pid in children_pids:
+                    print("Removing staled pid file '%s'" % fn)
+                    os.unlink(fn)
+                else:
+                    if not child or child.pid == pid:
+                        worker = pickle.load(open(fn,"rb"))
+                        worker["process"] = children[children_pids.index(pid)]
+                        pids[pid] = worker
+            except IndexError:
+                # weird though... should have only pid files there...
+                pass
+        return pids
+
+    try:
+        # get process children attached to hub pid
+        phub = find_process(os.getpid())
+        pchildren = phub.children()
+        child = None
+        if pid:
+            pid = int(pid)
+            child = [p for p in pchildren if p.pid == pid][0]
+        workers = get_pid_files(pchildren,child)
+        if child:
+            print_detailed_worker(workers[child.pid])
+        else:
+            print_workers(workers)
+        if child:
+            return list(workers.values())[0]
+        else:
+            return workers
+    except psutil.NoSuchProcess as e:
+        print(e)
 
 def stats(src_dump):
     pass
