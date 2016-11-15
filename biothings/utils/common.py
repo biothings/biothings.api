@@ -335,14 +335,12 @@ def loadobj(filename, mode='file'):
         fobj = fs.get(filename)
     else:
         if is_str(filename):
-            fobj = open(filename, 'rb')
+            fobj = open_compressed_file(filename)
         else:
             fobj = filename   # input is a file-like handler
-    gzfobj = gzip.GzipFile(fileobj=fobj)
     try:
-        obj = pickle.load(gzfobj)
+        obj = pickle.load(fobj)
     finally:
-        gzfobj.close()
         fobj.close()
     return obj
 
