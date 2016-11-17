@@ -287,7 +287,8 @@ def open_compressed_file(filename):
         import lzma
         fobj = lzma.LZMAFile(filename, 'r')
     else:
-        raise IOError('Unrecognized file type: "{}"'.format(sig))
+        # assuming uncompressed ?
+        fobj = open(filename,'rb')
     return fobj
 
 

@@ -13,7 +13,6 @@ def track_process(func):
     @wraps(func)
     def func_wrapper(*args,**kwargs):
         # func is the do_work wrapper, we want the actual partial
-        print("func %s" % func)
         if type(args[0]) == partial:
             fname = args[0].func.__name__
             fargs = args[0].args

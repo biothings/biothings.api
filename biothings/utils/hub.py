@@ -36,7 +36,7 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         return True
 
     def session_started(self):
-        self._chan.write('Welcome to %s, %s!\n' % (self.name,self._chan.get_extra_info('username')))
+        self._chan.write('\nWelcome to %s, %s!\n' % (self.name,self._chan.get_extra_info('username')))
         self._chan.write('hub> ')
 
     def data_received(self, data, datatype):
