@@ -19,6 +19,9 @@ class BaseDumper(object):
     SRC_NAME = None
     SRC_ROOT_FOLDER = None # source folder (without version/dates)
 
+    # Should an upload be triggered after dump ?
+    NEED_UPLOAD = True
+
     # attribute used to generate data folder path suffix
     SUFFIX_ATTR = "release"
 
@@ -223,7 +226,7 @@ class BaseDumper(object):
                 # we can't use process there. Need to use thread to maintain that state without
                 # building an unmaintainable monster
                 job_manager.defer_to_thread(self.post_dump)
-                self.register_status("success",pending_to_upload=True)
+                self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
         except (KeyboardInterrupt,Exception) as e:
             self.logger.error("Error while dumping source: %s" % e)
             import traceback
@@ -424,7 +427,7 @@ class DummyDumper(BaseDumper):
         # this is the only interesting thing happening here
         job_manager.defer_to_thread(self.post_dump)
         self.logger.info("Registering success")
-        self.register_status("success",pending_to_upload=True)
+        self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
 
 class ManualDumper(BaseDumper):
     '''
@@ -484,7 +487,7 @@ class ManualDumper(BaseDumper):
 
         job_manager.defer_to_thread(self.post_dump)
         # ok, good to go
-        self.register_status("success",pending_to_upload=True)
+        self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
         self.logger.info("Manually dumped resource (data_folder: '%s')" % self.new_data_folder)
 
 
