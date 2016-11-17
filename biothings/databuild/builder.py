@@ -176,13 +176,13 @@ class DataBuilder(object):
                 for _ in range(howmany):
                     src_build.update({'_id': self.build_config['_id']}, {"$pop": {'build': -1}})
 
-    def init_mapper(self,id_type):
-        if self.mappers[id_type].need_load():
-            if id_type is None:
+    def init_mapper(self,mapper_name):
+        if self.mappers[mapper_name].need_load():
+            if mapper_name is None:
                 self.logger.info("Initializing default mapper")
             else:
-                self.logger.info("Initializing mapper '%s'" % id_type)
-            self.mappers[id_type].load()
+                self.logger.info("Initializing mapper name '%s'" % mapper_name)
+            self.mappers[mapper_name].load()
 
     def generate_document_query(self, src_name):
         return None
@@ -261,14 +261,15 @@ class DataBuilder(object):
             raise
 
     def get_mapper_for_source(self,src_name,init=True):
-        id_type = self.source_backend.get_src_master_docs()[src_name].get('id_type')
+        mapper_name = self.source_backend.get_src_master_docs()[src_name].get('mapper')
+        # TODO: this could be a list
         try:
-            init and self.init_mapper(id_type)
-            mapper = self.mappers[id_type]
+            init and self.init_mapper(mapper_name)
+            mapper = self.mappers[mapper_name]
             self.logger.info("Found mapper '%s' for source '%s'" % (mapper,src_name))
             return mapper
         except KeyError:
-            raise BuilderException("Found id_type '%s' but no mapper associated" % id_type)
+            raise BuilderException("Found mapper named '%s' but no mapper associated" % mapper_name)
 
     @asyncio.coroutine
     def merge_sources(self, source_names, batch_size=100000, job_manager=None):

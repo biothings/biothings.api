@@ -4,7 +4,7 @@ from biothings.utils.dataload import alwayslist
 class BaseMapper(object):
     """
     Basic mapper used to convert documents.
-    if mapper's name matches source's id_type,
+    if mapper's name matches source's metadata's mapper,
     mapper.convert(docs) call will be used to 
     process/convert/whatever passed documents
     """
@@ -33,8 +33,8 @@ class IDBaseMapper(BaseMapper):
 
     def __init__(self, name=None, convert_func=None, *args, **kwargs):
         """
-        'name' may match an id_type (see uploaders). If None, mapper 
-        will be applied to any document from a resource without id_type argument
+        'name' may match a "mapper" metatdata field (see uploaders). If None, mapper 
+        will be applied to any document from a resource without "mapper" argument
         """
         super(IDBaseMapper,self).__init__(self,name=name)
         self.map = None
