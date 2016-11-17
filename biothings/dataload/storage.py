@@ -24,9 +24,9 @@ class BaseStorage(object):
 
 class BasicStorage(BaseStorage):
 
-    def doc_iterator(self, doc_d, batch=True, step=10000):
+    def doc_iterator(self, doc_d, batch=True, batch_size=10000):
         if isinstance(doc_d, types.GeneratorType) and batch:
-            for doc_li in iter_n(doc_d, n=step):
+            for doc_li in iter_n(doc_d, n=batch_size):
                 yield doc_li
         else:
             if batch:
@@ -42,7 +42,7 @@ class BasicStorage(BaseStorage):
                 if batch:
                     doc_li.append(_doc)
                     i += 1
-                    if i % step == 0:
+                    if i % batch_size == 0:
                         yield doc_li
                         doc_li = []
                 else:
@@ -51,10 +51,10 @@ class BasicStorage(BaseStorage):
             if batch:
                 yield doc_li
 
-    def process(self, doc_d, step):
+    def process(self, doc_d, batch_size):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
-        for doc_li in self.doc_iterator(doc_d, batch=True, step=step):
+        for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=batch_size):
             self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
         self.logger.info('Done[%s]' % timesofar(t0))
 
@@ -67,12 +67,12 @@ class MergerStorage(BasicStorage):
     Since data is here read line by line, the merge is done while storing
     """
 
-    def process(self, doc_d, step):
+    def process(self, doc_d, batch_size):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
         aslistofdict = None
-        for doc_li in self.doc_iterator(doc_d, batch=True, step=step):
+        for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=batch_size):
             toinsert = len(doc_li)
             nbinsert = 0
             self.logger.info("Inserting %s records ... " % toinsert)
@@ -121,11 +121,11 @@ class MergerStorage(BasicStorage):
 
 class IgnoreDuplicatedStorage(BasicStorage):
 
-    def process(self,iterable,step):
+    def process(self, iterable, batch_size):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
-        for doc_li in self.doc_iterator(iterable, batch=True, step=step):
+        for doc_li in self.doc_iterator(iterable, batch=True, batch_size=batch_size):
             try:
                 bob = self.temp_collection.initialize_unordered_bulk_op()
                 for d in doc_li:
@@ -145,19 +145,19 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
     and is thus way faster...
     """
 
-    def process(self, doc_d, step):
+    def process(self, doc_d, batch_size):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
         # force step = 1
         cnt = 0
         dups = 0
-        for doc_li in self.doc_iterator(doc_d, batch=True, step=1):
+        for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=1):
             try:
                 res = self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
                 cnt += 1
-                if (cnt + dups) % step == 0:
-                    # we insert one by one but display progress on a "step" base
+                if (cnt + dups) % batch_size == 0:
+                    # we insert one by one but display progress on a "batch_size" base
                     self.logger.info("Inserted %s records, ignoring %s [%s]" % (cnt,dups,timesofar(tinner)))
                     cnt = 0
                     dups = 0
@@ -172,19 +172,19 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
 
 class AsyncIgnoreDuplicatedStorage(IgnoreDuplicatedStorage):
 
-    def __init__(self,*args,**kwargs):
+    def __init__(self, *args, **kwargs):
         super(AsyncIgnoreDuplicatedStorage,self).__init__(*args,**kwargs)
         self.loop = asyncio.get_event_loop()
 
     @asyncio.coroutine
-    def process(self,queue,step):
+    def process(self, queue, batch_size):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         while True:
             tinner = time.time()
             try:
                 bob = self.temp_collection.initialize_unordered_bulk_op()
-                for i in range(step):
+                for i in range(batch_size):
                     #print("on get")
                     doc = yield from queue.get()
                     #print("qsize: %s" % queue.qsize())
@@ -203,3 +203,17 @@ class AsyncIgnoreDuplicatedStorage(IgnoreDuplicatedStorage):
                 howlong = yield from self.loop.run_in_executor(None,timesofar,tinner)
                 self.logger.info("Inserted %s records, ignoring %d [%s]" % (e.details['nInserted'],len(e.details["writeErrors"]),howlong))
 
+
+class NoStorage(object):
+    """
+    This a kind of a place-holder, this storage will just store nothing...
+    (but it will respect storage interface)
+    """
+
+    def __init__(self,db_info,dest_col_name,logger):
+        db = get_src_db()
+        self.temp_collection = db[dest_col_name]
+        self.logger = logger
+
+    def process(self,iterable,*args,**kwargs):
+        self.logger.info("NoStorage stores nothing, skip...")

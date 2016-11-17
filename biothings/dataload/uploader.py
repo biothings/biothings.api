@@ -10,7 +10,8 @@ from biothings.utils.dataload import merge_struct
 from biothings.utils.manager import BaseSourceManager, track_process, \
                                     ManagerError, ResourceNotFound
 from .storage import IgnoreDuplicatedStorage, MergerStorage, \
-                     BasicStorage, NoBatchIgnoreDuplicatedStorage
+                     BasicStorage, NoBatchIgnoreDuplicatedStorage, \
+                     NoStorage
 
 from biothings import config
 
@@ -22,7 +23,7 @@ class ResourceError(Exception):
     pass
 
 
-def upload_worker(name,storage_class,loaddata_func,col_name,step,*args):
+def upload_worker(name,storage_class,loaddata_func,col_name,batch_size,*args):
     """
     Pickable job launcher, typically running from multiprocessing.
     storage_class will instanciate with col_name, the destination 
@@ -31,7 +32,7 @@ def upload_worker(name,storage_class,loaddata_func,col_name,step,*args):
     """
     data = loaddata_func(*args)
     storage = storage_class(None,col_name,loggingmod)
-    storage.process(data,step)
+    storage.process(data,batch_size)
 
 
 class DocSourceMaster(dict):
@@ -218,9 +219,9 @@ class BaseSourceUploader(object):
         pass
 
     @asyncio.coroutine
-    def update_data(self, doc_d, step, job_manager):
+    def update_data(self, batch_size, job_manager):
         """
-        Iterate over doc_d to pull data and store it using 
+        Iterate over load_data() to pull data and store it
         """
         self.unprepare()
         f = job_manager.defer_to_process(
@@ -229,14 +230,11 @@ class BaseSourceUploader(object):
                 self.__class__.storage_class,
                 self.load_data,
                 self.temp_collection_name,
-                step,
+                batch_size,
                 self.data_folder)
         yield from f
         self.switch_collection()
         self.clean_archived_collections()
-        self.unprepare()
-        f2 = job_manager.defer_to_process(self.post_update_data)
-        yield from f2
 
     def generate_doc_src_master(self):
         _doc = {"_id": str(self.name),
@@ -245,8 +243,8 @@ class BaseSourceUploader(object):
         # store mapping
         _doc['mapping'] = self.__class__.get_mapping()
         # type of id being stored in these docs
-        if hasattr(self, 'id_type'):
-            _doc['id_type'] = getattr(self, 'id_type')
+        if hasattr(self.__class__, '__metadata__'):
+            _doc.update(self.__class__.__metadata__)
         return _doc
 
     def update_master(self):
@@ -264,7 +262,7 @@ class BaseSourceUploader(object):
 
     def register_status(self,status,**extra):
         """
-        Register step statu, ie. status for a sub-resource
+        Register step status, ie. status for a sub-resource
         """
         upload_info = {"status" : status}
         upload_info.update(extra)
@@ -291,12 +289,24 @@ class BaseSourceUploader(object):
             self.src_dump.update({"_id" : self.main_source},{"$set" : upd})
 
     @asyncio.coroutine
-    def load(self, doc_d=None, update_data=True, update_master=True, force=False,
-             step=10000, progress=None, total=None, job_manager=None):
-        # sanity check before running
+    def load(self, steps=["data","post","master"], force=False,
+             batch_size=10000, job_manager=None):
+        """
+        Main resource load process, reads data from doc_c using chunk sized as batch_size.
+        steps defines the different processes used to laod the resource:
+        - "data"   : will store actual data into single collections
+        - "post"   : will perform post data load operations
+        - "master" : will register the master document in src_master
+        """
         self.logger.info("Uploading '%s' (collection: %s)" % (self.name, self.collection_name))
-        # TODO: register step
+        # sanity check before running
         self.check_ready(force)
+        # check what to do
+        if type(steps) == str:
+            steps = [steps]
+        update_data = "data" in steps
+        update_master = "master" in steps
+        post_update_data = "post" in steps
         try:
             if not self.temp_collection_name:
                 self.make_temp_collection()
@@ -305,11 +315,15 @@ class BaseSourceUploader(object):
             if update_data:
                 # unsync to make it pickable
                 state = self.unprepare()
-                yield from self.update_data(doc_d,step,job_manager)
+                yield from self.update_data(batch_size, job_manager)
                 # then restore state
                 self.prepare(state)
             if update_master:
                 self.update_master()
+            if post_update_data:
+                self.unprepare()
+                f2 = job_manager.defer_to_process(self.post_update_data)
+                yield from f2
             cnt = self.db[self.collection_name].count()
             self.register_status("success",count=cnt)
         except Exception as e:
@@ -402,13 +416,10 @@ class DummySourceUploader(BaseSourceUploader):
         pass
 
     @asyncio.coroutine
-    def update_data(self, doc_d, step, job_manager=None):
+    def update_data(self, batch_size, job_manager=None):
         self.logger.info("Dummy uploader, nothing to upload")
         # sanity check, dummy uploader, yes, but make sure data is there
         assert self.collection.count() > 0, "No data found in collection '%s' !!!" % self.collection_name
-        self.unprepare()
-        f = job_manager.defer_to_process(self.post_update_data)
-        yield from f
 
 
 class ParallelizedSourceUploader(BaseSourceUploader):
@@ -419,7 +430,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
         raise NotImplementedError("implement me in subclass")
 
     @asyncio.coroutine
-    def update_data(self, doc_d, step, job_manager=None):
+    def update_data(self, batch_size, job_manager=None):
         fs = []
         jobs = self.jobs()
         state = self.unprepare()
@@ -436,16 +447,27 @@ class ParallelizedSourceUploader(BaseSourceUploader):
                     # dest collection name
                     self.temp_collection_name,
                     # batch size
-                    step,
+                    batch_size,
                     # and finally *args passed to loading func
                     *args)
             fs.append(f)
         yield from asyncio.wait(fs)
         self.switch_collection()
         self.clean_archived_collections()
-        self.unprepare()
-        f2 = job_manager.defer_to_process(self.post_update_data)
-        yield from f2
+
+
+class NoDataSourceUploader(BaseSourceUploader):
+    """
+    This uploader won't upload any data and won't even assume
+    there's actual data (different from DummySourceUploader on this point).
+    It's usefull for instance when mapping need to be stored (get_mapping())
+    but data doesn't comes from an actual upload (ie. generated)
+    """
+    storage_class = NoStorage
+
+    @asyncio.coroutine
+    def update_data(self, batch_size, job_manager=None):
+        self.logger.debug("No data to upload, skip")
 
 
 ##############################
@@ -521,10 +543,10 @@ class UploaderManager(BaseSourceManager):
             logging.warning("Found errors while uploading:\n%s" % pprint.pformat(errors))
             return errors
 
-    def upload_src(self, src, **kwargs):
+    def upload_src(self, src, *args, **kwargs):
         """
         Trigger upload for registered resource named 'src'.
-        **kwargs are passed to uploader's load() method
+        Other args are passed to uploader's load() method
         """
         try:
             klasses = self[src]
@@ -536,8 +558,7 @@ class UploaderManager(BaseSourceManager):
             self.register_status(src,"uploading")
             for i,klass in enumerate(klasses):
                 job = self.job_manager.submit(partial(
-                        self.create_and_load,klass,progress=i+1,total=len(klasses),
-                        job_manager=self.job_manager,**kwargs))
+                        self.create_and_load,klass,job_manager=self.job_manager,*args,**kwargs))
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
             def done(f):
