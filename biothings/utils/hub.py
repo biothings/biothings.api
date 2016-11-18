@@ -15,6 +15,9 @@ from collections import OrderedDict
 from biothings import config
 from biothings.utils.common import timesofar, sizeof_fmt
 
+# useful variables to bring into hub namespace
+pending = "pending"
+
 
 ##############
 # HUB SERVER #
@@ -135,7 +138,7 @@ class JobRenderer(object):
         }
 
     def render(self,job):
-        r = self.rendered.get(type(job._callback))#,print)
+        r = self.rendered.get(type(job._callback))
         rstr = r(job._callback)
         delta = job._when - job._loop.time()
         strdelta = time.strftime("%Hh:%Mm:%Ss", time.gmtime(int(delta)))
@@ -180,6 +183,8 @@ def schedule(loop):
             import traceback
             traceback.print_exc()
             print(sch)
+    if len(loop._scheduled):
+        print()
 
 def find_process(pid):
     g = psutil.process_iter()
@@ -188,18 +193,19 @@ def find_process(pid):
             break
     return p
 
-def top(pid=None):
+def top(pqueue,pid=None):
 
-    def extract_info(worker):
+    def extract_worker_info(worker):
         info = OrderedDict()
         proc = worker["process"]
         info["pid"] = proc.pid
-        info["func_name"] = worker.get("func_name"," ")
+        info["name"] = worker.get("name"," ")
         args = worker.get("args")
         info["arg1"] = ""
         if args:
-            info["arg1"] = str(args[0])
+            info["arg1"] = type(args) == str and args or str(args[0])
         info["mem"] = sizeof_fmt(proc.memory_info().rss)
+        info["cpu"] = "%.1f%%" % proc.cpu_percent()
         info["duration"] = timesofar(worker.get("time",0)) 
         info["files"] = []
         info["progress"] = ""
@@ -218,17 +224,30 @@ def top(pid=None):
             info["progress"] = ",".join([f["progress"] for f in info["files"]])
         return info
 
+    def extract_pending_info(pending):
+        info = OrderedDict()
+        num,pend = pending
+        info["num"] = num
+        info["name"] = pend.fn.__name__
+        r = renderer.rendered[type(workitem.fn)]
+        rstr = r(workitem.fn)
+        return info
+
     def print_workers(workers):
-        for pid in workers:
-            worker = workers[pid]
-            info = extract_info(worker)
-            try:
-                print('{pid: >7} | {func_name:>15} | {arg1: >20} | {mem: >10} | {progress: >12} | {duration: >10}'.format(**info))
-            except TypeError:
-                pprint(info)
+        print("%d running job(s)" % len(workers))
+        if workers:
+            print("{0:<7} | {1:<36} | {2:<8} | {3:<8} | {4:<10}".format("pid","info","mem","cpu","time"))
+            for pid in workers:
+                worker = workers[pid]
+                info = extract_worker_info(worker)
+                try:
+                    print('{pid: <7} | {name:<15} {arg1: <20} | {mem: <8} | {cpu: <8} | {duration: <10}'.format(**info))
+                except TypeError:
+                    pprint(info)
+            print()
 
     def print_detailed_worker(worker):
-        info = extract_info(worker)
+        info = extract_worker_info(worker)
         pprint(info)
 
     def get_pid_files(children,child):
@@ -251,19 +270,50 @@ def top(pid=None):
                 pass
         return pids
 
+    def print_pending_info(num,pending):
+        r = renderer.rendered[type(pending.fn.func)]
+        rstr = r(pending.fn.func)
+        print("{0:<4} | {1:<36}".format(num,rstr))
+
+    def get_pending_summary(running,pqueue,getstr=False):
+        return "%d pending job(s)" % (len(pqueue._pending_work_items) - running)
+
+    def print_pendings(running,pqueue):
+        # pendings are kept in queue while running, until result is there so we need
+        # to adjust the actual real pending jobs. also, pending job are get() from the
+        # queue following FIFO order. finally, worker ID is incremental. So...
+        pendings = sorted(pqueue._pending_work_items.items())
+        actual_pendings = pendings[running:]
+        print(get_pending_summary(running,pqueue))
+        if actual_pendings:
+            print("{0:<4} | {1:<36}".format("id","info"))
+            for num,pending in pendings[running:]:
+                print_pending_info(num,pending)
+            print()
+
     try:
         # get process children attached to hub pid
         phub = find_process(os.getpid())
         pchildren = phub.children()
         child = None
+        pending = False
         if pid:
-            pid = int(pid)
-            child = [p for p in pchildren if p.pid == pid][0]
+            try:
+                pid = int(pid)
+                child = [p for p in pchildren if p.pid == pid][0]
+            except ValueError:
+                if pid == "pending":
+                    pending = True
+                else:
+                    raise
         workers = get_pid_files(pchildren,child)
         if child:
             print_detailed_worker(workers[child.pid])
+        elif pending:
+            print_pendings(len(workers),pqueue)
         else:
             print_workers(workers)
+            print("(and %s)" % get_pending_summary(len(workers),pqueue))
         if child:
             return list(workers.values())[0]
         else:

@@ -1,7 +1,7 @@
 import importlib
 import logging
 import asyncio, aiocron
-import os, pickle, inspect
+import os, pickle, inspect, types
 from functools import wraps, partial
 import time
 
@@ -17,6 +17,10 @@ def track_process(func):
             fname = args[0].func.__name__
             fargs = args[0].args
             fkwargs = args[0].keywords
+        elif type(args[0]) == types.MethodType:
+            fname = args[0].__self__.__class__.__name__
+            fargs = args[0].__name__
+            fkwargs = inspect.getargspec(args[0]).keywords
         else:
             fname = args[0].__name__
             fargs = args[1:]
