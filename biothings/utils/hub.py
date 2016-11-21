@@ -3,7 +3,7 @@
 # To run this program, the file ``ssh_host_key`` must exist with an SSH
 # private key in it to use as a server host key.
 
-import os, glob, re, pickle
+import os, glob, re, pickle, datetime
 import asyncio, asyncssh, crypt, sys, io
 import types, aiocron, time
 from functools import partial
@@ -17,6 +17,7 @@ from biothings.utils.common import timesofar, sizeof_fmt
 
 # useful variables to bring into hub namespace
 pending = "pending"
+done = "done"
 
 
 ##############
@@ -197,31 +198,32 @@ def top(pqueue,pid=None):
 
     def extract_worker_info(worker):
         info = OrderedDict()
-        proc = worker["process"]
-        info["pid"] = proc.pid
-        info["name"] = worker.get("name"," ")
+        proc = worker.get("process")
+        info["pid"] = proc and proc.pid
+        info["name"] = worker.get("func_name"," ")
         args = worker.get("args")
         info["arg1"] = ""
         if args:
             info["arg1"] = type(args) == str and args or str(args[0])
-        info["mem"] = sizeof_fmt(proc.memory_info().rss)
-        info["cpu"] = "%.1f%%" % proc.cpu_percent()
-        info["duration"] = timesofar(worker.get("time",0)) 
+        info["mem"] = proc and sizeof_fmt(proc.memory_info().rss)
+        info["cpu"] = proc and "%.1f%%" % proc.cpu_percent()
+        info["started_at"] = worker.get("started_at")
+        if worker.get("duration"):
+            info["duration"] = worker["duration"]
+        else:
+            info["duration"] = timesofar(worker.get("started_at",0))
         info["files"] = []
-        info["progress"] = ""
-        for pfile in proc.open_files():
-            # skip 'a' (logger)
-            if pfile.mode == 'r':
-                finfo = OrderedDict()
-                finfo["path"] = pfile.path
-                finfo["read"] = sizeof_fmt(pfile.position)
-                size = os.path.getsize(pfile.path)
-                finfo["size"] = sizeof_fmt(size)
-                finfo["progress"] = "%.2f%%" % (pfile.position*100./size)
-                info["files"].append(finfo)
-        # propagate progress
-        if info["files"]:
-            info["progress"] = ",".join([f["progress"] for f in info["files"]])
+        if proc:
+            for pfile in proc.open_files():
+                # skip 'a' (logger)
+                if pfile.mode == 'r':
+                    finfo = OrderedDict()
+                    finfo["path"] = pfile.path
+                    finfo["read"] = sizeof_fmt(pfile.position)
+                    size = os.path.getsize(pfile.path)
+                    finfo["size"] = sizeof_fmt(size)
+                    info["files"].append(finfo)
+
         return info
 
     def extract_pending_info(pending):
@@ -241,10 +243,27 @@ def top(pqueue,pid=None):
                 worker = workers[pid]
                 info = extract_worker_info(worker)
                 try:
-                    print('{pid: <7} | {name:<15} {arg1: <20} | {mem: <8} | {cpu: <8} | {duration: <10}'.format(**info))
+                    print('{pid:>7} | {name:>15} {arg1:>20} | {mem:>8} | {cpu:>8} | {duration:>10}'.format(**info))
                 except TypeError:
                     pprint(info)
-            print()
+
+    def print_done(job_files):
+        if job_files:
+            print("{0:<36} | {1:<22} | {2:<10}".format("info","start","time"))
+            for jfile in job_files:
+                worker = pickle.load(open(jfile,"rb"))
+                info = extract_worker_info(worker)
+                # format start time
+                tt = datetime.datetime.fromtimestamp(info["started_at"]).timetuple()
+                info["started_at"] = time.strftime("%Y/%m/%d %H:%M:%S",tt)
+                try:
+                    print("{name:>36} | {started_at:>22} | {duration:<10}".format(**info))
+                except TypeError as e:
+                    print(e)
+                    pprint(info)
+                os.unlink(jfile)
+
+
 
     def print_detailed_worker(worker):
         info = extract_worker_info(worker)
@@ -286,7 +305,7 @@ def top(pqueue,pid=None):
         actual_pendings = pendings[running:]
         print(get_pending_summary(running,pqueue))
         if actual_pendings:
-            print("{0:<4} | {1:<36}".format("id","info"))
+            print("{0:>4} | {1:>36}".format("id","info"))
             for num,pending in pendings[running:]:
                 print_pending_info(num,pending)
             print()
@@ -297,6 +316,7 @@ def top(pqueue,pid=None):
         pchildren = phub.children()
         child = None
         pending = False
+        done = False
         if pid:
             try:
                 pid = int(pid)
@@ -304,16 +324,24 @@ def top(pqueue,pid=None):
             except ValueError:
                 if pid == "pending":
                     pending = True
+                elif pid == "done":
+                    done = True
                 else:
                     raise
         workers = get_pid_files(pchildren,child)
+        done_jobs = glob.glob(os.path.join(config.RUN_DIR,"done","*.pickle"))
         if child:
             print_detailed_worker(workers[child.pid])
         elif pending:
             print_pendings(len(workers),pqueue)
+        elif done:
+            print_done(done_jobs)
+            print("%d finished job(s)" % len(done_jobs))
         else:
             print_workers(workers)
-            print("(and %s)" % get_pending_summary(len(workers),pqueue))
+            print("%s, type 'top(pending)' for more" % get_pending_summary(len(workers),pqueue))
+            if done_jobs:
+                print("%s finished job(s), type 'top(done)' for more" % len(done_jobs))
         if child:
             return list(workers.values())[0]
         else:

@@ -6,6 +6,7 @@ from functools import wraps, partial
 import time
 
 from biothings.utils.mongo import get_src_conn
+from biothings.utils.common import timesofar
 from biothings import config
 
 
@@ -27,7 +28,7 @@ def track_process(func):
             fkwargs = kwargs
         pinfo = {'func_name' : fname,
                  'args': fargs, 'kwargs' : fkwargs,
-                 'time': time.time()}
+                 'started_at': time.time()}
         try:
             pid = os.getpid()
             pidfile = os.path.join(config.RUN_DIR,"%s.pickle" % pid)
@@ -35,7 +36,12 @@ def track_process(func):
             func(*args,**kwargs)
         finally:
             if os.path.exists(pidfile):
-                os.unlink(pidfile)
+                # move to "done" dir and register end of execution time 
+                os.rename(pidfile,os.path.join(config.RUN_DIR,"done",os.path.basename(pidfile)))
+                pidfile = os.path.join(config.RUN_DIR,"done",os.path.basename(pidfile))
+                pinfo = pickle.load(open(pidfile,"rb"))
+                pinfo["duration"] = timesofar(pinfo["started_at"])
+                pickle.dump(pinfo,open(pidfile,"wb"))
     return func_wrapper
 
 @track_process
