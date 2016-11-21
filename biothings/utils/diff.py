@@ -5,7 +5,7 @@ import os
 import time
 import os.path
 from .common import timesofar
-from ..databuild.backend import GeneDocMongoDBBackend, GeneDocESBackend
+from .backend import DocMongoDBBackend
 from .es import ESIndexer
 
 
@@ -140,8 +140,8 @@ def diff_collections(b1, b2, use_parallel=True, step=10000):
     """
     b1, b2 are one of supported backend class in databuild.backend.
     e.g.,
-        b1 = GeneDocMongoDBBackend(c1)
-        b2 = GeneDocMongoDBBackend(c2)
+        b1 = DocMongoDBBackend(c1)
+        b2 = DocMongoDBBackend(c2)
     """
 
     id_s1 = set(b1.get_id_list())
@@ -205,14 +205,14 @@ def diff_collections(b1, b2, use_parallel=True, step=10000):
 #    if bk_type == 'mongodb':
 #        target_db = get_target_db()
 #        target_col = target_db[target_name]
-#        return GeneDocMongoDBBackend(target_col)
+#        return DocMongoDBBackend(target_col)
 #    elif bk_type == 'es':
 #        esi = ESIndexer(target_name, **kwargs)
-#        return GeneDocESBackend(esi)
+#        return DocESBackend(esi)
 
 def get_backend(uri, db, col, bk_type):
     if bk_type != "mongodb":
         raise NotImplemented("Backend type '%s' not supported" % bk_type)
     from biothings.utils.mongo import MongoClient
     colobj = MongoClient(uri)[db][col]
-    return GeneDocMongoDBBackend(colobj)
+    return DocMongoDBBackend(colobj)
