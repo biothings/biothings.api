@@ -157,6 +157,16 @@ class BaseSourceUploader(object):
         self.prepared = False
         return state
 
+    def get_pinfo(self):
+        """
+        Return dict containing information about the current process
+        (used to report in the hub)
+        """
+        return {"category" : "uploader",
+                "source" : self.fullname,
+                "step" : "",
+                "description" : ""}
+
     def check_ready(self,force=False):
         if not self.src_doc:
             raise ResourceNotReady("Missing information for source '%s' to start upload" % self.main_source)
@@ -223,8 +233,11 @@ class BaseSourceUploader(object):
         """
         Iterate over load_data() to pull data and store it
         """
+        pinfo = self.get_pinfo()
+        pinfo["step"] = "update_data"
         self.unprepare()
         f = job_manager.defer_to_process(
+                pinfo,
                 upload_worker,
                 self.fullname,
                 self.__class__.storage_class,
@@ -322,7 +335,9 @@ class BaseSourceUploader(object):
                 self.update_master()
             if post_update_data:
                 self.unprepare()
-                f2 = job_manager.defer_to_process(self.post_update_data)
+                pinfo = self.get_pinfo()
+                pinfo["step"] = "post_update_data"
+                f2 = job_manager.defer_to_process(pinfo, self.post_update_data)
                 yield from f2
             cnt = self.db[self.collection_name].count()
             self.register_status("success",count=cnt)
@@ -435,7 +450,11 @@ class ParallelizedSourceUploader(BaseSourceUploader):
         jobs = self.jobs()
         state = self.unprepare()
         for args in jobs:
+            pinfo = self.get_pinfo()
+            pinfo["step"] = "update_data"
+            pinfo["description"] = str(args)
             f = job_manager.defer_to_process(
+                    pinfo,
                     # pickable worker
                     upload_worker,
                     # worker name

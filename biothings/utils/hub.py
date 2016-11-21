@@ -196,15 +196,23 @@ def find_process(pid):
 
 def top(pqueue,pid=None):
 
+    columns = ["pid","source","category","step","description","mem","cpu","duration"]
+    header = dict(zip(columns,[c.upper() for c in columns])) # upper() for column titles
+    line = "{pid:>7} | {source:>25} | {category:>10} | {step:>20} | {description:>30} | {mem:>8} | {cpu:>8} | {duration:>10}"
+
+    def norm(value,maxlen):
+        if len(value) > maxlen:
+            value = "...%s" % value[-maxlen+3:]
+        return value
+
     def extract_worker_info(worker):
         info = OrderedDict()
         proc = worker.get("process")
         info["pid"] = proc and proc.pid
-        info["name"] = worker.get("func_name"," ")
-        args = worker.get("args")
-        info["arg1"] = ""
-        if args:
-            info["arg1"] = type(args) == str and args or str(args[0])
+        info["source"] = norm(worker["info"].get("source") or "",25)
+        info["category"] = norm(worker["info"].get("category") or "",10)
+        info["step"] = norm(worker["info"].get("step") or "",20)
+        info["description"] = norm(worker["info"].get("description") or "",30)
         info["mem"] = proc and sizeof_fmt(proc.memory_info().rss)
         info["cpu"] = proc and "%.1f%%" % proc.cpu_percent()
         info["started_at"] = worker.get("started_at")
@@ -212,52 +220,37 @@ def top(pqueue,pid=None):
             info["duration"] = worker["duration"]
         else:
             info["duration"] = timesofar(worker.get("started_at",0))
-        info["files"] = []
-        if proc:
-            for pfile in proc.open_files():
-                # skip 'a' (logger)
-                if pfile.mode == 'r':
-                    finfo = OrderedDict()
-                    finfo["path"] = pfile.path
-                    finfo["read"] = sizeof_fmt(pfile.position)
-                    size = os.path.getsize(pfile.path)
-                    finfo["size"] = sizeof_fmt(size)
-                    info["files"].append(finfo)
-
-        return info
-
-    def extract_pending_info(pending):
-        info = OrderedDict()
-        num,pend = pending
-        info["num"] = num
-        info["name"] = pend.fn.__name__
-        r = renderer.rendered[type(workitem.fn)]
-        rstr = r(workitem.fn)
         return info
 
     def print_workers(workers):
         print("%d running job(s)" % len(workers))
         if workers:
-            print("{0:<7} | {1:<36} | {2:<8} | {3:<8} | {4:<10}".format("pid","info","mem","cpu","time"))
+            print(line.format(**header))
             for pid in workers:
                 worker = workers[pid]
                 info = extract_worker_info(worker)
                 try:
-                    print('{pid:>7} | {name:>15} {arg1:>20} | {mem:>8} | {cpu:>8} | {duration:>10}'.format(**info))
-                except TypeError:
+                    print(line.format(**info))
+                except TypeError as e:
+                    print(e)
                     pprint(info)
 
     def print_done(job_files):
         if job_files:
-            print("{0:<36} | {1:<22} | {2:<10}".format("info","start","time"))
+            pat = re.compile(".*?(\d+)\.pickle") # extract pid from filename
+            print(line.format(**header))
             for jfile in job_files:
                 worker = pickle.load(open(jfile,"rb"))
                 info = extract_worker_info(worker)
+                # filling the gaps so we can display using the same code
+                info["pid"] = pat.match(jfile) and pat.findall(jfile)[0] or ""
+                info["mem"] = ""
+                info["cpu"] = ""
                 # format start time
                 tt = datetime.datetime.fromtimestamp(info["started_at"]).timetuple()
                 info["started_at"] = time.strftime("%Y/%m/%d %H:%M:%S",tt)
                 try:
-                    print("{name:>36} | {started_at:>22} | {duration:<10}".format(**info))
+                    print(line.format(**info))
                 except TypeError as e:
                     print(e)
                     pprint(info)
@@ -290,9 +283,20 @@ def top(pqueue,pid=None):
         return pids
 
     def print_pending_info(num,pending):
-        r = renderer.rendered[type(pending.fn.func)]
-        rstr = r(pending.fn.func)
-        print("{0:<4} | {1:<36}".format(num,rstr))
+        info = pending.fn.args[0]
+        info["cpu"] = ""
+        info["mem"] = ""
+        info["pid"] = ""
+        info["duration"] = ""
+        info["source"] = norm(info["source"],25)
+        info["category"] = norm(info["category"],10)
+        info["step"] = norm(info["step"],20)
+        info["description"] = norm(info["description"],30)
+        try:
+            print(line.format(**info))
+        except TypeError as e:
+            print(e)
+            pprint(info)
 
     def get_pending_summary(running,pqueue,getstr=False):
         return "%d pending job(s)" % (len(pqueue._pending_work_items) - running)
@@ -305,7 +309,7 @@ def top(pqueue,pid=None):
         actual_pendings = pendings[running:]
         print(get_pending_summary(running,pqueue))
         if actual_pendings:
-            print("{0:>4} | {1:>36}".format("id","info"))
+            print(line.format(**header))
             for num,pending in pendings[running:]:
                 print_pending_info(num,pending)
             print()

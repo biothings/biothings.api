@@ -225,7 +225,9 @@ class BaseDumper(object):
                 # for some reason (like maintaining object's state between pickling).
                 # we can't use process there. Need to use thread to maintain that state without
                 # building an unmaintainable monster
-                job_manager.defer_to_thread(self.post_dump)
+                pinfo = self.get_pinfo()
+                pinfo["step"] = "post_dump"
+                job_manager.defer_to_thread(pinfo, self.post_dump)
                 self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
         except (KeyboardInterrupt,Exception) as e:
             self.logger.error("Error while dumping source: %s" % e)
@@ -235,6 +237,16 @@ class BaseDumper(object):
         finally:
             if self.client:
                 self.release_client()
+
+    def get_pinfo(self):
+        """
+        Return dict containing information about the current process
+        (used to report in the hub)
+        """
+        return {"category" : "dumper",
+                "source" : self.src_name,
+                "step" : None,
+                "description" : None}
 
     @property
     def new_data_folder(self):
@@ -267,7 +279,9 @@ class BaseDumper(object):
             local = todo["local"]
             def done(job):
                 self.post_download(remote,local)
-            job = job_manager.defer_to_process(partial(self.download,remote,local))
+            pinfo = self.get_pinfo()
+            pinfo["step"] = "dump"
+            job = job_manager.defer_to_process(pinfo, partial(self.download,remote,local))
             job.add_done_callback(done)
             jobs.append(job)
         yield from asyncio.wait(jobs)
@@ -425,7 +439,9 @@ class DummyDumper(BaseDumper):
         self.logger.debug("Dummy dumper, nothing to download...")
         self.prepare_local_folders(os.path.join(self.new_data_folder,"dummy_file"))
         # this is the only interesting thing happening here
-        job_manager.defer_to_thread(self.post_dump)
+        pinfo = self.get_pinfo()
+        pinfo["step"] = "post_dump"
+        job_manager.defer_to_thread(pinfo, self.post_dump)
         self.logger.info("Registering success")
         self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
 
@@ -485,7 +501,9 @@ class ManualDumper(BaseDumper):
         if not os.listdir(self.new_data_folder):
             raise DumperException("Directory '%s' is empty (did you download data first ?)" % self.new_data_folder)
 
-        job_manager.defer_to_thread(self.post_dump)
+        pinfo = self.get_pinfo()
+        pinfo["step"] = "post_dump"
+        job_manager.defer_to_thread(pinfo, self.post_dump)
         # ok, good to go
         self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
         self.logger.info("Manually dumped resource (data_folder: '%s')" % self.new_data_folder)

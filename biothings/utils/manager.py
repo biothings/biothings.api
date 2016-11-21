@@ -13,39 +13,60 @@ from biothings import config
 def track_process(func):
     @wraps(func)
     def func_wrapper(*args,**kwargs):
+        # we're looking for some "pinfo" value (process info) to later
+        # reporting. If we can't find any, we'll try our best to figure out
+        # what this is about...
         # func is the do_work wrapper, we want the actual partial
-        if type(args[0]) == partial:
-            fname = args[0].func.__name__
-            fargs = args[0].args
-            fkwargs = args[0].keywords
-        elif type(args[0]) == types.MethodType:
-            fname = args[0].__self__.__class__.__name__
-            fargs = args[0].__name__
-            fkwargs = inspect.getargspec(args[0]).keywords
+        print("func: %s, args: %s, kwargs: %s" % (func,args,kwargs))
+        # is first arg a callable (func) or pinfo ?
+        if callable(args[0]):
+            innerfunc = args[0]
+            innerargs = args[1:]
+            pinfo = None
         else:
-            fname = args[0].__name__
-            fargs = args[1:]
-            fkwargs = kwargs
-        pinfo = {'func_name' : fname,
-                 'args': fargs, 'kwargs' : fkwargs,
-                 'started_at': time.time()}
+            innerfunc = args[1]
+            innerargs = args[2:]
+            pinfo = args[0]
+
+        if type(innerfunc) == partial:
+            fname = innerfunc.func.__name__
+        elif type(innerfunc) == types.MethodType:
+            fname = innerfunc.__self__.__class__.__name__
+        else:
+            fname = innerfunc.__name__
+
+        firstarg = innerargs and innerargs[0] or ""
+        if not pinfo:
+            pinfo = {"category" : None,
+                     "source" : None,
+                     "step" : None,
+                     "description" : "%s %s" % (fname,firstarg)}
+
+        worker = {'func_name' : fname,
+                 'args': innerargs, 'kwargs' : kwargs,
+                 'started_at': time.time(),
+                 'info' : pinfo}
         try:
             pid = os.getpid()
             pidfile = os.path.join(config.RUN_DIR,"%s.pickle" % pid)
-            pickle.dump(pinfo,open(pidfile,"wb"))
+            pickle.dump(worker, open(pidfile,"wb"))
             func(*args,**kwargs)
         finally:
             if os.path.exists(pidfile):
                 # move to "done" dir and register end of execution time 
                 os.rename(pidfile,os.path.join(config.RUN_DIR,"done",os.path.basename(pidfile)))
                 pidfile = os.path.join(config.RUN_DIR,"done",os.path.basename(pidfile))
-                pinfo = pickle.load(open(pidfile,"rb"))
-                pinfo["duration"] = timesofar(pinfo["started_at"])
-                pickle.dump(pinfo,open(pidfile,"wb"))
+                worker = pickle.load(open(pidfile,"rb"))
+                worker["duration"] = timesofar(worker["started_at"])
+                pickle.dump(worker,open(pidfile,"wb"))
     return func_wrapper
 
 @track_process
-def do_work(func,*args,**kwargs):
+def do_work(pinfo=None, func=None, *args, **kwargs):
+    # pinfo is optional, and func is not. and args and kwargs must 
+    # be after func. just to say func is mandatory, despite what the
+    # signature says
+    assert func
     # need to wrap calls otherwise multiprocessing could have
     # issue pickling directly the passed func because of some import
     # issues ("can't pickle ... object is not the same as ...")
@@ -194,16 +215,16 @@ class BaseSourceManager(BaseManager):
 
 class JobManager(object):
 
-    def __init__(self, loop, process_queue=None,thread_queue=None):
+    def __init__(self, loop, process_queue=None, thread_queue=None):
         self.loop = loop
         self.process_queue = process_queue
         self.thread_queue = thread_queue
 
-    def defer_to_process(self,func,*args):
-        return self.loop.run_in_executor(self.process_queue,partial(do_work,func,*args))
+    def defer_to_process(self, pinfo=None, func=None, *args):
+        return self.loop.run_in_executor(self.process_queue,partial(do_work,pinfo,func,*args))
 
-    def defer_to_thread(self,func,*args):
-        return self.loop.run_in_executor(self.thread_queue,func,*args)
+    def defer_to_thread(self, pinfo=None, func=None, *args):
+        return self.loop.run_in_executor(self.thread_queue,partial(do_work,pinfo,func,*args))
 
     def submit(self,pfunc,schedule=None):
         """
