@@ -3,7 +3,7 @@ import logging
 import asyncio, aiocron
 import os, pickle, inspect, types
 from functools import wraps, partial
-import time
+import time, datetime
 
 from biothings.utils.mongo import get_src_conn
 from biothings.utils.common import timesofar
@@ -17,7 +17,6 @@ def track_process(func):
         # reporting. If we can't find any, we'll try our best to figure out
         # what this is about...
         # func is the do_work wrapper, we want the actual partial
-        print("func: %s, args: %s, kwargs: %s" % (func,args,kwargs))
         # is first arg a callable (func) or pinfo ?
         if callable(args[0]):
             innerfunc = args[0]
@@ -46,11 +45,12 @@ def track_process(func):
                  'args': innerargs, 'kwargs' : kwargs,
                  'started_at': time.time(),
                  'info' : pinfo}
+        results = None
         try:
             pid = os.getpid()
             pidfile = os.path.join(config.RUN_DIR,"%s.pickle" % pid)
             pickle.dump(worker, open(pidfile,"wb"))
-            func(*args,**kwargs)
+            results = func(*args,**kwargs)
         finally:
             if os.path.exists(pidfile):
                 # move to "done" dir and register end of execution time 
@@ -59,6 +59,7 @@ def track_process(func):
                 worker = pickle.load(open(pidfile,"rb"))
                 worker["duration"] = timesofar(worker["started_at"])
                 pickle.dump(worker,open(pidfile,"wb"))
+        return results
     return func_wrapper
 
 @track_process

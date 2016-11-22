@@ -124,6 +124,17 @@ class DataBuilder(object):
         self.prepared = False
         return state
 
+    def get_pinfo(self):
+        """
+        Return dict containing information about the current process
+        (used to report in the hub)
+        """
+        return {"category" : "builder",
+                "source" : "%s:%s" % (self.build_name,self.target_name),
+                "step" : "",
+                "description" : ""}
+
+
     def setup_log(self):
         import logging as logging_mod
         if not os.path.exists(self.log_folder):
@@ -295,7 +306,6 @@ class DataBuilder(object):
                 job = self.merge_source(src_name, batch_size=batch_size, job_manager=job_manager)
                 job = asyncio.ensure_future(job)
                 def merged(f,stats):
-                    self.logger.info("f: %s" % f.result())
                     stats.update(f.result())
                 job.add_done_callback(partial(merged,stats=self.stats))
                 jobs.append(job)
@@ -344,9 +354,13 @@ class DataBuilder(object):
         cnt = 0
         for doc_ids in doc_feeder(self.source_backend[src_name], step=batch_size, inbatch=True, fields={'_id':1}):
             cnt += len(doc_ids)
+            pinfo = self.get_pinfo()
+            pinfo["step"] = src_name
+            pinfo["description"] = "#docs %d/%d" % (cnt,total)
             self.logger.info("Creating merger job to process '%s' %d/%d" % (src_name,cnt,total))
             ids = [doc["_id"] for doc in doc_ids]
             job = job_manager.defer_to_process(
+                    pinfo,
                     partial(merger_worker,
                         self.source_backend[src_name].name,
                         self.target_backend.target_name,
@@ -359,7 +373,7 @@ class DataBuilder(object):
                 try:
                     cnt += f.result()
                 except Exception as e:
-                    self.logger.error(e)
+                    self.logger.error("Error in processed: %s" % e)
             job.add_done_callback(partial(processed,cnt=cnt))
             jobs.append(job)
         self.logger.info("%d jobs created for merging step" % len(jobs))

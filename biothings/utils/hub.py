@@ -196,9 +196,10 @@ def find_process(pid):
 
 def top(pqueue,pid=None):
 
-    columns = ["pid","source","category","step","description","mem","cpu","duration"]
+    columns = ["pid","source","category","step","description","mem","cpu","started_at","duration"]
     header = dict(zip(columns,[c.upper() for c in columns])) # upper() for column titles
-    line = "{pid:>7} | {source:>25} | {category:>10} | {step:>20} | {description:>30} | {mem:>8} | {cpu:>8} | {duration:>10}"
+    headerline = "{pid:^7}|{source:^25}|{category:^10}|{step:^20}|{description:^30}|{mem:^10}|{cpu:^6}|{started_at:^20}|{duration:^10}"
+    dataline = headerline.replace("^","<")
 
     def norm(value,maxlen):
         if len(value) > maxlen:
@@ -215,7 +216,7 @@ def top(pqueue,pid=None):
         info["description"] = norm(worker["info"].get("description") or "",30)
         info["mem"] = proc and sizeof_fmt(proc.memory_info().rss)
         info["cpu"] = proc and "%.1f%%" % proc.cpu_percent()
-        info["started_at"] = worker.get("started_at")
+        info["started_at"] = worker.get("started_at") or ""
         if worker.get("duration"):
             info["duration"] = worker["duration"]
         else:
@@ -225,22 +226,26 @@ def top(pqueue,pid=None):
     def print_workers(workers):
         print("%d running job(s)" % len(workers))
         if workers:
-            print(line.format(**header))
+            print(headerline.format(**header))
             for pid in workers:
                 worker = workers[pid]
                 info = extract_worker_info(worker)
+                tt = datetime.datetime.fromtimestamp(info["started_at"]).timetuple()
+                info["started_at"] = time.strftime("%Y/%m/%d %H:%M:%S",tt)
                 try:
-                    print(line.format(**info))
-                except TypeError as e:
+                    print(dataline.format(**info))
+                except (TypeError, KeyError) as e:
                     print(e)
                     pprint(info)
 
     def print_done(job_files):
         if job_files:
             pat = re.compile(".*?(\d+)\.pickle") # extract pid from filename
-            print(line.format(**header))
-            for jfile in job_files:
-                worker = pickle.load(open(jfile,"rb"))
+            print(headerline.format(**header))
+            jfiles_workers = [(jfile,pickle.load(open(jfile,"rb"))) for jfile in job_files]
+            # sort by start time
+            jfiles_workers = sorted(jfiles_workers,key=lambda e: e[1]["started_at"])
+            for jfile,worker in jfiles_workers:
                 info = extract_worker_info(worker)
                 # filling the gaps so we can display using the same code
                 info["pid"] = pat.match(jfile) and pat.findall(jfile)[0] or ""
@@ -250,13 +255,11 @@ def top(pqueue,pid=None):
                 tt = datetime.datetime.fromtimestamp(info["started_at"]).timetuple()
                 info["started_at"] = time.strftime("%Y/%m/%d %H:%M:%S",tt)
                 try:
-                    print(line.format(**info))
-                except TypeError as e:
+                    print(dataline.format(**info))
+                except (TypeError, KeyError) as e:
                     print(e)
                     pprint(info)
                 os.unlink(jfile)
-
-
 
     def print_detailed_worker(worker):
         info = extract_worker_info(worker)
@@ -292,9 +295,10 @@ def top(pqueue,pid=None):
         info["category"] = norm(info["category"],10)
         info["step"] = norm(info["step"],20)
         info["description"] = norm(info["description"],30)
+        info["started_at"] = ""
         try:
-            print(line.format(**info))
-        except TypeError as e:
+            print(dataline.format(**info))
+        except (TypeError, KeyError) as e:
             print(e)
             pprint(info)
 
@@ -309,7 +313,7 @@ def top(pqueue,pid=None):
         actual_pendings = pendings[running:]
         print(get_pending_summary(running,pqueue))
         if actual_pendings:
-            print(line.format(**header))
+            print(headerline.format(**header))
             for num,pending in pendings[running:]:
                 print_pending_info(num,pending)
             print()
@@ -341,6 +345,7 @@ def top(pqueue,pid=None):
         elif done:
             print_done(done_jobs)
             print("%d finished job(s)" % len(done_jobs))
+            print("(finished jobs have been cleared)")
         else:
             print_workers(workers)
             print("%s, type 'top(pending)' for more" % get_pending_summary(len(workers),pqueue))
