@@ -1,4 +1,4 @@
-import importlib
+import importlib, threading
 import logging
 import asyncio, aiocron
 import os, pickle, inspect, types
@@ -10,22 +10,23 @@ from biothings.utils.common import timesofar
 from biothings import config
 
 
-def track_process(func):
+def track(func):
     @wraps(func)
     def func_wrapper(*args,**kwargs):
+        ptype = args[0] # tracking process or thread ?
         # we're looking for some "pinfo" value (process info) to later
         # reporting. If we can't find any, we'll try our best to figure out
         # what this is about...
         # func is the do_work wrapper, we want the actual partial
         # is first arg a callable (func) or pinfo ?
-        if callable(args[0]):
-            innerfunc = args[0]
-            innerargs = args[1:]
-            pinfo = None
-        else:
+        if callable(args[1]):
             innerfunc = args[1]
             innerargs = args[2:]
-            pinfo = args[0]
+            pinfo = None
+        else:
+            innerfunc = args[2]
+            innerargs = args[3:]
+            pinfo = args[1]
 
         if type(innerfunc) == partial:
             fname = innerfunc.func.__name__
@@ -47,12 +48,20 @@ def track_process(func):
                  'info' : pinfo}
         results = None
         try:
-            pid = os.getpid()
-            pidfile = os.path.join(config.RUN_DIR,"%s.pickle" % pid)
+            fn = None
+            if ptype == "thread":
+                fn = "%s" % threading.current_thread().getName()
+            else:
+                fn = os.getpid()
+            worker["info"]["id"] = fn
+            pidfile = os.path.join(config.RUN_DIR,"%s.pickle" % fn)
             pickle.dump(worker, open(pidfile,"wb"))
             results = func(*args,**kwargs)
+        except Exception as e:
+            logging.error("err %s" % e)
         finally:
             if os.path.exists(pidfile):
+                pass
                 # move to "done" dir and register end of execution time 
                 os.rename(pidfile,os.path.join(config.RUN_DIR,"done",os.path.basename(pidfile)))
                 pidfile = os.path.join(config.RUN_DIR,"done",os.path.basename(pidfile))
@@ -62,8 +71,8 @@ def track_process(func):
         return results
     return func_wrapper
 
-@track_process
-def do_work(pinfo=None, func=None, *args, **kwargs):
+@track
+def do_work(ptype, pinfo=None, func=None, *args, **kwargs):
     # pinfo is optional, and func is not. and args and kwargs must 
     # be after func. just to say func is mandatory, despite what the
     # signature says
@@ -72,7 +81,6 @@ def do_work(pinfo=None, func=None, *args, **kwargs):
     # issue pickling directly the passed func because of some import
     # issues ("can't pickle ... object is not the same as ...")
     return func(*args,**kwargs)
-
 
 class UnknownResource(Exception):
     pass
@@ -222,10 +230,12 @@ class JobManager(object):
         self.thread_queue = thread_queue
 
     def defer_to_process(self, pinfo=None, func=None, *args):
-        return self.loop.run_in_executor(self.process_queue,partial(do_work,pinfo,func,*args))
+        return self.loop.run_in_executor(self.process_queue,
+                partial(do_work,"process",pinfo,func,*args))
 
     def defer_to_thread(self, pinfo=None, func=None, *args):
-        return self.loop.run_in_executor(self.thread_queue,partial(do_work,pinfo,func,*args))
+        return self.loop.run_in_executor(self.thread_queue,
+                partial(do_work,"thread",pinfo,func,*args))
 
     def submit(self,pfunc,schedule=None):
         """

@@ -8,7 +8,7 @@ from biothings.utils.mongo import get_src_dump
 from biothings.utils.common import timesofar
 from config import logger as logging
 
-from biothings.utils.manager import BaseSourceManager, track_process
+from biothings.utils.manager import BaseSourceManager
 
 
 class DumperException(Exception):
@@ -213,7 +213,9 @@ class BaseDumper(object):
         # signature says it's optional but for now it's not...
         assert job_manager
         try:
-            self.create_todump_list(force=force)
+            pinfo = self.get_pinfo()
+            pinfo["step"] = "check"
+            yield from job_manager.defer_to_thread(pinfo,partial(self.create_todump_list,force=force))
             if self.to_dump:
                 # mark the download starts
                 self.register_status("downloading",transient=True)
@@ -281,6 +283,7 @@ class BaseDumper(object):
                 self.post_download(remote,local)
             pinfo = self.get_pinfo()
             pinfo["step"] = "dump"
+            pinfo["description"] = remote
             job = job_manager.defer_to_process(pinfo, partial(self.download,remote,local))
             job.add_done_callback(done)
             jobs.append(job)
@@ -602,7 +605,7 @@ class DumperManager(BaseSourceManager):
         if src in self.register:
             klasses = self.register[src]
         else:
-            raise ResourceError("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
+            raise DumperException("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
 
         jobs = []
         try:

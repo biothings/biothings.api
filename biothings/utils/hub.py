@@ -194,11 +194,11 @@ def find_process(pid):
             break
     return p
 
-def top(pqueue,pid=None):
+def top(pqueue,tqueue,pid=None):
 
     columns = ["pid","source","category","step","description","mem","cpu","started_at","duration"]
     header = dict(zip(columns,[c.upper() for c in columns])) # upper() for column titles
-    headerline = "{pid:^7}|{source:^25}|{category:^10}|{step:^20}|{description:^30}|{mem:^10}|{cpu:^6}|{started_at:^20}|{duration:^10}"
+    headerline = "{pid:^10}|{source:^25}|{category:^10}|{step:^20}|{description:^30}|{mem:^10}|{cpu:^6}|{started_at:^20}|{duration:^10}"
     dataline = headerline.replace("^","<")
 
     def norm(value,maxlen):
@@ -209,7 +209,7 @@ def top(pqueue,pid=None):
     def extract_worker_info(worker):
         info = OrderedDict()
         proc = worker.get("process")
-        info["pid"] = proc and proc.pid
+        info["pid"] = worker["info"]["id"]
         info["source"] = norm(worker["info"].get("source") or "",25)
         info["category"] = norm(worker["info"].get("category") or "",10)
         info["step"] = norm(worker["info"].get("step") or "",20)
@@ -221,10 +221,20 @@ def top(pqueue,pid=None):
             info["duration"] = worker["duration"]
         else:
             info["duration"] = timesofar(worker.get("started_at",0))
+        info["files"] = []
+        if proc:
+            for pfile in proc.open_files():
+                # skip 'a' (logger)
+                if pfile.mode == 'r':
+                    finfo = OrderedDict()
+                    finfo["path"] = pfile.path
+                    finfo["read"] = sizeof_fmt(pfile.position)
+                    size = os.path.getsize(pfile.path)
+                    finfo["size"] = sizeof_fmt(size)
+                    info["files"].append(finfo)
         return info
 
     def print_workers(workers):
-        print("%d running job(s)" % len(workers))
         if workers:
             print(headerline.format(**header))
             for pid in workers:
@@ -240,7 +250,6 @@ def top(pqueue,pid=None):
 
     def print_done(job_files):
         if job_files:
-            pat = re.compile(".*?(\d+)\.pickle") # extract pid from filename
             print(headerline.format(**header))
             jfiles_workers = [(jfile,pickle.load(open(jfile,"rb"))) for jfile in job_files]
             # sort by start time
@@ -248,7 +257,6 @@ def top(pqueue,pid=None):
             for jfile,worker in jfiles_workers:
                 info = extract_worker_info(worker)
                 # filling the gaps so we can display using the same code
-                info["pid"] = pat.match(jfile) and pat.findall(jfile)[0] or ""
                 info["mem"] = ""
                 info["cpu"] = ""
                 # format start time
@@ -284,6 +292,26 @@ def top(pqueue,pid=None):
                 # weird though... should have only pid files there...
                 pass
         return pids
+
+    def get_thread_files(phub, threads):
+        pat = re.compile(".*/(Thread-\d+)\.pickle")
+        active_tids = [t.getName() for t in threads]
+        tids = {}
+        for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
+            try:
+                tid = pat.findall(fn)[0]
+                if not tid in active_tids:
+                    print("Removing staled thread file '%s'" % fn)
+                    os.unlink(fn)
+                else:
+                    worker = pickle.load(open(fn,"rb"))
+                    worker["process"] = phub # misleading... it's the hub process
+                    tids[tid] = worker
+            except IndexError:
+                # weird though... should have only pid files there...
+                pass
+        return tids
+
 
     def print_pending_info(num,pending):
         info = pending.fn.args[0]
@@ -322,6 +350,7 @@ def top(pqueue,pid=None):
         # get process children attached to hub pid
         phub = find_process(os.getpid())
         pchildren = phub.children()
+        threads = tqueue._threads
         child = None
         pending = False
         done = False
@@ -336,25 +365,28 @@ def top(pqueue,pid=None):
                     done = True
                 else:
                     raise
-        workers = get_pid_files(pchildren,child)
+        pworkers = get_pid_files(pchildren,child)
+        tworkers = get_thread_files(phub, threads)
         done_jobs = glob.glob(os.path.join(config.RUN_DIR,"done","*.pickle"))
         if child:
-            print_detailed_worker(workers[child.pid])
+            print_detailed_worker(pworkers[child.pid])
         elif pending:
-            print_pendings(len(workers),pqueue)
+            print_pendings(len(pworkers),pqueue)
         elif done:
             print_done(done_jobs)
             print("%d finished job(s)" % len(done_jobs))
             print("(finished jobs have been cleared)")
         else:
-            print_workers(workers)
-            print("%s, type 'top(pending)' for more" % get_pending_summary(len(workers),pqueue))
+            print_workers(pworkers)
+            print_workers(tworkers)
+            print("%d running job(s)" % (len(pworkers) + len(tworkers)))
+            print("%s, type 'top(pending)' for more" % get_pending_summary(len(pworkers),pqueue))
             if done_jobs:
                 print("%s finished job(s), type 'top(done)' for more" % len(done_jobs))
         if child:
-            return list(workers.values())[0]
+            return list(pworkers.values())[0]
         else:
-            return workers
+            return pworkers
     except psutil.NoSuchProcess as e:
         print(e)
 

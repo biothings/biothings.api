@@ -7,7 +7,7 @@ from functools import wraps, partial
 from biothings.utils.common import get_timestamp, get_random_string, timesofar, iter_n
 from biothings.utils.mongo import get_src_conn, get_src_dump
 from biothings.utils.dataload import merge_struct
-from biothings.utils.manager import BaseSourceManager, track_process, \
+from biothings.utils.manager import BaseSourceManager, \
                                     ManagerError, ResourceNotFound
 from .storage import IgnoreDuplicatedStorage, MergerStorage, \
                      BasicStorage, NoBatchIgnoreDuplicatedStorage, \
