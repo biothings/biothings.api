@@ -198,7 +198,7 @@ def top(pqueue,tqueue,pid=None):
 
     columns = ["pid","source","category","step","description","mem","cpu","started_at","duration"]
     header = dict(zip(columns,[c.upper() for c in columns])) # upper() for column titles
-    headerline = "{pid:^10}|{source:^25}|{category:^10}|{step:^20}|{description:^30}|{mem:^10}|{cpu:^6}|{started_at:^20}|{duration:^10}"
+    headerline = "{pid:^10}|{source:^35}|{category:^10}|{step:^20}|{description:^30}|{mem:^10}|{cpu:^6}|{started_at:^20}|{duration:^10}"
     dataline = headerline.replace("^","<")
 
     def norm(value,maxlen):

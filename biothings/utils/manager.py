@@ -58,7 +58,8 @@ def track(func):
             pickle.dump(worker, open(pidfile,"wb"))
             results = func(*args,**kwargs)
         except Exception as e:
-            logging.error("err %s" % e)
+            import traceback
+            logging.error("err %s\n%s" % (e,traceback.format_exc()))
         finally:
             if os.path.exists(pidfile):
                 pass

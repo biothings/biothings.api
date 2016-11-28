@@ -217,3 +217,4 @@ class NoStorage(object):
 
     def process(self,iterable,*args,**kwargs):
         self.logger.info("NoStorage stores nothing, skip...")
+

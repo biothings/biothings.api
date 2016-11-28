@@ -322,14 +322,9 @@ class DataBuilder(object):
         self.target_backend.finalize()
 
         self.logger.info("Running post-merge process")
-        # can't really run post_merge in a multiprocessing queue as we would loose
-        # object state, such as target collection name (it'd be generated again). It
-        # would be really dirty to have this information synced while pickled, I think
-        # it's better to have a blocking call for now, until a loop wrapper
-        # is implemented, so we could submit this is a thread-pool (no pickle) instead
-        # of a process-poll (need pickle). This wrapper needs to be implemented to
-        # hide any pool complexity
-        self.post_merge()
+        pinfo = self.get_pinfo()
+        pinfo["step"] = "post-merge"
+        job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
 
         return self.stats
 
@@ -380,7 +375,7 @@ class DataBuilder(object):
         yield from asyncio.wait(jobs)
         return {"total_%s" % src_name : cnt}
 
-    def post_merge(self):
+    def post_merge(self,*args,**kwargs):
         pass
 
 
