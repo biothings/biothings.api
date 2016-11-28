@@ -152,7 +152,10 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
                 if inbatch:
                     yield doc_li
                     doc_li = []
-                logger.info('Done.[%.1f%%,%s]' % (cnt * 100. / n, timesofar(t1)))
+                if n:
+                    logger.info('Done.[%.1f%%,%s]' % (cnt * 100. / n, timesofar(t1)))
+                else:
+                    logger.info('Nothing to do...')
                 if batch_callback:
                     batch_callback(cnt, time.time()-t1)
                 if cnt < e:
@@ -163,7 +166,10 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
             yield doc_li
 
         #print 'Done.[%s]' % timesofar(t1)
-        logger.info('Done.[%.1f%%,%s]' % (cnt * 100. / n, timesofar(t1)))
+        if n:
+            logger.info('Done.[%.1f%%,%s]' % (cnt * 100. / n, timesofar(t1)))
+        else:
+            logger.info('Nothing to do...')
         logger.info("=" * 20)
         logger.info('Finished.[total time: %s]' % timesofar(t0))
     finally:
