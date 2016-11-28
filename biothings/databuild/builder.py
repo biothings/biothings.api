@@ -26,6 +26,8 @@ class ResumeException(Exception):
 
 class DataBuilder(object):
 
+    keep_archive = 10 # number of archived collection to keep. Oldest get dropped first.
+
     def __init__(self, build_name, source_backend, target_backend, log_folder,
                  doc_root_key="root", max_build_status=10,
                  mappers=[], default_mapper_class=TransparentMapper,
@@ -130,7 +132,7 @@ class DataBuilder(object):
         (used to report in the hub)
         """
         return {"category" : "builder",
-                "source" : "%s:%s" % (self.build_name,self.target_name),
+                "source" : "%s:%s" % (self.build_name,self.target_backend.target_name),
                 "step" : "",
                 "description" : ""}
 
@@ -186,6 +188,19 @@ class DataBuilder(object):
                 #remove any status not needed anymore
                 for _ in range(howmany):
                     src_build.update({'_id': self.build_config['_id']}, {"$pop": {'build': -1}})
+
+    def clean_old_collections(self):
+        # use target_name is given, otherwise build name will be used 
+        # as collection name prefix, so they should start like that
+        prefix = "%s_" % (self.target_name or self.build_name)
+        db = mongo.get_target_db()
+        cols = [c for c in db.collection_names() if c.startswith(prefix)]
+        # timestamp is what's after _archive_, YYYYMMDD, so we can sort it safely
+        cols = sorted(cols,reverse=True)
+        to_drop = cols[self.keep_archive:]
+        for colname in to_drop:
+            self.logger.info("Cleaning old archive collection '%s'" % colname)
+            db[colname].drop()
 
     def init_mapper(self,mapper_name):
         if self.mappers[mapper_name].need_load():
@@ -254,6 +269,7 @@ class DataBuilder(object):
             self.target_name = target_name
             self.target_backend.set_target_name(self.target_name)
 
+        self.clean_old_collections()
         self.logger.info("Merging into target collection '%s'" % self.target_backend.target_collection.name)
         try:
 
