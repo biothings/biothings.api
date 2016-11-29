@@ -380,7 +380,6 @@ class DataBuilder(object):
                         upsert))
             def processed(f,cnt):
                 # collect result ie. number of inserted
-                # TODO: check for exceptions
                 try:
                     cnt += f.result()
                 except Exception as e:
@@ -391,7 +390,7 @@ class DataBuilder(object):
         yield from asyncio.wait(jobs)
         return {"total_%s" % src_name : cnt}
 
-    def post_merge(self,*args,**kwargs):
+    def post_merge(self, source_names, batch_size, job_manager):
         pass
 
 

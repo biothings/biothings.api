@@ -28,6 +28,9 @@ def track(func):
             innerargs = args[3:]
             pinfo = args[1]
 
+        # make sure we can pickle the whole thing (and it's
+        # just informative, so stringify is just ok there)
+        innerargs = [str(arg) for arg in innerargs]
         if type(innerfunc) == partial:
             fname = innerfunc.func.__name__
         elif type(innerfunc) == types.MethodType:

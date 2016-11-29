@@ -223,7 +223,7 @@ class BaseSourceUploader(object):
         else:
             raise ResourceError("No temp collection (or it's empty)")
 
-    def post_update_data(self):
+    def post_update_data(self, steps, force, batch_size, job_manager):
         """Override as needed to perform operations after
            data has been uploaded"""
         pass
@@ -337,7 +337,7 @@ class BaseSourceUploader(object):
                 self.unprepare()
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "post_update_data"
-                f2 = job_manager.defer_to_process(pinfo, self.post_update_data)
+                f2 = job_manager.defer_to_thread(pinfo, self.post_update_data, steps, force, batch_size, job_manager)
                 yield from f2
             cnt = self.db[self.collection_name].count()
             self.register_status("success",count=cnt)
