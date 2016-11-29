@@ -170,38 +170,25 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
         self.post_update_data()
 
 
-class AsyncIgnoreDuplicatedStorage(IgnoreDuplicatedStorage):
+class UpsertStorage(BasicStorage):
+    """Insert or update documents, based on _id"""
 
-    def __init__(self, *args, **kwargs):
-        super(AsyncIgnoreDuplicatedStorage,self).__init__(*args,**kwargs)
-        self.loop = asyncio.get_event_loop()
-
-    @asyncio.coroutine
-    def process(self, queue, batch_size):
+    def process(self, iterable, batch_size):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
-        while True:
-            tinner = time.time()
+        tinner = time.time()
+        for doc_li in self.doc_iterator(iterable, batch=True, batch_size=batch_size):
             try:
                 bob = self.temp_collection.initialize_unordered_bulk_op()
-                for i in range(batch_size):
-                    #print("on get")
-                    doc = yield from queue.get()
-                    #print("qsize: %s" % queue.qsize())
-                    #yield from self.loop.run_in_executor(None,bob.insert,doc)
-                    #print("doc: %s" % doc)
-                    bob.insert(doc)
-                    #yield from asyncio.sleep(0)
-                res = yield from self.loop.run_in_executor(None,bob.execute)
-                #res = bob.execute()
-                howlong = yield from self.loop.run_in_executor(None,timesofar,tinner)
-                yield from self.loop.run_in_executor(None,self.logger.info,"Inserted %s records [%s]" % (res['nInserted'],howlong))
-                #yield from loop.run_in_executor(None,logging.info,"Inserted %s records [%s]" % (res['nInserted'],howlong))
-                #self.logger.info("Inserted %s records [%s]" % (res['nInserted'],howlong))
-                yield from asyncio.sleep(0)
-            except BulkWriteError as e:
-                howlong = yield from self.loop.run_in_executor(None,timesofar,tinner)
-                self.logger.info("Inserted %s records, ignoring %d [%s]" % (e.details['nInserted'],len(e.details["writeErrors"]),howlong))
+                for d in doc_li:
+                    bob.find({"_id" : d["_id"]}).upsert().replace_one(d)
+                res = bob.execute()
+                nb = res["nUpserted"] + res["nModified"]
+                self.logger.info("Upserted %s records [%s]" % (nb,timesofar(tinner)))
+            except Exception as e:
+                raise
+            tinner = time.time()
+        self.logger.info('Done[%s]' % timesofar(t0))
 
 
 class NoStorage(object):
