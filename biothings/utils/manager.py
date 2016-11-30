@@ -6,7 +6,7 @@ from functools import wraps, partial
 import time, datetime
 
 from biothings.utils.mongo import get_src_conn
-from biothings.utils.common import timesofar
+from biothings.utils.common import timesofar, get_random_string
 from biothings import config
 
 
@@ -51,12 +51,16 @@ def track(func):
                  'info' : pinfo}
         results = None
         try:
-            fn = None
+            _id = None
+            rnd = get_random_string()
             if ptype == "thread":
-                fn = "%s" % threading.current_thread().getName()
+                _id = "%s" % threading.current_thread().getName()
             else:
-                fn = os.getpid()
-            worker["info"]["id"] = fn
+                _id = os.getpid()
+            # add random chars: 2 jobs handled by the same slot (pid or thread) 
+            # would override filename otherwise
+            fn = "%s_%s" % (_id,rnd)
+            worker["info"]["id"] = _id
             pidfile = os.path.join(config.RUN_DIR,"%s.pickle" % fn)
             pickle.dump(worker, open(pidfile,"wb"))
             results = func(*args,**kwargs)

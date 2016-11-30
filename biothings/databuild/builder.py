@@ -174,7 +174,10 @@ class DataBuilder(object):
         _cfg = src_build.find_one({'_id': self.build_config['_id']})
         if "build" in extra:
             build_info.update(extra["build"])
-            _cfg["build"][-1].update(build_info)
+            if "build" in _cfg:
+                _cfg["build"][-1].update(build_info)
+            else:
+                _cfg["build"] = [build_info]
             src_build.replace_one({'_id': self.build_config['_id']},_cfg)
         # create a new build entre at the end and clean extra one (not needed/wanted)
         if init:
@@ -360,6 +363,9 @@ class DataBuilder(object):
         total = self.source_backend[src_name].count()
         cnt = 0
         for doc_ids in doc_feeder(self.source_backend[src_name], step=batch_size, inbatch=True, fields={'_id':1}):
+            # try to put some async here to give control back
+            # (but everybody knows it's a blocking call: doc_feeder)
+            yield from asyncio.sleep(0.1)
             cnt += len(doc_ids)
             pinfo = self.get_pinfo()
             pinfo["step"] = src_name
@@ -482,7 +488,7 @@ class BuilderManager(BaseManager):
         for conf in self.src_build.find():
             self.register_builder(conf["_id"])
 
-    def merge(self,build_name,sources=None,target_name=None):
+    def merge(self, build_name, sources=None, target_name=None, **kwargs):
         """
         Trigger a merge for build named 'build_name'. Optional list of sources can be
         passed (one single or a list). target_name is the target collection name used
@@ -490,7 +496,7 @@ class BuilderManager(BaseManager):
         """
         try:
             bdr = self[build_name]
-            job = bdr.merge(sources,target_name,job_manager=self.job_manager)
+            job = bdr.merge(sources,target_name,job_manager=self.job_manager,**kwargs)
             return job
         except KeyError as e:
             raise BuilderException("No such builder for '%s'" % build_name)

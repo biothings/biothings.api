@@ -274,12 +274,12 @@ def top(pqueue,tqueue,pid=None):
         pprint(info)
 
     def get_pid_files(children,child):
-        pat = re.compile(".*/(\d+)\.pickle")
+        pat = re.compile(".*/(\d+)_.*\.pickle")
         children_pids = [p.pid for p in children]
         pids = {}
         for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
             try:
-                pid = int(pat.findall(fn)[0])
+                pid = int(pat.findall(fn)[0].split("_")[0])
                 if not pid in children_pids:
                     print("Removing staled pid file '%s'" % fn)
                     os.unlink(fn)
@@ -294,12 +294,12 @@ def top(pqueue,tqueue,pid=None):
         return pids
 
     def get_thread_files(phub, threads):
-        pat = re.compile(".*/(Thread-\d+)\.pickle")
+        pat = re.compile(".*/(Thread-\d+)_.*\.pickle")
         active_tids = [t.getName() for t in threads]
         tids = {}
         for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
             try:
-                tid = pat.findall(fn)[0]
+                tid = pat.findall(fn)[0].split("_")[0]
                 if not tid in active_tids:
                     print("Removing staled thread file '%s'" % fn)
                     os.unlink(fn)
@@ -314,12 +314,13 @@ def top(pqueue,tqueue,pid=None):
 
 
     def print_pending_info(num,pending):
-        info = pending.fn.args[0]
+        info = pending.fn.args[1]
+        assert type(info) == dict
         info["cpu"] = ""
         info["mem"] = ""
         info["pid"] = ""
         info["duration"] = ""
-        info["source"] = norm(info["source"],25)
+        info["source"] = norm(info["source"],35)
         info["category"] = norm(info["category"],10)
         info["step"] = norm(info["step"],20)
         info["description"] = norm(info["description"],30)
@@ -343,7 +344,11 @@ def top(pqueue,tqueue,pid=None):
         if actual_pendings:
             print(headerline.format(**header))
             for num,pending in pendings[running:]:
-                print_pending_info(num,pending)
+                try:
+                    print_pending_info(num,pending)
+                except Exception as e:
+                    print(e)
+                    pprint(pending)
             print()
 
     try:
