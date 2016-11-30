@@ -11,7 +11,7 @@ from functools import partial
 
 from biothings.utils.common import (timesofar, ask, safewfile,
                                     dump2gridfs, get_timestamp, get_random_string,
-                                    setup_logfile, loadobj, get_class_from_classpath)
+                                    loadobj, get_class_from_classpath)
 from biothings.utils.mongo import doc_feeder
 from utils.es import ESIndexer
 import biothings.databuild.backend as btbackend
@@ -145,14 +145,10 @@ class DataBuilder(object):
         fh = logging_mod.FileHandler(self.logfile)
         fh.setFormatter(logging_mod.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         fh.name = "logfile"
-        sh = logging_mod.StreamHandler()
-        sh.name = "logstream"
         self.logger = logging_mod.getLogger("%s_build" % self.build_name)
         self.logger.setLevel(logging_mod.DEBUG)
         if not fh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(fh)
-        if not sh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(sh)
 
     def register_status(self,status,transient=False,init=False,**extra):
         assert self.build_config, "build_config needs to be specified first"

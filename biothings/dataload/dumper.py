@@ -138,14 +138,10 @@ class BaseDumper(object):
         fh = logging_mod.FileHandler(self.logfile)
         fh.setFormatter(logging_mod.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         fh.name = "logfile"
-        sh = logging_mod.StreamHandler()
-        sh.name = "logstream"
         self.logger = logging_mod.getLogger("%s_dump" % self.src_name)
         self.logger.setLevel(logging_mod.DEBUG)
         if not fh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(fh)
-        if not sh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(sh)
 
     def prepare(self,state={}):
         if self.prepared:

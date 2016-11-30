@@ -362,14 +362,10 @@ class BaseSourceUploader(object):
         fh = logging_mod.FileHandler(self.logfile)
         fh.setFormatter(logging_mod.Formatter('%(asctime)s [%(process)d] %(name)s - %(levelname)s - %(message)s'))
         fh.name = "logfile"
-        sh = logging_mod.StreamHandler()
-        sh.name = "logstream"
         logger = logging_mod.getLogger("%s_upload" % self.main_source)
         logger.setLevel(logging_mod.DEBUG)
         if not fh.name in [h.name for h in logger.handlers]:
             logger.addHandler(fh)
-        if not sh.name in [h.name for h in logger.handlers]:
-            logger.addHandler(sh)
         return logger
 
     def __getattr__(self,attr):
