@@ -9,9 +9,7 @@ import logging
 import asyncio
 from functools import partial
 
-from biothings.utils.common import (timesofar, ask, safewfile,
-                                    dump2gridfs, get_timestamp, get_random_string,
-                                    loadobj, get_class_from_classpath)
+from biothings.utils.common import timesofar, iter_n
 from biothings.utils.mongo import doc_feeder
 from utils.es import ESIndexer
 import biothings.databuild.backend as btbackend
@@ -362,32 +360,36 @@ class DataBuilder(object):
         jobs = []
         total = self.source_backend[src_name].count()
         cnt = 0
-        for doc_ids in doc_feeder(self.source_backend[src_name], step=batch_size, inbatch=True, fields={'_id':1}):
-            # try to put some async here to give control back
-            # (but everybody knows it's a blocking call: doc_feeder)
-            yield from asyncio.sleep(0.1)
-            cnt += len(doc_ids)
-            pinfo = self.get_pinfo()
-            pinfo["step"] = src_name
-            pinfo["description"] = "#docs %d/%d" % (cnt,total)
-            self.logger.info("Creating merger job to process '%s' %d/%d" % (src_name,cnt,total))
-            ids = [doc["_id"] for doc in doc_ids]
-            job = job_manager.defer_to_process(
-                    pinfo,
-                    partial(merger_worker,
-                        self.source_backend[src_name].name,
-                        self.target_backend.target_name,
-                        ids,
-                        self.get_mapper_for_source(src_name,init=False),
-                        upsert))
-            def processed(f,cnt):
-                # collect result ie. number of inserted
-                try:
-                    cnt += f.result()
-                except Exception as e:
-                    self.logger.error("Error in processed: %s" % e)
-            job.add_done_callback(partial(processed,cnt=cnt))
-            jobs.append(job)
+        # grab ids only, so we can get more, let's say 10 times more
+        id_batch_size = batch_size * 10
+        self.logger.info("Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d" % (src_name, id_batch_size, batch_size))
+        for big_doc_ids in doc_feeder(self.source_backend[src_name], step=id_batch_size, inbatch=True, fields={'_id':1}):
+            for doc_ids in iter_n(big_doc_ids,batch_size):
+                # try to put some async here to give control back
+                # (but everybody knows it's a blocking call: doc_feeder)
+                yield from asyncio.sleep(0.1)
+                cnt += len(doc_ids)
+                pinfo = self.get_pinfo()
+                pinfo["step"] = src_name
+                pinfo["description"] = "#docs %d/%d" % (cnt,total)
+                self.logger.info("Creating merger job to process '%s' %d/%d" % (src_name,cnt,total))
+                ids = [doc["_id"] for doc in doc_ids]
+                job = job_manager.defer_to_process(
+                        pinfo,
+                        partial(merger_worker,
+                            self.source_backend[src_name].name,
+                            self.target_backend.target_name,
+                            ids,
+                            self.get_mapper_for_source(src_name,init=False),
+                            upsert))
+                def processed(f,cnt):
+                    # collect result ie. number of inserted
+                    try:
+                        cnt += f.result()
+                    except Exception as e:
+                        self.logger.error("Error in processed: %s" % e)
+                job.add_done_callback(partial(processed,cnt=cnt))
+                jobs.append(job)
         self.logger.info("%d jobs created for merging step" % len(jobs))
         yield from asyncio.wait(jobs)
         return {"total_%s" % src_name : cnt}
