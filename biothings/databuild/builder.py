@@ -239,10 +239,19 @@ class DataBuilder(object):
             sources = [sources]
         src_db = mongo.get_src_db()
         cols = src_db.collection_names()
+        masters = self.source_backend.get_src_master_docs()
         found = []
         for src in sources:
+            # check if master _id and name are different (meaning name is a regex)
+            master = masters.get(src)
+            if not master:
+                raise BuilderException("'%s'could not be found in master documents (%s)" % \
+                        (src,repr(list(masters.keys()))))
+            search = src
+            if master["_id"] != master["name"]:
+                search = master["name"]
             # restrict pattern to minimal match
-            pat = re.compile("^%s$" % src)
+            pat = re.compile("^%s$" % search)
             for col in cols:
                 if pat.match(col):
                     found.append(col)
@@ -253,14 +262,20 @@ class DataBuilder(object):
         assert job_manager
         self.t0 = time.time()
         # normalize
+        avail_sources = self.build_config['sources']
         if sources is None:
             self.target_backend.drop()
             self.target_backend.prepare()
-            sources = self.build_config['sources']
+            sources = avail_sources # merge all
         elif isinstance(sources,str):
             sources = [sources]
 
+        orig_sources = sources
         sources = self.resolve_sources(sources)
+        if not sources:
+            raise BuilderException("No source found, got %s while available sources are: %s" % \
+                    (repr(orig_sources),repr(avail_sources)))
+
 
         if target_name:
             self.target_name = target_name
@@ -285,7 +300,14 @@ class DataBuilder(object):
             raise
 
     def get_mapper_for_source(self,src_name,init=True):
-        mapper_name = self.source_backend.get_src_master_docs()[src_name].get('mapper')
+        # src_name can be a regex (when source has split collections, they are merge but
+        # comes from the same "template" sourcek
+        docs = self.source_backend.get_src_master_docs()
+        mapper_name = None
+        for master_name in docs:
+            pat = re.compile("^%s$" % master_name)
+            if pat.match(src_name):
+                mapper_name = docs[master_name].get("mapper")
         # TODO: this could be a list
         try:
             init and self.init_mapper(mapper_name)
@@ -316,6 +338,7 @@ class DataBuilder(object):
         def merge(src_names):
             jobs = []
             for i,src_name in enumerate(src_names):
+                yield from asyncio.sleep(0.0)
                 job = self.merge_source(src_name, batch_size=batch_size, job_manager=job_manager)
                 job = asyncio.ensure_future(job)
                 def merged(f,stats):
@@ -371,7 +394,7 @@ class DataBuilder(object):
                 cnt += len(doc_ids)
                 pinfo = self.get_pinfo()
                 pinfo["step"] = src_name
-                pinfo["description"] = "#docs %d/%d" % (cnt,total)
+                pinfo["description"] = "%d/%d (%.1f%%)" % (cnt,total,(cnt/total*100))
                 self.logger.info("Creating merger job to process '%s' %d/%d" % (src_name,cnt,total))
                 ids = [doc["_id"] for doc in doc_ids]
                 job = job_manager.defer_to_process(

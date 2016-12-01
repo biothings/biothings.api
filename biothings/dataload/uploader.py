@@ -62,10 +62,17 @@ class BaseSourceUploader(object):
     storage_class = BasicStorage
 
     # Will be override in subclasses
-    name = None # name of the resource and collection name used to store data
-    main_source =None # if several resources, this one if the main name,
-                      # it's also the _id of the resource in src_dump collection
-                      # if set to None, it will be set to the value of variable "name"
+    # name of the resource and collection name used to store data
+    # (see regex_name though for exceptions)
+    name = None 
+    # if several resources, this one if the main name,
+    # it's also the _id of the resource in src_dump collection
+    # if set to None, it will be set to the value of variable "name"
+    main_source =None 
+    # in case resource used split collections (so data is spread accross
+    # different colleciton, regex_name should be specified so all those split
+    # collections can be found using it (used when selecting mappers for instance)
+    regex_name = None
 
     keep_archive = 10 # number of archived collection to keep. Oldest get dropped first.
 
@@ -251,7 +258,7 @@ class BaseSourceUploader(object):
 
     def generate_doc_src_master(self):
         _doc = {"_id": str(self.name),
-                "name": str(self.name), # TODO: remove ?
+                "name": self.regex_name and self.regex_name or str(self.name),
                 "timestamp": datetime.datetime.now()}
         # store mapping
         _doc['mapping'] = self.__class__.get_mapping()

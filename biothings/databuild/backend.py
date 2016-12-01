@@ -87,17 +87,6 @@ class SourceDocMongoBackend(SourceDocBackendBase):
 
     def validate_sources(self,sources=None):
         assert self._build_config, "'self._build_config' cannot be empty."
-        if self.src_masterdocs is None:
-            self.src_masterdocs = self.get_src_master_docs()
-        if not sources:
-            sources = set(self.sources.collection_names())
-            build_conf_src = self._build_config['sources']
-        else:
-            build_conf_src = sources
-        # check interseciton between what's needed and what's existing
-        for src in build_conf_src:
-            assert src in self.src_masterdocs, '"%s" not found in "src_master"' % src
-            assert src in sources, '"%s" not an existing collection in "%s"' % (src, self.sources.name)
 
     def get_src_master_docs(self):
         if self.src_masterdocs is None:
