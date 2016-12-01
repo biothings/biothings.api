@@ -209,7 +209,8 @@ def top(pqueue,tqueue,pid=None):
     def extract_worker_info(worker):
         info = OrderedDict()
         proc = worker.get("process")
-        info["pid"] = worker["info"]["id"]
+        err = worker.get("err") and " !" or ""
+        info["pid"] = str(worker["info"]["id"]) + err
         info["source"] = norm(worker["info"].get("source") or "",25)
         info["category"] = norm(worker["info"].get("category") or "",10)
         info["step"] = norm(worker["info"].get("step") or "",20)

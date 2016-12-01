@@ -365,11 +365,11 @@ class BaseSourceUploader(object):
         import logging as logging_mod
         if not os.path.exists(self.src_root_folder):
             os.makedirs(self.src_root_folder)
-        self.logfile = os.path.join(self.src_root_folder, '%s-%s_%s_upload.log' % (self.main_source,self.name,time.strftime("%Y%m%d",self.timestamp.timetuple())))
+        self.logfile = os.path.join(self.src_root_folder, '%s_%s_upload.log' % (self.fullname,time.strftime("%Y%m%d",self.timestamp.timetuple())))
         fh = logging_mod.FileHandler(self.logfile)
-        fh.setFormatter(logging_mod.Formatter('%(asctime)s [%(process)d] %(name)s - %(levelname)s - %(message)s'))
+        fh.setFormatter(logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S"))
         fh.name = "logfile"
-        logger = logging_mod.getLogger("%s_upload" % self.main_source)
+        logger = logging_mod.getLogger("%s_upload" % self.fullname)
         logger.setLevel(logging_mod.DEBUG)
         if not fh.name in [h.name for h in logger.handlers]:
             logger.addHandler(fh)

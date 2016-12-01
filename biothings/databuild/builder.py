@@ -1,4 +1,4 @@
-import sys, re
+import sys, re, math
 import os.path
 import time
 import copy
@@ -141,7 +141,7 @@ class DataBuilder(object):
             os.makedirs(self.log_folder)
         self.logfile = os.path.join(self.log_folder, '%s_%s_build.log' % (self.build_name,time.strftime("%Y%m%d",self.timestamp.timetuple())))
         fh = logging_mod.FileHandler(self.logfile)
-        fh.setFormatter(logging_mod.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        fh.setFormatter(logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S"))
         fh.name = "logfile"
         self.logger = logging_mod.getLogger("%s_build" % self.build_name)
         self.logger.setLevel(logging_mod.DEBUG)
@@ -258,7 +258,7 @@ class DataBuilder(object):
         return found
 
 
-    def merge(self, sources=None, target_name=None, batch_size=100000, job_manager=None):
+    def merge(self, sources=None, target_name=None, job_manager=None, *args,**kwargs):
         assert job_manager
         self.t0 = time.time()
         # normalize
@@ -287,7 +287,7 @@ class DataBuilder(object):
 
             self.register_status("building",transient=True,init=True,
                                  build={"step":"init","sources":sources})
-            job = self.merge_sources(source_names=sources, batch_size=batch_size, job_manager=job_manager)
+            job = self.merge_sources(source_names=sources, job_manager=job_manager, *args, **kwargs)
             job = asyncio.ensure_future(job)
             job.add_done_callback(self.store_stats)
 
@@ -318,12 +318,17 @@ class DataBuilder(object):
             raise BuilderException("Found mapper named '%s' but no mapper associated" % mapper_name)
 
     @asyncio.coroutine
-    def merge_sources(self, source_names, batch_size=100000, job_manager=None):
+    def merge_sources(self, source_names, steps=["merge","post"], batch_size=100000, job_manager=None):
         """
         Merge resources from given source_names or from build config.
         Identify root document sources from the list to first process them.
         """
         assert job_manager
+        # check what to do
+        if type(steps) == str:
+            steps = [steps]
+        do_merge = "merge" in steps
+        do_post_merge = "post" in steps
         total_docs = 0
         self.stats = {}
         # try to identify root document sources amongst the list to first
@@ -347,20 +352,26 @@ class DataBuilder(object):
                 jobs.append(job)
             yield from asyncio.wait(jobs)
 
-        self.logger.info("Merging root document sources: %s" % root_sources)
-        if root_sources:
-            yield from merge(root_sources)
+        if do_merge:
+            self.logger.info("Merging root document sources: %s" % root_sources)
+            if root_sources:
+                yield from merge(root_sources)
 
-        self.logger.info("Merging other resources: %s" % other_sources)
-        yield from merge(other_sources)
+            self.logger.info("Merging other resources: %s" % other_sources)
+            yield from merge(other_sources)
 
-        self.logger.info("Finalizing target backend")
-        self.target_backend.finalize()
+            self.logger.info("Finalizing target backend")
+            self.target_backend.finalize()
+        else:
+            self.logger.info("Skip data merging")
 
-        self.logger.info("Running post-merge process")
-        pinfo = self.get_pinfo()
-        pinfo["step"] = "post-merge"
-        job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
+        if do_post_merge:
+            self.logger.info("Running post-merge process")
+            pinfo = self.get_pinfo()
+            pinfo["step"] = "post-merge"
+            job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
+        else:
+            self.logger.info("Skip post-merge process")
 
         return self.stats
 
@@ -382,6 +393,8 @@ class DataBuilder(object):
             self.logger.debug("Documents from source '%s' will be stored only if a previous document exist with same _id" % src_name)
         jobs = []
         total = self.source_backend[src_name].count()
+        btotal = math.ceil(total/batch_size) 
+        bnum = 1
         cnt = 0
         # grab ids only, so we can get more, let's say 10 times more
         id_batch_size = batch_size * 10
@@ -394,8 +407,9 @@ class DataBuilder(object):
                 cnt += len(doc_ids)
                 pinfo = self.get_pinfo()
                 pinfo["step"] = src_name
-                pinfo["description"] = "%d/%d (%.1f%%)" % (cnt,total,(cnt/total*100))
-                self.logger.info("Creating merger job to process '%s' %d/%d" % (src_name,cnt,total))
+                pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,(cnt/total*100))
+                self.logger.info("Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)" % \
+                        (bnum,btotal,src_name,cnt,total,(cnt/total*100.)))
                 ids = [doc["_id"] for doc in doc_ids]
                 job = job_manager.defer_to_process(
                         pinfo,
@@ -405,14 +419,19 @@ class DataBuilder(object):
                             ids,
                             self.get_mapper_for_source(src_name,init=False),
                             upsert))
-                def processed(f,cnt):
+                def processed(f, cnt, batch_num):
                     # collect result ie. number of inserted
                     try:
                         cnt += f.result()
+                        self.logger.info("'%s' merger batch #%d, done" % (src_name, batch_num))
                     except Exception as e:
-                        self.logger.error("Error in processed: %s" % e)
-                job.add_done_callback(partial(processed,cnt=cnt))
+                        import traceback
+                        self.logger.error("'%s' merger batch # %d, error in processed: %s:\n%s" % \
+                                (src_name, batch_num, e, traceback.format_exc()))
+                        raise
+                job.add_done_callback(partial(processed,cnt=cnt, batch_num=bnum))
                 jobs.append(job)
+                bnum += 1
         self.logger.info("%d jobs created for merging step" % len(jobs))
         yield from asyncio.wait(jobs)
         return {"total_%s" % src_name : cnt}

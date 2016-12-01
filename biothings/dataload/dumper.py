@@ -136,7 +136,7 @@ class BaseDumper(object):
             os.makedirs(self.src_root_folder)
         self.logfile = os.path.join(self.src_root_folder, '%s_%s_dump.log' % (self.src_name,self.timestamp))
         fh = logging_mod.FileHandler(self.logfile)
-        fh.setFormatter(logging_mod.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        fh.setFormatter(logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S"))
         fh.name = "logfile"
         self.logger = logging_mod.getLogger("%s_dump" % self.src_name)
         self.logger.setLevel(logging_mod.DEBUG)

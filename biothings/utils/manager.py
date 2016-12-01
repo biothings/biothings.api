@@ -50,6 +50,7 @@ def track(func):
                  'started_at': time.time(),
                  'info' : pinfo}
         results = None
+        exc = None
         try:
             _id = None
             rnd = get_random_string()
@@ -67,6 +68,7 @@ def track(func):
         except Exception as e:
             import traceback
             logging.error("err %s\n%s" % (e,traceback.format_exc()))
+            exc = str(e)
         finally:
             if os.path.exists(pidfile):
                 pass
@@ -75,6 +77,7 @@ def track(func):
                 pidfile = os.path.join(config.RUN_DIR,"done",os.path.basename(pidfile))
                 worker = pickle.load(open(pidfile,"rb"))
                 worker["duration"] = timesofar(worker["started_at"])
+                worker["err"] = exc
                 pickle.dump(worker,open(pidfile,"wb"))
         return results
     return func_wrapper
