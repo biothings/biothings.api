@@ -13,6 +13,7 @@ import pickle
 import json
 import logging
 import importlib
+import psutil
 
 if sys.version_info.major == 3:
     str_types = str
@@ -577,3 +578,10 @@ def gunzipall(folder,pattern="*.gz"):
             for line in gz:
                 fout.write(line)
         fout.close()
+
+def find_process(pid):
+    g = psutil.process_iter()
+    for p in g:
+        if p.pid == pid:
+            break
+    return p

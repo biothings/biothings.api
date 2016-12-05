@@ -1,13 +1,16 @@
 import importlib, threading
-import logging
 import asyncio, aiocron
-import os, pickle, inspect, types
+import os, pickle, inspect, types, glob, psutil
 from functools import wraps, partial
 import time, datetime
+from collections import OrderedDict
+
+from biothings import config
+logger = config.logger
 
 from biothings.utils.mongo import get_src_conn
-from biothings.utils.common import timesofar, get_random_string
-from biothings import config
+from biothings.utils.common import timesofar, get_random_string,\
+                                   find_process, sizeof_fmt
 
 
 def track(func):
@@ -67,7 +70,7 @@ def track(func):
             results = func(*args,**kwargs)
         except Exception as e:
             import traceback
-            logging.error("err %s\n%s" % (e,traceback.format_exc()))
+            logger.error("err %s\n%s" % (e,traceback.format_exc()))
             exc = str(e)
         finally:
             if os.path.exists(pidfile):
@@ -184,7 +187,7 @@ class BaseSourceManager(BaseManager):
                 if not self.filter_class(klass):
                     continue
                 found_one = True
-                logging.debug("Found a class based on %s: '%s'" % (self.__class__.SOURCE_CLASS.__name__,klass))
+                logger.debug("Found a class based on %s: '%s'" % (self.__class__.SOURCE_CLASS.__name__,klass))
                 yield klass
         if not found_one:
             if fail_on_notfound:
@@ -205,7 +208,7 @@ class BaseSourceManager(BaseManager):
                     src_m = importlib.import_module("%s.%s" % (self.default_src_path,src_data))
                 except ImportError:
                     msg = "Can't find module '%s', even in '%s'" % (src_data,self.default_src_path)
-                    logging.error(msg)
+                    logger.error(msg)
                     raise UnknownResource(msg)
 
         elif isinstance(src_data,dict):
@@ -228,25 +231,82 @@ class BaseSourceManager(BaseManager):
 # batch registration, we'll silently ignore not-found sources
                 self.register_source(src_data,fail_on_notfound=False)
             except UnknownResource as e:
-                logging.info("Can't register source '%s', skip it; %s" % (src_data,e))
+                logger.info("Can't register source '%s', skip it; %s" % (src_data,e))
                 import traceback
-                logging.error(traceback.format_exc())
+                logger.error(traceback.format_exc())
 
 
 class JobManager(object):
 
-    def __init__(self, loop, process_queue=None, thread_queue=None):
+    def __init__(self, loop, process_queue=None, thread_queue=None, max_memory_usage=None):
         self.loop = loop
         self.process_queue = process_queue
         self.thread_queue = thread_queue
+        if max_memory_usage == "auto":
+            # try to find a nice limit... 50% of available ?
+            limited = int(psutil.virtual_memory().available * .5)
+            logger.info("Auto-setting memory usage limit to %s" % sizeof_fmt(limited))
+            max_memory_usage = limited
+        elif max_memory_usage:
+            logger.info("Setting memory usage to %s" % sizeof_fmt(max_memory_usage))
+        self.max_memory_usage = max_memory_usage
+        self.avail_memory = int(psutil.virtual_memory().available)
+        self._phub = None
+
+    @asyncio.coroutine
+    def checkmem(self,pinfo=None):
+        mem_req = pinfo and pinfo.get("__reqs__",{}).get("mem") or 0
+        t0 = time.time()
+        waited = False
+        sleep_time = 5
+        if mem_req:
+            logger.info("Job {cat:%s,source:%s,step:%s} requires %s memory, checking if available" % \
+                    (pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), sizeof_fmt(mem_req)))
+        if self.max_memory_usage:
+            hub_mem = self.hub_memory
+            while hub_mem >= self.max_memory_usage:
+                logger.info("Hub is using too much memory to launch job {cat:%s,source:%s,step:%s} (%s used, more than max allowed %s), wait a little (job's already been postponed for %s)" % \
+                        (pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), sizeof_fmt(hub_mem),
+                         sizeof_fmt(self.max_memory_usage),timesofar(t0)))
+                yield from asyncio.sleep(sleep_time)
+                waited = True
+                hub_mem = self.hub_memory
+        if mem_req:
+            # max allowed mem is either the limit we gave and the os limit
+            max_mem = self.max_memory_usage and self.max_memory_usage or self.avail_memory
+            # TODO: check projected memory (jobs with mem requirements currently running
+            # as those jobs may not have reached their max mem usage yet)
+            hub_mem = self.hub_memory
+            while mem_req >= (max_mem - hub_mem):
+                logger.info("Job {cat:%s,source:%s,step:%s} needs %s to run, not enough to launch it (hub consumes %s while max allowed is %s), wait a little  (job's already been postponed for %s)" % \
+                        (pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), sizeof_fmt(mem_req), sizeof_fmt(hub_mem),
+                         sizeof_fmt(max_mem), timesofar(t0)))
+                yield from asyncio.sleep(sleep_time)
+                waited = True
+                # refresh limites and usage (manager can be modified from hub
+                # thus memory usage can be modified on-the-fly
+                hub_mem = self.hub_memory
+                max_mem = self.max_memory_usage and self.max_memory_usage or self.avail_memory
+        if waited:
+            logger.info("Job {cat:%s,source:%s,step:%s} now can be launched (total waiting time: %s)" % (pinfo.get("category"),
+                pinfo.get("source"), pinfo.get("step"), timesofar(t0)))
 
     def defer_to_process(self, pinfo=None, func=None, *args):
-        return self.loop.run_in_executor(self.process_queue,
-                partial(do_work,"process",pinfo,func,*args))
+        @asyncio.coroutine
+        def run():
+            yield from self.checkmem(pinfo)
+            yield from self.loop.run_in_executor(self.process_queue,
+                    partial(do_work,"process",pinfo,func,*args))
+        return run()
+        #return self.loop.run_in_executor(self.process_queue,
+        #        partial(do_work,"process",pinfo,func,*args))
 
     def defer_to_thread(self, pinfo=None, func=None, *args):
-        return self.loop.run_in_executor(self.thread_queue,
-                partial(do_work,"thread",pinfo,func,*args))
+        def run():
+            yield from self.checkmem(pinfo)
+            return self.loop.run_in_executor(self.thread_queue,
+                    partial(do_work,"thread",pinfo,func,*args))
+        return run()
 
     def submit(self,pfunc,schedule=None):
         """
@@ -255,12 +315,168 @@ class JobManager(object):
         schedule is a string representing a cron schedule, task will then be scheduled
         accordingly.
         """
-        logging.info("Building task: %s" % pfunc)
+        logger.info("Building task: %s" % pfunc)
         if schedule:
-            logging.info("Scheduling task %s: %s" % (pfunc,schedule))
+            logger.info("Scheduling task %s: %s" % (pfunc,schedule))
             cron = aiocron.crontab(schedule,func=pfunc, start=True, loop=self.loop)
             return cron
         else:
             ff = asyncio.ensure_future(pfunc())
             return ff
+
+    @property
+    def hub_process(self):
+        if not self._phub:
+            self._phub = find_process(os.getpid())
+        return self._phub
+
+    @property
+    def hub_memory(self):
+        procs = [self.hub_process] + self.hub_process.children()
+        total_mem = 0
+        for proc in procs:
+            total_mem += proc.memory_info().rss
+        return total_mem
+
+    def get_pid_files(self, child=None):
+        pat = re.compile(".*/(\d+)_.*\.pickle") # see track() for filename format
+        pchildren = self.hub_process.phub.children()
+        children_pids = [p.pid for p in pchildren]
+        pids = {}
+        for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
+            try:
+                pid = int(pat.findall(fn)[0].split("_")[0])
+                if not pid in children_pids:
+                    print("Removing staled pid file '%s'" % fn)
+                    os.unlink(fn)
+                else:
+                    if not child or child.pid == pid:
+                        worker = pickle.load(open(fn,"rb"))
+                        worker["process"] = pchildren[children_pids.index(pid)]
+                        pids[pid] = worker
+            except IndexError:
+                # weird though... should have only pid files there...
+                pass
+        return pids
+
+    def get_thread_files(self):
+        # see track() for filename format
+        pat = re.compile(".*/(Thread-\d+)_.*\.pickle")
+        threads = self.thread_queue._threads
+        active_tids = [t.getName() for t in threads]
+        tids = {}
+        for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
+            try:
+                tid = pat.findall(fn)[0].split("_")[0]
+                if not tid in active_tids:
+                    print("Removing staled thread file '%s'" % fn)
+                    os.unlink(fn)
+                else:
+                    worker = pickle.load(open(fn,"rb"))
+                    worker["process"] = self.hub_process # misleading... it's the hub process
+                    tids[tid] = worker
+            except IndexError:
+                # weird though... should have only pid files there...
+                pass
+        return tids
+
+    def extract_pending_info(self, pending):
+        info = pending.fn.args[1]
+        assert type(info) == dict
+        return info
+
+    def extract_worker_info(self, worker):
+        info = OrderedDict()
+        proc = worker.get("process")
+        err = worker.get("err") and " !" or ""
+        info["pid"] = str(worker["info"]["id"]) + err
+        info["source"] = norm(worker["info"].get("source") or "",25)
+        info["category"] = norm(worker["info"].get("category") or "",10)
+        info["step"] = norm(worker["info"].get("step") or "",20)
+        info["description"] = norm(worker["info"].get("description") or "",30)
+        info["mem"] = proc and sizeof_fmt(proc.memory_info().rss)
+        info["cpu"] = proc and "%.1f%%" % proc.cpu_percent()
+        info["started_at"] = worker.get("started_at") or ""
+        if worker.get("duration"):
+            info["duration"] = worker["duration"]
+        else:
+            info["duration"] = timesofar(worker.get("started_at",0))
+        info["files"] = []
+        if proc:
+            for pfile in proc.open_files():
+                # skip 'a' (logger)
+                if pfile.mode == 'r':
+                    finfo = OrderedDict()
+                    finfo["path"] = pfile.path
+                    finfo["read"] = sizeof_fmt(pfile.position)
+                    size = os.path.getsize(pfile.path)
+                    finfo["size"] = sizeof_fmt(size)
+                    info["files"].append(finfo)
+        return info
+
+    def get_pendings(self, running=None):
+        # pendings are kept in queue while running, until result is there so we need
+        # to adjust the actual real pending jobs. also, pending job are get() from the
+        # queue following FIFO order. finally, worker ID is incremental. So...
+        pendings = sorted(self.process_queue._pending_work_items.items())
+        if not running:
+            running = len(self.get_pid_files())
+        actual_pendings = pendings[running:]
+        for pending in actual_pendings:
+            yield self.extract_pending_info(pending)
+
+    def get_dones(self, jobs=None, purge=True):
+        if jobs is None:
+            jobs = glob.glob(os.path.join(config.RUN_DIR,"done","*.pickle"))
+        if jobs:
+            jfiles_workers = [(jfile,pickle.load(open(jfile,"rb"))) for jfile in jobs]
+            # sort by start time
+            jfiles_workers = sorted(jfiles_workers,key=lambda e: e[1]["started_at"])
+            for jfile,worker in jfiles_workers:
+                info = extract_worker_info(worker)
+                # format start time
+                tt = datetime.datetime.fromtimestamp(info["started_at"]).timetuple()
+                info["started_at"] = time.strftime("%Y/%m/%d %H:%M:%S",tt)
+                yield info
+                if purge:
+                    os.unlink(jfile)
+
+    def get_runs(self, pworkers=None, tworkers=None):
+        for workers in [pworkers,tworkers]:
+            if workers:
+                for pid in workers:
+                    worker = workers[pid]
+                    info = extract_worker_info(worker)
+                    tt = datetime.datetime.fromtimestamp(info["started_at"]).timetuple()
+                    info["started_at"] = time.strftime("%Y/%m/%d %H:%M:%S",tt)
+                    yield info
+
+    def top(self, action="summary"):
+        pending = False
+        done = False
+        run = False
+        pid = None
+        child = None
+        if action:
+            try:
+                # want to see details for a specific process ?
+                pid = int(action)
+                child = [p for p in pchildren if p.pid == pid][0]
+            except ValueError:
+                pass
+        pworkers = get_pid_files(pchildren,child)
+        tworkers = get_thread_files(phub, threads)
+        done_jobs = glob.glob(os.path.join(config.RUN_DIR,"done","*.pickle"))
+        if child:
+            return pworkers[child.pid]
+        elif action == "pending":
+            return self.get_pendings(running=len(pworkers))
+        elif action == "done":
+            return self.get_dones(done_jobs)
+        elif action == "run":
+            return self.get_runs(pworkers,tworkers)
+        elif action == "summary":
+            return self.get_summary()
+        else:
+            raise ValueError("Unknown action '%s'" % action)
 
