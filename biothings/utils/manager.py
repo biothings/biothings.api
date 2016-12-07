@@ -68,9 +68,6 @@ def track(func):
             worker["info"]["id"] = _id
             pidfile = os.path.join(config.RUN_DIR,"%s.pickle" % fn)
             pickle.dump(worker, open(pidfile,"wb"))
-            logger.error(func)
-            logger.error(args)
-            logger.error(kwargs)
             results = func(*args,**kwargs)
         except Exception as e:
             import traceback
@@ -309,7 +306,7 @@ class JobManager(object):
             yield from self.checkmem(pinfo)
             yield from self.loop.run_in_executor(self.process_queue,
                     partial(do_work,"process",pinfo,func,*args))
-        return run()
+        return asyncio.ensure_future(run())
         #return self.loop.run_in_executor(self.process_queue,
         #        partial(do_work,"process",pinfo,func,*args))
 
@@ -319,7 +316,7 @@ class JobManager(object):
             yield from self.checkmem(pinfo)
             yield from self.loop.run_in_executor(self.thread_queue,
                     partial(do_work,"thread",pinfo,func,*args))
-        return run()
+        return asyncio.ensure_future(run())
         #return self.loop.run_in_executor(self.thread_queue,
         #        partial(do_work,"thread",pinfo,func,*args))
 
