@@ -54,6 +54,7 @@ def track(func):
                  'info' : pinfo}
         results = None
         exc = None
+        trace = None
         try:
             _id = None
             rnd = get_random_string()
@@ -67,11 +68,15 @@ def track(func):
             worker["info"]["id"] = _id
             pidfile = os.path.join(config.RUN_DIR,"%s.pickle" % fn)
             pickle.dump(worker, open(pidfile,"wb"))
+            logger.error(func)
+            logger.error(args)
+            logger.error(kwargs)
             results = func(*args,**kwargs)
         except Exception as e:
             import traceback
-            logger.error("err %s\n%s" % (e,traceback.format_exc()))
-            exc = str(e)
+            trace = traceback.format_exc()
+            logger.error("err %s\n%s" % (e,trace))
+            exc = e
         finally:
             if os.path.exists(pidfile):
                 pass
@@ -81,7 +86,14 @@ def track(func):
                 worker = pickle.load(open(pidfile,"rb"))
                 worker["duration"] = timesofar(worker["started_at"])
                 worker["err"] = exc
-                pickle.dump(worker,open(pidfile,"wb"))
+                worker["trace"] = trace
+                # try to keep original exception, but this may fail depending on
+                # what's in the exception. If we can't, keep the string representation
+                try:
+                    pickle.dump(worker,open(pidfile,"wb"))
+                except Exception:
+                    worker["err"] = str(exc)
+                    pickle.dump(worker,open(pidfile,"wb"))
         return results
     return func_wrapper
 
@@ -302,11 +314,14 @@ class JobManager(object):
         #        partial(do_work,"process",pinfo,func,*args))
 
     def defer_to_thread(self, pinfo=None, func=None, *args):
+        @asyncio.coroutine
         def run():
             yield from self.checkmem(pinfo)
-            return self.loop.run_in_executor(self.thread_queue,
+            yield from self.loop.run_in_executor(self.thread_queue,
                     partial(do_work,"thread",pinfo,func,*args))
         return run()
+        #return self.loop.run_in_executor(self.thread_queue,
+        #        partial(do_work,"thread",pinfo,func,*args))
 
     def submit(self,pfunc,schedule=None):
         """
