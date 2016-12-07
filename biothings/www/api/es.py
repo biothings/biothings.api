@@ -443,7 +443,7 @@ class ESQuery(object):
 class ESQueryBuilder(object):
     def __init__(self, **query_options):
         self._query_options = query_options
-        self._options = self._query_options.pop('options', {})
+        self._options = self._query_options.get('options', {})
             
     def build_id_query(self, bid, scopes=None):
         _default_scopes = '_id'
