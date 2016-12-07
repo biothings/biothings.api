@@ -42,6 +42,16 @@ class DataBuilder(object):
             self._partial_target_backend = target_backend
         else:
             self._state["target_backend"] = target_backend
+        # doc_root_key is a key name within src_build doc.
+        # it's a list of datasources that are able to create a document
+        # even it doesn't exist. It root documents list is not empty, then
+        # any other datasources not listed there won't be able to create
+        # a document, only will they able to update it.
+        # If no root documets, any datasources can create/update a doc
+        # and thus there's no priority nor limitations
+        # note: negations can be used, like "!source1". meaning source1 is not
+        # root document datasource.
+        # Usefull to express; "all resources except source1"
         self.doc_root_key = doc_root_key
         self.t0 = time.time()
         self.logfile = None
@@ -211,7 +221,19 @@ class DataBuilder(object):
         return None
 
     def get_root_document_sources(self):
-        return self.build_config.get(self.doc_root_key,[]) or []
+        root_srcs = self.build_config.get(self.doc_root_key,[]) or []
+        # check for "not this resource" and adjust the list
+        none_root_srcs = [src.replace("!","") for src in root_srcs if src.startswith("!")]
+        if none_root_srcs:
+            if len(none_root_srcs) != len(root_srcs):
+                raise BuilderException("If using '!' operator, all datasources must use it (cannot mix), got: %s" % \
+                        (repr(root_srcs)))
+            # ok, grab sources for this build, 
+            srcs = self.build_config.get("sources",[])
+            root_srcs = list(set(srcs).difference(set(none_root_srcs)))
+            self.logger.info("None root sources %s resolves to root source = %s" % (repr(none_root_srcs),root_srcs))
+
+        return root_srcs
 
     def setup(self,sources=None, target_name=None):
         sources = sources or self.sources
@@ -333,11 +355,12 @@ class DataBuilder(object):
         self.stats = {}
         # try to identify root document sources amongst the list to first
         # process them (if any)
-        root_sources = list(set(source_names).intersection(set(self.get_root_document_sources())))
+        defined_root_sources = self.get_root_document_sources()
+        root_sources = list(set(source_names).intersection(set(defined_root_sources)))
         other_sources = list(set(source_names).difference(set(root_sources)))
         # got root doc sources but not part of the merge ? that's weird...
-        if self.get_root_document_sources() and not root_sources:
-            self.logger.warning("Root document sources found (%s) for not part of the merge..." % self.get_root_document_sources())
+        if defined_root_sources and not root_sources:
+            self.logger.warning("Root document sources found (%s) for not part of the merge..." % defined_root_sources)
 
         @asyncio.coroutine
         def merge(src_names):
@@ -388,7 +411,8 @@ class DataBuilder(object):
         # That being said... if no root documents, then there won't be any previously inserted
         # documents, and this update() would just do nothing. So if no root docs, then upsert
         # (update or insert, but do something)
-        upsert = not self.get_root_document_sources() or src_name in self.get_root_document_sources()
+        defined_root_sources = self.get_root_document_sources()
+        upsert = not defined_root_sources or src_name in defined_root_sources
         if not upsert:
             self.logger.debug("Documents from source '%s' will be stored only if a previous document exist with same _id" % src_name)
         jobs = []
