@@ -156,7 +156,10 @@ class ESQuery(object):
             if attr in res:
                 _res[attr] = res[attr]
         _res['hits'] = [self._get_biothingdoc(hit=hit, options=options) for hit in _res['hits']]
-        return _res
+        _resf = OrderedDict([(k, v) for (k, v) in sorted(_res.items(), key=lambda i: i[0]) 
+                                if k != 'hits'])
+        _resf['hits'] = _res['hits'] 
+        return _resf
 
     def _cleaned_scopes(self, scopes):
         '''return a cleaned scopes parameter.
