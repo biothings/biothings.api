@@ -57,7 +57,7 @@ class BaseDumper(object):
     @property
     def client(self):
         if not self._state["client"]:
-            self.prepare()
+            self.prepare_client()
         return self._state["client"]
     @property
     def src_dump(self):
@@ -151,7 +151,6 @@ class BaseDumper(object):
             for k in self._state:
                 self._state[k] = state[k]
             return
-        self.prepare_client()
         self.prepare_src_dump()
         self.setup_log()
 
@@ -211,7 +210,9 @@ class BaseDumper(object):
         try:
             pinfo = self.get_pinfo()
             pinfo["step"] = "check"
-            yield from job_manager.defer_to_thread(pinfo,partial(self.create_todump_list,force=force))
+            #yield from job_manager.defer_to_thread(pinfo,partial(self.create_todump_list,force=force))
+            # TODO: blocking call for now, FTP client can't be properly set in thread after
+            self.create_todump_list(force=force)
             if self.to_dump:
                 # mark the download starts
                 self.register_status("downloading",transient=True)
@@ -318,6 +319,7 @@ class FTPDumper(BaseDumper):
     def release_client(self):
         assert self.client
         self.client.close()
+        self.client = None
 
     def download(self,remotefile,localfile):
         self.prepare_local_folders(localfile)
@@ -475,7 +477,6 @@ class ManualDumper(BaseDumper):
             for k in self._state:
                 self._state[k] = state[k]
             return
-        self.prepare_client()
         self.prepare_src_dump()
 
     def prepare_client(self):

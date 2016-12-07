@@ -344,7 +344,8 @@ class BaseSourceUploader(object):
                 self.unprepare()
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "post_update_data"
-                f2 = job_manager.defer_to_thread(pinfo, self.post_update_data, steps, force, batch_size, job_manager)
+                f2 = job_manager.defer_to_thread(pinfo,
+                        partial(self.post_update_data, steps, force, batch_size, job_manager))
                 yield from f2
             cnt = self.db[self.collection_name].count()
             self.register_status("success",count=cnt)
