@@ -31,7 +31,7 @@ def get_userfilter(query_folder, query_name):
 
     query_dir = os.path.join(query_folder, query_name)
     if os.path.exists(query_dir) and os.path.isdir(query_dir) 
-        and os.path.exists(os.path.join(query_dir, 'query.txt')):
+        and os.path.exists(os.path.join(query_dir, 'filter.txt')):
         with open(os.path.join(query_dir, 'filter.txt'), 'r') as filter_handle:
             filter_cache[query_name] = filter_handle.read()
     else:
