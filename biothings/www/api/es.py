@@ -481,22 +481,30 @@ class ESQueryBuilder(object):
         return '\n'.join(_q)
         
     def default_query(self, q):
-        return {
+        return json.loads('{0}'.format({
             "query": {
                 "query_string": {
                     "query": q.lstrip('*?')
                 }
             }
-        }
+        }))
 
     def user_query(self, q):
         args = [q]
         args.extend(self._options.userquery_args)
         return json.loads(get_userquery(biothing_settings.userquery_dir, self._options.userquery).format(*args))
 
+    def user_query_filter(self):
+        return json.loads(get_userfilter(biothing_settings.userquery_dir, self._options.userquery))
+
     def get_query_filters(self):
         '''Subclass to add specific filters'''
-        return []
+        _filter = []
+        if self._options.userquery and self.user_query_filter():
+            _filter = [self.user_query_filter()]
+
+        _filter = self.extra_query_filters(self, _filter)
+        return _filter
 
     def add_query_filters(self, _query):
         '''filters added here will be applied in a filtered query,
@@ -530,19 +538,12 @@ class ESQueryBuilder(object):
         # raw_string_query should be checked ahead of wildcard query, as
         # raw_string may contain wildcard as well # e.g., a query
         # "symbol:CDK?", should be treated as raw_string_query.
-        if self._is_user_query():
+        if self._is_user_query() and self.user_query(q):
             _query = self.user_query(q)
         elif q == '__all__':
             _query = {"match_all": {}}
-        elif self._is_raw_string_query(q):
-            #logging.debug("this is raw string query")
-            _query = self.raw_string_query(q)
-        elif self._is_wildcard_query(q):
-            #logging.debug("this is wildcard query")
-            _query = self.wildcard_query(q)
         else:
-            #logging.debug("this is dis max query")
-            _query = self.dis_max_query(q)
+            _query = self.default_query(q)
 
         _query = self.add_query_filters(_query)
 
