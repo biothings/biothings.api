@@ -1,7 +1,7 @@
 import json, logging, re
 from biothings.utils.common import dotdict, is_str, is_seq, find_doc
 from biothings.utils.es import get_es
-from biothings.utils.userquery import get_userquery
+from biothings.utils.userquery import get_userquery, get_userfilter
 from elasticsearch import NotFoundError, RequestError, TransportError
 from biothings.settings import BiothingSettings
 #from biothings.utils.dotfield import compose_dot_fields_by_fields as compose_dot_fields
@@ -298,7 +298,7 @@ class ESQuery(object):
         return self.mcommon_biothings(bid_list, options, **kwargs)
 
     def mcommon_biothings(self,bid_list, options, **kwargs):
-        qbdr = self._get_query_builder(**options.kwargs)
+        qbdr = self._get_query_builder(options=options, **options.kwargs)
         try:
             _q = qbdr.build_multiple_id_query(bid_list, scopes=options.scopes)
         except QueryError as err:
@@ -481,7 +481,7 @@ class ESQueryBuilder(object):
         return '\n'.join(_q)
         
     def default_query(self, q):
-        return json.loads('{0}'.format({
+        return json.loads(json.dumps({
             "query": {
                 "query_string": {
                     "query": q.lstrip('*?')
@@ -497,13 +497,16 @@ class ESQueryBuilder(object):
     def user_query_filter(self):
         return json.loads(get_userfilter(biothing_settings.userquery_dir, self._options.userquery))
 
+    def extra_query_filters(self, filters):
+        ''' Subclass to add extra filters '''
+        return filters
+
     def get_query_filters(self):
         '''Subclass to add specific filters'''
         _filter = []
         if self._options.userquery and self.user_query_filter():
-            _filter = [self.user_query_filter()]
-
-        _filter = self.extra_query_filters(self, _filter)
+            _filter.append(self.user_query_filter())
+        _filter = self.extra_query_filters(_filter)
         return _filter
 
     def add_query_filters(self, _query):
