@@ -14,6 +14,7 @@ from biothings.utils.mongo import doc_feeder
 from utils.es import ESIndexer
 import biothings.databuild.backend as btbackend
 from biothings.databuild.mapper import TransparentMapper
+from biothings import config as btconfig
 
 
 class BuilderException(Exception):
@@ -115,6 +116,7 @@ class DataBuilder(object):
         self._state["target_backend"] = self._partial_target_backend()
         self.setup()
         self.setup_log()
+        self.prepared = True
 
     def unprepare(self):
         """
@@ -231,8 +233,10 @@ class DataBuilder(object):
             # ok, grab sources for this build, 
             srcs = self.build_config.get("sources",[])
             root_srcs = list(set(srcs).difference(set(none_root_srcs)))
-            self.logger.info("None root sources %s resolves to root source = %s" % (repr(none_root_srcs),root_srcs))
+            #self.logger.info("'except root' sources %s resolves to root source = %s" % (repr(none_root_srcs),root_srcs))
 
+        # resolve possible regex based source name (split-collections sources)
+        root_srcs = self.resolve_sources(root_srcs)
         return root_srcs
 
     def setup(self,sources=None, target_name=None):
@@ -244,9 +248,13 @@ class DataBuilder(object):
             raise BuilderException("Root document key '%s' can't be found in build configuration" % self.doc_root_key)
 
     def store_stats(self,future=None):
-        self.target_backend.post_merge()
-        _src_versions = self.source_backend.get_src_versions()
-        self.register_status('success',build={"stats" : self.stats, "src_versions" : _src_versions})
+        try:
+            self.target_backend.post_merge()
+            _src_versions = self.source_backend.get_src_versions()
+            self.register_status('building',build={"stats" : self.stats, "src_versions" : _src_versions})
+        except Exception as e:
+            self.register_status("failed",build={"err": repr(e)})
+            raise
 
     def resolve_sources(self,sources):
         """
@@ -279,7 +287,6 @@ class DataBuilder(object):
                     found.append(col)
         return found
 
-
     def merge(self, sources=None, target_name=None, job_manager=None, *args,**kwargs):
         assert job_manager
         self.t0 = time.time()
@@ -297,22 +304,18 @@ class DataBuilder(object):
         if not sources:
             raise BuilderException("No source found, got %s while available sources are: %s" % \
                     (repr(orig_sources),repr(avail_sources)))
-
-
         if target_name:
             self.target_name = target_name
             self.target_backend.set_target_name(self.target_name)
-
         self.clean_old_collections()
+
         self.logger.info("Merging into target collection '%s'" % self.target_backend.target_collection.name)
         try:
-
             self.register_status("building",transient=True,init=True,
                                  build={"step":"init","sources":sources})
             job = self.merge_sources(source_names=sources, job_manager=job_manager, *args, **kwargs)
             job = asyncio.ensure_future(job)
             job.add_done_callback(self.store_stats)
-
             return job
 
         except (KeyboardInterrupt,Exception) as e:
@@ -362,6 +365,14 @@ class DataBuilder(object):
         if defined_root_sources and not root_sources:
             self.logger.warning("Root document sources found (%s) for not part of the merge..." % defined_root_sources)
 
+        source_names = sorted(source_names)
+        root_sources = sorted(root_sources)
+        other_sources = sorted(other_sources)
+
+        self.logger.info("Sources to be merged: %s" % source_names)
+        self.logger.info("Root sources: %s" % root_sources)
+        self.logger.info("Other sources: %s" % other_sources)
+
         @asyncio.coroutine
         def merge(src_names):
             jobs = []
@@ -370,19 +381,32 @@ class DataBuilder(object):
                 job = self.merge_source(src_name, batch_size=batch_size, job_manager=job_manager)
                 job = asyncio.ensure_future(job)
                 def merged(f,stats):
-                    stats.update(f.result())
+                    try:
+                        stats.update(f.result())
+                    except Exception as e:
+                        import traceback
+                        self.logger.error("Failed merging source '%s': %s\n%s" % \
+                                (src_name, e, traceback.format_exc()))
+                        raise
                 job.add_done_callback(partial(merged,stats=self.stats))
                 jobs.append(job)
             yield from asyncio.wait(jobs)
 
         if do_merge:
-            self.logger.info("Merging root document sources: %s" % root_sources)
             if root_sources:
+                self.register_status("building",transient=True,
+                        build={"step":"merge-root","sources":root_sources})
+                self.logger.info("Merging root document sources: %s" % root_sources)
                 yield from merge(root_sources)
 
-            self.logger.info("Merging other resources: %s" % other_sources)
-            yield from merge(other_sources)
+            if other_sources:
+                self.register_status("building",transient=True,
+                        build={"step":"merge-others","sources":others_sources})
+                self.logger.info("Merging other resources: %s" % other_sources)
+                yield from merge(other_sources)
 
+            self.register_status("building",transient=True,
+                    build={"step":"finalizing"})
             self.logger.info("Finalizing target backend")
             self.target_backend.finalize()
         else:
@@ -390,6 +414,8 @@ class DataBuilder(object):
 
         if do_post_merge:
             self.logger.info("Running post-merge process")
+            self.register_status("building",transient=True,
+                    build={"step":"post-merge"})
             pinfo = self.get_pinfo()
             pinfo["step"] = "post-merge"
             job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
@@ -485,7 +511,6 @@ from biothings.utils.manager import BaseManager
 import biothings.utils.mongo as mongo
 import biothings.databuild.backend as backend
 from biothings.databuild.backend import TargetDocMongoBackend
-from biothings.databuild.builder import DataBuilder
 
 
 class BuilderManager(BaseManager):

@@ -41,10 +41,9 @@ def requires_config(func):
 
 @requires_config
 def get_conn(server, port):
-    # TODO: split username/passwd for src/target server
-    if config.DATA_SERVER_USERNAME and config.DATA_SERVER_PASSWORD:
-        uri = "mongodb://{}:{}@{}:{}".format(config.DATA_SERVER_USERNAME,
-                                             config.DATA_SERVER_PASSWORD,
+    if config.DATA_SRC_SERVER_USERNAME and config.DATA_SRC_SERVER_PASSWORD:
+        uri = "mongodb://{}:{}@{}:{}".format(config.DATA_SRC_SERVER_USERNAME,
+                                             config.DATA_SRC_SERVER_PASSWORD,
                                              server, port)
     else:
         uri = "mongodb://{}:{}".format(server, port)
@@ -83,7 +82,15 @@ def get_src_build(conn=None):
 
 @requires_config
 def get_target_conn():
-    return get_conn(config.DATA_TARGET_SERVER, config.DATA_TARGET_PORT)
+    if config.DATA_TARGET_SERVER_USERNAME and config.DATA_TARGET_SERVER_PASSWORD:
+        uri = "mongodb://{}:{}@{}:{}".format(config.DATA_TARGET_SERVER_USERNAME,
+                                             config.DATA_TARGET_SERVER_PASSWORD,
+                                             config.DATA_TARGET_SERVER,
+                                             config.DATA_TARGET_PORT)
+    else:
+        uri = "mongodb://{}:{}".format(config.DATA_TARGET_SERVER,config.DATA_TARGET_PORT)
+    conn = Connection(uri)
+    return conn
 
 
 @requires_config
@@ -123,7 +130,7 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
        batch_callback is a callback function as fn(cnt, t), called after every batch
        fields is optional parameter passed to find to restrict fields to return.
     '''
-    cur = collection.find(query, no_cursor_timeout=False, projection=fields)
+    cur = collection.find(query, no_cursor_timeout=True, projection=fields)
     n = cur.count()
     s = s or 0
     e = e or n
