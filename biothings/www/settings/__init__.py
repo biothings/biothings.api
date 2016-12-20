@@ -1,18 +1,22 @@
 # -*- coding: utf-8 -*-
 import os
+import biothings
 from importlib import import_module
 
 # Error class
 class BiothingConfigError(Exception):
     pass
 
-# Import the module
-try:
-    config_module = os.environ['BIOTHING_CONFIG']
-except:
-    raise BiothingConfigError("Make sure BIOTHING_CONFIG environment variable is set with config module.")
+if 'config' in dir(biothings):
+    from biothings import config
+else:
+    # Import the module from environment variable
+    try:
+        config_module = os.environ['BIOTHING_CONFIG']
+    except:
+        raise BiothingConfigError("Make sure biothings is configure either by: setting BIOTHING_CONFIG environment variable with config module, or biothings.config_for_app is called before accessing settings.")
+    config = import_module(config_module)
 
-config = import_module(config_module)
 default = import_module('biothings.settings.default')
 
 class BiothingSettings(object):
