@@ -1,10 +1,9 @@
 import json
 import datetime
 import tornado.web
-#from biothings.utils.ga import GAMixIn
 from biothings.utils.analytics import GAMixIn
-from biothings.settings import BiothingSettings
 from importlib import import_module
+from itertools import product
 
 SUPPORT_MSGPACK = True
 if SUPPORT_MSGPACK:
@@ -15,13 +14,6 @@ if SUPPORT_MSGPACK:
             return {'__datetime__': True, 'as_str': obj.strftime("%Y%m%dT%H:%M:%S.%f")}
         return obj
 
-# TODO: Modify this to take 1 backend... i.e. a self.backend rather than
-# a self.esq for es queries and a self.neo4jq for neo4j queries
-biothing_settings = BiothingSettings()
-es_biothings = import_module(biothing_settings.es_query_module)
-if biothing_settings.is_neo4j_app:
-    neo4j_biothings = import_module(biothing_settings.neo4j_query_module)
-
 class DateTimeJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime.datetime):
@@ -29,46 +21,45 @@ class DateTimeJSONEncoder(json.JSONEncoder):
         else:
             return super(DateTimeJSONEncoder, self).default(obj)
 
+class BaseESResponseTransformer(object):
+    # class contains (at least) 4 functions to process the results of an ES query:
+    #
+    # clean_annotation_GET_response, clean_annotation_POST_response, clean_query_GET_response, clean_query_POST
 
 class BaseHandler(tornado.web.RequestHandler, GAMixIn):
+    ''' Parent class of all biothings handlers.
+
+            Methods:
+
+    '''
+    # Override to change JSONP callback
     jsonp_parameter = 'callback'
+
+    # Override to change caching behavior
     cache_max_age = 604800  # 7days
     disable_caching = False
-    boolean_parameters = set(['raw', 'rawquery', 'fetch_all', 'explain', 'jsonld','dotfield'])
-    esq = es_biothings.ESQuery()
-    if biothing_settings.is_neo4j_app:
-        neo4jq = neo4j_biothings.Neo4jQuery()
 
-    def _check_fields_param(self, kwargs):
-        '''support "filter" as an alias of "fields" parameter for back-compatability.'''
-        if 'filter' in kwargs and 'fields' not in kwargs:
-            #support filter as an alias of "fields" parameter (back compatibility)
-            kwargs['fields'] = kwargs['filter']
-            del kwargs['filter']
-        return kwargs
+    # Override to add boolean parameters
+    boolean_parameters = set()
 
-    def _check_paging_param(self, kwargs):
-        '''support paging parameters, limit and skip as the aliases of size and from.'''
-        if 'limit' in kwargs and 'size' not in kwargs:
-            kwargs['size'] = kwargs['limit']
-            del kwargs['limit']
-        if 'skip' in kwargs and 'from' not in kwargs:
-            kwargs['from'] = kwargs['skip']
-            del kwargs['skip']
-        if 'from' in kwargs:
-            kwargs['from_'] = kwargs['from']   # elasticsearch python module using from_ for from parameter
-            del kwargs['from']
-        # cap size
-        if 'size' in kwargs:
-            cap = biothing_settings.size_cap
-            try:
-                kwargs['size'] = int(kwargs['size']) > cap and cap or kwargs['size']
-            except ValueError:
-                # int conversion failure is delegated to later process
-                pass
-        return kwargs
+    def initialize(self, web_settings):
+        """ Overridden (what a weird word...) to add settings for this biothing API. """
+        self.web_settings = web_settings
+        self.ga_event_object_ret = {'category': self.web_settings.ga_event_category}
+        self._extra_initializations()
 
-    def _check_boolean_param(self, kwargs):
+    def ga_event_object(self, data={}):
+        ''' Create the data object for google analytics tracking. '''
+        # Most of the structure of this object is formed during self.initialize
+        if data:
+            self.ga_event_object_ret['label'] = list(data.keys()).pop()
+            self.ga_event_object_ret['value'] = list(data.values()).pop()
+        return self.ga_event_object_ret
+
+    def _extra_initializations(self):
+        pass
+
+    def _sanitize_boolean_params(self, kwargs):
         '''Normalize the value of boolean parameters.
            if 1 or true, set to True, otherwise False.
         '''
@@ -77,14 +68,10 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
                 kwargs[k] = kwargs[k].lower() in ['1', 'true']
         return kwargs
 
-    def _check_facets_param(self, kwargs):
-        '''Normalize facets params'''
-        # Keep "facets" as part of API but translate to "aggregations" for ES2 compatibility
-        if 'facets' in kwargs:
-            kwargs['aggs'] = kwargs['facets']
-            del kwargs['facets']
+    def _sanitize_extra_params(self, kwargs):
+        ''' Subclass to sanitize extra params. '''
         return kwargs
-
+    
     def get_query_params(self):
         _args = {}
         for k in self.request.arguments:
@@ -94,20 +81,13 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
             else:
                 _args[k] = v
         _args.pop(self.jsonp_parameter, None)   # exclude jsonp parameter if passed.
-        _args['host'] = self.request.host     # Store the host URL that this request is being served from
         if SUPPORT_MSGPACK:
             _args.pop('msgpack', None)
-        self._check_fields_param(_args)
-        self._check_paging_param(_args)
-        self._check_boolean_param(_args)
-        self._check_facets_param(_args)
-        return _args
 
-    # def get_current_user(self):
-    #     user_json = self.get_secure_cookie("user")
-    #     if not user_json:
-    #         return None
-    #     return tornado.escape.json_decode(user_json)
+        # sanitize the query inputs
+        self._sanitize_boolean_params(_args)
+        self._sanitize_extra_params(_args)
+        return _args
 
     def return_json(self, data, encode=True, indent=None):
         '''return passed data object as JSON response.
@@ -155,20 +135,3 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn):
 
     def options(self, *args, **kwargs):
         self.support_cors()
-
-
-def add_apps(prefix='', app_list=[]):
-    '''
-    Add prefix to each url handler specified in app_list.
-
-    add_apps('test', [('/', testhandler,
-                      ('/test2', test2handler)])
-
-    will return:
-                     [('/test/', testhandler,
-                      ('/test/test2', test2handler)])
-    '''
-    if prefix:
-        return [('/'+prefix+url, handler) for url, handler in app_list]
-    else:
-        return app_list
