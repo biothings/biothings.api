@@ -461,7 +461,7 @@ class DataBuilder(object):
                 self.logger.info("Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)" % \
                         (bnum,btotal,src_name,cnt,total,(cnt/total*100.)))
                 ids = [doc["_id"] for doc in doc_ids]
-                job = job_manager.defer_to_process(
+                job = yield from job_manager.defer_to_process(
                         pinfo,
                         partial(merger_worker,
                             self.source_backend[src_name].name,

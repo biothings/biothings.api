@@ -210,7 +210,6 @@ class BaseDumper(object):
         try:
             pinfo = self.get_pinfo()
             pinfo["step"] = "check"
-            #yield from job_manager.defer_to_thread(pinfo,partial(self.create_todump_list,force=force))
             # TODO: blocking call for now, FTP client can't be properly set in thread after
             self.create_todump_list(force=force)
             if self.to_dump:
@@ -226,7 +225,7 @@ class BaseDumper(object):
                 # building an unmaintainable monster
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "post_dump"
-                job_manager.defer_to_thread(pinfo, self.post_dump)
+                yield from job_manager.defer_to_thread(pinfo, self.post_dump)
                 self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
         except (KeyboardInterrupt,Exception) as e:
             self.logger.error("Error while dumping source: %s" % e)
@@ -281,7 +280,7 @@ class BaseDumper(object):
             pinfo = self.get_pinfo()
             pinfo["step"] = "dump"
             pinfo["description"] = remote
-            job = job_manager.defer_to_process(pinfo, partial(self.download,remote,local))
+            job = yield from job_manager.defer_to_process(pinfo, partial(self.download,remote,local))
             job.add_done_callback(done)
             jobs.append(job)
         yield from asyncio.wait(jobs)
@@ -442,7 +441,7 @@ class DummyDumper(BaseDumper):
         # this is the only interesting thing happening here
         pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
-        job_manager.defer_to_thread(pinfo, self.post_dump)
+        yield from job_manager.defer_to_thread(pinfo, self.post_dump)
         self.logger.info("Registering success")
         self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
 
@@ -503,7 +502,7 @@ class ManualDumper(BaseDumper):
 
         pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
-        job_manager.defer_to_thread(pinfo, self.post_dump)
+        yield from job_manager.defer_to_thread(pinfo, self.post_dump)
         # ok, good to go
         self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
         self.logger.info("Manually dumped resource (data_folder: '%s')" % self.new_data_folder)

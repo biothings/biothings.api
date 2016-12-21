@@ -251,9 +251,11 @@ class JobManager(object):
         self.loop = loop
         self.process_queue = process_queue
         self.thread_queue = thread_queue
+        self.ok_to_run = asyncio.Semaphore()
+
         if max_memory_usage == "auto":
-            # try to find a nice limit... 50% of available ?
-            limited = int(psutil.virtual_memory().available * .5)
+            # try to find a nice limit...
+            limited = int(psutil.virtual_memory().available * .6)
             logger.info("Auto-setting memory usage limit to %s" % sizeof_fmt(limited))
             max_memory_usage = limited
         elif max_memory_usage:
@@ -267,7 +269,7 @@ class JobManager(object):
         mem_req = pinfo and pinfo.get("__reqs__",{}).get("mem") or 0
         t0 = time.time()
         waited = False
-        sleep_time = 5
+        sleep_time = 5 
         if mem_req:
             logger.info("Job {cat:%s,source:%s,step:%s} requires %s memory, checking if available" % \
                     (pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), sizeof_fmt(mem_req)))
@@ -277,6 +279,7 @@ class JobManager(object):
                 logger.info("Hub is using too much memory to launch job {cat:%s,source:%s,step:%s} (%s used, more than max allowed %s), wait a little (job's already been postponed for %s)" % \
                         (pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), sizeof_fmt(hub_mem),
                          sizeof_fmt(self.max_memory_usage),timesofar(t0)))
+                #yield from self.loop.run_in_executor(self.thread_queue, lambda: time.sleep(sleep_time))
                 yield from asyncio.sleep(sleep_time)
                 waited = True
                 hub_mem = self.hub_memory
@@ -290,6 +293,7 @@ class JobManager(object):
                 logger.info("Job {cat:%s,source:%s,step:%s} needs %s to run, not enough to launch it (hub consumes %s while max allowed is %s), wait a little  (job's already been postponed for %s)" % \
                         (pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), sizeof_fmt(mem_req), sizeof_fmt(hub_mem),
                          sizeof_fmt(max_mem), timesofar(t0)))
+                #yield from self.loop.run_in_executor(self.thread_queue, lambda: time.sleep(sleep_time))
                 yield from asyncio.sleep(sleep_time)
                 waited = True
                 # refresh limites and usage (manager can be modified from hub
@@ -300,25 +304,32 @@ class JobManager(object):
             logger.info("Job {cat:%s,source:%s,step:%s} now can be launched (total waiting time: %s)" % (pinfo.get("category"),
                 pinfo.get("source"), pinfo.get("step"), timesofar(t0)))
 
+    @asyncio.coroutine
     def defer_to_process(self, pinfo=None, func=None, *args):
         @asyncio.coroutine
-        def run():
+        def run(future):
             yield from self.checkmem(pinfo)
-            yield from self.loop.run_in_executor(self.process_queue,
+            self.ok_to_run.release()
+            res = yield from self.loop.run_in_executor(self.process_queue,
                     partial(do_work,"process",pinfo,func,*args))
-        return asyncio.ensure_future(run())
-        #return self.loop.run_in_executor(self.process_queue,
-        #        partial(do_work,"process",pinfo,func,*args))
+            return future.set_result(res)
+        yield from self.ok_to_run.acquire()
+        f = asyncio.Future()
+        fut = asyncio.ensure_future(run(f))
+        return f
 
     def defer_to_thread(self, pinfo=None, func=None, *args):
         @asyncio.coroutine
-        def run():
+        def run(future):
             yield from self.checkmem(pinfo)
-            yield from self.loop.run_in_executor(self.thread_queue,
+            self.ok_to_run.release()
+            res = yield from self.loop.run_in_executor(self.thread_queue,
                     partial(do_work,"thread",pinfo,func,*args))
-        return asyncio.ensure_future(run())
-        #return self.loop.run_in_executor(self.thread_queue,
-        #        partial(do_work,"thread",pinfo,func,*args))
+            future.set_result(res)
+        yield from self.ok_to_run.acquire()
+        f = asyncio.Future()
+        asyncio.ensure_future(run(f))
+        return f
 
     def submit(self,pfunc,schedule=None):
         """

@@ -243,7 +243,7 @@ class BaseSourceUploader(object):
         pinfo = self.get_pinfo()
         pinfo["step"] = "update_data"
         self.unprepare()
-        f = job_manager.defer_to_process(
+        f = yield from job_manager.defer_to_process(
                 pinfo,
                 upload_worker,
                 self.fullname,
@@ -344,7 +344,7 @@ class BaseSourceUploader(object):
                 self.unprepare()
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "post_update_data"
-                f2 = job_manager.defer_to_thread(pinfo,
+                f2 = yield from job_manager.defer_to_thread(pinfo,
                         partial(self.post_update_data, steps, force, batch_size, job_manager))
                 yield from f2
             cnt = self.db[self.collection_name].count()
@@ -457,7 +457,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
             pinfo = self.get_pinfo()
             pinfo["step"] = "update_data"
             pinfo["description"] = str(args)
-            f = job_manager.defer_to_process(
+            f = yield from job_manager.defer_to_process(
                     pinfo,
                     # pickable worker
                     upload_worker,
