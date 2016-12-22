@@ -498,12 +498,10 @@ def merger_worker(col_name,dest_name,ids,mapper,upsert):
     tgt = mongo.get_target_db()
     col = src[col_name]
     dest = DocMongoBackend(tgt,tgt[dest_name])
-
-    cnt = 0
-    cur = col.find({'_id': {'$in': ids}})
+    cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}})
     mapper.load()
     docs = mapper.process(cur)
-    cnt += dest.update(docs, upsert=upsert)
+    cnt = dest.update(docs, upsert=upsert)
     return cnt
 
 
