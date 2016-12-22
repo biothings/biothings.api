@@ -8,6 +8,7 @@ if src_path not in sys.path:
     sys.path.append(src_path)
 
 from biothings.www.index_base import main
+from www.settings import ${settings_class}
 from www.api.handlers import return_applist
 
 if __name__ == '__main__':

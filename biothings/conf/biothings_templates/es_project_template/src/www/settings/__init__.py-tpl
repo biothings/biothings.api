@@ -1,0 +1,6 @@
+import logging
+from biothings.www.settings import BiothingSettings
+
+# 
+class ${settings_class}(BiothingSettings):
+    pass
