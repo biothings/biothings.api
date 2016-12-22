@@ -210,11 +210,13 @@ class BaseSourceUploader(object):
         # archived collections look like...
         prefix = "%s_archive_" % self.name
         cols = [c for c in self.db.collection_names() if c.startswith(prefix)]
+        tmp_prefix = "%s_temp_" % self.name
+        tmp_cols = [c for c in self.db.collection_names() if c.startswith(tmp_prefix)]
         # timestamp is what's after _archive_, YYYYMMDD, so we can sort it safely
         cols = sorted(cols,reverse=True)
-        to_drop = cols[self.keep_archive:]
+        to_drop = cols[self.keep_archive:] + tmp_cols
         for colname in to_drop:
-            self.logger.info("Cleaning old archive collection '%s'" % colname)
+            self.logger.info("Cleaning old archive/temp collection '%s'" % colname)
             self.db[colname].drop()
 
     def switch_collection(self):
@@ -254,7 +256,6 @@ class BaseSourceUploader(object):
                 self.data_folder)
         yield from f
         self.switch_collection()
-        self.clean_archived_collections()
 
     def generate_doc_src_master(self):
         _doc = {"_id": str(self.name),
@@ -309,7 +310,7 @@ class BaseSourceUploader(object):
             self.src_dump.update({"_id" : self.main_source},{"$set" : upd})
 
     @asyncio.coroutine
-    def load(self, steps=["data","post","master"], force=False,
+    def load(self, steps=["data","post","master","clean"], force=False,
              batch_size=10000, job_manager=None):
         """
         Main resource load process, reads data from doc_c using chunk sized as batch_size.
@@ -327,6 +328,7 @@ class BaseSourceUploader(object):
         update_data = "data" in steps
         update_master = "master" in steps
         post_update_data = "post" in steps
+        clean_archives = "clean" in steps
         try:
             if not self.temp_collection_name:
                 self.make_temp_collection()
@@ -348,6 +350,8 @@ class BaseSourceUploader(object):
                         partial(self.post_update_data, steps, force, batch_size, job_manager))
                 yield from f2
             cnt = self.db[self.collection_name].count()
+            if clean_archives:
+                self.clean_archived_collections()
             self.register_status("success",count=cnt)
         except Exception as e:
             self.register_status("failed",err=str(e))
