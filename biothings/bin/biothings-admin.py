@@ -26,7 +26,7 @@ def main(args):
     # generate template settings
     settings_dict = {
         "src_package": 'my' + args.obj.lower(),
-        "settings_class": "My" + args.obj.title() + "Settings",
+        "settings_class": "My" + args.obj.title() + "WebSettings",
         "annotation_endpoint": args.obj.lower(),
         "query_endpoint": "query",
         "annotation_handler_name": args.obj.title() + "Handler",
