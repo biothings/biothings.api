@@ -364,7 +364,7 @@ class DataBuilder(object):
         other_sources = list(set(source_names).difference(set(root_sources)))
         # got root doc sources but not part of the merge ? that's weird...
         if defined_root_sources and not root_sources:
-            self.logger.warning("Root document sources found (%s) for not part of the merge..." % defined_root_sources)
+            self.logger.warning("Root document sources found (%s) but not part of the merge..." % defined_root_sources)
 
         source_names = sorted(source_names)
         root_sources = sorted(root_sources)
@@ -402,7 +402,7 @@ class DataBuilder(object):
 
             if other_sources:
                 self.register_status("building",transient=True,
-                        build={"step":"merge-others","sources":others_sources})
+                        build={"step":"merge-others","sources":other_sources})
                 self.logger.info("Merging other resources: %s" % other_sources)
                 yield from merge(other_sources)
 
@@ -441,7 +441,7 @@ class DataBuilder(object):
         defined_root_sources = self.get_root_document_sources()
         upsert = not defined_root_sources or src_name in defined_root_sources
         if not upsert:
-            self.logger.debug("Documents from source '%s' will be stored only if a previous document exist with same _id" % src_name)
+            self.logger.debug("Documents from source '%s' will be stored only if a previous document exists with same _id" % src_name)
         jobs = []
         total = self.source_backend[src_name].count()
         btotal = math.ceil(total/batch_size) 
