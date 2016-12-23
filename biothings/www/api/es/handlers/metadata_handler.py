@@ -6,7 +6,7 @@ from biothings.utils.common import split_ids
 from biothings.utils.version import get_software_info
 from collections import OrderedDict
 
-class MetaDataHandler(BaseHandler):
+class MetadataHandler(BaseHandler):
     boolean_parameters = set(['dev'])
 
     def _fill_software_info(self,_meta):

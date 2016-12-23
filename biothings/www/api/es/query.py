@@ -1,3 +1,45 @@
+from biothings.www.logging import get_logger
+
+class ESQuery(object):
+    def __init__(self, client, index, doc_type, logger_lvl=None):
+        self.client = client
+        self.index = index
+        self.doc_type = doc_type
+        if logger_lvl:
+            self.logger = get_logger(mod_name=__name__, lvl=logger_lvl)
+        else:
+            self.logger = get_logger(mod_name=__name__)
+        
+    def scroll(self, scroll_id):
+        ''' Returns the next scroll batch for the given scroll id '''
+        pass
+
+    def query(self, query, options):
+        ''' Returns '''
+        pass
+
+    def mget_biothings(self, ids, **kwargs):
+        ''' multiples '''
+        pass
+
+    def get_biothing(self, bid, **kwargs):
+        pass
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import json, logging, re
 from biothings.utils.common import dotdict, is_str, is_seq, find_doc
 from biothings.utils.es import get_es
@@ -8,6 +50,11 @@ from biothings.settings import BiothingSettings
 from collections import OrderedDict
 
 biothing_settings = BiothingSettings()
+
+
+
+
+
 
 # ES related Helper func
 def parse_sort_option(options):

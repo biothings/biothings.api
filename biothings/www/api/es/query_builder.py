@@ -1,3 +1,24 @@
+from biothings.www.logging import get_logger
+
+class ESQueryBuilder(object):
+    def __init__(self, options, regex_list=[], datasource_translation={}, logger_lvl=None):
+        self.options = options
+        self.regex_list = regex_list
+        self.datasource_translation = datasource_translation
+        if logger_lvl:
+            self.logger = get_logger(mod_name=__name__, lvl=logger_lvl)
+        else:
+            self.logger = get_logger(mod_name=__name__)
+
+    def annotation_POST_query(self, ids):
+        pass
+
+    def annotation_GET_query(self, id):
+        pass
+
+    def query_GET_query(self, q):
+        pass
+
 class ESQueryBuilder(object):
     def __init__(self, **query_options):
         self._query_options = query_options
