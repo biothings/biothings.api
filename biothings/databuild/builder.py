@@ -1,5 +1,5 @@
 import sys, re, math
-import os.path
+import os
 import time
 import copy
 import importlib
@@ -9,8 +9,9 @@ import logging
 import asyncio
 from functools import partial
 
-from biothings.utils.common import timesofar, iter_n
+from biothings.utils.common import timesofar, iter_n, get_timestamp, dump, rmdashfr
 from biothings.utils.mongo import doc_feeder
+from biothings.utils.diff import diff_docs_jsonpatch
 from utils.es import ESIndexer
 import biothings.databuild.backend as btbackend
 from biothings.databuild.mapper import TransparentMapper
@@ -532,6 +533,7 @@ class BuilderManager(BaseManager):
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
         self.builder_class = builder_class
+        self.setup_log()
 
     def register_builder(self,build_name):
         # will use partial to postponse object creations and their db connection
@@ -565,6 +567,9 @@ class BuilderManager(BaseManager):
 
         self.register[build_name] = partial(create,build_name)
 
+    def setup_log(self):
+        self.logger = btconfig.logger
+
     def __getitem__(self,build_name):
         """
         Return an instance of a builder for the build named 'build_name'
@@ -585,9 +590,17 @@ class BuilderManager(BaseManager):
         passed (one single or a list). target_name is the target collection name used
         to store to merge data. If none, each call will generate a unique target_name.
         """
+        def merged(f):
+            try:
+                pass
+            except Exception as e:
+                import traceback
+                self.logger.error("Error while running merge job, %s:\n%s" % (e,traceback.format_exc()))
+                raise
         try:
             bdr = self[build_name]
             job = bdr.merge(sources,target_name,job_manager=self.job_manager,**kwargs)
+            job.add_done_callback(merged)
             return job
         except KeyError as e:
             raise BuilderException("No such builder for '%s'" % build_name)
@@ -615,4 +628,159 @@ class BuilderManager(BaseManager):
             if pat.match(col_name) and not 'current' in col_name:
                 logging.info("Dropping target collection '%s" % col_name)
                 target_db[col_name].drop()
+
+    @asyncio.coroutine
+    def diff_cols(self,old_db_col_names, new_db_col_names, step=100000, purge=False):
+        """
+        Compare new with old collections and produce diff files.
+        *_db_col_names can be: 
+         1. a colleciton name (as a string) asusming they are
+            in the target database.
+         2. tuple with 2 elements, the first one is then either "source" or "target"
+            to respectively specify src or target database, and the second element is
+            the collection name.
+         3. tuple with 3 elements (URI,db,collection), looking like:
+            ("mongodb://user:pass@host","dbname","collection"), allowing to specify
+            any connection on any server
+        """
+        new = create_backend(new_db_col_names)
+        old = create_backend(old_db_col_names)
+
+        diff_folder = os.path.join(btconfig.DIFF_PATH,
+                                   "%s_vs_%s" % (new.target_collection.name,old.target_collection.name))
+        if os.path.exists(diff_folder):
+            if purge:
+                rmdashfr(diff_folder)
+            else:
+                raise FileExistsError("Found existing files in '%s', delete them or use purge=True" % diff_folder)
+        if not os.path.exists(diff_folder):
+            os.makedirs(diff_folder)
+
+        data_new = doc_feeder(new.target_collection, step=step, inbatch=True, fields={"_id":1})
+        data_old = doc_feeder(old.target_collection, step=step, inbatch=True, fields={"_id":1})
+        cnt = 0
+        stats = {"update":0, "add":0, "delete":0}
+
+        jobs = []
+        pinfo = {"category" : "diff",
+                 "source" : "%s vs %s" % (new.target_collection.name,old.target_collection.name),
+                 "step" : "new vs old",
+                 "description" : ""}
+        for _batch in data_new:
+            cnt += 1
+            id_list_new = [_doc['_id'] for _doc in _batch]
+            pinfo["description"] = "batch #%s" % cnt
+            def diffed(f):
+                try:
+                    res = f.result()
+                    stats["update"] += res["update"]
+                    stats["add"] += res["add"]
+                    self.logger.info("(Updated: {}, Added: {})".format(res["update"], res["add"]))
+                except Exception as e:
+                    import traceback
+                    self.logger.error("Error while diffing batch #%s, %s:\n%s" % (cnt,e,traceback.format_exc()))
+                    raise
+            self.logger.info("Creating diff worker for batch #%s" % cnt)
+            job = yield from self.job_manager.defer_to_process(pinfo,
+                    partial(diff_worker_new_vs_old, id_list_new, old_db_col_names, new_db_col_names, cnt , diff_folder))
+            job.add_done_callback(diffed)
+            jobs.append(job)
+        yield from asyncio.wait(jobs)
+        self.logger.info("Finished calculating diff for the new collection. Total number of docs updated: {}, added: {}".format(stats["update"], stats["add"]))
+
+        jobs = []
+        pinfo["step"] = "old vs new"
+        for _batch in data_old:
+            cnt += 1
+            id_list_old = [_doc['_id'] for _doc in _batch]
+            pinfo["description"] = "batch #%s" % cnt
+            def diffed(f):
+                try:
+                    res = f.result()
+                    stats["delete"] += res["delete"]
+                    self.logger.info("(Deleted: {})".format(res["delete"]))
+                except Exception as e:
+                    import traceback
+                    self.logger.error("Error while diffing batch #%s, %s:\n%s" % (cnt,e,traceback.format_exc()))
+                    raise
+            self.logger.info("Creating diff worker for batch #%s" % cnt)
+            job = yield from self.job_manager.defer_to_process(pinfo,
+                    partial(diff_worker_old_vs_new, id_list_old, new_db_col_names, cnt , diff_folder))
+            job.add_done_callback(diffed)
+            jobs.append(job)
+        yield from asyncio.wait(jobs)
+        self.logger.info("Finished calculating diff for the old collection. Total number of docs deleted: {}".format(stats["delete"]))
+        self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {})".format(stats["update"], stats["add"], stats["delete"]))
+
+        return stats
+
+    def diff(self,old_db_col_names, new_db_col_names, step=100000, purge=False):
+        """wrapper over diff_cols() coroutine, return a task"""
+        def diffed(f):
+            try:
+                pass
+            except Exception as e:
+                import traceback
+                self.logger.error("Error while running diff job, %s:\n%s" % (e,traceback.format_exc()))
+                raise
+        job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, step, purge))
+        job.add_done_callback(diffed)
+        return job
+
+
+def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names, batch_num, diff_folder):
+    new = create_backend(new_db_col_names)
+    old = create_backend(old_db_col_names)
+    docs_common = old.target_collection.find({'_id': {'$in': id_list_new}}, projection=[])
+    ids_common = [_doc['_id'] for _doc in docs_common]
+    id_in_new = list(set(id_list_new) - set(ids_common))
+    _updates = []
+    if len(ids_common) > 0:
+        _updates = diff_docs_jsonpatch(old, new, list(ids_common), fastdiff=True)
+    file_name = os.path.join(diff_folder,"%s.pyobj" % str(batch_num))
+    _result = {'add': id_in_new,
+               'update': _updates,
+               'delete': [],
+               'source': new.target_collection.name,
+               'timestamp': get_timestamp()}
+    if len(_updates) != 0 or len(id_in_new) != 0:
+        dump(_result, file_name)
+
+    return {"add" : len(id_in_new), "update" : len(_updates), "delete" : 0}
+
+def diff_worker_old_vs_new(id_list_old, new_db_col_names, batch_num, diff_folder):
+    new = create_backend(new_db_col_names)
+    docs_common = new.target_collection.find({'_id': {'$in': id_list_old}}, projection=[])
+    ids_common = [_doc['_id'] for _doc in docs_common]
+    id_in_old = list(set(id_list_old)-set(ids_common))
+    file_name = os.path.join(diff_folder,"%s.pyobj" % str(batch_num))
+    _result = {'delete': id_in_old,
+               'add': [],
+               'update': [],
+               'source': new.target_collection.name,
+               'timestamp': get_timestamp()}
+    if len(id_in_old) != 0:
+        dump(_result, file_name)
+
+    return {"add" : 0, "update": 0, "delete" : len(id_in_old)}
+
+
+def create_backend(db_col_names):
+    col = None
+    db = None
+    print("%s" % repr(db_col_names))
+    if type(db_col_names) == str:
+        db = mongo.get_target_db()
+        col = db[db_col_names[1]]
+    elif db_col_names[0].startswith("mongodb://"):
+        assert len(db_col_names) == 3, "Missing connection information for %s" % repr(db_col_names)
+        conn = mongo.MongoClient(db_col_names[0])
+        db = conn[db_col_names[1]]
+        col = db[db_col_names[2]]
+    else:
+        assert len(db_col_names) == 2, "Missing connection information for %s" % repr(db_col_names)
+        db = db_col_names[0] == "target" and mongo.get_target_db() or mongo.get_src_db()
+        col = db[db_col_names[1]]
+    assert not col is None, "Could not create collection object from %s" % repr(db_col_names)
+    return btbackend.DocMongoBackend(db,col)
 
