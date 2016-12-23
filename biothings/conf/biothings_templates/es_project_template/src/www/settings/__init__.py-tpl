@@ -1,6 +1,5 @@
-import logging
-from biothings.www.settings import BiothingSettings
+from biothings.www.settings import BiothingESWebSettings
 
-# 
-class ${settings_class}(BiothingSettings):
+class ${settings_class}(BiothingESWebSettings):
+    # Add app-specific settings functions here
     pass

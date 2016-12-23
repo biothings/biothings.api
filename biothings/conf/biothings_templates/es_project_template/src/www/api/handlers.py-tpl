@@ -1,44 +1,25 @@
 # -*- coding: utf-8 -*-
-from biothings.www.api.handlers import MetaDataHandler, BiothingHandler, QueryHandler, StatusHandler, FieldsHandler
-from biothings.settings import BiothingSettings
-from www.api.es import ESQuery
-
-bts = BiothingSettings()
+from biothings.www.api.es.handlers import BiothingHandler
+from biothings.www.api.es.handlers import MetadataHandler
+from biothings.www.api.es.handlers import QueryHandler
+from biothings.www.api.es.handlers import StatusHandler
 
 class ${annotation_handler_name}(BiothingHandler):
     ''' This class is for the /${annotation_endpoint} endpoint. '''
+    pass
 
 class ${query_handler_name}(QueryHandler):
     ''' This class is for the /${query_endpoint} endpoint. '''
+    pass
 
 class StatusHandler(StatusHandler):
     ''' This class is for the /status endpoint. '''
+    pass
 
 class FieldsHandler(FieldsHandler):
     ''' This class is for the /metadata/fields endpoint. '''
+    pass
 
-class MetaDataHandler(MetaDataHandler):
+class MetadataHandler(MetadataHandler):
     ''' This class is for the /metadata endpoint. '''
-    disable_caching = True
-
-def return_applist():
-    ret = [
-        (r"/status", StatusHandler),
-        (r"/metadata", MetaDataHandler),
-        (r"/metadata/fields", FieldsHandler),
-    ]
-    if bts._api_version:
-        ret += [
-            (r"/" + bts._api_version + "/metadata", MetaDataHandler),
-            (r"/" + bts._api_version + "/metadata/fields", FieldsHandler),
-            (r"/" + "/".join([bts._api_version, bts._annotation_endpoint, "(.+)", "?"]), ${annotation_handler_name}),
-            (r"/" + "/".join([bts._api_version, bts._annotation_endpoint, "?$$"]), ${annotation_handler_name}),
-            (r"/" + "/".join([bts._api_version, bts._query_endpoint, "?"]), ${query_handler_name}),
-        ]
-    else:
-        ret += [
-            (r"/" + bts._annotation_endpoint + "/(.+)/?", ${annotation_handler_name}),
-            (r"/" + bts._annotation_endpoint + "/?$$", ${annotation_handler_name}),
-            (r"/" + bts._query_endpoint + "/?", ${query_handler_name}),
-        ]
-    return ret
+    pass

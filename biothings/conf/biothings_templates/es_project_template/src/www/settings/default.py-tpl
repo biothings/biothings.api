@@ -1,3 +1,0 @@
-from biothings.www.settings.default import *
-
-# Add more defaults here
