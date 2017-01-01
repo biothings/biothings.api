@@ -1,49 +1,62 @@
 # -*- coding: utf-8 -*-
+from biothings.www.settings.default import *
+from www.api.query_builder import ESQueryBuilder
+from www.api.query import ESQuery
+from www.api.transform import ESResultTransformer
+from www.api.handlers import ${annotation_handler_name}, ${query_handler_name}, MetadataHandler, StatusHandler
+
 # *****************************************************************************
 # Elasticsearch variables
 # *****************************************************************************
 # elasticsearch server transport url
 ES_HOST = 'localhost:9200'
 # elasticsearch index name
-ES_INDEX_NAME = '${src_package}_current'
+ES_INDEX = '${src_package}_current'
 # elasticsearch document type
 ES_DOC_TYPE = '${es_doctype}'
-# Only these options are passed to the elasticsearch query from kwargs
-ALLOWED_OPTIONS = ['_source', 'start', 'from_', 'size', 'fields',
-                   'sort', 'explain', 'version', 'facets', 'fetch_all']
-ES_SCROLL_TIME = '1m'
-ES_SCROLL_SIZE = 1000
-ES_SIZE_CAP = 1000
-# This is the module for loading the esq variable in handlers
-ES_QUERY_MODULE = 'api.es'
+
+API_VERSION = 'v1'
 
 # *****************************************************************************
-# Google Analytics Settings
+# App URL Patterns
 # *****************************************************************************
-# Google Analytics Account ID
-GA_ACCOUNT = ''
-# Turn this to True to start google analytics tracking
-GA_RUN_IN_PROD = False
+APP_LIST = [
+    (r"/status", StatusHandler),
+    (r"/metadata/?", MetadataHandler),
+    (r"/metadata/fields/?", MetadataHandler),
+    (r"/{}/${annotation_endpoint}/(.+)/?".format(API_VERSION), ${annotation_handler_name}),
+    (r"/{}/${annotation_endpoint}/?$$".format(API_VERSION), ${annotation_handler_name}),
+    (r"/{}/${query_endpoint}/?".format(API_VERSION), ${query_handler_name}),
+    (r"/{}/metadata/?".format(API_VERSION), MetadataHandler),
+    (r"/{}/metadata/fields/?".format(API_VERSION), MetadataHandler),
+]
 
-# 'category' in google analytics event object
-GA_EVENT_CATEGORY = 'v1_api'
-# 'action' for get request in google analytics event object
-GA_EVENT_GET_ACTION = 'get'
-# 'action' for post request in google analytics event object
-GA_EVENT_POST_ACTION = 'post'
-# url for google analytics tracker
+###############################################################################
+#   app-specific query builder, query, and result transformer classes
+###############################################################################
+
+# *****************************************************************************
+# Subclass of biothings.www.api.es.query_builder.ESQueryBuilder to build
+# queries for this app
+# *****************************************************************************
+ES_QUERY_BUILDER = ESQueryBuilder
+# *****************************************************************************
+# Subclass of biothings.www.api.es.query.ESQuery to execute queries for this app
+# *****************************************************************************
+ES_QUERY = ESQuery
+# *****************************************************************************
+# Subclass of biothings.www.api.es.transform.ESResultTransformer to transform
+# ES results for this app
+# *****************************************************************************
+ES_RESULT_TRANSFORMER = ESResultTransformer
+
+GA_ACTION_QUERY_GET = 'query_get'
+GA_ACTION_QUERY_POST = 'query_post'
+GA_ACTION_ANNOTATION_GET = '${annotation_endpoint}_get'
+GA_ACTION_ANNOTATION_POST = '${annotation_endpoint}_post'
 GA_TRACKER_URL = '${base_url}'
 
-# *****************************************************************************
-# URL settings
-# *****************************************************************************
-# For URL stuff
-ANNOTATION_ENDPOINT = '${annotation_endpoint}'
-QUERY_ENDPOINT = '${query_endpoint}'
-API_VERSION = 'v1'
-# TODO Fill in a status id here
 STATUS_CHECK_ID = ''
-# Path to a file containing a json object with information about elasticsearch fields
-FIELD_NOTES_PATH = ''
-# Path to a file containing a json object with the json-ld context information
-JSONLD_CONTEXT_PATH = ''
+
+# Enter the path to the git repo (if it exists) - for /metadata?dev=true
+APP_GIT_REPOSITORY = ''
