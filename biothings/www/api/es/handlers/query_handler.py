@@ -1,19 +1,22 @@
 from tornado.web import HTTPError
-from biothings.www.api_es.handlers.base_handler import BaseESRequestHandler
-from biothings.www.helper import BiothingParameterTypeError
+from biothings.www.api.es.handlers.base_handler import BaseESRequestHandler
+from biothings.www.api.es.transform import ScrollIterationDone
+from biothings.www.api.es.query import BiothingScrollError
+from biothings.utils.common import sum_arg_dicts
+import logging
 
 class QueryHandler(BaseESRequestHandler):
     def initialize(self, web_settings):
         super(QueryHandler, self).initialize(web_settings)
         self.ga_event_object_ret['action'] = self.request.method
-        if self.request.method == 'GET'
-            self.ga_event_object_ret['action'] = self.web_settings.QUERY_GET_GA_ACTION
+        if self.request.method == 'GET':
+            self.ga_event_object_ret['action'] = self.web_settings.GA_ACTION_QUERY_GET
             self.control_kwargs = self.web_settings.QUERY_GET_CONTROL_KWARGS
             self.es_kwargs = self.web_settings.QUERY_GET_ES_KWARGS
             self.esqb_kwargs = self.web_settings.QUERY_GET_ESQB_KWARGS
             self.transform_kwargs = self.web_settings.QUERY_GET_TRANSFORM_KWARGS
         elif self.request.method == 'POST':
-            self.ga_event_object_ret['action'] = self.web_settings.QUERY_POST_GA_ACTION
+            self.ga_event_object_ret['action'] = self.web_settings.GA_ACTION_QUERY_POST
             self.control_kwargs = self.web_settings.QUERY_POST_CONTROL_KWARGS
             self.es_kwargs = self.web_settings.QUERY_POST_ES_KWARGS
             self.esqb_kwargs = self.web_settings.QUERY_POST_ESQB_KWARGS
@@ -21,104 +24,276 @@ class QueryHandler(BaseESRequestHandler):
         else:
             # handle other verbs?
             pass
-        self.logger.debug("QueryHandler - {}".format(self.request.method))
-        self.logger.debug("Boolean parameters: {}".format(self.boolean_parameters))
-        self.logger.debug("Google Analytics Base object: {}".format(self.ga_event_object_ret))
+        self.kwarg_settings = sum_arg_dicts(self.control_kwargs, self.es_kwargs, 
+                                             self.esqb_kwargs, self.transform_kwargs)
+        logging.debug("QueryHandler - {}".format(self.request.method))
+        logging.debug("Google Analytics Base object: {}".format(self.ga_event_object_ret))
+        logging.debug("Kwarg Settings: {}".format(self.kwarg_settings))
     
+    def _pre_scroll_transform_GET_hook(self, options, res):
+        ''' Override me. '''
+        return res
+
     def get(self):
         '''
             QUERY GET HANDLER
         '''
+        ###################################################
+        #          Get/type/alias query parameters
+        ###################################################
+        
         try:
             kwargs = self.get_query_params()
         except BiothingParameterTypeError as e:
-            self.return_json({'success': False, 'error': "{0}".format(e)})
-            self.ga_track(event=self._ga_event_object({'total': 0}))
+            logging.exception("Type error in get_query_params")
+            self._return_data_and_track({'success': False, 'error': "{0}".format(e)}, ga_event_data={'total':0})
+            return
+        except Exception as e:
+            logging.exception("Error in get_query_params")
+            self._return_data_and_track({'success': False, 'error': "Error parsing input parameter, check input types"}, ga_event_data=ga_event_data)
             return
 
+        ###################################################
+        #      Split query parameters into categories     
+        ###################################################
+        
         options = self.get_cleaned_options(kwargs)
 
-        self.logger.debug("Request kwargs: {}".format(kwargs))
-        self.logger.debug("Request options: {}".format(options))
+        logging.debug("Request kwargs: {}".format(kwargs))
+        logging.debug("Request options: {}".format(options))
 
         if not options.control_kwargs.q and not options.control_kwargs.scroll_id:
-            self.return_json({'success': False, 'error': "Missing required parameters."})
-            self.ga_track(event=self._ga_event_object({'total': 0}))
+            self._return_data_and_track({'success': False, 'error': "Missing required parameters."},
+                            ga_event_data={'total': 0})
             return
+        
+        ###################################################
+        #          Instantiate pipeline classes
+        ###################################################
 
-        _backend = self.web_settings.ES_QUERY(index=self._get_query_index(options), 
-            doc_type=self._get_doc_type(options), client=self.es_client, 
-            logger_lvl=self.web_settings._LOGGER_LEVEL)
-        _response_transformer = self.web_settings.RESPONSE_TRANSFORMER(options=options.transform_kwargs,
-            logger_lvl=self.web_settings._LOGGER_LEVEL)
+        # Instantiate query builder, query, and transform classes
+        _query_builder = self.web_settings.ES_QUERY_BUILDER(options=options.esqb_kwargs,
+            index=self._get_es_index(options), doc_type=self._get_es_doc_type(options),
+            es_options=options.es_kwargs, userquery_dir=self.web_settings.USERQUERY_DIR,
+            scroll_options={'scroll': self.web_settings.ES_SCROLL_TIME, 'size': self.web_settings.ES_SCROLL_SIZE},
+            default_scopes=self.web_settings.DEFAULT_SCOPES)
+        _backend = self.web_settings.ES_QUERY(client=self.web_settings.es_client, options=options.es_kwargs)
+        _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(options=options.transform_kwargs, 
+            host=self.request.host, jsonld_context=self.web_settings._jsonld_context, 
+            output_aliases=self.web_settings.OUTPUT_KEY_ALIASES)
+
+        options = self._pre_query_builder_GET_hook(options)
+        
+        ###################################################
+        #           Scroll request pipeline
+        ###################################################
 
         if options.control_kwargs.scroll_id:
-            # Do scroll
-            res = _backend.scroll(options.control_kwargs.scroll_id)
+            ###################################################
+            #             Build scroll query
+            ###################################################
 
-            self.logger.debug("Raw scroll query result: {}".format(res))
+            try:
+                _query = _query_builder.scroll(options.control_kwargs.scroll_id)
+            except Exception as e:
+                logging.exception("Error building scroll query")
+                self._return_data_and_track({'success': False, 'error': 'Error building scroll query for scroll_id "{}"'.format(options.control_kwargs.scroll_id)}, ga_event_data={'total': 0})
+                return
+            
+            ###################################################
+            #             Get scroll results
+            ###################################################
+
+            try:
+                res = _backend.scroll(_query)
+            except BiothingScrollError as e:
+                self._return_data_and_track({'success': False, 'error': '{}'.format(e)}, ga_event_data={'total': 0})
+                return
+            except Exception as e:
+                logging.exception("Error getting scroll batch")
+                self._return_data_and_track({'success': False, 'error': 'Error retrieving scroll results for scroll_id "{}"'.format(options.control_kwargs.scroll_id)}, ga_event_data={'total': 0})
+                return
+
+            #logging.debug("Raw scroll query result: {}".format(res))
             
             if options.control_kwargs.raw:
-                self.return_json(res)
-                self.ga_track(event=self.ga_event_object({'total': res.get('total', 0)}))
+                self._return_data_and_track(res, ga_event_data={'total': res.get('total', 0)})
                 return
+            
+            res = self._pre_scroll_transform_GET_hook(options, res)
 
-            res = _response_transformer.clean_scroll_result(res)
+            ###################################################
+            #             Transform scroll result
+            ###################################################
+
+            try:
+                res = _result_transformer.clean_scroll_response(res)
+            except ScrollIterationDone as e:
+                self._return_data_and_track({'success': False, 'error': '{}'.format(e)}, ga_event_data={'total': res.get('total', 0)})
+                return
+            except Exception as e:
+                logging.exception("Error transforming scroll batch")
+                self._return_data_and_track({'success': False, 'error': 'Error transforming scroll results for scroll_id "{}"'.format(options.control_kwargs.scroll_id)})
+                return
         else:
-            _query_builder = self.web_settings.ES_QUERY_BUILDER(options=options.esqb_kwargs,
-                datasource_translation=self.web_settings.DATASOURCE_TRANSLATION, 
-                logger_lvl=self.web_settings._LOGGER_LEVEL)
-            _query = _query_builder.query_GET_query(q=options.control_kwargs.q)
+            #####  Non-scroll query GET pipeline #############
+            ###################################################
+            #             Build query
+            ###################################################
+            
+            try:
+                _query = _query_builder.query_GET_query(q=options.control_kwargs.q)
+            except Exception as e:
+                logging.exception('Error building query')
+                self._return_data_and_track({'success': False, 'error': 'Error building query from q="{}"'.format(options.control_kwargs.q)}, ga_event_object={'total': 0})
+                return
 
             if options.control_kwargs.rawquery:
-                self.return_json(_query)
-                self.ga_track(event=self.ga_event_object({'total': 0}))
+                self._return_data_and_track(_query, ga_event_data={'total': 0}, rawquery=True)
                 return
 
-            res = _backend.query(query=_query, options=options)
+            _query = self._pre_query_GET_hook(options, _query)
+            
+            ###################################################
+            #             Get query results
+            ###################################################
 
-            self.logger.debug("Raw query result: {}".format(res))
+            try:
+                res = _backend.query_GET_query(_query)
+            except Exception as e:
+                logging.exception('Error executing query')
+                self._return_data_and_track({'success': False, 'error': 'Error executing query'}, 
+                                                ga_event_data={'total': 0})
+                return
+
+            #logging.debug("Raw query result: {}".format(res))
 
             # return raw result if requested
             if options.control_kwargs.raw:
-                self.return_json(res)
-                self.ga_track(event=self.ga_event_object({'total': res.get('total', 0)}))
+                self._return_data_and_track(res, ga_event_data={'total': res.get('total', 0)})
                 return
 
+            res = self._pre_transform_GET_hook(options, res)
+            
+            ###################################################
+            #            Transform query results
+            ###################################################
+
             # clean result
-            res = _response_transformer.clean_query_GET_response(res)
+            try:
+                res = _result_transformer.clean_query_GET_response(res)
+            except Exception as e:
+                logging.exception('Error transforming query result')
+                self._return_data_and_track({'success': False, 'error': 'Error transforming query result'},
+                                            ga_event_data={'total': res.get('total', 0)})
+                return
+
+        res = self._pre_finish_GET_hook(options, res)
 
         # return and track
         self.return_json(res)
         if options.control_kwargs.fetch_all:
             self.ga_event_object_ret['action'] = 'fetch_all'
         self.ga_track(event=self.ga_event_object({'total': res.get('total', 0)}))
+        return
+
+    ###########################################################################
     
     def post(self):
         '''
             QUERY POST HANDLER
         '''
-        """kwargs = self.get_query_params()
-        self._examine_kwargs('POST', kwargs)
-        q = kwargs.pop('q', None)
-        jsoninput = kwargs.pop('jsoninput', None) in ('1', 'true')
-        if q:
-            # ids = re.split('[\s\r\n+|,]+', q)
-            try:
-                ids = json.loads(q) if jsoninput else split_ids(q)
-                if not isinstance(ids, list):
-                    raise ValueError
-            except ValueError:
-                ids = None
-                res = {'success': False, 'error': 'Invalid input for "q" parameter.'}
-            if ids:
-                scopes = kwargs.pop('scopes', None)
-                fields = kwargs.pop('fields', None)
-                res = self.esq.mquery_biothings(ids, fields=fields, scopes=scopes, **kwargs)
-        else:
-            res = {'success': False, 'error': "Missing required parameters."}
+        ###################################################
+        #          Get/type/alias query parameters
+        ###################################################
+        
+        try:
+            kwargs = self.get_query_params()
+        except BiothingParameterTypeError as e:
+            logging.exception("Type error in get_query_params")
+            self._return_data_and_track({'success': False, 'error': "{0}".format(e)}, ga_event_data={'qsize':0})
+            return
+        except Exception as e:
+            logging.exception("Error in get_query_params")
+            self._return_data_and_track({'success': False, 'error': "Error parsing input parameter, check input types"}, ga_event_data={'qsize': 0})
+            return
 
-        encode = not isinstance(res, str)    # when res is a string, e.g. when rawquery is true, do not encode it as json
-        self.return_json(res, encode=encode)
-        self.ga_track(event=self._ga_event_object('POST', {'qsize': len(q) if q else 0}))"""
-        pass
+        options = self.get_cleaned_options(kwargs)
+
+        logging.debug("Request kwargs: {}".format(kwargs))
+        logging.debug("Request options: {}".format(options))
+
+        if not options.control_kwargs.q or not options.esqb_kwargs.scopes:
+            self._return_data_and_track({'success': False, 'error': "Missing required parameters."},
+                ga_event_data={'qsize': 0})
+            return
+
+        ###################################################
+        #          Instantiate pipeline classes
+        ###################################################
+        
+        # Instantiate query builder, query, and transform classes
+        _query_builder = self.web_settings.ES_QUERY_BUILDER(options=options.esqb_kwargs,
+            index=self._get_es_index(options), doc_type=self._get_es_doc_type(options),
+            es_options=options.es_kwargs, userquery_dir=self.web_settings.USERQUERY_DIR, 
+            default_scopes=self.web_settings.DEFAULT_SCOPES)
+        _backend = self.web_settings.ES_QUERY(client=self.web_settings.es_client, options=options.es_kwargs)
+        _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(options=options.transform_kwargs, host=self.request.host,
+            jsonld_context=self.web_settings._jsonld_context, output_aliases=self.web_settings.OUTPUT_KEY_ALIASES)
+
+        options = self._pre_query_builder_POST_hook(options)
+        
+        ###################################################
+        #                  Build query
+        ###################################################
+
+        try:
+            _query = _query_builder.query_POST_query(qs=options.control_kwargs.q, scopes=options.esqb_kwargs.scopes)
+        except Exception as e:
+            logging.exception("Error building POST query")
+            self._return_data_and_track({'success': False, 'error': 'Error building query'}, ga_event_data={'qsize': len(options.control_kwargs.q)})
+            return
+
+        if options.control_kwargs.rawquery:
+            self._return_data_and_track(_query, ga_event_data={'qsize': len(options.control_kwargs.q)}, rawquery=True)
+            return
+
+        _query = self._pre_query_POST_hook(options, _query)
+
+        ###################################################
+        #                 Execute query
+        ###################################################
+        
+        try:
+            res = _backend.query_POST_query(_query)
+        except Exception as e:
+            logging.exception("Error executing POST query")
+            self._return_data_and_track({'success': False, 'error': 'Error building query'}, ga_event_data={'qsize': len(options.control_kwargs.q)})
+            return
+
+        logging.debug("Raw query result: {}".format(res))
+
+        # return raw result if requested
+        if options.control_kwargs.raw:
+            self._return_data_and_track(res, ga_event_data={'qsize': len(options.control_kwargs.q)})
+            return
+
+        res = self._pre_transform_POST_hook(options, res)
+        
+        ###################################################
+        #          Transform query results
+        ###################################################
+
+        # clean result
+        try:
+            res = _result_transformer.clean_query_POST_response(qlist=options.control_kwargs.q, res=res)
+        except Exception as e:
+            logging.exception("Error transforming POST query")
+            self._return_data_and_track({'success': False, 'error': 'Error transforming query result'}, 
+                                ga_event_data={'qsize': len(options.control_kwargs.q)})
+            return
+
+        res = self._pre_finish_POST_hook(options, res)
+
+        # return and track
+        self._return_data_and_track(res, ga_event_data={'qsize': len(options.control_kwargs.q)})

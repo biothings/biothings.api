@@ -1,5 +1,7 @@
-from biothings.www.helper import BaseHandler
+from biothings.www.api.helper import BaseHandler
+from biothings.utils.common import dotdict, is_str
 import re
+import logging
 
 class BaseESRequestHandler(BaseHandler):
     # override these in child class
@@ -8,101 +10,47 @@ class BaseESRequestHandler(BaseHandler):
     esqb_kwargs = {}
     transform_kwargs = {}
 
-    @property
-    def _allowed_kwargs(self):
-        ''' Return the kwargs that are allowed for this request '''
-        try:
-            return self._all_kwargs
-        except:
-            pass
-        self._all_kwargs = set(list(self.control_kwargs.keys()) + list(self.es_kwargs.keys()) +
-                               list(self.esqb_kwargs.keys()) + list(self.transform_kwargs.keys()))
-        return self._all_kwargs
-
     def initialize(self, web_settings):
         ''' Initializations common to all ES Request Handlers here '''
         super(BaseESRequestHandler, self).initialize(web_settings)
 
-    def _get_query_index(self, options):
-        ''' Subclass to change query index for this request. '''
-        return self.web_settings.ES_INDEX
+    def _return_data_and_track(self, data, ga_event_data={}, rawquery=False):
+        ''' Small function to return a chunk of data and send a google analytics tracking request.'''
+        if rawquery:
+            self.return_raw_query_json(data)
+        else:
+            self.return_json(data)
+        self.ga_track(event=self.ga_event_object(ga_event_data))
+        return
 
-    def _get_doc_type(self, options):
-        ''' Subclass to change doc_type for this request. '''
-        return self.web_settings.ES_DOC_TYPE
-    
-    def _translate_datasource(self, q, trim_from="", unescape=False):
-        ''' translate string q using app specific regex '''
-        for src in self.web_settings.DATASOURCE_TRANSLATIONS.keys():
-            regex = DATASOURCE_TRANSLATIONS[src]
-            if trim_from:
-                regex = re.sub(trim_from + ".*", "", regex)
-                src = re.sub(trim_from + ".*", "", src)
-            if unescape:
-                regex = regex.replace("\\", "")
-                src = src.replace("\\", "")
-            q = re.sub(src, regex, q, flags=re.I)
-        return q
+    def return_raw_query_json(self, query):
+        _ret = query.get('body', {'GET': query.get('bid')})
+        if is_str(_ret) and len(_ret.split('\n')) > 1:
+            self.return_json({'body': _ret})
+        else:
+            self.return_json(_ret)  
 
     def _should_sanitize(self, param, kwargs):
-        return param in kwargs and param in self._allowed_kwargs
+        return ((param in kwargs) and (param in self.kwarg_settings))
 
-    def _sanitize_ids_param(self, kwargs):
-        if self._should_sanitize('ids', kwargs):
-            kwargs['ids'] = re.split('[\s\r\n+|,]+', kwargs['ids'])
+    def _sanitize_source_param(self, kwargs):
+        if self._should_sanitize('_source', kwargs):
+            if len(kwargs['_source']) == 1 and kwargs['_source'][0].lower() == 'all':
+                kwargs['_source'] = True
         return kwargs
 
-    def _sanitize_q_param(self, kwargs):
-        # only translate datasources for query GET only
-        if self._should_sanitize('q', kwargs):
-            if self.request.method == 'GET':
-                kwargs['q'] = self._translate_datasource(kwargs['q'])
-            elif self.request.method == 'POST':
-                pass
-        return kwargs
-
-    # class for handlers that make ES requests
-    def _sanitize_facets_param(self, kwargs):
-        '''Normalize facets params'''
-        # Keep "facets" as part of API but translate to "aggregations" for ES2 compatibility
-        if self._should_sanitize('facets', kwargs):
-            kwargs['aggs'] = kwargs['facets']
-            del kwargs['facets']
-        return kwargs
-
-    def _sanitize_fields_param(self, kwargs):
-        '''support "filter" as an alias of "fields" parameter for back-compatability.'''
-        if 'filter' in kwargs and 'fields' not in kwargs:
-            #support filter as an alias of "fields" parameter (back compatibility)
-            kwargs['fields'] = kwargs['filter']
-            del kwargs['filter']
-        if self._should_sanitize('fields', kwargs):
-            kwargs['fields'] = self._translate_datasource(kwargs['fields'])
-        return kwargs
-
-    def _sanitize_scopes_param(self, kwargs):
-        if self._should_sanitize('scopes', kwargs):
-            kwargs['scopes'] = self._translate_datasource(kwargs['scopes'])
+    def _sanitize_sort_param(self, kwargs):
+        if self._should_sanitize('sort', kwargs):
+            dirty_sort = kwargs['sort']
+            kwargs['sort'] = [{field[1:]:{"order":"desc"}} if field.startswith('-') 
+                else {field:{"order":"asc"}} for field in dirty_sort]
         return kwargs
 
     def _sanitize_size_param(self, kwargs):
         # cap size
         if self._should_sanitize('size', kwargs):
-            cap = self.web_settings.SIZE_CAP
-            kwargs['size'] = kwargs['size'] if (kwargs['size'] < cap) else cap
-        return kwargs
-
-    def _sanitize_paging_param(self, kwargs):
-        '''support paging parameters, limit and skip as the aliases of size and from.'''
-        if 'limit' in kwargs and 'size' not in kwargs:
-            kwargs['size'] = kwargs['limit']
-            del kwargs['limit']
-        if 'skip' in kwargs and 'from' not in kwargs:
-            kwargs['from'] = kwargs['skip']
-            del kwargs['skip']
-        if 'from' in kwargs:
-            kwargs['from_'] = kwargs['from']   # elasticsearch python module using from_ for from parameter
-            del kwargs['from']
+            kwargs['size'] = kwargs['size'] if (kwargs['size'] < 
+                self.web_settings.ES_SIZE_CAP) else self.web_settings.ES_SIZE_CAP
         return kwargs
 
     def get_cleaned_options(self, kwargs):
@@ -117,18 +65,54 @@ class BaseESRequestHandler(BaseHandler):
 
         for kwarg_category in ["control_kwargs", "es_kwargs", "esqb_kwargs", "transform_kwargs"]:
             options.setdefault(kwarg_category, dotdict())
-            for option, default in self.get(kwarg_category):
-                options.get(kwarg_category).setdefault(option, kwargs.get(option, default))
-        # store the host in kwargs for jsonld (not sure this is still required...)
-        options.control_kwargs.host = self.request.host
+            for option, settings in getattr(self, kwarg_category, {}).items():
+                if kwargs.get(option, None) or settings.get('default', None) is not None:
+                    options.get(kwarg_category).setdefault(option, kwargs.get(option, settings['default']))
         return options
 
     def _sanitize_params(self, kwargs):
-        super(BaseESRequestHandler, self)._sanitize_params(kwargs)
-        self._sanitize_fields_param(kwargs)
-        self._sanitize_facets_param(kwargs)
-        self._sanitize_paging_param(kwargs)
-        self._sanitize_ids_param(kwargs)
-        self._sanitize_size_param(kwargs)
-        self._sanitize_q_param(kwargs)
-        self._sanitize_scopes_param(kwargs)
+        kwargs = super(BaseESRequestHandler, self)._sanitize_params(kwargs)
+        kwargs = self._sanitize_source_param(kwargs)
+        kwargs = self._sanitize_size_param(kwargs)
+        kwargs = self._sanitize_sort_param(kwargs)
+        return kwargs
+    
+    def _get_es_index(self, options):
+        ''' Override to change query index for this request. '''
+        return self.web_settings.ES_INDEX
+
+    def _get_es_doc_type(self, options):
+        ''' Override to change doc_type for this request. '''
+        return self.web_settings.ES_DOC_TYPE
+
+    def _pre_query_builder_GET_hook(self, options):
+        ''' Override me. '''
+        return options
+
+    def _pre_query_GET_hook(self, options, query):
+        ''' Override me. '''
+        return query
+
+    def _pre_transform_GET_hook(self, options, res):
+        ''' Override me. '''
+        return res
+
+    def _pre_finish_GET_hook(self, options, res):
+        ''' Override me. '''
+        return res
+    
+    def _pre_query_builder_POST_hook(self, options):
+        ''' Override me. '''
+        return options
+
+    def _pre_query_POST_hook(self, options, query):
+        ''' Override me. '''
+        return query
+
+    def _pre_transform_POST_hook(self, options, res):
+        ''' Override me. '''
+        return res
+
+    def _pre_finish_POST_hook(self, options, res):
+        ''' Override me. '''
+        return res
