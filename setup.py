@@ -5,8 +5,6 @@ from subprocess import CalledProcessError
 
 setup_path = os.path.dirname(__file__)
 
-print("setup_path: {}".format(setup_path))
-
 def read(fname):
     return open(os.path.join(setup_path, fname)).read()
 
@@ -25,9 +23,9 @@ try:
 except CalledProcessError:
     commit_hash = ''
 
-f = open('biothings/.git-commit-hash', 'w')
-f.write("{}.git\n{}".format(REPO_URL, commit_hash))
-f.close()
+# Write these to file inside package, that can be read later
+with open('biothings/.git-commit-hash', 'w') as git_file:
+    git_file.write("{}.git\n{}".format(REPO_URL, commit_hash))
 
 setup(
     name="biothings",
