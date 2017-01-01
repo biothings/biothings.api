@@ -1,24 +1,42 @@
 import os.path
-import logging
+#import logging
 
-cache = {}
+query_cache = {}
+filter_cache = {}
 
 def get_userquery(query_folder, query_name):
     try:
-        return cache[query_name]
+        return query_cache[query_name]
     except KeyError:
         pass
 
     # get the query from file
     query_dir = os.path.join(query_folder, query_name)
-    assert os.path.exists(query_dir) and os.path.isdir(query_dir), "query directory not found"
+    if (os.path.exists(query_dir) and os.path.isdir(query_dir) 
+        and os.path.exists(os.path.join(query_dir, 'query.txt'))):
+        with open(os.path.join(query_dir, 'query.txt'), 'r') as query_handle:
+            query_cache[query_name] = query_handle.read()
+    else:
+        return '{{}}'
     
-    query_file = os.path.join(query_dir, 'query')
-    assert os.path.exists(query_file), "query file not found"
+    #logging.debug("query_cache[{}]: {}".format(query_name, query_cache[query_name]))
 
-    with open(query_file, 'r') as query_handle:
-        cache[query_name] = query_handle.read()
+    return query_cache[query_name]
 
-    logging.error("cache[{}]: {}".format(query_name, cache[query_name]))
+def get_userfilter(query_folder, query_name):
+    try:
+        return filter_cache[query_name]
+    except KeyError:
+        pass
 
-    return cache[query_name]
+    query_dir = os.path.join(query_folder, query_name)
+    if (os.path.exists(query_dir) and os.path.isdir(query_dir) 
+        and os.path.exists(os.path.join(query_dir, 'filter.txt'))):
+        with open(os.path.join(query_dir, 'filter.txt'), 'r') as filter_handle:
+            filter_cache[query_name] = filter_handle.read()
+    else:
+        return '{}'
+    
+    #logging.debug("filter_cache[{}]: {}".format(query_name, filter_cache[query_name]))
+
+    return filter_cache[query_name]
