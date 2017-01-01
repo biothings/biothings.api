@@ -4,11 +4,18 @@ import biothings
 import argparse
 from string import Template
 
-def log(msg):
-    print("\n******************")
-    print(msg)
-    print("******************\n")
-    return
+settings_dict = {
+    "src_package": "",
+    "settings_class": "",
+    "annotation_endpoint": "",
+    "query_endpoint": "",
+    "annotation_handler_name": "",
+    "query_handler_name": "",
+    "es_doctype": "",
+    "base_url": "",
+    "nosetest_settings_class": "",
+    "nosetest_envar": ""
+}
 
 def main(args):
     # now only es is supported as a biothing backend...
@@ -21,25 +28,19 @@ def main(args):
     template_dir = os.path.join(os.path.split(biothings.__file__)[0], 'conf', 'biothings_templates', subdir)
 
     if args.verbose:
-        log("Template directory: {}".format(template_dir))
+        print("Template directory: {}".format(template_dir))
 
     # generate template settings
-    settings_dict = {
-        "src_package": 'my' + args.obj.lower(),
-        "settings_class": "My" + args.obj.title() + "WebSettings",
-        "annotation_endpoint": args.obj.lower(),
-        "query_endpoint": "query",
-        "annotation_handler_name": args.obj.title() + "Handler",
-        "query_handler_name": "QueryHandler",
-        "es_doctype": args.obj.lower(),
-        "base_url": "My" + args.obj.title() + ".info",
-        "nosetest_settings_class": args.obj.title(),
-        "nosetest_envar": "M" + args.obj.upper()[0] + '_HOST'
-    }
-
-    if args.l:
-        log("List of available settings:\n{}".format(list(settings_dict.keys())))
-        return
+    settings_dict["src_package"] = 'my' + args.obj.lower()
+    settings_dict["settings_class"] = "My" + args.obj.title() + "WebSettings"
+    settings_dict["annotation_endpoint"] = args.obj.lower()
+    settings_dict["query_endpoint"] = "query"
+    settings_dict["annotation_handler_name"] = args.obj.title() + "Handler"
+    settings_dict["query_handler_name"] = "QueryHandler"
+    settings_dict["es_doctype"] = args.obj.lower()
+    settings_dict["base_url"] = "My" + args.obj.title() + ".info"
+    settings_dict["nosetest_settings_class"] = args.obj.title()
+    settings_dict["nosetest_envar"] = "M" + args.obj.upper()[0] + '_HOST'
 
     # store cwd
     cwd = os.getcwd()
@@ -51,20 +52,22 @@ def main(args):
     settings_dict.update(clargs)
 
     if args.verbose:
-        log("Creating {} project template using {}".format(args.b, settings_dict))
+        print("Creating {} project template using {}".format(args.b, settings_dict))
     
     # Make top level directory
-    pdir = os.path.join(os.path.abspath(args.path), settings_dict["src_package"])
+    pdir = os.path.abspath(args.path)
     if args.verbose:
-        log("Creating directory structure . . . {}".format(pdir))
-    os.mkdir(pdir)
+        print("Creating directory structure at: {}".format(pdir))
 
     # Start to template files out
     os.chdir(template_dir)
 
     # Template files out
     for (index, (dirpath, dirnames, filenames)) in enumerate(list(os.walk('.'))):
-        thisdir = os.path.join(pdir, dirpath)
+        if dirpath == '.':
+            thisdir = os.path.join(pdir, settings_dict['src_package'])
+        else:
+            thisdir = os.path.join(pdir, settings_dict['src_package'], dirpath)
         os.mkdir(thisdir)
         for fi in [f for f in filenames if f.endswith('-tpl')]:
             with open(os.path.join(thisdir, fi[:-4]), 'w') as outfile, open(
@@ -73,12 +76,12 @@ def main(args):
     os.chdir(cwd)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="A tool to create a skeleton biothings project",
+        epilog="Available settings:\n{}".format(list(settings_dict.keys())))
     parser.add_argument('obj', help="biothing type (e.g. gene, variant, drug, etc).  Default settings are created from this")
     parser.add_argument('path', help="path where skeleton project should be placed")
     parser.add_argument('-o', default=[], nargs="*", help="override any of the default settings with key=value pairs, to see default settings list, use -l")
-    parser.add_argument('-l', default=False, dest="l", action="store_true")
     parser.add_argument('-b', default='es', help="type of database used for this biothing project")
-    parser.add_argument('-v', default=False, dest="verbose", action="store_true")
+    parser.add_argument('-v', default=False, dest="verbose", action="store_true", help="Verbose")
     args = parser.parse_args()
     main(args)
