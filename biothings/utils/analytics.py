@@ -1,11 +1,8 @@
 from tornado.httpclient import HTTPRequest, AsyncHTTPClient
-from biothings.settings import BiothingSettings
 from random import randint
 from operator import itemgetter
 import re
 from urllib.parse import quote_plus as _q
-
-bts = BiothingSettings()
 
 RE_LOCALE = re.compile(r'(^|\s*,\s*)([a-zA-Z]{1,8}(-[a-zA-Z]{1,8})*)\s*(;\s*q\s*=\s*(1(\.0{0,3})?|0(\.[0-9]{0,3})))?', re.I)
 
@@ -45,8 +42,8 @@ def generate_unique_id(user_agent='', screen_resolution='', screen_color_depth='
 class GAMixIn:
     def ga_track(self, event={}):
         no_tracking = self.get_argument('no_tracking', None)
-        is_prod = bts.ga_is_prod
-        if not no_tracking and is_prod and bts.ga_account:
+        is_prod = self.web_settings.GA_RUN_IN_PROD
+        if not no_tracking and is_prod and self.web_settings.GA_ACCOUNT:
             _req = self.request
             path = _req.path
             ln = _req.headers.get('Accept-Language', '')
@@ -61,13 +58,13 @@ class GAMixIn:
             # compile measurement protocol string for google
             # first do the pageview hit type
             request_body = 'v=1&t=pageview&tid={}&ds=web&cid={}&uip={}&ua={}&an={}&av={}&dh={}&dp={}'.format(
-                bts.ga_account, this_user, remote_ip, user_agent, 
-                bts.ga_tracker_url, bts._api_version, host, path)
+                self.web_settings.GA_ACCOUNT, this_user, remote_ip, user_agent, 
+                self.web_settings.GA_TRACKER_URL, self.web_settings.API_VERSION, host, path)
             # add the event, if applicable
             if event:
                 request_body += '\nv=1&t=event&tid={}&ds=web&cid={}&uip={}&ua={}&an={}&av={}&dh={}&dp={}'.format(
-                bts.ga_account, this_user, remote_ip, user_agent, 
-                bts.ga_tracker_url, bts._api_version, host, path)
+                self.web_settings.GA_ACCOUNT, this_user, remote_ip, user_agent, 
+                self.web_settings.GA_TRACKER_URL, self.web_settings.API_VERSION, host, path)
                 # add event information also
                 request_body += '&ec={}&ea={}'.format(event['category'], event['action'])
                 if event.get('label', False) and event.get('value', False):
