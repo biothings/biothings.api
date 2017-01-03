@@ -57,6 +57,3 @@ GA_ACTION_ANNOTATION_POST = '${annotation_endpoint}_post'
 GA_TRACKER_URL = '${base_url}'
 
 STATUS_CHECK_ID = ''
-
-# Enter the path to the git repo (if it exists) - for /metadata?dev=true
-APP_GIT_REPOSITORY = ''
