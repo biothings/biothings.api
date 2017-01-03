@@ -47,13 +47,15 @@ ES_QUERY = DefaultESQuery
 # *****************************************************************************
 ES_RESULT_TRANSFORMER = DefaultESResultTransformer
 
-OUTPUT_KEY_ALIASES = {'cadd':'schmadd', 'cadd/gene/ccds_id': 'cces_id'}
+OUTPUT_KEY_ALIASES = {}
+#OUTPUT_KEY_ALIASES = {'cadd':'schmadd', 'cadd/gene/ccds_id': 'cces_id'}
 
 # Global default cap for list inputs
 LIST_SIZE_CAP = 1000
 
 # TODO: Need to describe
-ANNOTATION_ID_REGEX_LIST = [(re.compile(r'rs[0-9]+', re.I), 'dbsnp.rsid')]
+#ANNOTATION_ID_REGEX_LIST = [(re.compile(r'rs[0-9]+', re.I), 'dbsnp.rsid')]
+ANNOTATION_ID_REGEX_LIST = []
 
 # Keyword Argument Control
 # 
@@ -93,7 +95,7 @@ QUERY_GET_CONTROL_KWARGS = {'raw': {'default': False, 'type': bool},
                             'rawquery': {'default': False, 'type': bool},
                             'q': {'default': None, 'type': str, 
                                 'translations': [
-                                    (re.compile(r'chr:', re.I), r'chrom:')
+                                    #(re.compile(r'chr:', re.I), r'chrom:')
                                 ]
                             },
                             'scroll_id': {'default': None, 'type': str}}
@@ -169,9 +171,9 @@ JSONLD_CONTEXT_PATH = ''
 # use it to compress requests
 ENABLE_MSGPACK = True
 
-ID_LIST_SPLIT_REGEX = re.compile('[\s\r\n+|,]+')
+LIST_SPLIT_REGEX = re.compile('[\s\r\n+|,]+')
 
 DEFAULT_SCOPES = ['_id']
 
 # path to the git repository for the app-specific code, override
-APP_GIT_REPOSITORY = ''
+APP_GIT_REPOSITORY = '../'

@@ -84,28 +84,28 @@ class ESQueryBuilder(object):
         return self._return_query_kwargs({'body': '\n'.join(_q)})
 
     def _default_query(self, q):
+        ''' Override me '''
         return self.queries.query_string({"query": q})
 
     def _is_match_all(self, q):
         return (q == '__all__')
 
-    def _is_user_query(self, q):
-        return self.options.userquery and self._user_query(q)
-
     def _extra_query_types(self, q):
+        ''' Override me '''
         return {}
 
     def _match_all(self, q):
+        ''' Override me '''
         return self.queries.match_all({})
 
-    def _scroll(self, scroll_id):
-        return {'body': {'scroll_id': scroll_id}, 'scroll': self.scroll_options.get('scroll', '1m')}
+    def _is_user_query(self, q):
+        return self.options.userquery and self._user_query(q)
 
     def _user_query(self, q):
         _args = [q]
         _args.extend([self.options.get(_key) for _key in ['q2', 'q3', 'q4', 'q5'] 
                         if self.options.get(_key, None)])
-        _ret = json.loads(get_userquery(self.userquery_dir, self.options.userquery))
+        _ret = json.loads(get_userquery(self.userquery_dir, self.options.userquery).format(*_args))
         return self.queries.user_query(_ret)
 
     def user_query_filter(self):
@@ -136,6 +136,9 @@ class ESQueryBuilder(object):
         }
 
         return _query
+    
+    def _scroll(self, scroll_id):
+        return {'body': {'scroll_id': scroll_id}, 'scroll': self.scroll_options.get('scroll', '1m')}
 
     def _annotation_GET_query(self, bid):
         _scopes = self._get_term_scope(bid)

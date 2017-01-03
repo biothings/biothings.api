@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 import logging
+import os
 from importlib import import_module
 from biothings.utils.es import get_es
 import json
-from os.path import abspath
 
 # Error class
 class BiothingConfigError(Exception):
@@ -13,10 +13,16 @@ class BiothingWebSettings(object):
     def __init__(self, config='biothings.www.settings.default'): 
         self.config_mod = import_module(config)
         try:
-            with open(abspath(self.config_mod.JSONLD_CONTEXT_PATH), 'r') as json_file:
+            with open(os.path.abspath(self.config_mod.JSONLD_CONTEXT_PATH), 'r') as json_file:
                 self._jsonld_context = json.load(json_file)
         except:
             self._jsonld_context = {}
+
+        self._app_git_repo = os.path.abspath(self.APP_GIT_REPOSITORY) if getattr(self, 'APP_GIT_REPOSITORY', None) else None
+        if not (self._app_git_repo and os.path.exists(self._app_git_repo) and os.path.isdir(self._app_git_repo) and 
+            os.path.exists(os.path.join(self._app_git_repo, '.git'))):
+            self._app_git_repo = None
+        
         # validate these settings?
         self.validate()
     
