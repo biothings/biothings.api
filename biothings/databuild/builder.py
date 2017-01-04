@@ -419,7 +419,7 @@ class DataBuilder(object):
                     build={"step":"post-merge"})
             pinfo = self.get_pinfo()
             pinfo["step"] = "post-merge"
-            job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
+            yield from job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
         else:
             self.logger.info("Skip post-merge process")
 
@@ -768,10 +768,9 @@ def diff_worker_old_vs_new(id_list_old, new_db_col_names, batch_num, diff_folder
 def create_backend(db_col_names):
     col = None
     db = None
-    print("%s" % repr(db_col_names))
     if type(db_col_names) == str:
         db = mongo.get_target_db()
-        col = db[db_col_names[1]]
+        col = db[db_col_names]
     elif db_col_names[0].startswith("mongodb://"):
         assert len(db_col_names) == 3, "Missing connection information for %s" % repr(db_col_names)
         conn = mongo.MongoClient(db_col_names[0])
