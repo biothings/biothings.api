@@ -216,7 +216,8 @@ class ESQuery(object):
         options.userquery = kwargs.pop('userquery', False)
         options.userquery_args = sorted([x for x in kwargs.items() if re.match(r'q[2-9]', x[0])],
                                 key=lambda x: int(x[0].lstrip('q')))
-        junk, options.userquery_args = zip(*options.userquery_args)
+        if options.userquery_args:
+            junk, options.userquery_args = zip(*options.userquery_args)
         # override to add more options
         options = self._get_options(options, kwargs)
         scopes = kwargs.pop('scopes', None)
