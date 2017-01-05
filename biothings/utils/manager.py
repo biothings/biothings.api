@@ -263,6 +263,9 @@ class JobManager(object):
         self.max_memory_usage = max_memory_usage
         self.avail_memory = int(psutil.virtual_memory().available)
         self._phub = None
+        donedir = os.path.join(config.RUN_DIR,"done")
+        if not os.path.exists(donedir):
+            os.makedirs(donedir)
 
     @asyncio.coroutine
     def checkmem(self,pinfo=None):
