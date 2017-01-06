@@ -29,6 +29,7 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         self.shell = InteractiveShell(user_ns=commands)
         self.name = name
         self._input = ''
+        self.running_jobs = {}
 
     def connection_made(self, chan):
         self._chan = chan
@@ -50,20 +51,48 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         for line in lines[:-1]:
             if not line:
                 continue
+            line = line.strip()
             self.origout.write("run %s " % repr(line))
-            r = self.shell.run_code(line)
-            if r == 1:
+            if line in self.running_jobs:
+                self._chan.write("Command '%s' is already running\n" % repr(line))
+                continue
+            r = self.shell.run_cell(line,store_history=True)
+            if not r.success:
                 self.origout.write("Error\n")
-                etype, value, tb = self.shell._get_exc_info(None)
-                self._chan.write("Error: %s\n" % value)
+                self._chan.write("Error: %s\n" % repr(r.error_in_exec))
             else:
                 #self.origout.write(self.buf.read() + '\n')
-                self.origout.write("OK\n")
-                self.buf.seek(0)
-                self._chan.write(self.buf.read())
-                # clear buffer
-                self.buf.seek(0)
-                self.buf.truncate()
+                if r.result is None:
+                    self.origout.write("OK: %s\n" % repr(r.result))
+                    self.buf.seek(0)
+                    self._chan.write(self.buf.read())
+                    # clear buffer
+                    self.buf.seek(0)
+                    self.buf.truncate()
+                else:
+                    if type(r.result) == asyncio.tasks.Task or \
+                            type(r.result) == list and len(r.result) > 0 and type(r.result[0]) == asyncio.tasks.Task:
+                        r.result = type(r.result) != list and [r.result] or r.result
+                        self.running_jobs[line] = {"started_at" : time.time(),
+                                                   "jobs" : r.result}
+                    else:
+                        self._chan.write(str(r.result) + '\n')
+        if self.running_jobs:
+            finished = []
+            for name,info in sorted(self.running_jobs.items(),key=lambda e: e[1]["started_at"]):
+                is_done = set([j.done() for j in info["jobs"]]) == set([True])
+                has_err = is_done and  [True for j in info["jobs"] if j.exception()] or None
+                outputs = is_done and ([j.exception() for j in info["jobs"] if j.exception()] or \
+                            [j.result() for j in info["jobs"]]) or None
+                if is_done:
+                    finished.append(name)
+                    self._chan.write("[%s] %s: finished, %s\n" % (has_err and "ERR" or "OK ",name, outputs))
+                else:
+                    self._chan.write("[RUN] {%s} %s\n" % (timesofar(info["started_at"]),name))
+            if finished:
+                for name in finished:
+                    self.running_jobs.pop(name)
+
         self._chan.write('hub> ')
         self._input = lines[-1]
 
