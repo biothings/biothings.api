@@ -166,38 +166,42 @@ class DataBuilder(object):
         # get it from source_backend, kind of weird...
         src_build = self.source_backend.build
         build_info = {
-             'status': status,
-             'started_at': datetime.now(),
-             'logfile': self.logfile,
-             'target_backend': self.target_backend.name,
-             'target_name': self.target_backend.target_name}
+            'status': status,
+            'step_started_at': datetime.now(),
+            'started_at' : datetime.fromtimestamp(self.t0),
+            'logfile': self.logfile,
+            'target_backend': self.target_backend.name,
+            'target_name': self.target_backend.target_name}
         if transient:
             # record some "in-progress" information
             build_info['pid'] = os.getpid()
         else:
             # only register time when it's a final state
-            t1 = round(time.time() - self.t0, 0)
             build_info["time"] = timesofar(self.t0)
+            t1 = round(time.time() - self.t0, 0)
             build_info["time_in_s"] = t1
-        # merge extra at root or "build" level
-        # (to keep building data...)
-        # it also means we want to merge the last one in "build" list
-        _cfg = src_build.find_one({'_id': self.build_config['_id']})
         if "build" in extra:
             build_info.update(extra["build"])
-            if "build" in _cfg:
-                _cfg["build"][-1].update(build_info)
-            else:
-                _cfg["build"] = [build_info]
-            src_build.replace_one({'_id': self.build_config['_id']},_cfg)
-        # create a new build entre at the end and clean extra one (not needed/wanted)
+        # create a new build entry at the end and clean extra one (not needed/wanted)
+        _cfg = src_build.find_one({'_id': self.build_config['_id']})
         if init:
-            src_build.update({'_id': self.build_config['_id']}, {"$push": {'build': build_info}})
+            if not "build" in _cfg:
+                # no build entrey yet, need to init the list
+                src_build.update({'_id': self.build_config['_id']}, {"$set": {'build': [build_info]}})
+            else:
+                src_build.update({'_id': self.build_config['_id']}, {"$push": {'build': build_info}})
             if len(_cfg['build']) > self.max_build_status:
                 howmany = len(_cfg['build']) - self.max_build_status
                 #remove any status not needed anymore
                 for _ in range(howmany):
+                    # pop previous build starting from oldest ones
                     src_build.update({'_id': self.build_config['_id']}, {"$pop": {'build': -1}})
+        else:
+            # merge extra at root or "build" level
+            # (to keep building data...) and update the last one
+            # (it's been properly created before when init=True)
+            _cfg["build"][-1].update(build_info)
+            src_build.replace_one({'_id': self.build_config['_id']},_cfg)
 
     def clean_old_collections(self):
         # use target_name is given, otherwise build name will be used 
@@ -252,7 +256,7 @@ class DataBuilder(object):
         try:
             self.target_backend.post_merge()
             _src_versions = self.source_backend.get_src_versions()
-            self.register_status('building',build={"stats" : self.stats, "src_versions" : _src_versions})
+            self.register_status('success',build={"stats" : self.stats, "src_versions" : _src_versions})
         except Exception as e:
             self.register_status("failed",build={"err": repr(e)})
             raise
