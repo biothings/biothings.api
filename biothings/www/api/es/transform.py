@@ -137,7 +137,7 @@ class ESResultTransformer(object):
             res['facets'] = res.pop('aggregations')
             for facet in res['facets']:
                 res['facets'][facet]['_type'] = 'terms'
-                res['facets'][facet]['terms'] = res['facets'][facets].pop('buckets')
+                res['facets'][facet]['terms'] = res['facets'][facet].pop('buckets')
                 res["facets"][facet]["other"] = res["facets"][facet].pop("sum_other_doc_count")
                 res["facets"][facet]["missing"] = res["facets"][facet].pop("doc_count_error_upper_bound")
                 count = 0
