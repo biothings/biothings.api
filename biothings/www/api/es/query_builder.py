@@ -38,7 +38,7 @@ class ESQueries(object):
     def bool(self, query_kwargs):
         return self._es_query_template(query_type="bool", query_kwargs=query_kwargs)
 
-    def user_query(self, raw_query):
+    def raw_query(self, raw_query):
         return self._es_query_template(raw_query=raw_query)
 
 class ESQueryBuilder(object):
@@ -106,7 +106,7 @@ class ESQueryBuilder(object):
         _args.extend([self.options.get(_key) for _key in ['q2', 'q3', 'q4', 'q5'] 
                         if self.options.get(_key, None)])
         _ret = json.loads(get_userquery(self.userquery_dir, self.options.userquery).format(*_args))
-        return self.queries.user_query(_ret)
+        return self.queries.raw_query(_ret)
 
     def user_query_filter(self):
         return json.loads(get_userfilter(self.userquery_dir, self.options.userquery))
