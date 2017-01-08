@@ -53,6 +53,11 @@ class BaseESRequestHandler(BaseHandler):
                 self.web_settings.ES_SIZE_CAP) else self.web_settings.ES_SIZE_CAP
         return kwargs
 
+    def _sanitize_aggs_param(self, kwargs):
+        if self._should_sanitize('aggs', kwargs):
+            kwargs['aggs'] = dict([(field, {"terms": {"field": field}}) for field in kwargs['aggs']])
+        return kwargs
+
     def get_cleaned_options(self, kwargs):
         ''' Get options for handlers using ES requests '''
         options = dotdict()
@@ -75,6 +80,7 @@ class BaseESRequestHandler(BaseHandler):
         kwargs = self._sanitize_source_param(kwargs)
         kwargs = self._sanitize_size_param(kwargs)
         kwargs = self._sanitize_sort_param(kwargs)
+        kwargs = self._sanitize_aggs_param(kwargs)
         return kwargs
     
     def _get_es_index(self, options):
