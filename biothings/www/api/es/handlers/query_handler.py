@@ -223,7 +223,7 @@ class QueryHandler(BaseESRequestHandler):
         logging.debug("Request kwargs: {}".format(kwargs))
         logging.debug("Request options: {}".format(options))
 
-        if not options.control_kwargs.q or not options.esqb_kwargs.scopes:
+        if not options.control_kwargs.q:
             self._return_data_and_track({'success': False, 'error': "Missing required parameters."},
                 ga_event_data={'qsize': 0})
             return
