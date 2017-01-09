@@ -4,15 +4,19 @@ Utils to compare two list of gene documents
 import os
 import time
 import os.path
-from .common import timesofar, dump, get_timestamp
+from .common import timesofar, dump, get_timestamp, filter_dict
 from .backend import DocMongoDBBackend
 from .es import ESIndexer
+from .jsondiff import make as jsondiff
 
 
 def diff_doc(doc_1, doc_2, exclude_attrs=['_timestamp']):
     diff_d = {'update': {},
               'delete': [],
               'add': {}}
+    if exclude_attrs:
+        doc_1 = filter_dict(doc_1,exclude_attrs)
+        doc_2 = filter_dict(doc_2,exclude_attrs)
     for attr in set(doc_1) | set(doc_2):
         if exclude_attrs and attr in exclude_attrs:
             continue
@@ -33,6 +37,9 @@ def full_diff_doc(doc_1, doc_2, exclude_attrs=['_timestamp']):
     diff_d = {'update': {},
               'delete': [],
               'add': {}}
+    if exclude_attrs:
+        doc_1 = filter_dict(doc_1,exclude_attrs)
+        doc_2 = filter_dict(doc_2,exclude_attrs)
     for attr in set(doc_1) | set(doc_2):
         if exclude_attrs and attr in exclude_attrs:
             continue
@@ -118,7 +125,7 @@ def _diff_doc_inner_worker(b1, b2, ids, fastdiff=False, diff_func=full_diff_doc)
                 _updates.append(_diff)
     return _updates
 
-def diff_docs_jsonpatch(b1, b2, ids, fastdiff=False):
+def diff_docs_jsonpatch(b1, b2, ids, fastdiff=False, exclude_attrs=[]):
     '''if fastdiff is True, only compare the whole doc,
        do not traverse into each attributes.
     '''
@@ -126,11 +133,14 @@ def diff_docs_jsonpatch(b1, b2, ids, fastdiff=False):
     for doc1, doc2 in two_docs_iterator(b1, b2, ids):
         assert doc1['_id'] == doc2['_id'], "Different ids: '%s' != '%s'" % \
                 (doc1['_id'], doc2['_id'])
+        if exclude_attrs:
+            doc1 = filter_dict(doc1,exclude_attrs)
+            doc2 = filter_dict(doc2,exclude_attrs)
         if fastdiff:
             if doc1 != doc2:
                 _updates.append(doc1['_id'])
         else:
-            _patch = jsondiff.make(doc1, doc2)
+            _patch = jsondiff(doc1, doc2)
             if _patch:
                 _diff = {}
                 _diff['patch'] = _patch

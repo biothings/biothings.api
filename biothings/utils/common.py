@@ -382,11 +382,30 @@ def list2dict(a_list, keyitem, alwayslist=False):
             _dict[key] = current_value
     return _dict
 
+def filter_dict(d,keys):
+    """
+    Remove keys from dict "d". "keys" is a list
+    of string, dotfield notation can be used to
+    express nested keys. If key to remove doesn't
+    exist, silently ignore it
+    """
+    if type(keys) == str:
+        keys = [keys]
+    for key in keys:
+        if "." in key:
+            innerkey = ".".join(key.split(".")[1:])
+            rkey = key.split(".")[0]
+            if rkey in d:
+                d[rkey] = filter_dict(d[rkey],innerkey)
+            else:
+                continue
+        else:
+            d.pop(key,None)
+    return d
 
 def get_random_string():
     strb = base64.b64encode(os.urandom(6), "".join(random.sample(string.ascii_letters, 2)).encode("ascii"))
     return strb.decode("ascii")
-
 
 def get_timestamp():
     return time.strftime('%Y%m%d')

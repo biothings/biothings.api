@@ -634,9 +634,10 @@ class BuilderManager(BaseManager):
                 target_db[col_name].drop()
 
     @asyncio.coroutine
-    def diff_cols(self,old_db_col_names, new_db_col_names, step=100000, purge=False):
+    def diff_cols(self,old_db_col_names, new_db_col_names, step=100000, purge=False, exclude=[]):
         """
-        Compare new with old collections and produce diff files.
+        Compare new with old collections and produce diff files. Root keys can be excluded from 
+        comparison with "exclude" parameter.
         *_db_col_names can be: 
          1. a colleciton name (as a string) asusming they are
             in the target database.
@@ -651,7 +652,7 @@ class BuilderManager(BaseManager):
         old = create_backend(old_db_col_names)
 
         diff_folder = os.path.join(btconfig.DIFF_PATH,
-                                   "%s_vs_%s" % (new.target_collection.name,old.target_collection.name))
+                                   "%s_vs_%s" % (old.target_collection.name, new.target_collection.name))
         if os.path.exists(diff_folder):
             if purge:
                 rmdashfr(diff_folder)
@@ -686,7 +687,8 @@ class BuilderManager(BaseManager):
                     raise
             self.logger.info("Creating diff worker for batch #%s" % cnt)
             job = yield from self.job_manager.defer_to_process(pinfo,
-                    partial(diff_worker_new_vs_old, id_list_new, old_db_col_names, new_db_col_names, cnt , diff_folder))
+                    partial(diff_worker_new_vs_old, id_list_new, old_db_col_names,
+                            new_db_col_names, cnt , diff_folder, exclude))
             job.add_done_callback(diffed)
             jobs.append(job)
         yield from asyncio.wait(jobs)
@@ -718,7 +720,7 @@ class BuilderManager(BaseManager):
 
         return stats
 
-    def diff(self,old_db_col_names, new_db_col_names, step=100000, purge=False):
+    def diff(self,old_db_col_names, new_db_col_names, step=100000, purge=False, exclude=[]):
         """wrapper over diff_cols() coroutine, return a task"""
         def diffed(f):
             try:
@@ -727,12 +729,12 @@ class BuilderManager(BaseManager):
                 import traceback
                 self.logger.error("Error while running diff job, %s:\n%s" % (e,traceback.format_exc()))
                 raise
-        job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, step, purge))
+        job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, step, purge, exclude))
         job.add_done_callback(diffed)
         return job
 
 
-def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names, batch_num, diff_folder):
+def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names, batch_num, diff_folder, exclude=[]):
     new = create_backend(new_db_col_names)
     old = create_backend(old_db_col_names)
     docs_common = old.target_collection.find({'_id': {'$in': id_list_new}}, projection=[])
@@ -740,7 +742,7 @@ def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names, batc
     id_in_new = list(set(id_list_new) - set(ids_common))
     _updates = []
     if len(ids_common) > 0:
-        _updates = diff_docs_jsonpatch(old, new, list(ids_common), fastdiff=True)
+        _updates = diff_docs_jsonpatch(old, new, list(ids_common), fastdiff=True, exclude_attrs=exclude)
     file_name = os.path.join(diff_folder,"%s.pyobj" % str(batch_num))
     _result = {'add': id_in_new,
                'update': _updates,
