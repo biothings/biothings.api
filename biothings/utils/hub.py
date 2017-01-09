@@ -25,11 +25,16 @@ done = "done"
 ##############
 
 class HubSSHServerSession(asyncssh.SSHServerSession):
+
+    running_jobs = {}
+    job_cnt = 1
+
     def __init__(self, name, commands):
+        # update with ssh server default commands
+        commands["cancel"] = self.__class__.cancel
         self.shell = InteractiveShell(user_ns=commands)
         self.name = name
         self._input = ''
-        self.running_jobs = {}
 
     def connection_made(self, chan):
         self._chan = chan
@@ -53,7 +58,7 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
                 continue
             line = line.strip()
             self.origout.write("run %s " % repr(line))
-            if line in self.running_jobs:
+            if line in self.__class__.running_jobs:
                 self._chan.write("Command '%s' is already running\n" % repr(line))
                 continue
             r = self.shell.run_cell(line,store_history=True)
@@ -73,25 +78,27 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
                     if type(r.result) == asyncio.tasks.Task or \
                             type(r.result) == list and len(r.result) > 0 and type(r.result[0]) == asyncio.tasks.Task:
                         r.result = type(r.result) != list and [r.result] or r.result
-                        self.running_jobs[line] = {"started_at" : time.time(),
-                                                   "jobs" : r.result}
+                        self.__class__.running_jobs[self.__class__.job_cnt] = {"started_at" : time.time(),
+                                                           "jobs" : r.result,
+                                                           "cmd" : line}
+                        self.__class__.job_cnt += 1
                     else:
                         self._chan.write(str(r.result) + '\n')
-        if self.running_jobs:
+        if self.__class__.running_jobs:
             finished = []
-            for name,info in sorted(self.running_jobs.items(),key=lambda e: e[1]["started_at"]):
+            for num,info in sorted(self.__class__.running_jobs.items()):
                 is_done = set([j.done() for j in info["jobs"]]) == set([True])
                 has_err = is_done and  [True for j in info["jobs"] if j.exception()] or None
                 outputs = is_done and ([j.exception() for j in info["jobs"] if j.exception()] or \
                             [j.result() for j in info["jobs"]]) or None
                 if is_done:
-                    finished.append(name)
-                    self._chan.write("[%s] %s: finished, %s\n" % (has_err and "ERR" or "OK ",name, outputs))
+                    finished.append(num)
+                    self._chan.write("[%s] %s %s: finished, %s\n" % (num,has_err and "ERR" or "OK ",info["cmd"], outputs))
                 else:
-                    self._chan.write("[RUN] {%s} %s\n" % (timesofar(info["started_at"]),name))
+                    self._chan.write("[%s] RUN {%s} %s\n" % (num,timesofar(info["started_at"]),info["cmd"]))
             if finished:
-                for name in finished:
-                    self.running_jobs.pop(name)
+                for num in finished:
+                    self.__class__.running_jobs.pop(num)
 
         self._chan.write('hub> ')
         self._input = lines[-1]
@@ -104,6 +111,10 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         # simulate CR
         self._chan.write('\n')
         self.data_received("\n",None)
+
+    @classmethod
+    def cancel(klass,jobnum):
+        return klass.running_jobs.get(jobnum)
 
 
 class HubSSHServer(asyncssh.SSHServer):
