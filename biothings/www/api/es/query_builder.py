@@ -43,7 +43,7 @@ class ESQueries(object):
 
 class ESQueryBuilder(object):
     def __init__(self, index, doc_type, options, es_options, scroll_options={}, 
-                       userquery_dir='', regex_list=[], default_scopes='_id'):
+                       userquery_dir='', regex_list=[], default_scopes=['_id']):
         self.index = index
         self.doc_type = doc_type
         self.options = options
