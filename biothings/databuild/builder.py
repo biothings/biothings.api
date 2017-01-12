@@ -634,7 +634,7 @@ class BuilderManager(BaseManager):
                 target_db[col_name].drop()
 
     @asyncio.coroutine
-    def diff_cols(self,old_db_col_names, new_db_col_names, step=100000, purge=False, exclude=[]):
+    def diff_cols(self,old_db_col_names, new_db_col_names, batch_size=100000, purge=False, exclude=[]):
         """
         Compare new with old collections and produce diff files. Root keys can be excluded from 
         comparison with "exclude" parameter.
@@ -661,8 +661,8 @@ class BuilderManager(BaseManager):
         if not os.path.exists(diff_folder):
             os.makedirs(diff_folder)
 
-        data_new = doc_feeder(new.target_collection, step=step, inbatch=True, fields={"_id":1})
-        data_old = doc_feeder(old.target_collection, step=step, inbatch=True, fields={"_id":1})
+        data_new = doc_feeder(new.target_collection, step=batch_size, inbatch=True, fields={"_id":1})
+        data_old = doc_feeder(old.target_collection, step=batch_size, inbatch=True, fields={"_id":1})
         cnt = 0
         stats = {"update":0, "add":0, "delete":0}
 
@@ -720,7 +720,7 @@ class BuilderManager(BaseManager):
 
         return stats
 
-    def diff(self,old_db_col_names, new_db_col_names, step=100000, purge=False, exclude=[]):
+    def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, purge=False, exclude=[]):
         """wrapper over diff_cols() coroutine, return a task"""
         def diffed(f):
             try:
@@ -729,7 +729,7 @@ class BuilderManager(BaseManager):
                 import traceback
                 self.logger.error("Error while running diff job, %s:\n%s" % (e,traceback.format_exc()))
                 raise
-        job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, step, purge, exclude))
+        job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, purge, exclude))
         job.add_done_callback(diffed)
         return job
 
@@ -741,8 +741,8 @@ def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names, batc
     ids_common = [_doc['_id'] for _doc in docs_common]
     id_in_new = list(set(id_list_new) - set(ids_common))
     _updates = []
-    if len(ids_common) > 0:
-        _updates = diff_docs_jsonpatch(old, new, list(ids_common), fastdiff=True, exclude_attrs=exclude)
+    #if len(ids_common) > 0:
+    #    _updates = diff_docs_jsonpatch(old, new, list(ids_common), fastdiff=True, exclude_attrs=exclude)
     file_name = os.path.join(diff_folder,"%s.pyobj" % str(batch_num))
     _result = {'add': id_in_new,
                'update': _updates,
