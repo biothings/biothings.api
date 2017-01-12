@@ -214,10 +214,8 @@ class ESQuery(object):
         options.jsonld = kwargs.pop('jsonld', False)
         options.dotfield = kwargs.pop('dotfield', False)
         options.userquery = kwargs.pop('userquery', False)
-        options.userquery_args = sorted([x for x in kwargs.items() if re.match(r'q[2-9]', x[0])],
-                                key=lambda x: int(x[0].lstrip('q')))
-        if options.userquery_args:
-            junk, options.userquery_args = zip(*options.userquery_args)
+        options.userquery_kwargs = dict([(k[3:], v) for (k, v) in kwargs.items() if re.match(r'^uq_.*$', k)])
+        
         # override to add more options
         options = self._get_options(options, kwargs)
         scopes = kwargs.pop('scopes', None)
@@ -492,9 +490,9 @@ class ESQueryBuilder(object):
         }))
 
     def user_query(self, q):
-        args = [q]
-        args.extend(self._options.userquery_args)
-        return json.loads(get_userquery(biothing_settings.userquery_dir, self._options.userquery).format(*args))
+        args = {'q': q}
+        args.update(self._options.userquery_kwargs)
+        return json.loads(get_userquery(biothing_settings.userquery_dir, self._options.userquery).format(**args))
 
     def user_query_filter(self):
         return json.loads(get_userfilter(biothing_settings.userquery_dir, self._options.userquery))
