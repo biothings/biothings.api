@@ -558,17 +558,11 @@ class UploaderManager(BaseSourceManager):
         Trigger upload processes for all registered resources.
         **kwargs are passed to upload_src() method
         """
-        errors = {}
+        jobs = []
         for src in self.register:
-            try:
-                self.upload_src(src, **kwargs)
-            except Exception as e:
-                errors[src] = e
-                if raise_on_error:
-                    raise
-        if errors:
-            logging.warning("Found errors while uploading:\n%s" % pprint.pformat(errors))
-            return errors
+            job = self.upload_src(src, **kwargs)
+            jobs.extend(job)
+        return asyncio.gather(*jobs)
 
     def upload_src(self, src, *args, **kwargs):
         """

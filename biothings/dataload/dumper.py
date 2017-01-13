@@ -585,17 +585,11 @@ class DumperManager(BaseSourceManager):
         """
         Run all dumpers, except manual ones
         """
-        errors = {}
+        jobs = []
         for src in self.register:
-            try:
-                self.dump_src(src, force=force, skip_manual=True, **kwargs)
-            except Exception as e:
-                errors[src] = e
-                if raise_on_error:
-                    raise
-        if errors:
-            logging.warning("Found errors while dumping:\n%s" % pprint.pformat(errors))
-            return errors
+            job = self.dump_src(src, force=force, skip_manual=True, **kwargs)
+            jobs.extend(job)
+        return asyncio.gather(*jobs)
 
     def dump_src(self, src, force=False, skip_manual=False, schedule=False, **kwargs):
         if src in self.register:
