@@ -14,7 +14,7 @@ try:
     from raven.contrib.tornado import AsyncSentryClient
 except ImportError:
     __USE_SENTRY__ = False
-    def AsyncSentryClient(**kwargs):
+    def AsyncSentryClient(*args, **kwargs):
         pass
 
 __USE_WSGI__ = False
