@@ -98,23 +98,28 @@ class ESQueryBuilder(object):
         ''' Override me '''
         return self.queries.match_all({})
 
-    def _is_user_query(self, q):
-        return self.options.userquery and self._user_query(q)
-
+    def _is_user_query(self, text_file='query.txt'):
+        try:
+            query_dir = os.path.abspath(self.userquery_dir)
+            return (hasattr(self.options, 'userquery') and (os.path.exists(query_dir)) and
+                (os.path.isdir(query_dir)) and (os.path.exists(os.path.join(query_dir, text_file))))
+        except Exception:
+            return False
+    
     def _user_query(self, q):
-        _args = [q]
-        _args.extend([self.options.get(_key) for _key in ['q2', 'q3', 'q4', 'q5'] 
-                        if self.options.get(_key, None)])
-        _ret = json.loads(get_userquery(self.userquery_dir, self.options.userquery).format(*_args))
+        _args = {'q': q}
+        _args.update(getattr(self.options, 'userquery_kwargs', {}))
+        _ret = json.loads(get_userquery(os.path.abspath(self.userquery_dir), 
+                            self.options.userquery).format(**_args))
         return self.queries.raw_query(_ret)
 
-    def user_query_filter(self):
-        return json.loads(get_userfilter(self.userquery_dir, self.options.userquery))
+    def _user_query_filter(self):
+        return json.loads(get_userfilter(os.path.abspath(self.userquery_dir), self.options.userquery))
 
     def _get_query_filters(self):
         _filter = []
-        if self.options.userquery and self.user_query_filter():
-            _filter.append(self.user_query_filter())
+        if self._is_user_query(text_file='filter.txt'):
+            _filter.append(self._user_query_filter())
         return _filter
 
     def get_query_filters(self):
@@ -154,7 +159,7 @@ class ESQueryBuilder(object):
         return self._build_multiple_query(terms=bids)
 
     def _query_GET_query(self, q):
-        if self._is_user_query(q):
+        if self._is_user_query():
             _query = self._user_query(q)
         elif self._is_match_all(q):
             _query = self._match_all(q)
