@@ -67,12 +67,15 @@ class BaseESRequestHandler(BaseHandler):
         #   * es_kwargs: kwargs that go directly to the ES query (e.g. fields, size, ...)
         #   * esqb_kwargs: kwargs that go directly to the ESQueryBuilder instance
         #   * transform_kwargs: kwargs that go directly to the response transformer (e.g. jsonld, dotfield)
-
         for kwarg_category in ["control_kwargs", "es_kwargs", "esqb_kwargs", "transform_kwargs"]:
             options.setdefault(kwarg_category, dotdict())
             for option, settings in getattr(self, kwarg_category, {}).items():
                 if kwargs.get(option, None) or settings.get('default', None) is not None:
                     options.get(kwarg_category).setdefault(option, kwargs.get(option, settings['default']))
+                # check here for userquery kwargs
+                if re.match(self.web_settings.USERQUERY_KWARG_REGEX, option) and kwarg_category == "esqb_kwargs":
+                    options.esqb_kwargs.setdefault('userquery_kwargs', dotdict())
+                    options.esqb_kwargs.userquery_kwargs[self.web_settings.USERQUERY_KWARG_TRANSFORM(option)] = kwargs.get(option)
         return options
 
     def _sanitize_params(self, kwargs):
