@@ -57,6 +57,13 @@ LIST_SIZE_CAP = 1000
 #ANNOTATION_ID_REGEX_LIST = [(re.compile(r'rs[0-9]+', re.I), 'dbsnp.rsid')]
 ANNOTATION_ID_REGEX_LIST = []
 
+# USERQUERY KWARGS
+
+# regex to identify a userquery arg
+USERQUERY_KWARG_REGEX = re.compile(r'^uq_\w+$')
+# transform to use on the userquery arg
+USERQUERY_KWARG_TRANSFORM = lambda x: x[3:]
+
 # Keyword Argument Control
 # 
 # These parameters control which input kwargs go to which kwarg group for each
@@ -106,11 +113,7 @@ QUERY_GET_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 100, 'a
                        'aggs': {'default': None, 'type': list, 'max': 10, 'alias': 'facets'},
                        'sort': {'default': None, 'type': list, 'max': 100}}
 QUERY_GET_ESQB_KWARGS = {'fetch_all': {'default': False, 'type': bool},
-                         'userquery': {'default': None, 'type': str},
-                         'q2': {'default': None, 'type': str},
-                         'q3': {'default': None, 'type': str},
-                         'q4': {'default': None, 'type': str},
-                         'q5': {'default': None, 'type': str}}
+                         'userquery': {'default': None, 'type': str}}
 QUERY_GET_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool},
                               'jsonld': {'default': False, 'type': bool},
                               '_sorted': {'default': True, 'type': bool}}
