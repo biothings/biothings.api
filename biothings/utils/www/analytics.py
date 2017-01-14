@@ -1,7 +1,8 @@
+''' For Google Analytics tracking in web '''
 from tornado.httpclient import HTTPRequest, AsyncHTTPClient
+import re
 from random import randint
 from operator import itemgetter
-import re
 from urllib.parse import quote_plus as _q
 
 RE_LOCALE = re.compile(r'(^|\s*,\s*)([a-zA-Z]{1,8}(-[a-zA-Z]{1,8})*)\s*(;\s*q\s*=\s*(1(\.0{0,3})?|0(\.[0-9]{0,3})))?', re.I)
@@ -36,9 +37,11 @@ def generate_hash(user_agent, screen_resolution, screen_color_depth):
 
 def generate_unique_id(user_agent='', screen_resolution='', screen_color_depth=''):
     '''Generates a unique user ID from the current user-specific properties.'''
-    return ((randint(0, 0x7fffffff) ^ generate_hash(user_agent, screen_resolution, screen_color_depth)) 
+    return ((randint(0, 0x7fffffff) ^ generate_hash(user_agent, screen_resolution, screen_color_depth))
             & 0x7fffffff)
 
+# This is a mixin for biothing handlers, and references class variables from that class, cannot be used
+# without mixing in
 class GAMixIn:
     def ga_track(self, event={}):
         no_tracking = self.get_argument('no_tracking', None)
@@ -58,12 +61,12 @@ class GAMixIn:
             # compile measurement protocol string for google
             # first do the pageview hit type
             request_body = 'v=1&t=pageview&tid={}&ds=web&cid={}&uip={}&ua={}&an={}&av={}&dh={}&dp={}'.format(
-                self.web_settings.GA_ACCOUNT, this_user, remote_ip, user_agent, 
+                self.web_settings.GA_ACCOUNT, this_user, remote_ip, user_agent,
                 self.web_settings.GA_TRACKER_URL, self.web_settings.API_VERSION, host, path)
             # add the event, if applicable
             if event:
                 request_body += '\nv=1&t=event&tid={}&ds=web&cid={}&uip={}&ua={}&an={}&av={}&dh={}&dp={}'.format(
-                self.web_settings.GA_ACCOUNT, this_user, remote_ip, user_agent, 
+                self.web_settings.GA_ACCOUNT, this_user, remote_ip, user_agent,
                 self.web_settings.GA_TRACKER_URL, self.web_settings.API_VERSION, host, path)
                 # add event information also
                 request_body += '&ec={}&ea={}'.format(event['category'], event['action'])

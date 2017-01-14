@@ -543,14 +543,6 @@ def send_s3_file(localfile, s3key, overwrite=False):
     except ImportError:
         logging.info("Skip sending file to S3, missing information in config file: AWS_KEY, AWS_SECRET or S3_BUCKET")
 
-def sum_arg_dicts(*arg, **kwarg):
-    ''' any dicts passed to the args of this function (either positional or keyword) are combined (using update) '''
-    _ret = {}
-    for _val in arg + tuple(kwarg.values()):
-        if isinstance(_val, dict):
-            _ret.update(_val)
-    return _ret
-
 class DateTimeJSONEncoder(json.JSONEncoder):
     '''A class to dump Python Datetime object.
         json.dumps(data, cls=DateTimeJSONEncoder, indent=indent)
