@@ -1,7 +1,7 @@
 import logging
 import json
-from biothings.utils.common import is_seq, is_str
-from biothings.utils.userquery import get_userquery, get_userfilter
+from biothings.utils.common import is_seq
+from biothings.utils.www.userquery import get_userquery, get_userfilter
 try:
     from re import fullmatch as match
 except ImportError:

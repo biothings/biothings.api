@@ -1,6 +1,6 @@
-from biothings.utils.common import is_str, is_seq
 from biothings.utils.version import get_software_info
-from biothings.utils.www import flatten_doc
+from biothings.utils.common import is_seq
+from biothings.utils.www.es import flatten_doc
 from collections import OrderedDict
 import logging
 
