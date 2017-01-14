@@ -18,9 +18,10 @@ class BiothingWebSettings(object):
         except:
             self._jsonld_context = {}
 
-        self._app_git_repo = os.path.abspath(self.APP_GIT_REPOSITORY) if getattr(self, 'APP_GIT_REPOSITORY', None) else None
-        if not (self._app_git_repo and os.path.exists(self._app_git_repo) and os.path.isdir(self._app_git_repo) and 
-            os.path.exists(os.path.join(self._app_git_repo, '.git'))):
+        # for metadata dev
+        self._app_git_repo = os.path.abspath(self.APP_GIT_REPOSITORY) if hasattr(self, 'APP_GIT_REPOSITORY') else os.path.abspath('.')
+        if not (self._app_git_repo and os.path.exists(self._app_git_repo) and 
+            os.path.isdir(self._app_git_repo) and os.path.exists(os.path.join(self._app_git_repo, '.git'))):
             self._app_git_repo = None
         
         # validate these settings?
