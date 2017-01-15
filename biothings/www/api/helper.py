@@ -2,7 +2,7 @@ import json
 import datetime
 import tornado.web
 import re
-from biothings.utils.analytics import GAMixIn
+from biothings.utils.www.analytics import GAMixIn
 from biothings.utils.common import is_str, is_seq
 try:
     from raven.contrib.tornado import SentryMixin
@@ -48,6 +48,18 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn, SentryMixin):
         """ Overridden to add settings for this biothing API. """
         self.web_settings = web_settings
         self.ga_event_object_ret = {'category': '{}_api'.format(self.web_settings.API_VERSION)}
+
+    def _format_log_exception_message(self, msg='', delim="-"*30):
+        return "{msg}\n\nError message:\n{delim}\n{msg}\n\nRequest parameters:\n{delim}\n{req}\n\nTraceback:\n{delim}\n".format(msg=msg, delim=delim, req=self.request)
+
+    def log_exceptions(self, exception_msg=''):
+        """ Logs the current exception in tornado logs and in hipchat room if available.
+            This must be called in an exception handler """
+        _msg = self._format_log_exception_message(exception_msg)
+        if self.web_settings._hipchat_logger:
+            self.web_settings._hipchat_logger.exception(_msg)
+        else:
+            logging.exception(_msg)
 
     def ga_event_object(self, data={}):
         ''' Create the data object for google analytics tracking. '''
