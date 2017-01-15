@@ -2,6 +2,7 @@ from tornado.web import HTTPError
 from biothings.www.api.es.handlers.base_handler import BaseESRequestHandler
 from biothings.www.api.es.transform import ScrollIterationDone
 from biothings.www.api.es.query import BiothingScrollError
+from biothings.www.api.helper import BiothingParameterTypeError
 from biothings.utils.www import sum_arg_dicts
 import logging
 
@@ -45,12 +46,11 @@ class QueryHandler(BaseESRequestHandler):
         try:
             kwargs = self.get_query_params()
         except BiothingParameterTypeError as e:
-            logging.exception("Type error in get_query_params")
             self._return_data_and_track({'success': False, 'error': "{0}".format(e)}, ga_event_data={'total':0})
             return
         except Exception as e:
-            logging.exception("Error in get_query_params")
-            self._return_data_and_track({'success': False, 'error': "Error parsing input parameter, check input types"}, ga_event_data=ga_event_data)
+            self.log_exceptions("Error in get_query_params")
+            self._return_data_and_track({'success': False, 'error': "Error parsing input parameter, check input types"}, ga_event_data={'total': 0})
             return
 
         ###################################################
@@ -96,7 +96,7 @@ class QueryHandler(BaseESRequestHandler):
             try:
                 _query = _query_builder.scroll(options.control_kwargs.scroll_id)
             except Exception as e:
-                logging.exception("Error building scroll query")
+                self.log_exceptions("Error building scroll query")
                 self._return_data_and_track({'success': False, 'error': 'Error building scroll query for scroll_id "{}"'.format(options.control_kwargs.scroll_id)}, ga_event_data={'total': 0})
                 return
             
@@ -110,7 +110,7 @@ class QueryHandler(BaseESRequestHandler):
                 self._return_data_and_track({'success': False, 'error': '{}'.format(e)}, ga_event_data={'total': 0})
                 return
             except Exception as e:
-                logging.exception("Error getting scroll batch")
+                self.log_exceptions("Error getting scroll batch")
                 self._return_data_and_track({'success': False, 'error': 'Error retrieving scroll results for scroll_id "{}"'.format(options.control_kwargs.scroll_id)}, ga_event_data={'total': 0})
                 return
 
@@ -132,7 +132,7 @@ class QueryHandler(BaseESRequestHandler):
                 self._return_data_and_track({'success': False, 'error': '{}'.format(e)}, ga_event_data={'total': res.get('total', 0)})
                 return
             except Exception as e:
-                logging.exception("Error transforming scroll batch")
+                self.log_exceptions("Error transforming scroll batch")
                 self._return_data_and_track({'success': False, 'error': 'Error transforming scroll results for scroll_id "{}"'.format(options.control_kwargs.scroll_id)})
                 return
         else:
@@ -144,7 +144,7 @@ class QueryHandler(BaseESRequestHandler):
             try:
                 _query = _query_builder.query_GET_query(q=options.control_kwargs.q)
             except Exception as e:
-                logging.exception('Error building query')
+                self.log_exceptions("Error building query")
                 self._return_data_and_track({'success': False, 'error': 'Error building query from q="{}"'.format(options.control_kwargs.q)}, ga_event_object={'total': 0})
                 return
 
@@ -161,7 +161,7 @@ class QueryHandler(BaseESRequestHandler):
             try:
                 res = _backend.query_GET_query(_query)
             except Exception as e:
-                logging.exception('Error executing query')
+                self.log_exceptions("Error executing query")
                 self._return_data_and_track({'success': False, 'error': 'Error executing query'}, 
                                                 ga_event_data={'total': 0})
                 return
@@ -183,7 +183,7 @@ class QueryHandler(BaseESRequestHandler):
             try:
                 res = _result_transformer.clean_query_GET_response(res)
             except Exception as e:
-                logging.exception('Error transforming query result')
+                self.log_exceptions("Error transforming query")
                 self._return_data_and_track({'success': False, 'error': 'Error transforming query result'},
                                             ga_event_data={'total': res.get('total', 0)})
                 return
@@ -210,11 +210,10 @@ class QueryHandler(BaseESRequestHandler):
         try:
             kwargs = self.get_query_params()
         except BiothingParameterTypeError as e:
-            logging.exception("Type error in get_query_params")
             self._return_data_and_track({'success': False, 'error': "{0}".format(e)}, ga_event_data={'qsize':0})
             return
         except Exception as e:
-            logging.exception("Error in get_query_params")
+            self.log_exceptions("Error in get_query_params")
             self._return_data_and_track({'success': False, 'error': "Error parsing input parameter, check input types"}, ga_event_data={'qsize': 0})
             return
 
@@ -250,7 +249,7 @@ class QueryHandler(BaseESRequestHandler):
         try:
             _query = _query_builder.query_POST_query(qs=options.control_kwargs.q, scopes=options.esqb_kwargs.scopes)
         except Exception as e:
-            logging.exception("Error building POST query")
+            self.log_exceptions("Error building POST query")
             self._return_data_and_track({'success': False, 'error': 'Error building query'}, ga_event_data={'qsize': len(options.control_kwargs.q)})
             return
 
@@ -267,8 +266,8 @@ class QueryHandler(BaseESRequestHandler):
         try:
             res = _backend.query_POST_query(_query)
         except Exception as e:
-            logging.exception("Error executing POST query")
-            self._return_data_and_track({'success': False, 'error': 'Error building query'}, ga_event_data={'qsize': len(options.control_kwargs.q)})
+            self.log_exceptions("Error executing POST query")
+            self._return_data_and_track({'success': False, 'error': 'Error executing query'}, ga_event_data={'qsize': len(options.control_kwargs.q)})
             return
 
         logging.debug("Raw query result: {}".format(res))
@@ -288,7 +287,7 @@ class QueryHandler(BaseESRequestHandler):
         try:
             res = _result_transformer.clean_query_POST_response(qlist=options.control_kwargs.q, res=res)
         except Exception as e:
-            logging.exception("Error transforming POST query")
+            self.log_exceptions("Error transforming POST query")
             self._return_data_and_track({'success': False, 'error': 'Error transforming query result'}, 
                                 ga_event_data={'qsize': len(options.control_kwargs.q)})
             return

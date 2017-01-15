@@ -1,6 +1,7 @@
 from tornado.web import HTTPError
 from biothings.www.api.es.handlers.base_handler import BaseESRequestHandler
 from biothings.utils.www import sum_arg_dicts
+from biothings.www.api.helper import BiothingParameterTypeError
 import logging
 import traceback
 
@@ -99,7 +100,7 @@ class BiothingHandler(BaseESRequestHandler):
         try:
             res = _backend.annotation_GET_query(_query)
         except Exception:
-            logging.exception("Error running query")
+            self.log_exceptions("Error executing query")
             raise HttpError(404)
         
         #logging.debug("Raw query result: {}".format(res))
@@ -119,7 +120,7 @@ class BiothingHandler(BaseESRequestHandler):
         try:
             res = _result_transformer.clean_annotation_GET_response(res)
         except Exception:
-            logging.exception("Error transforming result")
+            self.log_exceptions("Error transforming result")
             raise HttpError(404)
 
         # return result
@@ -145,11 +146,10 @@ class BiothingHandler(BaseESRequestHandler):
         try:
             kwargs = self.get_query_params()
         except BiothingParameterTypeError as e:
-            logging.exception("Type error in get_query_params")
             self._return_data_and_track({'success': False, 'error': "{0}".format(e)}, ga_event_data={'qsize': 0})
             return
         except Exception as e:
-            logging.exception("Error in get_query_params")
+            self.log_exceptions("Error in get_query_params")
             self._return_data_and_track({'success': False, 'error': "Error parsing input parameter, check input types"}, ga_event_data={'qsize': 0})
             return 
 
@@ -184,7 +184,7 @@ class BiothingHandler(BaseESRequestHandler):
         try:
             _query = _query_builder.annotation_POST_query(options.control_kwargs.ids)
         except Exception as e:
-            logging.exception("Could not build annotation POST query: '{}'".format(e))
+            self.log_exceptions("Error building annotation POST query")
             self._return_data_and_track({'success': False, 'error': 'Error building query'}, ga_event_data={'qsize': len(options.control_kwargs.ids)})
             return
 
@@ -203,8 +203,8 @@ class BiothingHandler(BaseESRequestHandler):
         try:
             res = _backend.annotation_POST_query(_query)
         except TypeError as e:
-            logging.exception("Could not run annotation POST query")
-            self._return_data_and_track({'success': False, 'error': 'Error running query'},
+            self.log_exceptions("Error executing annotation POST query")
+            self._return_data_and_track({'success': False, 'error': 'Error executing query'},
                             ga_event_data={'qsize': len(options.control_kwargs.ids)})
             return
 
@@ -225,7 +225,7 @@ class BiothingHandler(BaseESRequestHandler):
         try:
             res = _result_transformer.clean_annotation_POST_response(bid_list=options.control_kwargs.ids, res=res)
         except Exception as e:
-            logging.exception("Error transforming annotation POST results")
+            self.log_exceptions("Error transforming annotation POST results")
             self._return_data_and_track({'success': False, 'error': 'Error transforming results'},
                             ga_event_data={'qsize': len(options.control_kwargs.ids)})       
  
