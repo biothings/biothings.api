@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 import logging
 import os
+import socket
 from importlib import import_module
-from biothings.utils.es import get_es
+from biothings.utils.www.log import get_hipchat_logger
 import json
 
 # Error class
@@ -24,6 +25,21 @@ class BiothingWebSettings(object):
             os.path.isdir(self._app_git_repo) and os.path.exists(os.path.join(self._app_git_repo, '.git'))):
             self._app_git_repo = None
         
+        # for logging exceptions to hipchat
+        if self.HIPCHAT_ROOM and self.HIPCHAT_AUTH_TOKEN:
+            try:
+                _socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                _socket.connect(self.HIPCHAT_AUTO_FROM_SOCKET_CONNECTION)  # set up socket
+                _from = _socket.getsockname()[0] # try to get local ip as the "from" key
+            except:
+                _from = None
+            self._hipchat_logger = get_hipchat_logger(hipchat_room=self.HIPCHAT_ROOM, 
+                hipchat_auth_token=self.HIPCHAT_AUTH_TOKEN, hipchat_msg_from=_from, 
+                hipchat_log_format=getattr(self, 'HIPCHAT_MESSAGE_FORMAT', None), 
+                hipchat_msg_color=self.HIPCHAT_MESSAGE_COLOR)
+        else:
+            self._hipchat_logger = None
+
         # validate these settings?
         self.validate()
     
@@ -57,4 +73,5 @@ class BiothingESWebSettings(BiothingWebSettings):
 
     def get_es_client(self):
         ''' get the es client for this app '''
-        return get_es(self.ES_HOST)
+        from elasticsearch import Elasticsearch
+        return Elasticsearch(self.ES_HOST, timeout=getattr(self, 'ES_CLIENT_TIMEOUT', 120))
