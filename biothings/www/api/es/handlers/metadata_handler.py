@@ -17,8 +17,6 @@ class MetadataHandler(BaseESRequestHandler):
         logging.debug("Kwarg settings: {}".format(self.kwarg_settings))
 
     def get(self):
-        logging.debug("Request object: {}".format(self.request))
-        logging.debug("Request path: {}".format(self.request.path))
         kwargs = self.get_query_params()
 
         if kwargs is None:
@@ -42,7 +40,7 @@ class MetadataHandler(BaseESRequestHandler):
         try:
             _query = _query_builder.metadata_query()
         except Exception as e:
-            logging.exception("Error building metadata query")
+            self.log_exceptions("Error building metadata query")
             self.return_json({'success': False, 'error': 'Error building query'})
             return
 
@@ -58,7 +56,7 @@ class MetadataHandler(BaseESRequestHandler):
         try:
             res = _backend.metadata_query(_query)
         except Exception:
-            logging.exception("Error running query")
+            self.log_exceptions("Error running query")
             self.return_json({'success': False, 'error': 'Error executing query'})
             return
 
@@ -75,15 +73,10 @@ class MetadataHandler(BaseESRequestHandler):
         try:
             res = _result_transformer.clean_metadata_response(res, fields=self.request.path.endswith('fields'))
         except Exception:
-            logging.exception("Error transforming result")
+            self.log_exceptions("Error transforming result")
             self.return_json({'success': False, 'error': 'Error transforming query result'})
             return
 
         res = self._pre_finish_GET_hook(options, res)
 
         self.return_json(res)
-
-        #_meta = self.esq.get_mapping_meta(**kwargs)
-        #self._fill_software_info(_meta)
-        #self.return_json(_meta)
-
