@@ -48,6 +48,7 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn, SentryMixin):
         """ Overridden to add settings for this biothing API. """
         self.web_settings = web_settings
         self.ga_event_object_ret = {'category': '{}_api'.format(self.web_settings.API_VERSION)}
+        self.kwarg_settings = {}
 
     def _format_log_exception_message(self, msg='', delim="-"*30):
         return "{msg}\n\nError message:\n{delim}\n{msg}\n\nRequest parameters:\n{delim}\n{req}\n\nTraceback:\n{delim}\n".format(msg=msg, delim=delim, req=self.request)
