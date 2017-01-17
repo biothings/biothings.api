@@ -432,7 +432,10 @@ def top(pqueue,tqueue,pid=None):
         if child:
             return list(pworkers.values())[0]
         else:
-            return pworkers
+            # return just None, so hub will actually print what's been printed here in 
+            # this function (see data_received() method and the way it decides what to do
+            # according to the returned result type
+            pass
     except psutil.NoSuchProcess as e:
         print(e)
 
