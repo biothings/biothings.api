@@ -1,4 +1,5 @@
 import os.path
+import re
 #import logging
 
 query_cache = {}
@@ -13,7 +14,8 @@ def get_userquery(query_folder, query_name):
     # get the query from file, assumed that query_folder/query_name/query.txt exists
     query_dir = os.path.join(query_folder, query_name)
     with open(os.path.join(query_dir, 'query.txt'), 'r') as query_handle:
-        query_cache[query_name] = query_handle.read()
+        query_cache[query_name] = re.sub(r'\{\{\{\{(?P<var>.*?)\}\}\}\}', '{\g<var>}', 
+                                  re.sub(r"\{", "{{", re.sub(r"\}", "}}", query_handle.read())))
     #logging.debug("query_cache[{}]: {}".format(query_name, query_cache[query_name]))
 
     return query_cache[query_name]
