@@ -263,6 +263,8 @@ def get_compressed_outfile(filename, compress='gzip'):
     elif compress == 'lzma':
         import lzma
         out_f = lzma.LZMAFile(filename, 'wb')
+    elif compress == None:
+        out_f = open(filename, 'wb')
     else:
         raise ValueError("Invalid compress parameter.")
     return out_f
