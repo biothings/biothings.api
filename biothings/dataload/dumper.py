@@ -198,7 +198,7 @@ class BaseDumper(object):
         self.src_dump.save(self.src_doc)
 
     @asyncio.coroutine
-    def dump(self,force=False,job_manager=None):
+    def dump(self, steps=["dump","post"], force=False, job_manager=None):
         '''
         Dump (ie. download) resource as needed
         this should be called after instance creation
@@ -207,25 +207,35 @@ class BaseDumper(object):
         '''
         # signature says it's optional but for now it's not...
         assert job_manager
+        # check what to do
+        if type(steps) == str:
+            steps = [steps]
         try:
-            pinfo = self.get_pinfo()
-            pinfo["step"] = "check"
-            # TODO: blocking call for now, FTP client can't be properly set in thread after
-            self.create_todump_list(force=force)
-            if self.to_dump:
-                # mark the download starts
-                self.register_status("downloading",transient=True)
-                # unsync to make it pickable
-                state = self.unprepare()
-                yield from self.do_dump(job_manager=job_manager)
-                # then restore state
-                self.prepare(state)
+            if "dump" in steps:
+                pinfo = self.get_pinfo()
+                pinfo["step"] = "check"
+                # TODO: blocking call for now, FTP client can't be properly set in thread after
+                self.create_todump_list(force=force)
+                if self.to_dump and "dump" in steps:
+                    # mark the download starts
+                    self.register_status("downloading",transient=True)
+                    # unsync to make it pickable
+                    state = self.unprepare()
+                    yield from self.do_dump(job_manager=job_manager)
+                    # then restore state
+                    self.prepare(state)
+                else:
+                    # if nothing to dump, don't do post process
+                    self.logger.info("Nothing to dump")
+                    return
+            if "post" in steps:
+                pinfo = self.get_pinfo()
+                pinfo["step"] = "post_dump"
                 # for some reason (like maintaining object's state between pickling).
                 # we can't use process there. Need to use thread to maintain that state without
                 # building an unmaintainable monster
-                pinfo = self.get_pinfo()
-                pinfo["step"] = "post_dump"
                 yield from job_manager.defer_to_thread(pinfo, self.post_dump)
+                # set it to success at the very end
                 self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
         except (KeyboardInterrupt,Exception) as e:
             self.logger.error("Error while dumping source: %s" % e)
@@ -514,6 +524,7 @@ from bs4 import BeautifulSoup
 class GoogleDriveDumper(HTTPDumper):
 
     def prepare_client(self):
+        # FIXME: this is not very useful...
         super(GoogleDriveDumper,self).prepare_client()
 
     def remote_is_better(self,remotefile,localfile):
@@ -581,7 +592,7 @@ class DumperManager(BaseSourceManager):
                 self.register[klass.name] = klass 
             self.conn.register(klass)
 
-    def dump_all(self,force=False,raise_on_error=False,**kwargs):
+    def dump_all(self, force=False, **kwargs):
         """
         Run all dumpers, except manual ones
         """
