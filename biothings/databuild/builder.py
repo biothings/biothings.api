@@ -741,8 +741,8 @@ def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names, batc
     ids_common = [_doc['_id'] for _doc in docs_common]
     id_in_new = list(set(id_list_new) - set(ids_common))
     _updates = []
-    #if len(ids_common) > 0:
-    #    _updates = diff_docs_jsonpatch(old, new, list(ids_common), fastdiff=True, exclude_attrs=exclude)
+    if len(ids_common) > 0:
+        _updates = diff_docs_jsonpatch(old, new, list(ids_common), exclude_attrs=exclude)
     file_name = os.path.join(diff_folder,"%s.pyobj" % str(batch_num))
     _result = {'add': id_in_new,
                'update': _updates,
