@@ -164,6 +164,8 @@ class BiothingHandler(BaseESRequestHandler):
                                         ga_event_data={'qsize': 0})
             return
         
+        options = self._pre_query_builder_POST_hook(options)
+        
         ###################################################
         #           Instantiate pipeline classes    
         ###################################################
@@ -174,8 +176,6 @@ class BiothingHandler(BaseESRequestHandler):
         _backend = self.web_settings.ES_QUERY(client=self.web_settings.es_client, options=options.es_kwargs)
         _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(options=options.transform_kwargs, host=self.request.host,
             jsonld_context=self.web_settings._jsonld_context, output_aliases=self.web_settings.OUTPUT_KEY_ALIASES)
-
-        options = self._pre_query_builder_POST_hook(options)
         
         ###################################################
         #           Build query    
