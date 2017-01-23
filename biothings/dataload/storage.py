@@ -12,7 +12,7 @@ class StorageException(Exception):
 class BaseStorage(object):
 
     def __init__(self,db_info,dest_col_name,logger):
-        db = get_src_db()
+        db = db_info or get_src_db()
         self.temp_collection = db[dest_col_name]
         self.logger = logger
 

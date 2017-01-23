@@ -156,10 +156,16 @@ class DataBuilder(object):
         fh = logging_mod.FileHandler(self.logfile)
         fh.setFormatter(logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S"))
         fh.name = "logfile"
+        nh = HipchatHandler(config.HIPCHAT_CONFIG)
+        nh.setFormatter(fmt)
+        nh.name = "hipchat"
         self.logger = logging_mod.getLogger("%s_build" % self.build_name)
         self.logger.setLevel(logging_mod.DEBUG)
         if not fh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(fh)
+        if not nh.name in [h.name for h in self.logger.handlers]:
+            self.logger.addHandler(nh)
+        return logger
 
     def register_status(self,status,transient=False,init=False,**extra):
         assert self.build_config, "build_config needs to be specified first"
@@ -257,8 +263,10 @@ class DataBuilder(object):
             self.target_backend.post_merge()
             _src_versions = self.source_backend.get_src_versions()
             self.register_status('success',build={"stats" : self.stats, "src_versions" : _src_versions})
+            self.logger.info("success\n%s\n%s" % (self.stats,_src_vers),extra={"notify":True})
         except Exception as e:
             self.register_status("failed",build={"err": repr(e)})
+            self.logger.error("failed: %s" % e,extra={"notify":True})
             raise
 
     def resolve_sources(self,sources):
@@ -327,6 +335,7 @@ class DataBuilder(object):
             import traceback
             self.logger.error(traceback.format_exc())
             self.register_status("failed",build={"err": repr(e)})
+            self.logger.error("failed: %s" % e,extra={"notify":True})
             raise
 
     def get_mapper_for_source(self,src_name,init=True):

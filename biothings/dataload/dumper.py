@@ -6,7 +6,8 @@ from functools import partial
 
 from biothings.utils.mongo import get_src_dump
 from biothings.utils.common import timesofar
-from config import logger as logging
+from biothings.utils.loggers import HipchatHandler
+from config import logger as logging, HIPCHAT_CONFIG
 
 from biothings.utils.manager import BaseSourceManager
 
@@ -135,13 +136,20 @@ class BaseDumper(object):
         if not os.path.exists(self.src_root_folder):
             os.makedirs(self.src_root_folder)
         self.logfile = os.path.join(self.src_root_folder, '%s_%s_dump.log' % (self.src_name,self.timestamp))
+        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S")
         fh = logging_mod.FileHandler(self.logfile)
-        fh.setFormatter(logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S"))
+        fh.setFormatter(fmt)
         fh.name = "logfile"
-        self.logger = logging_mod.getLogger("%s_dump" % self.src_name)
+        nh = HipchatHandler(HIPCHAT_CONFIG)
+        nh.setFormatter(fmt)
+        nh.name = "hipchat"
+        self.logger = logging_mod.getLogger("%s_dump" % self.src_name)   
         self.logger.setLevel(logging_mod.DEBUG)
         if not fh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(fh)
+        if not nh.name in [h.name for h in self.logger.handlers]:
+            self.logger.addHandler(nh)
+        return logger
 
     def prepare(self,state={}):
         if self.prepared:
@@ -226,7 +234,7 @@ class BaseDumper(object):
                     self.prepare(state)
                 else:
                     # if nothing to dump, don't do post process
-                    self.logger.info("Nothing to dump")
+                    self.logger.info("Nothing to dump",extra={"notify":True})
                     return
             if "post" in steps:
                 pinfo = self.get_pinfo()
@@ -237,11 +245,13 @@ class BaseDumper(object):
                 yield from job_manager.defer_to_thread(pinfo, self.post_dump)
                 # set it to success at the very end
                 self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
+                self.logger.info("success",extra={"notify":True})
         except (KeyboardInterrupt,Exception) as e:
             self.logger.error("Error while dumping source: %s" % e)
             import traceback
             self.logger.error(traceback.format_exc())
             self.register_status("failed",download={"err" : repr(e)})
+            self.logger.error("failed: %s" % e,extra={"notify":True})
         finally:
             if self.client:
                 self.release_client()
@@ -454,6 +464,7 @@ class DummyDumper(BaseDumper):
         yield from job_manager.defer_to_thread(pinfo, self.post_dump)
         self.logger.info("Registering success")
         self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
+        self.logger.info("success",extra={"notify":True})
 
 class ManualDumper(BaseDumper):
     '''
@@ -515,6 +526,7 @@ class ManualDumper(BaseDumper):
         yield from job_manager.defer_to_thread(pinfo, self.post_dump)
         # ok, good to go
         self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
+        self.logger.info("success",extra={"notify":True})
         self.logger.info("Manually dumped resource (data_folder: '%s')" % self.new_data_folder)
 
 

@@ -12,7 +12,7 @@ from biothings.utils.manager import BaseSourceManager, \
 from .storage import IgnoreDuplicatedStorage, MergerStorage, \
                      BasicStorage, NoBatchIgnoreDuplicatedStorage, \
                      NoStorage
-
+from biothings.utils.loggers import HipchatHandler
 from biothings import config
 
 logging = config.logger
@@ -353,8 +353,10 @@ class BaseSourceUploader(object):
             if clean_archives:
                 self.clean_archived_collections()
             self.register_status("success",count=cnt)
+            self.logger.info("success",extra={"notify":True})
         except Exception as e:
             self.register_status("failed",err=str(e))
+            self.logger.error("failed: %s" % e,extra={"notify":True})
             raise
 
 
@@ -374,10 +376,15 @@ class BaseSourceUploader(object):
         fh = logging_mod.FileHandler(self.logfile)
         fh.setFormatter(logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S"))
         fh.name = "logfile"
+        nh = HipchatHandler(config.HIPCHAT_CONFIG)
+        nh.setFormatter(fmt)
+        nh.name = "hipchat"
         logger = logging_mod.getLogger("%s_upload" % self.fullname)
         logger.setLevel(logging_mod.DEBUG)
         if not fh.name in [h.name for h in logger.handlers]:
             logger.addHandler(fh)
+        if not nh.name in [h.name for h in self.logger.handlers]:
+            self.logger.addHandler(nh)
         return logger
 
     def __getattr__(self,attr):
@@ -585,14 +592,17 @@ class UploaderManager(BaseSourceManager):
             def done(f):
                 try:
                     self.register_status(src,"success")
+                    self.logger.info("success",extra={"notify":True})
                 except Exception as e:
                     self.register_status(src,"failed",err=repr(e))
+                    self.logger.error("failed: %s" % e,extra={"notify":True})
             tasks.add_done_callback(done)
             return jobs
         except Exception as e:
             import traceback
             logging.error("Error while uploading '%s': %s\n%s" % (src,e,traceback.format_exc()))
             self.register_status(src,"failed",err=repr(e))
+            self.logger.error("failed: %s" % e,extra={"notify":True})
             raise
 
     @asyncio.coroutine
