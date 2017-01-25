@@ -12,7 +12,6 @@ from functools import partial
 from biothings.utils.common import timesofar, iter_n, get_timestamp, dump, rmdashfr
 from biothings.utils.mongo import doc_feeder
 from biothings.utils.diff import diff_docs_jsonpatch
-from utils.es import ESIndexer
 import biothings.databuild.backend as btbackend
 from biothings.databuild.mapper import TransparentMapper
 from biothings import config as btconfig
