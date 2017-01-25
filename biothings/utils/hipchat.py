@@ -1,10 +1,22 @@
 import requests, json
+from functools import wraps
 
-try:
-    from biothings import config
-except ImportError:
-    raise Exception("call biothings.config_for_app() first")
+config = None
 
+def requires_config(func):
+    @wraps(func)
+    def func_wrapper(*args,**kwargs):
+        global config
+        if not config:
+            try:
+                from biothings import config as config_mod
+                config = config_mod
+            except ImportError:
+                raise Exception("call biothings.config_for_app() first")
+        return func(*args,**kwargs)
+    return func_wrapper
+
+@requires_config
 def hipchat_msg(msg, color='yellow', message_format='text'):
     if not hasattr(config,"HIPCHAT_CONFIG") or not config.HIPCHAT_CONFIG or not config.HIPCHAT_CONFIG.get("token"):
         return
