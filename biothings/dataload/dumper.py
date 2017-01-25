@@ -26,6 +26,9 @@ class BaseDumper(object):
     # attribute used to generate data folder path suffix
     SUFFIX_ATTR = "release"
 
+    # keep all release (True) or keep only the latest ?
+    ARCHIVE = True
+
     SCHEDULE = None # crontab format schedule, if None, won't be scheduled
 
     def __init__(self, src_name=None, src_root_folder=None, no_confirm=True, archive=True):
@@ -34,7 +37,7 @@ class BaseDumper(object):
         self.src_name = src_name or self.SRC_NAME
         self.src_root_folder = src_root_folder or self.SRC_ROOT_FOLDER
         self.no_confirm = no_confirm
-        self.archive = archive
+        self.archive = archive or self.ARCHIVE
         self.to_dump = []
         self.release = None
         self.t0 = time.time()
@@ -149,7 +152,7 @@ class BaseDumper(object):
             self.logger.addHandler(fh)
         if not nh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(nh)
-        return logger
+        return self.logger
 
     def prepare(self,state={}):
         if self.prepared:
@@ -188,7 +191,7 @@ class BaseDumper(object):
         self.src_doc = {
                 '_id': self.src_name,
                'data_folder': self.new_data_folder,
-               'release': self.release,
+               'release': getattr(self,self.__class__.SUFFIX_ATTR),
                'download' : {
                    'logfile': self.logfile,
                    'started_at': datetime.now(),
@@ -276,7 +279,7 @@ class BaseDumper(object):
         like the actual release.
         """
         if not getattr(self,self.__class__.SUFFIX_ATTR):
-            raise DumperException("Can't generate new data folder, attribute used to suffix (%s) isn't set" % self.__class__.SUFFIX_ATTR)
+            raise DumperException("Can't generate new data folder, attribute used for suffix (%s) isn't set" % self.__class__.SUFFIX_ATTR)
         suffix = getattr(self,self.__class__.SUFFIX_ATTR)
         if self.archive:
             return os.path.join(self.src_root_folder, suffix)
@@ -320,8 +323,8 @@ class BaseDumper(object):
 from ftplib import FTP
 
 class FTPDumper(BaseDumper):
-    FTP_HOST = 'ftp.ncbi.nlm.nih.gov'
-    CWD_DIR = '/snp/organisms'
+    FTP_HOST = ''
+    CWD_DIR = ''
     FTP_USER = ''
     FTP_PASSWD = ''
 
