@@ -570,8 +570,9 @@ def unzipall(folder,pattern="*.zip"):
     '''
     for zfile in glob.glob(os.path.join(folder,pattern)):
         zf = zipfile.ZipFile(zfile)
-        logging.info("Unzipping '%s'" % zf.filename)
+        logging.info("unzipping '%s'" % zf.filename)
         zf.extractall(folder)
+        logging.info("done unzipping '%s'" % zf.filename)
 
 import tarfile, gzip
 def untargzall(folder,pattern="*.tar.gz"):
@@ -584,6 +585,7 @@ def untargzall(folder,pattern="*.tar.gz"):
         tf = tarfile.TarFile(fileobj=gz)
         logging.info("untargz '%s'" % tf.name)
         tf.extractall(folder)
+        logging.info("done untargz '%s'" % tf.name)
 
 def gunzipall(folder,pattern="*.gz"):
     '''
@@ -598,6 +600,7 @@ def gunzipall(folder,pattern="*.gz"):
             logging.info("gunzip '%s'" % gz.name)
             for line in gz:
                 fout.write(line)
+            logging.info("Done gunzip '%s'" % gz.name)
         fout.close()
 
 def find_process(pid):

@@ -11,6 +11,7 @@ from functools import partial
 
 from biothings.utils.common import timesofar, iter_n, get_timestamp, dump, rmdashfr
 from biothings.utils.mongo import doc_feeder
+from biothings.utils.loggers import HipchatHandler
 from biothings.utils.diff import diff_docs_jsonpatch
 import biothings.databuild.backend as btbackend
 from biothings.databuild.mapper import TransparentMapper
@@ -153,9 +154,10 @@ class DataBuilder(object):
             os.makedirs(self.log_folder)
         self.logfile = os.path.join(self.log_folder, '%s_%s_build.log' % (self.build_name,time.strftime("%Y%m%d",self.timestamp.timetuple())))
         fh = logging_mod.FileHandler(self.logfile)
-        fh.setFormatter(logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S"))
+        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S")
+        fh.setFormatter(fmt)
         fh.name = "logfile"
-        nh = HipchatHandler(config.HIPCHAT_CONFIG)
+        nh = HipchatHandler(btconfig.HIPCHAT_CONFIG)
         nh.setFormatter(fmt)
         nh.name = "hipchat"
         self.logger = logging_mod.getLogger("%s_build" % self.build_name)
@@ -164,7 +166,7 @@ class DataBuilder(object):
             self.logger.addHandler(fh)
         if not nh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(nh)
-        return logger
+        return self.logger
 
     def register_status(self,status,transient=False,init=False,**extra):
         assert self.build_config, "build_config needs to be specified first"
@@ -262,7 +264,7 @@ class DataBuilder(object):
             self.target_backend.post_merge()
             _src_versions = self.source_backend.get_src_versions()
             self.register_status('success',build={"stats" : self.stats, "src_versions" : _src_versions})
-            self.logger.info("success\n%s\n%s" % (self.stats,_src_vers),extra={"notify":True})
+            self.logger.info("success\nstats: %s\nversions: %s" % (self.stats,_src_versions),extra={"notify":True})
         except Exception as e:
             self.register_status("failed",build={"err": repr(e)})
             self.logger.error("failed: %s" % e,extra={"notify":True})
@@ -432,6 +434,7 @@ class DataBuilder(object):
             pinfo = self.get_pinfo()
             pinfo["step"] = "post-merge"
             yield from job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
+
         else:
             self.logger.info("Skip post-merge process")
 
@@ -546,6 +549,17 @@ class BuilderManager(BaseManager):
         self.target_backend_factory = target_backend_factory
         self.builder_class = builder_class
         self.setup_log()
+        # check if src_build exist and create it as necessary
+        if not self.src_build.name in self.src_build.database.collection_names():
+            logging.debug("Creating '%s' collection (one-time)" % self.src_build.name)
+            self.src_build.database.create_collection(self.src_build.name)
+            # this is dummy configuration, used as a template
+            logging.debug("Creating dummy configuration (one-time)")
+            conf = {"_id" : "placeholder",
+                    "name" : "placeholder",
+                    "root" : [],
+                    "sources" : []}
+            self.src_build.insert_one(conf)
 
     def register_builder(self,build_name):
         # will use partial to postponse object creations and their db connection

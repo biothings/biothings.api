@@ -33,7 +33,7 @@ class IDBaseMapper(BaseMapper):
 
     def __init__(self, name=None, convert_func=None, *args, **kwargs):
         """
-        'name' may match a "mapper" metatdata field (see uploaders). If None, mapper 
+        'name' may match a "mapper" metatdata field (see uploaders). If None, mapper
         will be applied to any document from a resource without "mapper" argument
         """
         super(IDBaseMapper,self).__init__(self,name=name)

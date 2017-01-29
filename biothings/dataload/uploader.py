@@ -195,7 +195,7 @@ class BaseSourceUploader(object):
     @classmethod
     def get_mapping(self):
         """Return ES mapping"""
-        raise NotImplementedError("Implement in subclass")
+        return {} # default to nothing...
 
     def make_temp_collection(self):
         '''Create a temp collection for dataloading, e.g., entrez_geneinfo_INEMO.'''
@@ -373,8 +373,9 @@ class BaseSourceUploader(object):
         if not os.path.exists(self.src_root_folder):
             os.makedirs(self.src_root_folder)
         self.logfile = os.path.join(self.src_root_folder, '%s_%s_upload.log' % (self.fullname,time.strftime("%Y%m%d",self.timestamp.timetuple())))
+        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S")
         fh = logging_mod.FileHandler(self.logfile)
-        fh.setFormatter(logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S"))
+        fh.setFormatter(fmt)
         fh.name = "logfile"
         nh = HipchatHandler(config.HIPCHAT_CONFIG)
         nh.setFormatter(fmt)
@@ -383,8 +384,8 @@ class BaseSourceUploader(object):
         logger.setLevel(logging_mod.DEBUG)
         if not fh.name in [h.name for h in logger.handlers]:
             logger.addHandler(fh)
-        if not nh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(nh)
+        if not nh.name in [h.name for h in logger.handlers]:
+            logger.addHandler(nh)
         return logger
 
     def __getattr__(self,attr):
@@ -592,7 +593,7 @@ class UploaderManager(BaseSourceManager):
             def done(f):
                 try:
                     self.register_status(src,"success")
-                    self.logger.info("success",extra={"notify":True})
+                    logging.info("success",extra={"notify":True})
                 except Exception as e:
                     self.register_status(src,"failed",err=repr(e))
                     self.logger.error("failed: %s" % e,extra={"notify":True})

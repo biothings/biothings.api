@@ -1,3 +1,4 @@
 beautifulsoup4
 aiocron
 asyncssh==1.7.1
+pymongo
