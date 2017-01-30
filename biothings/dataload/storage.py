@@ -1,4 +1,5 @@
 import types, copy, datetime, time
+import logging
 
 import asyncio
 from pymongo.errors import DuplicateKeyError, BulkWriteError
@@ -6,13 +7,14 @@ from pymongo.errors import DuplicateKeyError, BulkWriteError
 from biothings.utils.common import timesofar, iter_n
 from biothings.utils.mongo import get_src_db
 
+
 class StorageException(Exception):
     pass
 
 class BaseStorage(object):
 
-    def __init__(self,db_info,dest_col_name,logger):
-        db = db_info or get_src_db()
+    def __init__(self,db,dest_col_name,logger=logging):
+        db = db or get_src_db()
         self.temp_collection = db[dest_col_name]
         self.logger = logger
 
