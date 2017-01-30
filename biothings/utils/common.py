@@ -1,6 +1,6 @@
-from __future__ import print_function
 import base64
 import os
+import io
 import random
 import string
 import sys
@@ -12,6 +12,8 @@ from shlex import shlex
 import pickle
 import json
 import logging
+import importlib
+import psutil
 
 if sys.version_info.major == 3:
     str_types = str
@@ -152,22 +154,20 @@ def anyfile(infile, mode='r'):
     filetype = os.path.splitext(infile)[1].lower()
     if filetype == '.gz':
         import gzip
-        #in_f = gzip.GzipFile(infile, 'r')
-        in_f = gzip.open(infile, 'rt')
+        in_f = io.TextIOWrapper(gzip.GzipFile(infile, 'r'))
     elif filetype == '.zip':
         import zipfile
-        in_f = zipfile.ZipFile(infile, 'r').open(rawfile, 'r')
+        in_f = io.TextIOWrapper(zipfile.ZipFile(infile, 'r').open(rawfile, 'r'))
     else:
         in_f = open(infile, mode)
     return in_f
-
 
 def is_filehandle(fh):
     '''return True/False if fh is a file-like object'''
     return hasattr(fh, 'read') and hasattr(fh, 'close')
 
 
-class open_anyfile():
+class open_anyfile(object):
     '''a context manager can be used in "with" stmt.
        accepts a filehandle or anything accepted by anyfile function.
 
@@ -263,6 +263,8 @@ def get_compressed_outfile(filename, compress='gzip'):
     elif compress == 'lzma':
         import lzma
         out_f = lzma.LZMAFile(filename, 'wb')
+    elif compress == None:
+        out_f = open(filename, 'wb')
     else:
         raise ValueError("Invalid compress parameter.")
     return out_f
@@ -288,7 +290,8 @@ def open_compressed_file(filename):
         import lzma
         fobj = lzma.LZMAFile(filename, 'r')
     else:
-        raise IOError('Unrecognized file type: "{}"'.format(sig))
+        # assuming uncompressed ?
+        fobj = open(filename,'rb')
     return fobj
 
 
@@ -328,6 +331,7 @@ def loadobj(filename, mode='file'):
 
            obj = loadobj(('data.pyobj', mongo_db), mode='gridfs')
     '''
+    import gzip
     if mode == 'gridfs':
         import gridfs
         filename, db = filename   # input is a tuple of (filename, mongo_db)
@@ -339,10 +343,10 @@ def loadobj(filename, mode='file'):
         else:
             fobj = filename   # input is a file-like handler
     try:
-        object = pickle.load(fobj)
+        obj = pickle.load(fobj)
     finally:
         fobj.close()
-    return object
+    return obj
 
 
 def list2dict(a_list, keyitem, alwayslist=False):
@@ -380,11 +384,30 @@ def list2dict(a_list, keyitem, alwayslist=False):
             _dict[key] = current_value
     return _dict
 
+def filter_dict(d,keys):
+    """
+    Remove keys from dict "d". "keys" is a list
+    of string, dotfield notation can be used to
+    express nested keys. If key to remove doesn't
+    exist, silently ignore it
+    """
+    if type(keys) == str:
+        keys = [keys]
+    for key in keys:
+        if "." in key:
+            innerkey = ".".join(key.split(".")[1:])
+            rkey = key.split(".")[0]
+            if rkey in d:
+                d[rkey] = filter_dict(d[rkey],innerkey)
+            else:
+                continue
+        else:
+            d.pop(key,None)
+    return d
 
 def get_random_string():
     strb = base64.b64encode(os.urandom(6), "".join(random.sample(string.ascii_letters, 2)).encode("ascii"))
     return strb.decode("ascii")
-
 
 def get_timestamp():
     return time.strftime('%Y%m%d')
@@ -503,45 +526,6 @@ def newer(t0, t1, format='%Y%m%d'):
     '''
     return datetime.strptime(t0, format) < datetime.strptime(t1, format)
 
-def hipchat_msg(msg, color='yellow', message_format='text'):
-    import requests
-    from config import HIPCHAT_CONFIG
-    if not HIPCHAT_CONFIG or not HIPCHAT_CONFIG.get("token"):
-        return
-
-    url = 'https://sulab.hipchat.com/v2/room/{roomid}/notification?auth_token={token}'.format(**HIPCHAT_CONFIG)
-    headers = {'content-type': 'application/json'}
-    _msg = msg.lower()
-    for keyword in ['fail', 'error']:
-        if _msg.find(keyword) != -1:
-            color = 'red'
-            break
-    params = {"from" : HIPCHAT_CONFIG['from'], "message" : msg,
-              "color" : color, "message_format" : message_format}
-    res = requests.post(url,json.dumps(params), headers=headers)
-    # hipchat replis with "no content"
-    assert res.status_code == 200 or res.status_code == 204, (str(res), res.text)
-
-def send_s3_file(localfile, s3key, overwrite=False):
-    '''save a localfile to s3 bucket with the given key.
-       bucket is set via S3_BUCKET
-       it also save localfile's lastmodified time in s3 file's metadata
-    '''
-    try:
-        from config import AWS_KEY, AWS_SECRET, S3_BUCKET
-        from boto import connect_s3
-
-        assert os.path.exists(localfile), 'localfile "{}" does not exist.'.format(localfile)
-        s3 = connect_s3(AWS_KEY, AWS_SECRET)
-        bucket = s3.get_bucket(S3_BUCKET)
-        k = bucket.new_key(s3key)
-        if not overwrite:
-            assert not k.exists(), 's3key "{}" already exists.'.format(s3key)
-        lastmodified = os.stat(localfile)[-2]
-        k.set_metadata('lastmodified', lastmodified)
-        k.set_contents_from_filename(localfile)
-    except ImportError:
-        logging.info("Skip sending file to S3, missing information in config file: AWS_KEY, AWS_SECRET or S3_BUCKET")
 
 class DateTimeJSONEncoder(json.JSONEncoder):
     '''A class to dump Python Datetime object.
@@ -552,3 +536,76 @@ class DateTimeJSONEncoder(json.JSONEncoder):
             return obj.isoformat()
         else:
             return super(DateTimeJSONEncoder, self).default(obj)
+
+def rmdashfr(top):
+    '''Recursively delete dirs and files from "top" directory, then delete "top" dir'''
+    for root, dirs, files in os.walk(top, topdown=False):
+        for name in files:
+            os.remove(os.path.join(root,name))
+        for name in dirs:
+            os.rmdir(os.path.join(root,name))
+    try:
+        os.rmdir(top)
+    except FileNotFoundError:
+        # top did not exist, silently ignore
+        pass
+
+def get_class_from_classpath(class_path):
+    str_mod, str_klass = ".".join(class_path.split(".")[:-1]), class_path.split(".")[-1]
+    mod = importlib.import_module(str_mod)
+    return getattr(mod,str_klass)
+
+def sizeof_fmt(num, suffix='B'):
+	# http://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
+    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Yi', suffix)
+
+import zipfile, glob
+def unzipall(folder,pattern="*.zip"):
+    '''
+    unzip all zip files in "folder", in "folder"
+    '''
+    for zfile in glob.glob(os.path.join(folder,pattern)):
+        zf = zipfile.ZipFile(zfile)
+        logging.info("unzipping '%s'" % zf.filename)
+        zf.extractall(folder)
+        logging.info("done unzipping '%s'" % zf.filename)
+
+import tarfile, gzip
+def untargzall(folder,pattern="*.tar.gz"):
+    '''
+    gunzip and untar all *.tar.gz files in "folder"
+    '''
+
+    for tgz in glob.glob(os.path.join(folder,pattern)):
+        gz = gzip.GzipFile(tgz)
+        tf = tarfile.TarFile(fileobj=gz)
+        logging.info("untargz '%s'" % tf.name)
+        tf.extractall(folder)
+        logging.info("done untargz '%s'" % tf.name)
+
+def gunzipall(folder,pattern="*.gz"):
+    '''
+    gunzip all *.gz files in "folder"
+    '''
+
+    for f in glob.glob(os.path.join(folder,pattern)):
+        # build uncompress filename from gz file and pattern
+        destf = f.replace(pattern.replace("*",""),"")
+        fout = open(destf,"wb")
+        with gzip.GzipFile(f) as gz:
+            logging.info("gunzip '%s'" % gz.name)
+            for line in gz:
+                fout.write(line)
+            logging.info("Done gunzip '%s'" % gz.name)
+        fout.close()
+
+def find_process(pid):
+    g = psutil.process_iter()
+    for p in g:
+        if p.pid == pid:
+            break
+    return p

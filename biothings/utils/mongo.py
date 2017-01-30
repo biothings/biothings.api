@@ -1,14 +1,10 @@
-from __future__ import print_function
-import time
+import time, logging
+from functools import wraps
 from pymongo import MongoClient
-from config import (DATA_SRC_SERVER, DATA_SRC_PORT, DATA_SRC_DATABASE,
-                    DATA_SRC_MASTER_COLLECTION, DATA_SRC_DUMP_COLLECTION,
-                    DATA_SRC_BUILD_COLLECTION,
-                    DATA_SERVER_USERNAME, DATA_SERVER_PASSWORD,
-                    DATA_TARGET_SERVER, DATA_TARGET_PORT, DATA_TARGET_DATABASE,
-                    DATA_TARGET_MASTER_COLLECTION)
-from biothings.utils.common import timesofar
 
+from biothings.utils.common import timesofar
+# stub, until set to real config module
+config = None
 
 class Connection(MongoClient):
     """
@@ -30,11 +26,24 @@ class Connection(MongoClient):
             except Exception:
                 raise AttributeError(key)
 
+def requires_config(func):
+    @wraps(func)
+    def func_wrapper(*args,**kwargs):
+        global config
+        if not config:
+            try:
+                from biothings import config as config_mod
+                config = config_mod
+            except ImportError:
+                raise Exception("call biothings.config_for_app() first")
+        return func(*args,**kwargs)
+    return func_wrapper
+
+@requires_config
 def get_conn(server, port):
-    # TODO: split username/passwd for src/target server
-    if DATA_SERVER_USERNAME and DATA_SERVER_PASSWORD:
-        uri = "mongodb://{}:{}@{}:{}".format(DATA_SERVER_USERNAME,
-                                             DATA_SERVER_PASSWORD,
+    if config.DATA_SRC_SERVER_USERNAME and config.DATA_SRC_SERVER_PASSWORD:
+        uri = "mongodb://{}:{}@{}:{}".format(config.DATA_SRC_SERVER_USERNAME,
+                                             config.DATA_SRC_SERVER_PASSWORD,
                                              server, port)
     else:
         uri = "mongodb://{}:{}".format(server, port)
@@ -42,42 +51,58 @@ def get_conn(server, port):
     return conn
 
 
+@requires_config
 def get_src_conn():
-    return get_conn(DATA_SRC_SERVER, DATA_SRC_PORT)
+    return get_conn(config.DATA_SRC_SERVER, config.DATA_SRC_PORT)
 
 
+@requires_config
 def get_src_db(conn=None):
     conn = conn or get_src_conn()
-    return conn[DATA_SRC_DATABASE]
+    return conn[config.DATA_SRC_DATABASE]
 
 
+@requires_config
 def get_src_master(conn=None):
     conn = conn or get_src_conn()
-    return conn[DATA_SRC_DATABASE][DATA_SRC_MASTER_COLLECTION]
+    return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_MASTER_COLLECTION]
 
 
+@requires_config
 def get_src_dump(conn=None):
     conn = conn or get_src_conn()
-    return conn[DATA_SRC_DATABASE][DATA_SRC_DUMP_COLLECTION]
+    return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_DUMP_COLLECTION]
 
 
+@requires_config
 def get_src_build(conn=None):
     conn = conn or get_src_conn()
-    return conn[DATA_SRC_DATABASE][DATA_SRC_BUILD_COLLECTION]
+    return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
 
 
+@requires_config
 def get_target_conn():
-    return get_conn(DATA_TARGET_SERVER, DATA_TARGET_PORT)
+    if config.DATA_TARGET_SERVER_USERNAME and config.DATA_TARGET_SERVER_PASSWORD:
+        uri = "mongodb://{}:{}@{}:{}".format(config.DATA_TARGET_SERVER_USERNAME,
+                                             config.DATA_TARGET_SERVER_PASSWORD,
+                                             config.DATA_TARGET_SERVER,
+                                             config.DATA_TARGET_PORT)
+    else:
+        uri = "mongodb://{}:{}".format(config.DATA_TARGET_SERVER,config.DATA_TARGET_PORT)
+    conn = Connection(uri)
+    return conn
 
 
+@requires_config
 def get_target_db(conn=None):
     conn = conn or get_target_conn()
-    return conn[DATA_TARGET_DATABASE]
+    return conn[config.DATA_TARGET_DATABASE]
 
 
+@requires_config
 def get_target_master(conn=None):
     conn = conn or get_target_conn()
-    return conn[DATA_TARGET_DATABASE][DATA_TARGET_MASTER_COLLECTION]
+    return conn[config.DATA_TARGET_DATABASE][config.DATA_TARGET_MASTER_COLLECTION]
 
 
 def doc_feeder0(collection, step=1000, s=None, e=None, inbatch=False):
@@ -97,19 +122,19 @@ def doc_feeder0(collection, step=1000, s=None, e=None, inbatch=False):
                 yield doc
         print('Done.[%s]' % timesofar(t0))
 
-# TODO: use biothjngs.utils.mongo.doc_feeder()
-def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None, batch_callback=None, fields=None):
+def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None, batch_callback=None,
+               fields=None, logger=logging):
     '''A iterator for returning docs in a collection, with batch query.
        additional filter query can be passed via "query", e.g.,
        doc_feeder(collection, query={'taxid': {'$in': [9606, 10090, 10116]}})
        batch_callback is a callback function as fn(cnt, t), called after every batch
        fields is optional parameter passed to find to restrict fields to return.
     '''
-    cur = collection.find(query, no_cursor_timeout=False, projection=fields)
+    cur = collection.find(query, no_cursor_timeout=True, projection=fields)
     n = cur.count()
     s = s or 0
     e = e or n
-    print('Retrieving %d documents from database "%s".' % (n, collection.name))
+    logger.info('Retrieving %d documents from database "%s".' % (n, collection.name))
     t0 = time.time()
     if inbatch:
         doc_li = []
@@ -119,11 +144,11 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
         if s:
             cur.skip(s)
             cnt = s
-            print("Skipping %d documents." % s)
+            logger.info("Skipping %d documents." % s)
         if e:
             cur.limit(e - (s or 0))
         cur.batch_size(step)
-        print("Processing %d-%d documents..." % (cnt + 1, min(cnt + step, e)), end='')
+        logger.info("Processing %d-%d documents..." % (cnt + 1, min(cnt + step, e)))
         for doc in cur:
             if inbatch:
                 doc_li.append(doc)
@@ -134,20 +159,26 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
                 if inbatch:
                     yield doc_li
                     doc_li = []
-                print('Done.[%.1f%%,%s]' % (cnt * 100. / n, timesofar(t1)))
+                if n:
+                    logger.info('Done.[%.1f%%,%s]' % (cnt * 100. / n, timesofar(t1)))
+                else:
+                    logger.info('Nothing to do...')
                 if batch_callback:
                     batch_callback(cnt, time.time()-t1)
                 if cnt < e:
                     t1 = time.time()
-                    print("Processing %d-%d documents..." % (cnt + 1, min(cnt + step, e)), end='')
+                    logger.info("Processing %d-%d documents..." % (cnt + 1, min(cnt + step, e)))
         if inbatch and doc_li:
             #Important: need to yield the last batch here
             yield doc_li
 
         #print 'Done.[%s]' % timesofar(t1)
-        print('Done.[%.1f%%,%s]' % (cnt * 100. / n, timesofar(t1)))
-        print("=" * 20)
-        print('Finished.[total time: %s]' % timesofar(t0))
+        if n:
+            logger.info('Done.[%.1f%%,%s]' % (cnt * 100. / n, timesofar(t1)))
+        else:
+            logger.info('Nothing to do...')
+        logger.info("=" * 20)
+        logger.info('Finished.[total time: %s]' % timesofar(t0))
     finally:
         cur.close()
 
@@ -156,7 +187,7 @@ def src_clean_archives(keep_last=1, src=None, verbose=True, noconfirm=False):
     '''clean up archive collections in src db, only keep last <kepp_last>
        number of archive.
     '''
-    from utils.dataload import list2dict
+    from biothings.utils.dataload import list2dict
     from biothings.utils.common import ask
 
     src = src or get_src_db()
@@ -226,7 +257,8 @@ def target_clean_collections(keep_last=2, target=None, verbose=True, noconfirm=F
 def backup_src_configs():
     import json
     import os
-    from utils.common import send_s3_file, get_timestamp, DateTimeJSONEncoder
+    from .common import get_timestamp, DateTimeJSONEncoder
+    from .aws import send_s3_file
 
     db = get_src_db()
     for cfg in ['src_dump', 'src_master', 'src_build']:
@@ -245,6 +277,9 @@ def backup_src_configs():
 def get_data_folder(src_name):
     src_dump = get_src_dump()
     src_doc = src_dump.find_one({'_id': src_name})
-    assert src_doc['status'] == 'success', "Source files are not ready yet [status: \"%s\"]." % src_doc['status']
+    if not src_doc:
+        raise ValueError("Can't find any datasource information for '%s'" % src_name)
+    # ensure we're not in a transient state
+    assert src_doc.get("download",{}).get('status') in ['success','failed'], "Source files are not ready yet [status: \"%s\"]." % src_doc['status']
     return src_doc['data_folder']
 
