@@ -4,10 +4,13 @@
    contain the root `toctree` directive.
 
 .. include:: doc/quick_start.rst
+.. include:: doc/hub_tutorial.rst
 
 .. toctree::
-    :maxdepth: 2
-    doc/quick_start
+   :maxdepth: 2
+
+   doc/quick_start
+   doc/hub_tutorial
 
 .. raw :: html
 
