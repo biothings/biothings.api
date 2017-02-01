@@ -1,5 +1,5 @@
 import sys, re, math
-import os
+import os, glob
 import time
 import copy
 import importlib
@@ -8,9 +8,12 @@ from pprint import pformat
 import logging
 import asyncio
 from functools import partial
+from multiprocessing import Manager
 
-from biothings.utils.common import timesofar, iter_n, get_timestamp, dump, rmdashfr
+from biothings.utils.common import timesofar, iter_n, get_timestamp,\
+                                   dump, rmdashfr, loadobj
 from biothings.utils.mongo import doc_feeder
+from biothings.utils.dataload import merge_struct
 from biothings.utils.loggers import HipchatHandler
 from biothings.utils.diff import diff_docs_jsonpatch
 import biothings.databuild.backend as btbackend
@@ -756,6 +759,60 @@ class BuilderManager(BaseManager):
         job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, purge, exclude))
         job.add_done_callback(diffed)
         return job
+
+    @asyncio.coroutine
+    def report_diff(self,diff_folder,report_ids=False):
+        """
+        Analyze diff files in diff_folder and give a summy of changes.
+        report_ids=False will count the changes while =True will report
+        documents _id
+        """
+
+        updates = {"add":{},"remove":{},"replace":{}, "move":{}}
+
+        def reported(fut,updates):
+            try:
+                res = fut.result()
+                updates = merge_struct(updates,res)
+            except Exception as e:
+                import traceback
+                self.logger.error("Error while reporting diff %s:\n%s" % (e,traceback.format_exc()))
+                raise
+
+        data_folder = os.path.join(btconfig.DIFF_PATH,diff_folder)
+        jobs = []
+        for f in glob.glob(os.path.join(data_folder,"*.pyobj")):
+            logging.info("Running report worker for '%s'" % f)
+            pinfo = {"category" : "reporter",
+                    "source" : f,
+                    "step" : "",
+                    "description" : ""}
+            job = yield from self.job_manager.defer_to_process(pinfo,partial(report_worker,f,report_ids))
+            job.add_done_callback(partial(reported,updates=updates))
+            jobs.append(job)
+        yield from asyncio.wait(jobs)
+        if not report_ids:
+            # we've counted differences, but merge_struct build a list of those sums
+            # we need to sum them up here to have one single number
+            for op in updates:
+                for path,sums in updates[op].items():
+                    if type(sums) == list:
+                        updates[op][path] = sum(sums)
+        return updates
+
+
+def report_worker(diff_file, report_ids):
+    logging.info("on load %s" % diff_file)
+    data = loadobj(diff_file)
+    updates = {"add":{},"remove":{},"replace":{}, "move":{}}
+    for up in data["update"]:
+        for patch in up["patch"]:
+            if report_ids:
+                updates[patch["op"]].setdefault(patch["path"],[]).append(up["_id"])
+            else:
+                updates[patch["op"]].setdefault(patch["path"],0)
+                updates[patch["op"]][patch["path"]] += 1
+    return updates
 
 
 def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names, batch_num, diff_folder, exclude=[]):
