@@ -197,6 +197,8 @@ class DataBuilder(object):
                 src_build.update({'_id': self.build_config['_id']}, {"$set": {'build': [build_info]}})
             else:
                 src_build.update({'_id': self.build_config['_id']}, {"$push": {'build': build_info}})
+            # now refresh/sync
+            _cfg = src_build.find_one({'_id': self.build_config['_id']})
             if len(_cfg['build']) > self.max_build_status:
                 howmany = len(_cfg['build']) - self.max_build_status
                 #remove any status not needed anymore
