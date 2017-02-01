@@ -598,7 +598,7 @@ In the end, two collections were created, containing parsed data:
 
    > db.names.find().limit(2)
    {
-           "_id" : 1,
+           "_id" : "1",
            "taxid" : 1,
            "other_names" : [
                    "all"
@@ -606,7 +606,7 @@ In the end, two collections were created, containing parsed data:
            "scientific_name" : "root"
    }
    {
-           "_id" : 2,
+           "_id" : "2",
            "other_names" : [
                    "bacteria",
                    "not bacteria haeckel 1894"
@@ -625,9 +625,9 @@ In the end, two collections were created, containing parsed data:
    }
 
    > db.nodes.find().limit(2)
-   { "_id" : 1, "rank" : "no rank", "parent_taxid" : 1, "taxid" : 1 }
+   { "_id" : "1", "rank" : "no rank", "parent_taxid" : 1, "taxid" : 1 }
    {
-           "_id" : 2,
+           "_id" : "2",
            "rank" : "superkingdom",
            "parent_taxid" : 131567,
            "taxid" : 2
@@ -753,4 +753,583 @@ Note: should we want to implement the first option, the parsing function would b
 extracting taxid. The whole dict would then be returned, and then processed by storage engine.
 
 So far, we’ve defined dumpers and uploaders, made them working together through some managers defined in the hub. We’re now ready to move the last step: merging data.
+
+Mergers
+^^^^^^^
+
+Merging will the last step in our hub definition. So far we have data about species, taxonomy and whether a taxonomy ID has known genes in NCBI.
+In the end, we want to have a collection where documents look like this:
+
+.. code:: javascript
+
+   {
+       _id: "9606",
+       authority: ["homo sapiens linnaeus, 1758"],
+       common_name: "man",
+       genbank_common_name: "human",
+       has_gene: true,
+       lineage: [9606,9605,207598,9604,314295,9526,...],
+       other_names: ["humans"],
+       parent_taxid: 9605,
+       rank: "species",
+       scientific_name: "homo sapiens",
+       taxid: 9606,
+       uniprot_name: "homo sapiens"
+   }
+
+* _id:  the taxid, the ID used in all of our invidual collection, so the key will be used to collect documents and merge them together
+  (it’s actually a requirement, documents are merged using _id as the common key).
+* authority, common_name, genbank_common_name, other_names, scientific_name and taxid come from taxonomy.names collection.
+* uniprot_name comes from species collection.
+* has_gene is a flag set to true, because taxid 9606 has been found in collection geneinfo.
+* parent_taxid and rank come from taxonomy.nodes collection.
+* (there can be other fields available, but basically the idea here is to merge all our individual collections…)
+* finally, lineage… it’s a little tricky as we need to query nodes in order to compute that field from _id and parent_taxid.
+
+A first step would be to merge **names**, **nodes** and **species** collections together. Other keys need some post-merge processing, they will handled in a second part.
+
+Let’s first define a BuilderManager in the hub.
+
+.. code-block:: python
+
+   import biothings.databuild.builder as builder
+   bmanager = builder.BuilderManager(job_manager=jmanager)
+   bmanager.sync()
+
+   COMMANDS = {
+   ...
+       # building/merging
+       "bm" : bmanager,
+       "merge" : bmanager.merge,
+   ...
+
+
+Merging configuration
+=====================
+
+BuilderManager uses a builder class for merging. While there are many different dumpers and uploaders classes,
+there’s only one merge class (for now). The merging process is defined in a configuration collection named src_build.
+Usually, we have as many configurations as merged collections, in our case, we’ll just define one configuration.
+
+When running the hub with a builder manager registered, manager will automatically create this src_build collection
+and create configuration placeholder.
+
+.. code:: javascript
+
+   > db.src_build.find()
+   {
+           "_id" : "placeholder",
+           "name" : "placeholder",
+           "sources" : [ ],
+           "root" : [ ]
+   }
+
+We’re going to use that template to create our own configuration:
+
+* **_id** and name are the name of the configuration (they can be different but really, _id is the one used here)...
+  We’ll set these as:  ``{“_id”:”myspecies”, “name”:”myspecies” }``.
+* **sources** is a list of collection names used for the merge. A element is this can also be a regular expression
+  matching collection names. If we have data spread across different collection, like one collection per chromosome data,
+  we could use a regex such as ``data_chr.*``. We’ll set this as:  ``{“sources”:[“names”,”species”, “nodes”]}``
+* ``root** defines root datasources, that is, datasources that can be used to initiate document creation.
+  Sometimes, we want data to be merged only if an existing document previously exists in the merged collection.
+  If root sources are defined, they will be merged first, then the other remaining in sources will be merged with existing documents.
+  If root doesn’t exist (or list is empty), all sources can initiate documents creation. root can be a list of collection names,
+  or a negation (not a mix of both). So, for instance, if we want all datasources to be root, except source10,
+  we can specify: ``“root” :  [“!source10”]``. Finally, all root sources must all be declared in sources (root is a subset of sources).
+  That said, it’s interesting in our case because we have taxonomy information coming from NCBI and Uniprot,
+  but we want to make sure a document built from Uniprot only doesn’t exist (it’s because we need parent_taxid field which
+  only exists in NCBI data, so we give priority to those sources first). So root sources are going to be ``names`` and ``nodes``,
+  but because we’re lazy typist, we’re going to set this to: ``{“root” : [“!species”]}``
+
+The resulting document should look like this. Let’s save this in src_build (and also remove the placeholder, not useful anymore):
+
+.. code:: javascript
+
+   > conf
+   {
+           "_id" : "myspecies",
+           "name" : "myspecies",
+           "sources" : [
+                   "names",
+                   "species",
+                   “nodes”
+           ],
+           "root" : [“!species”]
+   }
+   > db.src_build.save(conf)
+   > db.src_build.remove({_id:"placeholder"})
+
+Restarting the hub, we can then check that configuration has properly been registered in the manager, ready to be used.
+We can list the sources specified in configuration.
+
+.. code:: bash
+
+   hub> bm
+   <BuilderManager [1 registered]: ['myspecies']>
+   hub> bm.list_sources("myspecies")
+   ['names', 'species', 'nodes']
+
+OK, let’s try to merge !
+
+.. code:: bash
+
+   hub> merge("myspecies")
+   [1] RUN {0.0s} merge("myspecies")
+
+Looking at the logs, we can see builder will first root sources:
+
+.. code:: bash
+
+   INFO:myspecies_build:Merging into target collection 'myspecies_20170127_pn1ygtqp'
+   ...
+   INFO:myspecies_build:Sources to be merged: ['names', 'nodes', 'species']
+   INFO:myspecies_build:Root sources: ['names', 'nodes']
+   INFO:myspecies_build:Other sources: ['species']
+   INFO:myspecies_build:Merging root document sources: ['names', 'nodes']
+
+Then once root sources are processed, **species** collection merged on top on existing documents:
+
+.. code:: bash
+
+   INFO:myspecies_build:Merging other resources: ['species']
+   DEBUG:myspecies_build:Documents from source 'species' will be stored only if a previous document exists with same _id
+
+After a while, task is done, merge has returned information about the amount of data that have been merge: 1552809 records
+from collections **names** and **nodes**, 25394 from **species**. Note: the figures show the number fetched from collections,
+not necessarily the data merged. For instance, merged data from **species** may be less since it’s not a root datasource).
+
+.. code:: bash
+
+   hub>
+   [1] OK  merge("myspecies"): finished, [{'total_species': 25394, 'total_nodes': 1552809, 'total_names': 1552809}]
+
+Builder creates multiple merger jobs per collection. The merged collection name is, by default, generating from the build name (**myspecies**),
+and contains also a timestamp and some random chars. We can specify the merged collection name from the hub. By default, all sources defined
+in the configuration are merged., and we can also select one or more specific sources to merge:
+
+.. code:: bash
+
+   hub> merge("myspecies",sources="species",target_name="test_merge")
+
+Note: ``sources`` parameter can also be a list of string.
+
+If we go back to ``src_build``, we can have information about the different merges (or builds) we ran:
+
+.. code:: javascript
+
+   > db.src_build.find({_id:"myspecies"},{build:1})
+   {
+           "_id" : "myspecies",
+           "build" : [
+   		…
+   {
+                   "src_versions" : {
+                           "geneinfo" : "20170125",
+                           "taxonomy" : "20170125",
+                           "species" : "20170125"
+                   },
+                   "time_in_s" : 386,
+                   "logfile" : "./data/logs/myspecies_20170127_build.log",
+                   "pid" : 57702,
+                   "target_backend" : "mongo",
+                   "time" : "6m26.29s",
+                   "step_started_at" : ISODate("2017-01-27T11:36:47.401Z"),
+                   "stats" : {
+                           "total_species" : 25394,
+                           "total_nodes" : 1552809,
+                           "total_names" : 1552809
+                   },
+                   "started_at" : ISODate("2017-01-27T11:30:21.114Z"),
+                   "status" : "success",
+                   "target_name" : "myspecies_20170127_pn1ygtqp",
+                   "step" : "post-merge",
+                   "sources" : [
+                           "species"
+                   ]
+           }
+
+We can see the merged collection (auto-generated) is **myspecies_20170127_pn1ygtqp**.
+Let’s have a look at the content (remember, collection is in target database, not in src):
+
+.. code:: javascript
+
+   > use dev_speciesdoc
+   switched to db dev_speciesdoc
+   > db.myspecies_20170127_pn1ygtqp.count()
+   1552809
+   > db.myspecies_20170127_pn1ygtqp.find({_id:9606})
+   {
+           "_id" : 9606,
+           "rank" : "species",
+           "parent_taxid" : 9605,
+           "taxid" : 9606,
+           "common_name" : "man",
+           "other_names" : [
+                   "humans"
+           ],
+           "scientific_name" : "homo sapiens",
+           "authority" : [
+                   "homo sapiens linnaeus, 1758"
+           ],
+           "genbank_common_name" : "human",
+           "uniprot_name" : "homo sapiens"
+   }
+
+Both collections have properly been merged. We now have to deal with the other data.
+
+Mappers
+=======
+
+The next bit of data we need to merge is **geneinfo**. As a reminder, this collection only contains taxonomy ID (as _id key)
+which have known NCBI genes. We’ll create a mapper, containing this information. A mapper basically acts as an object that
+can pre-process documents while they are merged.
+
+Let’s define that mapper in `databuild/mapper.py <https://github.com/SuLab/biothings.species/blob/master/src/databuild/mapper.py>`_
+
+.. code-block:: python
+
+   import biothings, config
+   biothings.config_for_app(config)
+   from biothings.utils.common import loadobj
+   import biothings.utils.mongo as mongo
+   import biothings.databuild.mapper as mapper
+   # just to get the collection name
+   from dataload.sources.geneinfo.uploader import GeneInfoUploader
+
+
+   class HasGeneMapper(mapper.BaseMapper):
+
+       def __init__(self, *args, **kwargs):
+           super(HasGeneMapper,self).__init__(*args,**kwargs)
+           self.cache = None
+
+       def load(self):
+           if self.cache is None:
+               # this is a whole dict containing all taxonomy _ids
+               col = mongo.get_src_db()[GeneInfoUploader.name]
+               self.cache = [d["_id"] for d in col.find({},{"_id":1})]
+
+       def process(self,docs):
+           for doc in docs:
+               if doc["_id"] in self.cache:
+                   doc["has_gene"] = True
+               else:
+                   doc["has_gene"] = False
+               yield doc
+
+We derive our mapper from ``biothings.databuild.mapper.BaseMapper``, which expects ``load`` and ``process`` methods to be defined.
+``load`` is automatically called when the mapper is used by the builder, and ``process`` contains the main logic, iterating over documents,
+optionally enrich them (it can also be used to filter documents, by not yielding them). The implementation is pretty straightforward.
+We get and cache the data from geneinfo collection (the whole collection is very small, less than 20’000 IDs, so it can fit nicely and
+efficiently in memory). If a document has its _id found in the cache, we enrich it.
+
+Once defined, we register that mapper into the builder. In `bin/hub.py <https://github.com/SuLab/biothings.species/blob/master/src/bin/hub.py>`_,
+we modify the way we define the builder manager:
+
+.. code-block:: python
+
+   hasgene = HasGeneMapper(name="has_gene")
+   pbuilder = partial(builder.DataBuilder,mappers=[hasgene])
+   bmanager = builder.BuilderManager(
+           job_manager=jmanager,
+           builder_class=pbuilder)
+   bmanager.sync()
+
+First we instantiate a mapper object and give it a name (more on this later). While creating the manager, we need to pass a builder class.
+The problem here is we also have to give our mapper to that class while it’s instantiated. We’re using ``partial`` (from ``functools``),
+which allows to partially define the class instantiation. In the end, builder_class parameter is expected to a callable, which is the case with partial.
+
+Let’s try if our mapper works (restart the hub). Inside the hub, we’re going to manually get a builder instance.
+Remember through the SSH connection, we can access python interpreter’s namespace, which is very handy when it comes
+to develop and debug as we can directly access and “play” with objects and their states:
+
+First we get a builder instance from the manager:
+
+.. code:: bash
+
+   hub> builder = bm["myspecies"]
+   hub> builder
+   <biothings.databuild.builder.DataBuilder object at 0x7f278aecf400>
+
+Let’s check the mappers and get ours:
+
+.. code:: bash
+
+   hub> builder.mappers
+   {None: <biothings.databuild.mapper.TransparentMapper object at 0x7f278aecf4e0>, 'has_gene': <databuild.mapper.HasGeneMapper object at 0x7f27ac6c0a90>}
+
+We have our ``has_gene`` mapper (it’s the name we gave). We also have a ``TransparentMapper``. This mapper is automatically added and is used as the default
+mapper for any document (there has to be one...).
+
+.. code:: bash
+
+   hub> hasgene = builder.mappers["has_gene"]
+   hub> len(hasgene.cache)
+   Error: TypeError("object of type 'NoneType' has no len()",)
+
+Oops, cache isn’t loaded yet, we have to do it manually here (but it’s done automatically during normal execution).
+
+.. code:: bash
+
+   hub> hasgene.load()
+   hub> len(hasgene.cache)
+   19201
+
+OK, it’s ready. Let’s now talk more about the mapper’s name. A mapper can applied to different sources, and we have to define
+which sources’ data should go through that mapper. In our case, we want **names** and **species** collection’s data to go through.
+In order to do that, we have to instruct the uploader with a special attribute.
+Let’s modify `dataload.sources.species.uploader.SpeciesUploader <https://github.com/SuLab/biothings.species/blob/master/src/dataload/sources/species/uploader.py>`_ class
+
+.. code-block:: python
+
+   class SpeciesUploader(uploader.BaseSourceUploader):
+
+       name = "species"
+       __metadata__ = {"mapper" : 'has_gene'}
+
+``__metadata__`` dictionary is going to be used to create a master document. That document is stored in src_master collection (we talked about it earlier).
+Let’s add this metadata to `dataload.sources.taxonomy.uploader.TaxonomyNamesUploader <https://github.com/SuLab/biothings.species/blob/master/src/dataload/sources/taxonomy/uploader.py>`_
+
+.. code-block:: python
+
+   class TaxonomyNamesUploader(uploader.BaseSourceUploader):
+
+       main_source = "taxonomy"
+       name = "names"
+       __metadata__ = {"mapper" : 'has_gene'}
+
+Before using the builder, we need to refresh master documents so these metadata are stored in **src_master**. We could trigger a new upload,
+or directly tell the hub to only process master steps:
+
+.. code:: bash
+
+   hub> upload("species",steps="master")
+   [1] RUN {0.0s} upload("species",steps="master")
+   hub> upload("taxonomy.names",steps="master")
+   [1] OK  upload("species",steps="master"): finished, [None]
+   [2] RUN {0.0s} upload("taxonomy.names",steps="master")
+
+(you’ll notice for taxonomy, we only trigger upload for sub-source **names**, using "dot-notation", corresponding to "main_source.name". Let’s now have a look at those master documents:
+
+.. code:: javascript
+
+   > db.src_master.find({_id:{$in:["species","names"]}})
+   {
+           "_id" : "names",
+           "name" : "names",
+           "timestamp" : ISODate("2017-01-26T16:21:32.546Z"),
+           "mapper" : "has_gene",
+           "mapping" : {
+
+           }
+   }
+   {
+           "_id" : "species",
+           "name" : "species",
+           "timestamp" : ISODate("2017-01-26T16:21:19.414Z"),
+           "mapper" : "has_gene",
+           "mapping" : {
+
+           }
+   }
+
+We have our ``mapper`` key stored. We can now trigger a new merge (we specify the target collection name):
+
+.. code:: bash
+
+   hub> merge("myspecies",target_name="myspecies_test")
+   [3] RUN {0.0s} merge("myspecies",target_name="myspecies_test")
+
+In the logs, we can see our mapper has been detected and is used:
+
+.. code:: bash
+
+   INFO:myspecies_build:Creating merger job #1/16, to process 'names' 100000/1552809 (6.4%)
+   INFO:myspecies_build:Found mapper '<databuild.mapper.HasGeneMapper object at 0x7f47ef3bbac8>' for source 'names'
+   INFO:myspecies_build:Creating merger job #1/1, to process 'species' 25394/25394 (100.0%)
+   INFO:myspecies_build:Found mapper '<databuild.mapper.HasGeneMapper object at 0x7f47ef3bbac8>' for source 'species'
+
+Once done, we can query the merged collection to check the data:
+
+.. code:: javascript
+
+   > use dev_speciesdoc
+   switched to db dev_speciesdoc
+   > db.myspecies_test.find({_id:9606})
+   {
+           "_id" : "9606",
+           "has_gene" : true,
+           "taxid" : 9606,
+           "uniprot_name" : "homo sapiens",
+           "other_names" : [
+                   "humans"
+           ],
+           "scientific_name" : "homo sapiens",
+           "authority" : [
+                   "homo sapiens linnaeus, 1758"
+           ],
+           "genbank_common_name" : "human",
+           "common_name" : "man"
+   }
+
+OK, there’s a ``has_gene`` flag that’s been set. So far so good !
+
+Post-merge process
+==================
+
+The last part is the trickier. We need to add lineage and parent taxid information for each of these documents.
+We’ll implement that last part as a post-merge step, iterating over each of them. In order to do so, we need to define
+our own builder class to override proper methodes there. Let’s define it in `databuild/builder.py. <https://github.com/SuLab/biothings.species/blob/master/src/databuild/builder.py>`_.
+
+.. code-block:: python
+
+   import biothings.databuild.builder as builder
+   import config
+
+   class TaxonomyDataBuilder(builder.DataBuilder):
+
+       def post_merge(self, source_names, batch_size, job_manager):
+           pass
+
+The method we have to implement in post_merge, as seen above. We also need to change hub.py to use that builder class:
+
+.. code-block:: python
+
+   from databuild.builder import TaxonomyDataBuilder
+   pbuilder = partial(TaxonomyDataBuilder,mappers=[hasgene])
+
+For now, we just added a class level in the hierarchy, everything runs the same as before. Let’s have a closer look
+to that post-merge process. For each document, we want to build the lineage. Information is stored in **nodes** collection.
+For instance, taxid 9606 (homo sapiens) has a parent_taxid 9605 (homo), which has a parent_taxid 207598 (homininae), etc…
+In the end, the homo sapiens lineage is:
+
+``9606, 9605, 207598, 9604, 314295, 9526, 314293, 376913, 9443, 314146, 1437010, 9347, 32525, 40674, 32524, 32523, 1338369, 8287, 117571, 117570, 7776, 7742, 89593, 7711, 33511, 33213, 6072, 33208, 33154, 2759, 131567 and 1``
+
+We could recursively query **nodes** collections until we reach the top the tree, but that would be a lot of queries.
+We just need ``taxid`` and ``parent_taxid`` information to build the lineage, maybe it’s possible to build a dictionary that could fit in memory.
+**nodes** has 1552809 records. A dictionary would use 2 * 1552809 * sizeof(integer) + index overhead. That’s probably few megabytes,
+let’s assume that ok… (note: using `pympler <https://pythonhosted.org/Pympler/>`_ lib, we can actually know that dictionary size will be closed to 200MB…)
+
+We’re going to use another mapper here, but no sources will use it.We’ll just instantiate it from post_merge method.
+In `databuild/mapper.py <https://github.com/SuLab/biothings.species/blob/master/src/databuild/mapper.py>`_, let’s add another class:
+
+from dataload.sources.taxonomy.uploader import TaxonomyNodesUploader
+
+.. code-block:: python
+
+   class LineageMapper(mapper.BaseMapper):
+
+       def __init__(self, *args, **kwargs):
+           super(LineageMapper,self).__init__(*args,**kwargs)
+           self.cache = None
+
+       def load(self):
+           if self.cache is None:
+               col = mongo.get_src_db()[TaxonomyNodesUploader.name]
+               self.cache = {}
+               [self.cache.setdefault(d["_id"],d["parent_taxid"]) for d in col.find({},{"parent_taxid":1})]
+
+       def get_lineage(self,doc):
+           if doc['taxid'] == doc['parent_taxid']: #take care of node #1
+               # we reached the top of the taxonomy tree
+               doc['lineage'] = [doc['taxid']]
+               return doc
+           # initiate lineage with information we have in the current doc
+           lineage = [doc['taxid'], doc['parent_taxid']]
+           while lineage[-1] != 1:
+               parent = self.cache[lineage[-1]]
+               lineage.append(parent)
+           doc['lineage'] = lineage
+           return doc
+
+       def process(self,docs):
+           for doc in docs:
+               doc = self.get_lineage(doc)
+               yield doc
+
+
+Let’s use that mapper in TaxonomyDataBuider’s ``post_merge`` method. The signature is the same as merge() method (what’s actually called from the hub)
+but we just need the batch_size one: we’re going to grab documents from the merged collection in batch,
+process them and update them in batch as well. It’s going to be much faster than dealing one document at a time.
+To do so, we’ll use doc_feeder utility function:
+
+.. code-block:: python
+
+   from biothings.utils.mongo import doc_feeder, get_target_db
+   from biothings.databuild.builder import DataBuilder
+   from biothings.dataload.storage import UpsertStorage
+
+   from databuild.mapper import LineageMapper
+   import config
+   import logging
+
+   class TaxonomyDataBuilder(DataBuilder):
+
+       def post_merge(self, source_names, batch_size, job_manager):
+           # get the lineage mapper
+           mapper = LineageMapper(name="lineage")
+           # load cache (it's being loaded automatically
+           # as it's not part of an upload process
+           mapper.load()
+
+           # create a storage to save docs back to merged collection
+           db = get_target_db()
+           col_name = self.target_backend.target_collection.name
+           storage = UpsertStorage(db,col_name)
+
+           for docs in doc_feeder(self.target_backend.target_collection, step=batch_size, inbatch=True):
+               docs = mapper.process(docs)
+               storage.process(docs,batch_size)
+
+Since we’re using the mapper manually, we need to load the cache
+
+* **db** and **col_name** are used to create our storage engine. Builder has an attribute called ``target_backend``
+  (a ``biothings.dataload.backend.TargetDocMongoBackend`` object) which can be used to reach the collection we want to work with.
+* **doc_feeder** iterates over all the collection, fetching documents in batch. ``inbatch=True`` tells the function to return data
+  as a list (default is a dict indexed by ``_id``).
+* those documents are processed by our mapper, setting the lineage information and then are stored using our UpsertStorage object.
+
+Note: ``post_merge`` actually runs within a thread, so any calls here won’t block the execution (ie. won't block the asyncio event loop execution)
+
+Let’s run this on our merged collection. We don’t want to merge everything again, so we specify the step we’re interested in and
+the actual merged collection (``target_name``)
+
+hub> merge("myspecies",steps="post",target_name="myspecies_test")
+[1] RUN {0.0s} merge("myspecies",steps="post",target_name="myspecies_test")
+
+After a while, process is done. We can test our updated data:
+
+.. code:: javascript
+
+   > use dev_speciesdoc
+   switched to db dev_speciesdoc
+   > db.myspecies_test.find({_id:9606})
+   {
+           "_id" : 9606,
+           "taxid" : 9606,
+           "common_name" : "man",
+           "other_names" : [
+                   "humans"
+           ],
+           "uniprot_name" : "homo sapiens",
+           "rank" : "species",
+           "lineage" : [9606,9605,207598,9604,...,131567,1],
+           "genbank_common_name" : "human",
+           "scientific_name" : "homo sapiens",
+           "has_gene" : true,
+           "parent_taxid" : 9605,
+           "authority" : [
+                   "homo sapiens linnaeus, 1758"
+           ]
+   }
+
+OK, we have new lineage information (truncated for sanity purpose). Merged collection is ready to be used. It can be used for instance
+to create and send documents to an ElasticSearch database. This is what's actually occuring when creating a Biothings web-servuce API.
+That step will be covered in another tutorial.
+
+Full updated and maintained code for this hub is available here: https://github.com/SuLab/biothings.species
+
+Also, taxonomy Biotghins API can be queried as this URL: http://t.biothings.io
+
 
