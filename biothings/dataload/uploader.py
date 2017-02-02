@@ -291,7 +291,7 @@ class BaseSourceUploader(object):
 
         if status == "uploading":
             # record some "in-progress" information
-            upload_info['step'] = self.name
+            upload_info['step'] = self.name # this is the actual collection name
             upload_info['temp_collection'] = self.temp_collection_name
             upload_info['pid'] = os.getpid()
             upload_info['logfile'] = self.logfile
@@ -627,6 +627,6 @@ class UploaderManager(BaseSourceManager):
                 try:
                     self.upload_src(src_name)
                 except ResourceNotFound:
-                    logging.error("Resource '%s' needs upload but is not registerd in manager" % src_name)
+                    logging.error("Resource '%s' needs upload but is not registered in manager" % src_name)
         cron = aiocron.crontab(self.poll_schedule,func=partial(check_pending_to_upload),
                 start=True, loop=self.job_manager.loop)

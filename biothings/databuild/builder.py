@@ -5,7 +5,6 @@ import copy
 import importlib
 from datetime import datetime
 from pprint import pformat
-import logging
 import asyncio
 from functools import partial
 from multiprocessing import Manager
@@ -18,8 +17,10 @@ from biothings.utils.loggers import HipchatHandler
 from biothings.utils.diff import diff_docs_jsonpatch
 import biothings.databuild.backend as btbackend
 from biothings.databuild.mapper import TransparentMapper
+from biothings.dataload.uploader import ResourceNotReady
 from biothings import config as btconfig
 
+logging = btconfig.logger
 
 class BuilderException(Exception):
     pass
@@ -171,6 +172,24 @@ class DataBuilder(object):
             self.logger.addHandler(nh)
         return self.logger
 
+    def check_ready(self,force=False):
+        if force:
+            # don't even bother
+            return
+        src_build = self.source_backend.build
+        src_dump = self.source_backend.dump
+        _cfg = src_build.find_one({'_id': self.build_config['_id']})
+        # check if all resources are uploaded
+        for src_name in _cfg["sources"]:
+            # "sources" in config is a list a collection names. src_dump _id is the name of the
+            # resource but can have sub-resources with different collection names. We need
+            # to query inner keys upload.job.*.step, which always contains the collection name
+            src_doc = src_dump.find_one({"$where":"function() {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}" % src_name})
+            if not src_doc:
+                raise ResourceNotReady("Missing information for source '%s' to start upload" % src_name)
+            if not src_doc.get("upload",{}).get("jobs",{}).get(src_name,{}).get("status") == "success":
+                raise ResourceNotReady("No successful upload found for resource '%s'" % src_name)
+
     def register_status(self,status,transient=False,init=False,**extra):
         assert self.build_config, "build_config needs to be specified first"
         # get it from source_backend, kind of weird...
@@ -182,6 +201,9 @@ class DataBuilder(object):
             'logfile': self.logfile,
             'target_backend': self.target_backend.name,
             'target_name': self.target_backend.target_name}
+        if status == "building":
+            # reset the flag
+            src_build.update({"_id" : self.build_config["_id"]},{"$unset" : {"pending_to_build":None}})
         if transient:
             # record some "in-progress" information
             build_info['pid'] = os.getpid()
@@ -306,9 +328,10 @@ class DataBuilder(object):
                     found.append(col)
         return found
 
-    def merge(self, sources=None, target_name=None, job_manager=None, *args,**kwargs):
+    def merge(self, sources=None, target_name=None, force=False, job_manager=None, *args,**kwargs):
         assert job_manager
         self.t0 = time.time()
+        self.check_ready(force)
         # normalize
         avail_sources = self.build_config['sources']
         if sources is None:
@@ -526,17 +549,26 @@ def merger_worker(col_name,dest_name,ids,mapper,upsert):
     return cnt
 
 
-from biothings.utils.manager import BaseManager
+from biothings.utils.manager import BaseManager, ManagerError
 import biothings.utils.mongo as mongo
 import biothings.databuild.backend as backend
 from biothings.databuild.backend import TargetDocMongoBackend
+import aiocron
+
+def set_pending_to_build(conf_name=None):
+    src_build = mongo.get_src_build()
+    qfilter = {}
+    if conf_name:
+        qfilter = {"_id":conf_name}
+    logging.info("Setting pending_to_build flag for configuration(s): %s" % (conf_name and conf_name or "all configuraitons"))
+    src_build.update(qfilter,{"$set":{"pending_to_build":True}})
 
 
 class BuilderManager(BaseManager):
 
     def __init__(self,source_backend_factory=None,
                       target_backend_factory=None,
-                      builder_class=None,
+                      builder_class=None,poll_schedule=None,
                       *args,**kwargs):
         """
         BuilderManager deals with the different builders used to merge datasources.
@@ -553,6 +585,7 @@ class BuilderManager(BaseManager):
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
         self.builder_class = builder_class
+        self.poll_schedule = poll_schedule
         self.setup_log()
         # check if src_build exist and create it as necessary
         if not self.src_build.name in self.src_build.database.collection_names():
@@ -659,6 +692,25 @@ class BuilderManager(BaseManager):
             if pat.match(col_name) and not 'current' in col_name:
                 logging.info("Dropping target collection '%s" % col_name)
                 target_db[col_name].drop()
+
+    def poll(self):
+        if not self.poll_schedule:
+            raise ManagerError("poll_schedule is not defined")
+        src_build = mongo.get_src_build()
+        @asyncio.coroutine
+        def check_pending_to_build():
+            confs = [src['_id'] for src in src_build.find({'pending_to_build': True}) if type(src['_id']) == str]
+            logging.info("Found %d configuration(s) to build (%s)" % (len(confs),repr(confs)))
+            for conf_name in confs:
+                logging.info("Launch build for '%s'" % conf_name)
+                try:
+                    self.merge(conf_name)
+                except Exception as e:
+                    import traceback
+                    logging.error("Build for configuration '%s' failed: %s\n%s" % (conf_name,e,traceback.format_exc()))
+                    raise
+        cron = aiocron.crontab(self.poll_schedule,func=partial(check_pending_to_build),
+                start=True, loop=self.job_manager.loop)
 
     @asyncio.coroutine
     def diff_cols(self,old_db_col_names, new_db_col_names, batch_size=100000, purge=False, exclude=[]):
