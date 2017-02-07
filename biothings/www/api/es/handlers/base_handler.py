@@ -35,7 +35,9 @@ class BaseESRequestHandler(BaseHandler):
 
     def _sanitize_source_param(self, kwargs):
         if self._should_sanitize('_source', kwargs):
-            if len(kwargs['_source']) == 1 and kwargs['_source'][0].lower() == 'all':
+            if len(kwargs['_source']) == 0:
+                kwargs.pop('_source')
+            elif len(kwargs['_source']) == 1 and kwargs['_source'][0].lower() == 'all':
                 kwargs['_source'] = True
         return kwargs
 

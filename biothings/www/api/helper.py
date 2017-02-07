@@ -94,7 +94,7 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn, SentryMixin):
                     ret = []
                     #raise BiothingParameterTypeError('Could not listify "{}" in parameter "{}" with "jsoninput" True'.format(argval, arg))
             if not ret:
-                ret = re.split(getattr(self.web_settings, 'LIST_SPLIT_REGEX', '[\s\r\n+|,]+'), argval)
+                ret = [x for x in re.split(getattr(self.web_settings, 'LIST_SPLIT_REGEX', '[\s\r\n+|,]+'), argval) if x]
             ret = ret[:self.kwarg_settings[arg].get('max', getattr(self.web_settings, 'LIST_SIZE_CAP', 1000))]
         elif self.kwarg_settings[arg]['type'] == int:
             try:
