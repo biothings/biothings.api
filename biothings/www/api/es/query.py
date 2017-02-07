@@ -5,6 +5,9 @@ import logging
 class BiothingScrollError(Exception):
     pass
 
+class BiothingSearchError(Exception):
+    pass
+
 class ESQuery(object):
     def __init__(self, client, options=dotdict()):
         self.client = client
@@ -28,10 +31,24 @@ class ESQuery(object):
         return self.client.msearch(**query_kwargs)
    
     def _query_GET_query(self, query_kwargs):
-        return self.client.search(**query_kwargs)
-
+        try:
+            return self.client.search(**query_kwargs)
+        except RequestError as e:
+            if e.args[1] == 'search_phase_execution_exception' and "error" in e.args[2] and "root_cause" in e.args[2]["error"]:
+                _root_causes = ['{} {}'.format(c['type'], c['reason']) for c in e.args[2]['error']['root_cause'] if 'reason' in c and 'type' in c]
+                raise BiothingSearchError('Could not execute query due to the following exception(s): {}'.format(_root_causes))
+            else:
+                raise Exception('{0}'.format(e))
+    
     def _query_POST_query(self, query_kwargs):
-        return self.client.msearch(**query_kwargs)
+        try:
+            return self.client.msearch(**query_kwargs)
+        except RequestError as e:
+            if e.args[1] == 'search_phase_execution_exception' and "error" in e.args[2] and "root_cause" in e.args[2]["error"]:
+                _root_causes = ['{} {}'.format(c['type'], c['reason']) for c in e.args[2]['error']['root_cause'] if 'reason' in c and 'type' in c]
+                raise BiothingSearchError('Could not execute query due to the following exception(s): {}'.format(_root_causes))
+            else:
+                raise Exception('{0}'.format(e))
 
     def _metadata_query(self, query_kwargs):
         return self.client.indices.get_mapping(**query_kwargs)

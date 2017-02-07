@@ -1,7 +1,7 @@
 from tornado.web import HTTPError
 from biothings.www.api.es.handlers.base_handler import BaseESRequestHandler
 from biothings.www.api.es.transform import ScrollIterationDone
-from biothings.www.api.es.query import BiothingScrollError
+from biothings.www.api.es.query import BiothingScrollError, BiothingSearchError
 from biothings.www.api.helper import BiothingParameterTypeError
 from biothings.utils.www import sum_arg_dicts
 import logging
@@ -160,6 +160,9 @@ class QueryHandler(BaseESRequestHandler):
 
             try:
                 res = _backend.query_GET_query(_query)
+            except BiothingSearchError as e:
+                self._return_data_and_track({'success': False, 'error': '{0}'.format(e)}, ga_event_data={'total': 0})
+                return
             except Exception as e:
                 self.log_exceptions("Error executing query")
                 self._return_data_and_track({'success': False, 'error': 'Error executing query'}, 
@@ -265,6 +268,9 @@ class QueryHandler(BaseESRequestHandler):
         
         try:
             res = _backend.query_POST_query(_query)
+        except BiothingSearchError as e:
+            self._return_data_and_track({'success': False, 'error': '{0}'.format(e)}, ga_event_data={'qsize': len(options.control_kwargs.q)})
+            return
         except Exception as e:
             self.log_exceptions("Error executing POST query")
             self._return_data_and_track({'success': False, 'error': 'Error executing query'}, ga_event_data={'qsize': len(options.control_kwargs.q)})
