@@ -244,7 +244,7 @@ def _item_removed(path, key, info, item):
 def _item_replaced(path, key, info, item):
     info.insert(_op_replace(path, key, item))
 
-def _compare_dicts(path, info, src, dst):
+def _compare_dicts(path, info, src, dst, use_list_ops=False):
     added_keys = dst.keys() - src.keys()
     removed_keys = src.keys() - dst.keys()
     for key in removed_keys:
@@ -252,40 +252,42 @@ def _compare_dicts(path, info, src, dst):
     for key in added_keys:
         _item_added(path, str(key), info, dst[key])
     for key in src.keys() & dst.keys():
-        _compare_values(path, key, info, src[key], dst[key])
+        _compare_values(path, key, info, src[key], dst[key], use_list_ops)
 
-def _compare_lists(path, info, src, dst):
+def _compare_lists(path, info, src, dst, use_list_ops=False):
     len_src, len_dst = len(src), len(dst)
-    #max_len = max(len_src, len_dst)
-    #min_len = min(len_src, len_dst)
-    #for key in range(max_len):
-    #    if key < min_len:
-    #        old, new = src[key], dst[key]
-    #        if old == new:
-    #            continue
-    #        _item_removed(path, key, info, old)
-    #        _item_added(path, key, info, new)
-    #    elif len_src > len_dst:
-    #        _item_removed(path, len_dst, info, src[key])
-    #    else:
-    #        _item_added(path, key, info, dst[key])
-    if len_src != len_dst or src != dst:
-        _item_replaced(path, None , info, dst)
+    if use_list_ops:
+        max_len = max(len_src, len_dst)
+        min_len = min(len_src, len_dst)
+        for key in range(max_len):
+            if key < min_len:
+                old, new = src[key], dst[key]
+                if old == new:
+                    continue
+                _item_removed(path, key, info, old)
+                _item_added(path, key, info, new)
+            elif len_src > len_dst:
+                _item_removed(path, len_dst, info, src[key])
+            else:
+                _item_added(path, key, info, dst[key])
+    else:
+        if len_src != len_dst or src != dst:
+            _item_replaced(path, None , info, dst)
 
-def _compare_values(path, key, info, src, dst):
+def _compare_values(path, key, info, src, dst, use_list_ops=False):
     if src == dst:
         return
     elif isinstance(src, dict) and \
             isinstance(dst, dict):
-        _compare_dicts(_path_join(path, key), info, src, dst)
+        _compare_dicts(_path_join(path, key), info, src, dst, use_list_ops)
     elif isinstance(src, list) and \
             isinstance(dst, list):
-        _compare_lists(_path_join(path, key), info, src, dst)
+        _compare_lists(_path_join(path, key), info, src, dst, use_list_ops)
     else:
         _item_replaced(path, key, info, dst)
 
-def make(src, dst, **kwargs):
+def make(src, dst, use_list_ops=False, **kwargs):
     info = _compare_info()
-    _compare_values('', None, info, src, dst)
+    _compare_values('', None, info, src, dst, use_list_ops=use_list_ops)
     return [op for op in info.execute()]
 
