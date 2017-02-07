@@ -1,3 +1,7 @@
+"""
+This module contains util functions may be shared by both BioThings data-hub and web components.
+In general, do not include utils depending on any third-party modules.
+"""
 import base64
 import os
 import io
