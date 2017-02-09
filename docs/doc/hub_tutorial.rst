@@ -387,8 +387,8 @@ After typing either of these commands, logs will show some information about the
 
 Folder contains all uncompressed files, ready to be process by an uploader.
 
-Species dumper
-==============
+Uniprot species dumper
+======================
 
 Following guideline from previous taxonomy dumper, we’re now implementing a new dumper used to download species list.
 There’s just one file to be downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/docs/speclist.txt.
@@ -634,8 +634,8 @@ In the end, two collections were created, containing parsed data:
    }
 
 
-Species uploader
-================
+Uniprot species uploader
+========================
 
 Following the same guideline, we’re going to create another uploader for species file.
 
