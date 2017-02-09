@@ -83,7 +83,7 @@ Commands will be part of the interpreter’s namespace and be available from a S
             }
 
     from biothings.utils.hub import start_server
-    server = start_server(loop, "Species hub",passwords=passwords,port=7022,commands=COMMANDS)
+    server = start_server(loop, "Taxonomy hub",passwords=passwords,port=7022,commands=COMMANDS)
 
     try:
         loop.run_until_complete(server)
@@ -108,7 +108,7 @@ Let’s generate it, following instruction. Now we can run it again and try to c
    Are you sure you want to continue connecting (yes/no)? yes
    Warning: Permanently added '[localhost]:7022' (RSA) to the list of known hosts.
 
-   Welcome to Species hub, guest!
+   Welcome to Taxonomy hub, guest!
    hub>
 
 Let’s try a command:
@@ -267,7 +267,7 @@ We can double-check this by connecting to the hub, and type some commands:
 
 .. code:: bash
 
-   Welcome to Species hub, guest!
+   Welcome to Taxonomy hub, guest!
    hub> dm
    <DumperManager [1 registered]: ['taxonomy']>
 
@@ -296,7 +296,7 @@ It successfully run (OK), nothing was returned by the task ([None]). Logs show s
 
 .. code:: bash
 
-   DEBUG:species.hub:Creating new TaxonomyDumper instance
+   DEBUG:taxonomy.hub:Creating new TaxonomyDumper instance
    INFO:taxonomy_dump:1 file(s) to download
    DEBUG:taxonomy_dump:Downloading 'taxdump.tar.gz'
    INFO:taxonomy_dump:taxonomy successfully downloaded
@@ -307,7 +307,7 @@ file available. Let’s try that, here are the logs:
 
 .. code:: bash
 
-   DEBUG:species.hub:Creating new TaxonomyDumper instance
+   DEBUG:taxonomy.hub:Creating new TaxonomyDumper instance
    DEBUG:taxonomy_dump:'taxdump.tar.gz' is up-to-date, no need to download
    INFO:taxonomy_dump:Nothing to dum
 
@@ -381,7 +381,7 @@ After typing either of these commands, logs will show some information about the
 
 .. code:: bash
 
-   DEBUG:species.hub:Creating new TaxonomyDumper instance
+   DEBUG:taxonomy.hub:Creating new TaxonomyDumper instance
    INFO:taxonomy_dump:success
    INFO:root:untargz '/opt/slelong/Documents/Projects/biothings.species/src/data/taxonomy/20170125/taxdump.tar.gz'
 
@@ -395,7 +395,7 @@ There’s just one file to be downloaded from ftp://ftp.uniprot.org/pub/database
 Same as before, dumper will inherits FTPDumper base class. File is not compressed, so except this, this dumper will look the same.
 
 Code is available on github for further details: `ee674c55bad849b43c8514fcc6b7139423c70074 <https://github.com/SuLab/biothings.species/commit/ee674c55bad849b43c8514fcc6b7139423c70074>`_
-for the whole commit changes, and `dataload/sources/species/dumper.py <https://github.com/SuLab/biothings.species/blob/master/src/dataload/sources/species/dumper.py>`_ for the actual dumper.
+for the whole commit changes, and `dataload/sources/uniprot/dumper.py <https://github.com/SuLab/biothings.species/blob/master/src/dataload/sources/uniprot/dumper.py>`_ for the actual dumper.
 
 Gene information dumper
 =======================
@@ -435,11 +435,11 @@ Running the hub, we’ll see the kind of log statements:
 
 .. code:: bash
 
-   INFO:species.hub:Found 2 resources to upload (['species', 'geneinfo'])
-   INFO:species.hub:Launch upload for 'species'
-   ERROR:species.hub:Resource 'species' needs upload but is not registerd in manager
-   INFO:species.hub:Launch upload for 'geneinfo'
-   ERROR:species.hub:Resource 'geneinfo' needs upload but is not registerd in manager
+   INFO:taxonomy.hub:Found 2 resources to upload (['species', 'geneinfo'])
+   INFO:taxonomy.hub:Launch upload for 'species'
+   ERROR:taxonomy.hub:Resource 'species' needs upload but is not registerd in manager
+   INFO:taxonomy.hub:Launch upload for 'geneinfo'
+   ERROR:taxonomy.hub:Resource 'geneinfo' needs upload but is not registerd in manager
    ...
 
 Indeed, datasources have been dumped, and a ``pending_to_upload`` flag has been to True in ``src_dump``. UploadManager polls this ``src_dump``
@@ -516,7 +516,7 @@ Now let’s try to run the hub again. We should see uploader manager has automat
 
 .. code:: bash
 
-   INFO:species.hub:Launch upload for 'taxonomy'
+   INFO:taxonomy.hub:Launch upload for 'taxonomy'
    ...
    ...
    INFO:taxonomy.names_upload:Uploading 'names' (collection: names)
@@ -644,9 +644,9 @@ Following the same guideline, we’re going to create another uploader for speci
    import biothings.dataload.uploader as uploader
    from .parser import parse_uniprot_speclist
 
-   class SpeciesUploader(uploader.BaseSourceUploader):
+   class UniprotSpeciesUploader(uploader.BaseSourceUploader):
 
-       name = "species"
+       name = "uniprot_species"
 
        def load_data(self,data_folder):
            nodes_file = os.path.join(data_folder,"speclist.txt")
@@ -656,18 +656,18 @@ Following the same guideline, we’re going to create another uploader for speci
 
 In that case, we need only one uploader, so we just define “name” (no need to define main_source here).
 
-We need to expose that uploader from the package, in `dataload/sources/species/__init__.py <https://github.com/SuLab/biothings.species/blob/master/src/dataload/sources/species/__init__.py>`_:
+We need to expose that uploader from the package, in `dataload/sources/uniprot/__init__.py <https://github.com/SuLab/biothings.species/blob/master/src/dataload/sources/uniprot/__init__.py>`_:
 
 .. code-block:: python
 
-   from .uploader import SpeciesUploader
+   from .uploader import UniprotSpeciesUploader
 
 Let’s run this through the hub. We can use the “upload” command there (though manager should trigger the upload itself):
 
 .. code:: bash
 
-   hub> upload("species")
-   [1] RUN {0.0s} upload("species")
+   hub> upload("uniprot_species")
+   [1] RUN {0.0s} upload("uniprot_species")
 
 Similar to dumpers, there are different steps we can individually call for an uploader:
 
@@ -682,13 +682,13 @@ Within the hub, we can specify these steps manually (they’re all executed by d
 
 .. code:: bash
 
-   hub> upload("species",steps="clean")
+   hub> upload("uniprot_species",steps="clean")
 
 Or using a list:
 
 .. code:: bash
 
-   hub> upload("species",steps=["data","clean"])
+   hub> upload("uniprot_species",steps=["data","clean"])
 
 Gene information uploader
 =========================
@@ -728,9 +728,9 @@ When running the uploader, logs show statements like these:
 
 .. code:: bash
 
-   INFO:species.hub:Found 1 resources to upload (['geneinfo'])
-   INFO:species.hub:Launch upload for 'geneinfo'
-   INFO:species.hub:Building task: functools.partial(<bound method UploaderManager.create_and_load of <UploaderManager [3 registered]: ['geneinfo', 'species', 'taxonomy']>>, <class 'dataload.sources.gen
+   INFO:taxonomy.hub:Found 1 resources to upload (['geneinfo'])
+   INFO:taxonomy.hub:Launch upload for 'geneinfo'
+   INFO:taxonomy.hub:Building task: functools.partial(<bound method UploaderManager.create_and_load of <UploaderManager [3 registered]: ['geneinfo', 'species', 'taxonomy']>>, <class 'dataload.sources.gen
    einfo.uploader.GeneInfoUploader'>, job_manager=<biothings.utils.manager.JobManager object at 0x7fbf5f8c69b0>)
    INFO:geneinfo_upload:Uploading 'geneinfo' (collection: geneinfo)
    INFO:geneinfo_upload:Load data from file './data/geneinfo/20170125/gene_info'
@@ -827,7 +827,7 @@ and create configuration placeholder.
 We’re going to use that template to create our own configuration:
 
 * **_id** and name are the name of the configuration (they can be different but really, _id is the one used here)...
-  We’ll set these as:  ``{“_id”:”myspecies”, “name”:”myspecies” }``.
+  We’ll set these as:  ``{“_id”:”mytaxonomy”, “name”:”mytaxonomy” }``.
 * **sources** is a list of collection names used for the merge. A element is this can also be a regular expression
   matching collection names. If we have data spread across different collection, like one collection per chromosome data,
   we could use a regex such as ``data_chr.*``. We’ll set this as:  ``{“sources”:[“names”,”species”, “nodes”]}``
@@ -848,14 +848,14 @@ The resulting document should look like this. Let’s save this in src_build (an
 
    > conf
    {
-           "_id" : "myspecies",
-           "name" : "myspecies",
+           "_id" : "mytaxonomy",
+           "name" : "mytaxonomy",
            "sources" : [
                    "names",
-                   "species",
+                   "uniprot_species",
                    “nodes”
            ],
-           "root" : [“!species”]
+           "root" : [“!uniprot_species”]
    }
    > db.src_build.save(conf)
    > db.src_build.remove({_id:"placeholder"})
@@ -866,34 +866,34 @@ We can list the sources specified in configuration.
 .. code:: bash
 
    hub> bm
-   <BuilderManager [1 registered]: ['myspecies']>
-   hub> bm.list_sources("myspecies")
+   <BuilderManager [1 registered]: ['mytaxonomy']>
+   hub> bm.list_sources("mytaxonomy")
    ['names', 'species', 'nodes']
 
 OK, let’s try to merge !
 
 .. code:: bash
 
-   hub> merge("myspecies")
-   [1] RUN {0.0s} merge("myspecies")
+   hub> merge("mytaxonomy")
+   [1] RUN {0.0s} merge("mytaxonomy")
 
 Looking at the logs, we can see builder will first root sources:
 
 .. code:: bash
 
-   INFO:myspecies_build:Merging into target collection 'myspecies_20170127_pn1ygtqp'
+   INFO:mytaxonomy_build:Merging into target collection 'mytaxonomy_20170127_pn1ygtqp'
    ...
-   INFO:myspecies_build:Sources to be merged: ['names', 'nodes', 'species']
-   INFO:myspecies_build:Root sources: ['names', 'nodes']
-   INFO:myspecies_build:Other sources: ['species']
-   INFO:myspecies_build:Merging root document sources: ['names', 'nodes']
+   INFO:mytaxonomy_build:Sources to be merged: ['names', 'nodes', 'species']
+   INFO:mytaxonomy_build:Root sources: ['names', 'nodes']
+   INFO:mytaxonomy_build:Other sources: ['species']
+   INFO:mytaxonomy_build:Merging root document sources: ['names', 'nodes']
 
 Then once root sources are processed, **species** collection merged on top on existing documents:
 
 .. code:: bash
 
-   INFO:myspecies_build:Merging other resources: ['species']
-   DEBUG:myspecies_build:Documents from source 'species' will be stored only if a previous document exists with same _id
+   INFO:mytaxonomy_build:Merging other resources: ['species']
+   DEBUG:mytaxonomy_build:Documents from source 'species' will be stored only if a previous document exists with same _id
 
 After a while, task is done, merge has returned information about the amount of data that have been merge: 1552809 records
 from collections **names** and **nodes**, 25394 from **species**. Note: the figures show the number fetched from collections,
@@ -902,15 +902,15 @@ not necessarily the data merged. For instance, merged data from **species** may 
 .. code:: bash
 
    hub>
-   [1] OK  merge("myspecies"): finished, [{'total_species': 25394, 'total_nodes': 1552809, 'total_names': 1552809}]
+   [1] OK  merge("mytaxonomy"): finished, [{'total_species': 25394, 'total_nodes': 1552809, 'total_names': 1552809}]
 
-Builder creates multiple merger jobs per collection. The merged collection name is, by default, generating from the build name (**myspecies**),
+Builder creates multiple merger jobs per collection. The merged collection name is, by default, generating from the build name (**mytaxonomy**),
 and contains also a timestamp and some random chars. We can specify the merged collection name from the hub. By default, all sources defined
 in the configuration are merged., and we can also select one or more specific sources to merge:
 
 .. code:: bash
 
-   hub> merge("myspecies",sources="species",target_name="test_merge")
+   hub> merge("mytaxonomy",sources="uniprot_species",target_name="test_merge")
 
 Note: ``sources`` parameter can also be a list of string.
 
@@ -918,47 +918,47 @@ If we go back to ``src_build``, we can have information about the different merg
 
 .. code:: javascript
 
-   > db.src_build.find({_id:"myspecies"},{build:1})
+   > db.src_build.find({_id:"mytaxonomy"},{build:1})
    {
-           "_id" : "myspecies",
+           "_id" : "mytaxonomy",
            "build" : [
    		…
    {
                    "src_versions" : {
                            "geneinfo" : "20170125",
                            "taxonomy" : "20170125",
-                           "species" : "20170125"
+                           "uniprot_species" : "20170125"
                    },
                    "time_in_s" : 386,
-                   "logfile" : "./data/logs/myspecies_20170127_build.log",
+                   "logfile" : "./data/logs/mytaxonomy_20170127_build.log",
                    "pid" : 57702,
                    "target_backend" : "mongo",
                    "time" : "6m26.29s",
                    "step_started_at" : ISODate("2017-01-27T11:36:47.401Z"),
                    "stats" : {
-                           "total_species" : 25394,
+                           "total_uniprot_species" : 25394,
                            "total_nodes" : 1552809,
                            "total_names" : 1552809
                    },
                    "started_at" : ISODate("2017-01-27T11:30:21.114Z"),
                    "status" : "success",
-                   "target_name" : "myspecies_20170127_pn1ygtqp",
+                   "target_name" : "mytaxonomy_20170127_pn1ygtqp",
                    "step" : "post-merge",
                    "sources" : [
-                           "species"
+                           "uniprot_species"
                    ]
            }
 
-We can see the merged collection (auto-generated) is **myspecies_20170127_pn1ygtqp**.
+We can see the merged collection (auto-generated) is **mytaxonomy_20170127_pn1ygtqp**.
 Let’s have a look at the content (remember, collection is in target database, not in src):
 
 .. code:: javascript
 
    > use dev_speciesdoc
    switched to db dev_speciesdoc
-   > db.myspecies_20170127_pn1ygtqp.count()
+   > db.mytaxonomy_20170127_pn1ygtqp.count()
    1552809
-   > db.myspecies_20170127_pn1ygtqp.find({_id:9606})
+   > db.mytaxonomy_20170127_pn1ygtqp.find({_id:9606})
    {
            "_id" : 9606,
            "rank" : "species",
@@ -1048,7 +1048,7 @@ First we get a builder instance from the manager:
 
 .. code:: bash
 
-   hub> builder = bm["myspecies"]
+   hub> builder = bm["mytaxonomy"]
    hub> builder
    <biothings.databuild.builder.DataBuilder object at 0x7f278aecf400>
 
@@ -1079,13 +1079,13 @@ Oops, cache isn’t loaded yet, we have to do it manually here (but it’s done 
 OK, it’s ready. Let’s now talk more about the mapper’s name. A mapper can applied to different sources, and we have to define
 which sources’ data should go through that mapper. In our case, we want **names** and **species** collection’s data to go through.
 In order to do that, we have to instruct the uploader with a special attribute.
-Let’s modify `dataload.sources.species.uploader.SpeciesUploader <https://github.com/SuLab/biothings.species/blob/master/src/dataload/sources/species/uploader.py>`_ class
+Let’s modify `dataload.sources.species.uploader.UniprotSpeciesUploader <https://github.com/SuLab/biothings.species/blob/master/src/dataload/sources/uniprot/uploader.py>`_ class
 
 .. code-block:: python
 
-   class SpeciesUploader(uploader.BaseSourceUploader):
+   class UniprotSpeciesUploader(uploader.BaseSourceUploader):
 
-       name = "species"
+       name = "uniprot_species"
        __metadata__ = {"mapper" : 'has_gene'}
 
 ``__metadata__`` dictionary is going to be used to create a master document. That document is stored in src_master collection (we talked about it earlier).
@@ -1104,17 +1104,17 @@ or directly tell the hub to only process master steps:
 
 .. code:: bash
 
-   hub> upload("species",steps="master")
-   [1] RUN {0.0s} upload("species",steps="master")
+   hub> upload("uniprot_species",steps="master")
+   [1] RUN {0.0s} upload("uniprot_species",steps="master")
    hub> upload("taxonomy.names",steps="master")
-   [1] OK  upload("species",steps="master"): finished, [None]
+   [1] OK  upload("uniprot_species",steps="master"): finished, [None]
    [2] RUN {0.0s} upload("taxonomy.names",steps="master")
 
 (you’ll notice for taxonomy, we only trigger upload for sub-source **names**, using "dot-notation", corresponding to "main_source.name". Let’s now have a look at those master documents:
 
 .. code:: javascript
 
-   > db.src_master.find({_id:{$in:["species","names"]}})
+   > db.src_master.find({_id:{$in:["uniprot_species","names"]}})
    {
            "_id" : "names",
            "name" : "names",
@@ -1125,8 +1125,8 @@ or directly tell the hub to only process master steps:
            }
    }
    {
-           "_id" : "species",
-           "name" : "species",
+           "_id" : "uniprot_species",
+           "name" : "uniprot_species",
            "timestamp" : ISODate("2017-01-26T16:21:19.414Z"),
            "mapper" : "has_gene",
            "mapping" : {
@@ -1138,17 +1138,17 @@ We have our ``mapper`` key stored. We can now trigger a new merge (we specify th
 
 .. code:: bash
 
-   hub> merge("myspecies",target_name="myspecies_test")
-   [3] RUN {0.0s} merge("myspecies",target_name="myspecies_test")
+   hub> merge("mytaxonomy",target_name="mytaxonomy_test")
+   [3] RUN {0.0s} merge("mytaxonomy",target_name="mytaxonomy_test")
 
 In the logs, we can see our mapper has been detected and is used:
 
 .. code:: bash
 
-   INFO:myspecies_build:Creating merger job #1/16, to process 'names' 100000/1552809 (6.4%)
-   INFO:myspecies_build:Found mapper '<databuild.mapper.HasGeneMapper object at 0x7f47ef3bbac8>' for source 'names'
-   INFO:myspecies_build:Creating merger job #1/1, to process 'species' 25394/25394 (100.0%)
-   INFO:myspecies_build:Found mapper '<databuild.mapper.HasGeneMapper object at 0x7f47ef3bbac8>' for source 'species'
+   INFO:mytaxonomy_build:Creating merger job #1/16, to process 'names' 100000/1552809 (6.4%)
+   INFO:mytaxonomy_build:Found mapper '<databuild.mapper.HasGeneMapper object at 0x7f47ef3bbac8>' for source 'names'
+   INFO:mytaxonomy_build:Creating merger job #1/1, to process 'species' 25394/25394 (100.0%)
+   INFO:mytaxonomy_build:Found mapper '<databuild.mapper.HasGeneMapper object at 0x7f47ef3bbac8>' for source 'species'
 
 Once done, we can query the merged collection to check the data:
 
@@ -1156,7 +1156,7 @@ Once done, we can query the merged collection to check the data:
 
    > use dev_speciesdoc
    switched to db dev_speciesdoc
-   > db.myspecies_test.find({_id:9606})
+   > db.mytaxonomy_test.find({_id:9606})
    {
            "_id" : "9606",
            "has_gene" : true,
@@ -1295,8 +1295,8 @@ Note: ``post_merge`` actually runs within a thread, so any calls here won’t bl
 Let’s run this on our merged collection. We don’t want to merge everything again, so we specify the step we’re interested in and
 the actual merged collection (``target_name``)
 
-hub> merge("myspecies",steps="post",target_name="myspecies_test")
-[1] RUN {0.0s} merge("myspecies",steps="post",target_name="myspecies_test")
+hub> merge("mytaxonomy",steps="post",target_name="mytaxonomy_test")
+[1] RUN {0.0s} merge("mytaxonomy",steps="post",target_name="mytaxonomy_test")
 
 After a while, process is done. We can test our updated data:
 
@@ -1304,7 +1304,7 @@ After a while, process is done. We can test our updated data:
 
    > use dev_speciesdoc
    switched to db dev_speciesdoc
-   > db.myspecies_test.find({_id:9606})
+   > db.mytaxonomy_test.find({_id:9606})
    {
            "_id" : 9606,
            "taxid" : 9606,
