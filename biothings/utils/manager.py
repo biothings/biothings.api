@@ -9,8 +9,8 @@ from biothings import config
 logger = config.logger
 
 from biothings.utils.mongo import get_src_conn
-from biothings.utils.common import timesofar, get_random_string,\
-                                   find_process, sizeof_fmt
+from biothings.utils.common import timesofar, get_random_string, sizeof_fmt
+from biothings.utils.hub import find_process
 
 
 def track(func):
