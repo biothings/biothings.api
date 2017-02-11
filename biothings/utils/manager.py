@@ -73,6 +73,7 @@ def track(func):
             import traceback
             trace = traceback.format_exc()
             logger.error("err %s\n%s" % (e,trace))
+            # we want to store exception so for now, just make a reference
             exc = e
         finally:
             if os.path.exists(pidfile):
@@ -91,6 +92,9 @@ def track(func):
                 except Exception:
                     worker["err"] = str(exc)
                     pickle.dump(worker,open(pidfile,"wb"))
+        # now raise original exception
+        if exc:
+            raise exc
         return results
     return func_wrapper
 
@@ -309,29 +313,52 @@ class JobManager(object):
 
     @asyncio.coroutine
     def defer_to_process(self, pinfo=None, func=None, *args):
+
         @asyncio.coroutine
         def run(future):
             yield from self.checkmem(pinfo)
             self.ok_to_run.release()
-            res = yield from self.loop.run_in_executor(self.process_queue,
+            res = self.loop.run_in_executor(self.process_queue,
                     partial(do_work,"process",pinfo,func,*args))
-            return future.set_result(res)
+
+            def check(f,res):
+                if res.exception():
+                    future.set_exception(res.exception())
+                else:
+                    future.set_result(res.result())
+
+            res.add_done_callback(partial(check,res=res))
+            return future
+
         yield from self.ok_to_run.acquire()
         f = asyncio.Future()
         fut = asyncio.ensure_future(run(f))
+
         return f
 
+    @asyncio.coroutine
     def defer_to_thread(self, pinfo=None, func=None, *args):
+
         @asyncio.coroutine
         def run(future):
             yield from self.checkmem(pinfo)
             self.ok_to_run.release()
-            res = yield from self.loop.run_in_executor(self.thread_queue,
+            res = self.loop.run_in_executor(self.thread_queue,
                     partial(do_work,"thread",pinfo,func,*args))
-            future.set_result(res)
+
+            def check(f,res):
+                if res.exception():
+                    future.set_exception(res.exception())
+                else:
+                    future.set_result(res.result())
+
+            res.add_done_callback(partial(check,res=res))
+            return future
+
         yield from self.ok_to_run.acquire()
         f = asyncio.Future()
         asyncio.ensure_future(run(f))
+
         return f
 
     def submit(self,pfunc,schedule=None):

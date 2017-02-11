@@ -424,16 +424,10 @@ class DataBuilder(object):
                 job = self.merge_source(src_name, batch_size=batch_size, job_manager=job_manager)
                 job = asyncio.ensure_future(job)
                 def merged(f,stats):
-                    try:
-                        stats.update(f.result())
-                    except Exception as e:
-                        import traceback
-                        self.logger.error("Failed merging source '%s': %s\n%s" % \
-                                (src_name, e, traceback.format_exc()))
-                        raise
+                    stats.update(f.result())
                 job.add_done_callback(partial(merged,stats=self.stats))
                 jobs.append(job)
-            yield from asyncio.wait(jobs)
+            yield from asyncio.gather(*jobs)
 
         if do_merge:
             if root_sources:
@@ -513,21 +507,17 @@ class DataBuilder(object):
                             ids,
                             self.get_mapper_for_source(src_name,init=False),
                             upsert))
+
                 def processed(f, cnt, batch_num):
-                    # collect result ie. number of inserted
-                    try:
-                        cnt += f.result()
-                        self.logger.info("'%s' merger batch #%d, done" % (src_name, batch_num))
-                    except Exception as e:
-                        import traceback
-                        self.logger.error("'%s' merger batch # %d, error in processed: %s:\n%s" % \
-                                (src_name, batch_num, e, traceback.format_exc()))
-                        raise
+                    cnt += f.result()
+                    self.logger.info("'%s' merger batch #%d, done" % (src_name, batch_num))
+
                 job.add_done_callback(partial(processed,cnt=cnt, batch_num=bnum))
                 jobs.append(job)
                 bnum += 1
+
         self.logger.info("%d jobs created for merging step" % len(jobs))
-        yield from asyncio.wait(jobs)
+        yield from asyncio.gather(*jobs)
         return {"total_%s" % src_name : cnt}
 
     def post_merge(self, source_names, batch_size, job_manager):
@@ -654,17 +644,9 @@ class BuilderManager(BaseManager):
         passed (one single or a list). target_name is the target collection name used
         to store to merge data. If none, each call will generate a unique target_name.
         """
-        def merged(f):
-            try:
-                pass
-            except Exception as e:
-                import traceback
-                self.logger.error("Error while running merge job, %s:\n%s" % (e,traceback.format_exc()))
-                raise
         try:
             bdr = self[build_name]
             job = bdr.merge(sources,target_name,job_manager=self.job_manager,**kwargs)
-            job.add_done_callback(merged)
             return job
         except KeyError as e:
             raise BuilderException("No such builder for '%s'" % build_name)
@@ -713,9 +695,9 @@ class BuilderManager(BaseManager):
                 start=True, loop=self.job_manager.loop)
 
     @asyncio.coroutine
-    def diff_cols(self,old_db_col_names, new_db_col_names, batch_size=100000, purge=False, exclude=[]):
+    def diff_cols(self,old_db_col_names, new_db_col_names, batch_size=100000, mode=None, exclude=[]):
         """
-        Compare new with old collections and produce diff files. Root keys can be excluded from 
+        Compare new with old collections and produce diff files. Root keys can be excluded from
         comparison with "exclude" parameter.
         *_db_col_names can be: 
          1. a colleciton name (as a string) asusming they are
@@ -726,23 +708,49 @@ class BuilderManager(BaseManager):
          3. tuple with 3 elements (URI,db,collection), looking like:
             ("mongodb://user:pass@host","dbname","collection"), allowing to specify
             any connection on any server
+        mode: 'purge' will remove any existing files for this comparison. 'resume' will find
+              the latest comparison result and move from this point (not tested extensively though...)
         """
         new = create_backend(new_db_col_names)
         old = create_backend(old_db_col_names)
+        skip = 0
+        cnt = 0
 
         diff_folder = os.path.join(btconfig.DIFF_PATH,
                                    "%s_vs_%s" % (old.target_collection.name, new.target_collection.name))
         if os.path.exists(diff_folder):
-            if purge:
+            if mode == "purge":
                 rmdashfr(diff_folder)
+            elif mode == "resume":
+                # get last file
+                try:
+                    last = sorted([int(os.path.splitext(e[1])[0]) for e in \
+                            map(os.path.split,glob.glob(os.path.join(diff_folder,"*.pyobj")))])[-1]
+                    # first is numbered 1 (it's +1 later)
+                    skip = last * batch_size
+                    cnt = last
+
+
+                except ValueError as e:
+                    raise FileExistsError("Can't find latest file (mode=resume): %s" % e)
+
             else:
-                raise FileExistsError("Found existing files in '%s', delete them or use purge=True" % diff_folder)
+                raise FileExistsError("Found existing files in '%s', use mode='purge' or mode='resume'" % diff_folder)
         if not os.path.exists(diff_folder):
             os.makedirs(diff_folder)
 
-        data_new = doc_feeder(new.target_collection, step=batch_size, inbatch=True, fields={"_id":1})
-        data_old = doc_feeder(old.target_collection, step=batch_size, inbatch=True, fields={"_id":1})
-        cnt = 0
+        # compute skip for new and old
+        count_new = new.target_collection.count()
+        if count_new > skip:
+            # we haven't reached the 2dn step in the comparison (still in data_new)
+            skip_new = skip
+            skip_old = 0
+        else:
+            skip_new = count_new # just skip everything
+            skip_old = skip - count_new # where we were in data_old
+
+        data_new = doc_feeder(new.target_collection, step=batch_size, inbatch=True, s=skip_new, fields={"_id":1})
+        data_old = doc_feeder(old.target_collection, step=batch_size, inbatch=True, s=skip_old, fields={"_id":1})
         stats = {"update":0, "add":0, "delete":0}
 
         jobs = []
@@ -755,22 +763,17 @@ class BuilderManager(BaseManager):
             id_list_new = [_doc['_id'] for _doc in _batch]
             pinfo["description"] = "batch #%s" % cnt
             def diffed(f):
-                try:
-                    res = f.result()
-                    stats["update"] += res["update"]
-                    stats["add"] += res["add"]
-                    self.logger.info("(Updated: {}, Added: {})".format(res["update"], res["add"]))
-                except Exception as e:
-                    import traceback
-                    self.logger.error("Error while diffing batch #%s, %s:\n%s" % (cnt,e,traceback.format_exc()))
-                    raise
+                res = f.result()
+                stats["update"] += res["update"]
+                stats["add"] += res["add"]
+                self.logger.info("(Updated: {}, Added: {})".format(res["update"], res["add"]))
             self.logger.info("Creating diff worker for batch #%s" % cnt)
             job = yield from self.job_manager.defer_to_process(pinfo,
                     partial(diff_worker_new_vs_old, id_list_new, old_db_col_names,
                             new_db_col_names, cnt , diff_folder, exclude))
             job.add_done_callback(diffed)
             jobs.append(job)
-        yield from asyncio.wait(jobs)
+        yield from asyncio.gather(*jobs)
         self.logger.info("Finished calculating diff for the new collection. Total number of docs updated: {}, added: {}".format(stats["update"], stats["add"]))
 
         jobs = []
@@ -780,39 +783,25 @@ class BuilderManager(BaseManager):
             id_list_old = [_doc['_id'] for _doc in _batch]
             pinfo["description"] = "batch #%s" % cnt
             def diffed(f):
-                try:
-                    res = f.result()
-                    stats["delete"] += res["delete"]
-                    self.logger.info("(Deleted: {})".format(res["delete"]))
-                except Exception as e:
-                    import traceback
-                    self.logger.error("Error while diffing batch #%s, %s:\n%s" % (cnt,e,traceback.format_exc()))
-                    raise
+                res = f.result()
+                stats["delete"] += res["delete"]
+                self.logger.info("(Deleted: {})".format(res["delete"]))
             self.logger.info("Creating diff worker for batch #%s" % cnt)
             job = yield from self.job_manager.defer_to_process(pinfo,
                     partial(diff_worker_old_vs_new, id_list_old, new_db_col_names, cnt , diff_folder))
             job.add_done_callback(diffed)
             jobs.append(job)
-        yield from asyncio.wait(jobs)
+        yield from asyncio.gather(*jobs)
         self.logger.info("Finished calculating diff for the old collection. Total number of docs deleted: {}".format(stats["delete"]))
         self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {})".format(stats["update"], stats["add"], stats["delete"]))
 
         return stats
 
-    def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, purge=False, exclude=[]):
+    def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, mode=None, exclude=[]):
         """wrapper over diff_cols() coroutine, return a task"""
-        def diffed(f):
-            try:
-                pass
-            except Exception as e:
-                import traceback
-                self.logger.error("Error while running diff job, %s:\n%s" % (e,traceback.format_exc()))
-                raise
-        job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, purge, exclude))
-        job.add_done_callback(diffed)
+        job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, mode, exclude))
         return job
 
-    @asyncio.coroutine
     def report_diff(self,diff_folder,report_ids=False):
         """
         Analyze diff files in diff_folder and give a summy of changes.
@@ -822,35 +811,65 @@ class BuilderManager(BaseManager):
 
         updates = {"add":{},"remove":{},"replace":{}, "move":{}}
 
-        def reported(fut,updates):
-            try:
-                res = fut.result()
-                updates = merge_struct(updates,res)
-            except Exception as e:
-                import traceback
-                self.logger.error("Error while reporting diff %s:\n%s" % (e,traceback.format_exc()))
-                raise
+        def report_worker(diff_file, report_ids):
+            logging.info("on load %s" % diff_file)
+            data = loadobj(diff_file)
+            for up in data["update"]:
+                for patch in up["patch"]:
+                    if report_ids:
+                        updates[patch["op"]].setdefault(patch["path"],[]).append(up["_id"])
+                    else:
+                        updates[patch["op"]].setdefault(patch["path"],0)
+                        updates[patch["op"]][patch["path"]] += 1
+            return updates
 
         data_folder = os.path.join(btconfig.DIFF_PATH,diff_folder)
         jobs = []
-        for f in glob.glob(os.path.join(data_folder,"*.pyobj")):
+        for f in sorted(glob.glob(os.path.join(data_folder,"*.pyobj"))):
             logging.info("Running report worker for '%s'" % f)
-            pinfo = {"category" : "reporter",
-                    "source" : f,
-                    "step" : "",
-                    "description" : ""}
-            job = yield from self.job_manager.defer_to_process(pinfo,partial(report_worker,f,report_ids))
-            job.add_done_callback(partial(reported,updates=updates))
-            jobs.append(job)
-        yield from asyncio.wait(jobs)
-        if not report_ids:
-            # we've counted differences, but merge_struct build a list of those sums
-            # we need to sum them up here to have one single number
-            for op in updates:
-                for path,sums in updates[op].items():
-                    if type(sums) == list:
-                        updates[op][path] = sum(sums)
+            report_worker(f,report_ids)
         return updates
+
+
+    #@asyncio.coroutine
+    #def report_diff(self,diff_folder,report_ids=False):
+    #    """
+    #    Analyze diff files in diff_folder and give a summy of changes.
+    #    report_ids=False will count the changes while =True will report
+    #    documents _id
+    #    """
+
+    #    updates = {"add":{},"remove":{},"replace":{}, "move":{}}
+
+    #    def reported(fut,updates):
+    #        try:
+    #            res = fut.result()
+    #            updates = merge_struct(updates,res)
+    #        except Exception as e:
+    #            import traceback
+    #            self.logger.error("Error while reporting diff %s:\n%s" % (e,traceback.format_exc()))
+    #            raise
+
+    #    data_folder = os.path.join(btconfig.DIFF_PATH,diff_folder)
+    #    jobs = []
+    #    for f in glob.glob(os.path.join(data_folder,"*.pyobj")):
+    #        logging.info("Running report worker for '%s'" % f)
+    #        pinfo = {"category" : "reporter",
+    #                "source" : f,
+    #                "step" : "",
+    #                "description" : ""}
+    #        job = yield from self.job_manager.defer_to_process(pinfo,partial(report_worker,f,report_ids))
+    #        job.add_done_callback(partial(reported,updates=updates))
+    #        jobs.append(job)
+    #    yield from asyncio.wait(jobs)
+    #    if not report_ids:
+    #        # we've counted differences, but merge_struct build a list of those sums
+    #        # we need to sum them up here to have one single number
+    #        for op in updates:
+    #            for path,sums in updates[op].items():
+    #                if type(sums) == list:
+    #                    updates[op][path] = sum(sums)
+    #    return updates
 
 
 def report_worker(diff_file, report_ids):
