@@ -37,14 +37,14 @@ if sys.version_info.major >= 3:
 else:
     PY3 = False
 
-bts = BiothingTestSettings()
+bts = BiothingTestSettings(config_module='tests.test_config')
 
 _d = json.loads    # shorthand for json decode
 _e = json.dumps    # shorthand for json encode
 _q = quote_plus     # shorthand for url encoding
 
 try:
-    jsonld_context = requests.get(bts.jsonld_context_url).json()
+    jsonld_context = requests.get(bts.JSONLD_CONTEXT_URL).json()
 except:
     sys.stderr.write("Couldn't load JSON-LD context.\n")
     jsonld_context = {}
@@ -56,11 +56,11 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
     __test__ = False # don't run nosetests on this class directly
 
     # Make these class variables so that tornadorequesthelper plays nice.    
-    host = os.getenv(bts.nosetest_envar, '')
+    host = os.getenv(bts.HOST_ENVAR_NAME, '')
     if not host:
-        host = bts.nosetest_default_url
+        host = bts.NOSETEST_DEFAULT_URL
     host = host.rstrip('/')
-    api = host + '/' + bts.api_version
+    api = host + '/' + bts.API_VERSION
     h = httplib2.Http()
 
     # Setup/tear down class for unittest
@@ -94,29 +94,29 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
 
     def test_annotation_object(self):
         ''' Test that annotation object contains expected fields. '''
-        url = self.api + '/' + bts.annotation_endpoint + '/' + bts.annotation_attribute_query
+        url = self.api + '/' + bts.ANNOTATION_ENDPOINT + '/' + bts.ANNOTATION_OBJECT_ID
         res = self.json_ok(self.get_ok(url))
-        for attr in bts.annotation_attribute_list:
+        for attr in bts.ANNOTATION_OBJECT_EXPECTED_ATTRIBUTE_LIST:
             self.assertIn(attr, res, 'Expected field "{}" in returned object of query: {}'.format(attr, url))
 
     def test_annotation_GET_empty(self):
         ''' Test that the annotation GET endpoint handles empty inputs correctly. '''
-        self.get_404(self.api + '/' + bts.annotation_endpoint)
-        self.get_404(self.api + '/' + bts.annotation_endpoint + '/')
+        self.get_404(self.api + '/' + bts.ANNOTATION_ENDPOINT)
+        self.get_404(self.api + '/' + bts.ANNOTATION_ENDPOINT + '/')
 
     def test_annotation_GET_unicode(self):
         ''' Test that the annotation GET endpoint handles unicode string inputs correctly. '''
-        self.get_404(self.api + '/' + bts.annotation_endpoint + '/' + bts.unicode_test_string)
+        self.get_404(self.api + '/' + bts.ANNOTATION_ENDPOINT + '/' + bts.UNICODE_TEST_STRING)
 
-    @parameters(bts.annotation_GET_fields)
+    @parameters(bts.ANNOTATION_GET_FIELDS)
     def test_annotation_GET_fields(self, bid):
         ''' Test that the fields parameter on the annotation GET endpoint works as expected. '''
-        url = self.api + '/' + bts.annotation_endpoint + '/' + bid
+        url = self.api + '/' + bts.ANNOTATION_ENDPOINT + '/' + bid
         # Test setup correctly?
         self.assertRegexpMatches(bid, r'fields=.+', 
             'Test setup error, "fields" parameter not specified or empty in url: {}'.format(url))
         # get the url with all fields
-        total_url = self.api + '/' + bts.annotation_endpoint + '/' + _q(bid.split('?')[0])
+        total_url = self.api + '/' + bts.ANNOTATION_ENDPOINT + '/' + _q(bid.split('?')[0])
         # get the user specified fields
         true_fields = [x.strip() for x in self.parse_url(url, 'fields').split(',')]
         # get the original and total request (with specified fields, and all fields, respectively)
@@ -124,17 +124,17 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
         res_total = self.json_ok(self.get_ok(total_url))
         # check the fields
         self.check_fields(res, res_total, true_fields,
-            bts.additional_fields_for_check_fields_subset)
+            bts.CHECK_FIELDS_SUBSET_ADDITIONAL_FIELDS)
 
-    @parameters(bts.annotation_GET_filter)
+    @parameters(bts.ANNOTATION_GET_FILTER)
     def test_annotation_GET_filter(self, bid):
         ''' Test that the filter parameter on the annotation GET endpoint works as expected. '''
-        url = self.api + '/' + bts.annotation_endpoint + '/' + bid
+        url = self.api + '/' + bts.ANNOTATION_ENDPOINT + '/' + bid
         # Test setup correctly?
         self.assertRegexpMatches(bid, r'filter=.+', 
             'Test setup error, "filter" parameter not specified or empty in url: {}'.format(url))
         # get the url with all fields
-        total_url = self.api + '/' + bts.annotation_endpoint + '/' + _q(bid.split('?')[0])
+        total_url = self.api + '/' + bts.ANNOTATION_ENDPOINT + '/' + _q(bid.split('?')[0])
         # get the user specified fields
         true_filter = [x.strip() for x in self.parse_url(url, 'filter').split(',')]
         # get the original and total request (with specified fields, and all fields, respectively)
@@ -142,21 +142,21 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
         res_total = self.json_ok(self.get_ok(total_url))
         # check the fields
         self.check_fields(res, res_total, true_filter,
-            bts.additional_fields_for_check_fields_subset)
+            bts.CHECK_FIELDS_SUBSET_ADDITIONAL_FIELDS)
 
-    @parameters(bts.annotation_GET_jsonld)
+    @parameters(bts.ANNOTATION_GET_JSONLD)
     def test_annotation_GET_jsonld(self, bid):
         ''' Test that the annotation GET endpoint correctly returns the JSON-LD context information. '''
-        url = self.api + '/' + bts.annotation_endpoint + '/' + bid
+        url = self.api + '/' + bts.ANNOTATION_ENDPOINT + '/' + bid
         self.assertRegexpMatches(bid, r'jsonld=((1)|([Tt][Rr][Uu][Ee]))',
             'Test setup error, "jsonld" parameter not specified or false in url: {}'.format(url))
         res = self.json_ok(self.get_ok(url))
         self.check_jsonld(res, jsonld_context)
 
-    @parameters(bts.annotation_GET_msgpack)
+    @parameters(bts.ANNOTATION_GET_MSGPACK)
     def test_annotation_GET_msgpack(self, bid):
         ''' Test that the annotation GET endpoint correctly returns msgpack format. '''
-        url = self.api + '/' + bts.annotation_endpoint + '/' + bid
+        url = self.api + '/' + bts.ANNOTATION_ENDPOINT + '/' + bid
         # Test must be set up correctly
         self.assertRegexpMatches(bid, r'msgpack=((1)|([Tt][Rr][Uu][Ee]))',
             'Test setup error, "msgpack" parameter not specified or false in url: {}\n'.format(url))
@@ -400,9 +400,9 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
     def test_get_fields(self):
         res = self.json_ok(self.get_ok(self.api + '/metadata/fields'))
         # Check to see if there are enough keys
-        self.assertGreater(len(res), bts.minimum_acceptable_fields, 'Too few fields returned in the /metadata/fields endpoint')
+        self.assertGreater(len(res), bts.MINIMUM_NUMBER_OF_ACCEPTABLE_FIELDS, 'Too few fields returned in the /metadata/fields endpoint')
 
-        for field in bts.test_fields_get_fields_endpoint:
+        for field in bts.TEST_FIELDS_GET_FIELDS_ENDPOINT:
             self.assertIn(field, res, '"{}" expected in response from /metadata/fields, but not found'.format(field))
 
     def test_status_endpoint(self):
