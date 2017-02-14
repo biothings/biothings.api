@@ -245,7 +245,8 @@ class BaseDumper(object):
                 # for some reason (like maintaining object's state between pickling).
                 # we can't use process there. Need to use thread to maintain that state without
                 # building an unmaintainable monster
-                yield from job_manager.defer_to_thread(pinfo, self.post_dump)
+                job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
+                yield from asyncio.gather(job) # consume future
                 # set it to success at the very end
                 self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
                 self.logger.info("success",extra={"notify":True})
@@ -464,7 +465,8 @@ class DummyDumper(BaseDumper):
         # this is the only interesting thing happening here
         pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
-        yield from job_manager.defer_to_thread(pinfo, self.post_dump)
+        job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
+        yield from asyncio.gather(job) # consume future
         self.logger.info("Registering success")
         self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
         self.logger.info("success",extra={"notify":True})
@@ -526,7 +528,8 @@ class ManualDumper(BaseDumper):
 
         pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
-        yield from job_manager.defer_to_thread(pinfo, self.post_dump)
+        job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
+        yield from asyncio.gather(job) # consume future
         # ok, good to go
         self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
         self.logger.info("success",extra={"notify":True})
