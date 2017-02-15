@@ -254,7 +254,7 @@ class BaseSourceUploader(object):
                 self.temp_collection_name,
                 batch_size,
                 self.data_folder)
-        yield from f
+        yield from asyncio.gather(f)
         self.switch_collection()
 
     def generate_doc_src_master(self):
@@ -307,6 +307,7 @@ class BaseSourceUploader(object):
             upd["%s.status" % job_key] = status
             upd["%s.time" % job_key] = timesofar(self.t0)
             upd["%s.time_in_s" % job_key] = t1
+            upd["%s.step" % job_key] = self.name # collection name
             self.src_dump.update({"_id" : self.main_source},{"$set" : upd})
 
     @asyncio.coroutine
@@ -348,7 +349,7 @@ class BaseSourceUploader(object):
                 pinfo["step"] = "post_update_data"
                 f2 = yield from job_manager.defer_to_thread(pinfo,
                         partial(self.post_update_data, steps, force, batch_size, job_manager))
-                yield from f2
+                yield from asyncio.gather(f2)
             cnt = self.db[self.collection_name].count()
             if clean_archives:
                 self.clean_archived_collections()
@@ -486,7 +487,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
                     # and finally *args passed to loading func
                     *args)
             fs.append(f)
-        yield from asyncio.wait(fs)
+        yield from asyncio.gather(*fs)
         self.switch_collection()
         self.clean_archived_collections()
 
