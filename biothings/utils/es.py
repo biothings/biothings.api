@@ -143,7 +143,7 @@ class ESIndexer():
             if mapping:
                 mapping = {"mappings": mapping}
                 body.update(mapping)
-            print(self._es.indices.create(index=self._index, body=body))
+            self._es.indices.create(index=self._index, body=body)
 
     @wrapper
     def exists_index(self):
@@ -189,6 +189,9 @@ class ESIndexer():
             return doc
         actions = (_get_bulk(_id) for _id in ids)
         return helpers.bulk(self._es, actions, chunk_size=step, stats_only=True, raise_on_error=False)
+
+    def delete_index(self):
+        self._es.indices.delete(self._index)
 
     def update(self, id, extra_doc, upsert=True):
         '''update an existing doc with extra_doc.
@@ -296,7 +299,7 @@ class ESIndexer():
             #     print(res)
 
     def _build_index_sequential(self, collection, verbose=False, query=None, bulk=True, update=False, allow_upsert=True):
-        from utils.mongo import doc_feeder
+        from biothings.utils.mongo import doc_feeder
 
         def rate_control(cnt, t):
             delay = 0
