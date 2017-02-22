@@ -11,7 +11,7 @@ from functools import partial
 
 from biothings.utils.common import timesofar, iter_n, get_timestamp, dump, rmdashfr
 from biothings.utils.mongo import doc_feeder
-from biothings.utils.loggers import HipchatHandler
+from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.utils.diff import diff_docs_jsonpatch
 import biothings.databuild.backend as btbackend
 from biothings.databuild.mapper import TransparentMapper
@@ -149,6 +149,7 @@ class DataBuilder(object):
 
 
     def setup_log(self):
+        # TODO: use bt.utils.loggers.get_logger
         import logging as logging_mod
         if not os.path.exists(self.log_folder):
             os.makedirs(self.log_folder)
@@ -259,7 +260,7 @@ class DataBuilder(object):
         if self.doc_root_key and not self.doc_root_key in self.build_config:
             raise BuilderException("Root document key '%s' can't be found in build configuration" % self.doc_root_key)
 
-    def store_stats(self,future=None):
+    def store_stats(self,f):
         try:
             self.target_backend.post_merge()
             _src_versions = self.source_backend.get_src_versions()
@@ -267,7 +268,7 @@ class DataBuilder(object):
             self.logger.info("success\nstats: %s\nversions: %s" % (self.stats,_src_versions),extra={"notify":True})
         except Exception as e:
             self.register_status("failed",build={"err": repr(e)})
-            self.logger.error("failed: %s" % e,extra={"notify":True})
+            self.logger.exception("failed: %s" % e,extra={"notify":True})
             raise
 
     def resolve_sources(self,sources):
@@ -328,13 +329,12 @@ class DataBuilder(object):
             self.register_status("building",transient=True,init=True,
                                  build={"step":"init","sources":sources})
             job = self.merge_sources(source_names=sources, job_manager=job_manager, *args, **kwargs)
-            job = asyncio.ensure_future(job)
-            job.add_done_callback(self.store_stats)
-            return job
+            task = asyncio.ensure_future(job)
+            task.add_done_callback(self.store_stats)
+            return task
 
         except (KeyboardInterrupt,Exception) as e:
-            import traceback
-            self.logger.error(traceback.format_exc())
+            self.logger.exception(e)
             self.register_status("failed",build={"err": repr(e)})
             self.logger.error("failed: %s" % e,extra={"notify":True})
             raise
@@ -388,6 +388,8 @@ class DataBuilder(object):
         self.logger.info("Root sources: %s" % root_sources)
         self.logger.info("Other sources: %s" % other_sources)
 
+        got_error = False
+
         @asyncio.coroutine
         def merge(src_names):
             jobs = []
@@ -397,15 +399,19 @@ class DataBuilder(object):
                 job = asyncio.ensure_future(job)
                 def merged(f,stats):
                     try:
-                        stats.update(f.result())
+                        res = f.result()
+                        stats.update(res)
                     except Exception as e:
-                        import traceback
-                        self.logger.error("Failed merging source '%s': %s\n%s" % \
-                                (src_name, e, traceback.format_exc()))
-                        raise
+                        self.logger.exception("Failed merging source '%s': %s" % (src_name, e))
+                        nonlocal got_error
+                        got_error = e
                 job.add_done_callback(partial(merged,stats=self.stats))
                 jobs.append(job)
-            yield from asyncio.wait(jobs)
+                # raise error as soon as we know something went wrong
+                if got_error:
+                    raise got_error
+            tasks = asyncio.gather(*jobs)
+            yield from tasks
 
         if do_merge:
             if root_sources:
@@ -433,11 +439,16 @@ class DataBuilder(object):
                     build={"step":"post-merge"})
             pinfo = self.get_pinfo()
             pinfo["step"] = "post-merge"
-            yield from job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
-
+            job = yield from job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
+            job = asyncio.ensure_future(job)
+            def postmerged(f):
+                self.logger.info("Post-merge completed [%s]" % f.result())
+            job.add_done_callback(postmerged)
+            res = yield from job
         else:
             self.logger.info("Skip post-merge process")
 
+        yield from asyncio.sleep(0.0)
         return self.stats
 
     def clean_document_to_merge(self,doc):
@@ -462,6 +473,7 @@ class DataBuilder(object):
         btotal = math.ceil(total/batch_size) 
         bnum = 1
         cnt = 0
+        got_error = False
         # grab ids only, so we can get more, let's say 10 times more
         id_batch_size = batch_size * 10
         self.logger.info("Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d" % (src_name, id_batch_size, batch_size))
@@ -484,23 +496,34 @@ class DataBuilder(object):
                             self.target_backend.target_name,
                             ids,
                             self.get_mapper_for_source(src_name,init=False),
-                            upsert))
-                def processed(f, cnt, batch_num):
-                    # collect result ie. number of inserted
-                    try:
-                        cnt += f.result()
-                        self.logger.info("'%s' merger batch #%d, done" % (src_name, batch_num))
-                    except Exception as e:
-                        import traceback
-                        self.logger.error("'%s' merger batch # %d, error in processed: %s:\n%s" % \
-                                (src_name, batch_num, e, traceback.format_exc()))
-                        raise
-                job.add_done_callback(partial(processed,cnt=cnt, batch_num=bnum))
+                            upsert,
+                            bnum))
+                def batch_merged(f,batch_num):
+                    nonlocal got_error
+                    if type(f.result()) != int:
+                        got_error = Exception("Batch #%s failed while merging source '%s' [%s]" % (batch_num,src_name,f.result()))
+                job.add_done_callback(partial(batch_merged,batch_num=bnum))
                 jobs.append(job)
                 bnum += 1
+                # raise error as soon as we know
+                if got_error:
+                    raise got_error
         self.logger.info("%d jobs created for merging step" % len(jobs))
-        yield from asyncio.wait(jobs)
-        return {"total_%s" % src_name : cnt}
+        tasks = asyncio.gather(*jobs)
+        def done(f):
+            nonlocal got_error
+            if None in f.result():
+                got_error = Exception("Some batches failed")
+                return
+            # compute overall inserted/updated records
+            cnt = sum(f.result())
+
+        tasks.add_done_callback(done)
+        yield from tasks
+        if got_error:
+            raise got_error
+        else:
+            return {"total_%s" % src_name : cnt}
 
     def post_merge(self, source_names, batch_size, job_manager):
         pass
@@ -509,16 +532,24 @@ class DataBuilder(object):
 from biothings.utils.backend import DocMongoBackend
 import biothings.utils.mongo as mongo
 
-def merger_worker(col_name,dest_name,ids,mapper,upsert):
-    src = mongo.get_src_db()
-    tgt = mongo.get_target_db()
-    col = src[col_name]
-    dest = DocMongoBackend(tgt,tgt[dest_name])
-    cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}})
-    mapper.load()
-    docs = mapper.process(cur)
-    cnt = dest.update(docs, upsert=upsert)
-    return cnt
+def merger_worker(col_name,dest_name,ids,mapper,upsert,batch_num):
+    try:
+        src = mongo.get_src_db()
+        tgt = mongo.get_target_db()
+        col = src[col_name]
+        #if batch_num == 2:
+        #    raise ValueError("oula pa bon")
+        dest = DocMongoBackend(tgt,tgt[dest_name])
+        cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}})
+        mapper.load()
+        docs = mapper.process(cur)
+        cnt = dest.update(docs, upsert=upsert)
+        return cnt
+    except Exception as e:
+        logger_name = "%s_%s_batch_%s" % (dest_name,col_name,batch_num)
+        logger = get_logger(logger_name, btconfig.LOG_FOLDER)
+        logger.exception(e)
+        raise
 
 
 from biothings.utils.manager import BaseManager
@@ -616,17 +647,9 @@ class BuilderManager(BaseManager):
         passed (one single or a list). target_name is the target collection name used
         to store to merge data. If none, each call will generate a unique target_name.
         """
-        def merged(f):
-            try:
-                pass
-            except Exception as e:
-                import traceback
-                self.logger.error("Error while running merge job, %s:\n%s" % (e,traceback.format_exc()))
-                raise
         try:
             bdr = self[build_name]
             job = bdr.merge(sources,target_name,job_manager=self.job_manager,**kwargs)
-            job.add_done_callback(merged)
             return job
         except KeyError as e:
             raise BuilderException("No such builder for '%s'" % build_name)
@@ -704,8 +727,7 @@ class BuilderManager(BaseManager):
                     stats["add"] += res["add"]
                     self.logger.info("(Updated: {}, Added: {})".format(res["update"], res["add"]))
                 except Exception as e:
-                    import traceback
-                    self.logger.error("Error while diffing batch #%s, %s:\n%s" % (cnt,e,traceback.format_exc()))
+                    self.logger.exception("Error while diffing batch #%s, %s" % (cnt,e))
                     raise
             self.logger.info("Creating diff worker for batch #%s" % cnt)
             job = yield from self.job_manager.defer_to_process(pinfo,
@@ -713,7 +735,7 @@ class BuilderManager(BaseManager):
                             new_db_col_names, cnt , diff_folder, exclude))
             job.add_done_callback(diffed)
             jobs.append(job)
-        yield from asyncio.wait(jobs)
+        yield from asyncio.gather(*jobs)
         self.logger.info("Finished calculating diff for the new collection. Total number of docs updated: {}, added: {}".format(stats["update"], stats["add"]))
 
         jobs = []
@@ -728,15 +750,14 @@ class BuilderManager(BaseManager):
                     stats["delete"] += res["delete"]
                     self.logger.info("(Deleted: {})".format(res["delete"]))
                 except Exception as e:
-                    import traceback
-                    self.logger.error("Error while diffing batch #%s, %s:\n%s" % (cnt,e,traceback.format_exc()))
+                    self.logger.exception("Error while diffing batch #%s, %s" % (cnt,e))
                     raise
             self.logger.info("Creating diff worker for batch #%s" % cnt)
             job = yield from self.job_manager.defer_to_process(pinfo,
                     partial(diff_worker_old_vs_new, id_list_old, new_db_col_names, cnt , diff_folder))
             job.add_done_callback(diffed)
             jobs.append(job)
-        yield from asyncio.wait(jobs)
+        yield from asyncio.gather(*jobs)
         self.logger.info("Finished calculating diff for the old collection. Total number of docs deleted: {}".format(stats["delete"]))
         self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {})".format(stats["update"], stats["add"], stats["delete"]))
 
@@ -748,8 +769,7 @@ class BuilderManager(BaseManager):
             try:
                 pass
             except Exception as e:
-                import traceback
-                self.logger.error("Error while running diff job, %s:\n%s" % (e,traceback.format_exc()))
+                self.logger.exception("Error while running diff job, %s" % e)
                 raise
         job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, purge, exclude))
         job.add_done_callback(diffed)

@@ -306,7 +306,7 @@ class BaseDumper(object):
             job = yield from job_manager.defer_to_process(pinfo, partial(self.download,remote,local))
             job.add_done_callback(done)
             jobs.append(job)
-        yield from asyncio.wait(jobs)
+        yield from asyncio.gather(*jobs)
         self.logger.info("%s successfully downloaded" % self.SRC_NAME)
         self.to_dump = []
 

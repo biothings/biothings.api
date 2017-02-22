@@ -315,12 +315,17 @@ class JobManager(object):
             self.ok_to_run.release()
             res = yield from self.loop.run_in_executor(self.process_queue,
                     partial(do_work,"process",pinfo,func,*args))
-            return future.set_result(res)
+            # process could generate other parallelized jobs and return a Future/Task
+            # If so, we want to make sure we get the results from that task
+            if type(res) == asyncio.Task:
+                res = yield from res
+            future.set_result(res)
         yield from self.ok_to_run.acquire()
         f = asyncio.Future()
         fut = asyncio.ensure_future(run(f))
         return f
 
+    @asyncio.coroutine
     def defer_to_thread(self, pinfo=None, func=None, *args):
         @asyncio.coroutine
         def run(future):
@@ -328,10 +333,14 @@ class JobManager(object):
             self.ok_to_run.release()
             res = yield from self.loop.run_in_executor(self.thread_queue,
                     partial(do_work,"thread",pinfo,func,*args))
+            # thread could generate other parallelized jobs and return a Future/Task
+            # If so, we want to make sure we get the results from that task
+            if type(res) == asyncio.Task:
+                res = yield from res
             future.set_result(res)
         yield from self.ok_to_run.acquire()
         f = asyncio.Future()
-        asyncio.ensure_future(run(f))
+        fut = asyncio.ensure_future(run(f))
         return f
 
     def submit(self,pfunc,schedule=None):

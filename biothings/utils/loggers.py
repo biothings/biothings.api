@@ -21,6 +21,33 @@ def setup_default_log(default_logger_name,log_folder):
     return logger
 
 
+def get_logger(logger_name,log_folder,handlers=["console","file"],timestamp="%Y%m%d"):
+    # this will affect any logging calls
+    logging.basicConfig(level=logging.DEBUG)
+    if not os.path.exists(log_folder):
+        os.makedirs(log_folder)
+    if timestamp:
+        logfile = os.path.join(log_folder, '%s_%s.log' % (logger_name,time.strftime(timestamp,datetime.datetime.now().timetuple())))
+    else:
+        logfile = os.path.join(log_folder, '%s.log' % logger_name)
+    fmt = logging.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S")
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.DEBUG)
+    if "file" in handlers:
+        fh = logging.FileHandler(logfile)
+        fh.setFormatter(fmt)
+        fh.name = "logfile"
+        if not fh.name in [h.name for h in logger.handlers]:
+            logger.addHandler(fh)
+    #if "hipchat" in handlers:
+    #    nh = HipchatHandler(config.HIPCHAT_CONFIG)
+    #    nh.setFormatter(fmt)
+    #    nh.name = "hipchat"
+    #    if not nh.name in [h.name for h in logger.handlers]:
+    #        logger.addHandler(nh)
+    return logger
+
+
 class HipchatHandler(logging.StreamHandler):
 
     colors = {logging.DEBUG : "gray",
