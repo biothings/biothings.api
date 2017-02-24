@@ -8,8 +8,10 @@ from pprint import pformat
 import logging
 import asyncio
 from functools import partial
+import glob, random
 
-from biothings.utils.common import timesofar, iter_n, get_timestamp, dump, rmdashfr
+from biothings.utils.common import timesofar, iter_n, get_timestamp, \
+                                   dump, rmdashfr, loadobj
 from biothings.utils.mongo import doc_feeder
 from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.utils.diff import diff_docs_jsonpatch
@@ -775,6 +777,59 @@ class BuilderManager(BaseManager):
         job.add_done_callback(diffed)
         return job
 
+    def build_diff_report(self, diff_folder, detailed=False,
+                          max_reported_ids=btconfig.MAX_REPORTED_IDS):
+        """
+        Analyze diff files in diff_folder and give a summy of changes.
+        max_reported_ids is the number of IDs contained in the report for each part.
+        detailed will trigger a deeper analysis, takes more time.
+        """
+
+        update_details = {
+                "add": {},# "count": 0, "data": {} },
+                "remove": {}, # "count": 0, "data": {} },
+                "replace": {}, # "count": 0, "data": {} },
+                "move": {}, # "count": 0, "data": {} },
+                "count": 0,
+                }
+        adds = {"count": 0, "ids": []}
+        dels = {"count": 0, "ids": []}
+        sources = {}
+
+        def analyze(diff_file):
+            data = loadobj(diff_file)
+            sources[data["source"]] = 1
+            if len(adds) < max_reported_ids:
+                adds["ids"].extend(data["add"])
+            adds["count"] += len(data["add"])
+            if len(dels) < max_reported_ids:
+                dels["ids"].extend(data["delete"])
+            dels["count"] += len(data["delete"])
+            for up in data["update"]:
+                for patch in up["patch"]:
+                    update_details[patch["op"]].setdefault(patch["path"],{"count": 0, "ids": []})
+                    if len(update_details[patch["op"]][patch["path"]]["ids"]) < max_reported_ids:
+                        update_details[patch["op"]][patch["path"]]["ids"].append(up["_id"])
+                    update_details[patch["op"]][patch["path"]]["count"] += 1
+            update_details["count"] += len(data["update"])
+
+            assert len(sources) == 1, "Should have one datasource from diff files, got: %s" % [s for s in sources]
+
+
+        data_folder = os.path.join(btconfig.DIFF_PATH,diff_folder)
+        jobs = []
+        # we randomize files order b/c we randomly pick some examples from those
+        # files. If files contains data in order (like chrom 1, then chrom 2)
+        # we won't have a representative sample
+        files = glob.glob(os.path.join(data_folder,"*.pyobj"))
+        random.shuffle(files)
+        for f in files:
+            logging.info("Running report worker for '%s'" % f)
+            analyze(f)
+        return {"added" : adds, "deleted": dels, "updated" : update_details,
+                "diff_folder" : diff_folder, "detailed": detailed}
+
+
 
 def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names, batch_num, diff_folder, exclude=[]):
     new = create_backend(new_db_col_names)
@@ -830,4 +885,96 @@ def create_backend(db_col_names):
         col = db[db_col_names[1]]
     assert not col is None, "Could not create collection object from %s" % repr(db_col_names)
     return btbackend.DocMongoBackend(db,col)
+
+
+class DiffReportRendererBase(object):
+
+    def __init__(self,
+                 max_reported_ids=btconfig.MAX_REPORTED_IDS,
+                 max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED):
+        self.max_reported_ids = max_reported_ids
+        self.max_randomly_picked = max_randomly_picked
+
+    def save(self,report,filename):
+        """
+        Save report output (rendered) into filename
+        """
+        raise NotImplementedError("implement me")
+
+
+class DiffReportPrettyTable(DiffReportRendererBase):
+
+    def save(self, report, filename="report.txt"):
+        try:
+            import prettytable
+        except ImportError:
+            raise ImportError("Please install prettytable to use this rendered")
+
+        txt = ""
+        txt += "Diff report\n"
+        txt += "===========\n"
+        txt += "\n"
+        txt += "Summary\n"
+        txt += "-------\n"
+        txt += "#added documents: %s\n" % report["added"]["count"]
+        txt += "#deleted documents: %s\n" % report["deleted"]["count"]
+        txt += "#updated documents: %s\n" % report["updated"]["count"]
+        txt += "\n"
+        txt += "Added documents (%s randomly picked from report)\n" % self.max_reported_ids
+        txt += "------------------------------------------------\n"
+        table = prettytable.PrettyTable(["IDs"])
+        if report["added"]["count"] <= self.max_reported_ids:
+            ids = report["added"]["ids"]
+        else:
+            ids = [random.choice(report["added"]["ids"]) for i in range(self.max_reported_ids)]
+        for dat in ids:
+            table.add_row([dat])
+        txt += table.get_string()
+        txt += "\n"
+        txt += "\n"
+        txt += "Deleted documents (%s randomly picked from report)\n" % self.max_reported_ids
+        txt += "--------------------------------------------------\n"
+        table = prettytable.PrettyTable(["IDs"])
+        if report["deleted"]["count"] <= self.max_reported_ids:
+            ids = report["deleted"]["ids"]
+        else:
+            ids = [random.choice(report["deleted"]["ids"]) for i in range(self.max_reported_ids)]
+        for dat in ids:
+            table.add_row([dat])
+        txt += table.get_string()
+        txt += "\n"
+        txt += "\n"
+        txt += "Updated documents (%s examples randomly picked from report)\n" % self.max_randomly_picked
+        txt += "-----------------------------------------------------------\n"
+        txt += "\n"
+        for op in report["updated"]:
+            if op == "count":
+                continue # already displayed
+            table = prettytable.PrettyTable([op,"Count","Examples"])
+            table.sortby = "Count"
+            table.reversesort = True
+            table.align[op] = "l"
+            table.align["Count"] = "r"
+            table.align["Examples"] = "l"
+            for path in report["updated"][op]:
+                info = report["updated"][op][path]
+                row = [path,info["count"]]
+                if info["count"] <= self.max_randomly_picked:
+                    row.append(", ".join(info["ids"]))
+                else:
+                    row.append(", ".join([random.choice(info["ids"]) for i in range(self.max_randomly_picked)]))
+                table.add_row(row)
+            txt += table.get_string()
+            txt += "\n"
+            txt += "\n"
+        txt += "\n"
+
+        with open(os.path.join(report["diff_folder"],filename),"w") as fout:
+            fout.write(txt)
+
+
+
+
+
+
 
