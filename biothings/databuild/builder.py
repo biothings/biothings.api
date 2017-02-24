@@ -3,6 +3,7 @@ import os
 import time
 import copy
 import importlib
+import pickle
 from datetime import datetime
 from pprint import pformat
 import logging
@@ -762,6 +763,13 @@ class BuilderManager(BaseManager):
         yield from asyncio.gather(*jobs)
         self.logger.info("Finished calculating diff for the old collection. Total number of docs deleted: {}".format(stats["delete"]))
         self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {})".format(stats["update"], stats["add"], stats["delete"]))
+        # dump some information about the diff process
+        metadata = {"old": old_db_col_names,
+                    "new": new_db_col_names,
+                    "exclude": exclude,
+                    "stats" : stats}
+        metafile = os.path.join(diff_folder,"metadata.pick")
+        pickle.dump(metadata,open(metafile,"wb"))
 
         return stats
 
@@ -776,6 +784,13 @@ class BuilderManager(BaseManager):
         job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, purge, exclude))
         job.add_done_callback(diffed)
         return job
+
+    def diff_report(self, diff_folder, report_filename="report.txt", format="txt", detailed=False,
+                    max_reported_ids=btconfig.MAX_REPORTED_IDS, max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED):
+        report = self.build_diff_report(diff_folder, detailed, max_reported_ids)
+        assert format == "txt", "Only 'txt' format supported for now"
+        render = DiffReportTxt(max_reported_ids=max_reported_ids, max_randomly_picked=max_randomly_picked)
+        return render.save(report,report_filename)
 
     def build_diff_report(self, diff_folder, detailed=False,
                           max_reported_ids=btconfig.MAX_REPORTED_IDS):
@@ -815,9 +830,10 @@ class BuilderManager(BaseManager):
 
             assert len(sources) == 1, "Should have one datasource from diff files, got: %s" % [s for s in sources]
 
-
-        data_folder = os.path.join(btconfig.DIFF_PATH,diff_folder)
-        jobs = []
+        if os.path.abspath(diff_folder):
+            data_folder = diff_folder
+        else:
+            data_folder = os.path.join(btconfig.DIFF_PATH,diff_folder)
         # we randomize files order b/c we randomly pick some examples from those
         # files. If files contains data in order (like chrom 1, then chrom 2)
         # we won't have a representative sample
@@ -826,9 +842,11 @@ class BuilderManager(BaseManager):
         for f in files:
             logging.info("Running report worker for '%s'" % f)
             analyze(f)
+        metafile = os.path.join(data_folder,"metadata.pick")
+        metadata = pickle.load(open(metafile,"rb"))
         return {"added" : adds, "deleted": dels, "updated" : update_details,
-                "diff_folder" : diff_folder, "detailed": detailed}
-
+                "diff_folder" : diff_folder, "detailed": detailed,
+                "metadata": metadata}
 
 
 def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names, batch_num, diff_folder, exclude=[]):
@@ -902,7 +920,7 @@ class DiffReportRendererBase(object):
         raise NotImplementedError("implement me")
 
 
-class DiffReportPrettyTable(DiffReportRendererBase):
+class DiffReportTxt(DiffReportRendererBase):
 
     def save(self, report, filename="report.txt"):
         try:
@@ -916,13 +934,17 @@ class DiffReportPrettyTable(DiffReportRendererBase):
         txt += "\n"
         txt += "Summary\n"
         txt += "-------\n"
-        txt += "#added documents: %s\n" % report["added"]["count"]
-        txt += "#deleted documents: %s\n" % report["deleted"]["count"]
-        txt += "#updated documents: %s\n" % report["updated"]["count"]
+        txt += "Added documents: %s\n" % report["added"]["count"]
+        txt += "Deleted documents: %s\n" % report["deleted"]["count"]
+        txt += "Updated documents: %s\n" % report["updated"]["count"]
+        for src in report.get("metadata",{}).get("stats",{}).get("root_keys",{}):
+            txt += "%s: %s" % (src,report["root_keys"][src])
+        txt += "\n"
         txt += "\n"
         txt += "Added documents (%s randomly picked from report)\n" % self.max_reported_ids
         txt += "------------------------------------------------\n"
         table = prettytable.PrettyTable(["IDs"])
+        table.align["IDs"] = "l"
         if report["added"]["count"] <= self.max_reported_ids:
             ids = report["added"]["ids"]
         else:
@@ -935,6 +957,7 @@ class DiffReportPrettyTable(DiffReportRendererBase):
         txt += "Deleted documents (%s randomly picked from report)\n" % self.max_reported_ids
         txt += "--------------------------------------------------\n"
         table = prettytable.PrettyTable(["IDs"])
+        table.align["IDs"] = "l"
         if report["deleted"]["count"] <= self.max_reported_ids:
             ids = report["deleted"]["ids"]
         else:
@@ -969,9 +992,10 @@ class DiffReportPrettyTable(DiffReportRendererBase):
             txt += "\n"
         txt += "\n"
 
-        with open(os.path.join(report["diff_folder"],filename),"w") as fout:
+        with open(os.path.join(btconfig.DIFF_PATH,report["diff_folder"],filename),"w") as fout:
             fout.write(txt)
 
+        return txt
 
 
 
