@@ -682,7 +682,7 @@ class BuilderManager(BaseManager):
                 target_db[col_name].drop()
 
     @asyncio.coroutine
-    def diff_cols(self,old_db_col_names, new_db_col_names, batch_size=100000, purge=False, exclude=[]):
+    def diff_cols(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["count","content"], mode=None, exclude=[]):
         """
         Compare new with old collections and produce diff files. Root keys can be excluded from 
         comparison with "exclude" parameter.
@@ -695,9 +695,17 @@ class BuilderManager(BaseManager):
          3. tuple with 3 elements (URI,db,collection), looking like:
             ("mongodb://user:pass@host","dbname","collection"), allowing to specify
             any connection on any server
+        steps: 'count' will count the root keys for every documents in new collection 
+               (to check number of docs from datasources).
+               'content' will perform diff on actual content.
+        mode: 'purge' will remove any existing files for this comparison. 'resume' will find
+              the latest comparison result and move from this point (not tested extensively though...)
         """
         new = create_backend(new_db_col_names)
         old = create_backend(old_db_col_names)
+        # check what to do
+        if type(steps) == str:
+            steps = [steps]
 
         diff_folder = os.path.join(btconfig.DIFF_PATH,
                                    "%s_vs_%s" % (old.target_collection.name, new.target_collection.name))
@@ -709,80 +717,102 @@ class BuilderManager(BaseManager):
         if not os.path.exists(diff_folder):
             os.makedirs(diff_folder)
 
-        data_new = doc_feeder(new.target_collection, step=batch_size, inbatch=True, fields={"_id":1})
-        data_old = doc_feeder(old.target_collection, step=batch_size, inbatch=True, fields={"_id":1})
-        cnt = 0
         stats = {"update":0, "add":0, "delete":0}
 
-        jobs = []
-        pinfo = {"category" : "diff",
-                 "source" : "%s vs %s" % (new.target_collection.name,old.target_collection.name),
-                 "step" : "new vs old",
-                 "description" : ""}
-        for _batch in data_new:
-            cnt += 1
-            id_list_new = [_doc['_id'] for _doc in _batch]
-            pinfo["description"] = "batch #%s" % cnt
-            def diffed(f):
-                try:
+        if "count" in steps:
+            cnt = 0
+            pinfo = {"category" : "diff",
+                     "step" : "count",
+                     "source" : "%s vs %s" % (new.target_collection.name,old.target_collection.name),
+                     "description" : ""}
+
+            self.logger.info("Counting root keys in '%s'"  % new.target_collection)
+            stats["root_keys"] = {}
+            jobs = []
+            data_new = doc_feeder(new.target_collection, step=batch_size, inbatch=True, fields={"_id":1})
+            for _batch in data_new:
+                cnt += 1
+                id_list = [_doc['_id'] for _doc in _batch]
+                pinfo["description"] = "batch #%s" % cnt
+                self.logger.info("Creating diff worker for batch #%s" % cnt)
+                job = yield from self.job_manager.defer_to_process(pinfo,
+                        partial(diff_worker_count, id_list, new_db_col_names, cnt))
+                jobs.append(job)
+            def counted(f):
+                root_keys = {}
+                # merge the counts
+                for d in f.result():
+                    for k in d:
+                        root_keys.setdefault(k,0)
+                        root_keys[k] +=  d[k]
+                self.logger.info("root keys count: %s" % root_keys)
+                stats["root_keys"] = root_keys
+            tasks = asyncio.gather(*jobs)
+            tasks.add_done_callback(counted)
+            yield from tasks
+            self.logger.info("Finished counting keys in the new collection: %s" % stats["root_keys"])
+
+        if "content" in steps:
+            skip = 0
+            cnt = 0
+            jobs = []
+            pinfo = {"category" : "diff",
+                     "source" : "%s vs %s" % (new.target_collection.name,old.target_collection.name),
+                     "step" : "content: new vs old",
+                     "description" : ""}
+            # compute skip for new and old
+            count_new = new.target_collection.count()
+            if count_new > skip:
+                # we haven't reached the 2dn step in the comparison (still in data_new)
+                skip_new = skip
+                skip_old = 0
+            else:
+                skip_new = count_new # just skip everything
+                skip_old = skip - count_new # where we were in data_old
+            data_new = doc_feeder(new.target_collection, step=batch_size, inbatch=True, s=skip_new, fields={"_id":1})
+            for _batch in data_new:
+                cnt += 1
+                id_list_new = [_doc['_id'] for _doc in _batch]
+                pinfo["description"] = "batch #%s" % cnt
+                def diffed(f):
                     res = f.result()
                     stats["update"] += res["update"]
                     stats["add"] += res["add"]
                     self.logger.info("(Updated: {}, Added: {})".format(res["update"], res["add"]))
-                except Exception as e:
-                    self.logger.exception("Error while diffing batch #%s, %s" % (cnt,e))
-                    raise
-            self.logger.info("Creating diff worker for batch #%s" % cnt)
-            job = yield from self.job_manager.defer_to_process(pinfo,
-                    partial(diff_worker_new_vs_old, id_list_new, old_db_col_names,
-                            new_db_col_names, cnt , diff_folder, exclude))
-            job.add_done_callback(diffed)
-            jobs.append(job)
-        yield from asyncio.gather(*jobs)
-        self.logger.info("Finished calculating diff for the new collection. Total number of docs updated: {}, added: {}".format(stats["update"], stats["add"]))
+                self.logger.info("Creating diff worker for batch #%s" % cnt)
+                job = yield from self.job_manager.defer_to_process(pinfo,
+                        partial(diff_worker_new_vs_old, id_list_new, old_db_col_names,
+                                new_db_col_names, cnt , diff_folder, exclude))
+                job.add_done_callback(diffed)
+                jobs.append(job)
+            yield from asyncio.gather(*jobs)
+            self.logger.info("Finished calculating diff for the new collection. Total number of docs updated: {}, added: {}".format(stats["update"], stats["add"]))
 
-        jobs = []
-        pinfo["step"] = "old vs new"
-        for _batch in data_old:
-            cnt += 1
-            id_list_old = [_doc['_id'] for _doc in _batch]
-            pinfo["description"] = "batch #%s" % cnt
-            def diffed(f):
-                try:
+            data_old = doc_feeder(old.target_collection, step=batch_size, inbatch=True, s=skip_old, fields={"_id":1})
+            jobs = []
+            pinfo["step"] = "content: old vs new"
+            for _batch in data_old:
+                cnt += 1
+                id_list_old = [_doc['_id'] for _doc in _batch]
+                pinfo["description"] = "batch #%s" % cnt
+                def diffed(f):
                     res = f.result()
                     stats["delete"] += res["delete"]
                     self.logger.info("(Deleted: {})".format(res["delete"]))
-                except Exception as e:
-                    self.logger.exception("Error while diffing batch #%s, %s" % (cnt,e))
-                    raise
-            self.logger.info("Creating diff worker for batch #%s" % cnt)
-            job = yield from self.job_manager.defer_to_process(pinfo,
-                    partial(diff_worker_old_vs_new, id_list_old, new_db_col_names, cnt , diff_folder))
-            job.add_done_callback(diffed)
-            jobs.append(job)
-        yield from asyncio.gather(*jobs)
-        self.logger.info("Finished calculating diff for the old collection. Total number of docs deleted: {}".format(stats["delete"]))
-        self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {})".format(stats["update"], stats["add"], stats["delete"]))
-        # dump some information about the diff process
-        metadata = {"old": old_db_col_names,
-                    "new": new_db_col_names,
-                    "exclude": exclude,
-                    "stats" : stats}
-        metafile = os.path.join(diff_folder,"metadata.pick")
-        pickle.dump(metadata,open(metafile,"wb"))
+                self.logger.info("Creating diff worker for batch #%s" % cnt)
+                job = yield from self.job_manager.defer_to_process(pinfo,
+                        partial(diff_worker_old_vs_new, id_list_old, new_db_col_names, cnt , diff_folder))
+                job.add_done_callback(diffed)
+                jobs.append(job)
+            yield from asyncio.gather(*jobs)
+            self.logger.info("Finished calculating diff for the old collection. Total number of docs deleted: {}".format(stats["delete"]))
+            self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {})".format(stats["update"], stats["add"], stats["delete"]))
 
         return stats
 
-    def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, purge=False, exclude=[]):
+    def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["count","content"], mode=None, exclude=[]):
         """wrapper over diff_cols() coroutine, return a task"""
-        def diffed(f):
-            try:
-                pass
-            except Exception as e:
-                self.logger.exception("Error while running diff job, %s" % e)
-                raise
-        job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, purge, exclude))
-        job.add_done_callback(diffed)
+        job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, steps, mode, exclude))
         return job
 
     def diff_report(self, diff_folder, report_filename="report.txt", format="txt", detailed=False,
@@ -884,6 +914,17 @@ def diff_worker_old_vs_new(id_list_old, new_db_col_names, batch_num, diff_folder
         dump(_result, file_name)
 
     return {"add" : 0, "update": 0, "delete" : len(id_in_old)}
+
+
+def diff_worker_count(id_list, db_col_names, batch_num):
+    col = create_backend(db_col_names)
+    docs = col.target_collection.find({'_id': {'$in': id_list}})
+    res = {}
+    for doc in docs:
+        for k in doc:
+            res.setdefault(k,0)
+            res[k] += 1
+    return res
 
 
 def create_backend(db_col_names):
@@ -996,7 +1037,6 @@ class DiffReportTxt(DiffReportRendererBase):
             fout.write(txt)
 
         return txt
-
 
 
 
