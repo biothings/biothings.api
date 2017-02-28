@@ -20,7 +20,8 @@ class BaseStorage(object):
 
     def process(self,iterable,*args,**kwargs):
         """
-        Process iterable to store data
+        Process iterable to store data. Must return the number
+        of inserted records (even 0 if none)
         """
         raise NotImplementedError("implement-me in subclass")
 
@@ -56,9 +57,13 @@ class BasicStorage(BaseStorage):
     def process(self, doc_d, batch_size):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
+        cnt = 0
         for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=batch_size):
             self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
+            cnt += len(doc_li)
         self.logger.info('Done[%s]' % timesofar(t0))
+
+        return cnt
 
 class MergerStorage(BasicStorage):
     """
@@ -74,6 +79,7 @@ class MergerStorage(BasicStorage):
         t0 = time.time()
         tinner = time.time()
         aslistofdict = None
+        cnt = 0
         for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=batch_size):
             toinsert = len(doc_li)
             nbinsert = 0
@@ -115,10 +121,13 @@ class MergerStorage(BasicStorage):
             assert nbinsert == toinsert, "nb %s to %s" % (nbinsert,toinsert)
             # end of loop so it counts the time spent in doc_iterator
             tinner = time.time()
+            cnt += nbinsert
 
         self.logger.info('Done[%s]' % timesofar(t0))
         self.switch_collection()
         self.post_update_data()
+
+        return cnt
 
 
 class IgnoreDuplicatedStorage(BasicStorage):
@@ -127,19 +136,23 @@ class IgnoreDuplicatedStorage(BasicStorage):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
+        inserted = 0
         for doc_li in self.doc_iterator(iterable, batch=True, batch_size=batch_size):
             try:
                 bob = self.temp_collection.initialize_unordered_bulk_op()
                 for d in doc_li:
                     bob.insert(d)
                 res = bob.execute()
-                self.logger.info("Inserted %s records [%s]" % (res['nInserted'],timesofar(tinner)))
+                inserted += res['nInserted']
+                self.logger.info("Inserted %s records [%s]" % (inserted, timesofar(tinner)))
             except BulkWriteError as e:
                 self.logger.info("Inserted %s records, ignoring %d [%s]" % (e.details['nInserted'],len(e.details["writeErrors"]),timesofar(tinner)))
             except Exception as e:
                 raise
             tinner = time.time()
         self.logger.info('Done[%s]' % timesofar(t0))
+
+        return inserted
 
 class NoBatchIgnoreDuplicatedStorage(BasicStorage):
     """
@@ -171,6 +184,8 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
         self.switch_collection()
         self.post_update_data()
 
+        return cnt
+
 
 class UpsertStorage(BasicStorage):
     """Insert or update documents, based on _id"""
@@ -179,6 +194,7 @@ class UpsertStorage(BasicStorage):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
+        cnt = 0
         for doc_li in self.doc_iterator(iterable, batch=True, batch_size=batch_size):
             try:
                 bob = self.temp_collection.initialize_unordered_bulk_op()
@@ -186,11 +202,14 @@ class UpsertStorage(BasicStorage):
                     bob.find({"_id" : d["_id"]}).upsert().replace_one(d)
                 res = bob.execute()
                 nb = res["nUpserted"] + res["nModified"]
+                cnt += nb
                 self.logger.info("Upserted %s records [%s]" % (nb,timesofar(tinner)))
             except Exception as e:
                 raise
             tinner = time.time()
         self.logger.info('Done[%s]' % timesofar(t0))
+
+        return cnt
 
 
 class NoStorage(object):
@@ -206,4 +225,5 @@ class NoStorage(object):
 
     def process(self,iterable,*args,**kwargs):
         self.logger.info("NoStorage stores nothing, skip...")
+        return 0
 
