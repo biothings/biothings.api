@@ -710,12 +710,23 @@ class BuilderManager(BaseManager):
         diff_folder = os.path.join(btconfig.DIFF_PATH,
                                    "%s_vs_%s" % (old.target_collection.name, new.target_collection.name))
         if os.path.exists(diff_folder):
-            if purge:
+            if mode == "purge":
                 rmdashfr(diff_folder)
             else:
-                raise FileExistsError("Found existing files in '%s', delete them or use purge=True" % diff_folder)
+                raise FileExistsError("Found existing files in '%s', delete them or use mode='purge'" % diff_folder)
         if not os.path.exists(diff_folder):
             os.makedirs(diff_folder)
+
+        # create metadata file storing info about how we created the diff
+        metadata = {
+                "old": old_db_col_names,
+                "new": new_db_col_names,
+                "batch_size": batch_size,
+                "steps": steps,
+                "mode": mode,
+                "exclude": exclude,
+                "generated_on": datetime.now()}
+        pickle.dump(metadata,open(os.path.join(diff_folder,"metadata.pick"),"wb"))
 
         stats = {"update":0, "add":0, "delete":0}
 
@@ -819,7 +830,9 @@ class BuilderManager(BaseManager):
                     max_reported_ids=btconfig.MAX_REPORTED_IDS, max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED):
         report = self.build_diff_report(diff_folder, detailed, max_reported_ids)
         assert format == "txt", "Only 'txt' format supported for now"
-        render = DiffReportTxt(max_reported_ids=max_reported_ids, max_randomly_picked=max_randomly_picked)
+        render = DiffReportTxt(max_reported_ids=max_reported_ids,
+                               max_randomly_picked=max_randomly_picked,
+                               detailed=detailed)
         return render.save(report,report_filename)
 
     def build_diff_report(self, diff_folder, detailed=False,
@@ -841,14 +854,45 @@ class BuilderManager(BaseManager):
         dels = {"count": 0, "ids": []}
         sources = {}
 
-        def analyze(diff_file):
+        if os.path.isabs(diff_folder):
+            data_folder = diff_folder
+        else:
+            data_folder = os.path.join(btconfig.DIFF_PATH,diff_folder)
+
+        metadata = {}
+        try:
+            metafile = os.path.join(data_folder,"metadata.pick")
+            metadata = pickle.load(open(metafile,"rb"))
+        except FileNotFoundError:
+            logging.warning("Not metadata found in diff folder")
+            if detailed:
+                raise Exception("Can't perform detailed analysis without a metadata file")
+
+        def analyze(diff_file, detailed):
             data = loadobj(diff_file)
             sources[data["source"]] = 1
+            if detailed:
+                new_col = create_backend(metadata["new"])
+                old_col = create_backend(metadata["old"])
             if len(adds) < max_reported_ids:
-                adds["ids"].extend(data["add"])
+                if detailed:
+                    # look for which root keys were added in new collection
+                    for _id in data["add"]:
+                        doc = new_col.get_from_id(_id)
+                        rkeys = sorted(doc.keys())
+                        adds["ids"].append([_id,rkeys])
+                else:
+                    adds["ids"].extend(data["add"])
             adds["count"] += len(data["add"])
             if len(dels) < max_reported_ids:
-                dels["ids"].extend(data["delete"])
+                if detailed:
+                    # look for which root keys were deleted in old collection
+                    for _id in data["delete"]:
+                        doc = old_col.get_from_id(_id)
+                        rkeys = sorted(doc.keys())
+                        dels["ids"].append([_id,rkeys])
+                else:
+                    dels["ids"].extend(data["add"])
             dels["count"] += len(data["delete"])
             for up in data["update"]:
                 for patch in up["patch"]:
@@ -860,10 +904,6 @@ class BuilderManager(BaseManager):
 
             assert len(sources) == 1, "Should have one datasource from diff files, got: %s" % [s for s in sources]
 
-        if os.path.abspath(diff_folder):
-            data_folder = diff_folder
-        else:
-            data_folder = os.path.join(btconfig.DIFF_PATH,diff_folder)
         # we randomize files order b/c we randomly pick some examples from those
         # files. If files contains data in order (like chrom 1, then chrom 2)
         # we won't have a representative sample
@@ -871,9 +911,7 @@ class BuilderManager(BaseManager):
         random.shuffle(files)
         for f in files:
             logging.info("Running report worker for '%s'" % f)
-            analyze(f)
-        metafile = os.path.join(data_folder,"metadata.pick")
-        metadata = pickle.load(open(metafile,"rb"))
+            analyze(f, detailed)
         return {"added" : adds, "deleted": dels, "updated" : update_details,
                 "diff_folder" : diff_folder, "detailed": detailed,
                 "metadata": metadata}
@@ -950,9 +988,11 @@ class DiffReportRendererBase(object):
 
     def __init__(self,
                  max_reported_ids=btconfig.MAX_REPORTED_IDS,
-                 max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED):
+                 max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED,
+                 detailed=False):
         self.max_reported_ids = max_reported_ids
         self.max_randomly_picked = max_randomly_picked
+        self.detailed = detailed
 
     def save(self,report,filename):
         """
@@ -969,67 +1009,100 @@ class DiffReportTxt(DiffReportRendererBase):
         except ImportError:
             raise ImportError("Please install prettytable to use this rendered")
 
+        def build_id_table(subreport):
+            if self.detailed:
+                table = prettytable.PrettyTable(["IDs","Root keys"])
+                table.align["IDs"] = "l"
+                table.align["Root keys"] = "l"
+            else:
+                table = prettytable.PrettyTable(["IDs"])
+                table.align["IDs"] = "l"
+            if subreport["count"] <= self.max_reported_ids:
+                ids = subreport["ids"]
+            else:
+                ids = [random.choice(subreport["ids"]) for i in range(self.max_reported_ids)]
+            for dat in ids:
+                if self.detailed:
+                    # list of [_id,[keys]]
+                    table.add_row([dat[0],", ".join(dat[1])])
+                else:
+                    table.add_row([dat])
+
+            return table
+
         txt = ""
-        txt += "Diff report\n"
-        txt += "===========\n"
+        title = "Diff report (generated on %s)" % datetime.now()
+        txt += title + "\n"
+        txt += "".join(["="] * len(title)) + "\n"
+        txt += "\n"
+        txt += "Metadata\n"
+        txt += "--------\n"
+        if report.get("metadata",{}):
+            txt += "Old collection: %s\n" % report["metadata"].get("old")
+            txt += "New collection: %s\n" % report["metadata"].get("new")
+            txt += "Batch size: %s\n" % report["metadata"].get("batch_size")
+            txt += "Steps: %s\n" % report["metadata"].get("steps")
+            txt += "Key(s) excluded: %s\n" % report["metadata"].get("exclude")
+            txt += "Diff generated on: %s\n" % report["metadata"].get("generated_on")
+        else:
+            txt+= "No metadata found in report\n"
         txt += "\n"
         txt += "Summary\n"
         txt += "-------\n"
         txt += "Added documents: %s\n" % report["added"]["count"]
         txt += "Deleted documents: %s\n" % report["deleted"]["count"]
         txt += "Updated documents: %s\n" % report["updated"]["count"]
-        for src in report.get("metadata",{}).get("stats",{}).get("root_keys",{}):
-            txt += "%s: %s" % (src,report["root_keys"][src])
         txt += "\n"
+        root_keys = report.get("metadata",{}).get("stats",{}).get("root_keys",{})
+        if root_keys:
+            for src in report.get("metadata",{}).get("stats",{}).get("root_keys",{}):
+                txt += "%s: %s\n" % (src,report["root_keys"][src])
+        else:
+            txt += "No root keys count found in report\n"
         txt += "\n"
         txt += "Added documents (%s randomly picked from report)\n" % self.max_reported_ids
         txt += "------------------------------------------------\n"
-        table = prettytable.PrettyTable(["IDs"])
-        table.align["IDs"] = "l"
-        if report["added"]["count"] <= self.max_reported_ids:
-            ids = report["added"]["ids"]
+        if report["added"]["count"]:
+            table = build_id_table(report["added"])
+            txt += table.get_string()
+            txt += "\n"
         else:
-            ids = [random.choice(report["added"]["ids"]) for i in range(self.max_reported_ids)]
-        for dat in ids:
-            table.add_row([dat])
-        txt += table.get_string()
-        txt += "\n"
+            txt += "No added document found in report\n"
         txt += "\n"
         txt += "Deleted documents (%s randomly picked from report)\n" % self.max_reported_ids
         txt += "--------------------------------------------------\n"
-        table = prettytable.PrettyTable(["IDs"])
-        table.align["IDs"] = "l"
-        if report["deleted"]["count"] <= self.max_reported_ids:
-            ids = report["deleted"]["ids"]
+        if report["deleted"]["count"]:
+            table = build_id_table(report["deleted"])
+            txt += table.get_string()
+            txt += "\n"
         else:
-            ids = [random.choice(report["deleted"]["ids"]) for i in range(self.max_reported_ids)]
-        for dat in ids:
-            table.add_row([dat])
-        txt += table.get_string()
-        txt += "\n"
+            txt += "No deleted document found in report\n"
         txt += "\n"
         txt += "Updated documents (%s examples randomly picked from report)\n" % self.max_randomly_picked
         txt += "-----------------------------------------------------------\n"
         txt += "\n"
-        for op in report["updated"]:
+        for op in sorted(report["updated"]):
             if op == "count":
                 continue # already displayed
-            table = prettytable.PrettyTable([op,"Count","Examples"])
-            table.sortby = "Count"
-            table.reversesort = True
-            table.align[op] = "l"
-            table.align["Count"] = "r"
-            table.align["Examples"] = "l"
-            for path in report["updated"][op]:
-                info = report["updated"][op][path]
-                row = [path,info["count"]]
-                if info["count"] <= self.max_randomly_picked:
-                    row.append(", ".join(info["ids"]))
-                else:
-                    row.append(", ".join([random.choice(info["ids"]) for i in range(self.max_randomly_picked)]))
-                table.add_row(row)
-            txt += table.get_string()
-            txt += "\n"
+            if report["updated"][op]:
+                table = prettytable.PrettyTable([op,"Count","Examples"])
+                table.sortby = "Count"
+                table.reversesort = True
+                table.align[op] = "l"
+                table.align["Count"] = "r"
+                table.align["Examples"] = "l"
+                for path in report["updated"][op]:
+                    info = report["updated"][op][path]
+                    row = [path,info["count"]]
+                    if info["count"] <= self.max_randomly_picked:
+                        row.append(", ".join(info["ids"]))
+                    else:
+                        row.append(", ".join([random.choice(info["ids"]) for i in range(self.max_randomly_picked)]))
+                    table.add_row(row)
+                txt += table.get_string()
+                txt += "\n"
+            else:
+                txt += "No content found for diff operation '%s'\n" % op
             txt += "\n"
         txt += "\n"
 
