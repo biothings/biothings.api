@@ -134,7 +134,7 @@ class DocMongoBackend(DocBackendBase):
         return [x['_id'] for x in self.target_collection.find(projection=[], manipulate=False)]
 
     def get_from_id(self, id):
-        return self.target_collection.get_from_id(id)
+        return self.target_collection.find_one({"_id":id})
 
     def mget_from_ids(self, ids, asiter=False):
         '''ids is an id list.
