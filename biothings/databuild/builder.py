@@ -3,6 +3,7 @@ import os, glob
 import time
 import copy
 import importlib
+import pickle
 from datetime import datetime
 from pprint import pformat
 import asyncio
@@ -12,8 +13,7 @@ import glob, random
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj
 from biothings.utils.mongo import doc_feeder
-from biothings.utils.dataload import merge_struct
-from biothings.utils.loggers import HipchatHandler
+from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.utils.diff import diff_docs_jsonpatch
 import biothings.databuild.backend as btbackend
 from biothings.databuild.mapper import TransparentMapper
@@ -153,6 +153,7 @@ class DataBuilder(object):
 
 
     def setup_log(self):
+        # TODO: use bt.utils.loggers.get_logger
         import logging as logging_mod
         if not os.path.exists(self.log_folder):
             os.makedirs(self.log_folder)
@@ -286,7 +287,7 @@ class DataBuilder(object):
         if self.doc_root_key and not self.doc_root_key in self.build_config:
             raise BuilderException("Root document key '%s' can't be found in build configuration" % self.doc_root_key)
 
-    def store_stats(self,future=None):
+    def store_stats(self,f):
         try:
             self.target_backend.post_merge()
             _src_versions = self.source_backend.get_src_versions()
@@ -294,7 +295,7 @@ class DataBuilder(object):
             self.logger.info("success\nstats: %s\nversions: %s" % (self.stats,_src_versions),extra={"notify":True})
         except Exception as e:
             self.register_status("failed",build={"err": repr(e)})
-            self.logger.error("failed: %s" % e,extra={"notify":True})
+            self.logger.exception("failed: %s" % e,extra={"notify":True})
             raise
 
     def resolve_sources(self,sources):
@@ -356,13 +357,12 @@ class DataBuilder(object):
             self.register_status("building",transient=True,init=True,
                                  build={"step":"init","sources":sources})
             job = self.merge_sources(source_names=sources, job_manager=job_manager, *args, **kwargs)
-            job = asyncio.ensure_future(job)
-            job.add_done_callback(self.store_stats)
-            return job
+            task = asyncio.ensure_future(job)
+            task.add_done_callback(self.store_stats)
+            return task
 
         except (KeyboardInterrupt,Exception) as e:
-            import traceback
-            self.logger.error(traceback.format_exc())
+            self.logger.exception(e)
             self.register_status("failed",build={"err": repr(e)})
             self.logger.error("failed: %s" % e,extra={"notify":True})
             raise
@@ -416,6 +416,8 @@ class DataBuilder(object):
         self.logger.info("Root sources: %s" % root_sources)
         self.logger.info("Other sources: %s" % other_sources)
 
+        got_error = False
+
         @asyncio.coroutine
         def merge(src_names):
             jobs = []
@@ -424,10 +426,20 @@ class DataBuilder(object):
                 job = self.merge_source(src_name, batch_size=batch_size, job_manager=job_manager)
                 job = asyncio.ensure_future(job)
                 def merged(f,stats):
-                    stats.update(f.result())
+                    try:
+                        res = f.result()
+                        stats.update(res)
+                    except Exception as e:
+                        self.logger.exception("Failed merging source '%s': %s" % (src_name, e))
+                        nonlocal got_error
+                        got_error = e
                 job.add_done_callback(partial(merged,stats=self.stats))
                 jobs.append(job)
-            yield from asyncio.gather(*jobs)
+                # raise error as soon as we know something went wrong
+                if got_error:
+                    raise got_error
+            tasks = asyncio.gather(*jobs)
+            yield from tasks
 
         if do_merge:
             if root_sources:
@@ -455,11 +467,16 @@ class DataBuilder(object):
                     build={"step":"post-merge"})
             pinfo = self.get_pinfo()
             pinfo["step"] = "post-merge"
-            yield from job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
-
+            job = yield from job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
+            job = asyncio.ensure_future(job)
+            def postmerged(f):
+                self.logger.info("Post-merge completed [%s]" % f.result())
+            job.add_done_callback(postmerged)
+            res = yield from job
         else:
             self.logger.info("Skip post-merge process")
 
+        yield from asyncio.sleep(0.0)
         return self.stats
 
     def clean_document_to_merge(self,doc):
@@ -484,6 +501,7 @@ class DataBuilder(object):
         btotal = math.ceil(total/batch_size) 
         bnum = 1
         cnt = 0
+        got_error = False
         # grab ids only, so we can get more, let's say 10 times more
         id_batch_size = batch_size * 10
         self.logger.info("Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d" % (src_name, id_batch_size, batch_size))
@@ -506,19 +524,34 @@ class DataBuilder(object):
                             self.target_backend.target_name,
                             ids,
                             self.get_mapper_for_source(src_name,init=False),
-                            upsert))
-
-                def processed(f, cnt, batch_num):
-                    cnt += f.result()
-                    self.logger.info("'%s' merger batch #%d, done" % (src_name, batch_num))
-
-                job.add_done_callback(partial(processed,cnt=cnt, batch_num=bnum))
+                            upsert,
+                            bnum))
+                def batch_merged(f,batch_num):
+                    nonlocal got_error
+                    if type(f.result()) != int:
+                        got_error = Exception("Batch #%s failed while merging source '%s' [%s]" % (batch_num,src_name,f.result()))
+                job.add_done_callback(partial(batch_merged,batch_num=bnum))
                 jobs.append(job)
                 bnum += 1
-
+                # raise error as soon as we know
+                if got_error:
+                    raise got_error
         self.logger.info("%d jobs created for merging step" % len(jobs))
-        yield from asyncio.gather(*jobs)
-        return {"total_%s" % src_name : cnt}
+        tasks = asyncio.gather(*jobs)
+        def done(f):
+            nonlocal got_error
+            if None in f.result():
+                got_error = Exception("Some batches failed")
+                return
+            # compute overall inserted/updated records
+            cnt = sum(f.result())
+
+        tasks.add_done_callback(done)
+        yield from tasks
+        if got_error:
+            raise got_error
+        else:
+            return {"total_%s" % src_name : cnt}
 
     def post_merge(self, source_names, batch_size, job_manager):
         pass
@@ -527,16 +560,24 @@ class DataBuilder(object):
 from biothings.utils.backend import DocMongoBackend
 import biothings.utils.mongo as mongo
 
-def merger_worker(col_name,dest_name,ids,mapper,upsert):
-    src = mongo.get_src_db()
-    tgt = mongo.get_target_db()
-    col = src[col_name]
-    dest = DocMongoBackend(tgt,tgt[dest_name])
-    cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}})
-    mapper.load()
-    docs = mapper.process(cur)
-    cnt = dest.update(docs, upsert=upsert)
-    return cnt
+def merger_worker(col_name,dest_name,ids,mapper,upsert,batch_num):
+    try:
+        src = mongo.get_src_db()
+        tgt = mongo.get_target_db()
+        col = src[col_name]
+        #if batch_num == 2:
+        #    raise ValueError("oula pa bon")
+        dest = DocMongoBackend(tgt,tgt[dest_name])
+        cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}})
+        mapper.load()
+        docs = mapper.process(cur)
+        cnt = dest.update(docs, upsert=upsert)
+        return cnt
+    except Exception as e:
+        logger_name = "%s_%s_batch_%s" % (dest_name,col_name,batch_num)
+        logger = get_logger(logger_name, btconfig.LOG_FOLDER)
+        logger.exception(e)
+        raise
 
 
 from biothings.utils.manager import BaseManager, ManagerError
@@ -743,6 +784,18 @@ class BuilderManager(BaseManager):
         if not os.path.exists(diff_folder):
             os.makedirs(diff_folder)
 
+
+        # create metadata file storing info about how we created the diff
+        metadata = {
+                "old": old_db_col_names,
+                "new": new_db_col_names,
+                "batch_size": batch_size,
+                "steps": steps,
+                "mode": mode,
+                "exclude": exclude,
+                "generated_on": datetime.now()}
+        pickle.dump(metadata,open(os.path.join(diff_folder,"metadata.pick"),"wb"))
+
         stats = {"update":0, "add":0, "delete":0}
 
         if "count" in steps:
@@ -845,9 +898,10 @@ class BuilderManager(BaseManager):
                     max_reported_ids=btconfig.MAX_REPORTED_IDS, max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED):
         report = self.build_diff_report(diff_folder, detailed, max_reported_ids)
         assert format == "txt", "Only 'txt' format supported for now"
-        render = DiffReportTxt(max_reported_ids=max_reported_ids, max_randomly_picked=max_randomly_picked)
+        render = DiffReportTxt(max_reported_ids=max_reported_ids,
+                               max_randomly_picked=max_randomly_picked,
+                               detailed=detailed)
         return render.save(report,report_filename)
-
 
     def build_diff_report(self, diff_folder, detailed=False,
                           max_reported_ids=btconfig.MAX_REPORTED_IDS):
@@ -868,14 +922,45 @@ class BuilderManager(BaseManager):
         dels = {"count": 0, "ids": []}
         sources = {}
 
-        def analyze(diff_file):
+        if os.path.isabs(diff_folder):
+            data_folder = diff_folder
+        else:
+            data_folder = os.path.join(btconfig.DIFF_PATH,diff_folder)
+
+        metadata = {}
+        try:
+            metafile = os.path.join(data_folder,"metadata.pick")
+            metadata = pickle.load(open(metafile,"rb"))
+        except FileNotFoundError:
+            logging.warning("Not metadata found in diff folder")
+            if detailed:
+                raise Exception("Can't perform detailed analysis without a metadata file")
+
+        def analyze(diff_file, detailed):
             data = loadobj(diff_file)
             sources[data["source"]] = 1
+            if detailed:
+                new_col = create_backend(metadata["new"])
+                old_col = create_backend(metadata["old"])
             if len(adds) < max_reported_ids:
-                adds["ids"].extend(data["add"])
+                if detailed:
+                    # look for which root keys were added in new collection
+                    for _id in data["add"]:
+                        doc = new_col.get_from_id(_id)
+                        rkeys = sorted(doc.keys())
+                        adds["ids"].append([_id,rkeys])
+                else:
+                    adds["ids"].extend(data["add"])
             adds["count"] += len(data["add"])
             if len(dels) < max_reported_ids:
-                dels["ids"].extend(data["delete"])
+                if detailed:
+                    # look for which root keys were deleted in old collection
+                    for _id in data["delete"]:
+                        doc = old_col.get_from_id(_id)
+                        rkeys = sorted(doc.keys())
+                        dels["ids"].append([_id,rkeys])
+                else:
+                    dels["ids"].extend(data["add"])
             dels["count"] += len(data["delete"])
             for up in data["update"]:
                 for patch in up["patch"]:
@@ -887,9 +972,6 @@ class BuilderManager(BaseManager):
 
             assert len(sources) == 1, "Should have one datasource from diff files, got: %s" % [s for s in sources]
 
-
-        data_folder = os.path.join(btconfig.DIFF_PATH,diff_folder)
-        jobs = []
         # we randomize files order b/c we randomly pick some examples from those
         # files. If files contains data in order (like chrom 1, then chrom 2)
         # we won't have a representative sample
@@ -897,9 +979,10 @@ class BuilderManager(BaseManager):
         random.shuffle(files)
         for f in files:
             logging.info("Running report worker for '%s'" % f)
-            analyze(f)
+            analyze(f, detailed)
         return {"added" : adds, "deleted": dels, "updated" : update_details,
-                "diff_folder" : diff_folder, "detailed": detailed}
+                "diff_folder" : diff_folder, "detailed": detailed,
+                "metadata": metadata}
 
 
 def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names, batch_num, diff_folder, exclude=[]):
@@ -973,9 +1056,11 @@ class DiffReportRendererBase(object):
 
     def __init__(self,
                  max_reported_ids=btconfig.MAX_REPORTED_IDS,
-                 max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED):
+                 max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED,
+                 detailed=False):
         self.max_reported_ids = max_reported_ids
         self.max_randomly_picked = max_randomly_picked
+        self.detailed = detailed
 
     def save(self,report,filename):
         """
@@ -992,62 +1077,100 @@ class DiffReportTxt(DiffReportRendererBase):
         except ImportError:
             raise ImportError("Please install prettytable to use this rendered")
 
+        def build_id_table(subreport):
+            if self.detailed:
+                table = prettytable.PrettyTable(["IDs","Root keys"])
+                table.align["IDs"] = "l"
+                table.align["Root keys"] = "l"
+            else:
+                table = prettytable.PrettyTable(["IDs"])
+                table.align["IDs"] = "l"
+            if subreport["count"] <= self.max_reported_ids:
+                ids = subreport["ids"]
+            else:
+                ids = [random.choice(subreport["ids"]) for i in range(self.max_reported_ids)]
+            for dat in ids:
+                if self.detailed:
+                    # list of [_id,[keys]]
+                    table.add_row([dat[0],", ".join(dat[1])])
+                else:
+                    table.add_row([dat])
+
+            return table
+
         txt = ""
-        txt += "Diff report\n"
-        txt += "===========\n"
+        title = "Diff report (generated on %s)" % datetime.now()
+        txt += title + "\n"
+        txt += "".join(["="] * len(title)) + "\n"
+        txt += "\n"
+        txt += "Metadata\n"
+        txt += "--------\n"
+        if report.get("metadata",{}):
+            txt += "Old collection: %s\n" % report["metadata"].get("old")
+            txt += "New collection: %s\n" % report["metadata"].get("new")
+            txt += "Batch size: %s\n" % report["metadata"].get("batch_size")
+            txt += "Steps: %s\n" % report["metadata"].get("steps")
+            txt += "Key(s) excluded: %s\n" % report["metadata"].get("exclude")
+            txt += "Diff generated on: %s\n" % report["metadata"].get("generated_on")
+        else:
+            txt+= "No metadata found in report\n"
         txt += "\n"
         txt += "Summary\n"
         txt += "-------\n"
-        txt += "#added documents: %s\n" % report["added"]["count"]
-        txt += "#deleted documents: %s\n" % report["deleted"]["count"]
-        txt += "#updated documents: %s\n" % report["updated"]["count"]
+        txt += "Added documents: %s\n" % report["added"]["count"]
+        txt += "Deleted documents: %s\n" % report["deleted"]["count"]
+        txt += "Updated documents: %s\n" % report["updated"]["count"]
+        txt += "\n"
+        root_keys = report.get("metadata",{}).get("stats",{}).get("root_keys",{})
+        if root_keys:
+            for src in report.get("metadata",{}).get("stats",{}).get("root_keys",{}):
+                txt += "%s: %s\n" % (src,report["root_keys"][src])
+        else:
+            txt += "No root keys count found in report\n"
         txt += "\n"
         txt += "Added documents (%s randomly picked from report)\n" % self.max_reported_ids
         txt += "------------------------------------------------\n"
-        table = prettytable.PrettyTable(["IDs"])
-        if report["added"]["count"] <= self.max_reported_ids:
-            ids = report["added"]["ids"]
+        if report["added"]["count"]:
+            table = build_id_table(report["added"])
+            txt += table.get_string()
+            txt += "\n"
         else:
-            ids = [random.choice(report["added"]["ids"]) for i in range(self.max_reported_ids)]
-        for dat in ids:
-            table.add_row([dat])
-        txt += table.get_string()
-        txt += "\n"
+            txt += "No added document found in report\n"
         txt += "\n"
         txt += "Deleted documents (%s randomly picked from report)\n" % self.max_reported_ids
         txt += "--------------------------------------------------\n"
-        table = prettytable.PrettyTable(["IDs"])
-        if report["deleted"]["count"] <= self.max_reported_ids:
-            ids = report["deleted"]["ids"]
+        if report["deleted"]["count"]:
+            table = build_id_table(report["deleted"])
+            txt += table.get_string()
+            txt += "\n"
         else:
-            ids = [random.choice(report["deleted"]["ids"]) for i in range(self.max_reported_ids)]
-        for dat in ids:
-            table.add_row([dat])
-        txt += table.get_string()
-        txt += "\n"
+            txt += "No deleted document found in report\n"
         txt += "\n"
         txt += "Updated documents (%s examples randomly picked from report)\n" % self.max_randomly_picked
         txt += "-----------------------------------------------------------\n"
         txt += "\n"
-        for op in report["updated"]:
+        for op in sorted(report["updated"]):
             if op == "count":
                 continue # already displayed
-            table = prettytable.PrettyTable([op,"Count","Examples"])
-            table.sortby = "Count"
-            table.reversesort = True
-            table.align[op] = "l"
-            table.align["Count"] = "r"
-            table.align["Examples"] = "l"
-            for path in report["updated"][op]:
-                info = report["updated"][op][path]
-                row = [path,info["count"]]
-                if info["count"] <= self.max_randomly_picked:
-                    row.append(", ".join(info["ids"]))
-                else:
-                    row.append(", ".join([random.choice(info["ids"]) for i in range(self.max_randomly_picked)]))
-                table.add_row(row)
-            txt += table.get_string()
-            txt += "\n"
+            if report["updated"][op]:
+                table = prettytable.PrettyTable([op,"Count","Examples"])
+                table.sortby = "Count"
+                table.reversesort = True
+                table.align[op] = "l"
+                table.align["Count"] = "r"
+                table.align["Examples"] = "l"
+                for path in report["updated"][op]:
+                    info = report["updated"][op][path]
+                    row = [path,info["count"]]
+                    if info["count"] <= self.max_randomly_picked:
+                        row.append(", ".join(info["ids"]))
+                    else:
+                        row.append(", ".join([random.choice(info["ids"]) for i in range(self.max_randomly_picked)]))
+                    table.add_row(row)
+                txt += table.get_string()
+                txt += "\n"
+            else:
+                txt += "No content found for diff operation '%s'\n" % op
             txt += "\n"
         txt += "\n"
 
@@ -1055,8 +1178,4 @@ class DiffReportTxt(DiffReportRendererBase):
             fout.write(txt)
 
         return txt
-
-
-
-
 

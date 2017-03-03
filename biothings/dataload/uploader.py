@@ -12,7 +12,7 @@ from biothings.utils.manager import BaseSourceManager, \
 from .storage import IgnoreDuplicatedStorage, MergerStorage, \
                      BasicStorage, NoBatchIgnoreDuplicatedStorage, \
                      NoStorage
-from biothings.utils.loggers import HipchatHandler
+from biothings.utils.loggers import HipchatHandler, get_logger
 from biothings import config
 
 logging = config.logger
@@ -23,16 +23,23 @@ class ResourceError(Exception):
     pass
 
 
-def upload_worker(name,storage_class,loaddata_func,col_name,batch_size,*args):
+def upload_worker(name, storage_class, loaddata_func, col_name,
+                  batch_size, batch_num, *args):
     """
     Pickable job launcher, typically running from multiprocessing.
     storage_class will instanciate with col_name, the destination 
     collection name. loaddata_func is the parsing/loading function,
     called with *args
     """
-    data = loaddata_func(*args)
-    storage = storage_class(None,col_name,loggingmod)
-    storage.process(data,batch_size)
+    try:
+        data = loaddata_func(*args)
+        storage = storage_class(None,col_name,loggingmod)
+        storage.process(data,batch_size)
+    except Exception as e:
+        logger_name = "%s_batch_%s" % (name,batch_num)
+        logger = get_logger(logger_name, config.LOG_FOLDER)
+        logger.exception(e)
+        raise
 
 
 class DocSourceMaster(dict):
@@ -244,17 +251,29 @@ class BaseSourceUploader(object):
         """
         pinfo = self.get_pinfo()
         pinfo["step"] = "update_data"
+        got_error = False
         self.unprepare()
-        f = yield from job_manager.defer_to_process(
+        job = yield from job_manager.defer_to_process(
                 pinfo,
-                upload_worker,
-                self.fullname,
-                self.__class__.storage_class,
-                self.load_data,
-                self.temp_collection_name,
-                batch_size,
-                self.data_folder)
-        yield from asyncio.gather(f)
+                partial(
+                    upload_worker,
+                    self.fullname,
+                    self.__class__.storage_class,
+                    self.load_data,
+                    self.temp_collection_name,
+                    batch_size,
+                    1, # no batch, just #1
+                    self.data_folder
+                    )
+                )
+        def uploaded(f):
+            nonlocal got_error
+            if type(f.result()) != int:
+                got_error = Exception("upload error")
+        job.add_done_callback(uploaded)
+        yield from job
+        if got_error:
+            raise got_error
         self.switch_collection()
 
     def generate_doc_src_master(self):
@@ -463,33 +482,55 @@ class ParallelizedSourceUploader(BaseSourceUploader):
 
     @asyncio.coroutine
     def update_data(self, batch_size, job_manager=None):
-        fs = []
-        jobs = self.jobs()
+        jobs = []
+        job_params = self.jobs()
         state = self.unprepare()
-        for args in jobs:
+        got_error = False
+        for bnum,args in enumerate(job_params):
             pinfo = self.get_pinfo()
             pinfo["step"] = "update_data"
             pinfo["description"] = str(args)
-            f = yield from job_manager.defer_to_process(
+            job = yield from job_manager.defer_to_process(
                     pinfo,
-                    # pickable worker
-                    upload_worker,
-                    # worker name
-                    self.fullname,
-                    # storage class
-                    self.__class__.storage_class,
-                    # loading func
-                    self.load_data,
-                    # dest collection name
-                    self.temp_collection_name,
-                    # batch size
-                    batch_size,
-                    # and finally *args passed to loading func
-                    *args)
-            fs.append(f)
-        yield from asyncio.gather(*fs)
-        self.switch_collection()
-        self.clean_archived_collections()
+                    partial(
+                        # pickable worker
+                        upload_worker,
+                        # worker name
+                        self.fullname,
+                        # storage class
+                        self.__class__.storage_class,
+                        # loading func
+                        self.load_data,
+                        # dest collection name
+                        self.temp_collection_name,
+                        # batch size
+                        batch_size,
+                        # batch num
+                        bnum,
+                        # and finally *args passed to loading func
+                        *args
+                        )
+                    )
+            jobs.append(job)
+
+            def batch_uploaded(f,name,batch_num):
+                nonlocal got_error
+                try:
+                    if type(f.result()) != int:
+                        got_error = Exception("Batch #%s failed while uploading source '%s' [%s]" % (batch_num, name, f.result()))
+                except Exception as e:
+                    got_error = e
+
+            job.add_done_callback(partial(batch_uploaded,name=self.fullname,batch_num=bnum))
+            # raise error as soon as we know
+            if got_error:
+                raise got_error
+        if jobs:
+            yield from asyncio.gather(*jobs)
+            if got_error:
+                raise got_error
+            self.switch_collection()
+            self.clean_archived_collections()
 
 
 class NoDataSourceUploader(BaseSourceUploader):

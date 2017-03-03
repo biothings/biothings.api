@@ -320,16 +320,11 @@ class JobManager(object):
             self.ok_to_run.release()
             res = self.loop.run_in_executor(self.process_queue,
                     partial(do_work,"process",pinfo,func,*args))
-
-            def check(f,res):
-                if res.exception():
-                    future.set_exception(res.exception())
-                else:
-                    future.set_result(res.result())
-
-            res.add_done_callback(partial(check,res=res))
-            return future
-
+            # process could generate other parallelized jobs and return a Future/Task
+            # If so, we want to make sure we get the results from that task
+            if type(res) == asyncio.Task:
+                res = yield from res
+            future.set_result(res)
         yield from self.ok_to_run.acquire()
         f = asyncio.Future()
         fut = asyncio.ensure_future(run(f))
@@ -345,20 +340,14 @@ class JobManager(object):
             self.ok_to_run.release()
             res = self.loop.run_in_executor(self.thread_queue,
                     partial(do_work,"thread",pinfo,func,*args))
-
-            def check(f,res):
-                if res.exception():
-                    future.set_exception(res.exception())
-                else:
-                    future.set_result(res.result())
-
-            res.add_done_callback(partial(check,res=res))
-            return future
-
+            # thread could generate other parallelized jobs and return a Future/Task
+            # If so, we want to make sure we get the results from that task
+            if type(res) == asyncio.Task:
+                res = yield from res
+            future.set_result(res)
         yield from self.ok_to_run.acquire()
         f = asyncio.Future()
-        asyncio.ensure_future(run(f))
-
+        fut = asyncio.ensure_future(run(f))
         return f
 
     def submit(self,pfunc,schedule=None):
