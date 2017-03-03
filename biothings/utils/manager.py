@@ -286,7 +286,6 @@ class JobManager(object):
                 logger.info("Hub is using too much memory to launch job {cat:%s,source:%s,step:%s} (%s used, more than max allowed %s), wait a little (job's already been postponed for %s)" % \
                         (pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), sizeof_fmt(hub_mem),
                          sizeof_fmt(self.max_memory_usage),timesofar(t0)))
-                #yield from self.loop.run_in_executor(self.thread_queue, lambda: time.sleep(sleep_time))
                 yield from asyncio.sleep(sleep_time)
                 waited = True
                 hub_mem = self.hub_memory
@@ -300,7 +299,6 @@ class JobManager(object):
                 logger.info("Job {cat:%s,source:%s,step:%s} needs %s to run, not enough to launch it (hub consumes %s while max allowed is %s), wait a little  (job's already been postponed for %s)" % \
                         (pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), sizeof_fmt(mem_req), sizeof_fmt(hub_mem),
                          sizeof_fmt(max_mem), timesofar(t0)))
-                #yield from self.loop.run_in_executor(self.thread_queue, lambda: time.sleep(sleep_time))
                 yield from asyncio.sleep(sleep_time)
                 waited = True
                 # refresh limites and usage (manager can be modified from hub
@@ -318,7 +316,7 @@ class JobManager(object):
         def run(future):
             yield from self.checkmem(pinfo)
             self.ok_to_run.release()
-            res = self.loop.run_in_executor(self.process_queue,
+            res = yield from self.loop.run_in_executor(self.process_queue,
                     partial(do_work,"process",pinfo,func,*args))
             # process could generate other parallelized jobs and return a Future/Task
             # If so, we want to make sure we get the results from that task
@@ -338,7 +336,7 @@ class JobManager(object):
         def run(future):
             yield from self.checkmem(pinfo)
             self.ok_to_run.release()
-            res = self.loop.run_in_executor(self.thread_queue,
+            res = yield from self.loop.run_in_executor(self.thread_queue,
                     partial(do_work,"thread",pinfo,func,*args))
             # thread could generate other parallelized jobs and return a Future/Task
             # If so, we want to make sure we get the results from that task
