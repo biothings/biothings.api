@@ -34,7 +34,7 @@ def upload_worker(name, storage_class, loaddata_func, col_name,
     try:
         data = loaddata_func(*args)
         storage = storage_class(None,col_name,loggingmod)
-        storage.process(data,batch_size)
+        return storage.process(data,batch_size)
     except Exception as e:
         logger_name = "%s_batch_%s" % (name,batch_num)
         logger = get_logger(logger_name, config.LOG_FOLDER)

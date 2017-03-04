@@ -57,13 +57,13 @@ class BasicStorage(BaseStorage):
     def process(self, doc_d, batch_size):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
-        cnt = 0
+        total = 0
         for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=batch_size):
             self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
-            cnt += len(doc_li)
+            total += len(doc_li)
         self.logger.info('Done[%s]' % timesofar(t0))
 
-        return cnt
+        return total
 
 class MergerStorage(BasicStorage):
     """
@@ -79,7 +79,7 @@ class MergerStorage(BasicStorage):
         t0 = time.time()
         tinner = time.time()
         aslistofdict = None
-        cnt = 0
+        total = 0
         for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=batch_size):
             toinsert = len(doc_li)
             nbinsert = 0
@@ -121,13 +121,13 @@ class MergerStorage(BasicStorage):
             assert nbinsert == toinsert, "nb %s to %s" % (nbinsert,toinsert)
             # end of loop so it counts the time spent in doc_iterator
             tinner = time.time()
-            cnt += nbinsert
+            total += nbinsert
 
         self.logger.info('Done[%s]' % timesofar(t0))
         self.switch_collection()
         self.post_update_data()
 
-        return cnt
+        return total
 
 
 class IgnoreDuplicatedStorage(BasicStorage):
@@ -136,15 +136,15 @@ class IgnoreDuplicatedStorage(BasicStorage):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
-        inserted = 0
+        total = 0
         for doc_li in self.doc_iterator(iterable, batch=True, batch_size=batch_size):
             try:
                 bob = self.temp_collection.initialize_unordered_bulk_op()
                 for d in doc_li:
                     bob.insert(d)
                 res = bob.execute()
-                inserted += res['nInserted']
-                self.logger.info("Inserted %s records [%s]" % (inserted, timesofar(tinner)))
+                total += res['nInserted']
+                self.logger.info("Inserted %s records [%s]" % (res['nInserted'], timesofar(tinner)))
             except BulkWriteError as e:
                 self.logger.info("Inserted %s records, ignoring %d [%s]" % (e.details['nInserted'],len(e.details["writeErrors"]),timesofar(tinner)))
             except Exception as e:
@@ -152,7 +152,7 @@ class IgnoreDuplicatedStorage(BasicStorage):
             tinner = time.time()
         self.logger.info('Done[%s]' % timesofar(t0))
 
-        return inserted
+        return total 
 
 class NoBatchIgnoreDuplicatedStorage(BasicStorage):
     """
@@ -166,11 +166,13 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
         tinner = time.time()
         # force step = 1
         cnt = 0
+        total = 0
         dups = 0
         for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=1):
             try:
                 res = self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
                 cnt += 1
+                total += 1
                 if (cnt + dups) % batch_size == 0:
                     # we insert one by one but display progress on a "batch_size" base
                     self.logger.info("Inserted %s records, ignoring %s [%s]" % (cnt,dups,timesofar(tinner)))
@@ -184,7 +186,7 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
         self.switch_collection()
         self.post_update_data()
 
-        return cnt
+        return total
 
 
 class UpsertStorage(BasicStorage):
@@ -194,7 +196,7 @@ class UpsertStorage(BasicStorage):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
-        cnt = 0
+        total = 0
         for doc_li in self.doc_iterator(iterable, batch=True, batch_size=batch_size):
             try:
                 bob = self.temp_collection.initialize_unordered_bulk_op()
@@ -202,14 +204,14 @@ class UpsertStorage(BasicStorage):
                     bob.find({"_id" : d["_id"]}).upsert().replace_one(d)
                 res = bob.execute()
                 nb = res["nUpserted"] + res["nModified"]
-                cnt += nb
+                total += nb
                 self.logger.info("Upserted %s records [%s]" % (nb,timesofar(tinner)))
             except Exception as e:
                 raise
             tinner = time.time()
         self.logger.info('Done[%s]' % timesofar(t0))
 
-        return cnt
+        return total
 
 
 class NoStorage(object):
