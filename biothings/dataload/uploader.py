@@ -269,7 +269,7 @@ class BaseSourceUploader(object):
         def uploaded(f):
             nonlocal got_error
             if type(f.result()) != int:
-                got_error = Exception("upload error")
+                got_error = Exception("upload error (should have a int as returned value got %s" % repr(f.result()))
         job.add_done_callback(uploaded)
         yield from job
         if got_error:
@@ -363,12 +363,20 @@ class BaseSourceUploader(object):
             if update_master:
                 self.update_master()
             if post_update_data:
+                got_error = False
                 self.unprepare()
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "post_update_data"
                 f2 = yield from job_manager.defer_to_thread(pinfo,
                         partial(self.post_update_data, steps, force, batch_size, job_manager))
-                yield from asyncio.gather(f2)
+                def postupdated(f):
+                    if f.exception():
+                        got_error = f.exception()
+                        self.logger.info("got %s" % got_error)
+                f2.add_done_callback(postupdated)
+                yield from f2
+                if got_error:
+                    raise got_error
             cnt = self.db[self.collection_name].count()
             if clean_archives:
                 self.clean_archived_collections()

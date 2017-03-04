@@ -325,8 +325,11 @@ class JobManager(object):
             future.set_result(res)
         yield from self.ok_to_run.acquire()
         f = asyncio.Future()
+        def runned(innerf):
+            if innerf.exception():
+                f.set_exception(innerf.exception())
         fut = asyncio.ensure_future(run(f))
-
+        fut.add_done_callback(runned)
         return f
 
     @asyncio.coroutine
@@ -345,7 +348,11 @@ class JobManager(object):
             future.set_result(res)
         yield from self.ok_to_run.acquire()
         f = asyncio.Future()
+        def runned(innerf):
+            if innerf.exception():
+                f.set_exception(innerf.exception())
         fut = asyncio.ensure_future(run(f))
+        fut.add_done_callback(runned)
         return f
 
     def submit(self,pfunc,schedule=None):
