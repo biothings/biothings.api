@@ -45,6 +45,7 @@ class BaseDumper(object):
         self.prev_data_folder = None
         self.timestamp = time.strftime('%Y%m%d')
         self.prepared = False
+        self.steps=["dump","post"]
 
     def init_state(self):
         self._state = {
@@ -209,7 +210,7 @@ class BaseDumper(object):
         self.src_dump.save(self.src_doc)
 
     @asyncio.coroutine
-    def dump(self, steps=["dump","post"], force=False, job_manager=None):
+    def dump(self, steps=None, force=False, job_manager=None):
         '''
         Dump (ie. download) resource as needed
         this should be called after instance creation
@@ -219,15 +220,16 @@ class BaseDumper(object):
         # signature says it's optional but for now it's not...
         assert job_manager
         # check what to do
-        if type(steps) == str:
-            steps = [steps]
+        self.steps = steps or self.steps
+        if type(self.steps) == str:
+            self.steps = [self.steps]
         try:
-            if "dump" in steps:
+            if "dump" in self.steps:
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "check"
                 # TODO: blocking call for now, FTP client can't be properly set in thread after
                 self.create_todump_list(force=force)
-                if self.to_dump and "dump" in steps:
+                if self.to_dump:
                     # mark the download starts
                     self.register_status("downloading",transient=True)
                     # unsync to make it pickable
@@ -239,7 +241,7 @@ class BaseDumper(object):
                     # if nothing to dump, don't do post process
                     self.logger.info("Nothing to dump",extra={"notify":True})
                     return
-            if "post" in steps:
+            if "post" in self.steps:
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "post_dump"
                 # for some reason (like maintaining object's state between pickling).
@@ -280,7 +282,12 @@ class BaseDumper(object):
         like the actual release.
         """
         if not getattr(self,self.__class__.SUFFIX_ATTR):
-            raise DumperException("Can't generate new data folder, attribute used for suffix (%s) isn't set" % self.__class__.SUFFIX_ATTR)
+            # if step is "post" only, it means we didn't even check a new version and we
+            # want to run "post" step on current version again
+            if self.steps == ["post"]:
+                return self.current_data_folder
+            else:
+                raise DumperException("Can't generate new data folder, attribute used for suffix (%s) isn't set" % self.__class__.SUFFIX_ATTR)
         suffix = getattr(self,self.__class__.SUFFIX_ATTR)
         if self.archive:
             return os.path.join(self.src_root_folder, suffix)

@@ -372,7 +372,6 @@ class BaseSourceUploader(object):
                 def postupdated(f):
                     if f.exception():
                         got_error = f.exception()
-                        self.logger.info("got %s" % got_error)
                 f2.add_done_callback(postupdated)
                 yield from f2
                 if got_error:
