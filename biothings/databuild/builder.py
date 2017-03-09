@@ -425,15 +425,15 @@ class DataBuilder(object):
                 yield from asyncio.sleep(0.0)
                 job = self.merge_source(src_name, batch_size=batch_size, job_manager=job_manager)
                 job = asyncio.ensure_future(job)
-                def merged(f,stats):
+                def merged(f,name,stats):
                     try:
                         res = f.result()
                         stats.update(res)
                     except Exception as e:
-                        self.logger.exception("Failed merging source '%s': %s" % (src_name, e))
+                        self.logger.exception("Failed merging source '%s': %s" % (name, e))
                         nonlocal got_error
                         got_error = e
-                job.add_done_callback(partial(merged,stats=self.stats))
+                job.add_done_callback(partial(merged,name=src_name,stats=self.stats))
                 jobs.append(job)
                 # raise error as soon as we know something went wrong
                 if got_error:
@@ -577,6 +577,9 @@ def merger_worker(col_name,dest_name,ids,mapper,upsert,batch_num):
         logger_name = "%s_%s_batch_%s" % (dest_name,col_name,batch_num)
         logger = get_logger(logger_name, btconfig.LOG_FOLDER)
         logger.exception(e)
+        exc_fn = os.path.join(btconfig.LOG_FOLDER,"logger_name.pick")
+        pickle.dump(e,open(exc_fn,"wb"))
+        logger.info("Exception was dumped in pickle file '%s'" % exc_fn)
         raise
 
 
