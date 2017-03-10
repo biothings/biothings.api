@@ -64,11 +64,11 @@ def wrapper(func):
 
 
 class ESIndexer():
-    def __init__(self, index, doc_type, es_host, step=10000):
+    def __init__(self, index, doc_type, es_host, step=10000, number_of_shards=10):
         self._es = get_es(es_host)
         self._index = index
         self._doc_type = doc_type
-        self.number_of_shards = 10      # set number_of_shards when create_index
+        self.number_of_shards = number_of_shards # set number_of_shards when create_index
         self.step = step  # the bulk size when doing bulk operation.
         self.s = None   # optionally, can specify number of records to skip,
                         # useful to continue indexing after an error.

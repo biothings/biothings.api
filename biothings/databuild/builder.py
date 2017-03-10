@@ -897,7 +897,7 @@ class BuilderManager(BaseManager):
         job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, steps, mode, exclude))
         return job
 
-    def diff_report(self, diff_folder, report_filename="report.txt", format="txt", detailed=False,
+    def diff_report(self, diff_folder, report_filename="report.txt", format="txt", detailed=True,
                     max_reported_ids=btconfig.MAX_REPORTED_IDS, max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED):
         report = self.build_diff_report(diff_folder, detailed, max_reported_ids)
         assert format == "txt", "Only 'txt' format supported for now"
@@ -906,7 +906,7 @@ class BuilderManager(BaseManager):
                                detailed=detailed)
         return render.save(report,report_filename)
 
-    def build_diff_report(self, diff_folder, detailed=False,
+    def build_diff_report(self, diff_folder, detailed=True,
                           max_reported_ids=btconfig.MAX_REPORTED_IDS):
         """
         Analyze diff files in diff_folder and give a summy of changes.

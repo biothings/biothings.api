@@ -9,7 +9,7 @@ from biothings.utils.loggers import HipchatHandler
 from biothings.utils.manager import BaseManager
 from biothings.utils.es import ESIndexer
 from biothings import config as btconfig
-from config import LOG_FOLDER, logger as logging
+from config import LOG_FOLDER, logger as logging, ES_NUMBER_OF_SHARDS
 
 
 class IndexerException(Exception):
@@ -49,7 +49,7 @@ class IndexerManager(BaseManager):
 
     def register_indexer(self, conf):
         def create(conf):
-            idxer = self.pindexer()
+            idxer = self.pindexer(build_name=conf["_id"])
             return idxer
 
         self.register[conf["_id"]] = partial(create,conf)
@@ -77,16 +77,16 @@ class IndexerManager(BaseManager):
 
 class Indexer(object):
 
-    def __init__(self, host):
+    def __init__(self, build_name, host):
         self.host = host
         self.log_folder = LOG_FOLDER
         self.timestamp = datetime.now()
+        self.build_name = build_name
+        self.load_build_config(build_name)
 
     def index(self, build_name, target_name, index_name, job_manager, purge=False):
         self.target_name = target_name
         self.index_name = index_name
-        self.build_name = build_name
-        self.load_build_config(build_name)
         self.setup_log()
         _db = mongo.get_target_db()
         target_collection = _db[target_name]
@@ -104,9 +104,8 @@ class Indexer(object):
         es_idxer = ESIndexer(doc_type="variant",
                              index=index_name,
                              es_host=self.host,
-                             step=10000)
-        #if build_config == 'mygene_allspecies':
-        #    es_idxer.number_of_shards = 10   # default 5
+                             step=10000,
+                             number_of_shards=ES_NUMBER_OF_SHARDS)
         es_idxer.check()
         #es_idxer.s = 609000
         if es_idxer.exists_index():
