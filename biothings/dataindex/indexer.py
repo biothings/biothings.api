@@ -156,7 +156,7 @@ class Indexer(object):
         src_master = mongo.get_src_master()
         for collection in self.build_config['sources']:
             meta = src_master.find_one({"_id" : collection})
-            if 'mapping' in meta:
+            if 'mapping' in meta and meta["mapping"]:
                 mapping.update(meta['mapping'])
             else:
                 logging.info('Warning: "%s" collection has no mapping data.' % collection)
