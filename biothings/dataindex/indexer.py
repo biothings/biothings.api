@@ -82,6 +82,8 @@ class Indexer(object):
         self.log_folder = LOG_FOLDER
         self.timestamp = datetime.now()
         self.build_name = build_name
+        self.target_name = None
+        self.index_name = None
         self.load_build_config(build_name)
 
     def index(self, build_name, target_name, index_name, job_manager, purge=False):
@@ -165,11 +167,48 @@ class Indexer(object):
             mapping['_timestamp'] = {
                 "enabled": True,
             }
-        #allow source Compression
-        #Note: no need of source compression due to "Store Level Compression"
-        #mapping['_source'] = {'compress': True,}
-        #                      'compress_threshold': '1kb'}
+        mapping["_meta"] = self.get_metadata()
         return mapping
+
+    def get_metadata(self):
+        stats = self.get_stats()
+        versions = self.get_src_versions()
+        timestamp = self.get_timestamp()
+        return {"stats": stats,
+                "src_versions": versions,
+                "timestamp": timestamp}
+
+    def get_builds(self,target_name=None):
+        target_name = target_name or self.target_name
+        assert target_name, "target_name must be defined first before searching for builds"
+        # try to find all build informations
+        builds = [b for b in self.build_config["build"] if b["target_name"] == target_name]
+        assert len(builds) > 0, "Can't find build for config '%s' and target_name '%s'" % (self.build_name,self.target_name)
+        return builds
+
+    def get_src_versions(self):
+        # target (merged collection) could have been created in multiple steps
+        builds = self.get_builds()
+        src_versions = {}
+        # builds are sorted chronologically by default
+        for build in builds:
+            for src in build["src_versions"]:
+                src_versions[src] = build["src_versions"][src]
+        return src_versions
+
+    def get_stats(self):
+        builds = self.get_builds()
+        stats = {}
+        # builds are sorted chronologically by default
+        for build in builds:
+            for stat in build["stats"]:
+                stats[stat] = build["stats"][stat]
+        return stats
+
+    def get_timestamp(self):
+        # we'll keep the latest one
+        build = self.get_builds()[-1]
+        return build["started_at"]
 
     def load_build_config(self, build):
         '''Load build config from src_build collection.'''
