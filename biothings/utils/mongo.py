@@ -1,8 +1,9 @@
-import time, logging
+
+import time, logging, os
 from functools import wraps
 from pymongo import MongoClient
 
-from biothings.utils.common import timesofar
+from biothings.utils.common import timesofar, get_random_string, iter_n
 # stub, until set to real config module
 config = None
 
@@ -104,24 +105,6 @@ def get_target_master(conn=None):
     conn = conn or get_target_conn()
     return conn[config.DATA_TARGET_DATABASE][config.DATA_TARGET_MASTER_COLLECTION]
 
-
-def doc_feeder0(collection, step=1000, s=None, e=None, inbatch=False):
-    '''A iterator for returning docs in a collection, with batch query.'''
-    n = collection.count()
-    s = s or 1
-    e = e or n
-    print('Found %d documents in database "%s".' % (n, collection.name))
-    for i in range(s - 1, e + 1, step):
-        print("Processing %d-%d documents..." % (i + 1, i + step), end='')
-        t0 = time.time()
-        res = collection.find(skip=i, limit=step, timeout=False)
-        if inbatch:
-            yield res
-        else:
-            for doc in res:
-                yield doc
-        print('Done.[%s]' % timesofar(t0))
-
 def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None, batch_callback=None,
                fields=None, logger=logging):
     '''A iterator for returning docs in a collection, with batch query.
@@ -181,6 +164,75 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
         logger.info('Finished.[total time: %s]' % timesofar(t0))
     finally:
         cur.close()
+
+@requires_config
+def id_feeder(col, batch_size=1000, build_cache=True, logger=logging):
+    """Return an iterator for all _ids in collection "col"
+       Search for a valid cache file if available, if not
+       return a doc_feeder for that collection. Valid cache is
+       a cache file that is newer than the collection.
+       "db" can be "target" or "src".
+       "build_cache" True will build a cache file as _ids are fetched, 
+       if no cache file was found
+    """
+    src_db = get_src_db()
+    ts = None
+    
+    try:
+        if col.database.name == config.DATA_TARGET_DATABASE:
+            # TODO: if col.name is present in different build config, that will pick one
+            # (order not ensured) and maybe timestamp will be wrong. It's based on naming
+            # convention or at least the fact we don't use the same name for 2 different
+            # build config
+            info = src_db["src_build"].find_one({"build.target_name" : col.name},{"build.started_at":1})
+            assert info, "Can't find information for target_name '%s'" % col.name
+            assert len(info["build"]) > 0, "Missing build information for target_name '%s'" % col.name
+            ts = info["build"][-1]["started_at"].timestamp()# - 1000000000 # not in ms
+        elif col.database.name == config.DATA_SRC_DATABASE:
+            info = src_db["src_dump"].find_one({"$where":"function() {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}" % col.name})
+            assert info, "Can't find information for target_name '%s'" % col.name
+            ts = info["upload"]["jobs"][col.name]["started_at"].timestamp()
+        else:
+            raise NotImplementedError("Can't find metadata for collection '%s' (not a target, not a source collection)" % db)
+    except KeyError:
+        logger.warning("Couldn't find timestamp in database for '%s'" % col.name)
+
+    # try to find a cache file
+    use_cache = False
+    cache_file = None
+    if config.CACHE_FOLDER:
+        cache_file = os.path.join(config.CACHE_FOLDER,col.name)
+        try:
+            mt = os.path.getmtime(cache_file)
+            if mt >= ts:
+                use_cache = True
+        except FileNotFoundError:
+            pass
+    if use_cache:
+        logger.debug("Found valid cache file for '%s': %s" % (col.name,cache_file))
+        with open(cache_file) as cache_in:
+            for ids in iter_n(cache_in.readlines(),batch_size):
+                yield [_id.strip() for _id in ids]
+    else:
+        logger.debug("No cache file found (or invalid) for '%s', use doc_feeder" % col.name)
+        cache_out = None
+        cache_temp = None
+        if config.CACHE_FOLDER and build_cache:
+            if not os.path.exists(config.CACHE_FOLDER):
+                os.makedirs(config.CACHE_FOLDER)
+            # use temp file and rename once done
+            cache_temp = "%s.%s" % (cache_file,get_random_string())
+            cache_out = open(cache_temp,"w")
+            logger.info("Building cache file '%s'" % cache_temp)
+        for doc_ids in doc_feeder(col, step=batch_size, inbatch=True, fields={"_id":1}):
+            doc_ids = [_doc["_id"] for _doc in doc_ids]
+            if build_cache:
+                cache_out.write("\n".join(doc_ids))
+            yield doc_ids
+        if build_cache:
+            cache_out.close()
+            cache_final = os.path.splitext(cache_temp)[0]
+            os.rename(cache_temp,cache_final)
 
 
 def src_clean_archives(keep_last=1, src=None, verbose=True, noconfirm=False):
