@@ -1,14 +1,16 @@
-import sys, re, os, time
+import sys, re, os, time, math
 from datetime import datetime
+import pickle
 from pprint import pformat
 import asyncio
 from functools import partial
 
 import biothings.utils.mongo as mongo
-from biothings.utils.loggers import HipchatHandler
+from biothings.utils.loggers import HipchatHandler, get_logger
 from biothings.utils.manager import BaseManager
 from biothings.utils.es import ESIndexer
 from biothings import config as btconfig
+from biothings.utils.mongo import doc_feeder, id_feeder
 from config import LOG_FOLDER, logger as logging, ES_NUMBER_OF_SHARDS
 
 
@@ -54,7 +56,7 @@ class IndexerManager(BaseManager):
 
         self.register[conf["_id"]] = partial(create,conf)
 
-    def index(self, build_name, target_name=None, index_name=None, **kwargs):
+    def index(self, build_name, target_name=None, index_name=None, ids=None, **kwargs):
         """
         Trigger a merge for build named 'build_name'. Optional list of sources can be
         passed (one single or a list). target_name is the target collection name used
@@ -69,7 +71,8 @@ class IndexerManager(BaseManager):
                 raise
         try:
             idx = self[build_name]
-            job = idx.index(build_name, target_name, index_name, job_manager=self.job_manager, **kwargs)
+            job = idx.index(build_name, target_name, index_name, ids=ids, job_manager=self.job_manager, **kwargs)
+            job = asyncio.ensure_future(job)
             job.add_done_callback(indexed)
             return job
         except KeyError as e:
@@ -86,7 +89,27 @@ class Indexer(object):
         self.index_name = None
         self.load_build_config(build_name)
 
-    def index(self, build_name, target_name, index_name, job_manager, purge=False):
+    def get_pinfo(self):
+        """
+        Return dict containing information about the current process
+        (used to report in the hub)
+        """
+        return {"category" : "indexer",
+                "source" : "%s:%s" % (self.build_name,self.index_name),
+                "step" : "",
+                "description" : ""}
+
+    @asyncio.coroutine
+    def index(self, build_name, target_name, index_name, job_manager, batch_size=10000, ids=None, mode=None):
+        """
+        Using build configuration "build_name", build an index named "index_name" with data from collection
+        "target_collection". "ids" can be passed to selectively index documents. "mode" can have the following
+        values:
+        - 'purge': will delete index if it exists
+        - 'add': will use existing index and add documents (usually usefull with "ids" param to complete
+                 an existing index)
+        - None (default): will create a new index, assuming it doesn't already exist
+        """
         self.target_name = target_name
         self.index_name = index_name
         self.setup_log()
@@ -94,40 +117,87 @@ class Indexer(object):
         target_collection = _db[target_name]
         _mapping = self.get_mapping()
         _meta = {}
-        #src_version = self.get_src_version()
-        #if src_version:
-        #    _meta['src_version'] = src_version
-        #if getattr(self, '_stats', None):
-        #    _meta['stats'] = self._stats
-        #if 'timestamp' in last_build:
-        #    _meta['timestamp'] = last_build['timestamp']
-        #if _meta:
-        #    _mapping['_meta'] = _meta
+        # TODO: number of shards is index-dependent, not app-dependent
         es_idxer = ESIndexer(doc_type="variant",
                              index=index_name,
                              es_host=self.host,
-                             step=10000,
+                             step=batch_size,
                              number_of_shards=ES_NUMBER_OF_SHARDS)
         es_idxer.check()
-        #es_idxer.s = 609000
         if es_idxer.exists_index():
-            if purge:
+            if mode == "purge":
                 es_idxer.delete_index()
-            else:
-                raise IndexerException("Index already '%s' exists, (use 'purge=True' to auto-delete it)" % index_name)
+            elif mode != "add":
+                raise IndexerException("Index already '%s' exists, (use mode='purge' to auto-delete it or mode='add' to add more documents)" % index_name)
 
-        #for k in ['dbnsfp', 'clinvar', 'vcf', 'evs', 'dbsnp', 'hg19', 'snpeff']:
-        #    _mapping["properties"].pop(k)
-        #_mapping.pop("_timestamp")
-        #_mapping.pop("properties")
-        #_mapping.pop("dynamic")
-        print(pformat(_mapping))
-        es_idxer.create_index({"variant":_mapping})
-        #es_idxer.delete_index_type(es_idxer.ES_INDEX_TYPE, noconfirm=True)
+        if mode != "add":
+            es_idxer.create_index({"variant":_mapping})
+
+        # partially instantiated indexer instance for process workers
+        partial_idxer = partial(ESIndexer,doc_type="variant",
+                             index=index_name,
+                             es_host=self.host,
+                             step=batch_size,
+                             number_of_shards=ES_NUMBER_OF_SHARDS)
+        got_error = False
+        jobs = []
+        total = target_collection.count()
+        btotal = math.ceil(total/batch_size) 
+        bnum = 1
+        cnt = 0
+        if ids:
+            self.logger.info("Indexing from '%s' with specific list of _ids, create indexer job with batch_size=%d" % (target_name, batch_size))
+            id_provider = [ids]
+        else:
+            self.logger.info("Fetch _ids from '%s', and create indexer job with batch_size=%d" % (target_name, batch_size))
+            id_provider = id_feeder(target_collection, batch_size=batch_size)
+        for ids in id_provider:
+            yield from asyncio.sleep(0.0)
+            pinfo = self.get_pinfo()
+            pinfo["step"] = self.target_name
+            pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,(cnt/total*100))
+            self.logger.info("Creating indexer job #%d/%d, to index '%s' %d/%d (%.1f%%)" % \
+                    (bnum,btotal,target_name,cnt,total,(cnt/total*100.)))
+            job = yield from job_manager.defer_to_process(
+                    pinfo,
+                    partial(indexer_worker,
+                        self.target_name,
+                        ids,
+                        partial_idxer,
+                        bnum))
+            def batch_indexed(f,batch_num):
+                nonlocal got_error
+                res = f.result()
+                if type(res) != tuple or type(res[0]) != int:
+                    got_error = Exception("Batch #%s failed while indexing collection '%s' [%s]" % (batch_num,self.target_name,f.result()))
+            job.add_done_callback(partial(batch_indexed,batch_num=bnum))
+            jobs.append(job)
+            bnum += 1
+            # raise error as soon as we know
+            if got_error:
+                raise got_error
+        self.logger.info("%d jobs created for indexing step" % len(jobs))
+        tasks = asyncio.gather(*jobs)
+        def done(f):
+            nonlocal got_error
+            if None in f.result():
+                got_error = Exception("Some batches failed")
+                return
+            # compute overall inserted/updated records
+            # returned values looks like [(num,[]),(num,[]),...]
+            cnt = sum([val[0] for val in f.result()])
+        tasks.add_done_callback(done)
+        yield from tasks
+        if got_error:
+            raise got_error
+        else:
+            return {"total_%s" % self.target_name : cnt}
+
+
         es_idxer.build_index(target_collection, verbose=True)
-        # time.sleep(10)    # pausing 10 second here
-        # if es_idxer.wait_till_all_shards_ready():
-        #     print "Optimizing...", es_idxer.optimize()
+        if es_idxer.wait_till_all_shards_ready():
+            self.logger.info("Optimizing ES index...")
+            es_idxer.optimize()
 
     def setup_log(self):
         import logging as logging_mod
@@ -160,7 +230,7 @@ class Indexer(object):
             if 'mapping' in meta and meta["mapping"]:
                 mapping.update(meta['mapping'])
             else:
-                logging.info('Warning: "%s" collection has no mapping data.' % collection)
+                self.logger.info('Warning: "%s" collection has no mapping data.' % collection)
         mapping = {"properties": mapping,
                    "dynamic": "false"}
         if enable_timestamp:
@@ -192,8 +262,12 @@ class Indexer(object):
         src_versions = {}
         # builds are sorted chronologically by default
         for build in builds:
+            if not "src_versions" in build:
+                continue
             for src in build["src_versions"]:
                 src_versions[src] = build["src_versions"][src]
+        if not src_versions:
+            raise IndexerException("Build has no source versions, can't index")
         return src_versions
 
     def get_stats(self):
@@ -201,8 +275,13 @@ class Indexer(object):
         stats = {}
         # builds are sorted chronologically by default
         for build in builds:
+            if not "stats" in build:
+                continue
             for stat in build["stats"]:
                 stats[stat] = build["stats"][stat]
+        if not stats:
+            pass
+            #raise IndexerException("Build has no stats, can't index")
         return stats
 
     def get_timestamp(self):
@@ -220,69 +299,20 @@ class Indexer(object):
             raise ValueError('Cannot find build config named "%s"' % build)
         return _cfg
 
-    #def build_index2(self, build_config='mygene_allspecies', last_build_idx=-1, use_parallel=False, es_host=None, es_index_name=None, noconfirm=False):
-    #    """Build ES index from last successfully-merged mongodb collection.
-    #        optional "es_host" argument can be used to specified another ES host, otherwise default ES_HOST.
-    #        optional "es_index_name" argument can be used to pass an alternative index name, otherwise same as mongodb collection name
-    #    """
-    #    self.load_build_config(build_config)
-    #    assert "build" in self._build_config, "Abort. No such build records for config %s" % build_config
-    #    last_build = self._build_config['build'][last_build_idx]
-    #    logging.info("Last build record:")
-    #    logging.info(pformat(last_build))
-    #    assert last_build['status'] == 'success', \
-    #        "Abort. Last build did not success."
-    #    assert last_build['target_backend'] == "mongodb", \
-    #        'Abort. Last build need to be built using "mongodb" backend.'
-    #    assert last_build.get('stats', None), \
-    #        'Abort. Last build stats are not available.'
-    #    self._stats = last_build['stats']
-    #    assert last_build.get('target', None), \
-    #        'Abort. Last build target_collection is not available.'
 
-    #    # Get the source collection to build the ES index
-    #    # IMPORTANT: the collection in last_build['target'] does not contain _timestamp field,
-    #    #            only the "genedoc_*_current" collection does. When "timestamp" is enabled
-    #    #            in mappings, last_build['target'] collection won't be indexed by ES correctly,
-    #    #            therefore, we use "genedoc_*_current" collection as the source here:
-    #    #target_collection = last_build['target']
-    #    target_collection = "genedoc_{}_current".format(build_config)
-    #    _db = get_target_db()
-    #    target_collection = _db[target_collection]
-    #    logging.info("")
-    #    logging.info('Source: %s' % target_collection.name)
-    #    _mapping = self.get_mapping()
-    #    _meta = {}
-    #    src_version = self.get_src_version()
-    #    if src_version:
-    #        _meta['src_version'] = src_version
-    #    if getattr(self, '_stats', None):
-    #        _meta['stats'] = self._stats
-    #    if 'timestamp' in last_build:
-    #        _meta['timestamp'] = last_build['timestamp']
-    #    if _meta:
-    #        _mapping['_meta'] = _meta
-    #    es_index_name = es_index_name or target_collection.name
-    #    es_idxer = ESIndexer(mapping=_mapping,
-    #                         es_index_name=es_index_name,
-    #                         es_host=es_host,
-    #                         step=5000)
-    #    if build_config == 'mygene_allspecies':
-    #        es_idxer.number_of_shards = 10   # default 5
-    #    es_idxer.check()
-    #    if noconfirm or ask("Continue to build ES index?") == 'Y':
-    #        es_idxer.use_parallel = use_parallel
-    #        #es_idxer.s = 609000
-    #        if es_idxer.exists_index(es_idxer.ES_INDEX_NAME):
-    #            if noconfirm or ask('Index "{}" exists. Delete?'.format(es_idxer.ES_INDEX_NAME)) == 'Y':
-    #                es_idxer.conn.indices.delete(es_idxer.ES_INDEX_NAME)
-    #            else:
-    #                logging.info("Abort.")
-    #                return
-    #        es_idxer.create_index()
-    #        #es_idxer.delete_index_type(es_idxer.ES_INDEX_TYPE, noconfirm=True)
-    #        es_idxer.build_index(target_collection, verbose=False)
-    #        # time.sleep(10)    # pausing 10 second here
-    #        # if es_idxer.wait_till_all_shards_ready():
-    #        #     print "Optimizing...", es_idxer.optimize()
-
+def indexer_worker(col_name,ids,pindexer,batch_num):
+    try:
+        tgt = mongo.get_target_db()
+        col = tgt[col_name]
+        idxer = pindexer()
+        cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}})
+        cnt = idxer.index_bulk(cur)
+        return cnt
+    except Exception as e:
+        logger_name = "index_%s_%s_batch_%s" % (pindexer.keywords.get("index","index"),col_name,batch_num)
+        logger = get_logger(logger_name, btconfig.LOG_FOLDER)
+        logger.exception(e)
+        exc_fn = os.path.join(btconfig.LOG_FOLDER,"%s.pick" % logger_name)
+        pickle.dump({"exc":e,"ids":ids},open(exc_fn,"wb"))
+        logger.info("Exception and IDs were dumped in pickle file '%s'" % exc_fn)
+        raise

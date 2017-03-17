@@ -12,7 +12,7 @@ import glob, random
 
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj
-from biothings.utils.mongo import doc_feeder
+from biothings.utils.mongo import doc_feeder, id_feeder
 from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.utils.diff import diff_docs_jsonpatch
 import biothings.databuild.backend as btbackend
@@ -329,7 +329,7 @@ class DataBuilder(object):
                     found.append(col)
         return found
 
-    def merge(self, sources=None, target_name=None, force=False, job_manager=None, *args,**kwargs):
+    def merge(self, sources=None, target_name=None, force=False, ids=None, job_manager=None, *args,**kwargs):
         assert job_manager
         self.t0 = time.time()
         self.check_ready(force)
@@ -356,7 +356,8 @@ class DataBuilder(object):
         try:
             self.register_status("building",transient=True,init=True,
                                  build={"step":"init","sources":sources})
-            job = self.merge_sources(source_names=sources, job_manager=job_manager, *args, **kwargs)
+            job = self.merge_sources(source_names=sources, ids=ids, job_manager=job_manager,
+                                     *args, **kwargs)
             task = asyncio.ensure_future(job)
             task.add_done_callback(self.store_stats)
             return task
@@ -386,10 +387,11 @@ class DataBuilder(object):
             raise BuilderException("Found mapper named '%s' but no mapper associated" % mapper_name)
 
     @asyncio.coroutine
-    def merge_sources(self, source_names, steps=["merge","post"], batch_size=100000, job_manager=None):
+    def merge_sources(self, source_names, steps=["merge","post"], batch_size=100000, ids=None, job_manager=None):
         """
         Merge resources from given source_names or from build config.
         Identify root document sources from the list to first process them.
+        ids can a be list of documents to be merged in particular.
         """
         assert job_manager
         # check what to do
@@ -423,7 +425,8 @@ class DataBuilder(object):
             jobs = []
             for i,src_name in enumerate(src_names):
                 yield from asyncio.sleep(0.0)
-                job = self.merge_source(src_name, batch_size=batch_size, job_manager=job_manager)
+                job = self.merge_source(src_name, batch_size=batch_size, ids=ids,
+                                        job_manager=job_manager)
                 job = asyncio.ensure_future(job)
                 def merged(f,name,stats):
                     try:
@@ -483,7 +486,7 @@ class DataBuilder(object):
         return doc
 
     @asyncio.coroutine
-    def merge_source(self, src_name, batch_size=100000, job_manager=None):
+    def merge_source(self, src_name, batch_size=100000, ids=None, job_manager=None):
         # it's actually not optional
         assert job_manager
         _query = self.generate_document_query(src_name)
@@ -504,8 +507,14 @@ class DataBuilder(object):
         got_error = False
         # grab ids only, so we can get more, let's say 10 times more
         id_batch_size = batch_size * 10
-        self.logger.info("Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d" % (src_name, id_batch_size, batch_size))
-        for big_doc_ids in doc_feeder(self.source_backend[src_name], step=id_batch_size, inbatch=True, fields={'_id':1}):
+        if ids:
+            self.logger.info("Merging '%s' specific list of _ids, create merger job with batch_size=%d" % (src_name, batch_size))
+            id_provider = [ids]
+        else:
+            self.logger.info("Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d" % (src_name, id_batch_size, batch_size))
+            id_provider = id_feeder(self.source_backend[src_name], batch_size=id_batch_size)
+        id_provider = ids and [ids] or id_feeder(self.source_backend[src_name], batch_size=id_batch_size)
+        for big_doc_ids in id_provider:
             for doc_ids in iter_n(big_doc_ids,batch_size):
                 # try to put some async here to give control back
                 # (but everybody knows it's a blocking call: doc_feeder)
@@ -516,13 +525,12 @@ class DataBuilder(object):
                 pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,(cnt/total*100))
                 self.logger.info("Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)" % \
                         (bnum,btotal,src_name,cnt,total,(cnt/total*100.)))
-                ids = [doc["_id"] for doc in doc_ids]
                 job = yield from job_manager.defer_to_process(
                         pinfo,
                         partial(merger_worker,
                             self.source_backend[src_name].name,
                             self.target_backend.target_name,
-                            ids,
+                            doc_ids,
                             self.get_mapper_for_source(src_name,init=False),
                             upsert,
                             bnum))
@@ -574,10 +582,10 @@ def merger_worker(col_name,dest_name,ids,mapper,upsert,batch_num):
         cnt = dest.update(docs, upsert=upsert)
         return cnt
     except Exception as e:
-        logger_name = "%s_%s_batch_%s" % (dest_name,col_name,batch_num)
+        logger_name = "build_%s_%s_batch_%s" % (dest_name,col_name,batch_num)
         logger = get_logger(logger_name, btconfig.LOG_FOLDER)
         logger.exception(e)
-        exc_fn = os.path.join(btconfig.LOG_FOLDER,"logger_name.pick")
+        exc_fn = os.path.join(btconfig.LOG_FOLDER,"%s.pick" % logger_name)
         pickle.dump(e,open(exc_fn,"wb"))
         logger.info("Exception was dumped in pickle file '%s'" % exc_fn)
         raise
@@ -769,19 +777,6 @@ class BuilderManager(BaseManager):
         if os.path.exists(diff_folder):
             if mode == "purge":
                 rmdashfr(diff_folder)
-            elif mode == "resume":
-                # get last file
-                try:
-                    last = sorted([int(os.path.splitext(e[1])[0]) for e in \
-                            map(os.path.split,glob.glob(os.path.join(diff_folder,"*.pyobj")))])[-1]
-                    # first is numbered 1 (it's +1 later)
-                    skip = last * batch_size
-                    cnt = last
-
-
-                except ValueError as e:
-                    raise FileExistsError("Can't find latest file (mode=resume): %s" % e)
-
             else:
                 raise FileExistsError("Found existing files in '%s', use mode='purge' or mode='resume'" % diff_folder)
         if not os.path.exists(diff_folder):
@@ -811,7 +806,7 @@ class BuilderManager(BaseManager):
             self.logger.info("Counting root keys in '%s'"  % new.target_collection)
             stats["root_keys"] = {}
             jobs = []
-            data_new = doc_feeder(new.target_collection, step=batch_size, inbatch=True, fields={"_id":1})
+            data_new = id_feeder(new.target_collection, batch_size=batch_size)
             for _batch in data_new:
                 cnt += 1
                 id_list = [_doc['_id'] for _doc in _batch]
@@ -842,16 +837,7 @@ class BuilderManager(BaseManager):
                      "source" : "%s vs %s" % (new.target_collection.name,old.target_collection.name),
                      "step" : "content: new vs old",
                      "description" : ""}
-            # compute skip for new and old
-            count_new = new.target_collection.count()
-            if count_new > skip:
-                # we haven't reached the 2dn step in the comparison (still in data_new)
-                skip_new = skip
-                skip_old = 0
-            else:
-                skip_new = count_new # just skip everything
-                skip_old = skip - count_new # where we were in data_old
-            data_new = doc_feeder(new.target_collection, step=batch_size, inbatch=True, s=skip_new, fields={"_id":1})
+            data_new = id_feeder(new.target_collection, batch_size=batch_size)
             for _batch in data_new:
                 cnt += 1
                 id_list_new = [_doc['_id'] for _doc in _batch]
@@ -870,7 +856,7 @@ class BuilderManager(BaseManager):
             yield from asyncio.gather(*jobs)
             self.logger.info("Finished calculating diff for the new collection. Total number of docs updated: {}, added: {}".format(stats["update"], stats["add"]))
 
-            data_old = doc_feeder(old.target_collection, step=batch_size, inbatch=True, s=skip_old, fields={"_id":1})
+            data_old = id_feeder(old.target_collection, batch_size=batch_size)
             jobs = []
             pinfo["step"] = "content: old vs new"
             for _batch in data_old:
