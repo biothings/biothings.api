@@ -1,11 +1,12 @@
-from __future__ import print_function
 import time
 import json
 from elasticsearch import Elasticsearch, NotFoundError
 from elasticsearch import helpers
+import logging
+import itertools
 
 from biothings.utils.common import iter_n, timesofar, ask
-#from biothings.dataindex.mapping import get_mapping
+from biothings.utils.mongo import doc_feeder
 
 # setup ES logging
 import logging
@@ -21,7 +22,6 @@ es_tracer.setLevel(logging.WARNING)
 ch = logging.StreamHandler()
 ch.setFormatter(formatter)
 es_tracer.addHandler(ch)
-
 
 def verify_ids(doc_iter, index, doc_type, step=100000, ):
     '''verify how many docs from input interator/list overlapping with existing docs.'''
@@ -62,6 +62,8 @@ def wrapper(func):
     outter_fn.__doc__ = func.__doc__
     return outter_fn
 
+
+class IndexerException(Exception): pass
 
 class ESIndexer():
     def __init__(self, index, doc_type, es_host, step=10000, number_of_shards=10):
@@ -224,24 +226,38 @@ class ESIndexer():
         actions = (_get_bulk(doc) for doc in partial_docs)
         return helpers.bulk(self._es, actions, chunk_size=step, **kwargs)
 
+    def get_mapping(self):
+        """return the current index mapping"""
+        m = self._es.indices.get_mapping(index=self._index, doc_type=self._doc_type)
+        return m
+
     def update_mapping(self, m):
         assert list(m) == [self._doc_type]
-        # assert m[self._doc_type].keys() == ['properties']
         assert 'properties' in m[self._doc_type]
-        print(json.dumps(m, indent=2))
-        if ask("Continue to update above mapping?") == 'Y':
-            print(self._es.indices.put_mapping(index=self._index, doc_type=self._doc_type, body=m))
+        return self._es.indices.put_mapping(index=self._index, doc_type=self._doc_type, body=m)
 
-    #def build_index(self, collection, update_mapping=False, verbose=False, query=None):
+    def get_mapping_meta(self):
+        """return the current _meta field."""
+        m = self.get_mapping()
+        m = m[self._index]['mappings'][self._doc_type]
+        return m.get('_meta', {})
+
+    def update_mapping_meta(self, meta):
+        allowed_keys = set(['_meta', '_timestamp'])
+        if isinstance(meta, dict) and len(set(meta) - allowed_keys) == 0:
+            body = {self._doc_type: meta}
+            return self._es.indices.put_mapping(
+                    doc_type=self._doc_type,
+                    body=body,
+                    index=self._index
+                )
+        else:
+            raise ValueError('Input "meta" should have and only have "_meta" field.')
+
     @wrapper
     def build_index(self, collection, verbose=True, query=None, bulk=True, update=False, allow_upsert=True):
         index_name = self._index
-
-        #self.verify_mapping(update_mapping=update_mapping)
-
         # update some settings for bulk indexing
-        if verbose:
-            print("Update index settings...", end="")
         body = {
             "index": {
                 "refresh_interval": "-1",              # disable refresh temporarily
@@ -251,11 +267,7 @@ class ESIndexer():
             }
         }
         res = self._es.indices.put_settings(body, index_name)
-        if verbose:
-            print(res)
-
         try:
-            print('Building index "{}"...'.format(index_name))
             cnt = self._build_index_sequential(collection, verbose, query=query, bulk=bulk, update=update, allow_upsert=True)
         finally:
             # restore some settings after bulk indexing is done.
@@ -268,38 +280,19 @@ class ESIndexer():
 
             try:
                 res = self._es.indices.flush()
-                if verbose:
-                    print("Flushing...", res)
                 res = self._es.indices.refresh()
-                if verbose:
-                    print("Refreshing...", res)
             except:
                 pass
 
             time.sleep(1)
-            print("Validating...", end='')
             src_cnt = collection.count(query)
             es_cnt = self.count()
-            if src_cnt == es_cnt:
-                print("OK [total count={}]".format(src_cnt))
-            else:
-                print("\nWarning: total count of gene documents does not match [{}, should be {}]".format(es_cnt, src_cnt))
-
-        if cnt:
-            print('Done! - {} docs indexed.'.format(cnt))
-
-            # No longer do optimization after indexing
-            # since it does not run async since ES v1.5
-            # run optimize manually if needed.
-
-            # if verbose:
-            #     print("Optimizing...", end="")
-            # res = self.optimize()
-            # if verbose:
-            #     print(res)
+            if src_cnt != es_cnt:
+                raise IndexerException("Total count of documents does not match [{}, should be {}]".format(es_cnt, src_cnt))
+            
+            return es_cnt
 
     def _build_index_sequential(self, collection, verbose=False, query=None, bulk=True, update=False, allow_upsert=True):
-        from biothings.utils.mongo import doc_feeder
 
         def rate_control(cnt, t):
             delay = 0
@@ -308,9 +301,7 @@ class ESIndexer():
             elif t > 60:
                 delay = 10
             if delay:
-                print("\tPausing for {}s...".format(delay), end='')
                 time.sleep(delay)
-                print("done.")
 
         src_docs = doc_feeder(collection, step=self.step, s=self.s, batch_callback=rate_control, query=query)
         if bulk:
@@ -322,15 +313,14 @@ class ESIndexer():
                 # input doc will overwrite existing one
                 res = self.index_bulk(src_docs)
             if len(res[1]) > 0:
-                print("Error: {} docs failed indexing.".format(len(res[1])))
+                raise IndexerException("Error: {} docs failed indexing.".format(len(res[1])))
             return res[0]
+
         else:
             cnt = 0
             for doc in src_docs:
                 self.index(doc)
                 cnt += 1
-                if verbose:
-                    print(cnt, ':', doc['_id'])
             return cnt
 
     @wrapper
@@ -396,12 +386,8 @@ class ESIndexer():
         if _li:
             if not dryrun:
                 self._es.bulk(body=_li)
-
-        print("Total {} documents found:".format(cnt))
-        print("\t{} documents are updated.".format(cnt - cnt_orphan_doc))
-        print("\t{} documents are deleted.".format(cnt_orphan_doc))
-        if dryrun:
-            print("This is a dryrun, so no actual document operations.")
+        
+        return {"total": cnt, "updated": cnt - cnt_orphan_doc, "deleted": cnt_orphan_doc} 
 
     @wrapper
     def doc_feeder_using_helper(self, step=None, verbose=True, query=None, scroll='10m', **kwargs):
@@ -464,8 +450,8 @@ class ESIndexer():
     def get_id_list(self, step=None, verbose=True):
         step = step or self.step
         cur = self.doc_feeder(step=step, _source=False, verbose=verbose)
-        id_li = [doc['_id'] for doc in cur]
-        return id_li
+        for doc in cur:
+            yield doc['_id']
 
     @wrapper
     def get_docs(self, ids, step=None, only_source=True, **mget_args):
@@ -487,34 +473,15 @@ class ESIndexer():
 
     def find_biggest_doc(self, fields_li, min=5, return_doc=False):
         """return the doc with the max number of fields from fields_li."""
-        import itertools
         for n in range(len(fields_li), min - 1, -1):
-            print('>>>>', n)
             for field_set in itertools.combinations(fields_li, n):
                 q = ' AND '.join(["_exists_:" + field for field in field_set])
                 q = {'query': {"query_string": {"query": q}}}
                 cnt = self.count(q)
                 if cnt > 0:
-                    print("\nFound {} docs with {} fields".format(cnt, len(field_set)))
                     if return_doc:
                         res = self._es.search(index=self._index, doc_type=self._doc_type, body=q, size=cnt)
                         return res
                     else:
                         return (cnt, q)
-                else:
-                    print('.', end='')
-            print()
 
-
-
-#def get_metadata(index):
-#    m = get_mapping()
-#    data_src = m['variant']['properties'].keys()
-#    stats = {}
-#    t = ESIndexer()
-#    t._index = index
-#    m['total'] = t.count()
-#
-#    for _src in data_src:
-#        stats[_src] = t.count_src(_src)[_src]
-#    return stats
