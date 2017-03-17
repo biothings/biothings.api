@@ -211,8 +211,8 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging):
     if use_cache:
         logger.debug("Found valid cache file for '%s': %s" % (col.name,cache_file))
         with open(cache_file) as cache_in:
-            for ids in iter_n(cache_in.readlines(),batch_size):
-                yield [_id.strip() for _id in ids]
+            for ids in iter_n(cache_in,batch_size):
+                yield [_id.strip() for _id in ids if _id.strip()]
     else:
         logger.debug("No cache file found (or invalid) for '%s', use doc_feeder" % col.name)
         cache_out = None
@@ -227,7 +227,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging):
         for doc_ids in doc_feeder(col, step=batch_size, inbatch=True, fields={"_id":1}):
             doc_ids = [_doc["_id"] for _doc in doc_ids]
             if build_cache:
-                cache_out.write("\n".join(doc_ids))
+                cache_out.write("\n".join(doc_ids) + "\n")
             yield doc_ids
         if build_cache:
             cache_out.close()
