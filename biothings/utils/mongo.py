@@ -185,13 +185,18 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging):
             # convention or at least the fact we don't use the same name for 2 different
             # build config
             info = src_db["src_build"].find_one({"build.target_name" : col.name},{"build.started_at":1})
-            assert info, "Can't find information for target_name '%s'" % col.name
-            assert len(info["build"]) > 0, "Missing build information for target_name '%s'" % col.name
-            ts = info["build"][-1]["started_at"].timestamp()# - 1000000000 # not in ms
+            if not info:
+                logger.warning("Can't find information for target collection '%s'" % col.name)
+            elif not len(info["build"]) > 0:
+                logger.warning("Missing build information for targer collection '%s'" % col.name)
+            else:
+                ts = info["build"][-1]["started_at"].timestamp()
         elif col.database.name == config.DATA_SRC_DATABASE:
             info = src_db["src_dump"].find_one({"$where":"function() {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}" % col.name})
-            assert info, "Can't find information for target_name '%s'" % col.name
-            ts = info["upload"]["jobs"][col.name]["started_at"].timestamp()
+            if not info:
+                logger.warning("Can't find information for source collection '%s'" % col.name)
+            else:
+                ts = info["upload"]["jobs"][col.name]["started_at"].timestamp()
         else:
             raise NotImplementedError("Can't find metadata for collection '%s' (not a target, not a source collection)" % db)
     except KeyError:
@@ -204,7 +209,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging):
         cache_file = os.path.join(config.CACHE_FOLDER,col.name)
         try:
             mt = os.path.getmtime(cache_file)
-            if mt >= ts:
+            if ts and mt >= ts:
                 use_cache = True
         except FileNotFoundError:
             pass

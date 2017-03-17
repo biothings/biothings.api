@@ -763,8 +763,7 @@ class BuilderManager(BaseManager):
         steps: 'count' will count the root keys for every documents in new collection 
                (to check number of docs from datasources).
                'content' will perform diff on actual content.
-        mode: 'purge' will remove any existing files for this comparison. 'resume' will find
-              the latest comparison result and move from this point (not tested extensively though...)
+        mode: 'purge' will remove any existing files for this comparison.
         """
         new = create_backend(new_db_col_names)
         old = create_backend(old_db_col_names)
@@ -778,12 +777,14 @@ class BuilderManager(BaseManager):
             if mode == "purge":
                 rmdashfr(diff_folder)
             else:
-                raise FileExistsError("Found existing files in '%s', use mode='purge' or mode='resume'" % diff_folder)
+                raise FileExistsError("Found existing files in '%s', use mode='purge'" % diff_folder)
         if not os.path.exists(diff_folder):
             os.makedirs(diff_folder)
 
 
         # create metadata file storing info about how we created the diff
+        # and some summary data
+        stats = {"update":0, "add":0, "delete":0}
         metadata = {
                 "old": old_db_col_names,
                 "new": new_db_col_names,
@@ -791,10 +792,10 @@ class BuilderManager(BaseManager):
                 "steps": steps,
                 "mode": mode,
                 "exclude": exclude,
-                "generated_on": datetime.now()}
+                "generated_on": datetime.now(),
+                "stats": stats} # ref to stats
+        # dump it here for minimum information, in case we don't go further
         pickle.dump(metadata,open(os.path.join(diff_folder,"metadata.pick"),"wb"))
-
-        stats = {"update":0, "add":0, "delete":0}
 
         if "count" in steps:
             cnt = 0
@@ -807,9 +808,8 @@ class BuilderManager(BaseManager):
             stats["root_keys"] = {}
             jobs = []
             data_new = id_feeder(new.target_collection, batch_size=batch_size)
-            for _batch in data_new:
+            for id_list in data_new:
                 cnt += 1
-                id_list = [_doc['_id'] for _doc in _batch]
                 pinfo["description"] = "batch #%s" % cnt
                 self.logger.info("Creating diff worker for batch #%s" % cnt)
                 job = yield from self.job_manager.defer_to_process(pinfo,
@@ -838,9 +838,8 @@ class BuilderManager(BaseManager):
                      "step" : "content: new vs old",
                      "description" : ""}
             data_new = id_feeder(new.target_collection, batch_size=batch_size)
-            for _batch in data_new:
+            for id_list_new in data_new:
                 cnt += 1
-                id_list_new = [_doc['_id'] for _doc in _batch]
                 pinfo["description"] = "batch #%s" % cnt
                 def diffed(f):
                     res = f.result()
@@ -859,9 +858,8 @@ class BuilderManager(BaseManager):
             data_old = id_feeder(old.target_collection, batch_size=batch_size)
             jobs = []
             pinfo["step"] = "content: old vs new"
-            for _batch in data_old:
+            for id_list_old in data_old:
                 cnt += 1
-                id_list_old = [_doc['_id'] for _doc in _batch]
                 pinfo["description"] = "batch #%s" % cnt
                 def diffed(f):
                     res = f.result()
@@ -875,7 +873,9 @@ class BuilderManager(BaseManager):
             yield from asyncio.gather(*jobs)
             self.logger.info("Finished calculating diff for the old collection. Total number of docs deleted: {}".format(stats["delete"]))
             self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {})".format(stats["update"], stats["add"], stats["delete"]))
-
+        
+        # pickle again with potentially more information (stats)
+        pickle.dump(metadata,open(os.path.join(diff_folder,"metadata.pick"),"wb"))
         return stats
 
     def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["count","content"], mode=None, exclude=[]):
