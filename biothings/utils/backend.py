@@ -99,17 +99,22 @@ class DocMongoBackend(DocBackendBase):
             the update will be ignored except if upsert is True
         '''
         bulk = self.target_collection.initialize_ordered_bulk_op()
+        at_least_one = False
         for doc in docs:
+            at_least_one = True
             op = bulk.find({'_id':doc["_id"]})
             if upsert:
                 op = op.upsert()
             op.update({"$set":doc})
-        res = bulk.execute()
-        # if doc is the same, it'll be matched but not modified.
-        # but for us, it's been processed. if upserted, then it can't be matched
-        # before (so matched cound doesn't include upserted). finally, it's only update
-        # ops, so don't count nInserted and nRemoved
-        return res["nMatched"] + res["nUpserted"]
+        if at_least_one:
+            res = bulk.execute()
+            # if doc is the same, it'll be matched but not modified.
+            # but for us, it's been processed. if upserted, then it can't be matched
+            # before (so matched cound doesn't include upserted). finally, it's only update
+            # ops, so don't count nInserted and nRemoved
+            return res["nMatched"] + res["nUpserted"]
+        else:
+            return 0
 
     def update_diff(self, diff, extra={}):
         '''update a doc based on the diff returned from diff.diff_doc
