@@ -11,7 +11,7 @@ from biothings.utils.manager import BaseManager
 from biothings.utils.es import ESIndexer
 from biothings import config as btconfig
 from biothings.utils.mongo import doc_feeder, id_feeder
-from config import LOG_FOLDER, logger as logging, ES_NUMBER_OF_SHARDS
+from config import LOG_FOLDER, logger as logging
 
 
 class IndexerException(Exception):
@@ -53,7 +53,6 @@ class IndexerManager(BaseManager):
         def create(conf):
             idxer = self.pindexer(build_name=conf["_id"])
             return idxer
-
         self.register[conf["_id"]] = partial(create,conf)
 
     def index(self, build_name, target_name=None, index_name=None, ids=None, **kwargs):
@@ -71,7 +70,8 @@ class IndexerManager(BaseManager):
                 raise
         try:
             idx = self[build_name]
-            job = idx.index(build_name, target_name, index_name, ids=ids, job_manager=self.job_manager, **kwargs)
+            idx.target_name = target_name
+            job = idx.index(target_name, index_name, ids=ids, job_manager=self.job_manager, **kwargs)
             job = asyncio.ensure_future(job)
             job.add_done_callback(indexed)
             return job
@@ -80,13 +80,15 @@ class IndexerManager(BaseManager):
 
 class Indexer(object):
 
-    def __init__(self, build_name, host):
-        self.host = host
+    def __init__(self, build_name, es_host, target_name=None):
+        self.host = es_host
         self.log_folder = LOG_FOLDER
         self.timestamp = datetime.now()
         self.build_name = build_name
         self.target_name = None
         self.index_name = None
+        self.doc_type = None
+        self.num_shards = None
         self.load_build_config(build_name)
 
     def get_pinfo(self):
@@ -100,9 +102,9 @@ class Indexer(object):
                 "description" : ""}
 
     @asyncio.coroutine
-    def index(self, build_name, target_name, index_name, job_manager, batch_size=10000, ids=None, mode=None):
+    def index(self, target_name, index_name, job_manager, batch_size=10000, ids=None, mode=None):
         """
-        Using build configuration "build_name", build an index named "index_name" with data from collection
+        Build an index named "index_name" with data from collection
         "target_collection". "ids" can be passed to selectively index documents. "mode" can have the following
         values:
         - 'purge': will delete index if it exists
@@ -116,14 +118,16 @@ class Indexer(object):
         _db = mongo.get_target_db()
         target_collection = _db[target_name]
         _mapping = self.get_mapping()
+        _extra = self.get_index_creation_settings()
         _meta = {}
-        # TODO: number of shards is index-dependent, not app-dependent
-        es_idxer = ESIndexer(doc_type="variant",
+        # partially instantiated indexer instance for process workers
+        partial_idxer = partial(ESIndexer,doc_type=self.doc_type,
                              index=index_name,
                              es_host=self.host,
                              step=batch_size,
-                             number_of_shards=ES_NUMBER_OF_SHARDS)
-        es_idxer.check()
+                             number_of_shards=self.num_shards)
+        # instantiate one here for index creation
+        es_idxer = partial_idxer()
         if es_idxer.exists_index():
             if mode == "purge":
                 es_idxer.delete_index()
@@ -131,14 +135,8 @@ class Indexer(object):
                 raise IndexerException("Index already '%s' exists, (use mode='purge' to auto-delete it or mode='add' to add more documents)" % index_name)
 
         if mode != "add":
-            es_idxer.create_index({"variant":_mapping})
+            es_idxer.create_index({self.doc_type:_mapping},_extra)
 
-        # partially instantiated indexer instance for process workers
-        partial_idxer = partial(ESIndexer,doc_type="variant",
-                             index=index_name,
-                             es_host=self.host,
-                             step=batch_size,
-                             number_of_shards=ES_NUMBER_OF_SHARDS)
         got_error = False
         jobs = []
         total = target_collection.count()
@@ -153,6 +151,7 @@ class Indexer(object):
             id_provider = id_feeder(target_collection, batch_size=batch_size)
         for ids in id_provider:
             yield from asyncio.sleep(0.0)
+            cnt += len(ids)
             pinfo = self.get_pinfo()
             pinfo["step"] = self.target_name
             pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,(cnt/total*100))
@@ -218,6 +217,14 @@ class Indexer(object):
         if not nh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(nh)
         return self.logger
+
+    def get_index_creation_settings(self):
+        """
+        Override to return a dict containing some extra settings
+        for index creation. Dict will be merged with mandatory settings, 
+        see biothings.utils.es.ESIndexer.create_index for more.
+        """
+        return {}
 
     def get_mapping(self, enable_timestamp=True):
         '''collect mapping data from data sources.
@@ -295,6 +302,11 @@ class Indexer(object):
         _cfg = src_build.find_one({'_id': build})
         if _cfg:
             self.build_config = _cfg
+            if not "doc_type" in _cfg:
+                raise ValueError("Missing 'doc_type' in build config")
+            self.doc_type = _cfg["doc_type"]
+            self.num_shards = _cfg.get("num_shards") # optional
+            self.num_shards = self.num_shards and int(self.num_shards) or self.num_shards
         else:
             raise ValueError('Cannot find build config named "%s"' % build)
         return _cfg

@@ -75,12 +75,6 @@ class ESIndexer():
         self.s = None   # optionally, can specify number of records to skip,
                         # useful to continue indexing after an error.
 
-    def check(self):
-        '''print out ES server info for verification.'''
-        print("Servers:", self._es.transport.hosts)
-        print("Default indices:", self._index)
-        print("Default doc_type:", self._doc_type)
-
     @wrapper
     def get_biothing(self, bid, **kwargs):
         return self._es.get(index=self._index, id=bid, doc_type=self._doc_type, **kwargs)
@@ -132,7 +126,7 @@ class ESIndexer():
         return cnt_d
 
     @wrapper
-    def create_index(self, mapping=None):
+    def create_index(self, mapping=None, extra_settings={}):
         if not self._es.indices.exists(self._index):
             body = {
                 'settings': {
@@ -142,6 +136,8 @@ class ESIndexer():
                                                 #   to make additional replicas.
                 }
             }
+            body["settings"].update(extra_settings)
+            print(body)
             if mapping:
                 mapping = {"mappings": mapping}
                 body.update(mapping)
@@ -240,7 +236,7 @@ class ESIndexer():
         """return the current _meta field."""
         m = self.get_mapping()
         m = m[self._index]['mappings'][self._doc_type]
-        return m.get('_meta', {})
+        return {"_meta": m["_meta"]}
 
     def update_mapping_meta(self, meta):
         allowed_keys = set(['_meta', '_timestamp'])
@@ -327,12 +323,10 @@ class ESIndexer():
     def optimize(self, max_num_segments=1):
         '''optimize the default index.'''
         params = {
-            # since 1.5 this no longer work
-            # optimization does not run async anymore
-            # "wait_for_merge": False,
-            "max_num_segments": max_num_segments
+            "wait_for_merge": False,
+            "max_num_segments": max_num_segments,
         }
-        return self._es.indices.optimize(index=self._index, params=params)
+        return self._es.indices.forcemerge(index=self._index, params=params)
 
     def clean_field(self, field, dryrun=True, step=5000):
         '''remove a top-level field from ES index, if the field is the only field of the doc,
@@ -484,4 +478,8 @@ class ESIndexer():
                         return res
                     else:
                         return (cnt, q)
+
+    def snapshot(self,repo,snapshot,**params):
+        body = {"indices": self._index}
+        return self._es.snapshot.create(repo,snapshot,body=body,params=params)
 
