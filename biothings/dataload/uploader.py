@@ -315,7 +315,7 @@ class BaseSourceUploader(object):
             upload_info['pid'] = os.getpid()
             upload_info['logfile'] = self.logfile
             upload_info['started_at'] = datetime.datetime.now()
-            self.src_dump.update({"_id":self.main_source},{"$set" : {job_key : upload_info}})
+            self.src_dump.update_one({"_id":self.main_source},{"$set" : {job_key : upload_info}})
         else:
             # only register time when it's a final state
             # also, keep previous uploading information
@@ -327,11 +327,11 @@ class BaseSourceUploader(object):
             upd["%s.time" % job_key] = timesofar(self.t0)
             upd["%s.time_in_s" % job_key] = t1
             upd["%s.step" % job_key] = self.name # collection name
-            self.src_dump.update({"_id" : self.main_source},{"$set" : upd})
+            self.src_dump.update_one({"_id" : self.main_source},{"$set" : upd})
 
     @asyncio.coroutine
     def load(self, steps=["data","post","master","clean"], force=False,
-             batch_size=10000, job_manager=None):
+             batch_size=10000, job_manager=None, **kwargs):
         """
         Main resource load process, reads data from doc_c using chunk sized as batch_size.
         steps defines the different processes used to laod the resource:
@@ -344,7 +344,7 @@ class BaseSourceUploader(object):
         self.check_ready(force)
         # check what to do
         if type(steps) == str:
-            steps = [steps]
+            steps = steps.split(",")
         update_data = "data" in steps
         update_master = "master" in steps
         post_update_data = "post" in steps
@@ -357,8 +357,7 @@ class BaseSourceUploader(object):
             if update_data:
                 # unsync to make it pickable
                 state = self.unprepare()
-                yield from self.update_data(batch_size, job_manager)
-                # then restore state
+                yield from self.update_data(batch_size, job_manager, **kwargs)
                 self.prepare(state)
             if update_master:
                 self.update_master()
@@ -383,7 +382,7 @@ class BaseSourceUploader(object):
             self.logger.info("success",extra={"notify":True})
         except Exception as e:
             self.register_status("failed",err=str(e))
-            self.logger.error("failed: %s" % e,extra={"notify":True})
+            self.logger.exception("failed: %s" % e,extra={"notify":True})
             raise
 
 
@@ -464,9 +463,11 @@ class DummySourceUploader(BaseSourceUploader):
 
     def prepare_src_dump(self):
         src_dump = get_src_dump()
-        # just populate/initiate an src_dump record (b/c no dump before)
-        src_dump.save({"_id":self.main_source})
+        # just populate/initiate an src_dump record (b/c no dump before) if needed
         self.src_doc = src_dump.find_one({'_id': self.main_source})
+        if not self.src_doc:
+            src_dump.save({"_id":self.main_source})
+            self.src_doc = src_dump.find_one({'_id': self.main_source})
         return src_dump
 
     def check_ready(self,force=False):
@@ -474,8 +475,12 @@ class DummySourceUploader(BaseSourceUploader):
         pass
 
     @asyncio.coroutine
-    def update_data(self, batch_size, job_manager=None):
+    def update_data(self, batch_size, job_manager=None, release=None):
+        assert release, "Dummy uploader requires 'release' argument to be specified"
         self.logger.info("Dummy uploader, nothing to upload")
+        # by-pass register_status and store release here (it's usually done by dumpers but 
+        # dummy uploaders have no dumper associated b/c it's collection-only resource)
+        self.src_dump.update_one({'_id': self.main_source}, {"$set" : {"release": release}})
         # sanity check, dummy uploader, yes, but make sure data is there
         assert self.collection.count() > 0, "No data found in collection '%s' !!!" % self.collection_name
 
@@ -600,14 +605,14 @@ class UploaderManager(BaseSourceManager):
         if status == "uploading":
             upload_info["jobs"] = {}
             # unflag "need upload"
-            src_dump.update({"_id" : src_name},{"$unset" : {"pending_to_upload":None}})
-            src_dump.update({"_id" : src_name},{"$set" : {"upload" : upload_info}})
+            src_dump.update_one({"_id" : src_name},{"$unset" : {"pending_to_upload":None}})
+            src_dump.update_one({"_id" : src_name},{"$set" : {"upload" : upload_info}})
         else:
             # we want to keep information
             upd = {}
             for k,v in upload_info.items():
                 upd["upload.%s" % k] = v
-            src_dump.update({"_id" : src_name},{"$set" : upd})
+            src_dump.update_one({"_id" : src_name},{"$set" : upd})
 
 
     def upload_all(self,raise_on_error=False,**kwargs):
@@ -641,18 +646,21 @@ class UploaderManager(BaseSourceManager):
             tasks = asyncio.gather(*jobs)
             def done(f):
                 try:
+                    # just consume the result to raise exception
+                    # if there were an error... (what an api...)
+                    f.result()
                     self.register_status(src,"success")
                     logging.info("success",extra={"notify":True})
                 except Exception as e:
                     self.register_status(src,"failed",err=repr(e))
-                    self.logger.error("failed: %s" % e,extra={"notify":True})
+                    logging.exception("failed: %s" % e,extra={"notify":True})
             tasks.add_done_callback(done)
             return jobs
         except Exception as e:
             import traceback
             logging.error("Error while uploading '%s': %s\n%s" % (src,e,traceback.format_exc()))
             self.register_status(src,"failed",err=repr(e))
-            self.logger.error("failed: %s" % e,extra={"notify":True})
+            self.logger.exception("failed: %s" % e,extra={"notify":True})
             raise
 
     @asyncio.coroutine
