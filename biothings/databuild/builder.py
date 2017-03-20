@@ -291,7 +291,7 @@ class DataBuilder(object):
         try:
             self.target_backend.post_merge()
             _src_versions = self.source_backend.get_src_versions()
-            self.register_status('success',build={"stats" : self.stats, "src_versions" : _src_versions})
+            self.register_status('success',build={"stats" : self.stats, "src_version" : _src_versions})
             self.logger.info("success\nstats: %s\nversions: %s" % (self.stats,_src_versions),extra={"notify":True})
         except Exception as e:
             self.register_status("failed",build={"err": repr(e)})

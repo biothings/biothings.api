@@ -1,3 +1,4 @@
+
 import sys, re, os, time, math
 from datetime import datetime
 import pickle
@@ -61,9 +62,11 @@ class IndexerManager(BaseManager):
         passed (one single or a list). target_name is the target collection name used
         to store to merge data. If none, each call will generate a unique target_name.
         """
+        t0 = time.time()
         def indexed(f):
+            t1 = timesofar(t0)
             try:
-                pass
+                self.logger.info("Done indexing target '%s' to index '%s' (%s)" % (target_name,index_name,t1))
             except Exception as e:
                 import traceback
                 self.logger.error("Error while running merge job, %s:\n%s" % (e,traceback.format_exc()))
@@ -185,6 +188,7 @@ class Indexer(object):
             # compute overall inserted/updated records
             # returned values looks like [(num,[]),(num,[]),...]
             cnt = sum([val[0] for val in f.result()])
+            self.logger.info("Index '%s' successfully created" % index_name)
         tasks.add_done_callback(done)
         yield from tasks
         if got_error:
@@ -252,7 +256,7 @@ class Indexer(object):
         versions = self.get_src_versions()
         timestamp = self.get_timestamp()
         return {"stats": stats,
-                "src_versions": versions,
+                "src_version": versions,
                 "timestamp": timestamp}
 
     def get_builds(self,target_name=None):
@@ -266,16 +270,16 @@ class Indexer(object):
     def get_src_versions(self):
         # target (merged collection) could have been created in multiple steps
         builds = self.get_builds()
-        src_versions = {}
+        src_version = {}
         # builds are sorted chronologically by default
         for build in builds:
-            if not "src_versions" in build:
+            if not "src_version" in build:
                 continue
-            for src in build["src_versions"]:
-                src_versions[src] = build["src_versions"][src]
-        if not src_versions:
+            for src in build["src_version"]:
+                src_version[src] = build["src_version"][src]
+        if not src_version:
             raise IndexerException("Build has no source versions, can't index")
-        return src_versions
+        return src_version
 
     def get_stats(self):
         builds = self.get_builds()
