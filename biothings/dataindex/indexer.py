@@ -7,6 +7,7 @@ import asyncio
 from functools import partial
 
 import biothings.utils.mongo as mongo
+from biothings.utils.common import timesofar
 from biothings.utils.loggers import HipchatHandler, get_logger
 from biothings.utils.manager import BaseManager
 from biothings.utils.es import ESIndexer
