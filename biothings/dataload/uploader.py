@@ -385,7 +385,6 @@ class BaseSourceUploader(object):
             self.logger.exception("failed: %s" % e,extra={"notify":True})
             raise
 
-
     def prepare_src_dump(self):
         """Sync with src_dump collection, collection information (src_doc)
         Return src_dump collection"""
@@ -496,25 +495,37 @@ class ParallelizedSourceUploader(BaseSourceUploader):
     def update_data(self, batch_size, job_manager=None):
         jobs = []
         job_params = self.jobs()
-        state = self.unprepare()
         got_error = False
+        # make sure we don't use any of self reference in the following loop
+        fullname = copy.deepcopy(self.fullname)
+        storage_class = copy.deepcopy(self.__class__.storage_class)
+        load_data = copy.deepcopy(self.load_data)
+        temp_collection_name = copy.deepcopy(self.temp_collection_name)
+        state = self.unprepare()
+        # important: within this loop, "self" should never be used to make sure we don't 
+        # instantiate unpicklable attributes (via via autoset attributes, see prepare())
+        # because there could a race condition where an error would cause self to log a statement
+        # (logger is unpicklable) while at the same another job from the loop would be
+        # subtmitted to job_manager causing a error due to that logger attribute)
+        # in other words: once unprepared, self should never be changed until all 
+        # jobs are submitted
         for bnum,args in enumerate(job_params):
             pinfo = self.get_pinfo()
             pinfo["step"] = "update_data"
-            pinfo["description"] = str(args)
+            pinfo["description"] = "%s" % str(args)
             job = yield from job_manager.defer_to_process(
                     pinfo,
                     partial(
                         # pickable worker
                         upload_worker,
                         # worker name
-                        self.fullname,
+                        fullname,
                         # storage class
-                        self.__class__.storage_class,
+                        storage_class,
                         # loading func
-                        self.load_data,
+                        load_data,
                         # dest collection name
-                        self.temp_collection_name,
+                        temp_collection_name,
                         # batch size
                         batch_size,
                         # batch num
@@ -525,7 +536,13 @@ class ParallelizedSourceUploader(BaseSourceUploader):
                     )
             jobs.append(job)
 
+            # raise error as soon as we know
+            if got_error:
+                raise got_error
+
             def batch_uploaded(f,name,batch_num):
+                # important: don't even use "self" ref here to make sure jobs can be submitted
+                # (see comment above, before loop)
                 nonlocal got_error
                 try:
                     if type(f.result()) != int:
@@ -533,10 +550,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
                 except Exception as e:
                     got_error = e
 
-            job.add_done_callback(partial(batch_uploaded,name=self.fullname,batch_num=bnum))
-            # raise error as soon as we know
-            if got_error:
-                raise got_error
+            job.add_done_callback(partial(batch_uploaded,name=fullname,batch_num=bnum))
         if jobs:
             yield from asyncio.gather(*jobs)
             if got_error:
@@ -652,15 +666,13 @@ class UploaderManager(BaseSourceManager):
                     self.register_status(src,"success")
                     logging.info("success",extra={"notify":True})
                 except Exception as e:
-                    self.register_status(src,"failed",err=repr(e))
+                    self.register_status(src,"failed",err=str(e))
                     logging.exception("failed: %s" % e,extra={"notify":True})
             tasks.add_done_callback(done)
             return jobs
         except Exception as e:
-            import traceback
-            logging.error("Error while uploading '%s': %s\n%s" % (src,e,traceback.format_exc()))
-            self.register_status(src,"failed",err=repr(e))
-            self.logger.exception("failed: %s" % e,extra={"notify":True})
+            self.register_status(src,"failed",err=str(e))
+            self.logger.exception("Error while uploading '%s': %s" % (src,e,extra={"notify":True}))
             raise
 
     @asyncio.coroutine
