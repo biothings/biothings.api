@@ -672,7 +672,7 @@ class UploaderManager(BaseSourceManager):
             return jobs
         except Exception as e:
             self.register_status(src,"failed",err=str(e))
-            self.logger.exception("Error while uploading '%s': %s" % (src,e,extra={"notify":True}))
+            self.logger.exception("Error while uploading '%s': %s" % (src,e),extra={"notify":True})
             raise
 
     @asyncio.coroutine
