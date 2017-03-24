@@ -207,10 +207,16 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging):
     cache_file = None
     if config.CACHE_FOLDER:
         cache_file = os.path.join(config.CACHE_FOLDER,col.name)
+        # check size, delete if invalid
+        if os.path.getsize(cache_file) == 0:
+            logger.warning("Cache file exists but is empty, delete it")
+            os.remove(cache_file)
         try:
             mt = os.path.getmtime(cache_file)
             if ts and mt >= ts:
                 use_cache = True
+            else:
+                logger.info("Cache is too old, discard it")
         except FileNotFoundError:
             pass
     if use_cache:
