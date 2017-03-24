@@ -105,6 +105,30 @@ def get_target_master(conn=None):
     conn = conn or get_target_conn()
     return conn[config.DATA_TARGET_DATABASE][config.DATA_TARGET_MASTER_COLLECTION]
 
+@requires_config
+def get_source_fullname(col_name):
+    """
+    Assuming col_name is a collection created from an upload process,
+    find the main source & sub_source associated.
+    """
+    src_dump = get_src_dump()
+    info = src_dump.find_one({"$where":"function() {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}" % col_name})
+    if info:
+        name = info["_id"]
+        if name != col_name:
+            # col_name was a sub-source name
+            return "%s.%s" % (name,col_name)
+        else:
+            return name
+
+def get_source_fullnames(col_names):
+    main_sources = set()
+    for col_name in col_names:
+        main_source = get_source_fullname(col_name)
+        if main_source:
+            main_sources.add(main_source)
+    return list(main_sources)
+
 def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None, batch_callback=None,
                fields=None, logger=logging):
     '''A iterator for returning docs in a collection, with batch query.
