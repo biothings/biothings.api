@@ -207,7 +207,7 @@ class Indexer(object):
         import logging as logging_mod
         if not os.path.exists(self.log_folder):
             os.makedirs(self.log_folder)
-        self.logfile = os.path.join(self.log_folder, '%s_%s_index.log' % (self.index_name,time.strftime("%Y%m%d",self.timestamp.timetuple())))
+        self.logfile = os.path.join(self.log_folder, 'index_%s_%s.log' % (self.index_name,time.strftime("%Y%m%d",self.timestamp.timetuple())))
         fh = logging_mod.FileHandler(self.logfile)
         fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S")
         fh.setFormatter(fmt)

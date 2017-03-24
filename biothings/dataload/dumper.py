@@ -7,7 +7,7 @@ from functools import partial
 from biothings.utils.mongo import get_src_dump
 from biothings.utils.common import timesofar
 from biothings.utils.loggers import HipchatHandler
-from config import logger as logging, HIPCHAT_CONFIG
+from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER
 
 from biothings.utils.manager import BaseSourceManager
 
@@ -31,11 +31,12 @@ class BaseDumper(object):
 
     SCHEDULE = None # crontab format schedule, if None, won't be scheduled
 
-    def __init__(self, src_name=None, src_root_folder=None, no_confirm=True, archive=True):
+    def __init__(self, src_name=None, src_root_folder=None, log_folder=None, no_confirm=True, archive=True):
         # unpickable attrs, grouped
         self.init_state()
         self.src_name = src_name or self.SRC_NAME
         self.src_root_folder = src_root_folder or self.SRC_ROOT_FOLDER
+        self.log_folder = log_folder or LOG_FOLDER
         self.no_confirm = no_confirm
         self.archive = archive or self.ARCHIVE
         self.to_dump = []
@@ -139,7 +140,7 @@ class BaseDumper(object):
         import logging as logging_mod
         if not os.path.exists(self.src_root_folder):
             os.makedirs(self.src_root_folder)
-        self.logfile = os.path.join(self.src_root_folder, '%s_%s_dump.log' % (self.src_name,self.timestamp))
+        self.logfile = os.path.join(self.log_folder, 'dump_%s_%s.log' % (self.src_name,self.timestamp))
         fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S")
         fh = logging_mod.FileHandler(self.logfile)
         fh.setFormatter(fmt)
@@ -147,7 +148,7 @@ class BaseDumper(object):
         nh = HipchatHandler(HIPCHAT_CONFIG)
         nh.setFormatter(fmt)
         nh.name = "hipchat"
-        self.logger = logging_mod.getLogger("%s_dump" % self.src_name)   
+        self.logger = logging_mod.getLogger("%s_dump" % self.src_name)
         self.logger.setLevel(logging_mod.DEBUG)
         if not fh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(fh)

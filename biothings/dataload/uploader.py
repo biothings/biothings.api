@@ -83,7 +83,7 @@ class BaseSourceUploader(object):
 
     keep_archive = 10 # number of archived collection to keep. Oldest get dropped first.
 
-    def __init__(self, db_conn_info, data_root, collection_name=None, *args, **kwargs):
+    def __init__(self, db_conn_info, data_root, collection_name=None, log_folder=None, *args, **kwargs):
         """db_conn_info is a database connection info tuple (host,port) to fetch/store 
         information about the datasource's state data_root is the root folder containing
         all resources. It will generate its own data folder from this point"""
@@ -98,6 +98,7 @@ class BaseSourceUploader(object):
         # how to restore it
         self.main_source = self.__class__.main_source or self.__class__.name
         self.src_root_folder=os.path.join(data_root, self.main_source)
+        self.log_folder = log_folder or config.LOG_FOLDER
         self.logfile = None
         self.temp_collection_name = None
         self.collection_name = collection_name or self.name
@@ -397,7 +398,7 @@ class BaseSourceUploader(object):
         import logging as logging_mod
         if not os.path.exists(self.src_root_folder):
             os.makedirs(self.src_root_folder)
-        self.logfile = os.path.join(self.src_root_folder, '%s_%s_upload.log' % (self.fullname,time.strftime("%Y%m%d",self.timestamp.timetuple())))
+        self.logfile = os.path.join(self.log_folder, 'upload_%s_%s.log' % (self.fullname,time.strftime("%Y%m%d",self.timestamp.timetuple())))
         fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S")
         fh = logging_mod.FileHandler(self.logfile)
         fh.setFormatter(fmt)
