@@ -17,6 +17,7 @@ import pickle
 import json
 import logging
 import importlib
+import statistics
 
 if sys.version_info.major == 3:
     str_types = str
@@ -62,7 +63,7 @@ def is_int(s):
     try:
         int(s)
         return True
-    except ValueError:
+    except (ValueError,TypeError):
         return False
 
 
@@ -83,6 +84,75 @@ def is_float(f):
     """return True if input is a float.
     """
     return isinstance(f, float)
+
+def is_scalar(f):
+    return type(f) in (int,str,bool,float,bytes) or f is None
+
+
+def infer(struct,mapt=None,mode="type",level=0):
+    """
+    Explore struct and report types contained in it.
+    - struct: is the data structure to explore
+    - mapt: if not None, will complete that type map with passed struct. This is usefull
+      when iterating over a dataset of similar data, trying to find a good type summary 
+      contained in that dataset.
+    - (level: is for internal purposes, mostly debugging)
+    - mode: "type", "stats", "deepstats"
+    """
+    def report_common(val,drep):
+        drep["count"] += 1
+        drep["sum"] += val
+        drep["min"] = val < drep["min"] and val or drep["min"]
+        drep["max"] = val > drep["max"] and val or drep["max"]
+        drep["mean"] = drep["sum"] / drep["count"]
+        if mode== "deepstats":
+            drep["_vals"].append(val)
+            if len(drep["_vals"]) > 1:
+                drep["stdev"] = statistics.stdev(drep["_vals"])
+            drep["median"] = statistics.median(drep["_vals"])
+
+    def report_str(val,drep):
+        l = len(val)
+        report_common(l,drep)
+
+    def report_numeric(val,drep):
+        report_common(val,drep)
+
+    def report_bool(val,drep):
+        report_bool(val,drep)
+
+    indent = 3
+    if mapt is None:
+        mapt = {}
+    #print("%sstruct(%s):%s, mapt:%s" % ((" "*indent*level),type(struct),struct,mapt))
+    if type(struct) == dict:
+        for k in struct:
+            mapt.setdefault(k,{})
+            typ = infer(struct[k],mapt=mapt[k],mode=mode,level=level+1)
+            #print("%styp: %s" % (" "*indent*level*2,typ))
+            mapt[k] = typ
+    elif type(struct) == list:
+        for e in struct:
+            mapt.setdefault(list,{})
+            typ = infer(e,mapt=mapt[list],mode=mode,level=level+1)
+            mapt[list] = typ
+    elif is_scalar(struct):
+        typ = type(struct)
+        if mode == "type":
+            mapt[typ] = 1
+        else:
+            mapt.setdefault(typ,{"min":0,"max":0,"mean":None,"stdev":None,"median":None,"count":0,"sum":0,"_vals":[]})
+            if is_str(struct):
+                report_str(struct,mapt[typ])
+            elif is_int(struct) or is_float(struct):
+                report_numeric(struct,mapt[typ])
+            elif type(struct) == bool:
+                report_bool(struct,mapt[typ])
+    else:
+        raise TypeError("Can't analyze type %s" % type(struct))
+
+    return mapt
+
 
 
 def iter_n(iterable, n, with_cnt=False):

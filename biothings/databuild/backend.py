@@ -5,6 +5,7 @@ Support MongoDB, ES, CouchDB
 from functools import partial
 from biothings.utils.common import get_timestamp, get_random_string
 from biothings.utils.backend import DocBackendBase, DocMongoBackend, DocESBackend
+import biothings.utils.mongo as mongo
 
 # Source specific backend (deals with build config, master docs, etc...)
 class SourceDocBackendBase(DocBackendBase):
@@ -139,4 +140,24 @@ class TargetDocMongoBackend(TargetDocBackend,DocMongoBackend):
     def set_target_name(self,target_name=None, build_name=None):
         super(TargetDocMongoBackend,self).set_target_name(target_name,build_name)
         self.target_collection = self.target_db[self.target_name]
+
+
+def create_backend(db_col_names):
+    col = None
+    db = None
+    if type(db_col_names) == str:
+        db = mongo.get_target_db()
+        col = db[db_col_names]
+    elif db_col_names[0].startswith("mongodb://"):
+        assert len(db_col_names) == 3, "Missing connection information for %s" % repr(db_col_names)
+        conn = mongo.MongoClient(db_col_names[0])
+        db = conn[db_col_names[1]]
+        col = db[db_col_names[2]]
+    else:
+        assert len(db_col_names) == 2, "Missing connection information for %s" % repr(db_col_names)
+        db = db_col_names[0] == "target" and mongo.get_target_db() or mongo.get_src_db()
+        col = db[db_col_names[1]]
+    assert not col is None, "Could not create collection object from %s" % repr(db_col_names)
+    return DocMongoBackend(db,col)
+
 
