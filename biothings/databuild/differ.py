@@ -24,6 +24,12 @@ logging = btconfig.logger
 class DifferException(Exception):
     pass
 
+def generate_diff_folder(old_db_col_names,new_db_col_names):
+    new = create_backend(new_db_col_names,name_only=True)
+    old = create_backend(old_db_col_names,name_only=True)
+    diff_folder = os.path.join(btconfig.DIFF_PATH,
+                                   "%s-%s" % (old, new))
+    return diff_folder
 
 class BaseDiffer(object):
 
@@ -84,8 +90,8 @@ class BaseDiffer(object):
         if type(steps) == str:
             steps = [steps]
 
-        diff_folder = os.path.join(btconfig.DIFF_PATH,
-                                   "%s_vs_%s" % (old.target_collection.name, new.target_collection.name))
+        diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
+
         if os.path.exists(diff_folder):
             if mode == "purge":
                 rmdashfr(diff_folder)
@@ -196,95 +202,6 @@ class BaseDiffer(object):
         job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, steps, mode, exclude))
         return job
 
-    def diff_report(self, diff_folder, report_filename="report.txt", format="txt", detailed=True,
-                    max_reported_ids=btconfig.MAX_REPORTED_IDS, max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED):
-        report = self.build_diff_report(diff_folder, detailed, max_reported_ids)
-        assert format == "txt", "Only 'txt' format supported for now"
-        render = DiffReportTxt(max_reported_ids=max_reported_ids,
-                               max_randomly_picked=max_randomly_picked,
-                               detailed=detailed)
-        return render.save(report,report_filename)
-
-    def build_diff_report(self, diff_folder, detailed=True,
-                          max_reported_ids=btconfig.MAX_REPORTED_IDS):
-        """
-        Analyze diff files in diff_folder and give a summy of changes.
-        max_reported_ids is the number of IDs contained in the report for each part.
-        detailed will trigger a deeper analysis, takes more time.
-        """
-
-        update_details = {
-                "add": {},# "count": 0, "data": {} },
-                "remove": {}, # "count": 0, "data": {} },
-                "replace": {}, # "count": 0, "data": {} },
-                "move": {}, # "count": 0, "data": {} },
-                "count": 0,
-                }
-        adds = {"count": 0, "ids": []}
-        dels = {"count": 0, "ids": []}
-        sources = {}
-
-        if os.path.isabs(diff_folder):
-            data_folder = diff_folder
-        else:
-            data_folder = os.path.join(btconfig.DIFF_PATH,diff_folder)
-
-        metadata = {}
-        try:
-            metafile = os.path.join(data_folder,"metadata.pick")
-            metadata = pickle.load(open(metafile,"rb"))
-        except FileNotFoundError:
-            logging.warning("Not metadata found in diff folder")
-            if detailed:
-                raise Exception("Can't perform detailed analysis without a metadata file")
-
-        def analyze(diff_file, detailed):
-            data = loadobj(diff_file)
-            sources[data["source"]] = 1
-            if detailed:
-                new_col = create_backend(metadata["new"])
-                old_col = create_backend(metadata["old"])
-            if len(adds) < max_reported_ids:
-                if detailed:
-                    # look for which root keys were added in new collection
-                    for _id in data["add"]:
-                        doc = new_col.get_from_id(_id)
-                        rkeys = sorted(doc.keys())
-                        adds["ids"].append([_id,rkeys])
-                else:
-                    adds["ids"].extend(data["add"])
-            adds["count"] += len(data["add"])
-            if len(dels) < max_reported_ids:
-                if detailed:
-                    # look for which root keys were deleted in old collection
-                    for _id in data["delete"]:
-                        doc = old_col.get_from_id(_id)
-                        rkeys = sorted(doc.keys())
-                        dels["ids"].append([_id,rkeys])
-                else:
-                    dels["ids"].extend(data["add"])
-            dels["count"] += len(data["delete"])
-            for up in data["update"]:
-                for patch in up["patch"]:
-                    update_details[patch["op"]].setdefault(patch["path"],{"count": 0, "ids": []})
-                    if len(update_details[patch["op"]][patch["path"]]["ids"]) < max_reported_ids:
-                        update_details[patch["op"]][patch["path"]]["ids"].append(up["_id"])
-                    update_details[patch["op"]][patch["path"]]["count"] += 1
-            update_details["count"] += len(data["update"])
-
-            assert len(sources) == 1, "Should have one datasource from diff files, got: %s" % [s for s in sources]
-
-        # we randomize files order b/c we randomly pick some examples from those
-        # files. If files contains data in order (like chrom 1, then chrom 2)
-        # we won't have a representative sample
-        files = glob.glob(os.path.join(data_folder,"*.pyobj"))
-        random.shuffle(files)
-        for f in files:
-            logging.info("Running report worker for '%s'" % f)
-            analyze(f, detailed)
-        return {"added" : adds, "deleted": dels, "updated" : update_details,
-                "diff_folder" : diff_folder, "detailed": detailed,
-                "metadata": metadata}
 
 class JsonDiffer(BaseDiffer):
 
@@ -397,8 +314,8 @@ class DiffReportTxt(DiffReportRendererBase):
         txt += "Metadata\n"
         txt += "--------\n"
         if report.get("metadata",{}):
-            txt += "Old collection: %s\n" % report["metadata"].get("old")
-            txt += "New collection: %s\n" % report["metadata"].get("new")
+            txt += "Old collection: %s\n" % repr(report["metadata"].get("old"))
+            txt += "New collection: %s\n" % repr(report["metadata"].get("new"))
             txt += "Batch size: %s\n" % report["metadata"].get("batch_size")
             txt += "Steps: %s\n" % report["metadata"].get("steps")
             txt += "Key(s) excluded: %s\n" % report["metadata"].get("exclude")
@@ -414,8 +331,8 @@ class DiffReportTxt(DiffReportRendererBase):
         txt += "\n"
         root_keys = report.get("metadata",{}).get("stats",{}).get("root_keys",{})
         if root_keys:
-            for src in report.get("metadata",{}).get("stats",{}).get("root_keys",{}):
-                txt += "%s: %s\n" % (src,report["root_keys"][src])
+            for src in sorted(root_keys):
+                txt += "%s: %s\n" % (src,root_keys[src])
         else:
             txt += "No root keys count found in report\n"
         txt += "\n"
@@ -522,3 +439,119 @@ class DifferManager(BaseManager):
         except KeyError as e:
             raise DifferException("No such differ '%s' (error: %s)" % (diff_type,e))
 
+
+    def diff_report(self, old_db_col_names, new_db_col_names, report_filename="report.txt", format="txt", detailed=True,
+                    max_reported_ids=btconfig.MAX_REPORTED_IDS, max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED):
+
+        def do():
+            report = self.build_diff_report(diff_folder, detailed, max_reported_ids)
+            assert format == "txt", "Only 'txt' format supported for now"
+            render = DiffReportTxt(max_reported_ids=max_reported_ids,
+                                   max_randomly_picked=max_randomly_picked,
+                                   detailed=detailed)
+            return render.save(report,report_filename)
+
+        @asyncio.coroutine
+        def main(diff_folder):
+            got_error = False
+            pinfo = {"category" : "diff",
+                     "step" : "report",
+                     "source" : diff_folder,
+                     "description" : report_filename}
+            job = yield from self.job_manager.defer_to_thread(pinfo,do)
+            def reported(f):
+                nonlocal got_error
+                try:
+                    res = f.result()
+                    self.logger.info("Diff report ready, saved in %s:\n%s" % (os.path.join(diff_folder,report_filename),res))
+                except Exception as e:
+                    got_error = e
+            job.add_done_callback(reported)
+            yield from job
+            if got_error:
+                raise got_error
+
+        diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
+        job = asyncio.ensure_future(main(diff_folder))
+        return job
+
+    def build_diff_report(self, diff_folder, detailed=True,
+                          max_reported_ids=btconfig.MAX_REPORTED_IDS):
+        """
+        Analyze diff files in diff_folder and give a summy of changes.
+        max_reported_ids is the number of IDs contained in the report for each part.
+        detailed will trigger a deeper analysis, takes more time.
+        """
+
+        update_details = {
+                "add": {},# "count": 0, "data": {} },
+                "remove": {}, # "count": 0, "data": {} },
+                "replace": {}, # "count": 0, "data": {} },
+                "move": {}, # "count": 0, "data": {} },
+                "count": 0,
+                }
+        adds = {"count": 0, "ids": []}
+        dels = {"count": 0, "ids": []}
+        sources = {}
+
+        if os.path.isabs(diff_folder):
+            data_folder = diff_folder
+        else:
+            data_folder = os.path.join(btconfig.DIFF_PATH,diff_folder)
+
+        metadata = {}
+        try:
+            metafile = os.path.join(data_folder,"metadata.pick")
+            metadata = pickle.load(open(metafile,"rb"))
+        except FileNotFoundError:
+            logging.warning("Not metadata found in diff folder")
+            if detailed:
+                raise Exception("Can't perform detailed analysis without a metadata file")
+
+        def analyze(diff_file, detailed):
+            data = loadobj(diff_file)
+            sources[data["source"]] = 1
+            if detailed:
+                new_col = create_backend(metadata["new"])
+                old_col = create_backend(metadata["old"])
+            if len(adds) < max_reported_ids:
+                if detailed:
+                    # look for which root keys were added in new collection
+                    for _id in data["add"]:
+                        doc = new_col.get_from_id(_id)
+                        rkeys = sorted(doc.keys())
+                        adds["ids"].append([_id,rkeys])
+                else:
+                    adds["ids"].extend(data["add"])
+            adds["count"] += len(data["add"])
+            if len(dels) < max_reported_ids:
+                if detailed:
+                    # look for which root keys were deleted in old collection
+                    for _id in data["delete"]:
+                        doc = old_col.get_from_id(_id)
+                        rkeys = sorted(doc.keys())
+                        dels["ids"].append([_id,rkeys])
+                else:
+                    dels["ids"].extend(data["add"])
+            dels["count"] += len(data["delete"])
+            for up in data["update"]:
+                for patch in up["patch"]:
+                    update_details[patch["op"]].setdefault(patch["path"],{"count": 0, "ids": []})
+                    if len(update_details[patch["op"]][patch["path"]]["ids"]) < max_reported_ids:
+                        update_details[patch["op"]][patch["path"]]["ids"].append(up["_id"])
+                    update_details[patch["op"]][patch["path"]]["count"] += 1
+            update_details["count"] += len(data["update"])
+
+            assert len(sources) == 1, "Should have one datasource from diff files, got: %s" % [s for s in sources]
+
+        # we randomize files order b/c we randomly pick some examples from those
+        # files. If files contains data in order (like chrom 1, then chrom 2)
+        # we won't have a representative sample
+        files = glob.glob(os.path.join(data_folder,"*.pyobj"))
+        random.shuffle(files)
+        for f in files:
+            logging.info("Running report worker for '%s'" % f)
+            analyze(f, detailed)
+        return {"added" : adds, "deleted": dels, "updated" : update_details,
+                "diff_folder" : diff_folder, "detailed": detailed,
+                "metadata": metadata}

@@ -142,22 +142,39 @@ class TargetDocMongoBackend(TargetDocBackend,DocMongoBackend):
         self.target_collection = self.target_db[self.target_name]
 
 
-def create_backend(db_col_names):
+def create_backend(db_col_names,name_only=False):
+    """
+    Guess what's inside 'db_col_names' and return the corresponding collection.
+    It could be a string (by default, will lookup a collection in target database)
+    or a tuple("targe$t|src","col_name") or even a ("mongodb://user:pass","db","col_name") URI.
+    If name_only is true, just return the name of the collection
+    """
     col = None
     db = None
     if type(db_col_names) == str:
-        db = mongo.get_target_db()
-        col = db[db_col_names]
+        if name_only:
+            col = db_col_names
+        else:
+            db = mongo.get_target_db()
+            col = db[db_col_names]
     elif db_col_names[0].startswith("mongodb://"):
         assert len(db_col_names) == 3, "Missing connection information for %s" % repr(db_col_names)
-        conn = mongo.MongoClient(db_col_names[0])
-        db = conn[db_col_names[1]]
-        col = db[db_col_names[2]]
+        if name_only:
+            col = db_col_names[2]
+        else:
+            conn = mongo.MongoClient(db_col_names[0])
+            db = conn[db_col_names[1]]
+            col = db[db_col_names[2]]
     else:
         assert len(db_col_names) == 2, "Missing connection information for %s" % repr(db_col_names)
-        db = db_col_names[0] == "target" and mongo.get_target_db() or mongo.get_src_db()
-        col = db[db_col_names[1]]
+        if name_only:
+            col = db_col_names[1]
+        else:
+            db = db_col_names[0] == "target" and mongo.get_target_db() or mongo.get_src_db()
+            col = db[db_col_names[1]]
     assert not col is None, "Could not create collection object from %s" % repr(db_col_names)
-    return DocMongoBackend(db,col)
-
+    if name_only:
+        return col
+    else:
+        return DocMongoBackend(db,col)
 
