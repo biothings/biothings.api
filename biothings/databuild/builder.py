@@ -515,7 +515,8 @@ class DataBuilder(object):
         else:
             self.logger.info("Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d" % (src_name, id_batch_size, batch_size))
             id_provider = id_feeder(self.source_backend[src_name], batch_size=id_batch_size)
-        id_provider = ids and [ids] or id_feeder(self.source_backend[src_name], batch_size=id_batch_size)
+        id_provider = ids and [ids] or id_feeder(self.source_backend[src_name],
+                                                 batch_size=id_batch_size,logger=self.logger)
         for big_doc_ids in id_provider:
             for doc_ids in iter_n(big_doc_ids,batch_size):
                 # try to put some async here to give control back

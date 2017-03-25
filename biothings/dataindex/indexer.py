@@ -152,7 +152,7 @@ class Indexer(object):
             id_provider = [ids]
         else:
             self.logger.info("Fetch _ids from '%s', and create indexer job with batch_size=%d" % (target_name, batch_size))
-            id_provider = id_feeder(target_collection, batch_size=batch_size)
+            id_provider = id_feeder(target_collection, batch_size=batch_size,logger=self.logger)
         for ids in id_provider:
             yield from asyncio.sleep(0.0)
             cnt += len(ids)
