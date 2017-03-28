@@ -89,7 +89,7 @@ def is_scalar(f):
     return type(f) in (int,str,bool,float,bytes) or f is None
 
 
-def infer(struct,mapt=None,mode="type",level=0):
+def infer(struct,key=None,mapt=None,mode="type",level=0):
     """
     Explore struct and report types contained in it.
     - struct: is the data structure to explore
@@ -100,20 +100,17 @@ def infer(struct,mapt=None,mode="type",level=0):
     - mode: "type", "stats", "deepstats"
     """
     def report_common(val,drep):
-        drep["count"] += 1
-        drep["sum"] += val
-        drep["min"] = val < drep["min"] and val or drep["min"]
-        drep["max"] = val > drep["max"] and val or drep["max"]
-        drep["mean"] = drep["sum"] / drep["count"]
+        drep["_count"] += 1
+        drep["_sum"] += val
+        drep["_min"] = val < drep["_min"] and val or drep["_min"]
+        drep["_max"] = val > drep["_max"] and val or drep["_max"]
+        drep["_mean"] = drep["_sum"] / drep["_count"]
         if mode== "deepstats":
-            drep["_vals"].append(val)
-            if len(drep["_vals"]) > 1:
-                drep["stdev"] = statistics.stdev(drep["_vals"])
-            drep["median"] = statistics.median(drep["_vals"])
+            # just keep track of vals for now, stats are computed at the end
+            drep["__vals"].append(val)
 
     def report_str(val,drep):
-        l = len(val)
-        report_common(l,drep)
+        report_common(val,drep)
 
     def report_numeric(val,drep):
         report_common(val,drep)
@@ -124,26 +121,55 @@ def infer(struct,mapt=None,mode="type",level=0):
     indent = 3
     if mapt is None:
         mapt = {}
-    #print("%sstruct(%s):%s, mapt:%s" % ((" "*indent*level),type(struct),struct,mapt))
+    #print("%sstruct(%s):%s, mapt:%s" % ((" "*indent*level),type(struct),repr(struct),mapt))
     if type(struct) == dict:
+        # was this struct already explored before ? was it a list for that previous doc ?
+        # then we have to pretend here it's also a list even if not, because we want to
+        # report the list structure
         for k in struct:
-            mapt.setdefault(k,{})
-            typ = infer(struct[k],mapt=mapt[k],mode=mode,level=level+1)
-            #print("%styp: %s" % (" "*indent*level*2,typ))
-            mapt[k] = typ
+            if mapt and list in mapt:# and key == k:
+                already_explored_as_list = True
+            else:
+                already_explored_as_list = False
+            if already_explored_as_list:
+                mapt[list].setdefault(k,{})
+                typ = infer(struct[k],key=k,mapt=mapt[list][k],mode=mode,level=level+1)
+                mapt[list].update({k:typ})
+            else:
+                mapt.setdefault(k,{})
+                typ = infer(struct[k],key=k,mapt=mapt[k],mode=mode,level=level+1)
     elif type(struct) == list:
+        mapl = {}
         for e in struct:
-            mapt.setdefault(list,{})
-            typ = infer(e,mapt=mapt[list],mode=mode,level=level+1)
-            mapt[list] = typ
+            typ = infer(e,key=key,mapt=mapl,mode=mode,level=level+1)
+            mapl.update(typ)
+        ##if mode != "type":
+        ##    mapl.update({"_min":0,"_max":0,"_mean":None,"_count":0,"_sum":0,"__vals":[]})
+        ##    lenl = len([k for k in mapl if not k.startswith("_")])
+        ##    #print("on rpoet %s %s" % (lenl,mapl))
+        ##    report_str(lenl,mapl)
+        ##    pass
+        # if mapt exist, it means it's been explored previously but not a list,
+        # instead of mixing dict and list types, we want to normalize so we merge the previous
+        # struct into that current list
+        if mapt and list in mapt:
+            mapt[list].update(mapl)
+        else:
+            topop = []
+            if mapt:
+                topop = list(mapt.keys())
+                mapl.update(mapt)
+            mapt[list] = mapl
+            for k in topop:
+                mapt.pop(k,None)
     elif is_scalar(struct):
         typ = type(struct)
         if mode == "type":
             mapt[typ] = 1
         else:
-            mapt.setdefault(typ,{"min":0,"max":0,"mean":None,"stdev":None,"median":None,"count":0,"sum":0,"_vals":[]})
+            mapt.setdefault(typ,{"_min":0,"_max":0,"_mean":None,"_count":0,"_sum":0,"__vals":[]})
             if is_str(struct):
-                report_str(struct,mapt[typ])
+                report_str(len(struct),mapt[typ])
             elif is_int(struct) or is_float(struct):
                 report_numeric(struct,mapt[typ])
             elif type(struct) == bool:
@@ -153,6 +179,32 @@ def infer(struct,mapt=None,mode="type",level=0):
 
     return mapt
 
+def infer_docs(docs,mode="type",clean=True):
+
+    def post(mapt, mode,clean):
+        if type(mapt) == dict:
+            for k in list(mapt.keys()):
+                if is_str(k) and k.startswith("__"):
+                    if k == "__vals" and mode == "deepstats":
+                        if len(mapt["__vals"]) > 1:
+                            mapt["_stdev"] = statistics.stdev(mapt["__vals"])
+                            mapt["_median"] = statistics.median(mapt["__vals"])
+                    if clean:
+                        mapt.pop(k)
+                else:
+                    post(mapt[k],mode,clean)
+        elif type(mapt) == list:
+            for e in mapt:
+                post(e,mode,clean)
+
+    mapt = {}
+    for doc in docs:
+        #print("")
+        #print("mapt is: %s" % mapt)
+        #print("doc: %s" % doc)
+        infer(doc,mapt=mapt,mode=mode)
+    post(mapt,mode,clean)
+    return mapt
 
 
 def iter_n(iterable, n, with_cnt=False):
