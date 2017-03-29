@@ -17,7 +17,8 @@ import pickle
 import json
 import logging
 import importlib
-import statistics
+import math, statistics
+from .dataload import merge_struct
 
 if sys.version_info.major == 3:
     str_types = str
@@ -102,9 +103,10 @@ def infer(struct,key=None,mapt=None,mode="type",level=0):
     def report_common(val,drep):
         drep["_count"] += 1
         drep["_sum"] += val
-        drep["_min"] = val < drep["_min"] and val or drep["_min"]
-        drep["_max"] = val > drep["_max"] and val or drep["_max"]
-        drep["_mean"] = drep["_sum"] / drep["_count"]
+        if val < drep["_min"]:
+            drep["_min"] = val
+        if val > drep["_max"]:
+            drep["_max"] = val
         if mode== "deepstats":
             # just keep track of vals for now, stats are computed at the end
             drep["__vals"].append(val)
@@ -117,6 +119,43 @@ def infer(struct,key=None,mapt=None,mode="type",level=0):
 
     def report_bool(val,drep):
         report_bool(val,drep)
+
+    def merge_record(target,tomerge,mode):
+        for k in tomerge:
+            if k in target:
+                for typ in tomerge[k]:
+                    if typ in target[k]:
+                        # same key, same type, need to merge stats
+                        #tgtstats = 
+                        pass
+                        if mode == "type":
+                            # in mode=type, we just keep track on types,
+                            # we already did it so nothing to do
+                            pass
+                        else:
+                            # sum the counts and the sums
+                            target[k][typ]["_count"] += tomerge[k][typ]["_count"]
+                            target[k][typ]["_sum"] += tomerge[k][typ]["_sum"]
+                            # adjust min and max
+                            if tomerge[k][typ]["_max"] > target[k][typ]["_max"]:
+                                target[k][typ]["_max"] = tomerge[k][typ]["_max"]
+                            if tomerge[k][typ]["_min"] < target[k][typ]["_min"]:
+                                target[k][typ]["_min"] = tomerge[k][typ]["_min"]
+                            # extend values
+                            target[k][typ]["__vals"].extend(tomerge[k][typ]["__vals"])
+                    else:
+                        # key exists but with a different type, create new type
+                        if mode == "type":
+                            target[k].update(tomerge[k])
+                        else:
+                            target[k].setdefault(typ,{}).update(tomerge[k][typ])
+            else:
+                # key doesn't exist, create key
+                target.setdefault(k,{}).update(tomerge[k])
+
+        return target
+
+    stats_tpl = {"_min":math.inf,"_max":-math.inf,"_count":0,"_sum":0,"__vals":[]}
 
     indent = 3
     if mapt is None:
@@ -153,21 +192,22 @@ def infer(struct,key=None,mapt=None,mode="type",level=0):
         # instead of mixing dict and list types, we want to normalize so we merge the previous
         # struct into that current list
         if mapt and list in mapt:
-            mapt[list].update(mapl)
+            mapt[list] = merge_record(mapt[list],mapl,mode)
         else:
             topop = []
             if mapt:
-                topop = list(mapt.keys())
-                mapl.update(mapt)
-            mapt[list] = mapl
+                topop = [k for k in list(mapt.keys()) if k != list]
+                mapl.update(merge_struct(mapt,mapl))
+            mapt.setdefault(list,{})
+            mapt[list].update(mapl)
             for k in topop:
                 mapt.pop(k,None)
     elif is_scalar(struct):
         typ = type(struct)
         if mode == "type":
-            mapt[typ] = 1
+            mapt[typ] = True
         else:
-            mapt.setdefault(typ,{"_min":0,"_max":0,"_mean":None,"_count":0,"_sum":0,"__vals":[]})
+            mapt.setdefault(typ,stats_tpl)
             if is_str(struct):
                 report_str(len(struct),mapt[typ])
             elif is_int(struct) or is_float(struct):
@@ -189,6 +229,7 @@ def infer_docs(docs,mode="type",clean=True):
                         if len(mapt["__vals"]) > 1:
                             mapt["_stdev"] = statistics.stdev(mapt["__vals"])
                             mapt["_median"] = statistics.median(mapt["__vals"])
+                            mapt["_mean"] = statistics.mean(mapt["__vals"])
                     if clean:
                         mapt.pop(k)
                 else:
