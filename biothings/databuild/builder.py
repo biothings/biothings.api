@@ -293,11 +293,13 @@ class DataBuilder(object):
         try:
             self.target_backend.post_merge()
             _src_versions = self.source_backend.get_src_versions()
+            strargs = "[sources=%s,stats=%s,versions=%s]" % (sources,self.stats,_src_versions)
             self.register_status('success',build={"stats" : self.stats, "src_version" : _src_versions})
-            self.logger.info("success\nstats: %s\nversions: %s" % (self.stats,_src_versions),extra={"notify":True})
+            self.logger.info("success %s" % strargs,extra={"notify":True})
         except Exception as e:
+            strargs = "[sources=%s]" % sources
             self.register_status("failed",build={"err": repr(e)})
-            self.logger.exception("failed: %s" % e,extra={"notify":True})
+            self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
             raise
 
     def resolve_sources(self,sources):
@@ -355,6 +357,7 @@ class DataBuilder(object):
         self.clean_old_collections()
 
         self.logger.info("Merging into target collection '%s'" % self.target_backend.target_collection.name)
+        strargs = "[sources=%s,target_name=%s]" % (sources,target_name)
         try:
             self.register_status("building",transient=True,init=True,
                                  build={"step":"init","sources":sources})
@@ -367,7 +370,7 @@ class DataBuilder(object):
         except (KeyboardInterrupt,Exception) as e:
             self.logger.exception(e)
             self.register_status("failed",build={"err": repr(e)})
-            self.logger.error("failed: %s" % e,extra={"notify":True})
+            self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
             raise
 
     def get_mapper_for_source(self,src_name,init=True):

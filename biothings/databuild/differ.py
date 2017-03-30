@@ -195,6 +195,8 @@ class BaseDiffer(object):
 
         # pickle again with potentially more information (stats)
         pickle.dump(metadata,open(os.path.join(diff_folder,"metadata.pick"),"wb"))
+        strargs = "[old=%s,new=%s,steps=%s,stats=%s]" % (old_db_col_names,new_db_col_names,steps,stats)
+        self.logger.info("success %s" % strargs,extra={"notify":True})
         return stats
 
     def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["count","content"], mode=None, exclude=[]):
@@ -463,12 +465,13 @@ class DifferManager(BaseManager):
                 nonlocal got_error
                 try:
                     res = f.result()
-                    self.logger.info("Diff report ready, saved in %s:\n%s" % (os.path.join(diff_folder,report_filename),res))
+                    self.logger.info("Diff report ready, saved in %s:\n%s" % (os.path.join(diff_folder,report_filename),res),extra={"notify":True})
                 except Exception as e:
                     got_error = e
             job.add_done_callback(reported)
             yield from job
             if got_error:
+                self.logger.exception("Failed to create diff report: %s" % got_error,extra={"notify":True})
                 raise got_error
 
         diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)

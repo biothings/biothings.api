@@ -224,6 +224,7 @@ class BaseDumper(object):
         self.steps = steps or self.steps
         if type(self.steps) == str:
             self.steps = [self.steps]
+        strargs = "[steps=%s]" % ",".join(self.steps)
         try:
             if "dump" in self.steps:
                 pinfo = self.get_pinfo()
@@ -252,13 +253,13 @@ class BaseDumper(object):
                 yield from asyncio.gather(job) # consume future
                 # set it to success at the very end
                 self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
-                self.logger.info("success",extra={"notify":True})
+                self.logger.info("success %s" % strargs,extra={"notify":True})
         except (KeyboardInterrupt,Exception) as e:
             self.logger.error("Error while dumping source: %s" % e)
             import traceback
             self.logger.error(traceback.format_exc())
             self.register_status("failed",download={"err" : repr(e)})
-            self.logger.error("failed: %s" % e,extra={"notify":True})
+            self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
         finally:
             if self.client:
                 self.release_client()
@@ -516,7 +517,7 @@ class ManualDumper(BaseDumper):
         self.logger.info("Manual dumper, assuming data will be downloaded manually")
 
     @asyncio.coroutine
-    def dump(self,path, release=None, force=False, job_manager=None):
+    def dump(self, path, release=None, force=False, job_manager=None):
         if os.path.isabs(path):
             self.new_data_folder = path
         elif path:
@@ -536,11 +537,12 @@ class ManualDumper(BaseDumper):
 
         pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
+        strargs = "[path=%s,release=%s"] % (self.new_data_folder,self.release)
         job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
         yield from asyncio.gather(job) # consume future
         # ok, good to go
         self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
-        self.logger.info("success",extra={"notify":True})
+        self.logger.info("success %s" % strargs,extra={"notify":True})
         self.logger.info("Manually dumped resource (data_folder: '%s')" % self.new_data_folder)
 
 

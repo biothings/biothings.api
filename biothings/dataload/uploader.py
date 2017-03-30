@@ -240,7 +240,7 @@ class BaseSourceUploader(object):
         else:
             raise ResourceError("No temp collection (or it's empty)")
 
-    def post_update_data(self, steps, force, batch_size, job_manager):
+    def post_update_data(self, steps, force, batch_size, job_manager, **kwargs):
         """Override as needed to perform operations after
            data has been uploaded"""
         pass
@@ -350,6 +350,7 @@ class BaseSourceUploader(object):
         update_master = "master" in steps
         post_update_data = "post" in steps
         clean_archives = "clean" in steps
+        strargs = "[steps=%s]" % ",".join(steps)
         try:
             if not self.temp_collection_name:
                 self.make_temp_collection()
@@ -368,7 +369,7 @@ class BaseSourceUploader(object):
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "post_update_data"
                 f2 = yield from job_manager.defer_to_thread(pinfo,
-                        partial(self.post_update_data, steps, force, batch_size, job_manager))
+                        partial(self.post_update_data, steps, force, batch_size, job_manager, **kwargs))
                 def postupdated(f):
                     if f.exception():
                         got_error = f.exception()
@@ -380,10 +381,10 @@ class BaseSourceUploader(object):
             if clean_archives:
                 self.clean_archived_collections()
             self.register_status("success",count=cnt)
-            self.logger.info("success",extra={"notify":True})
+            self.logger.info("success %s" % strargs,extra={"notify":True})
         except Exception as e:
             self.register_status("failed",err=str(e))
-            self.logger.exception("failed: %s" % e,extra={"notify":True})
+            self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
             raise
 
     def prepare_src_dump(self):

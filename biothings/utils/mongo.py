@@ -190,7 +190,7 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
         cur.close()
 
 @requires_config
-def id_feeder(col, batch_size=1000, build_cache=True, logger=logging):
+def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force=False):
     """Return an iterator for all _ids in collection "col"
        Search for a valid cache file if available, if not
        return a doc_feeder for that collection. Valid cache is
@@ -198,6 +198,8 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging):
        "db" can be "target" or "src".
        "build_cache" True will build a cache file as _ids are fetched, 
        if no cache file was found
+       "force" True will use any existing cache file and won't check whether
+       it's valid of not.
     """
     src_db = get_src_db()
     ts = None
@@ -236,6 +238,9 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging):
             if os.path.getsize(cache_file) == 0:
                 logger.warning("Cache file exists but is empty, delete it")
                 os.remove(cache_file)
+            elif force:
+                use_cache = True
+                logger.info("Force using cache file")
             else:
                 mt = os.path.getmtime(cache_file)
                 if ts and mt >= ts:
