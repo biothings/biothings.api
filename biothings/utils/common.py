@@ -100,49 +100,76 @@ def infer(struct,key=None,mapt=None,mode="type",level=0):
     - (level: is for internal purposes, mostly debugging)
     - mode: "type", "stats", "deepstats"
     """
-    def report_common(val,drep):
-        drep["_count"] += 1
-        drep["_sum"] += val
-        if val < drep["_min"]:
-            drep["_min"] = val
-        if val > drep["_max"]:
-            drep["_max"] = val
+
+    def report(val,drep):
+        drep["_stats"]["_count"] += 1
+        drep["_stats"]["_sum"] += val
+        if val < drep["_stats"]["_min"]:
+            drep["_stats"]["_min"] = val
+        if val > drep["_stats"]["_max"]:
+            drep["_stats"]["_max"] = val
         if mode== "deepstats":
             # just keep track of vals for now, stats are computed at the end
-            drep["__vals"].append(val)
+            drep["_stats"]["__vals"].append(val)
 
-    def report_str(val,drep):
-        report_common(val,drep)
+    def sumiflist(val):
+        if type(val) == list:
+            return sum(val)
+        else:
+            return val
+    def maxminiflist(val,func):
+        if type(val) == list:
+            return func(val)
+        else:
+            return val
 
-    def report_numeric(val,drep):
-        report_common(val,drep)
+    def merge_stats(target_stats, tomerge_stats):
 
-    def report_bool(val,drep):
-        report_bool(val,drep)
+        # after merge_struct, stats can be merged together as list (merge_struct
+        # is only about data structures). Re-adjust here considering there could lists
+        # that need to be sum'ed and min/max to be dealt with
+        try:
+            # sum the counts and the sums
+            target_stats["_count"] = sumiflist(target_stats["_count"]) + sumiflist(tomerge_stats["_count"])
+            target_stats["_sum"] = sumiflist(target_stats["_sum"]) + sumiflist(tomerge_stats["_sum"])
+            # adjust min and max
+            tomerge_stats["_max"] = maxminiflist(tomerge_stats["_max"],max)
+            tomerge_stats["_min"] = maxminiflist(tomerge_stats["_min"],min)
+            target_stats["_max"] = maxminiflist(target_stats["_max"],max)
+            target_stats["_min"] = maxminiflist(target_stats["_min"],min)
+            if tomerge_stats["_max"] > target_stats["_max"]:
+                target_stats["_max"] = tomerge_stats["_max"]
+            if tomerge_stats["_min"] < target_stats["_min"]:
+                target_stats["_min"] = tomerge_stats["_min"]
+            # extend values
+            target_stats["__vals"].extend(tomerge_stats["__vals"])
+        except KeyError as e:
+            #print("e: %s\ntarget=%s\ntomerge=%s" % (e,target,tomerge))
+            raise
 
     def merge_record(target,tomerge,mode):
         for k in tomerge:
             if k in target:
+                if k == "_stats":
+                    tgt_stats = target["_stats"]
+                    tom_stats = tomerge["_stats"]
+                    merge_stats(tgt_stats,tom_stats)
+                    continue
                 for typ in tomerge[k]:
                     if typ in target[k]:
                         # same key, same type, need to merge stats
-                        #tgtstats = 
-                        pass
                         if mode == "type":
                             # in mode=type, we just keep track on types,
                             # we already did it so nothing to do
                             pass
                         else:
-                            # sum the counts and the sums
-                            target[k][typ]["_count"] += tomerge[k][typ]["_count"]
-                            target[k][typ]["_sum"] += tomerge[k][typ]["_sum"]
-                            # adjust min and max
-                            if tomerge[k][typ]["_max"] > target[k][typ]["_max"]:
-                                target[k][typ]["_max"] = tomerge[k][typ]["_max"]
-                            if tomerge[k][typ]["_min"] < target[k][typ]["_min"]:
-                                target[k][typ]["_min"] = tomerge[k][typ]["_min"]
-                            # extend values
-                            target[k][typ]["__vals"].extend(tomerge[k][typ]["__vals"])
+                            if not "_stats" in tomerge[k][typ]:
+                                # we try to merge record at a too higher level, need to merge deeper
+                                target[k] = merge_record(target[k],tomerge[k],mode)
+                                continue
+                            tgt_stats = target[k][typ]["_stats"]
+                            tom_stats = tomerge[k][typ]["_stats"]
+                            merge_stats(tgt_stats,tom_stats)
                     else:
                         # key exists but with a different type, create new type
                         if mode == "type":
@@ -155,12 +182,12 @@ def infer(struct,key=None,mapt=None,mode="type",level=0):
 
         return target
 
-    stats_tpl = {"_min":math.inf,"_max":-math.inf,"_count":0,"_sum":0,"__vals":[]}
+    stats_tpl = {"_stats" : {"_min":math.inf,"_max":-math.inf,"_count":0,"_sum":0,"__vals":[]}}
 
-    indent = 3
+    # init recording structure if none were passed
     if mapt is None:
         mapt = {}
-    #print("%sstruct(%s):%s, mapt:%s" % ((" "*indent*level),type(struct),repr(struct),mapt))
+
     if type(struct) == dict:
         # was this struct already explored before ? was it a list for that previous doc ?
         # then we have to pretend here it's also a list even if not, because we want to
@@ -182,12 +209,9 @@ def infer(struct,key=None,mapt=None,mode="type",level=0):
         for e in struct:
             typ = infer(e,key=key,mapt=mapl,mode=mode,level=level+1)
             mapl.update(typ)
-        ##if mode != "type":
-        ##    mapl.update({"_min":0,"_max":0,"_mean":None,"_count":0,"_sum":0,"__vals":[]})
-        ##    lenl = len([k for k in mapl if not k.startswith("_")])
-        ##    #print("on rpoet %s %s" % (lenl,mapl))
-        ##    report_str(lenl,mapl)
-        ##    pass
+        if mode != "type":
+            mapl.update(stats_tpl)
+            report(len(struct),mapl)
         # if mapt exist, it means it's been explored previously but not a list,
         # instead of mixing dict and list types, we want to normalize so we merge the previous
         # struct into that current list
@@ -209,11 +233,11 @@ def infer(struct,key=None,mapt=None,mode="type",level=0):
         else:
             mapt.setdefault(typ,stats_tpl)
             if is_str(struct):
-                report_str(len(struct),mapt[typ])
+                report(len(struct),mapt[typ])
             elif is_int(struct) or is_float(struct):
-                report_numeric(struct,mapt[typ])
+                report(struct,mapt[typ])
             elif type(struct) == bool:
-                report_bool(struct,mapt[typ])
+                report(struct,mapt[typ])
     else:
         raise TypeError("Can't analyze type %s" % type(struct))
 
@@ -240,9 +264,6 @@ def infer_docs(docs,mode="type",clean=True):
 
     mapt = {}
     for doc in docs:
-        #print("")
-        #print("mapt is: %s" % mapt)
-        #print("doc: %s" % doc)
         infer(doc,mapt=mapt,mode=mode)
     post(mapt,mode,clean)
     return mapt
