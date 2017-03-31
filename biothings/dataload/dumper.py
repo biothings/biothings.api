@@ -537,7 +537,7 @@ class ManualDumper(BaseDumper):
 
         pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
-        strargs = "[path=%s,release=%s"] % (self.new_data_folder,self.release)
+        strargs = "[path=%s,release=%s]" % (self.new_data_folder,self.release)
         job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
         yield from asyncio.gather(job) # consume future
         # ok, good to go
