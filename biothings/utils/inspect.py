@@ -4,8 +4,9 @@ In general, do not include utils depending on any third-party modules.
 """
 import math, statistics
 from .dataload import merge_struct
+from .common import is_scalar, is_float, is_str, is_int
 
-def infer(struct,key=None,mapt=None,mode="type",level=0):
+def inspect(struct,key=None,mapt=None,mode="type",level=0):
     """
     Explore struct and report types contained in it.
     - struct: is the data structure to explore
@@ -114,15 +115,15 @@ def infer(struct,key=None,mapt=None,mode="type",level=0):
                 already_explored_as_list = False
             if already_explored_as_list:
                 mapt[list].setdefault(k,{})
-                typ = infer(struct[k],key=k,mapt=mapt[list][k],mode=mode,level=level+1)
+                typ = inspect(struct[k],key=k,mapt=mapt[list][k],mode=mode,level=level+1)
                 mapt[list].update({k:typ})
             else:
                 mapt.setdefault(k,{})
-                typ = infer(struct[k],key=k,mapt=mapt[k],mode=mode,level=level+1)
+                typ = inspect(struct[k],key=k,mapt=mapt[k],mode=mode,level=level+1)
     elif type(struct) == list:
         mapl = {}
         for e in struct:
-            typ = infer(e,key=key,mapt=mapl,mode=mode,level=level+1)
+            typ = inspect(e,key=key,mapt=mapl,mode=mode,level=level+1)
             mapl.update(typ)
         if mode != "type":
             mapl.update(stats_tpl)
@@ -158,7 +159,7 @@ def infer(struct,key=None,mapt=None,mode="type",level=0):
 
     return mapt
 
-def infer_docs(docs,mode="type",clean=True):
+def inspect_docs(docs,mode="type",clean=True):
 
     def post(mapt, mode,clean):
         if type(mapt) == dict:
@@ -179,7 +180,7 @@ def infer_docs(docs,mode="type",clean=True):
 
     mapt = {}
     for doc in docs:
-        infer(doc,mapt=mapt,mode=mode)
+        inspect(doc,mapt=mapt,mode=mode)
     post(mapt,mode,clean)
     return mapt
 

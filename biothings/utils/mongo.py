@@ -203,7 +203,8 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force=Fals
     """
     src_db = get_src_db()
     ts = None
-    
+    found_meta = True
+
     try:
         if col.database.name == config.DATA_TARGET_DATABASE:
             # TODO: if col.name is present in different build config, that will pick one
@@ -224,14 +225,16 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force=Fals
             else:
                 ts = info["upload"]["jobs"][col.name]["started_at"].timestamp()
         else:
-            raise NotImplementedError("Can't find metadata for collection '%s' (not a target, not a source collection)" % db)
+            logging.warning("Can't find metadata for collection '%s' (not a target, not a source collection)" % col)
+            found_meta = False
+            build_cache = False
     except KeyError:
         logger.warning("Couldn't find timestamp in database for '%s'" % col.name)
 
     # try to find a cache file
     use_cache = False
     cache_file = None
-    if config.CACHE_FOLDER:
+    if found_meta and config.CACHE_FOLDER:
         cache_file = os.path.join(config.CACHE_FOLDER,col.name)
         try:
             # check size, delete if invalid
