@@ -3,10 +3,14 @@ This module contains util functions may be shared by both BioThings data-hub and
 In general, do not include utils depending on any third-party modules.
 """
 import math, statistics
-from .dataload import merge_struct
-from .common import is_scalar, is_float, is_str, is_int
+import time
+import logging
 
-def inspect(struct,key=None,mapt=None,mode="type",level=0):
+from .dataload import merge_struct
+from .common import timesofar, is_scalar, is_float, is_str, is_int
+
+
+def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
     """
     Explore struct and report types contained in it.
     - struct: is the data structure to explore
@@ -18,6 +22,7 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0):
     """
 
     def report(val,drep):
+        drep["_stats"] = flatten_stats(drep["_stats"])
         drep["_stats"]["_count"] += 1
         drep["_stats"]["_sum"] += val
         if val < drep["_stats"]["_min"]:
@@ -39,29 +44,29 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0):
         else:
             return val
 
-    def merge_stats(target_stats, tomerge_stats):
-
+    def flatten_stats(stats):
         # after merge_struct, stats can be merged together as list (merge_struct
         # is only about data structures). Re-adjust here considering there could lists
         # that need to be sum'ed and min/max to be dealt with
-        try:
-            # sum the counts and the sums
-            target_stats["_count"] = sumiflist(target_stats["_count"]) + sumiflist(tomerge_stats["_count"])
-            target_stats["_sum"] = sumiflist(target_stats["_sum"]) + sumiflist(tomerge_stats["_sum"])
-            # adjust min and max
-            tomerge_stats["_max"] = maxminiflist(tomerge_stats["_max"],max)
-            tomerge_stats["_min"] = maxminiflist(tomerge_stats["_min"],min)
-            target_stats["_max"] = maxminiflist(target_stats["_max"],max)
-            target_stats["_min"] = maxminiflist(target_stats["_min"],min)
-            if tomerge_stats["_max"] > target_stats["_max"]:
-                target_stats["_max"] = tomerge_stats["_max"]
-            if tomerge_stats["_min"] < target_stats["_min"]:
-                target_stats["_min"] = tomerge_stats["_min"]
-            # extend values
-            target_stats["__vals"].extend(tomerge_stats["__vals"])
-        except KeyError as e:
-            #print("e: %s\ntarget=%s\ntomerge=%s" % (e,target,tomerge))
-            raise
+        stats["_count"] = sumiflist(stats["_count"])
+        stats["_sum"] = sumiflist(stats["_sum"])
+        stats["_max"] = maxminiflist(stats["_max"],max)
+        stats["_min"] = maxminiflist(stats["_min"],min)
+        return stats
+
+    def merge_stats(target_stats, tomerge_stats):
+        target_stats = flatten_stats(target_stats)
+        tomerge_stats = flatten_stats(tomerge_stats)
+        # sum the counts and the sums
+        target_stats["_count"] = target_stats["_count"] + tomerge_stats["_count"]
+        target_stats["_sum"] = target_stats["_sum"] + tomerge_stats["_sum"]
+        # adjust min and max
+        if tomerge_stats["_max"] > target_stats["_max"]:
+            target_stats["_max"] = tomerge_stats["_max"]
+        if tomerge_stats["_min"] < target_stats["_min"]:
+            target_stats["_min"] = tomerge_stats["_min"]
+        # extend values
+        target_stats["__vals"].extend(tomerge_stats["__vals"])
 
     def merge_record(target,tomerge,mode):
         for k in tomerge:
@@ -159,9 +164,10 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0):
 
     return mapt
 
-def inspect_docs(docs,mode="type",clean=True):
+def inspect_docs(docs,mode="type",clean=True,logger=logging):
 
     def post(mapt, mode,clean):
+        logger.info("Post-processing (stats)")
         if type(mapt) == dict:
             for k in list(mapt.keys()):
                 if is_str(k) and k.startswith("__"):
@@ -179,8 +185,16 @@ def inspect_docs(docs,mode="type",clean=True):
                 post(e,mode,clean)
 
     mapt = {}
+    cnt = 0
+    t0 = time.time()
+    innert0 = time.time()
     for doc in docs:
         inspect(doc,mapt=mapt,mode=mode)
+        cnt += 1
+        if cnt % 10000 == 0:
+            logger.info("%d documents processed [%s]" % (cnt,timesofar(innert0)))
+            innert0 = time.time()
+    logger.info("Done [%s]" % timesofar(t0))
     post(mapt,mode,clean)
     return mapt
 
