@@ -71,6 +71,10 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
     def merge_record(target,tomerge,mode):
         for k in tomerge:
             if k in target:
+                if mode == "type":
+                    # in mode=type, we just keep track on types,
+                    # we already did it so nothing to do
+                    continue
                 if k == "_stats":
                     tgt_stats = target["_stats"]
                     tom_stats = tomerge["_stats"]
@@ -79,18 +83,13 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
                 for typ in tomerge[k]:
                     if typ in target[k]:
                         # same key, same type, need to merge stats
-                        if mode == "type":
-                            # in mode=type, we just keep track on types,
-                            # we already did it so nothing to do
-                            pass
-                        else:
-                            if not "_stats" in tomerge[k][typ]:
-                                # we try to merge record at a too higher level, need to merge deeper
-                                target[k] = merge_record(target[k],tomerge[k],mode)
-                                continue
-                            tgt_stats = target[k][typ]["_stats"]
-                            tom_stats = tomerge[k][typ]["_stats"]
-                            merge_stats(tgt_stats,tom_stats)
+                        if not "_stats" in tomerge[k][typ]:
+                            # we try to merge record at a too higher level, need to merge deeper
+                            target[k] = merge_record(target[k],tomerge[k],mode)
+                            continue
+                        tgt_stats = target[k][typ]["_stats"]
+                        tom_stats = tomerge[k][typ]["_stats"]
+                        merge_stats(tgt_stats,tom_stats)
                     else:
                         # key exists but with a different type, create new type
                         if mode == "type":
@@ -99,7 +98,10 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
                             target[k].setdefault(typ,{}).update(tomerge[k][typ])
             else:
                 # key doesn't exist, create key
-                target.setdefault(k,{}).update(tomerge[k])
+                if mode == "type":
+                    target.setdefault(k,{}).update(tomerge)
+                else:
+                    target.setdefault(k,{}).update(tomerge[k])
 
         return target
 
