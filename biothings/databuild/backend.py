@@ -119,7 +119,7 @@ class SourceDocMongoBackend(SourceDocBackendBase):
         srcs = []
         if self.sources_accessed:
             for src in self.sources_accessed:
-                doc = self.dump.find_one({"$where":"function() {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}" % src})
+                doc = self.dump.find_one({"$where":"function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}}" % src})
                 srcs.append(doc["_id"])
             srcs = list(set(srcs))
         else:

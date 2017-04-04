@@ -112,7 +112,7 @@ def get_source_fullname(col_name):
     find the main source & sub_source associated.
     """
     src_dump = get_src_dump()
-    info = src_dump.find_one({"$where":"function() {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}" % col_name})
+    info = src_dump.find_one({"$where":"function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}}" % col_name})
     if info:
         name = info["_id"]
         if name != col_name:
@@ -219,7 +219,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force=Fals
             else:
                 ts = info["build"][-1]["started_at"].timestamp()
         elif col.database.name == config.DATA_SRC_DATABASE:
-            info = src_db["src_dump"].find_one({"$where":"function() {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}" % col.name})
+            info = src_db["src_dump"].find_one({"$where":"function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}}" % col.name})
             if not info:
                 logger.warning("Can't find information for source collection '%s'" % col.name)
             else:

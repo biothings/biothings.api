@@ -187,7 +187,7 @@ class DataBuilder(object):
             # "sources" in config is a list a collection names. src_dump _id is the name of the
             # resource but can have sub-resources with different collection names. We need
             # to query inner keys upload.job.*.step, which always contains the collection name
-            src_doc = src_dump.find_one({"$where":"function() {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}" % src_name})
+            src_doc = src_dump.find_one({"$where":"function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}}" % src_name})
             if not src_doc:
                 raise ResourceNotReady("Missing information for source '%s' to start upload" % src_name)
             if not src_doc.get("upload",{}).get("jobs",{}).get(src_name,{}).get("status") == "success":
