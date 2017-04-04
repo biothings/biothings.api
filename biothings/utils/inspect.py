@@ -5,8 +5,8 @@ In general, do not include utils depending on any third-party modules.
 import math, statistics
 import time
 import logging
+from pprint import pprint, pformat
 
-from .dataload import merge_struct
 from .common import timesofar, is_scalar, is_float, is_str, is_int
 
 
@@ -71,31 +71,32 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
     def merge_record(target,tomerge,mode):
         for k in tomerge:
             if k in target:
-                if mode == "type":
-                    # in mode=type, we just keep track on types,
-                    # we already did it so nothing to do
-                    continue
                 if k == "_stats":
                     tgt_stats = target["_stats"]
                     tom_stats = tomerge["_stats"]
                     merge_stats(tgt_stats,tom_stats)
                     continue
                 for typ in tomerge[k]:
-                    if typ in target[k]:
-                        # same key, same type, need to merge stats
-                        if not "_stats" in tomerge[k][typ]:
-                            # we try to merge record at a too higher level, need to merge deeper
-                            target[k] = merge_record(target[k],tomerge[k],mode)
-                            continue
-                        tgt_stats = target[k][typ]["_stats"]
-                        tom_stats = tomerge[k][typ]["_stats"]
-                        merge_stats(tgt_stats,tom_stats)
+                    if mode == "type":
+                        # in mode=type, we just keep track on types,
+                        # we already did it so nothing to do
+                        continue
                     else:
-                        # key exists but with a different type, create new type
-                        if mode == "type":
-                            target[k].update(tomerge[k])
+                        if typ in target[k]:
+                            # same key, same type, need to merge stats
+                            if not "_stats" in tomerge[k][typ]:
+                                # we try to merge record at a too higher level, need to merge deeper
+                                target[k] = merge_record(target[k],tomerge[k],mode)
+                                continue
+                            tgt_stats = target[k][typ]["_stats"]
+                            tom_stats = tomerge[k][typ]["_stats"]
+                            merge_stats(tgt_stats,tom_stats)
                         else:
-                            target[k].setdefault(typ,{}).update(tomerge[k][typ])
+                            # key exists but with a different type, create new type
+                            if mode == "type":
+                                target[k].update(tomerge[k])
+                            else:
+                                target[k].setdefault(typ,{}).update(tomerge[k][typ])
             else:
                 # key doesn't exist, create key
                 if mode == "type":
@@ -104,6 +105,14 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
                     target.setdefault(k,{}).update(tomerge[k])
 
         return target
+
+    def merge_dict(dtarget,d):
+        for k in d:
+            if k in dtarget:
+                dtarget[k] = merge_dict(dtarget[k],d[k])
+            else:
+                dtarget[k] = d[k]
+        return dtarget
 
     stats_tpl = {"_stats" : {"_min":math.inf,"_max":-math.inf,"_count":0,"_sum":0,"__vals":[]}}
 
@@ -144,7 +153,7 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
             topop = []
             if mapt:
                 topop = [k for k in list(mapt.keys()) if k != list]
-                mapl.update(merge_struct(mapt,mapl))
+                merge_dict(mapl,mapt)
             mapt.setdefault(list,{})
             mapt[list].update(mapl)
             for k in topop:
@@ -152,7 +161,7 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
     elif is_scalar(struct):
         typ = type(struct)
         if mode == "type":
-            mapt[typ] = True
+            mapt[typ] = {}
         else:
             mapt.setdefault(typ,stats_tpl)
             if is_str(struct):
@@ -200,3 +209,120 @@ def inspect_docs(docs,mode="type",clean=True,logger=logging):
     post(mapt,mode,clean)
     return mapt
 
+
+if __name__ == "__main__":
+    d1 = {"id" : "124",'lofd': [{"val":34.3},{"ul":"bla"}],"d":{"start":134,"end":5543}}
+    d2 = {"id" : "5",'lofd': {"oula":"mak","val":34},"d":{"start":134,"end":5543}}
+    d3 = {"id" : "890",'lofd': [{"val":34}],"d":{"start":134,"end":5543}}
+
+    # merge either ways in the same
+    m12 = inspect_docs([d1,d2])
+    m21 = inspect_docs([d2,d1])
+    #if undordered list, then:
+    assert m21 == m12, "\nm21=%s\n!=\nm12=%s" % (pformat(m21),pformat(m12))
+    # val can be an int and a float
+    m1 = inspect_docs([{"val":34},{"val":1.2}]) 
+    # set: types can be in any order
+    assert set(m1["val"]) ==  {int,float}
+    # even if val is in a list
+    m2 = inspect_docs([{"val":34},[{"val":1.2}]])
+    # val merged as list in the end
+    assert set(m2[list]["val"]) ==  {int,float}
+    assert set(m1["val"]) == set(m2[list]["val"])
+
+    # stats
+    m = {}
+    inspect(d1,mapt=m,mode="stats")
+    # some simple check
+    assert set(m["id"].keys()) == {str}
+    assert m["id"][str]["_stats"]["_count"] == 1
+    assert m["id"][str]["_stats"]["_max"] == 3
+    assert m["id"][str]["_stats"]["_min"] == 3
+    assert m["id"][str]["_stats"]["_sum"] == 3
+    assert m["lofd"].keys() == {list}
+    # list's stats
+    assert m["lofd"][list]["_stats"]["_count"] == 1
+    assert m["lofd"][list]["_stats"]["_max"] == 2
+    assert m["lofd"][list]["_stats"]["_min"] == 2
+    assert m["lofd"][list]["_stats"]["_sum"] == 2
+    # one list's elem stats
+    assert m["lofd"][list]["val"][float]["_stats"]["_count"] == 1
+    assert m["lofd"][list]["val"][float]["_stats"]["_max"] == 34.3
+    assert m["lofd"][list]["val"][float]["_stats"]["_min"] == 34.3
+    assert m["lofd"][list]["val"][float]["_stats"]["_sum"] == 34.3
+    # again
+    inspect(d1,mapt=m,mode="stats")
+    assert m["id"][str]["_stats"]["_count"] == 2
+    assert m["id"][str]["_stats"]["_max"] == 3
+    assert m["id"][str]["_stats"]["_min"] == 3
+    assert m["id"][str]["_stats"]["_sum"] == 6
+    assert m["lofd"][list]["_stats"]["_count"] == 2
+    assert m["lofd"][list]["_stats"]["_max"] == 2
+    assert m["lofd"][list]["_stats"]["_min"] == 2
+    assert m["lofd"][list]["_stats"]["_sum"] == 4
+    assert m["lofd"][list]["val"][float]["_stats"]["_count"] == 2
+    assert m["lofd"][list]["val"][float]["_stats"]["_max"] == 34.3
+    assert m["lofd"][list]["val"][float]["_stats"]["_min"] == 34.3
+    assert m["lofd"][list]["val"][float]["_stats"]["_sum"] == 68.6
+    # mix with d2
+    inspect(d2,mapt=m,mode="stats")
+    assert m["id"][str]["_stats"]["_count"] == 3
+    assert m["id"][str]["_stats"]["_max"] == 3
+    assert m["id"][str]["_stats"]["_min"] == 1 # new min
+    assert m["id"][str]["_stats"]["_sum"] == 7
+    assert m["lofd"][list]["_stats"]["_count"] == 2 # not incremented as in d2 it's not a list
+    assert m["lofd"][list]["_stats"]["_max"] == 2
+    assert m["lofd"][list]["_stats"]["_min"] == 2
+    assert m["lofd"][list]["_stats"]["_sum"] == 4
+    # now float & int
+    assert m["lofd"][list]["val"][float]["_stats"]["_count"] == 2
+    assert m["lofd"][list]["val"][float]["_stats"]["_max"] == 34.3
+    assert m["lofd"][list]["val"][float]["_stats"]["_min"] == 34.3
+    assert m["lofd"][list]["val"][float]["_stats"]["_sum"] == 68.6
+    assert m["lofd"][list]["val"][int]["_stats"]["_count"] == 1
+    assert m["lofd"][list]["val"][int]["_stats"]["_max"] == 34
+    assert m["lofd"][list]["val"][int]["_stats"]["_min"] == 34
+    assert m["lofd"][list]["val"][int]["_stats"]["_sum"] == 34
+    # d2 again
+    inspect(d2,mapt=m,mode="stats")
+    assert m["id"][str]["_stats"]["_count"] == 4
+    assert m["id"][str]["_stats"]["_max"] == 3
+    assert m["id"][str]["_stats"]["_min"] == 1
+    assert m["id"][str]["_stats"]["_sum"] == 8
+    assert m["lofd"][list]["_stats"]["_count"] == 2
+    assert m["lofd"][list]["_stats"]["_max"] == 2
+    assert m["lofd"][list]["_stats"]["_min"] == 2
+    assert m["lofd"][list]["_stats"]["_sum"] == 4
+    assert m["lofd"][list]["val"][float]["_stats"]["_count"] == 2
+    assert m["lofd"][list]["val"][float]["_stats"]["_max"] == 34.3
+    assert m["lofd"][list]["val"][float]["_stats"]["_min"] == 34.3
+    assert m["lofd"][list]["val"][float]["_stats"]["_sum"] == 68.6
+    assert m["lofd"][list]["val"][int]["_stats"]["_count"] == 2
+    assert m["lofd"][list]["val"][int]["_stats"]["_max"] == 34
+    assert m["lofd"][list]["val"][int]["_stats"]["_min"] == 34
+    assert m["lofd"][list]["val"][int]["_stats"]["_sum"] == 68
+
+
+    # all counts should be 10
+    m = inspect_docs([d1] * 10,mode="stats") 
+    assert m["d"]["end"][int]["_stats"]["_count"] == 10
+    assert m["d"]["start"][int]["_stats"]["_count"] == 10
+    assert m["id"][str]["_stats"]["_count"] == 10
+    assert m["lofd"][list]["_stats"]["_count"] == 10
+    assert m["lofd"][list]["ul"][str]["_stats"]["_count"] == 10
+    assert m["lofd"][list]["val"][float]["_stats"]["_count"] == 10
+
+    ## test merge
+    #m = {}
+    #inspect({"A":[{"a":34}]},mode="stats",mapt=m)
+    ## same key but different type
+    #inspect({"A":[{"a":"va1"}]},mode="stats",mapt=m)
+    ## same key same type (stats merged)
+    #inspect({"A":[{"a":"val2"}]},mode="stats",mapt=m)
+    ## new key
+    #inspect({"A":[{"a":"val2","b":"new"}]},mode="stats",mapt=m)
+
+    ## deeply nested struct
+    #m = {}
+    #inspect({"A":[{"B":{"C":1}},{"b":{"c":1}}]},mode="stats",mapt=m)
+    #inspect({"A":[{"B":{"C":4}},{"b":{"c":"oula"}}]},mode="stats",mapt=m)

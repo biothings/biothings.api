@@ -483,3 +483,55 @@ class ESIndexer():
         body = {"indices": self._index}
         return self._es.snapshot.create(repo,snapshot,body=body,params=params)
 
+
+def generate_es_mapping(inspect_doc,init=True,level=0):
+    """Generate an ES mapping according to "inspect_doc", which is 
+    produced by biothings.utils.inspect module"""
+    type_map = {int:"integer",
+                bool:"boolean",
+                float:"float",
+                str:"string",
+                }
+    if init and not "_id" in inspect_doc:
+        raise ValueError("Not _id key found, documents won't be indexed")
+    mapping = {}
+    for rootk in inspect_doc:
+        if rootk == "_id":
+            continue
+        if rootk == "_stats":
+            continue
+        if rootk == type(None):
+            # value can be null, just skip it
+            continue
+        # some inspect report have True as value, others have dict (will all have dict eventually)
+        if inspect_doc[rootk] == True:
+            inspect_doc[rootk] = {}
+        keys = list(inspect_doc[rootk].keys())
+        # if dict, it can be a dict containing the type (no explore needed) or a dict
+        # containing more keys (explore needed)
+        if list in keys:
+            # we explore directly the list w/ inspect_doc[rootk][list] as param. 
+            # (similar to skipping list type, as there's no such list type in ES mapping)
+            res = generate_es_mapping(inspect_doc[rootk][list],init=False,level=level+1)
+            # list was either a list of values (end of tree) or a list of dict. Depending
+            # on that, we add "properties" (when list of dict) or not (when list of values)
+            if type in set(map(type,inspect_doc[rootk][list])):
+                mapping[rootk] = res
+            else:
+                mapping[rootk] = {"properties" : {}}
+                mapping[rootk]["properties"] = res
+        elif set(map(type,keys)) == {type}:
+            # it's a type declaration, no explore
+            try:
+                typ = list(inspect_doc[rootk].keys())[0]
+                mapping[rootk] = {"type":type_map[typ]}
+            except Exception as e:
+                raise ValueError("Can't find map type %s for key %s" % (rootk,inspect_doc[rootk]))
+        elif inspect_doc[rootk] == {}:
+            return {"type" : type_map[rootk]}
+        else:
+            #if len(keys) > 1:
+            #    raise ValueError("More than one type reported: %s" % inspect_doc[rootk])
+            mapping[rootk] = {"properties" : {}}
+            mapping[rootk]["properties"] = generate_es_mapping(inspect_doc[rootk],init=False,level=level+1)
+    return mapping
