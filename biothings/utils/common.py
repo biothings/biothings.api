@@ -266,7 +266,7 @@ def get_compressed_outfile(filename, compress='gzip'):
     elif compress == 'bz2':
         import bz2
         out_f = bz2.BZ2File(filename, 'wb')
-    elif compress == 'lzma':
+    elif compress == 'lzma' or compress == 'xz':
         import lzma
         out_f = lzma.LZMAFile(filename, 'wb')
     elif compress == None:

@@ -1,9 +1,10 @@
 
-import time, logging, os
+import time, logging, os, io
 from functools import wraps
 from pymongo import MongoClient
 
-from biothings.utils.common import timesofar, get_random_string, iter_n
+from biothings.utils.common import timesofar, get_random_string, iter_n, \
+                                   open_compressed_file, get_compressed_outfile
 # stub, until set to real config module
 config = None
 
@@ -190,7 +191,8 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
         cur.close()
 
 @requires_config
-def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force=False):
+def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
+              force_use=False, force_build=True):
     """Return an iterator for all _ids in collection "col"
        Search for a valid cache file if available, if not
        return a doc_feeder for that collection. Valid cache is
@@ -198,8 +200,10 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force=Fals
        "db" can be "target" or "src".
        "build_cache" True will build a cache file as _ids are fetched, 
        if no cache file was found
-       "force" True will use any existing cache file and won't check whether
+       "force_use" True will use any existing cache file and won't check whether
        it's valid of not.
+       "force_build" True will build a new cache even if current one exists
+       and is valid.
     """
     src_db = get_src_db()
     ts = None
@@ -234,14 +238,21 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force=Fals
     # try to find a cache file
     use_cache = False
     cache_file = None
+    cache_format = getattr(config,"CACHE_FORMAT",None)
     if found_meta and config.CACHE_FOLDER:
         cache_file = os.path.join(config.CACHE_FOLDER,col.name)
+        cache_file = cache_format and (cache_file + ".%s" % cache_format) or cache_file
         try:
+            if force_build:
+                logger.warning("Force building cache file")
+                use_cache = False
+            # size of empty file differs depending on compression
+            empty_size = {None:0,"xz":32,"gzip":25,"bz2":14}
             # check size, delete if invalid
-            if os.path.getsize(cache_file) == 0:
+            elif os.path.getsize(cache_file) <= empty_size.get(cache_format,32): 
                 logger.warning("Cache file exists but is empty, delete it")
                 os.remove(cache_file)
-            elif force:
+            elif force_use:
                 use_cache = True
                 logger.info("Force using cache file")
             else:
@@ -254,8 +265,12 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force=Fals
             pass
     if use_cache:
         logger.debug("Found valid cache file for '%s': %s" % (col.name,cache_file))
-        with open(cache_file) as cache_in:
-            for ids in iter_n(cache_in,batch_size):
+        with open_compressed_file(cache_file) as cache_in:
+            if cache_format:
+                iocache = io.TextIOWrapper(cache_in)
+            else:
+                iocache = cache_in
+            for ids in iter_n(iocache,batch_size):
                 yield [_id.strip() for _id in ids if _id.strip()]
     else:
         logger.debug("No cache file found (or invalid) for '%s', use doc_feeder" % col.name)
@@ -266,12 +281,17 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force=Fals
                 os.makedirs(config.CACHE_FOLDER)
             # use temp file and rename once done
             cache_temp = "%s.%s" % (cache_file,get_random_string())
-            cache_out = open(cache_temp,"w")
+            cache_out = get_compressed_outfile(cache_temp,compress=cache_format)
             logger.info("Building cache file '%s'" % cache_temp)
         for doc_ids in doc_feeder(col, step=batch_size, inbatch=True, fields={"_id":1}):
             doc_ids = [_doc["_id"] for _doc in doc_ids]
             if build_cache:
-                cache_out.write("\n".join(doc_ids) + "\n")
+                strout = "\n".join(doc_ids) + "\n"
+                if cache_format:
+                    # assuming binary format (b/ccompressed)
+                    cache_out.write(strout.encode())
+                else:
+                    cache_out.write(strout)
             yield doc_ids
         if build_cache:
             cache_out.close()

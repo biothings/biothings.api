@@ -178,7 +178,6 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
 def inspect_docs(docs,mode="type",clean=True,logger=logging):
 
     def post(mapt, mode,clean):
-        logger.info("Post-processing (stats)")
         if type(mapt) == dict:
             for k in list(mapt.keys()):
                 if is_str(k) and k.startswith("__"):
@@ -206,6 +205,7 @@ def inspect_docs(docs,mode="type",clean=True,logger=logging):
             logger.info("%d documents processed [%s]" % (cnt,timesofar(innert0)))
             innert0 = time.time()
     logger.info("Done [%s]" % timesofar(t0))
+    logger.info("Post-processing (stats)")
     post(mapt,mode,clean)
     return mapt
 
