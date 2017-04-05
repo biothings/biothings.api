@@ -66,11 +66,13 @@ def wrapper(func):
 class IndexerException(Exception): pass
 
 class ESIndexer():
-    def __init__(self, index, doc_type, es_host, step=10000, number_of_shards=10):
+    def __init__(self, index, doc_type, es_host, step=10000,
+                 number_of_shards=10, number_of_replicas=0):
         self._es = get_es(es_host)
         self._index = index
         self._doc_type = doc_type
         self.number_of_shards = number_of_shards # set number_of_shards when create_index
+        self.number_of_replicas = number_of_replicas # set number_of_replicas when create_index
         self.step = step  # the bulk size when doing bulk operation.
         self.s = None   # optionally, can specify number of records to skip,
                         # useful to continue indexing after an error.
@@ -131,9 +133,7 @@ class ESIndexer():
             body = {
                 'settings': {
                     'number_of_shards': self.number_of_shards,
-                    "number_of_replicas": 0,    # set this to 0 to boost indexing
-                                                # after indexing, set "auto_expand_replicas": "0-all",
-                                                #   to make additional replicas.
+                    "number_of_replicas": self.number_of_replicas,
                 }
             }
             body["settings"].update(extra_settings)
@@ -258,8 +258,6 @@ class ESIndexer():
             "index": {
                 "refresh_interval": "-1",              # disable refresh temporarily
                 "auto_expand_replicas": "0-all",
-                #"number_of_replicas": 0,
-                #"refresh_interval": "30s",
             }
         }
         res = self._es.indices.put_settings(body, index_name)

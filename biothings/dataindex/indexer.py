@@ -93,6 +93,7 @@ class Indexer(object):
         self.index_name = None
         self.doc_type = None
         self.num_shards = None
+        self.num_replicas = None
         self.load_build_config(build_name)
 
     def get_pinfo(self):
@@ -129,7 +130,8 @@ class Indexer(object):
                              index=index_name,
                              es_host=self.host,
                              step=batch_size,
-                             number_of_shards=self.num_shards)
+                             number_of_shards=self.num_shards,
+                             number_of_replicas=self.num_replicas)
         # instantiate one here for index creation
         es_idxer = partial_idxer()
         if es_idxer.exists_index():
@@ -310,8 +312,10 @@ class Indexer(object):
             if not "doc_type" in _cfg:
                 raise ValueError("Missing 'doc_type' in build config")
             self.doc_type = _cfg["doc_type"]
-            self.num_shards = _cfg.get("num_shards") # optional
+            self.num_shards = _cfg.get("num_shards",10) # optional
             self.num_shards = self.num_shards and int(self.num_shards) or self.num_shards
+            self.num_replicas = _cfg.get("num_replicas",0) # optional
+            self.num_replicas = self.num_replicas and int(self.num_replicas) or self.num_replicas
         else:
             raise ValueError('Cannot find build config named "%s"' % build)
         return _cfg
