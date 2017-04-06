@@ -1,5 +1,5 @@
 
-import time, logging, os, io
+import time, logging, os, io, glob
 from functools import wraps
 from pymongo import MongoClient
 
@@ -243,11 +243,11 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
         cache_file = os.path.join(config.CACHE_FOLDER,col.name)
         cache_file = cache_format and (cache_file + ".%s" % cache_format) or cache_file
         try:
+            # size of empty file differs depending on compression
+            empty_size = {None:0,"xz":32,"gzip":25,"bz2":14}
             if force_build:
                 logger.warning("Force building cache file")
                 use_cache = False
-            # size of empty file differs depending on compression
-            empty_size = {None:0,"xz":32,"gzip":25,"bz2":14}
             # check size, delete if invalid
             elif os.path.getsize(cache_file) <= empty_size.get(cache_format,32): 
                 logger.warning("Cache file exists but is empty, delete it")
@@ -279,8 +279,13 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
         if config.CACHE_FOLDER and build_cache:
             if not os.path.exists(config.CACHE_FOLDER):
                 os.makedirs(config.CACHE_FOLDER)
+            cache_temp = "%s._tmp_" % cache_file
+            # clean aborted cache file generation
+            for tmpcache in glob.glob(os.path.join(config.CACHE_FOLDER,"%s*" % cache_temp)):
+                logger.info("Removing aborted cache file '%s'" % tmpcache)
+                os.remove(tmpcache)
             # use temp file and rename once done
-            cache_temp = "%s.%s" % (cache_file,get_random_string())
+            cache_temp = "%s%s" % (cache_temp,get_random_string())
             cache_out = get_compressed_outfile(cache_temp,compress=cache_format)
             logger.info("Building cache file '%s'" % cache_temp)
         for doc_ids in doc_feeder(col, step=batch_size, inbatch=True, fields={"_id":1}):
@@ -398,4 +403,13 @@ def get_data_folder(src_name):
     # ensure we're not in a transient state
     assert src_doc.get("download",{}).get('status') in ['success','failed'], "Source files are not ready yet [status: \"%s\"]." % src_doc['status']
     return src_doc['data_folder']
+
+def get_latest_build(build_name):
+    src_build = get_src_build()
+    doc = src_build.find_one({"_id":build_name})
+    if doc and doc.get("build"):
+        target = doc["build"][-1]["target_name"]
+        return target
+    else:
+        return None
 
