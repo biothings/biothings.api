@@ -1,5 +1,5 @@
 
-import time, logging, os, io, glob
+import time, logging, os, io, glob, datetime
 from functools import wraps
 from pymongo import MongoClient
 
@@ -192,7 +192,7 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
 
 @requires_config
 def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
-              force_use=False, force_build=True):
+              force_use=False, force_build=False):
     """Return an iterator for all _ids in collection "col"
        Search for a valid cache file if available, if not
        return a doc_feeder for that collection. Valid cache is
@@ -412,4 +412,18 @@ def get_latest_build(build_name):
         return target
     else:
         return None
+
+def invalidate_cache(src_name):
+    src_dump = get_src_dump()
+    if not "." in src_name:
+        fullname = get_source_fullname(src_name)
+    assert fullname, "Can't resolve source '%s' (does it exist ?)" % src_name
+
+    main,sub = fullname.split(".")
+    doc = src_dump.find_one({"_id":main})
+    assert doc, "No such source '%s'" % main
+    assert doc.get("upload",{}).get("jobs",{}).get(sub), "No such sub-source '%s'" % sub
+    # this will make the cache too old
+    doc["upload"]["jobs"][sub]["started_at"] = datetime.datetime.now()
+    src_dump.update_one({"_id":main},{"$set" : {"upload.jobs.%s.started_at" % sub:datetime.datetime.now()}})
 
