@@ -1,4 +1,4 @@
-Biothings SDK tutorial
+BioThings SDK tutorial
 ----------------------
 
 The following tutorial shows how to create a "hub", a piece of software used to
