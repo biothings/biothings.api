@@ -305,6 +305,10 @@ class JobManager(object):
                 # thus memory usage can be modified on-the-fly
                 hub_mem = self.hub_memory
                 max_mem = self.max_memory_usage and self.max_memory_usage or self.avail_memory
+        if self.process_queue._queue_count > config.MAX_QUEUED_JOBS:
+            logger.info("Too much pending jobs in the queue")
+            yield from asyncio.sleep(sleep_time)
+            waited = True
         if waited:
             logger.info("Job {cat:%s,source:%s,step:%s} now can be launched (total waiting time: %s)" % (pinfo.get("category"),
                 pinfo.get("source"), pinfo.get("step"), timesofar(t0)))
