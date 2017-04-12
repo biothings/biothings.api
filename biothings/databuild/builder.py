@@ -289,7 +289,7 @@ class DataBuilder(object):
         if self.doc_root_key and not self.doc_root_key in self.build_config:
             raise BuilderException("Root document key '%s' can't be found in build configuration" % self.doc_root_key)
 
-    def store_stats(self,f):
+    def store_stats(self,f,sources):
         try:
             self.target_backend.post_merge()
             _src_versions = self.source_backend.get_src_versions()
@@ -364,7 +364,7 @@ class DataBuilder(object):
             job = self.merge_sources(source_names=sources, ids=ids, job_manager=job_manager,
                                      *args, **kwargs)
             task = asyncio.ensure_future(job)
-            task.add_done_callback(self.store_stats)
+            task.add_done_callback(partial(self.store_stats,sources=sources))
             return task
 
         except (KeyboardInterrupt,Exception) as e:
@@ -443,6 +443,7 @@ class DataBuilder(object):
                         got_error = e
                 job.add_done_callback(partial(merged,name=src_name,stats=self.stats))
                 jobs.append(job)
+                yield from asyncio.wait([job])
                 # raise error as soon as we know something went wrong
                 if got_error:
                     raise got_error
@@ -565,7 +566,7 @@ class DataBuilder(object):
         if got_error:
             raise got_error
         else:
-            return {"total_%s" % src_name : cnt}
+            return {"%s" % src_name : cnt}
 
     def post_merge(self, source_names, batch_size, job_manager):
         pass
