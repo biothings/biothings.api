@@ -4,6 +4,8 @@ import re
 import logging
 
 class BaseESRequestHandler(BaseHandler):
+    ''' Parent class of all Elasticsearch-based Request handlers, subclass of `BaseHandler`_. 
+    Contains handling for Elasticsearch-specific query params (like ``fields``, ``size``, etc) '''
     # override these in child class
     control_kwargs = {}
     es_kwargs = {}
@@ -11,7 +13,8 @@ class BaseESRequestHandler(BaseHandler):
     transform_kwargs = {}
 
     def initialize(self, web_settings):
-        ''' Initializations common to all ES Request Handlers here '''
+        ''' Tornado reqeust handler initialization.  Initializations common to all 
+        Elasticsearch-specific request handlers go here.'''
         super(BaseESRequestHandler, self).initialize(web_settings)
 
     def _return_data_and_track(self, data, ga_event_data={}, rawquery=False):
@@ -24,6 +27,8 @@ class BaseESRequestHandler(BaseHandler):
         return
 
     def return_raw_query_json(self, query):
+        '''Return valid JSON if `rawquery` option is selected.
+        This is necessary as queries can span multiple lines (POST)'''
         _ret = query.get('body', {'GET': query.get('bid')})
         if is_str(_ret) and len(_ret.split('\n')) > 1:
             self.return_json({'body': _ret})
@@ -61,7 +66,14 @@ class BaseESRequestHandler(BaseHandler):
         return kwargs
 
     def get_cleaned_options(self, kwargs):
-        ''' Get options for handlers using ES requests '''
+        ''' Separate URL keyword arguments into their functional category.
+        Incoming kwargs are separated into one of 4 categories, depending on how the argument controls the
+        pipeline:
+
+        * ``control_kwargs`` - These are arguments that control the pipeline execution (**raw**, **rawquery**, etc)
+        * ``es_kwargs`` - These are arguments that get passed directly to the Elasticsearch client during query
+        * ``esqb_kwargs`` - These are arguments that go to the Elasticsearch query builder (**fields**, **size**, etc)
+        * ``transform_kwargs`` - These are arguments that go to the Elasticsearch result transformer (**jsonld**, **dotfield**, etc)'''
         options = dotdict()
 
         # split kwargs into one (or more) of 4 categories:

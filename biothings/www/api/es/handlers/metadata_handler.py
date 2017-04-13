@@ -4,7 +4,10 @@ from biothings.utils.www import sum_arg_dicts
 import logging
 
 class MetadataHandler(BaseESRequestHandler):
+    ''' Request handlers for requests to the metadata endpoint. '''
     def initialize(self, web_settings):
+        ''' Tornado handler `.initialize() <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler.initialize>`_ function for all requests to the metadata endpoint.
+        Here, the allowed arguments are set (depending on the request method) for each kwarg category.'''
         super(MetadataHandler, self).initialize(web_settings)
         if self.request.method == 'GET':
             self.control_kwargs = self.web_settings.METADATA_GET_CONTROL_KWARGS
@@ -17,6 +20,7 @@ class MetadataHandler(BaseESRequestHandler):
         logging.debug("Kwarg settings: {}".format(self.kwarg_settings))
 
     def get(self):
+        ''' Handle a GET to the metadata endpoint.  Also handles /metadata/fields. '''
         kwargs = self.get_query_params()
 
         if kwargs is None:

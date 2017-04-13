@@ -7,7 +7,10 @@ from biothings.utils.www import sum_arg_dicts
 import logging
 
 class QueryHandler(BaseESRequestHandler):
+    ''' Request handlers for requests to the query endpoint '''
     def initialize(self, web_settings):
+        ''' Tornado handler `.initialize() <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler.initialize>`_ function for all requests to the query endpoint.
+        Here, the allowed arguments are set (depending on the request method) for each kwarg category.'''    
         super(QueryHandler, self).initialize(web_settings)
         self.ga_event_object_ret['action'] = self.request.method
         if self.request.method == 'GET':
@@ -36,9 +39,7 @@ class QueryHandler(BaseESRequestHandler):
         return res
 
     def get(self):
-        '''
-            QUERY GET HANDLER
-        '''
+        ''' Handle a GET to the query endpoint. '''
         ###################################################
         #          Get/type/alias query parameters
         ###################################################
@@ -203,9 +204,7 @@ class QueryHandler(BaseESRequestHandler):
     ###########################################################################
     
     def post(self):
-        '''
-            QUERY POST HANDLER
-        '''
+        ''' Handle a POST to the query endpoint.'''
         ###################################################
         #          Get/type/alias query parameters
         ###################################################

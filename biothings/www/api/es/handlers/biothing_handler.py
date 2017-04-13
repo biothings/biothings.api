@@ -6,7 +6,10 @@ import logging
 import traceback
 
 class BiothingHandler(BaseESRequestHandler):
+    ''' Request handlers for requests to the annotation lookup endpoint '''
     def initialize(self, web_settings):
+        ''' Tornado handler `.initialize() <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler.initialize>`_ function for all requests to the annotation lookup endpoint.
+        Here, the allowed arguments are set (depending on the request method) for each kwarg category.'''
         super(BiothingHandler, self).initialize(web_settings)
         self.ga_event_object_ret['action'] = self.request.method
         if self.request.method == 'GET':
@@ -35,9 +38,7 @@ class BiothingHandler(BaseESRequestHandler):
         pass
 
     def get(self, bid=None):
-        '''
-            ANNOTATION GET HANDLER
-        '''
+        ''' Handle a GET to the annotation lookup endpoint.'''
         if not bid:
             raise HTTPError(404)
             #return
@@ -135,9 +136,7 @@ class BiothingHandler(BaseESRequestHandler):
     ###########################################################################
 
     def post(self, ids=None):
-        '''
-            ANNOTATION POST HANDLER
-        '''
+        ''' Handle a POST to the annotation lookup endpoint '''
         
         ###################################################
         #           Get query parameters    
