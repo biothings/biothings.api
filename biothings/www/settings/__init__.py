@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+'''Settings objects used to configure the www API
+These settings get passed into the handler.initialize() function,
+of each request, and configure the web API endpoint.  They are mostly
+a container for the `Config module`_, and any other settings that
+are the same across all handler types, e.g. the Elasticsearch client.'''
+
 import logging
 import os
 import socket
@@ -11,7 +17,11 @@ class BiothingConfigError(Exception):
     pass
 
 class BiothingWebSettings(object):
-    def __init__(self, config='biothings.www.settings.default'): 
+    ''' A container for the settings that configure the web API '''
+
+    def __init__(self, config='biothings.www.settings.default'):
+        ''' The ``config`` init parameter specifies a module that configures 
+        this biothing.  For more information see `config module`_ documentation.''' 
         self.config_mod = import_module(config)
         try:
             with open(os.path.abspath(self.config_mod.JSONLD_CONTEXT_PATH), 'r') as json_file:
@@ -50,28 +60,31 @@ class BiothingWebSettings(object):
             raise AttributeError("No setting named '{}' was found, check configuration module.".format(name))
 
     def set_debug_level(self, debug=False):
-        ''' Are we debugging? '''
+        '''Set if running API in debug mode.
+        Should be called before passing ``self`` to handler initialization.'''
         self._DEBUG = debug
         return self
     
     def generate_app_list(self):
-        ''' Generates the APP_LIST for tornado for this project, basically just adds the settings 
-            to kwargs in every handler's initialization. '''
+        ''' Generates the tornado.web.Application `(regex, handler_class, options) tuples <http://www.tornadoweb.org/en/stable/web.html#application-configuration>`_ for this project.'''
         return [(endpoint_regex, handler, {"web_settings": self}) for (endpoint_regex, handler) in self.APP_LIST]
 
     def validate(self):
-        ''' validates this object '''
+        ''' Validate these settings '''
         pass
 
 class BiothingESWebSettings(BiothingWebSettings):
-    ''' subclass with functions specific to elasticsearch backend '''
+    ''' `BiothingWebSettings`_ subclass with functions specific to an elasticsearch backend '''
     def __init__(self, config='biothings.www.settings.default'):
+        ''' The ``config`` init parameter specifies a module that configures 
+        this biothing.  For more information see `config module`_ documentation.''' 
         super(BiothingESWebSettings, self).__init__(config)
 
         # get es client for web
         self.es_client = self.get_es_client()
 
     def get_es_client(self):
-        ''' get the es client for this app '''
+        '''Get the `Elasticsearch client <https://elasticsearch-py.readthedocs.io/en/master/>`_
+        for this app, only called once on invocation of server. '''
         from elasticsearch import Elasticsearch
         return Elasticsearch(self.ES_HOST, timeout=getattr(self, 'ES_CLIENT_TIMEOUT', 120))
