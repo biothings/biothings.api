@@ -8,6 +8,9 @@ except ImportError:
     from re import match
 
 class ESQueries(object):
+    ''' A very simple class to object-ize Elasticsearch Query DSL.
+    This should be replaced by the official `Elasticsearch equivalent <https://pypi.python.org/pypi/elasticsearch-dsl>`_.
+    Also contains a simple JSON validator after generating all queries (dump to string and re-read) '''
     def __init__(self, es_kwargs={}):
         self.es_kwargs = es_kwargs
 
@@ -24,24 +27,40 @@ class ESQueries(object):
         return self._validate_json(_ret)
 
     def multi_match(self, query_kwargs):
+        ''' Given ``query_kwargs``, validate and return a **multi_match** query. '''
         return self._es_query_template(query_type="multi_match", query_kwargs=query_kwargs)
 
     def match(self, query_kwargs):
+        ''' Given ``query_kwargs``, validate and return a **match** query. '''
         return self._es_query_template(query_type="match", query_kwargs=query_kwargs)
 
     def match_all(self, query_kwargs):
+        ''' Given ``query_kwargs``, validate and return a **match_all** query. '''
         return self._es_query_template(query_type="match_all", query_kwargs=query_kwargs)
 
     def query_string(self, query_kwargs):
+        ''' Given ``query_kwargs``, validate and return a **query_string** query. '''
         return self._es_query_template(query_type="query_string", query_kwargs=query_kwargs)
 
     def bool(self, query_kwargs):
+        ''' Given ``query_kwargs``, validate and return a **bool** query. '''
         return self._es_query_template(query_type="bool", query_kwargs=query_kwargs)
 
     def raw_query(self, raw_query):
+        ''' Given ``query_kwargs``, validate and return a *raw* query (queries that don't fit the same query_template). '''
         return self._es_query_template(raw_query=raw_query)
 
 class ESQueryBuilder(object):
+    ''' Class to return the correct query given the request endpoint, method, and URL params.
+
+    :param index: The Elasticsearch index to run the query on 
+    :param doc_type: The Elasticsearch document type of the query
+    :param options: Options from the URL string relevant to query building 
+    :param es_options: Options for Elasticsearch query stage 
+    :param scroll_options: Options for scroll requests
+    :param regex_list: A list of (regex, scope) tuples for annotation lookup
+    :param userquery_dir: The directory containing user queries for this app
+    :param default_scopes: A list representing the default Elasticsearch query scope(s) for this query'''
     def __init__(self, index, doc_type, options, es_options, scroll_options={}, 
                        userquery_dir='', regex_list=[], default_scopes=['_id']):
         self.index = index
@@ -123,10 +142,11 @@ class ESQueryBuilder(object):
         return _filter
 
     def get_query_filters(self):
-        ''' Override me '''
+        ''' Override me to add more query filters '''
         return self._get_query_filters()
 
     def add_query_filters(self, _query):
+        ''' Given a query, add any other filters '''
         filters = self.get_query_filters()
         if not filters:
             return _query
@@ -186,19 +206,36 @@ class ESQueryBuilder(object):
         return self._return_query_kwargs({})
 
     def annotation_GET_query(self, bid):
+        ''' Return an annotation lookup GET query for this ``bid``. 
+
+        :param bid: Biothing ID, used to lookup the annotation'''
         return self._annotation_GET_query(bid)
     
     def annotation_POST_query(self, bids):
+        ''' Return an annotation lookup POST query for these ``bids``. 
+
+        :param bids: Biothing IDs, used to lookup the annotations'''
         return self._annotation_POST_query(bids)
 
     def query_GET_query(self, q):
+        ''' Return a query endpoint GET query for this query string ``q``. 
+
+        :param q: query string specifying the query'''
         return self._query_GET_query(q)
 
     def query_POST_query(self, qs, scopes):
+        ''' Return query endpoint POST queries for these query strings ``qs``. 
+
+        :param qs: Query strings to query
+        :param scopes: Scope of query strings ``qs``'''
         return self._query_POST_query(qs, scopes)
 
     def metadata_query(self):
+        ''' Return a metadata query ''' 
         return self._metadata_query()
 
     def scroll(self, scroll_id):
+        ''' Return the next batch of results from a *scroll* query. 
+
+        :param scroll_id: ID of the batch to yield hits from '''
         return self._scroll(scroll_id)
