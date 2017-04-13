@@ -239,7 +239,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
     use_cache = False
     cache_file = None
     cache_format = getattr(config,"CACHE_FORMAT",None)
-    if found_meta and config.CACHE_FOLDER:
+    if found_meta and getattr(config,"CACHE_FOLDER",None):
         cache_file = os.path.join(config.CACHE_FOLDER,col.name)
         cache_file = cache_format and (cache_file + ".%s" % cache_format) or cache_file
         try:
@@ -276,7 +276,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
         logger.debug("No cache file found (or invalid) for '%s', use doc_feeder" % col.name)
         cache_out = None
         cache_temp = None
-        if config.CACHE_FOLDER and build_cache:
+        if getattr(config,"CACHE_FOLDER",None) and config.CACHE_FOLDER and build_cache:
             if not os.path.exists(config.CACHE_FOLDER):
                 os.makedirs(config.CACHE_FOLDER)
             cache_temp = "%s._tmp_" % cache_file
@@ -288,6 +288,9 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             cache_temp = "%s%s" % (cache_temp,get_random_string())
             cache_out = get_compressed_outfile(cache_temp,compress=cache_format)
             logger.info("Building cache file '%s'" % cache_temp)
+        else:
+            logger.info("Can't build cache, no cache folder")
+            build_cache = False
         for doc_ids in doc_feeder(col, step=batch_size, inbatch=True, fields={"_id":1}):
             doc_ids = [_doc["_id"] for _doc in doc_ids]
             if build_cache:

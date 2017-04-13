@@ -137,7 +137,6 @@ class ESIndexer():
                 }
             }
             body["settings"].update(extra_settings)
-            print(body)
             if mapping:
                 mapping = {"mappings": mapping}
                 body.update(mapping)
