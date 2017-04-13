@@ -31,6 +31,7 @@ import shlex
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
+    'sphinx.ext.viewcode',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -293,3 +294,5 @@ try:
 except ImportError:
     print 'Warning: "sphinx_rtd_theme" is not installed, fall back to default theme.'
     pass
+
+autoclass_content = 'both'
