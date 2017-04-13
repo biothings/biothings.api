@@ -1,5 +1,13 @@
-'''
-    Base event loop function.
+'''BioThings API ioloop start utilities.
+
+This module contains functions to configure and start the `base event loop <http://www.tornadoweb.org/en/stable/ioloop.html>`_ from command line args.  Command line processing is done using tornado.options, with the following arguments defined:
+
+    * ``port``: the port to start the API on, **default** 8000
+    * ``address``: the address to start the API on, **default** 127.0.0.1
+    * ``debug``: start the API in debug mode, **default** False
+    * ``appdir``: path to API configuration directory, **default**: current working directory
+
+    The **main** function is the boot script for all BioThings API webservers.
 '''
 import sys
 import os
@@ -24,7 +32,10 @@ define("address", default="127.0.0.1", help="run on localhost")
 define("debug", default=False, type=bool, help="run in debug mode")
 define("appdir", default=os.getcwd(), type=str, help="path to app directory containing (at minimum) a config module")
 
-options.parse_command_line()
+try:
+    options.parse_command_line()
+except:
+    pass
 
 # assume config file is root of appdir
 src_path = os.path.abspath(options.appdir)
@@ -38,9 +49,17 @@ if options.debug:
     options.address = '0.0.0.0'
 
 def get_app(APP_LIST, **settings):
+    ''' Return an Application instance. '''
     return tornado.web.Application(APP_LIST, **settings)
 
 def main(APP_LIST, app_settings={}, debug_settings={}, sentry_client_key=None):
+    ''' Main ioloop configuration and start
+
+        :param APP_LIST: a list of `URLSpec objects or (regex, handler_class) tuples <http://www.tornadoweb.org/en/stable/web.html#tornado.web.Application>`_
+        :param app_settings: `Tornado application settings <http://www.tornadoweb.org/en/stable/web.html#tornado.web.Application.settings>`_
+        :param debug_settings: Additional application settings for API debug mode
+        :param sentry_client_key: Application-specific key for attaching Sentry monitor to the application
+    '''
     settings = app_settings
     if options.debug:
         settings.update(debug_settings)
