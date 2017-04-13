@@ -1,4 +1,3 @@
-from elasticsearch import NotFoundError, RequestError, TransportError
 from biothings.utils.common import dotdict
 import logging
 
@@ -22,6 +21,7 @@ class ESQuery(object):
         
     def _scroll(self, query_kwargs):
         ''' Returns the next scroll batch for the given scroll id '''
+        from elasticsearch import NotFoundError, RequestError, TransportError
         try:
             return self.client.scroll(**query_kwargs)
         except (NotFoundError, RequestError, TransportError):
