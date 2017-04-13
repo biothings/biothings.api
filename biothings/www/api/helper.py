@@ -39,13 +39,17 @@ class BiothingParameterTypeError(Exception):
     pass
 
 class BaseHandler(tornado.web.RequestHandler, GAMixIn, SentryMixin):
-    ''' Parent class of all biothings handlers.
+    ''' Parent class of all biothings handlers, only direct descendant of
+        `tornado.web.RequestHandler <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler>`_, 
+        contains the common functions in the biothings handler universe:
 
-            Methods:
-
-    '''
+            * return `self` as JSON
+            * set CORS and caching headers
+            * typify the URL keyword arguments
+            * optionally send tracking data to google analytics and integrate with sentry monitor'''
     def initialize(self, web_settings):
-        """ Overridden to add settings for this biothing API. """
+        """ Tornado handler `initialize() <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler.initialize>`_, 
+        Override to add settings for *this* biothing API.  Assumes that the ``web_settings`` kwarg exists in APP_LIST """
         self.web_settings = web_settings
         self.ga_event_object_ret = {'category': '{}_api'.format(self.web_settings.API_VERSION)}
         self.kwarg_settings = {}
@@ -142,6 +146,7 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn, SentryMixin):
         return args
 
     def get_query_params(self):
+        '''Extract, typify, and sanitize the parameters from the URL query string. '''
         _args = dict([(k, self.get_argument(k)) for k in self.request.arguments])
         _args = self._alias_input_args(_args)
         _args = self._translate_and_typify_arg_values(_args, json_list_input=self._boolify(_args.get('jsoninput','')))
@@ -149,11 +154,13 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn, SentryMixin):
         return _args
 
     def return_json(self, data, encode=True, indent=None):
-        '''return passed data object as JSON response.
-           if <jsonp_parameter> is passed, return a valid JSONP response.
-           if encode is False, assumes input data is already a JSON encoded
-           string.
-            if multiline_sep is not None, use it as a separator between
+        '''Return passed data object as JSON response.
+        If **jsonp** parameter is set in the  request, return a valid 
+        `JSONP <https://en.wikipedia.org/wiki/JSONP>`_ response.
+            
+        :param data: object to return as JSON
+        :param encode: if encode is False, assumes input data is already a JSON encoded string.
+        :param indent: number of indents per level in JSON string
         '''    
         # call the recursive function to sort the data by keys and add the json-ld information
         indent = indent or 2   # tmp settings

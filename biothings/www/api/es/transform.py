@@ -5,9 +5,21 @@ from collections import OrderedDict
 import logging
 
 class ScrollIterationDone(Exception):
+    ''' Thrown when no more results are left in request scroll batch. '''
     pass
 
 class ESResultTransformer(object):
+    ''' Class to transform the results of the Elasticsearch query generated prior in the pipeline.
+    This contains the functions to extract the final document from the elasticsearch query result
+    in `Elasticsearch Query`_.  This also contains the code to flatten a document (if **dotfield** is True), or
+    to add JSON-LD context to the document (if **jsonld** is True).
+
+    :param options: Options from the URL string controlling result transformer
+    :param host: Host name (extracted from request), used for JSON-LD address generation
+    :param jsonld_context: JSON-LD context for this app (optional)
+    :param data_sources: unused currently (optional)
+    :param output_aliases: list of output key names to alias, unused currently (optional)
+    :param app_dir: Application directory for this app (used for getting app information in /metadata)'''
     def __init__(self, options, host, jsonld_context={}, data_sources={}, output_aliases={}, app_dir=''):
         self.options = options
         self.host = host
@@ -201,19 +213,41 @@ class ESResultTransformer(object):
         return get_software_info(app_dir=self.app_dir)
  
     def clean_annotation_GET_response(self, res):
+        ''' Transform the results of a GET to the annotation lookup endpoint.
+
+        :param res: Results from `Elasticsearch Query`_. '''
         return self._clean_annotation_GET_response(res)
 
     def clean_annotation_POST_response(self, bid_list, res, single_hit=True):
+        ''' Transform the results of a POST to the annotation lookup endpoint.
+
+        :param bid_list: List of biothing id inputs
+        :param res: Results from `Elasticsearch Query`_
+        :param single_hit: If ``True``, render queries with 1 result as a dictionary, else as a 1-element list containing a dictionary '''
         return self._clean_annotation_POST_response(bid_list, res, single_hit)
 
     def clean_query_GET_response(self, res):
+        ''' Transform the results of a GET to the query endpoint.
+
+        :param res: Results from `Elasticsearch Query`_. '''
         return self._clean_query_GET_response(res)
 
     def clean_query_POST_response(self, qlist, res, single_hit=True):
+        ''' Transform the results of a POST to the query endpoint.
+
+        :param qlist: List of query inputs
+        :param res: Results from `Elasticsearch Query`_
+        :param single_hit: If ``True``, render queries with 1 result as a dictionary, else as a 1-element list containing a dictionary '''
         return self._clean_query_POST_response(qlist=qlist, res=res, single_hit=single_hit)
 
     def clean_metadata_response(self, res, fields=False):
+        ''' Transform the results of a GET to the metadata endpoint.
+
+        :param res: Results from `Elasticsearch Query`_. '''
         return self._clean_metadata_response(res, fields=fields)
 
     def clean_scroll_response(self, res):
+        ''' Transform the results of a GET to the scroll endpoint
+
+        :param res: Results from `Elasticsearch Query`_. '''
         return self._clean_scroll_response(res)
