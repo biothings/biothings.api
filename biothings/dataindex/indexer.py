@@ -246,7 +246,8 @@ class Indexer(object):
             else:
                 self.logger.info('Warning: "%s" collection has no mapping data.' % collection)
         mapping = {"properties": mapping,
-                   "dynamic": "false"}
+                   "dynamic": "false",
+                   "include_in_all": "false"}
         if enable_timestamp:
             mapping['_timestamp'] = {
                 "enabled": True,
