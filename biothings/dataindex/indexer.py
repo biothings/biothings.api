@@ -191,7 +191,7 @@ class Indexer(object):
             # compute overall inserted/updated records
             # returned values looks like [(num,[]),(num,[]),...]
             cnt = sum([val[0] for val in f.result()])
-            self.logger.info("Index '%s' successfully created" % index_name)
+            self.logger.info("Index '%s' successfully created" % index_name,extra={"notify":True})
         tasks.add_done_callback(done)
         yield from tasks
         if got_error:
