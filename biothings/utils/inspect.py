@@ -3,11 +3,94 @@ This module contains util functions may be shared by both BioThings data-hub and
 In general, do not include utils depending on any third-party modules.
 """
 import math, statistics
-import time
+import time, re
 import logging
 from pprint import pprint, pformat
 
 from .common import timesofar, is_scalar, is_float, is_str, is_int
+
+
+def sumiflist(val):
+    if type(val) == list:
+        return sum(val)
+    else:
+        return val
+
+
+def maxminiflist(val,func):
+    if type(val) == list:
+        return func(val)
+    else:
+        return val
+
+
+def flatten_stats(stats):
+    # after merge_struct, stats can be merged together as list (merge_struct
+    # is only about data structures). Re-adjust here considering there could lists
+    # that need to be sum'ed and min/max to be dealt with
+    stats["_count"] = sumiflist(stats["_count"])
+    stats["_sum"] = sumiflist(stats["_sum"])
+    stats["_max"] = maxminiflist(stats["_max"],max)
+    stats["_min"] = maxminiflist(stats["_min"],min)
+    return stats
+
+
+def merge_stats(target_stats, tomerge_stats):
+    target_stats = flatten_stats(target_stats)
+    tomerge_stats = flatten_stats(tomerge_stats)
+    # sum the counts and the sums
+    target_stats["_count"] = target_stats["_count"] + tomerge_stats["_count"]
+    target_stats["_sum"] = target_stats["_sum"] + tomerge_stats["_sum"]
+    # adjust min and max
+    if tomerge_stats["_max"] > target_stats["_max"]:
+        target_stats["_max"] = tomerge_stats["_max"]
+    if tomerge_stats["_min"] < target_stats["_min"]:
+        target_stats["_min"] = tomerge_stats["_min"]
+    # extend values
+    target_stats["__vals"].extend(tomerge_stats["__vals"])
+
+
+def merge_record(target,tomerge,mode):
+    for k in tomerge:
+        if k in target:
+            if k == "_stats":
+                tgt_stats = target["_stats"]
+                tom_stats = tomerge["_stats"]
+                merge_stats(tgt_stats,tom_stats)
+                continue
+            for typ in tomerge[k]:
+                if mode == "type":
+                    # in mode=type, we just keep track on types,
+                    # we already did it so nothing to do
+                    continue
+                elif mode == "mapping":
+                    # keep track on splitable (precedence: splitable > non-splitable)
+                    if "split" in tomerge[k][typ]:
+                        target[k].update(tomerge[k])
+                else:
+                    if typ in target[k]:
+                        # same key, same type, need to merge stats
+                        if not "_stats" in tomerge[k][typ]:
+                            # we try to merge record at a too higher level, need to merge deeper
+                            target[k] = merge_record(target[k],tomerge[k],mode)
+                            continue
+                        tgt_stats = target[k][typ]["_stats"]
+                        tom_stats = tomerge[k][typ]["_stats"]
+                        merge_stats(tgt_stats,tom_stats)
+                    else:
+                        # key exists but with a different type, create new type
+                        if mode == "type":
+                            target[k].update(tomerge[k])
+                        else:
+                            target[k].setdefault(typ,{}).update(tomerge[k][typ])
+        else:
+            # key doesn't exist, create key
+            if mode == "type":
+                target.setdefault(k,{}).update(tomerge)
+            else:
+                target.setdefault(k,{}).update(tomerge[k])
+
+    return target
 
 
 def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
@@ -18,9 +101,8 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
       when iterating over a dataset of similar data, trying to find a good type summary 
       contained in that dataset.
     - (level: is for internal purposes, mostly debugging)
-    - mode: "type", "stats", "deepstats"
+    - mode: see inspect_docs() documentation
     """
-
     def report(val,drep):
         drep["_stats"] = flatten_stats(drep["_stats"])
         drep["_stats"]["_count"] += 1
@@ -33,86 +115,6 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
             # just keep track of vals for now, stats are computed at the end
             drep["_stats"]["__vals"].append(val)
 
-    def sumiflist(val):
-        if type(val) == list:
-            return sum(val)
-        else:
-            return val
-    def maxminiflist(val,func):
-        if type(val) == list:
-            return func(val)
-        else:
-            return val
-
-    def flatten_stats(stats):
-        # after merge_struct, stats can be merged together as list (merge_struct
-        # is only about data structures). Re-adjust here considering there could lists
-        # that need to be sum'ed and min/max to be dealt with
-        stats["_count"] = sumiflist(stats["_count"])
-        stats["_sum"] = sumiflist(stats["_sum"])
-        stats["_max"] = maxminiflist(stats["_max"],max)
-        stats["_min"] = maxminiflist(stats["_min"],min)
-        return stats
-
-    def merge_stats(target_stats, tomerge_stats):
-        target_stats = flatten_stats(target_stats)
-        tomerge_stats = flatten_stats(tomerge_stats)
-        # sum the counts and the sums
-        target_stats["_count"] = target_stats["_count"] + tomerge_stats["_count"]
-        target_stats["_sum"] = target_stats["_sum"] + tomerge_stats["_sum"]
-        # adjust min and max
-        if tomerge_stats["_max"] > target_stats["_max"]:
-            target_stats["_max"] = tomerge_stats["_max"]
-        if tomerge_stats["_min"] < target_stats["_min"]:
-            target_stats["_min"] = tomerge_stats["_min"]
-        # extend values
-        target_stats["__vals"].extend(tomerge_stats["__vals"])
-
-    def merge_record(target,tomerge,mode):
-        for k in tomerge:
-            if k in target:
-                if k == "_stats":
-                    tgt_stats = target["_stats"]
-                    tom_stats = tomerge["_stats"]
-                    merge_stats(tgt_stats,tom_stats)
-                    continue
-                for typ in tomerge[k]:
-                    if mode == "type":
-                        # in mode=type, we just keep track on types,
-                        # we already did it so nothing to do
-                        continue
-                    else:
-                        if typ in target[k]:
-                            # same key, same type, need to merge stats
-                            if not "_stats" in tomerge[k][typ]:
-                                # we try to merge record at a too higher level, need to merge deeper
-                                target[k] = merge_record(target[k],tomerge[k],mode)
-                                continue
-                            tgt_stats = target[k][typ]["_stats"]
-                            tom_stats = tomerge[k][typ]["_stats"]
-                            merge_stats(tgt_stats,tom_stats)
-                        else:
-                            # key exists but with a different type, create new type
-                            if mode == "type":
-                                target[k].update(tomerge[k])
-                            else:
-                                target[k].setdefault(typ,{}).update(tomerge[k][typ])
-            else:
-                # key doesn't exist, create key
-                if mode == "type":
-                    target.setdefault(k,{}).update(tomerge)
-                else:
-                    target.setdefault(k,{}).update(tomerge[k])
-
-        return target
-
-    def merge_dict(dtarget,d):
-        for k in d:
-            if k in dtarget:
-                dtarget[k] = merge_dict(dtarget[k],d[k])
-            else:
-                dtarget[k] = d[k]
-        return dtarget
 
     stats_tpl = {"_stats" : {"_min":math.inf,"_max":-math.inf,"_count":0,"_sum":0,"__vals":[]}}
 
@@ -129,7 +131,7 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
                 already_explored_as_list = True
             else:
                 already_explored_as_list = False
-            if already_explored_as_list:
+            if False:#already_explored_as_list:
                 mapt[list].setdefault(k,{})
                 typ = inspect(struct[k],key=k,mapt=mapt[list][k],mode=mode,level=level+1)
                 mapt[list].update({k:typ})
@@ -141,27 +143,27 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
         for e in struct:
             typ = inspect(e,key=key,mapt=mapl,mode=mode,level=level+1)
             mapl.update(typ)
-        if mode != "type":
+        if  "stats" in mode:
             mapl.update(stats_tpl)
             report(len(struct),mapl)
-        # if mapt exist, it means it's been explored previously but not a list,
+        # if mapt exist, it means it's been explored previously but not as a list,
         # instead of mixing dict and list types, we want to normalize so we merge the previous
         # struct into that current list
         if mapt and list in mapt:
             mapt[list] = merge_record(mapt[list],mapl,mode)
         else:
-            topop = []
-            if mapt:
-                topop = [k for k in list(mapt.keys()) if k != list]
-                merge_dict(mapl,mapt)
             mapt.setdefault(list,{})
             mapt[list].update(mapl)
-            for k in topop:
-                mapt.pop(k,None)
     elif is_scalar(struct):
         typ = type(struct)
         if mode == "type":
             mapt[typ] = {}
+        elif mode == "mapping":
+            # splittable string ?
+            if is_str(struct) and len(re.split(" +",struct.strip())) > 1:
+                mapt[typ] = {"split":{}}
+            else:
+                mapt[typ] = {}
         else:
             mapt.setdefault(typ,stats_tpl)
             if is_str(struct):
@@ -175,7 +177,49 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
 
     return mapt
 
-def inspect_docs(docs,mode="type",clean=True,logger=logging):
+def merge_scalar_list(mapt,mode):
+    # TODO: this looks "strangely" to merge_record... refactoring needed ?
+    # if a list is found and other keys at same level are found in that
+    # list, then we need to merge. Ex: ...,{"bla":1},["bla":2],...
+    if list in mapt.keys():
+        other_keys = [k for k in mapt if k != list]
+        for e in other_keys:
+            if e in mapt[list]:
+                tomerge = mapt.pop(e)
+                if "stats" in mode:
+                    merge_stats(mapt[list]["_stats"],tomerge["_stats"])
+                elif mode == "mapping":
+                    for typ in tomerge:
+                        if not typ in mapt[list][e]:
+                            # that field exist in the [list] but with a different type
+                            # just merge the typ
+                            mapt[list][e].update(tomerge)
+                        elif "split" in tomerge[typ]:
+                            mapt[list][e].update(tomerge)
+                else:
+                    # assuming what's in [list] is enough, we just popped the value
+                    # from mapt, that's enough
+                    pass
+    elif type(mapt) == dict:
+        for k in mapt:
+            merge_scalar_list(mapt[k],mode)
+    elif type(mapt) == list:
+        for e in mapt:
+            merge_scalar_list(e,mode)
+
+
+def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging):
+    """Inspect docs and return a summary of its structure:
+    - mode:
+        + "type": explore documents and report strict data structure
+        + "mapping": same as type but also perform test on data so guess best mapping 
+          (eg. check if a string is splitable, etc...). Implies merge=True
+        + "stats": explore documents and compute basic stats (count,min,max,sum)
+        + "deepstats": same as stats but record values and also compute mean,stdev,median
+          (memory intensive...)
+    - clean: don't delete recorded vqlues or temporary results
+    - merge: merge scalar into list when both exist (eg. {"val":..} and [{"val":...}]
+    """
 
     def post(mapt, mode,clean):
         if type(mapt) == dict:
@@ -194,6 +238,7 @@ def inspect_docs(docs,mode="type",clean=True,logger=logging):
             for e in mapt:
                 post(e,mode,clean)
 
+    merge = mode == "mapping" and True or False
     mapt = {}
     cnt = 0
     t0 = time.time()
@@ -207,6 +252,9 @@ def inspect_docs(docs,mode="type",clean=True,logger=logging):
     logger.info("Done [%s]" % timesofar(t0))
     logger.info("Post-processing (stats)")
     post(mapt,mode,clean)
+    if merge:
+        merge_scalar_list(mapt,mode)
+
     return mapt
 
 
@@ -226,9 +274,8 @@ if __name__ == "__main__":
     assert set(m1["val"]) ==  {int,float}
     # even if val is in a list
     m2 = inspect_docs([{"val":34},[{"val":1.2}]])
-    # val merged as list in the end
-    assert set(m2[list]["val"]) ==  {int,float}
-    assert set(m1["val"]) == set(m2[list]["val"])
+    # list and val not merged
+    assert set(m2.keys()) == {'val',list}
 
     # stats
     m = {}
@@ -279,10 +326,11 @@ if __name__ == "__main__":
     assert m["lofd"][list]["val"][float]["_stats"]["_max"] == 34.3
     assert m["lofd"][list]["val"][float]["_stats"]["_min"] == 34.3
     assert m["lofd"][list]["val"][float]["_stats"]["_sum"] == 68.6
-    assert m["lofd"][list]["val"][int]["_stats"]["_count"] == 1
-    assert m["lofd"][list]["val"][int]["_stats"]["_max"] == 34
-    assert m["lofd"][list]["val"][int]["_stats"]["_min"] == 34
-    assert m["lofd"][list]["val"][int]["_stats"]["_sum"] == 34
+    # val{int} wasn't merged
+    assert m["lofd"]["val"][int]["_stats"]["_count"] == 1
+    assert m["lofd"]["val"][int]["_stats"]["_max"] == 34
+    assert m["lofd"]["val"][int]["_stats"]["_min"] == 34
+    assert m["lofd"]["val"][int]["_stats"]["_sum"] == 34
     # d2 again
     inspect(d2,mapt=m,mode="stats")
     assert m["id"][str]["_stats"]["_count"] == 4
@@ -297,10 +345,10 @@ if __name__ == "__main__":
     assert m["lofd"][list]["val"][float]["_stats"]["_max"] == 34.3
     assert m["lofd"][list]["val"][float]["_stats"]["_min"] == 34.3
     assert m["lofd"][list]["val"][float]["_stats"]["_sum"] == 68.6
-    assert m["lofd"][list]["val"][int]["_stats"]["_count"] == 2
-    assert m["lofd"][list]["val"][int]["_stats"]["_max"] == 34
-    assert m["lofd"][list]["val"][int]["_stats"]["_min"] == 34
-    assert m["lofd"][list]["val"][int]["_stats"]["_sum"] == 68
+    assert m["lofd"]["val"][int]["_stats"]["_count"] == 2
+    assert m["lofd"]["val"][int]["_stats"]["_max"] == 34
+    assert m["lofd"]["val"][int]["_stats"]["_min"] == 34
+    assert m["lofd"]["val"][int]["_stats"]["_sum"] == 68
 
 
     # all counts should be 10
@@ -312,17 +360,50 @@ if __name__ == "__main__":
     assert m["lofd"][list]["ul"][str]["_stats"]["_count"] == 10
     assert m["lofd"][list]["val"][float]["_stats"]["_count"] == 10
 
-    ## test merge
-    #m = {}
-    #inspect({"A":[{"a":34}]},mode="stats",mapt=m)
-    ## same key but different type
-    #inspect({"A":[{"a":"va1"}]},mode="stats",mapt=m)
-    ## same key same type (stats merged)
-    #inspect({"A":[{"a":"val2"}]},mode="stats",mapt=m)
-    ## new key
-    #inspect({"A":[{"a":"val2","b":"new"}]},mode="stats",mapt=m)
+    # test merge_stats
+    nd1 = {"id" : "124",'lofd': [{"val":34.3},{"ul":"bla"}]}
+    nd2 = {"id" : "5678",'lofd': {"val":50.2}}
+    m = {}
+    inspect(nd1,mapt=m,mode="deepstats")
+    inspect(nd2,mapt=m,mode="deepstats")
+    assert set(m["lofd"].keys()) == {list,'val'}
+    assert m["lofd"][list]["val"][float]["_stats"] == {'__vals': [34.3], '_count': 1, '_max': 34.3, '_min': 34.3, '_sum': 34.3}
+    # merge stats into the left param
+    merge_stats(m["lofd"][list]["val"][float]["_stats"],m["lofd"]["val"][float]["_stats"])
+    assert m["lofd"][list]["val"][float]["_stats"] == {'__vals': [34.3, 50.2], '_count': 2, '_max': 50.2, '_min': 34.3, '_sum': 84.5}
 
-    ## deeply nested struct
-    #m = {}
-    #inspect({"A":[{"B":{"C":1}},{"b":{"c":1}}]},mode="stats",mapt=m)
-    #inspect({"A":[{"B":{"C":4}},{"b":{"c":"oula"}}]},mode="stats",mapt=m)
+    # mapping mode (splittable strings)
+    # "bla" is splitable in one case, not in the other
+    # "oula" is splitable, "arf" is not
+    sd1 = {"id" : "124",'vals': [{"oula":"this is great"},{"bla":"I am splitable","arf":"ENS355432"}]}
+    sd2 = {"id" : "5678",'vals': {"bla":"rs45653","void":654}}
+    sd3 = {"id" : "124",'vals': [{"bla":"thisisanid"}]}
+    m = {}
+    inspect(sd3,mapt=m,mode="mapping")
+    # bla not splitable here
+    assert m["vals"][list]["bla"][str] == {}
+    inspect(sd1,mapt=m,mode="mapping")
+    # now it is
+    assert m["vals"][list]["bla"][str] == {"split":{}}
+    inspect(sd2,mapt=m,mode="mapping")
+    # not splitable in sd2
+    assert m["vals"]["bla"][str] == {}
+
+    # ok, "bla" is either a scalar or in a list, test merge
+    md1 = {"id" : "124",'vals': [{"oula":"this is great"},{"bla":"rs24543","arf":"ENS355432"}]}
+    md2 = {"id" : "5678",'vals': {"bla":"I am splitable in a scalar","void":654}}
+    # bla is a different type here
+    md3 = {"id" : "5678",'vals': {"bla":1234}}
+    m = inspect_docs([md1,md2],mode="mapping") # "mapping" implies merge=True
+    assert not "bla" in m["vals"]
+    assert m["vals"][list]["bla"] == {str: {'split': {}}} # splittable str from md2 merge to list
+    m = inspect_docs([md1,md3],mode="mapping")
+    assert not "bla" in m["vals"]
+    assert m["vals"][list]["bla"] == {int: {}, str: {}} # keep as both types
+    m = inspect_docs([md1,md2,md3],mode="mapping")
+    assert not "bla" in m["vals"]
+    assert m["vals"][list]["bla"] == {int: {}, str: {'split': {}}} # splittable kept + merge int to keep both types
+
+
+
+

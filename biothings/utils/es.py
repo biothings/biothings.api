@@ -524,6 +524,13 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             # we explore directly the list w/ inspect_doc[rootk][list] as param. 
             # (similar to skipping list type, as there's no such list type in ES mapping)
             res = generate_es_mapping(inspect_doc[rootk][list],init=False,level=level+1)
+            # is it the only key or do we have more ? (ie. some docs have data as "x", some 
+            # others have list("x")
+            if len(keys) > 1:
+            # we want to make sure that, whatever the structure, the types involved were the same
+                other_types = set([k for k in keys if k != list and type(k) == type])
+                if len(other_types) > 1:
+                    raise Exception("Mixing types for key %s: %s" % (rootk,other_types))
             # list was either a list of values (end of tree) or a list of dict. Depending
             # on that, we add "properties" (when list of dict) or not (when list of values)
             if type in set(map(type,inspect_doc[rootk][list])):
@@ -533,6 +540,9 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
                 mapping[rootk]["properties"] = res
         elif set(map(type,keys)) == {type}:
             # it's a type declaration, no explore
+            typs = list(map(type,keys))
+            if len(typs) > 1:
+                raise Exception("More than one type")
             try:
                 typ = list(inspect_doc[rootk].keys())[0]
                 mapping[rootk] = {"type":type_map[typ]}
@@ -541,8 +551,6 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
         elif inspect_doc[rootk] == {}:
             return {"type" : type_map[rootk]}
         else:
-            #if len(keys) > 1:
-            #    raise ValueError("More than one type reported: %s" % inspect_doc[rootk])
             mapping[rootk] = {"properties" : {}}
             mapping[rootk]["properties"] = generate_es_mapping(inspect_doc[rootk],init=False,level=level+1)
     return mapping
