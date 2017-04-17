@@ -29,13 +29,32 @@ class IndexerManager(BaseManager):
         self.target_db = mongo.get_target_db()
         self.t0 = time.time()
         self.prepared = False
+        self.log_folder = LOG_FOLDER
+        self.timestamp = datetime.now()
         self.setup()
 
     def setup(self):
         self.setup_log()
 
     def setup_log(self):
-        self.logger = btconfig.logger
+        import logging as logging_mod
+        if not os.path.exists(self.log_folder):
+            os.makedirs(self.log_folder)
+        self.logfile = os.path.join(self.log_folder, 'indexmanager_%s.log' % time.strftime("%Y%m%d",self.timestamp.timetuple()))
+        fh = logging_mod.FileHandler(self.logfile)
+        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S")
+        fh.setFormatter(fmt)
+        fh.name = "logfile"
+        nh = HipchatHandler(btconfig.HIPCHAT_CONFIG)
+        nh.setFormatter(fmt)
+        nh.name = "hipchat"
+        self.logger = logging_mod.getLogger("indexmanager")
+        self.logger.setLevel(logging_mod.DEBUG)
+        if not fh.name in [h.name for h in self.logger.handlers]:
+            self.logger.addHandler(fh)
+        if not nh.name in [h.name for h in self.logger.handlers]:
+            self.logger.addHandler(nh)
+        return self.logger
 
     def __getitem__(self,build_name):
         """
@@ -81,6 +100,56 @@ class IndexerManager(BaseManager):
             return job
         except KeyError as e:
             raise IndexerException("No such builder for '%s'" % build_name)
+
+    def snapshot(self, index, snapshot=None, mode=None):
+        snapshot = snapshot or index
+        es_snapshot_host = getattr(btconfig,"ES_SNAPSHOT_HOST",btconfig.ES_HOST)
+        idxr = ESIndexer(index=index,doc_type=btconfig.ES_DOC_TYPE,es_host=es_snapshot_host)
+        # will hold the overall result
+        fut = asyncio.Future()
+
+        def get_status():
+            res = idxr.get_snapshot_status(btconfig.SNAPSHOT_REPOSITORY, snapshot)
+            assert "snapshots" in res, "Can't find snapshot '%s' in repository '%s'" % (snapshot,btconfig.SNAPSHOT_REPOSITORY)
+            # assuming only one index in the snapshot, so only check first elem
+            state = res["snapshots"][0].get("state")
+            assert state, "Can't find state in snapshot '%s'" % snapshot
+            return state
+
+        @asyncio.coroutine
+        def do(index):
+            def snapshot_launched(f):
+                try:
+                    self.logger.info("res in snapshot_launched %s" % f.result())
+                except Exception as e:
+                    self.logger.error("err %s" % e)
+                    fut.set_exception(e)
+            pinfo = {"category" : "index",
+                    "source" : index,
+                    "step" : "snapshot",
+                    "description" : es_snapshot_host}
+            self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY))
+            job = yield from self.job_manager.defer_to_thread(pinfo,
+                    partial(idxr.snapshot,btconfig.SNAPSHOT_REPOSITORY,index, mode=mode))
+            job.add_done_callback(snapshot_launched)
+            yield from job
+            while True:
+                state = get_status()
+                if state in ["INIT","IN_PROGRESS","STARTED"]:
+                    yield from asyncio.sleep(getattr(btconfig,"MONITOR_SNAPSHOT_DELAY",60))
+                else:
+                    if state == "SUCCESS":
+                        fut.set_result(state)
+                        self.logger.info("Snapshot '%s' successfully created (host: '%s', repository: '%s')" % \
+                                (snapshot,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY),extra={"notify":True})
+                    else:
+                        fut.set_exception(Exception("Snapshot '%s' failed: %s" % (snapshot,state)))
+                        self.logger.error("Failed creating snapshot '%s' (host: %s, repository: %s), state: %s" % \
+                                (snapshot,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY,state),extra={"notify":True})
+                    break
+        task = asyncio.ensure_future(do(index))
+        return fut
+
 
 class Indexer(object):
 

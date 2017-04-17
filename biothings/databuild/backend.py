@@ -46,10 +46,8 @@ class SourceDocBackendBase(DocBackendBase):
         privattr = "_" + attr
         if getattr(self,privattr) is None:
             if getattr(self,privattr + "_provider"):
-                print("onici")
                 res = getattr(self,privattr + "_provider")()
             else:
-                print("onlea")
                 res = getattr(self,privattr)
             setattr(self,privattr,res)
         return getattr(self,privattr)

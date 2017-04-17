@@ -1,6 +1,6 @@
 import time
 import json
-from elasticsearch import Elasticsearch, NotFoundError
+from elasticsearch import Elasticsearch, NotFoundError, RequestError
 from elasticsearch import helpers
 import logging
 import itertools
@@ -476,9 +476,23 @@ class ESIndexer():
                     else:
                         return (cnt, q)
 
-    def snapshot(self,repo,snapshot,**params):
+    def snapshot(self,repo,snapshot,mode=None,**params):
         body = {"indices": self._index}
-        return self._es.snapshot.create(repo,snapshot,body=body,params=params)
+        if mode == "purge":
+            try:
+                snp = self._es.snapshot.get(repo,snapshot)
+                # if we can get it, we have to delete it
+                self._es.snapshot.delete(repo,snapshot)
+            except NotFoundError:
+                # ok, nothing to delete/purge
+                pass
+        try:
+            return self._es.snapshot.create(repo,snapshot,body=body,params=params)
+        except RequestError as e:
+            raise IndexerException("Can't snapshot '%s' (if already exists, use mode='purge'): %s" % (self._index,e))
+
+    def get_snapshot_status(self,repo,snapshot):
+        return self._es.snapshot.status(repo,snapshot)
 
 
 def generate_es_mapping(inspect_doc,init=True,level=0):
