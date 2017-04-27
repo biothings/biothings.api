@@ -47,7 +47,7 @@ def merge_stats(target_stats, tomerge_stats):
     if tomerge_stats["_min"] < target_stats["_min"]:
         target_stats["_min"] = tomerge_stats["_min"]
     # extend values
-    target_stats["__vals"].extend(tomerge_stats["__vals"])
+    target_stats.get("__vals",[]).extend(tomerge_stats.get("__vals",[]))
 
 
 def merge_record(target,tomerge,mode):
@@ -103,6 +103,9 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
     - (level: is for internal purposes, mostly debugging)
     - mode: see inspect_docs() documentation
     """
+
+    stats_tpl = {"_stats" : {"_min":math.inf,"_max":-math.inf,"_count":0,"_sum":0,"__vals":[]}}
+
     def report(val,drep):
         drep["_stats"] = flatten_stats(drep["_stats"])
         drep["_stats"]["_count"] += 1
@@ -115,8 +118,6 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
             # just keep track of vals for now, stats are computed at the end
             drep["_stats"]["__vals"].append(val)
 
-
-    stats_tpl = {"_stats" : {"_min":math.inf,"_max":-math.inf,"_count":0,"_sum":0,"__vals":[]}}
 
     # init recording structure if none were passed
     if mapt is None:
@@ -181,13 +182,24 @@ def merge_scalar_list(mapt,mode):
     # TODO: this looks "strangely" to merge_record... refactoring needed ?
     # if a list is found and other keys at same level are found in that
     # list, then we need to merge. Ex: ...,{"bla":1},["bla":2],...
+    if is_scalar(mapt):
+        return
     if list in mapt.keys():
         other_keys = [k for k in mapt if k != list]
         for e in other_keys:
             if e in mapt[list]:
                 tomerge = mapt.pop(e)
                 if "stats" in mode:
-                    merge_stats(mapt[list]["_stats"],tomerge["_stats"])
+                    for typ in tomerge:
+                        if not typ in mapt[list][e]:
+                            mapt[list][e][typ] = tomerge[typ]
+                        else:
+                            merge_stats(mapt[list][e][typ]["_stats"],tomerge[typ]["_stats"])
+                    # Note: don't update [list]["_stats"], we keep the original stats
+                    # that is, what's actually been inspected on the list, originally
+                    # (and we can't really update those stats as scalar stats aren't relevant
+                    # to a list context
+
                 elif mode == "mapping":
                     for typ in tomerge:
                         if not typ in mapt[list][e]:
@@ -238,7 +250,7 @@ def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging):
             for e in mapt:
                 post(e,mode,clean)
 
-    merge = mode == "mapping" and True or False
+    merge = mode == "mapping" and True or merge
     mapt = {}
     cnt = 0
     t0 = time.time()
@@ -404,6 +416,38 @@ if __name__ == "__main__":
     assert not "bla" in m["vals"]
     assert m["vals"][list]["bla"] == {int: {}, str: {'split': {}}} # splittable kept + merge int to keep both types
 
-
-
+    # test merge scalar/list with stats
+    # unmerged is a inspect-doc with mode=stats, structure is:
+    # id and name keys are both as root keys and in [list]
+    insdoc = {list:
+                    {'_stats': {'_count': 10, '_max': 200, '_sum': 1000, '_min': 2},
+                     'id': {str: {'_stats': {'_count': 100, '_max': 10, '_sum': 1000, '_min': 1}}},
+                     'name': {str: {'_stats': {'_count': 500, '_max': 5, '_sum': 500, '_min': 0.5}}}},
+                'id': {str: {'_stats': {'_count': 300, '_max': 30, '_sum': 300, '_min': 3}},
+                       int: {'_stats': {'_count': 1, '_max': 1, '_sum': 1, '_min': 1}}},
+                'name': {str: {'_stats': {'_count': 400, '_max': 40, '_sum': 4000, '_min': 4}}}}
+    merge_scalar_list(insdoc,mode="stats")
+    # root keys have been merged into [llist] (even id as an integer, bc it's merged based on
+    # key name, not key name *and* type
+    assert list(insdoc) == [list]
+    # check merged stats for "id"
+    assert insdoc[list]["id"][str]["_stats"]["_count"] == 400    # 300 + 100
+    assert insdoc[list]["id"][str]["_stats"]["_max"] == 30       # from root key
+    assert insdoc[list]["id"][str]["_stats"]["_min"] == 1        # from list key
+    assert insdoc[list]["id"][str]["_stats"]["_sum"] == 1300     # 1000 + 300
+    # "id" as in integer is also merged, stats are kept
+    assert insdoc[list]["id"][int]["_stats"]["_count"] == 1
+    assert insdoc[list]["id"][int]["_stats"]["_max"] == 1
+    assert insdoc[list]["id"][int]["_stats"]["_min"] == 1
+    assert insdoc[list]["id"][int]["_stats"]["_sum"] == 1
+    # check merged stats for "name"
+    assert insdoc[list]["name"][str]["_stats"]["_count"] == 900    # 500 + 400
+    assert insdoc[list]["name"][str]["_stats"]["_max"] == 40       # from root key
+    assert insdoc[list]["name"][str]["_stats"]["_min"] == 0.5      # from list key
+    assert insdoc[list]["name"][str]["_stats"]["_sum"] == 4500     # 4000 + 500
+    # [list] stats unchanged
+    assert insdoc[list]["_stats"]["_count"] == 10
+    assert insdoc[list]["_stats"]["_max"] == 200
+    assert insdoc[list]["_stats"]["_min"] == 2
+    assert insdoc[list]["_stats"]["_sum"] == 1000
 
