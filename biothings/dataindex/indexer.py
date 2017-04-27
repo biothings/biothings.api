@@ -176,7 +176,7 @@ class Indexer(object):
                 "description" : ""}
 
     @asyncio.coroutine
-    def index(self, target_name, index_name, job_manager, batch_size=10000, ids=None, mode=None):
+    def index(self, target_name, index_name, job_manager, steps=["index","post"], batch_size=10000, ids=None, mode=None):
         """
         Build an index named "index_name" with data from collection
         "target_collection". "ids" can be passed to selectively index documents. "mode" can have the following
@@ -186,6 +186,9 @@ class Indexer(object):
                  an existing index)
         - None (default): will create a new index, assuming it doesn't already exist
         """
+        # check what to do
+        if type(steps) == str:
+            steps = [steps]
         self.target_name = target_name
         self.index_name = index_name
         self.setup_log()
@@ -213,66 +216,90 @@ class Indexer(object):
             es_idxer.create_index({self.doc_type:_mapping},_extra)
 
         got_error = False
-        jobs = []
-        total = target_collection.count()
-        btotal = math.ceil(total/batch_size) 
-        bnum = 1
         cnt = 0
-        if ids:
-            self.logger.info("Indexing from '%s' with specific list of _ids, create indexer job with batch_size=%d" % (target_name, batch_size))
-            id_provider = [ids]
-        else:
-            self.logger.info("Fetch _ids from '%s', and create indexer job with batch_size=%d" % (target_name, batch_size))
-            id_provider = id_feeder(target_collection, batch_size=batch_size,logger=self.logger)
-        for ids in id_provider:
-            yield from asyncio.sleep(0.0)
-            cnt += len(ids)
-            pinfo = self.get_pinfo()
-            pinfo["step"] = self.target_name
-            pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,(cnt/total*100))
-            self.logger.info("Creating indexer job #%d/%d, to index '%s' %d/%d (%.1f%%)" % \
-                    (bnum,btotal,target_name,cnt,total,(cnt/total*100.)))
-            job = yield from job_manager.defer_to_process(
-                    pinfo,
-                    partial(indexer_worker,
-                        self.target_name,
-                        ids,
-                        partial_idxer,
-                        bnum))
-            def batch_indexed(f,batch_num):
+
+        if "index" in steps:
+            jobs = []
+            total = target_collection.count()
+            btotal = math.ceil(total/batch_size) 
+            bnum = 1
+            if ids:
+                self.logger.info("Indexing from '%s' with specific list of _ids, create indexer job with batch_size=%d" % (target_name, batch_size))
+                id_provider = [ids]
+            else:
+                self.logger.info("Fetch _ids from '%s', and create indexer job with batch_size=%d" % (target_name, batch_size))
+                id_provider = id_feeder(target_collection, batch_size=batch_size,logger=self.logger)
+            for ids in id_provider:
+                yield from asyncio.sleep(0.0)
+                cnt += len(ids)
+                pinfo = self.get_pinfo()
+                pinfo["step"] = self.target_name
+                pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,(cnt/total*100))
+                self.logger.info("Creating indexer job #%d/%d, to index '%s' %d/%d (%.1f%%)" % \
+                        (bnum,btotal,target_name,cnt,total,(cnt/total*100.)))
+                job = yield from job_manager.defer_to_process(
+                        pinfo,
+                        partial(indexer_worker,
+                            self.target_name,
+                            ids,
+                            partial_idxer,
+                            bnum))
+                def batch_indexed(f,batch_num):
+                    nonlocal got_error
+                    res = f.result()
+                    if type(res) != tuple or type(res[0]) != int:
+                        got_error = Exception("Batch #%s failed while indexing collection '%s' [%s]" % (batch_num,self.target_name,f.result()))
+                job.add_done_callback(partial(batch_indexed,batch_num=bnum))
+                jobs.append(job)
+                bnum += 1
+                # raise error as soon as we know
+                if got_error:
+                    raise got_error
+            self.logger.info("%d jobs created for indexing step" % len(jobs))
+            tasks = asyncio.gather(*jobs)
+            def done(f):
                 nonlocal got_error
-                res = f.result()
-                if type(res) != tuple or type(res[0]) != int:
-                    got_error = Exception("Batch #%s failed while indexing collection '%s' [%s]" % (batch_num,self.target_name,f.result()))
-            job.add_done_callback(partial(batch_indexed,batch_num=bnum))
-            jobs.append(job)
-            bnum += 1
-            # raise error as soon as we know
-            if got_error:
-                raise got_error
-        self.logger.info("%d jobs created for indexing step" % len(jobs))
-        tasks = asyncio.gather(*jobs)
-        def done(f):
-            nonlocal got_error
-            if None in f.result():
-                got_error = Exception("Some batches failed")
-                return
-            # compute overall inserted/updated records
-            # returned values looks like [(num,[]),(num,[]),...]
-            cnt = sum([val[0] for val in f.result()])
-            self.logger.info("Index '%s' successfully created" % index_name,extra={"notify":True})
-        tasks.add_done_callback(done)
-        yield from tasks
+                if None in f.result():
+                    got_error = Exception("Some batches failed")
+                    return
+                # compute overall inserted/updated records
+                # returned values looks like [(num,[]),(num,[]),...]
+                cnt = sum([val[0] for val in f.result()])
+                self.logger.info("Index '%s' successfully created" % index_name,extra={"notify":True})
+            tasks.add_done_callback(done)
+            yield from tasks
+
+        if "post" in steps:
+            self.logger.info("Running post-index process for index '%s'" % index_name)
+            pinfo = self.get_pinfo()
+            pinfo["step"] = "post_index"
+            # for some reason (like maintaining object's state between pickling).
+            # we can't use process there. Need to use thread to maintain that state without
+            # building an unmaintainable monster
+            job = yield from job_manager.defer_to_thread(pinfo, partial(self.post_index, target_name, index_name,
+                    job_manager, steps=steps, batch_size=batch_size, ids=ids, mode=mode))
+            def posted(f):
+                try:
+                    res = f.result()
+                    self.logger.info("Post-index process done for index '%s': %s" % (index_name,res))
+                except Exception as e:
+                    got_error = e
+                    self.logger.error("Post-index process failed for index '%s': %s" % (index_name,e),extra={"notify":True})
+                    raise
+            job.add_done_callback(posted)
+            yield from asyncio.gather(job) # consume future
+
         if got_error:
             raise got_error
         else:
-            return {"total_%s" % self.target_name : cnt}
+            return {"%s" % self.target_name : cnt}
 
-
-        es_idxer.build_index(target_collection, verbose=True)
-        if es_idxer.wait_till_all_shards_ready():
-            self.logger.info("Optimizing ES index...")
-            es_idxer.optimize()
+    def post_index(self, target_name, index_name, job_manager, steps=["index","post"], batch_size=10000, ids=None, mode=None):
+        """
+        Override in sub-class to add a post-index process. Method's signature is the same as index() to get
+        the full context. This method will run in a thread (using job_manager.defer_to_thread())
+        """
+        pass
 
     def setup_log(self):
         import logging as logging_mod
