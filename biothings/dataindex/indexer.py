@@ -192,33 +192,34 @@ class Indexer(object):
         self.target_name = target_name
         self.index_name = index_name
         self.setup_log()
-        _db = mongo.get_target_db()
-        target_collection = _db[target_name]
-        _mapping = self.get_mapping()
-        _extra = self.get_index_creation_settings()
-        _meta = {}
-        # partially instantiated indexer instance for process workers
-        partial_idxer = partial(ESIndexer,doc_type=self.doc_type,
-                             index=index_name,
-                             es_host=self.host,
-                             step=batch_size,
-                             number_of_shards=self.num_shards,
-                             number_of_replicas=self.num_replicas)
-        # instantiate one here for index creation
-        es_idxer = partial_idxer()
-        if es_idxer.exists_index():
-            if mode == "purge":
-                es_idxer.delete_index()
-            elif mode != "add":
-                raise IndexerException("Index already '%s' exists, (use mode='purge' to auto-delete it or mode='add' to add more documents)" % index_name)
-
-        if mode != "add":
-            es_idxer.create_index({self.doc_type:_mapping},_extra)
 
         got_error = False
         cnt = 0
 
         if "index" in steps:
+            _db = mongo.get_target_db()
+            target_collection = _db[target_name]
+            _mapping = self.get_mapping()
+            _extra = self.get_index_creation_settings()
+            _meta = {}
+            # partially instantiated indexer instance for process workers
+            partial_idxer = partial(ESIndexer,doc_type=self.doc_type,
+                                 index=index_name,
+                                 es_host=self.host,
+                                 step=batch_size,
+                                 number_of_shards=self.num_shards,
+                                 number_of_replicas=self.num_replicas)
+            # instantiate one here for index creation
+            es_idxer = partial_idxer()
+            if es_idxer.exists_index():
+                if mode == "purge":
+                    es_idxer.delete_index()
+                elif mode != "add":
+                    raise IndexerException("Index already '%s' exists, (use mode='purge' to auto-delete it or mode='add' to add more documents)" % index_name)
+
+            if mode != "add":
+                es_idxer.create_index({self.doc_type:_mapping},_extra)
+
             jobs = []
             total = target_collection.count()
             btotal = math.ceil(total/batch_size) 
