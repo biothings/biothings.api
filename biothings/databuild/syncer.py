@@ -10,12 +10,13 @@ import asyncio
 from functools import partial
 
 from biothings.utils.common import timesofar, iter_n, loadobj
-from biothings.utils.mongo import doc_feeder, get_target_db, invalidate_cache
+from biothings.utils.mongo import doc_feeder, get_target_db, get_src_build, invalidate_cache
 from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings import config as btconfig
 from biothings.utils.manager import BaseManager, ManagerError
 from biothings.databuild.backend import create_backend
 from biothings.dataload.storage import UpsertStorage
+from biothings.utils.es import ESIndexer
 import biothings.utils.jsonpatch as jsonpatch
 from biothings.utils.diff import generate_diff_folder
 
@@ -30,6 +31,10 @@ class BaseSyncer(object):
     # diff type name, identifying the diff algorithm
     # must be set in sub-class
     diff_type = None
+
+    # backend used to sync data (mongo / es)
+    # must be set in sub-class
+    target_backend = None
 
     def __init__(self, job_manager, log_folder):
         self.log_folder = log_folder
@@ -60,28 +65,26 @@ class BaseSyncer(object):
 
     @asyncio.coroutine
     def sync_cols(self,old_db_col_names, new_db_col_names, batch_size=10000, mode=None):
-        new = create_backend(new_db_col_names)
-        old = create_backend(old_db_col_names)
         diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
-
         got_error = False
         cnt = 0
         jobs = []
         pinfo = {"category" : "sync",
-                 "source" : "%s -> %s" % (old.target_collection.name,new.target_collection.name),
+                 "source" : "%s -> %s" % (old_db_col_names,new_db_col_names),
                  "description" : ""}
 
         diff_files = glob.glob(os.path.join(diff_folder,"*.pyobj"))
         total = len(diff_files)
         summary = {}
-        self.logger.info("Syncing from %s to %s using diff files in '%s'" % (old.target_collection.name, \
-                new.target_collection.name, diff_folder))
+        self.logger.info("Syncing from %s to %s using diff files in '%s'" % (old_db_col_names,new_db_col_names,diff_folder))
         for diff_file in diff_files:
             cnt += 1
             pinfo["description"] = "file %s (%s/%s)" % (diff_file,cnt,total)
-            self.logger.info("Creating sync worker for file %s (%s/%s)" % (diff_file,cnt,total))
+            worker = getattr(sys.modules[self.__class__.__module__],"sync_%s_%s_worker" % \
+                    (self.target_backend,self.diff_type))
+            self.logger.info("Creating sync worker %s for file %s (%s/%s)" % (worker.__name__,diff_file,cnt,total))
             job = yield from self.job_manager.defer_to_process(pinfo,
-                    partial(sync_jsondiff_worker, diff_file, old_db_col_names, new_db_col_names, batch_size, cnt))
+                    partial(worker, diff_file, old_db_col_names, new_db_col_names, batch_size, cnt))
             jobs.append(job)
         def synced(f):
             try:
@@ -89,8 +92,6 @@ class BaseSyncer(object):
                     for k in d:
                         summary.setdefault(k,0)
                         summary[k] += d[k] 
-                # we potentially modified the "old" collection so invalidate cache just to make sure
-                invalidate_cache(old.target_collection.name,"target")
             except Exception as e:
                 got_error = e
                 raise
@@ -100,7 +101,7 @@ class BaseSyncer(object):
         if got_error:
             raise got_error
         self.logger.info("Succesfully synced collection %s from collection %s using diff files in '%s': %s" % \
-                (old.target_collection.name,new.target_collection.name,diff_folder,summary),extra={"notify":True})
+                (old_db_col_names, new_db_col_names, diff_folder,summary),extra={"notify":True})
         return summary
 
     def sync(self, old_db_col_names, new_db_col_names, batch_size=10000, mode=None):
@@ -109,11 +110,18 @@ class BaseSyncer(object):
         return job
 
 
-class JsonDiffSyncer(BaseSyncer):
+class MongoJsonDiffSyncer(BaseSyncer):
     diff_type = "jsondiff"
+    target_backend = "mongo"
 
 
-def sync_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, batch_size, cnt):
+class ESJsonDiffSyncer(BaseSyncer):
+    diff_type = "jsondiff"
+    target_backend = "es"
+
+
+def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, batch_size, cnt):
+    """Worker to sync data between a new and an old mongo collection"""
     new = create_backend(new_db_col_names)
     old = create_backend(old_db_col_names)
     storage = UpsertStorage(get_target_db(),old.target_collection.name,logging)
@@ -141,6 +149,44 @@ def sync_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, batch_si
     # delete: remove from "old"
     for ids in iter_n(diff["delete"],batch_size):
         deleted += old.remove_from_ids(ids)
+    # we potentially modified the "old" collection so invalidate cache just to make sure
+    invalidate_cache(old.target_collection.name,"target")
+
+    return {"added": added, "updated": updated, "deleted": deleted}
+
+
+def sync_es_jsondiff_worker(diff_file, index_name, new_db_col_names, batch_size, cnt):
+    """Worker to sync data between a new mongo collection and an elasticsearch index"""
+    new = create_backend(new_db_col_names) # mongo collection to sync from
+    # determine doc type in index. Fetch build info from new mongo collection
+    build = get_src_build().find_one({"build.target_name":new.target_collection.name})
+    indexer = ESIndexer(index_name,build["doc_type"],btconfig.ES_HOST)
+    diff = loadobj(diff_file)
+    assert new.target_collection.name == diff["source"], "Source is different in diff file '%s': %s" % (diff_file,diff["source"])
+    added = 0
+    updated = 0
+    deleted = 0
+    # add: get ids from "new" 
+    cur = doc_feeder(new.target_collection, step=batch_size, inbatch=False, query={'_id': {'$in': diff["add"]}})
+    for docs in iter_n(cur,batch_size):
+        # use generator otherwise process/doc_iterator will require a dict (that's bad...)
+        added += indexer.index_bulk(docs,batch_size)[0]
+    # update: get doc from indexer and apply diff
+    batch = []
+    for patch_info in diff["update"]:
+        rawdoc = indexer.get_biothing(patch_info["_id"])
+        doc = {"_id" : rawdoc["_id"]}
+        doc.update(rawdoc["_source"])
+        doc = jsonpatch.apply_patch(doc,patch_info["patch"])
+        batch.append(doc)
+        if len(batch) >= batch_size:
+            updated += indexer.index_bulk(batch,batch_size)[0]
+            batch = []
+    if batch:
+        updated += indexer.index_bulk(batch,batch_size)[0]
+    # delete: remove from "old"
+    for ids in iter_n(diff["delete"],batch_size):
+        deleted += indexer.delete_docs(ids)[0]
 
     return {"added": added, "updated": updated, "deleted": deleted}
 
@@ -156,11 +202,12 @@ class SyncerManager(BaseManager):
         self.setup_log()
 
     def register_syncer(self,klass):
-        self.register[klass.diff_type] = partial(klass,log_folder=btconfig.LOG_FOLDER,
+        self.register[(klass.diff_type,klass.target_backend)] = partial(klass,log_folder=btconfig.LOG_FOLDER,
                                            job_manager=self.job_manager)
 
     def configure(self):
-        for klass in [JsonDiffSyncer]: # TODO: make it dynamic...
+        # TODO: make it dynamic...
+        for klass in [MongoJsonDiffSyncer,ESJsonDiffSyncer]:
             self.register_syncer(klass)
 
     def setup_log(self):
@@ -175,7 +222,7 @@ class SyncerManager(BaseManager):
         pclass = BaseManager.__getitem__(self,diff_type)
         return pclass()
 
-    def sync(self, old_db_col_names, new_db_col_names, batch_size=100000, mode=None):
+    def sync(self, target, old_db_col_names, new_db_col_names, batch_size=100000, mode=None):
         diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
         if not os.path.exists(diff_folder):
             raise FileNotFoundError("Directory '%s' does not exist, run a diff first" % diff_folder)
@@ -195,7 +242,7 @@ class SyncerManager(BaseManager):
             raise SyncerException(msg)
 
         try:
-            syncer = self[diff_type]
+            syncer = self[(diff_type,target)]
             job = syncer.sync(old_db_col_names, new_db_col_names,
                               batch_size=batch_size,
                               mode=mode)

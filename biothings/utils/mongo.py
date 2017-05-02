@@ -442,5 +442,8 @@ def invalidate_cache(col_name,col_type="src"):
         # just delete the cache file
         cache_file = get_cache_filename(col_name)
         if cache_file:
-            os.remove(cache_file)
+            try:
+                os.remove(cache_file)
+            except FileNotFoundError:
+                pass
 
