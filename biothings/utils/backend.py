@@ -171,8 +171,11 @@ class DocMongoBackend(DocBackendBase):
         self.target_collection.database.client.fsync(async=True)
 
     def remove_from_ids(self, ids, step=10000):
+        deleted = 0
         for i in range(0, len(ids), step):
-            self.target_collection.remove({'_id': {'$in': ids[i:i + step]}})
+            res = self.target_collection.delete_many({'_id': {'$in': ids[i:i + step]}})
+            deleted += res.deleted_count
+        return deleted
 
 # backward-compatible
 DocMongoDBBackend = DocMongoBackend

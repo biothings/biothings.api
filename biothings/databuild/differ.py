@@ -14,7 +14,7 @@ from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj
 from biothings.utils.mongo import doc_feeder, id_feeder
 from biothings.utils.loggers import get_logger, HipchatHandler
-from biothings.utils.diff import diff_docs_jsonpatch
+from biothings.utils.diff import diff_docs_jsonpatch, generate_diff_folder
 from biothings import config as btconfig
 from biothings.utils.manager import BaseManager, ManagerError
 from biothings.databuild.backend import create_backend
@@ -24,12 +24,6 @@ logging = btconfig.logger
 class DifferException(Exception):
     pass
 
-def generate_diff_folder(old_db_col_names,new_db_col_names):
-    new = create_backend(new_db_col_names,name_only=True)
-    old = create_backend(old_db_col_names,name_only=True)
-    diff_folder = os.path.join(btconfig.DIFF_PATH,
-                                   "%s-%s" % (old, new))
-    return diff_folder
 
 class BaseDiffer(object):
 
@@ -105,6 +99,8 @@ class BaseDiffer(object):
         # and some summary data
         stats = {"update":0, "add":0, "delete":0}
         metadata = {
+                "diff_type" : self.diff_type,
+                "diff_func" : self.diff_func.__name__,
                 "old": old_db_col_names,
                 "new": new_db_col_names,
                 "batch_size": batch_size,
@@ -406,7 +402,7 @@ class DifferManager(BaseManager):
         self.register[klass.diff_type] = partial(klass,log_folder=btconfig.LOG_FOLDER,
                                            job_manager=self.job_manager)
 
-    def sync(self):
+    def configure(self):
         for klass in [JsonDiffer]: # TODO: make it dynamic...
             self.register_differ(klass)
 

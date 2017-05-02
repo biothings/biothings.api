@@ -65,7 +65,7 @@ class IndexerManager(BaseManager):
         pclass = BaseManager.__getitem__(self,build_name)
         return pclass()
 
-    def sync(self):
+    def configure(self):
         """Sync with src_build and register all build config"""
         for conf in self.src_build.find():
             self.register_indexer(conf)
