@@ -5,3 +5,4 @@ pymongo
 psutil
 IPython
 boto
+jsonpointer
