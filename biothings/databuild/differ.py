@@ -12,7 +12,7 @@ import glob, random
 
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj
-from biothings.utils.mongo import doc_feeder, id_feeder
+from biothings.utils.mongo import id_feeder
 from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.utils.diff import diff_docs_jsonpatch, generate_diff_folder
 from biothings import config as btconfig
@@ -116,13 +116,13 @@ class BaseDiffer(object):
             cnt = 0
             pinfo = {"category" : "diff",
                      "step" : "count",
-                     "source" : "%s vs %s" % (new.target_collection.name,old.target_collection.name),
+                     "source" : "%s vs %s" % (new.name,old.name),
                      "description" : ""}
 
-            self.logger.info("Counting root keys in '%s'"  % new.target_collection)
+            self.logger.info("Counting root keys in '%s'"  % new.name)
             stats["root_keys"] = {}
             jobs = []
-            data_new = id_feeder(new.target_collection, batch_size=batch_size)
+            data_new = id_feeder(new, batch_size=batch_size)
             for id_list in data_new:
                 cnt += 1
                 pinfo["description"] = "batch #%s" % cnt
@@ -149,10 +149,10 @@ class BaseDiffer(object):
             cnt = 0
             jobs = []
             pinfo = {"category" : "diff",
-                     "source" : "%s vs %s" % (new.target_collection.name,old.target_collection.name),
+                     "source" : "%s vs %s" % (new.name,old.name),
                      "step" : "content: new vs old",
                      "description" : ""}
-            data_new = id_feeder(new.target_collection, batch_size=batch_size)
+            data_new = id_feeder(new, batch_size=batch_size)
             for id_list_new in data_new:
                 cnt += 1
                 pinfo["description"] = "batch #%s" % cnt
@@ -170,7 +170,7 @@ class BaseDiffer(object):
             yield from asyncio.gather(*jobs)
             self.logger.info("Finished calculating diff for the new collection. Total number of docs updated: {}, added: {}".format(stats["update"], stats["add"]))
 
-            data_old = id_feeder(old.target_collection, batch_size=batch_size)
+            data_old = id_feeder(old, batch_size=batch_size)
             jobs = []
             pinfo["step"] = "content: old vs new"
             for id_list_old in data_old:
@@ -213,7 +213,7 @@ def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names,
                            batch_num, diff_folder, diff_func, exclude=[]):
     new = create_backend(new_db_col_names)
     old = create_backend(old_db_col_names)
-    docs_common = old.target_collection.find({'_id': {'$in': id_list_new}}, projection=[])
+    docs_common = old.mget_from_ids(id_list_new)
     ids_common = [_doc['_id'] for _doc in docs_common]
     id_in_new = list(set(id_list_new) - set(ids_common))
     _updates = []
@@ -223,7 +223,7 @@ def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names,
     _result = {'add': id_in_new,
                'update': _updates,
                'delete': [],
-               'source': new.target_collection.name,
+               'source': new.name,
                'timestamp': get_timestamp()}
     if len(_updates) != 0 or len(id_in_new) != 0:
         dump(_result, file_name)
@@ -232,14 +232,14 @@ def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names,
 
 def diff_worker_old_vs_new(id_list_old, new_db_col_names, batch_num, diff_folder):
     new = create_backend(new_db_col_names)
-    docs_common = new.target_collection.find({'_id': {'$in': id_list_old}}, projection=[])
+    docs_common = new.mget_from_ids(id_list_old)
     ids_common = [_doc['_id'] for _doc in docs_common]
     id_in_old = list(set(id_list_old)-set(ids_common))
     file_name = os.path.join(diff_folder,"%s.pyobj" % str(batch_num))
     _result = {'delete': id_in_old,
                'add': [],
                'update': [],
-               'source': new.target_collection.name,
+               'source': new.name,
                'timestamp': get_timestamp()}
     if len(id_in_old) != 0:
         dump(_result, file_name)
@@ -249,7 +249,7 @@ def diff_worker_old_vs_new(id_list_old, new_db_col_names, batch_num, diff_folder
 
 def diff_worker_count(id_list, db_col_names, batch_num):
     col = create_backend(db_col_names)
-    docs = col.target_collection.find({'_id': {'$in': id_list}})
+    docs = col.mget_from_ids(id_list)
     res = {}
     for doc in docs:
         for k in doc:

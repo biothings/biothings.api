@@ -9,6 +9,10 @@ class DocBackendBase(object):
         '''if needed, add extra preparation steps here.'''
         pass
 
+    @property
+    def name(self):
+        raise NotImplemented
+
     def insert(self, doc_li):
         raise NotImplemented
 
@@ -39,6 +43,10 @@ class DocMemoryBackend(DocBackendBase):
         """target_dict is None or a dict."""
         self.target_dict = {}
         self.target_name = target_name or "unnamed"
+
+    @property
+    def name(self):
+        return self.target_name
 
     def insert(self, doc_li):
         for doc in doc_li:
@@ -76,6 +84,10 @@ class DocMongoBackend(DocBackendBase):
             self._target_db = target_db
         if target_collection:
             self.target_collection = target_collection
+
+    @property
+    def name(self):
+        return self.target_collection.name
 
     @property
     def target_db(self):
@@ -187,6 +199,10 @@ class DocESBackend(DocBackendBase):
         """esidxer is an instance of utils.es.ESIndexer class."""
         self.target_esidxer = esidxer
 
+    @property
+    def name(self):
+        return self.target_esidxer._index
+
     def prepare(self, update_mapping=True):
         self.target_esidxer.create_index()
         self.target_esidxer.verify_mapping(update_mapping=update_mapping)
@@ -220,13 +236,13 @@ class DocESBackend(DocBackendBase):
         conn.indices.refresh()
         self.target_esidxer.optimize()
 
-    def get_id_list(self):
-        return self.target_esidxer.get_id_list()
+    def get_id_list(self,step=None):
+        return self.target_esidxer.get_id_list(step=step)
 
     def get_from_id(self, id):
         return self.target_esidxer.get(id)
 
-    def mget_from_ids(self, ids, step=100000, only_source=True, **kwargs):
+    def mget_from_ids(self, ids, step=100000, only_source=True, asiter=True, **kwargs):
         '''ids is an id list. always return a generator'''
         return self.target_esidxer.get_docs(ids, step=step, only_source=only_source, **kwargs)
 

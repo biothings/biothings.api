@@ -2,9 +2,12 @@
 import time, logging, os, io, glob, datetime
 from functools import wraps
 from pymongo import MongoClient
+from pymongo.collection import Collection
+from functools import partial
 
 from biothings.utils.common import timesofar, get_random_string, iter_n, \
                                    open_compressed_file, get_compressed_outfile
+from biothings.utils.backend import DocESBackend, DocMongoBackend
 # stub, until set to real config module
 config = None
 
@@ -138,6 +141,8 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
        batch_callback is a callback function as fn(cnt, t), called after every batch
        fields is optional parameter passed to find to restrict fields to return.
     '''
+    if isinstance(collection,DocMongoBackend):
+        collection = collection.target_collection
     cur = collection.find(query, no_cursor_timeout=True, projection=fields)
     n = cur.count()
     s = s or 0
@@ -190,6 +195,8 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
     finally:
         cur.close()
 
+# TODO: this func deals with different backend, should not be in bt.utils.mongo
+# and doc_feeder should do the same as this function regarding backend support
 @requires_config
 def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
               force_use=False, force_build=False):
@@ -234,6 +241,9 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             build_cache = False
     except KeyError:
         logger.warning("Couldn't find timestamp in database for '%s'" % col.name)
+    except Exception:
+        logger.info("%s is not a mongo collection, _id cache won't be built" % col)
+        build_cache = False
 
     # try to find a cache file
     use_cache = False
@@ -288,9 +298,28 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             cache_out = get_compressed_outfile(cache_temp,compress=cache_format)
             logger.info("Building cache file '%s'" % cache_temp)
         else:
-            logger.info("Can't build cache, no cache folder")
+            logger.info("Can't build cache, cache not allowed or no cache folder")
             build_cache = False
-        for doc_ids in doc_feeder(col, step=batch_size, inbatch=True, fields={"_id":1}):
+        if isinstance(col,Collection):
+            doc_feeder_func = partial(doc_feeder,col, step=batch_size, inbatch=True, fields={"_id":1})
+        elif isinstance(col,DocMongoBackend):
+            doc_feeder_func = partial(doc_feeder,col.target_collection, step=batch_size, inbatch=True, fields={"_id":1})
+        elif isinstance(col,DocESBackend):
+            # get_id_list directly return the _id, wrap it to match other 
+            # doc_feeder_func returned vals. Also return a batch of id
+            def wrap_id():
+                ids = []
+                for _id in col.get_id_list(step=batch_size):
+                    ids.append({"_id":_id})
+                    if len(ids) >= batch_size:
+                        yield ids
+                        ids = []
+                if ids:
+                    yield ids
+            doc_feeder_func = partial(wrap_id)
+        else:
+            raise Exception("Unknown backend %s" % col)
+        for doc_ids in doc_feeder_func():
             doc_ids = [_doc["_id"] for _doc in doc_ids]
             if build_cache:
                 strout = "\n".join(doc_ids) + "\n"

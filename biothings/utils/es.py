@@ -6,7 +6,6 @@ import logging
 import itertools
 
 from biothings.utils.common import iter_n, timesofar, ask
-from biothings.utils.mongo import doc_feeder
 
 # setup ES logging
 import logging
@@ -40,7 +39,6 @@ def verify_ids(doc_iter, index, doc_type, step=100000, ):
         xres = es.search(index=index, doc_type=doc_type, body=q, _source=False)
         found_cnt += xres['hits']['total']
         total_cnt += len(id_li)
-        print(xres['hits']['total'], found_cnt, total_cnt)
         out.extend([x['_id'] for x in xres['hits']['hits']])
     return out
 
@@ -101,7 +99,6 @@ class ESIndexer():
         }
         res = self._es.search(index=self._index, doc_type=self._doc_type, body=q, fields=None, size=len(bid_list))
         id_set = set([doc['_id'] for doc in res['hits']['hits']])
-        print('..', len(id_set), end='')   # print out # of matching hits
         return [(bid, bid in id_set) for bid in bid_list]
 
     @wrapper
@@ -296,6 +293,7 @@ class ESIndexer():
             if delay:
                 time.sleep(delay)
 
+        from biothings.utils.mongo import doc_feeder
         src_docs = doc_feeder(collection, step=self.step, s=self.s, batch_callback=rate_control, query=query)
         if bulk:
             if update:
@@ -385,12 +383,14 @@ class ESIndexer():
         # verbose unimplemented
         step = step or self.step
         q = query if query else {'query': {'match_all': {}}}
-        for doc in helpers.scan(client=self._es, query=q, scroll=scroll, index=self._index,
+        for rawdoc in helpers.scan(client=self._es, query=q, scroll=scroll, index=self._index,
                         doc_type=self._doc_type,  **kwargs): 
-            if doc.get('_source', False):
-                yield doc['_source']
-            else:
+            if rawdoc.get('_source', False):
+                doc = rawdoc['_source']
+                doc["_id"] = rawdoc["_id"]
                 yield doc
+            else:
+                yield rawdoc
 
     @wrapper
     def doc_feeder(self, step=None, verbose=True, query=None, scroll='10m', only_source=True, **kwargs):
@@ -406,7 +406,6 @@ class ESIndexer():
         cnt = 0
         t0 = time.time()
         if verbose:
-            print('\ttotal docs: {}'.format(n))
             t1 = time.time()
 
         res = self._es.search(self._index, self._doc_type, body=q,
@@ -417,23 +416,18 @@ class ESIndexer():
         while 1:
             if verbose:
                 t1 = time.time()
-                if cnt < n:
-                    print('\t{}-{}...'.format(cnt+1, min(cnt+step, n)), end='')
             res = self._es.scroll(res['_scroll_id'], scroll=scroll)
             if len(res['hits']['hits']) == 0:
                 break
             else:
-                for doc in res['hits']['hits']:
-                    if doc.get('_source', False) and only_source:
-                        yield doc['_source']
-                    else:
+                for rawdoc in res['hits']['hits']:
+                    if rawdoc.get('_source', False) and only_source:
+                        doc = rawdoc['_source']
+                        doc["_id"] = rawdoc["_id"]
                         yield doc
+                    else:
+                        yield rawdoc
                     cnt += 1
-                if verbose:
-                    print('done.[%.1f%%,%s]' % (min(cnt, n)*100./n, timesofar(t1)))
-
-        if verbose:
-            print("Finished! [{}]".format(timesofar(t0)))
 
         assert cnt == n, "Error: scroll query terminated early [{}, {}], please retry.\nLast response:\n{}".format(cnt, n, res)
 
@@ -454,13 +448,15 @@ class ESIndexer():
         for chunk in iter_n(ids, step):
             chunk_res = self._es.mget(body={"ids": chunk}, index=self._index, 
                                       doc_type=self._doc_type, **mget_args)
-            for doc in chunk_res['docs']:
-                if (('found' not in doc) or (('found' in doc) and not doc['found'])):
-                    yield None
+            for rawdoc in chunk_res['docs']:
+                if (('found' not in rawdoc) or (('found' in rawdoc) and not rawdoc['found'])):
+                    continue
                 elif not only_source:
-                    yield doc
+                    yield rawdoc
                 else:
-                    yield doc['_source']
+                    doc = rawdoc['_source']
+                    doc["_id"] = rawdoc["_id"]
+                    yield doc
 
     def find_biggest_doc(self, fields_li, min=5, return_doc=False):
         """return the doc with the max number of fields from fields_li."""

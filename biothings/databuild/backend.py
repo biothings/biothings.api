@@ -5,6 +5,7 @@ Support MongoDB, ES, CouchDB
 from functools import partial
 from biothings.utils.common import get_timestamp, get_random_string
 from biothings.utils.backend import DocBackendBase, DocMongoBackend, DocESBackend
+from biothings.utils.es import ESIndexer
 import biothings.utils.mongo as mongo
 
 # Source specific backend (deals with build config, master docs, etc...)
@@ -142,37 +143,51 @@ class TargetDocMongoBackend(TargetDocBackend,DocMongoBackend):
 
 def create_backend(db_col_names,name_only=False):
     """
-    Guess what's inside 'db_col_names' and return the corresponding collection.
-    It could be a string (by default, will lookup a collection in target database)
-    or a tuple("targe$t|src","col_name") or even a ("mongodb://user:pass","db","col_name") URI.
-    If name_only is true, just return the name of the collection
+    Guess what's inside 'db_col_names' and return the corresponding backend.
+    - It could be a string (by default, will lookup a mongo collection in target database)
+    - or a tuple("target|src","col_name")
+    - or a ("mongodb://user:pass@host","db","col_name") URI.
+    - or a ("es_host:port","index_name","doc_type")
+    If name_only is true, just return the name uniquely identifying the collection or index
+    URI connection.
     """
     col = None
     db = None
+    is_mongo = True
     if type(db_col_names) == str:
-        if name_only:
-            col = db_col_names
-        else:
-            db = mongo.get_target_db()
-            col = db[db_col_names]
+        db = mongo.get_target_db()
+        col = db[db_col_names]
+        # normalize params
+        db_col_names = ["%s:%s" % (db.client.HOST,db.client.PORT),db.name,col.name]
     elif db_col_names[0].startswith("mongodb://"):
         assert len(db_col_names) == 3, "Missing connection information for %s" % repr(db_col_names)
-        if name_only:
-            col = db_col_names[2]
-        else:
-            conn = mongo.MongoClient(db_col_names[0])
-            db = conn[db_col_names[1]]
-            col = db[db_col_names[2]]
+        conn = mongo.MongoClient(db_col_names[0])
+        db = conn[db_col_names[1]]
+        col = db[db_col_names[2]]
+        # normalize params
+        db_col_names = ["%s:%s" % (db.client.HOST,db.client.PORT),db.name,col.name]
+    elif len(db_col_names) == 3 and ":" in db_col_names[0]:
+        is_mongo = False
+        idxr = ESIndexer(index=db_col_names[1],doc_type=db_col_names[2],es_host=db_col_names[0])
+        db = idxr
+        col = db_col_names[1]
     else:
         assert len(db_col_names) == 2, "Missing connection information for %s" % repr(db_col_names)
-        if name_only:
-            col = db_col_names[1]
-        else:
-            db = db_col_names[0] == "target" and mongo.get_target_db() or mongo.get_src_db()
-            col = db[db_col_names[1]]
+        db = db_col_names[0] == "target" and mongo.get_target_db() or mongo.get_src_db()
+        col = db[db_col_names[1]]
+        # normalize params
+        db_col_names = ["%s:%s" % (db.client.HOST,db.client.PORT),db.name,col.name]
     assert not col is None, "Could not create collection object from %s" % repr(db_col_names)
     if name_only:
-        return col
+        if is_mongo:
+            return "mongo_%s_%s_%s" % (db_col_names[0].replace(":","_"),
+                                      db_col_names[1],db_col_names[2])
+        else:
+            return "es_%s_%s_%s" % (db_col_names[0].replace(":","_"),
+                                    db_col_names[1],db_col_names[2])
     else:
-        return DocMongoBackend(db,col)
+        if is_mongo:
+            return DocMongoBackend(db,col)
+        else:
+            return DocESBackend(db)
 
