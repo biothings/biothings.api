@@ -291,6 +291,7 @@ class DataBuilder(object):
 
     def store_stats(self,f,sources):
         try:
+            res = f.result() # consume future to potentially raise errors
             self.target_backend.post_merge()
             _src_versions = self.source_backend.get_src_versions()
             strargs = "[sources=%s,stats=%s,versions=%s]" % (sources,self.stats,_src_versions)
@@ -479,9 +480,16 @@ class DataBuilder(object):
             job = yield from job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
             job = asyncio.ensure_future(job)
             def postmerged(f):
-                self.logger.info("Post-merge completed [%s]" % f.result())
+                try:
+                    self.logger.info("Post-merge completed [%s]" % f.result())
+                except Exception as e:
+                    self.logger.exception("Failed post-merging source: %s" % e)
+                    nonlocal got_error
+                    got_error = e
             job.add_done_callback(postmerged)
             res = yield from job
+            if got_error:
+                raise got_error
         else:
             self.logger.info("Skip post-merge process")
 
