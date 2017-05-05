@@ -307,8 +307,9 @@ class JobManager(object):
                 max_mem = self.max_memory_usage and self.max_memory_usage or self.avail_memory
         pendings = len(self.process_queue._pending_work_items.keys()) - config.HUB_MAX_WORKERS
         while pendings >= config.MAX_QUEUED_JOBS:
-            logger.info("Can't run job {cat:%s,source:%s,step:%s} right now, too much pending jobs in the queue (%d, max: %s)" % \
-                    (pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), pendings, config.MAX_QUEUED_JOBS))
+            if not waited:
+                logger.info("Can't run job {cat:%s,source:%s,step:%s} right now, too much pending jobs in the queue (max: %s), will retry until possible" % \
+                        (pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), config.MAX_QUEUED_JOBS))
             yield from asyncio.sleep(sleep_time)
             pendings = len(self.process_queue._pending_work_items.keys()) - config.HUB_MAX_WORKERS
             waited = True
