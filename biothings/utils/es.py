@@ -1,4 +1,4 @@
-import time
+import time, copy
 import json
 from elasticsearch import Elasticsearch, NotFoundError, RequestError
 from elasticsearch import helpers
@@ -143,23 +143,26 @@ class ESIndexer():
     def exists_index(self):
         return self._es.indices.exists(self._index)
 
-    def index(self, doc, id=None):
+    def index(self, doc, id=None, action="index"):
         '''add a doc to the index. If id is not None, the existing doc will be
            updated.
         '''
-        return self._es.index(self.ES_INDEX_NAME, self.ES_INDEX_TYPE, doc, id=id)
+        return self._es.index(self._index, self._doc_type, doc, id=id, params={"op_type":action})
 
-    def index_bulk(self, docs, step=None):
+    def index_bulk(self, docs, step=None, action='index'):
         index_name = self._index
         doc_type = self._doc_type
         step = step or self.step
 
         def _get_bulk(doc):
-            doc.update({
+            # keep original doc
+            ndoc = copy.copy(doc)
+            ndoc.update({
                 "_index": index_name,
                 "_type": doc_type,
+                "_op_type" : action,
             })
-            return doc
+            return ndoc
         actions = (_get_bulk(doc) for doc in docs)
         return helpers.bulk(self._es, actions, chunk_size=step)
 
