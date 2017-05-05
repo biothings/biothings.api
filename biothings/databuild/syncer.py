@@ -124,6 +124,7 @@ class ESJsonDiffSyncer(BaseSyncer):
     target_backend = "es"
 
 
+# TODO: refactor workers (see sync_es_...)
 def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, batch_size, cnt, force=False):
     """Worker to sync data between a new and an old mongo collection"""
     new = create_backend(new_db_col_names)
@@ -131,15 +132,12 @@ def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, ba
     storage = UpsertStorage(get_target_db(),old.target_collection.name,logging)
     diff = loadobj(diff_file)
     assert new.target_collection.name == diff["source"], "Source is different in diff file '%s': %s" % (diff_file,diff["source"])
-    added = 0
-    updated = 0
-    deleted = 0
-    skipped = 0
+    res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
     # add: get ids from "new" 
     cur = doc_feeder(new.target_collection, step=batch_size, inbatch=False, query={'_id': {'$in': diff["add"]}})
     for docs in iter_n(cur,batch_size):
         # use generator otherwise process/doc_iterator will require a dict (that's bad...)
-        added += storage.process((d for d in docs),batch_size)
+        res["added"] += storage.process((d for d in docs),batch_size)
     # update: get doc from "old" and apply diff
     batch = []
     for patch_info in diff["update"]:
@@ -149,19 +147,18 @@ def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, ba
             batch.append(doc)
         except jsonpatch.JsonPatchConflict:
             # assuming already applieda
-            skipped += 1
+            res["skipped"] += 1
             continue
         if len(batch) >= batch_size:
-            updated += storage.process((d for d in batch),batch_size)
+            res["updated"] += storage.process((d for d in batch),batch_size)
             batch = []
     if batch:
-        updated += storage.process((d for d in batch),batch_size)
+        res["updated"] += storage.process((d for d in batch),batch_size)
     # delete: remove from "old"
     for ids in iter_n(diff["delete"],batch_size):
-        deleted += old.remove_from_ids(ids)
+        res["deleted"] += old.remove_from_ids(ids)
     # we potentially modified the "old" collection so invalidate cache just to make sure
     invalidate_cache(old.target_collection.name,"target")
-    res = {"added": added, "updated": updated, "deleted": deleted, "skipped": skipped}
     logging.info("Done applying diff from file '%s': %s" % (diff_file,res))
     return res
 
@@ -173,31 +170,29 @@ def sync_es_jsondiff_worker(diff_file, index_name, new_db_col_names, batch_size,
     build = get_src_build().find_one({"build.target_name":new.target_collection.name})
     indexer = ESIndexer(index_name,build["doc_type"],btconfig.ES_HOST)
     diff = loadobj(diff_file)
+    res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
     # check if diff files was already synced
     if not force and diff.get("synced",{}).get("es") == True:
         logging.info("Diff file '%s' already synced, skip it" % diff_file)
-        return {}
+        res["skipped"] += len(diff["add"]) + len(diff["delete"]) + len(diff["update"])
+        return res
     assert new.target_collection.name == diff["source"], "Source is different in diff file '%s': %s" % (diff_file,diff["source"])
-    added = 0
-    updated = 0
-    deleted = 0
-    skipped = 0
     # add: get ids from "new" 
     cur = doc_feeder(new.target_collection, step=batch_size, inbatch=False, query={'_id': {'$in': diff["add"]}})
     for docs in iter_n(cur,batch_size):
         # use generator otherwise process/doc_iterator will require a dict (that's bad...)
         try:
-            added += indexer.index_bulk(docs,batch_size,action="create")[0]
+            res["added"] += indexer.index_bulk(docs,batch_size,action="create")[0]
         except BulkIndexError:
             # process the bulk one by one to avoid missing any docs
             for doc in docs:
                 try:
                     # force action=create to spot docs already added
                     indexer.index(doc,doc["_id"],action="create")
-                    added += 1
+                    res["added"] += 1
                 except ConflictError:
                     # already added
-                    skipped += 1
+                    res["skipped"] += 1
                     continue
 
     # update: get doc from indexer and apply diff
@@ -210,26 +205,25 @@ def sync_es_jsondiff_worker(diff_file, index_name, new_db_col_names, batch_size,
             newdoc = jsonpatch.apply_patch(doc,patch_info["patch"])
             if newdoc == doc:
                 # already applied
-                skipped += 1
+                res["skipped"] += 1
                 continue
             batch.append(newdoc)
         except jsonpatch.JsonPatchConflict:
             # assuming already applieda
-            skipped += 1
+            res["skipped"] += 1
             continue
         if len(batch) >= batch_size:
-            updated += indexer.index_bulk(batch,batch_size)[0]
+            res["updated"] += indexer.index_bulk(batch,batch_size)[0]
             batch = []
     if batch:
-        updated += indexer.index_bulk(batch,batch_size)[0]
+        res["updated"] += indexer.index_bulk(batch,batch_size)[0]
 
     # delete: remove from "old"
     for ids in iter_n(diff["delete"],batch_size):
         res = indexer.delete_docs(ids)
-        deleted += res[0]
-        skipped += res[1]
+        res["deleted"] += res[0]
+        res["skipped"] += res[1]
 
-    res = {"added": added, "updated": updated, "deleted": deleted, "skipped": skipped}
     logging.info("Done applying diff from file '%s': %s" % (diff_file,res))
     diff.setdefault("synced",{}).setdefault("es",True)
     dump(diff,diff_file)
