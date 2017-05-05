@@ -216,6 +216,9 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
     ts = None
     found_meta = True
 
+    if isinstance(col,DocMongoBackend):
+        col = col.target_collection
+
     try:
         if col.database.name == config.DATA_TARGET_DATABASE:
             # TODO: if col.name is present in different build config, that will pick one
@@ -241,8 +244,8 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             build_cache = False
     except KeyError:
         logger.warning("Couldn't find timestamp in database for '%s'" % col.name)
-    except Exception:
-        logger.info("%s is not a mongo collection, _id cache won't be built" % col)
+    except Exception as e:
+        logger.info("%s is not a mongo collection, _id cache won't be built (error: %s)" % (col,e))
         build_cache = False
 
     # try to find a cache file
