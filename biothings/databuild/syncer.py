@@ -104,7 +104,7 @@ class BaseSyncer(object):
             self.logger.error("Failed to sync collection from %s to %s using diff files in '%s': %s" % \
                 (old_db_col_names, new_db_col_names, diff_folder, got_error),extra={"notify":True})
             raise got_error
-        self.logger.info("Succesfully synced collection %s from collection %s using diff files in '%s': %s" % \
+        self.logger.info("Succesfully synced index %s from collection %s using diff files in '%s': %s" % \
                 (old_db_col_names, new_db_col_names, diff_folder,summary),extra={"notify":True})
         return summary
 
