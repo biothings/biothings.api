@@ -73,8 +73,15 @@ class BaseSyncer(object):
         jobs = []
         pinfo = {"category" : "sync",
                  "source" : "%s -> %s" % (old_db_col_names,new_db_col_names),
+                 "step" : "",
                  "description" : ""}
 
+        meta = loadobj(os.path.join(diff_folder,"metadata.pick"))
+        diff_type = self.diff_type
+        selfcontained = "selfcontained" in meta["diff_type"]
+        if selfcontained:
+            # selfconained is a worker param, isolate diff format
+            diff_type = diff_type.replace("-selfcontained","")
         diff_files = glob.glob(os.path.join(diff_folder,"*.pyobj"))
         total = len(diff_files)
         summary = {}
@@ -83,10 +90,11 @@ class BaseSyncer(object):
             cnt += 1
             pinfo["description"] = "file %s (%s/%s)" % (diff_file,cnt,total)
             worker = getattr(sys.modules[self.__class__.__module__],"sync_%s_%s_worker" % \
-                    (self.target_backend,self.diff_type))
+                    (self.target_backend,diff_type))
             self.logger.info("Creating sync worker %s for file %s (%s/%s)" % (worker.__name__,diff_file,cnt,total))
             job = yield from self.job_manager.defer_to_process(pinfo,
-                    partial(worker, diff_file, old_db_col_names, new_db_col_names, batch_size, cnt, force))
+                    partial(worker, diff_file, old_db_col_names, new_db_col_names, batch_size, cnt,
+                        force, selfcontained))
             jobs.append(job)
         def synced(f):
             try:
@@ -118,26 +126,46 @@ class MongoJsonDiffSyncer(BaseSyncer):
     diff_type = "jsondiff"
     target_backend = "mongo"
 
+class MongoJsonDiffSelfContainedSyncer(BaseSyncer):
+    diff_type = "jsondiff-selfcontained"
+    target_backend = "mongo"
 
 class ESJsonDiffSyncer(BaseSyncer):
     diff_type = "jsondiff"
     target_backend = "es"
 
+class ESJsonDiffSelfContainedSyncer(BaseSyncer):
+    diff_type = "jsondiff-selfcontained"
+    target_backend = "es"
+
 
 # TODO: refactor workers (see sync_es_...)
-def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, batch_size, cnt, force=False):
+def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, batch_size, cnt,
+        force=False, selfcontained=False):
     """Worker to sync data between a new and an old mongo collection"""
     new = create_backend(new_db_col_names)
     old = create_backend(old_db_col_names)
     storage = UpsertStorage(get_target_db(),old.target_collection.name,logging)
     diff = loadobj(diff_file)
-    assert new.target_collection.name == diff["source"], "Source is different in diff file '%s': %s" % (diff_file,diff["source"])
     res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
+    # check if diff files was already synced
+    if not force and diff.get("synced",{}).get("mongo") == True:
+        logging.info("Diff file '%s' already synced, skip it" % diff_file)
+        res["skipped"] += len(diff["add"]) + len(diff["delete"]) + len(diff["update"])
+        return res
+    assert new.target_collection.name == diff["source"], "Source is different in diff file '%s': %s" % (diff_file,diff["source"])
+
     # add: get ids from "new" 
-    cur = doc_feeder(new.target_collection, step=batch_size, inbatch=False, query={'_id': {'$in': diff["add"]}})
-    for docs in iter_n(cur,batch_size):
-        # use generator otherwise process/doc_iterator will require a dict (that's bad...)
-        res["added"] += storage.process((d for d in docs),batch_size)
+    if selfcontained:
+        # diff["add"] contains all documents, not mongo needed
+        for docs in iter_n(diff["add"],batch_size):
+            res["added"] += storage.process((d for d in docs),batch_size)
+    else:
+        cur = doc_feeder(new.target_collection, step=batch_size, inbatch=False, query={'_id': {'$in': diff["add"]}})
+        for docs in iter_n(cur,batch_size):
+            # use generator otherwise process/doc_iterator will require a dict (that's bad...)
+            res["added"] += storage.process((d for d in docs),batch_size)
+
     # update: get doc from "old" and apply diff
     batch = []
     for patch_info in diff["update"]:
@@ -154,16 +182,21 @@ def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, ba
             batch = []
     if batch:
         res["updated"] += storage.process((d for d in batch),batch_size)
+
     # delete: remove from "old"
     for ids in iter_n(diff["delete"],batch_size):
         res["deleted"] += old.remove_from_ids(ids)
+
     # we potentially modified the "old" collection so invalidate cache just to make sure
     invalidate_cache(old.target_collection.name,"target")
     logging.info("Done applying diff from file '%s': %s" % (diff_file,res))
+    diff.setdefault("synced",{}).setdefault("mongo",True)
+    dump(diff,diff_file)
     return res
 
 
-def sync_es_jsondiff_worker(diff_file, index_name, new_db_col_names, batch_size, cnt, force=False):
+def sync_es_jsondiff_worker(diff_file, index_name, new_db_col_names, batch_size, cnt,
+        force=False, selfcontained=False):
     """Worker to sync data between a new mongo collection and an elasticsearch index"""
     new = create_backend(new_db_col_names) # mongo collection to sync from
     # determine doc type in index. Fetch build info from new mongo collection
@@ -177,6 +210,7 @@ def sync_es_jsondiff_worker(diff_file, index_name, new_db_col_names, batch_size,
         res["skipped"] += len(diff["add"]) + len(diff["delete"]) + len(diff["update"])
         return res
     assert new.target_collection.name == diff["source"], "Source is different in diff file '%s': %s" % (diff_file,diff["source"])
+
     # add: get ids from "new" 
     cur = doc_feeder(new.target_collection, step=batch_size, inbatch=False, query={'_id': {'$in': diff["add"]}})
     for docs in iter_n(cur,batch_size):
@@ -246,19 +280,20 @@ class SyncerManager(BaseManager):
 
     def configure(self):
         # TODO: make it dynamic...
-        for klass in [MongoJsonDiffSyncer,ESJsonDiffSyncer]:
+        for klass in [MongoJsonDiffSyncer,ESJsonDiffSyncer,
+                MongoJsonDiffSelfContainedSyncer,ESJsonDiffSelfContainedSyncer]:
             self.register_syncer(klass)
 
     def setup_log(self):
         self.logger = btconfig.logger
 
-    def __getitem__(self,diff_type):
+    def __getitem__(self,diff_target):
         """
         Return an instance of a builder for the build named 'build_name'
         Note: each call returns a different instance (factory call behind the scene...)
         """
         # we'll get a partial class but will return an instance
-        pclass = BaseManager.__getitem__(self,diff_type)
+        pclass = BaseManager.__getitem__(self,diff_target)
         return pclass()
 
     def sync(self, target, old_db_col_names, new_db_col_names, batch_size=100000, mode=None):
@@ -268,7 +303,7 @@ class SyncerManager(BaseManager):
 
         # load metadata to know collections that have been diffed in diff_func protocol
         try:
-            meta = loadobj(os.path.join(diff_folder,"metadata.pick"),"rb")
+            meta = loadobj(os.path.join(diff_folder,"metadata.pick"))
         except FileNotFoundError as e:
             self.logger.error("Can't find metadata file in diff folder '%s'" % diff_folder)
             raise
@@ -287,5 +322,5 @@ class SyncerManager(BaseManager):
                               mode=mode)
             return job
         except KeyError as e:
-            raise DifferException("No such syncer '%s' (error: %s)" % (diff_type,e))
+            raise SyncerException("No such syncer (%s,%s) (error: %s)" % (diff_type,target,e))
 

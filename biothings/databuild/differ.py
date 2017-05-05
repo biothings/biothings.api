@@ -153,6 +153,7 @@ class BaseDiffer(object):
                      "step" : "content: new vs old",
                      "description" : ""}
             data_new = id_feeder(new, batch_size=batch_size)
+            selfcontained = "selfcontained" in self.diff_type
             for id_list_new in data_new:
                 cnt += 1
                 pinfo["description"] = "batch #%s" % cnt
@@ -164,7 +165,7 @@ class BaseDiffer(object):
                 self.logger.info("Creating diff worker for batch #%s" % cnt)
                 job = yield from self.job_manager.defer_to_process(pinfo,
                         partial(diff_worker_new_vs_old, id_list_new, old_db_col_names,
-                                new_db_col_names, cnt , diff_folder, self.diff_func, exclude))
+                                new_db_col_names, cnt , diff_folder, self.diff_func, exclude, selfcontained))
                 job.add_done_callback(diffed)
                 jobs.append(job)
             yield from asyncio.gather(*jobs)
@@ -208,9 +209,13 @@ class JsonDiffer(BaseDiffer):
     def __init__(self, diff_func=diff_docs_jsonpatch, *args, **kwargs):
         super(JsonDiffer,self).__init__(diff_func=diff_func,*args,**kwargs)
 
+class SelfContainedJsonDiffer(JsonDiffer):
+
+    diff_type = "jsondiff-selfcontained"
+
 
 def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names,
-                           batch_num, diff_folder, diff_func, exclude=[]):
+                           batch_num, diff_folder, diff_func, exclude=[], selfcontained=False):
     new = create_backend(new_db_col_names)
     old = create_backend(old_db_col_names)
     docs_common = old.mget_from_ids(id_list_new)
@@ -225,6 +230,8 @@ def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names,
                'delete': [],
                'source': new.name,
                'timestamp': get_timestamp()}
+    if selfcontained:
+        _result["add"] = new.mget_from_ids(id_in_new)
     if len(_updates) != 0 or len(id_in_new) != 0:
         dump(_result, file_name)
 
@@ -403,7 +410,7 @@ class DifferManager(BaseManager):
                                            job_manager=self.job_manager)
 
     def configure(self):
-        for klass in [JsonDiffer]: # TODO: make it dynamic...
+        for klass in [JsonDiffer,SelfContainedJsonDiffer]: # TODO: make it dynamic...
             self.register_differ(klass)
 
     def setup_log(self):

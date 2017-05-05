@@ -149,7 +149,7 @@ class BaseManager(object):
                     raise KeyError(src_name)
                 else:
                     return res
-            except (ValueError,KeyError):
+            except (ValueError,AttributeError,KeyError):
                 # nope, can't find it...
                 raise KeyError(src_name)
 

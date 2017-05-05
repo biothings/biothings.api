@@ -160,10 +160,10 @@ class DocMongoBackend(DocBackendBase):
         '''
         #this does not return doc in the same order of ids
         cur = self.target_collection.find({'_id': {'$in': ids}})
-        _d = dict([(d['_id'], d) for d in cur])
-        doc_li = [_d[_id] for _id in ids if _id in _d]
-        del _d
-        return iter(doc_li) if asiter else doc_li
+        if asiter:
+            return cur
+        else:
+            return [doc for doc in cur]
 
     def count_from_ids(self, ids, step=100000):
         '''return the count of docs matching with input ids
