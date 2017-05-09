@@ -193,17 +193,30 @@ class DataBuilder(object):
             if not src_doc.get("upload",{}).get("jobs",{}).get(src_name,{}).get("status") == "success":
                 raise ResourceNotReady("No successful upload found for resource '%s'" % src_name)
 
+    def get_build_version(self):
+        """
+        Generate an arbitrary major build version. Default is using a timestamp (YYMMDD)
+        '.' char isn't allowed in build version as it's reserved for minor versions
+        """
+        d = datetime.fromtimestamp(self.t0)
+        return "%d%02d%02d" % (d.year,d.month,d.day)
+
     def register_status(self,status,transient=False,init=False,**extra):
         assert self.build_config, "build_config needs to be specified first"
         # get it from source_backend, kind of weird...
         src_build = self.source_backend.build
+        build_version = self.get_build_version()
+        if "." in build_version:
+            raise BuilderException("Can't use '.' in build version '%s', it's reserved for minor versions" % build_version)
         build_info = {
             'status': status,
             'step_started_at': datetime.now(),
             'started_at' : datetime.fromtimestamp(self.t0),
             'logfile': self.logfile,
             'target_backend': self.target_backend.name,
-            'target_name': self.target_backend.target_name}
+            'target_name': self.target_backend.target_name,
+            'build_version' : build_version,
+            }
         if status == "building":
             # reset the flag
             src_build.update({"_id" : self.build_config["_id"]},{"$unset" : {"pending_to_build":None}})

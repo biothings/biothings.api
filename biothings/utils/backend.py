@@ -1,5 +1,6 @@
 ''' Backend access class. '''
 from biothings.utils.es import ESIndexer
+from biothings import config as btconfig
 
 # Generic base backend
 class DocBackendBase(object):
@@ -11,6 +12,10 @@ class DocBackendBase(object):
 
     @property
     def name(self):
+        raise NotImplemented
+
+    @property
+    def version(self):
         raise NotImplemented
 
     def insert(self, doc_li):
@@ -88,6 +93,28 @@ class DocMongoBackend(DocBackendBase):
     @property
     def name(self):
         return self.target_collection.name
+
+    @property
+    def version(self):
+        import biothings.utils.mongo as mongo
+        if self.target_collection.database.name == btconfig.DATA_SRC_DATABASE:
+            fulln = mongo.get_source_fullname(self.target_collection.name)
+            if not fulln:
+                return
+            mainsrc = fulln.split(".")[0]
+            col = mongo.get_src_dump()
+            src = col.find_one({"_id":mainsrc})
+            return src.get("release")
+        elif self.target_collection.database.name == btconfig.DATA_TARGET_DATABASE:
+            col = mongo.get_src_build()
+            tgt = col.find_one({"build.target_name" : self.target_collection.name})
+            if not tgt:
+                return
+            for b in tgt["build"]:
+                if b.get("target_name") == self.target_collection.name:
+                    return b.get("build_version")
+        else:
+            return None
 
     @property
     def target_db(self):
@@ -202,6 +229,12 @@ class DocESBackend(DocBackendBase):
     @property
     def name(self):
         return self.target_esidxer._index
+
+    @property
+    def version(self):
+        mapping = self.target_esidxer.get_mapping_meta()
+        if mapping.get("_meta"):
+            return mapping["_meta"].get("build_version")
 
     def prepare(self, update_mapping=True):
         self.target_esidxer.create_index()
