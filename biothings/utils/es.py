@@ -497,11 +497,13 @@ class ESIndexer():
 def generate_es_mapping(inspect_doc,init=True,level=0):
     """Generate an ES mapping according to "inspect_doc", which is 
     produced by biothings.utils.inspect module"""
-    type_map = {int:"integer",
-                bool:"boolean",
-                float:"float",
-                str:"string",
-                }
+    map_tpl= {
+            int: {"type": "integer"},
+            bool: {"type": "boolean"},
+            float: {"type": "float"},
+            str: {"type": "string","analyzer":"string_lowercase"}, # not splittable (like an ID for instance)
+            "split_str": {"type": "string"}
+            }
     if init and not "_id" in inspect_doc:
         raise ValueError("Not _id key found, documents won't be indexed")
     mapping = {}
@@ -522,7 +524,12 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
         if list in keys:
             # we explore directly the list w/ inspect_doc[rootk][list] as param. 
             # (similar to skipping list type, as there's no such list type in ES mapping)
-            res = generate_es_mapping(inspect_doc[rootk][list],init=False,level=level+1)
+            # carefull: there could be list of list, if which we move further into the structure
+            # to skip them
+            toexplore = inspect_doc[rootk][list]
+            while list in toexplore:
+                toexplore = toexplore[list]
+            res = generate_es_mapping(toexplore,init=False,level=level+1)
             # is it the only key or do we have more ? (ie. some docs have data as "x", some 
             # others have list("x")
             if len(keys) > 1:
@@ -544,11 +551,13 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
                 raise Exception("More than one type")
             try:
                 typ = list(inspect_doc[rootk].keys())[0]
-                mapping[rootk] = {"type":type_map[typ]}
+                if "split" in inspect_doc[rootk][typ]:
+                    typ = "split_str"
+                mapping[rootk] = map_tpl[typ]
             except Exception as e:
                 raise ValueError("Can't find map type %s for key %s" % (rootk,inspect_doc[rootk]))
         elif inspect_doc[rootk] == {}:
-            return {"type" : type_map[rootk]}
+            return map_tpl[rootk]
         else:
             mapping[rootk] = {"properties" : {}}
             mapping[rootk]["properties"] = generate_es_mapping(inspect_doc[rootk],init=False,level=level+1)
