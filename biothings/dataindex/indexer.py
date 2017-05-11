@@ -109,12 +109,16 @@ class IndexerManager(BaseManager):
         fut = asyncio.Future()
 
         def get_status():
-            res = idxr.get_snapshot_status(btconfig.SNAPSHOT_REPOSITORY, snapshot)
-            assert "snapshots" in res, "Can't find snapshot '%s' in repository '%s'" % (snapshot,btconfig.SNAPSHOT_REPOSITORY)
-            # assuming only one index in the snapshot, so only check first elem
-            state = res["snapshots"][0].get("state")
-            assert state, "Can't find state in snapshot '%s'" % snapshot
-            return state
+            try:
+                res = idxr.get_snapshot_status(btconfig.SNAPSHOT_REPOSITORY, snapshot)
+                assert "snapshots" in res, "Can't find snapshot '%s' in repository '%s'" % (snapshot,btconfig.SNAPSHOT_REPOSITORY)
+                # assuming only one index in the snapshot, so only check first elem
+                state = res["snapshots"][0].get("state")
+                assert state, "Can't find state in snapshot '%s'" % snapshot
+                return state
+            except Exception as e:
+                # somethng went wrong, report as failure
+                return "FAILED"
 
         @asyncio.coroutine
         def do(index):
@@ -130,7 +134,7 @@ class IndexerManager(BaseManager):
                     "description" : es_snapshot_host}
             self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY))
             job = yield from self.job_manager.defer_to_thread(pinfo,
-                    partial(idxr.snapshot,btconfig.SNAPSHOT_REPOSITORY,index, mode=mode))
+                    partial(idxr.snapshot,btconfig.SNAPSHOT_REPOSITORY,snapshot, mode=mode))
             job.add_done_callback(snapshot_launched)
             yield from job
             while True:
