@@ -11,7 +11,7 @@ class DocBackendBase(object):
         pass
 
     @property
-    def name(self):
+    def target_name(self):
         raise NotImplemented
 
     @property
@@ -47,11 +47,11 @@ class DocMemoryBackend(DocBackendBase):
     def __init__(self, target_name=None):
         """target_dict is None or a dict."""
         self.target_dict = {}
-        self.target_name = target_name or "unnamed"
+        self._target_name = target_name or "unnamed"
 
     @property
-    def name(self):
-        return self.target_name
+    def target_name(self):
+        return self._target_name
 
     def insert(self, doc_li):
         for doc in doc_li:
@@ -91,7 +91,7 @@ class DocMongoBackend(DocBackendBase):
             self.target_collection = target_collection
 
     @property
-    def name(self):
+    def target_name(self):
         return self.target_collection.name
 
     @property
@@ -227,7 +227,7 @@ class DocESBackend(DocBackendBase):
         self.target_esidxer = esidxer
 
     @property
-    def name(self):
+    def target_name(self):
         return self.target_esidxer._index
 
     @property

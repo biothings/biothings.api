@@ -119,10 +119,10 @@ class BaseDiffer(object):
             cnt = 0
             pinfo = {"category" : "diff",
                      "step" : "count",
-                     "source" : "%s vs %s" % (new.name,old.name),
+                     "source" : "%s vs %s" % (new.target_name,old.target_name),
                      "description" : ""}
 
-            self.logger.info("Counting root keys in '%s'"  % new.name)
+            self.logger.info("Counting root keys in '%s'"  % new.target_name)
             stats["root_keys"] = {}
             jobs = []
             data_new = id_feeder(new, batch_size=batch_size)
@@ -152,7 +152,7 @@ class BaseDiffer(object):
             cnt = 0
             jobs = []
             pinfo = {"category" : "diff",
-                     "source" : "%s vs %s" % (new.name,old.name),
+                     "source" : "%s vs %s" % (new.target_name,old.target_name),
                      "step" : "content: new vs old",
                      "description" : ""}
             data_new = id_feeder(new, batch_size=batch_size)
@@ -231,7 +231,7 @@ def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names,
     _result = {'add': id_in_new,
                'update': _updates,
                'delete': [],
-               'source': new.name,
+               'source': new.target_name,
                'timestamp': get_timestamp()}
     if selfcontained:
         _result["add"] = new.mget_from_ids(id_in_new)
@@ -249,7 +249,7 @@ def diff_worker_old_vs_new(id_list_old, new_db_col_names, batch_num, diff_folder
     _result = {'delete': id_in_old,
                'add': [],
                'update': [],
-               'source': new.name,
+               'source': new.target_name,
                'timestamp': get_timestamp()}
     if len(id_in_old) != 0:
         dump(_result, file_name)

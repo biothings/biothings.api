@@ -75,14 +75,14 @@ class TargetDocBackend(DocBackendBase):
 
     def __init__(self,*args,**kwargs):
         super(TargetDocBackend,self).__init__(*args,**kwargs)
-        self.target_name = None
+        self._target_name = None
 
     def set_target_name(self,target_name, build_name=None):
         """
         Create/prepare a target backend, either strictly named "target_name"
         or named derived from "build_name" (for temporary backends)
         """
-        self.target_name = target_name or self.generate_target_name(build_name)
+        self._target_name = target_name or self.generate_target_name(build_name)
 
     def generate_target_name(self,build_config_name):
         assert not build_config_name is None
@@ -138,7 +138,7 @@ class TargetDocMongoBackend(TargetDocBackend,DocMongoBackend):
 
     def set_target_name(self,target_name=None, build_name=None):
         super(TargetDocMongoBackend,self).set_target_name(target_name,build_name)
-        self.target_collection = self.target_db[self.target_name]
+        self.target_collection = self.target_db[self._target_name]
 
 
 def create_backend(db_col_names,name_only=False):
