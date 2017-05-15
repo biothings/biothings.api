@@ -18,6 +18,7 @@ import json
 import logging
 import importlib
 import math, statistics
+import hashlib
 
 if sys.version_info.major == 3:
     str_types = str
@@ -608,4 +609,11 @@ def gunzipall(folder,pattern="*.gz"):
                 fout.write(line)
             logging.info("Done gunzip '%s'" % gz.name)
         fout.close()
+
+def md5sum(fname):
+    hash_md5 = hashlib.md5()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 

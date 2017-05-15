@@ -107,12 +107,10 @@ class DocMongoBackend(DocBackendBase):
             return src.get("release")
         elif self.target_collection.database.name == btconfig.DATA_TARGET_DATABASE:
             col = mongo.get_src_build()
-            tgt = col.find_one({"build.target_name" : self.target_collection.name})
+            tgt = col.find_one({"build.%s" % self.target_collection.name: {"$exists":1}})
             if not tgt:
                 return
-            for b in tgt["build"]:
-                if b.get("target_name") == self.target_collection.name:
-                    return b.get("build_version")
+            return tgt["build"][self.target_collection.name].get("build_version")
         else:
             return None
 

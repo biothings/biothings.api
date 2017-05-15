@@ -94,6 +94,7 @@ class IndexerManager(BaseManager):
         try:
             idx = self[build_name]
             idx.target_name = target_name
+            index_name = index_name or target_name
             job = idx.index(target_name, index_name, ids=ids, job_manager=self.job_manager, **kwargs)
             job = asyncio.ensure_future(job)
             job.add_done_callback(indexed)
@@ -180,7 +181,7 @@ class Indexer(object):
                 "description" : ""}
 
     @asyncio.coroutine
-    def index(self, target_name, index_name, job_manager, steps=["index","post"], batch_size=10000, ids=None, mode=None):
+    def index(self, target_name, index_name, job_manager=None, steps=["index","post"], batch_size=10000, ids=None, mode=None):
         """
         Build an index named "index_name" with data from collection
         "target_collection". "ids" can be passed to selectively index documents. "mode" can have the following
@@ -190,6 +191,7 @@ class Indexer(object):
                  an existing index)
         - None (default): will create a new index, assuming it doesn't already exist
         """
+        assert job_manager
         # check what to do
         if type(steps) == str:
             steps = [steps]
@@ -360,50 +362,34 @@ class Indexer(object):
         stats = self.get_stats()
         versions = self.get_src_versions()
         timestamp = self.get_timestamp()
+        build_version = self.get_build_version()
         return {"stats": stats,
                 "src_version": versions,
+                "build_version": build_version,
                 "timestamp": timestamp}
 
-    def get_builds(self,target_name=None):
+    def get_build(self,target_name=None):
         target_name = target_name or self.target_name
         assert target_name, "target_name must be defined first before searching for builds"
-        # try to find all build informations
-        builds = [b for b in self.build_config["build"] if b["target_name"] == target_name]
-        assert len(builds) > 0, "Can't find build for config '%s' and target_name '%s'" % (self.build_name,self.target_name)
-        return builds
+        builds = [b for b in self.build_config["build"] if b == target_name]
+        assert len(builds) == 1, "Can't find build for config '%s' and target_name '%s'" % (self.build_name,self.target_name)
+        return self.build_config["build"][builds[0]]
 
     def get_src_versions(self):
-        # target (merged collection) could have been created in multiple steps
-        builds = self.get_builds()
-        src_version = {}
-        # builds are sorted chronologically by default
-        for build in builds:
-            if not "src_version" in build:
-                continue
-            for src in build["src_version"]:
-                src_version[src] = build["src_version"][src]
-        if not src_version:
-            raise IndexerException("Build has no source versions, can't index")
-        return src_version
+        build = self.get_build()
+        return build["src_version"]
 
     def get_stats(self):
-        builds = self.get_builds()
-        stats = {}
-        # builds are sorted chronologically by default
-        for build in builds:
-            if not "stats" in build:
-                continue
-            for stat in build["stats"]:
-                stats[stat] = build["stats"][stat]
-        if not stats:
-            pass
-            #raise IndexerException("Build has no stats, can't index")
-        return stats
+        build = self.get_build()
+        return build["stats"]
 
     def get_timestamp(self):
-        # we'll keep the latest one
-        build = self.get_builds()[-1]
+        build = self.get_build()
         return build["started_at"]
+
+    def get_build_version(self):
+        build = self.get_build()
+        return build["build_version"]
 
     def load_build_config(self, build):
         '''Load build config from src_build collection.'''

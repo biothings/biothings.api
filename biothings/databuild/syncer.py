@@ -1,5 +1,5 @@
 import sys, re, math
-import os, glob
+import os, glob, json
 import time
 import copy
 import importlib
@@ -76,7 +76,7 @@ class BaseSyncer(object):
                  "step" : "",
                  "description" : ""}
 
-        meta = loadobj(os.path.join(diff_folder,"metadata.pick"))
+        meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
         diff_type = self.diff_type
         selfcontained = "selfcontained" in meta["diff_type"]
         if selfcontained:
@@ -303,7 +303,7 @@ class SyncerManager(BaseManager):
 
         # load metadata to know collections that have been diffed in diff_func protocol
         try:
-            meta = loadobj(os.path.join(diff_folder,"metadata.pick"))
+            meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
         except FileNotFoundError as e:
             self.logger.error("Can't find metadata file in diff folder '%s'" % diff_folder)
             raise
@@ -323,4 +323,17 @@ class SyncerManager(BaseManager):
             return job
         except KeyError as e:
             raise SyncerException("No such syncer (%s,%s) (error: %s)" % (diff_type,target,e))
+
+    @classmethod
+    def reset_synced(klass,diff_folder):
+        """
+        Remove "synced" flag from any pyobj file in diff_folder
+        """
+        diff_files = glob.glob(os.path.join(diff_folder,"*.pyobj"))
+        for diff in diff_files:
+            pyobj = loadobj(diff)
+            if pyobj.get("synced"):
+                self.logger.info("Removing synced flag from '%s'" % diff)
+                pyobj.pop("synced")
+                dump(pyobj,diff_file)
 
