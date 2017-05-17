@@ -90,7 +90,7 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
             for num,info in sorted(self.__class__.running_jobs.items()):
                 is_done = set([j.done() for j in info["jobs"]]) == set([True])
                 has_err = is_done and  [True for j in info["jobs"] if j.exception()] or None
-                outputs = is_done and ([j.exception() for j in info["jobs"] if j.exception()] or \
+                outputs = is_done and ([str(j.exception()) for j in info["jobs"] if j.exception()] or \
                             [j.result() for j in info["jobs"]]) or None
                 if is_done:
                     finished.append(num)
