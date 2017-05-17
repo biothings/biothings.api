@@ -21,7 +21,7 @@ class BaseDumper(object):
     SRC_ROOT_FOLDER = None # source folder (without version/dates)
 
     # Should an upload be triggered after dump ?
-    NEED_UPLOAD = True
+    AUTO_UPLOAD = True
 
     # attribute used to generate data folder path suffix
     SUFFIX_ATTR = "release"
@@ -244,22 +244,30 @@ class BaseDumper(object):
                     self.logger.info("Nothing to dump",extra={"notify":True})
                     return
             if "post" in self.steps:
+                got_error = False
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "post_dump"
                 # for some reason (like maintaining object's state between pickling).
                 # we can't use process there. Need to use thread to maintain that state without
                 # building an unmaintainable monster
                 job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
-                yield from asyncio.gather(job) # consume future
+                def postdumped(f):
+                    if f.exception():
+                        got_error = f.exception()
+                job.add_done_callback(postdumped)
+                yield from job
+                if got_error:
+                    raise got_error
                 # set it to success at the very end
-                self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
+                self.register_status("success",pending_to_upload=self.__class__.AUTO_UPLOAD)
                 self.logger.info("success %s" % strargs,extra={"notify":True})
         except (KeyboardInterrupt,Exception) as e:
             self.logger.error("Error while dumping source: %s" % e)
             import traceback
             self.logger.error(traceback.format_exc())
-            self.register_status("failed",download={"err" : repr(e)})
+            self.register_status("failed",download={"err" : str(e)})
             self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
+            raise
         finally:
             if self.client:
                 self.release_client()
@@ -298,7 +306,11 @@ class BaseDumper(object):
 
     @property
     def current_data_folder(self):
-        return self.src_doc.get("data_folder") or self.new_data_folder
+        try:
+            return self.src_doc.get("data_folder") or self.new_data_folder
+        except DumperException:
+            # exception raied from new_data_folder generation, we give up
+            return None
 
     @asyncio.coroutine
     def do_dump(self,job_manager=None):
@@ -412,6 +424,9 @@ class HTTPDumper(BaseDumper):
         self.prepare_local_folders(localfile)
         self.logger.debug("Downloading '%s'" % remoteurl)
         res = self.client.get(remoteurl,stream=True,headers=headers)
+        if not res.status_code == 200:
+            raise DumperException("Error while downloading '%s' (status: %s, reason: %s)" % \
+                    (remoteurl,res.status_code,res.reason))
         fout = open(localfile, 'wb')
         for chunk in res.iter_content(chunk_size=512 * 1024):
             if chunk:
@@ -477,7 +492,7 @@ class DummyDumper(BaseDumper):
         job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
         yield from asyncio.gather(job) # consume future
         self.logger.info("Registering success")
-        self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
+        self.register_status("success",pending_to_upload=self.__class__.AUTO_UPLOAD)
         self.logger.info("success",extra={"notify":True})
 
 class ManualDumper(BaseDumper):
@@ -541,7 +556,7 @@ class ManualDumper(BaseDumper):
         job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
         yield from asyncio.gather(job) # consume future
         # ok, good to go
-        self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
+        self.register_status("success",pending_to_upload=self.__class__.AUTO_UPLOAD)
         self.logger.info("success %s" % strargs,extra={"notify":True})
         self.logger.info("Manually dumped resource (data_folder: '%s')" % self.new_data_folder)
 
