@@ -583,12 +583,18 @@ class DifferManager(BaseManager):
                 "diff_folder" : diff_folder, "detailed": detailed,
                 "metadata": metadata}
 
-    def upload_diff(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None):
+    def upload_diff(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None, steps=["reset","upload","meta"]):
+        # check what to do
+        if type(steps) == str:
+            steps = [steps]
+        if "meta" in steps:
+            assert getattr(btconfig,"BIOTHINGS_ROLE","master"), "Hub must be master to publish metadata about diff release"
         if not diff_folder:
             assert old_db_col_names and new_db_col_names, "No diff_folder specified, old_db_col_names and new_db_col_names are required"
             diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
         meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
         diff_version = meta["diff_version"]
+        s3basedir = os.path.join(btconfig.S3_DIFF_FOLDER,diff_version)
 
         @asyncio.coroutine
         def do():
@@ -597,52 +603,68 @@ class DifferManager(BaseManager):
                      "source" : diff_folder,
                      "step": None,
                      "description" : diff_version}
-            # first we need to reset "synced" flag in diff files to make
-            # sure all of them will be applied by client
-            pinfo["step"] = "reset synced"
-            self.logger.info("Resetting 'synced' flag in pyobj files located in folder '%s'" % diff_folder)
-            job = yield from self.job_manager.defer_to_thread(pinfo,partial(SyncerManager.reset_synced,diff_folder))
-            yield from job
-            jobs.append(job)
-            # then we upload all the folder content
-            pinfo["step"] = "upload"
-            self.logger.info("Uploading files from '%s' to s3" % diff_folder)
-            s3basedir = os.path.join(btconfig.S3_DIFF_FOLDER,diff_version)
-            job = yield from self.job_manager.defer_to_thread(pinfo,partial(aws.send_s3_folder,
-                diff_folder,s3basedir=s3basedir,
-                aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                s3_bucket=btconfig.S3_DIFF_BUCKET,
-                overwrite=True,permissions="public-read"))
-            yield from job
-            jobs.append(job)
-            # finally we create a metadata json file pointing to this release
-            def gen_meta():
-                pinfo["step"] = "generate meta"
-                self.logger.info("Generating JSON metadata for incremental release '%s'" % diff_version)
-                # generate json metadata about this diff release
-                diff_meta = {
-                        "type": "incremental",
-                        "build_version": diff_version,
-                        "app_version": None,
-                        "metadata" : {"url" : aws.get_s3_url(os.path.join(s3basedir,"metadata.json"),
-                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_DIFF_BUCKET)}
-                        }
-                diff_file = "%s.json" % diff_version
-                diff_meta_path = os.path.join(btconfig.DIFF_PATH,diff_file)
-                json.dump(diff_meta,open(diff_meta_path,"w"))
-                aws.send_s3_file(diff_meta_path,os.path.join(btconfig.S3_DIFF_FOLDER,diff_file),
-                        aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                        s3_bucket=btconfig.S3_DIFF_BUCKET,
-                         overwrite=True,permissions="public-read")
-            job = yield from self.job_manager.defer_to_thread(pinfo,gen_meta)
-            yield from job
-            jobs.append(job)
+
+            if "reset" in steps:
+                # first we need to reset "synced" flag in diff files to make
+                # sure all of them will be applied by client
+                pinfo["step"] = "reset synced"
+                self.logger.info("Resetting 'synced' flag in pyobj files located in folder '%s'" % diff_folder)
+                job = yield from self.job_manager.defer_to_thread(pinfo,partial(SyncerManager.reset_synced,diff_folder))
+                yield from job
+                jobs.append(job)
+
+            if "upload" in steps:
+                # then we upload all the folder content
+                pinfo["step"] = "upload"
+                self.logger.info("Uploading files from '%s' to s3" % diff_folder)
+                job = yield from self.job_manager.defer_to_thread(pinfo,partial(aws.send_s3_folder,
+                    diff_folder,s3basedir=s3basedir,
+                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                    s3_bucket=btconfig.S3_DIFF_BUCKET,
+                    overwrite=True,permissions="public-read"))
+                yield from job
+                jobs.append(job)
+
+            if "meta" in steps:
+                # finally we create a metadata json file pointing to this release
+                self.logger.info("ljlkjkljlkjkljlkj")
+                def gen_meta():
+                    pinfo["step"] = "generate meta"
+                    self.logger.info("Generating JSON metadata for incremental release '%s'" % diff_version)
+                    # generate json metadata about this diff release
+                    diff_meta = {
+                            "type": "incremental",
+                            "build_version": diff_version,
+                            "app_version": None,
+                            "metadata" : {"url" : aws.get_s3_url(os.path.join(s3basedir,"metadata.json"),
+                                aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_DIFF_BUCKET)}
+                            }
+                    diff_file = "%s.json" % diff_version
+                    diff_meta_path = os.path.join(btconfig.DIFF_PATH,diff_file)
+                    json.dump(diff_meta,open(diff_meta_path,"w"))
+                    # get a timestamp from metadata to force lastdmodifed header
+                    metadata = json.load(open(os.path.join(diff_folder,"metadata.json")))
+                    local_ts = datetime.strptime(metadata["generated_on"],"%Y-%m-%d %H:%M:%S.%f")
+                    utc_epoch = str(int(time.mktime(local_ts.timetuple())))
+                    s3key = os.path.join(btconfig.S3_DIFF_FOLDER,diff_file)
+                    aws.send_s3_file(diff_meta_path,s3key,
+                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                            s3_bucket=btconfig.S3_DIFF_BUCKET,metadata={"lastmodified":utc_epoch},
+                             overwrite=True,permissions="public-read")
+                    url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                            s3_bucket=btconfig.S3_DIFF_BUCKET)
+                    self.logger.info("Incremental release metadata published for version: '%s'" % url)
+                job = yield from self.job_manager.defer_to_thread(pinfo,gen_meta)
+                yield from job
+                jobs.append(job)
+
             def uploaded(f):
                 try:
                     res = f.result()
                     self.logger.info("Diff folder '%s' uploaded to S3: %s" % (diff_folder,res),extra={"notify":True})
                 except Exception as e:
                     self.logger.error("Failed to upload diff folder '%s' uploaded to S3: %s" % (diff_folder,e),extra={"notify":True})
+
             yield from asyncio.wait(jobs)
             task = asyncio.gather(*jobs)
             task.add_done_callback(uploaded)

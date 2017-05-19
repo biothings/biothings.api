@@ -1,6 +1,7 @@
 ''' Backend access class. '''
 from biothings.utils.es import ESIndexer
 from biothings import config as btconfig
+from elasticsearch.exceptions import NotFoundError
 
 # Generic base backend
 class DocBackendBase(object):
@@ -230,9 +231,13 @@ class DocESBackend(DocBackendBase):
 
     @property
     def version(self):
-        mapping = self.target_esidxer.get_mapping_meta()
-        if mapping.get("_meta"):
-            return mapping["_meta"].get("build_version")
+        try:
+            mapping = self.target_esidxer.get_mapping_meta()
+            if mapping.get("_meta"):
+                return mapping["_meta"].get("build_version")
+        except NotFoundError:
+            # index doesn't even exist
+            return None
 
     def prepare(self, update_mapping=True):
         self.target_esidxer.create_index()

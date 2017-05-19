@@ -9,7 +9,7 @@ except ImportError:
 
 
 
-def send_s3_file(localfile, s3key, overwrite=False, permissions=None,
+def send_s3_file(localfile, s3key, overwrite=False, permissions=None, metadata={},
         aws_key=None, aws_secret=None, s3_bucket=None):
     '''save a localfile to s3 bucket with the given key.
        bucket is set via S3_BUCKET
@@ -30,6 +30,8 @@ def send_s3_file(localfile, s3key, overwrite=False, permissions=None,
         assert not k.exists(), 's3key "{}" already exists.'.format(s3key)
     lastmodified = os.stat(localfile)[-2]
     k.set_metadata('lastmodified', lastmodified)
+    for header in metadata:
+        k.set_metadata(header,metadata[header])
     k.set_contents_from_filename(localfile)
     if permissions:
         k.set_acl(permissions)

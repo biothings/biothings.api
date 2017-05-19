@@ -1,16 +1,18 @@
 
 import sys, re, os, time, math
 from datetime import datetime
-import pickle
+import pickle, json
 from pprint import pformat
 import asyncio
 from functools import partial
 
 import biothings.utils.mongo as mongo
+import biothings.utils.aws as aws
 from biothings.utils.common import timesofar
 from biothings.utils.loggers import HipchatHandler, get_logger
 from biothings.utils.manager import BaseManager
 from biothings.utils.es import ESIndexer
+from biothings.utils.backend import DocESBackend
 from biothings import config as btconfig
 from biothings.utils.mongo import doc_feeder, id_feeder
 from config import LOG_FOLDER, logger as logging
@@ -102,7 +104,13 @@ class IndexerManager(BaseManager):
         except KeyError as e:
             raise IndexerException("No such builder for '%s'" % build_name)
 
-    def snapshot(self, index, snapshot=None, mode=None):
+    def snapshot(self, index, snapshot=None, mode=None, steps=["snapshot","meta"]):
+        # check what to do
+        if type(steps) == str:
+            steps = [steps]
+        if "meta" in steps:
+            assert getattr(btconfig,"BIOTHINGS_ROLE",None) == "master","Hub needs to be master to publish metadata about snapshots"
+            assert hasattr(btconfig,"URL_SNAPSHOT_REPOSITORY"), "URL_SNAPSHOT_REPOSITORY must be defined to publish metadata about snapshots"
         snapshot = snapshot or index
         es_snapshot_host = getattr(btconfig,"ES_SNAPSHOT_HOST",btconfig.ES_HOST)
         idxr = ESIndexer(index=index,doc_type=btconfig.ES_DOC_TYPE,es_host=es_snapshot_host)
@@ -125,33 +133,73 @@ class IndexerManager(BaseManager):
         def do(index):
             def snapshot_launched(f):
                 try:
-                    self.logger.info("res in snapshot_launched %s" % f.result())
+                    self.logger.info("Snapshot_launched: %s" % f.result())
                 except Exception as e:
-                    self.logger.error("err %s" % e)
+                    self.logger.error("Error while lauching snapshot: %s" % e)
                     fut.set_exception(e)
-            pinfo = {"category" : "index",
-                    "source" : index,
-                    "step" : "snapshot",
-                    "description" : es_snapshot_host}
-            self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY))
-            job = yield from self.job_manager.defer_to_thread(pinfo,
-                    partial(idxr.snapshot,btconfig.SNAPSHOT_REPOSITORY,snapshot, mode=mode))
-            job.add_done_callback(snapshot_launched)
-            yield from job
-            while True:
-                state = get_status()
-                if state in ["INIT","IN_PROGRESS","STARTED"]:
-                    yield from asyncio.sleep(getattr(btconfig,"MONITOR_SNAPSHOT_DELAY",60))
-                else:
-                    if state == "SUCCESS":
-                        fut.set_result(state)
-                        self.logger.info("Snapshot '%s' successfully created (host: '%s', repository: '%s')" % \
-                                (snapshot,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY),extra={"notify":True})
+            if "snapshot" in steps:
+                pinfo = {"category" : "index",
+                        "source" : index,
+                        "step" : "snapshot",
+                        "description" : es_snapshot_host}
+                self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY))
+                job = yield from self.job_manager.defer_to_thread(pinfo,
+                        partial(idxr.snapshot,btconfig.SNAPSHOT_REPOSITORY,snapshot, mode=mode))
+                job.add_done_callback(snapshot_launched)
+                yield from job
+                while True:
+                    state = get_status()
+                    if state in ["INIT","IN_PROGRESS","STARTED"]:
+                        yield from asyncio.sleep(getattr(btconfig,"MONITOR_SNAPSHOT_DELAY",60))
                     else:
-                        fut.set_exception(Exception("Snapshot '%s' failed: %s" % (snapshot,state)))
-                        self.logger.error("Failed creating snapshot '%s' (host: %s, repository: %s), state: %s" % \
-                                (snapshot,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY,state),extra={"notify":True})
-                    break
+                        if state == "SUCCESS":
+                            # if "meta" is required, it will set the result later
+                            if not "meta" in steps:
+                                fut.set_result(state)
+                            self.logger.info("Snapshot '%s' successfully created (host: '%s', repository: '%s')" % \
+                                    (snapshot,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY),extra={"notify":True})
+                        else:
+                            e = IndexerException("Snapshot '%s' failed: %s" % (snapshot,state))
+                            fut.set_exception(e)
+                            self.logger.error("Failed creating snapshot '%s' (host: %s, repository: %s), state: %s" % \
+                                    (snapshot,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY,state),extra={"notify":True})
+                            raise e
+                        break
+
+            if "meta" in steps:
+                try:
+                    esb = DocESBackend(idxr)
+                    self.logger.info("Generating JSON metadata for full release '%s'" % esb.version)
+                    repo = idxr._es.snapshot.get_repository(btconfig.URL_SNAPSHOT_REPOSITORY)
+                    # generate json metadata about this diff release
+                    full_meta = {
+                            "type": "full",
+                            "build_version": esb.version,
+                            "app_version": None,
+                            "metadata" : {"repository" : repo,
+                                          "snapshot_name" : snapshot}
+                            }
+                    build_info = "%s.json" % esb.version
+                    build_info_path = os.path.join(btconfig.DIFF_PATH,build_info)
+                    json.dump(full_meta,open(build_info_path,"w"))
+                    # override lastmodified header with our own timestamp
+                    local_ts = datetime.strptime(idxr.get_mapping_meta()["_meta"]["timestamp"],"%Y-%m-%dT%H:%M:%S.%f") 
+                    utc_epoch = str(int(time.mktime(local_ts.timetuple())))
+                    # it's a full release, but all build info metadata (full, incremental) all go
+                    # to the diff bucket (this is the main entry)
+                    s3key = os.path.join(btconfig.S3_DIFF_FOLDER,build_info)
+                    aws.send_s3_file(build_info_path,s3key,
+                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                            s3_bucket=btconfig.S3_DIFF_BUCKET,metadata={"lastmodified":utc_epoch},
+                             overwrite=True,permissions="public-read")
+                    url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                            s3_bucket=btconfig.S3_DIFF_BUCKET)
+                    self.logger.info("Full release metadata published for version: '%s'" % url)
+                    fut.set_result("SUCCESS")
+                except Exception as e:
+                    self.logger.error("Error while publishing metadata for snapshot '%s': %s" % (snapshot,e))
+                    fut.set_exception(e)
+
         task = asyncio.ensure_future(do(index))
         return fut
 

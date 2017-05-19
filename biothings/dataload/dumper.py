@@ -95,7 +95,7 @@ class BaseDumper(object):
     def src_doc(self, value):
         self._state["src_doc"] = value
 
-    def create_todump_list(self,force=False):
+    def create_todump_list(self,force=False,**kwargs):
         """Fill self.to_dump list with dict("remote":remote_path,"local":local_path)
         elements. This is the todo list for the dumper. It's a good place to
         check whether needs to be downloaded. If 'force' is True though, all files
@@ -190,9 +190,16 @@ class BaseDumper(object):
         self.src_doc = self.src_dump.find_one({'_id': self.src_name}) or {}
 
     def register_status(self,status,transient=False,**extra):
+        try:
+            # is status is "failed" and depending on where it failed,
+            # we may not be able to get the new_data_folder (if dumper didn't reach 
+            # the release information for instance). Default to current if failing
+            data_folder = self.new_data_folder
+        except DumperException:
+            data_folder = self.current_data_folder
         self.src_doc = {
                 '_id': self.src_name,
-               'data_folder': self.new_data_folder,
+               'data_folder': data_folder,
                'release': getattr(self,self.__class__.SUFFIX_ATTR),
                'download' : {
                    'logfile': self.logfile,
@@ -211,7 +218,7 @@ class BaseDumper(object):
         self.src_dump.save(self.src_doc)
 
     @asyncio.coroutine
-    def dump(self, steps=None, force=False, job_manager=None):
+    def dump(self, steps=None, force=False, job_manager=None, **kwargs):
         '''
         Dump (ie. download) resource as needed
         this should be called after instance creation
@@ -230,7 +237,7 @@ class BaseDumper(object):
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "check"
                 # TODO: blocking call for now, FTP client can't be properly set in thread after
-                self.create_todump_list(force=force)
+                self.create_todump_list(force=force, **kwargs)
                 if self.to_dump:
                     # mark the download starts
                     self.register_status("downloading",transient=True)
@@ -311,6 +318,11 @@ class BaseDumper(object):
         except DumperException:
             # exception raied from new_data_folder generation, we give up
             return None
+
+    @property
+    def current_release(self):
+        print(self.src_doc)
+        return self.src_doc.get("release")
 
     @asyncio.coroutine
     def do_dump(self,job_manager=None):
@@ -435,7 +447,7 @@ class HTTPDumper(BaseDumper):
 
 class WgetDumper(BaseDumper):
 
-    def create_todump_list(self,force=False):
+    def create_todump_list(self,force=False,**kwargs):
         """Fill self.to_dump list with dict("remote":remote_path,"local":local_path)
         elements. This is the todo list for the dumper. It's a good place to
         check whether needs to be downloaded. If 'force' is True though, all files
