@@ -1,6 +1,6 @@
 import time, copy
 import json
-from elasticsearch import Elasticsearch, NotFoundError, RequestError
+from elasticsearch import Elasticsearch, NotFoundError, RequestError, TransportError
 from elasticsearch import helpers
 import logging
 import itertools
@@ -66,6 +66,7 @@ class IndexerException(Exception): pass
 class ESIndexer():
     def __init__(self, index, doc_type, es_host, step=10000,
                  number_of_shards=10, number_of_replicas=0):
+        self.es_host = es_host
         self._es = get_es(es_host)
         self._index = index
         self._doc_type = doc_type
@@ -490,8 +491,45 @@ class ESIndexer():
         except RequestError as e:
             raise IndexerException("Can't snapshot '%s' (if already exists, use mode='purge'): %s" % (self._index,e))
 
+    def restore(self,repo_name,snapshot_name,purge=False,body=None):
+        if purge:
+            try:
+                self._es.indices.get(snapshot_name)
+                # if we get there, it exists, delete it
+                self._es.indices.delete(snapshot_name)
+            except NotFoundError:
+                # no need to delete it,
+                pass
+        try:
+            return self._es.snapshot.restore(repo_name,snapshot_name,body=body)
+        except TransportError as e:
+            raise IndexerException("Can't restore snapshot '%s' (does index already exist ?): %s" % (snapshot_name,e))
+
+    def get_repository(self,repo_name):
+        return self._es.snapshot.get_repository(repo_name)
+
+    def create_repository(self,repo_name,settings):
+        try:
+            self._es.snapshot.create_repository(repo_name,settings)
+        except TransportError as e:
+            raise IndexerException("Can't create snapshot repository '%s': %s" % (repo_name,e))
+
     def get_snapshot_status(self,repo,snapshot):
         return self._es.snapshot.status(repo,snapshot)
+
+    def get_restore_status(self,index_name=None):
+        index_name = index_name or self._index
+        recov = self._es.indices.recovery(index_name)
+        if not index_name in recov:
+            return {"status": "INIT", "progress" : "0%"}
+        shards = recov[index_name]["shards"]
+        # get all shards status
+        shards_status = [s["stage"] for s in shards]
+        done = len([s for s in shards_status if s == "DONE"])
+        if set(shards_status) == {"DONE"}:
+            return {"status": "DONE", "progress" : "100%"}
+        else:
+            return {"status" : "IN_PROGRESS", "progress": "%.2f%%" % (done/len(shards_status)*100)}
 
 
 def generate_es_mapping(inspect_doc,init=True,level=0):

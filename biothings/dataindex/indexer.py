@@ -133,7 +133,7 @@ class IndexerManager(BaseManager):
         def do(index):
             def snapshot_launched(f):
                 try:
-                    self.logger.info("Snapshot_launched: %s" % f.result())
+                    self.logger.info("Snapshot launched: %s" % f.result())
                 except Exception as e:
                     self.logger.error("Error while lauching snapshot: %s" % e)
                     fut.set_exception(e)

@@ -121,7 +121,10 @@ class BaseDumper(object):
         raise NotImplementedError("Define in subclass")
 
     def download(self,remotefile,localfile):
-        """Download "remotefile' to local location defined by 'localfile'"""
+        """
+        Download "remotefile' to local location defined by 'localfile'
+        Return relevant information about remotefile (depends on the actual client)
+        """
         raise NotImplementedError("Define in subclass")
 
     def post_download(self, remotefile, localfile):
@@ -388,6 +391,7 @@ class FTPDumper(BaseDumper):
         # an example: 'last-modified': '20121128150000'
         lastmodified = time.mktime(datetime.strptime(lastmodified, '%Y%m%d%H%M%S').timetuple())
         os.utime(localfile, (lastmodified, lastmodified))
+        return code
 
     def remote_is_better(self,remotefile,localfile):
         """'remotefile' is relative path from current working dir (CWD_DIR), 
@@ -444,6 +448,7 @@ class HTTPDumper(BaseDumper):
             if chunk:
                 fout.write(chunk)
         fout.close()
+        return res
 
 class WgetDumper(BaseDumper):
 
@@ -627,7 +632,7 @@ class GoogleDriveDumper(HTTPDumper):
             raise DumperException("Can't find a download link from '%s': %s" % (dl_url,html))
         href = link.get("href")
         # now build the final GET request, using cookies to simulate browser
-        super(GoogleDriveDumper,self).download("https://docs.google.com" + href, localfile, headers={"cookie": res.headers["set-cookie"]})
+        return super(GoogleDriveDumper,self).download("https://docs.google.com" + href, localfile, headers={"cookie": res.headers["set-cookie"]})
 
 ####################
 
