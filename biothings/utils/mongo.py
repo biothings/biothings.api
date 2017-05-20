@@ -2,9 +2,12 @@
 import time, logging, os, io, glob, datetime
 from functools import wraps
 from pymongo import MongoClient
+from pymongo.collection import Collection
+from functools import partial
 
 from biothings.utils.common import timesofar, get_random_string, iter_n, \
                                    open_compressed_file, get_compressed_outfile
+from biothings.utils.backend import DocESBackend, DocMongoBackend
 # stub, until set to real config module
 config = None
 
@@ -138,6 +141,8 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
        batch_callback is a callback function as fn(cnt, t), called after every batch
        fields is optional parameter passed to find to restrict fields to return.
     '''
+    if isinstance(collection,DocMongoBackend):
+        collection = collection.target_collection
     cur = collection.find(query, no_cursor_timeout=True, projection=fields)
     n = cur.count()
     s = s or 0
@@ -190,6 +195,8 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
     finally:
         cur.close()
 
+# TODO: this func deals with different backend, should not be in bt.utils.mongo
+# and doc_feeder should do the same as this function regarding backend support
 @requires_config
 def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
               force_use=False, force_build=False):
@@ -208,6 +215,9 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
     src_db = get_src_db()
     ts = None
     found_meta = True
+
+    if isinstance(col,DocMongoBackend):
+        col = col.target_collection
 
     try:
         if col.database.name == config.DATA_TARGET_DATABASE:
@@ -234,14 +244,16 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             build_cache = False
     except KeyError:
         logger.warning("Couldn't find timestamp in database for '%s'" % col.name)
+    except Exception as e:
+        logger.info("%s is not a mongo collection, _id cache won't be built (error: %s)" % (col,e))
+        build_cache = False
 
     # try to find a cache file
     use_cache = False
     cache_file = None
     cache_format = getattr(config,"CACHE_FORMAT",None)
-    if found_meta and config.CACHE_FOLDER:
-        cache_file = os.path.join(config.CACHE_FOLDER,col.name)
-        cache_file = cache_format and (cache_file + ".%s" % cache_format) or cache_file
+    if found_meta and getattr(config,"CACHE_FOLDER",None):
+        cache_file = get_cache_filename(col.name)
         try:
             # size of empty file differs depending on compression
             empty_size = {None:0,"xz":32,"gzip":25,"bz2":14}
@@ -276,7 +288,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
         logger.debug("No cache file found (or invalid) for '%s', use doc_feeder" % col.name)
         cache_out = None
         cache_temp = None
-        if config.CACHE_FOLDER and build_cache:
+        if getattr(config,"CACHE_FOLDER",None) and config.CACHE_FOLDER and build_cache:
             if not os.path.exists(config.CACHE_FOLDER):
                 os.makedirs(config.CACHE_FOLDER)
             cache_temp = "%s._tmp_" % cache_file
@@ -288,7 +300,29 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             cache_temp = "%s%s" % (cache_temp,get_random_string())
             cache_out = get_compressed_outfile(cache_temp,compress=cache_format)
             logger.info("Building cache file '%s'" % cache_temp)
-        for doc_ids in doc_feeder(col, step=batch_size, inbatch=True, fields={"_id":1}):
+        else:
+            logger.info("Can't build cache, cache not allowed or no cache folder")
+            build_cache = False
+        if isinstance(col,Collection):
+            doc_feeder_func = partial(doc_feeder,col, step=batch_size, inbatch=True, fields={"_id":1})
+        elif isinstance(col,DocMongoBackend):
+            doc_feeder_func = partial(doc_feeder,col.target_collection, step=batch_size, inbatch=True, fields={"_id":1})
+        elif isinstance(col,DocESBackend):
+            # get_id_list directly return the _id, wrap it to match other 
+            # doc_feeder_func returned vals. Also return a batch of id
+            def wrap_id():
+                ids = []
+                for _id in col.get_id_list(step=batch_size):
+                    ids.append({"_id":_id})
+                    if len(ids) >= batch_size:
+                        yield ids
+                        ids = []
+                if ids:
+                    yield ids
+            doc_feeder_func = partial(wrap_id)
+        else:
+            raise Exception("Unknown backend %s" % col)
+        for doc_ids in doc_feeder_func():
             doc_ids = [_doc["_id"] for _doc in doc_ids]
             if build_cache:
                 strout = "\n".join(doc_ids) + "\n"
@@ -413,17 +447,35 @@ def get_latest_build(build_name):
     else:
         return None
 
-def invalidate_cache(src_name):
-    src_dump = get_src_dump()
-    if not "." in src_name:
-        fullname = get_source_fullname(src_name)
-    assert fullname, "Can't resolve source '%s' (does it exist ?)" % src_name
+def get_cache_filename(col_name):
+    cache_folder = getattr(config,"CACHE_FOLDER",None)
+    if not cache_folder:
+        return # we don't even use cache, forget it
+    cache_format = getattr(config,"CACHE_FORMAT",None)
+    cache_file = os.path.join(config.CACHE_FOLDER,col_name)
+    cache_file = cache_format and (cache_file + ".%s" % cache_format) or cache_file
+    return cache_file
 
-    main,sub = fullname.split(".")
-    doc = src_dump.find_one({"_id":main})
-    assert doc, "No such source '%s'" % main
-    assert doc.get("upload",{}).get("jobs",{}).get(sub), "No such sub-source '%s'" % sub
-    # this will make the cache too old
-    doc["upload"]["jobs"][sub]["started_at"] = datetime.datetime.now()
-    src_dump.update_one({"_id":main},{"$set" : {"upload.jobs.%s.started_at" % sub:datetime.datetime.now()}})
+def invalidate_cache(col_name,col_type="src"):
+    if col_type == "src":
+        src_dump = get_src_dump()
+        if not "." in col_name:
+            fullname = get_source_fullname(col_name)
+        assert fullname, "Can't resolve source '%s' (does it exist ?)" % col_name
+
+        main,sub = fullname.split(".")
+        doc = src_dump.find_one({"_id":main})
+        assert doc, "No such source '%s'" % main
+        assert doc.get("upload",{}).get("jobs",{}).get(sub), "No such sub-source '%s'" % sub
+        # this will make the cache too old
+        doc["upload"]["jobs"][sub]["started_at"] = datetime.datetime.now()
+        src_dump.update_one({"_id":main},{"$set" : {"upload.jobs.%s.started_at" % sub:datetime.datetime.now()}})
+    elif col_type == "target":
+        # just delete the cache file
+        cache_file = get_cache_filename(col_name)
+        if cache_file:
+            try:
+                os.remove(cache_file)
+            except FileNotFoundError:
+                pass
 

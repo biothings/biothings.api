@@ -6,6 +6,7 @@ import time
 import os.path
 from .common import timesofar, dump, get_timestamp, filter_dict
 from .backend import DocMongoDBBackend
+from ..databuild.backend import create_backend
 from .es import ESIndexer
 from .jsondiff import make as jsondiff
 
@@ -292,3 +293,12 @@ def diff_collections_batches(b1, b2, result_dir, step=10000):
     print("Finished calculating diff for the old collection. Total number of docs deleted: {}".format(cnt_delete))
     print("="*100)
     print("Summary: (Updated: {}, Added: {}, Deleted: {})".format(cnt_update, cnt_add, cnt_delete))
+
+
+def generate_diff_folder(old_db_col_names,new_db_col_names):
+    from biothings import config as btconfig
+    new = create_backend(new_db_col_names,name_only=True)
+    old = create_backend(old_db_col_names,name_only=True)
+    diff_folder = os.path.join(btconfig.DIFF_PATH, "%s-%s" % (old, new))
+    return diff_folder
+

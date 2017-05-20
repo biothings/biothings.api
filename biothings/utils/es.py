@@ -1,12 +1,11 @@
-import time
+import time, copy
 import json
-from elasticsearch import Elasticsearch, NotFoundError
+from elasticsearch import Elasticsearch, NotFoundError, RequestError, TransportError
 from elasticsearch import helpers
 import logging
 import itertools
 
 from biothings.utils.common import iter_n, timesofar, ask
-from biothings.utils.mongo import doc_feeder
 
 # setup ES logging
 import logging
@@ -40,7 +39,6 @@ def verify_ids(doc_iter, index, doc_type, step=100000, ):
         xres = es.search(index=index, doc_type=doc_type, body=q, _source=False)
         found_cnt += xres['hits']['total']
         total_cnt += len(id_li)
-        print(xres['hits']['total'], found_cnt, total_cnt)
         out.extend([x['_id'] for x in xres['hits']['hits']])
     return out
 
@@ -68,6 +66,7 @@ class IndexerException(Exception): pass
 class ESIndexer():
     def __init__(self, index, doc_type, es_host, step=10000,
                  number_of_shards=10, number_of_replicas=0):
+        self.es_host = es_host
         self._es = get_es(es_host)
         self._index = index
         self._doc_type = doc_type
@@ -101,7 +100,6 @@ class ESIndexer():
         }
         res = self._es.search(index=self._index, doc_type=self._doc_type, body=q, fields=None, size=len(bid_list))
         id_set = set([doc['_id'] for doc in res['hits']['hits']])
-        print('..', len(id_set), end='')   # print out # of matching hits
         return [(bid, bid in id_set) for bid in bid_list]
 
     @wrapper
@@ -137,7 +135,6 @@ class ESIndexer():
                 }
             }
             body["settings"].update(extra_settings)
-            print(body)
             if mapping:
                 mapping = {"mappings": mapping}
                 body.update(mapping)
@@ -147,23 +144,26 @@ class ESIndexer():
     def exists_index(self):
         return self._es.indices.exists(self._index)
 
-    def index(self, doc, id=None):
+    def index(self, doc, id=None, action="index"):
         '''add a doc to the index. If id is not None, the existing doc will be
            updated.
         '''
-        return self._es.index(self.ES_INDEX_NAME, self.ES_INDEX_TYPE, doc, id=id)
+        return self._es.index(self._index, self._doc_type, doc, id=id, params={"op_type":action})
 
-    def index_bulk(self, docs, step=None):
+    def index_bulk(self, docs, step=None, action='index'):
         index_name = self._index
         doc_type = self._doc_type
         step = step or self.step
 
         def _get_bulk(doc):
-            doc.update({
+            # keep original doc
+            ndoc = copy.copy(doc)
+            ndoc.update({
                 "_index": index_name,
                 "_type": doc_type,
+                "_op_type" : action,
             })
-            return doc
+            return ndoc
         actions = (_get_bulk(doc) for doc in docs)
         return helpers.bulk(self._es, actions, chunk_size=step)
 
@@ -297,6 +297,7 @@ class ESIndexer():
             if delay:
                 time.sleep(delay)
 
+        from biothings.utils.mongo import doc_feeder
         src_docs = doc_feeder(collection, step=self.step, s=self.s, batch_callback=rate_control, query=query)
         if bulk:
             if update:
@@ -386,12 +387,14 @@ class ESIndexer():
         # verbose unimplemented
         step = step or self.step
         q = query if query else {'query': {'match_all': {}}}
-        for doc in helpers.scan(client=self._es, query=q, scroll=scroll, index=self._index,
+        for rawdoc in helpers.scan(client=self._es, query=q, scroll=scroll, index=self._index,
                         doc_type=self._doc_type,  **kwargs): 
-            if doc.get('_source', False):
-                yield doc['_source']
-            else:
+            if rawdoc.get('_source', False):
+                doc = rawdoc['_source']
+                doc["_id"] = rawdoc["_id"]
                 yield doc
+            else:
+                yield rawdoc
 
     @wrapper
     def doc_feeder(self, step=None, verbose=True, query=None, scroll='10m', only_source=True, **kwargs):
@@ -407,7 +410,6 @@ class ESIndexer():
         cnt = 0
         t0 = time.time()
         if verbose:
-            print('\ttotal docs: {}'.format(n))
             t1 = time.time()
 
         res = self._es.search(self._index, self._doc_type, body=q,
@@ -418,23 +420,18 @@ class ESIndexer():
         while 1:
             if verbose:
                 t1 = time.time()
-                if cnt < n:
-                    print('\t{}-{}...'.format(cnt+1, min(cnt+step, n)), end='')
             res = self._es.scroll(res['_scroll_id'], scroll=scroll)
             if len(res['hits']['hits']) == 0:
                 break
             else:
-                for doc in res['hits']['hits']:
-                    if doc.get('_source', False) and only_source:
-                        yield doc['_source']
-                    else:
+                for rawdoc in res['hits']['hits']:
+                    if rawdoc.get('_source', False) and only_source:
+                        doc = rawdoc['_source']
+                        doc["_id"] = rawdoc["_id"]
                         yield doc
+                    else:
+                        yield rawdoc
                     cnt += 1
-                if verbose:
-                    print('done.[%.1f%%,%s]' % (min(cnt, n)*100./n, timesofar(t1)))
-
-        if verbose:
-            print("Finished! [{}]".format(timesofar(t0)))
 
         assert cnt == n, "Error: scroll query terminated early [{}, {}], please retry.\nLast response:\n{}".format(cnt, n, res)
 
@@ -455,13 +452,15 @@ class ESIndexer():
         for chunk in iter_n(ids, step):
             chunk_res = self._es.mget(body={"ids": chunk}, index=self._index, 
                                       doc_type=self._doc_type, **mget_args)
-            for doc in chunk_res['docs']:
-                if (('found' not in doc) or (('found' in doc) and not doc['found'])):
-                    yield None
+            for rawdoc in chunk_res['docs']:
+                if (('found' not in rawdoc) or (('found' in rawdoc) and not rawdoc['found'])):
+                    continue
                 elif not only_source:
-                    yield doc
+                    yield rawdoc
                 else:
-                    yield doc['_source']
+                    doc = rawdoc['_source']
+                    doc["_id"] = rawdoc["_id"]
+                    yield doc
 
     def find_biggest_doc(self, fields_li, min=5, return_doc=False):
         """return the doc with the max number of fields from fields_li."""
@@ -477,19 +476,72 @@ class ESIndexer():
                     else:
                         return (cnt, q)
 
-    def snapshot(self,repo,snapshot,**params):
+    def snapshot(self,repo,snapshot,mode=None,**params):
         body = {"indices": self._index}
-        return self._es.snapshot.create(repo,snapshot,body=body,params=params)
+        if mode == "purge":
+            try:
+                snp = self._es.snapshot.get(repo,snapshot)
+                # if we can get it, we have to delete it
+                self._es.snapshot.delete(repo,snapshot)
+            except NotFoundError:
+                # ok, nothing to delete/purge
+                pass
+        try:
+            return self._es.snapshot.create(repo,snapshot,body=body,params=params)
+        except RequestError as e:
+            raise IndexerException("Can't snapshot '%s' (if already exists, use mode='purge'): %s" % (self._index,e))
+
+    def restore(self,repo_name,snapshot_name,purge=False,body=None):
+        if purge:
+            try:
+                self._es.indices.get(snapshot_name)
+                # if we get there, it exists, delete it
+                self._es.indices.delete(snapshot_name)
+            except NotFoundError:
+                # no need to delete it,
+                pass
+        try:
+            return self._es.snapshot.restore(repo_name,snapshot_name,body=body)
+        except TransportError as e:
+            raise IndexerException("Can't restore snapshot '%s' (does index already exist ?): %s" % (snapshot_name,e))
+
+    def get_repository(self,repo_name):
+        return self._es.snapshot.get_repository(repo_name)
+
+    def create_repository(self,repo_name,settings):
+        try:
+            self._es.snapshot.create_repository(repo_name,settings)
+        except TransportError as e:
+            raise IndexerException("Can't create snapshot repository '%s': %s" % (repo_name,e))
+
+    def get_snapshot_status(self,repo,snapshot):
+        return self._es.snapshot.status(repo,snapshot)
+
+    def get_restore_status(self,index_name=None):
+        index_name = index_name or self._index
+        recov = self._es.indices.recovery(index_name)
+        if not index_name in recov:
+            return {"status": "INIT", "progress" : "0%"}
+        shards = recov[index_name]["shards"]
+        # get all shards status
+        shards_status = [s["stage"] for s in shards]
+        done = len([s for s in shards_status if s == "DONE"])
+        if set(shards_status) == {"DONE"}:
+            return {"status": "DONE", "progress" : "100%"}
+        else:
+            return {"status" : "IN_PROGRESS", "progress": "%.2f%%" % (done/len(shards_status)*100)}
 
 
 def generate_es_mapping(inspect_doc,init=True,level=0):
     """Generate an ES mapping according to "inspect_doc", which is 
     produced by biothings.utils.inspect module"""
-    type_map = {int:"integer",
-                bool:"boolean",
-                float:"float",
-                str:"string",
-                }
+    map_tpl= {
+            int: {"type": "integer"},
+            bool: {"type": "boolean"},
+            float: {"type": "float"},
+            str: {"type": "string","analyzer":"string_lowercase"}, # not splittable (like an ID for instance)
+            "split_str": {"type": "string"}
+            }
     if init and not "_id" in inspect_doc:
         raise ValueError("Not _id key found, documents won't be indexed")
     mapping = {}
@@ -510,7 +562,19 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
         if list in keys:
             # we explore directly the list w/ inspect_doc[rootk][list] as param. 
             # (similar to skipping list type, as there's no such list type in ES mapping)
-            res = generate_es_mapping(inspect_doc[rootk][list],init=False,level=level+1)
+            # carefull: there could be list of list, if which we move further into the structure
+            # to skip them
+            toexplore = inspect_doc[rootk][list]
+            while list in toexplore:
+                toexplore = toexplore[list]
+            res = generate_es_mapping(toexplore,init=False,level=level+1)
+            # is it the only key or do we have more ? (ie. some docs have data as "x", some 
+            # others have list("x")
+            if len(keys) > 1:
+            # we want to make sure that, whatever the structure, the types involved were the same
+                other_types = set([k for k in keys if k != list and type(k) == type])
+                if len(other_types) > 1:
+                    raise Exception("Mixing types for key %s: %s" % (rootk,other_types))
             # list was either a list of values (end of tree) or a list of dict. Depending
             # on that, we add "properties" (when list of dict) or not (when list of values)
             if type in set(map(type,inspect_doc[rootk][list])):
@@ -520,16 +584,19 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
                 mapping[rootk]["properties"] = res
         elif set(map(type,keys)) == {type}:
             # it's a type declaration, no explore
+            typs = list(map(type,keys))
+            if len(typs) > 1:
+                raise Exception("More than one type")
             try:
                 typ = list(inspect_doc[rootk].keys())[0]
-                mapping[rootk] = {"type":type_map[typ]}
+                if "split" in inspect_doc[rootk][typ]:
+                    typ = "split_str"
+                mapping[rootk] = map_tpl[typ]
             except Exception as e:
                 raise ValueError("Can't find map type %s for key %s" % (rootk,inspect_doc[rootk]))
         elif inspect_doc[rootk] == {}:
-            return {"type" : type_map[rootk]}
+            return map_tpl[rootk]
         else:
-            #if len(keys) > 1:
-            #    raise ValueError("More than one type reported: %s" % inspect_doc[rootk])
             mapping[rootk] = {"properties" : {}}
             mapping[rootk]["properties"] = generate_es_mapping(inspect_doc[rootk],init=False,level=level+1)
     return mapping

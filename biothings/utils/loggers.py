@@ -5,9 +5,9 @@ from functools import partial
 
 from .hipchat import hipchat_msg
 
-def setup_default_log(default_logger_name,log_folder):
+def setup_default_log(default_logger_name,log_folder,level=logging.DEBUG):
     # this will affect any logging calls
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=level)
     if not os.path.exists(log_folder):
         os.makedirs(log_folder)
     logfile = os.path.join(log_folder, '%s_%s_hub.log' % (default_logger_name,time.strftime("%Y%m%d",datetime.datetime.now().timetuple())))
@@ -15,7 +15,7 @@ def setup_default_log(default_logger_name,log_folder):
     fh.setFormatter(logging.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S"))
     fh.name = "logfile"
     logger = logging.getLogger(default_logger_name)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(level)
     if not fh.name in [h.name for h in logger.handlers]:
         logger.addHandler(fh)
     return logger
@@ -23,7 +23,6 @@ def setup_default_log(default_logger_name,log_folder):
 
 def get_logger(logger_name,log_folder,handlers=["console","file"],timestamp="%Y%m%d"):
     # this will affect any logging calls
-    logging.basicConfig(level=logging.DEBUG)
     if not os.path.exists(log_folder):
         os.makedirs(log_folder)
     if timestamp:

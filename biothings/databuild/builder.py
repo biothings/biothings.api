@@ -18,6 +18,7 @@ from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.databuild.mapper import TransparentMapper
 from biothings.dataload.uploader import ResourceNotReady
 from biothings.utils.manager import BaseManager, ManagerError
+from biothings.utils.dataload import update_dict_recur
 import biothings.utils.mongo as mongo
 import biothings.databuild.backend as backend
 from biothings.databuild.backend import TargetDocMongoBackend
@@ -36,7 +37,7 @@ class DataBuilder(object):
     keep_archive = 10 # number of archived collection to keep. Oldest get dropped first.
 
     def __init__(self, build_name, source_backend, target_backend, log_folder,
-                 doc_root_key="root", max_build_status=10,
+                 doc_root_key="root", max_build_status=2,
                  mappers=[], default_mapper_class=TransparentMapper,
                  sources=None, target_name=None,**kwargs):
         self.init_state()
@@ -193,51 +194,90 @@ class DataBuilder(object):
             if not src_doc.get("upload",{}).get("jobs",{}).get(src_name,{}).get("status") == "success":
                 raise ResourceNotReady("No successful upload found for resource '%s'" % src_name)
 
+    def get_build_version(self):
+        """
+        Generate an arbitrary major build version. Default is using a timestamp (YYMMDD)
+        '.' char isn't allowed in build version as it's reserved for minor versions
+        """
+        d = datetime.fromtimestamp(self.t0)
+        return "%d%02d%02d" % (d.year,d.month,d.day)
+
     def register_status(self,status,transient=False,init=False,**extra):
+        """
+        Register current build status. A build status is a record in src_build's document
+        in "build" dictionnary. The key used in this dict the target_name. Then, any operation
+        acting on this target_name is registered in a "jobs" list.
+        """
         assert self.build_config, "build_config needs to be specified first"
         # get it from source_backend, kind of weird...
         src_build = self.source_backend.build
+        all_sources = self.build_config.get("sources",[])
+        target_name = "%s" % self.target_backend.target_name
+        build_version = self.get_build_version()
+        if "." in build_version:
+            raise BuilderException("Can't use '.' in build version '%s', it's reserved for minor versions" % build_version)
         build_info = {
-            'status': status,
-            'step_started_at': datetime.now(),
-            'started_at' : datetime.fromtimestamp(self.t0),
-            'logfile': self.logfile,
-            'target_backend': self.target_backend.name,
-            'target_name': self.target_backend.target_name}
+                'target_backend': self.target_backend.name,
+                'target_name': target_name,
+                'build_version' : build_version,
+                # these are all the sources required to build target
+                # (not just the ones being processed, those are registered in jobs
+                'sources' : all_sources, 
+                }
+        job_info = {
+                'status': status,
+                'step_started_at': datetime.now(),
+                'logfile': self.logfile,
+                }
         if status == "building":
             # reset the flag
             src_build.update({"_id" : self.build_config["_id"]},{"$unset" : {"pending_to_build":None}})
         if transient:
             # record some "in-progress" information
-            build_info['pid'] = os.getpid()
+            job_info['pid'] = os.getpid()
         else:
             # only register time when it's a final state
-            build_info["time"] = timesofar(self.t0)
+            job_info["time"] = timesofar(self.t0)
             t1 = round(time.time() - self.t0, 0)
-            build_info["time_in_s"] = t1
+            job_info["time_in_s"] = t1
         if "build" in extra:
             build_info.update(extra["build"])
-        # create a new build entry at the end and clean extra one (not needed/wanted)
+        if "job" in extra:
+            job_info.update(extra["job"])
+        # create a new build entry in "build" dict if none exists
         _cfg = src_build.find_one({'_id': self.build_config['_id']})
+        if not _cfg.get("build"):
+            src_build.update({'_id': self.build_config['_id']},
+                {"$set": {'build': {}}})
+            # refresh
+            _cfg = src_build.find_one({'_id': self.build_config['_id']})
+        if not target_name in _cfg.get("build"):
+            # first record for target_name, keep a timestamp
+            build_info["started_at"] = datetime.fromtimestamp(self.t0)
+            build_info["jobs"] = []
+            src_build.update({'_id': self.build_config['_id']},
+                {"$set": {'build.%s' % target_name: build_info}})
         if init:
-            if not "build" in _cfg:
-                # no build entrey yet, need to init the list
-                src_build.update({'_id': self.build_config['_id']}, {"$set": {'build': [build_info]}})
-            else:
-                src_build.update({'_id': self.build_config['_id']}, {"$push": {'build': build_info}})
+            src_build.update({'_id': self.build_config['_id']}, {"$push": {'build.%s.jobs' % target_name: job_info}})
             # now refresh/sync
             _cfg = src_build.find_one({'_id': self.build_config['_id']})
-            if len(_cfg['build']) > self.max_build_status:
-                howmany = len(_cfg['build']) - self.max_build_status
-                #remove any status not needed anymore
-                for _ in range(howmany):
-                    # pop previous build starting from oldest ones
-                    src_build.update({'_id': self.build_config['_id']}, {"$pop": {'build': -1}})
+            names_dates = [(k,_cfg["build"][k].get("started_at")) for k in _cfg["build"].keys() if "jobs" in _cfg["build"][k]]
+            # sort by started_at, oldest at the end
+            names_dates = sorted(names_dates,key=lambda e: e[1] or datetime(1970,1,1,0,0,0),reverse=True)
+            howmany = len(names_dates) - self.max_build_status
+            # we keep build information, but remove "jobs". We want to keep "howmany" records max
+            for _ in range(howmany):
+                # pop previous build starting from oldest ones
+                buildk = "build.%s.jobs" % names_dates.pop()[0]
+                src_build.update({'_id': self.build_config['_id']}, {"$unset": {buildk: 1}})
         else:
             # merge extra at root or "build" level
             # (to keep building data...) and update the last one
             # (it's been properly created before when init=True)
-            _cfg["build"][-1].update(build_info)
+            _cfg["build"][target_name]["jobs"][-1].update(job_info)
+            # build_info is common to all jobs, so we want to keep
+            # any existing data
+            _cfg["build"][target_name] = update_dict_recur(_cfg["build"][target_name],build_info)
             src_build.replace_one({'_id': self.build_config['_id']},_cfg)
 
     def clean_old_collections(self):
@@ -291,6 +331,7 @@ class DataBuilder(object):
 
     def store_stats(self,f,sources):
         try:
+            res = f.result() # consume future to potentially raise errors
             self.target_backend.post_merge()
             _src_versions = self.source_backend.get_src_versions()
             strargs = "[sources=%s,stats=%s,versions=%s]" % (sources,self.stats,_src_versions)
@@ -298,7 +339,7 @@ class DataBuilder(object):
             self.logger.info("success %s" % strargs,extra={"notify":True})
         except Exception as e:
             strargs = "[sources=%s]" % sources
-            self.register_status("failed",build={"err": repr(e)})
+            self.register_status("failed",job={"err": repr(e)})
             self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
             raise
 
@@ -359,8 +400,6 @@ class DataBuilder(object):
         self.logger.info("Merging into target collection '%s'" % self.target_backend.target_collection.name)
         strargs = "[sources=%s,target_name=%s]" % (sources,target_name)
         try:
-            self.register_status("building",transient=True,init=True,
-                                 build={"step":"init","sources":sources})
             job = self.merge_sources(source_names=sources, ids=ids, job_manager=job_manager,
                                      *args, **kwargs)
             task = asyncio.ensure_future(job)
@@ -369,7 +408,7 @@ class DataBuilder(object):
 
         except (KeyboardInterrupt,Exception) as e:
             self.logger.exception(e)
-            self.register_status("failed",build={"err": repr(e)})
+            self.register_status("failed",job={"err": repr(e)})
             self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
             raise
 
@@ -452,36 +491,46 @@ class DataBuilder(object):
 
         if do_merge:
             if root_sources:
-                self.register_status("building",transient=True,
-                        build={"step":"merge-root","sources":root_sources})
+                self.register_status("building",transient=True,init=True,
+                        job={"step":"merge-root","sources":root_sources})
                 self.logger.info("Merging root document sources: %s" % root_sources)
                 yield from merge(root_sources)
+                self.register_status("success",job={"step":"merge-root","sources":root_sources})
 
             if other_sources:
-                self.register_status("building",transient=True,
-                        build={"step":"merge-others","sources":other_sources})
+                self.register_status("building",transient=True,init=True,
+                        job={"step":"merge-others","sources":other_sources})
                 self.logger.info("Merging other resources: %s" % other_sources)
                 yield from merge(other_sources)
+                self.register_status("success",job={"step":"merge-others","sources":other_sources})
 
-            self.register_status("building",transient=True,
-                    build={"step":"finalizing"})
+            self.register_status("building",transient=True,init=True,
+                    job={"step":"finalizing"})
             self.logger.info("Finalizing target backend")
             self.target_backend.finalize()
+            self.register_status("success",job={"step":"finalizing"})
         else:
             self.logger.info("Skip data merging")
 
         if do_post_merge:
             self.logger.info("Running post-merge process")
-            self.register_status("building",transient=True,
-                    build={"step":"post-merge"})
+            self.register_status("building",transient=True,init=True,job={"step":"post-merge"})
             pinfo = self.get_pinfo()
             pinfo["step"] = "post-merge"
             job = yield from job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
             job = asyncio.ensure_future(job)
             def postmerged(f):
-                self.logger.info("Post-merge completed [%s]" % f.result())
+                try:
+                    self.logger.info("Post-merge completed [%s]" % f.result())
+                    self.register_status("success",job={"step":"post-merge"})
+                except Exception as e:
+                    self.logger.exception("Failed post-merging source: %s" % e)
+                    nonlocal got_error
+                    got_error = e
             job.add_done_callback(postmerged)
             res = yield from job
+            if got_error:
+                raise got_error
         else:
             self.logger.info("Skip post-merge process")
 
@@ -686,7 +735,7 @@ class BuilderManager(BaseManager):
         pclass = BaseManager.__getitem__(self,build_name)
         return pclass()
 
-    def sync(self):
+    def configure(self):
         """Sync with src_build and register all build config"""
         for conf in self.src_build.find():
             self.register_builder(conf["_id"])

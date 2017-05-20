@@ -76,6 +76,7 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
                     self.buf.truncate()
                 else:
                     if type(r.result) == asyncio.tasks.Task or type(r.result) == asyncio.tasks._GatheringFuture or \
+                            type(r.result) == asyncio.Future or \
                             type(r.result) == list and len(r.result) > 0 and type(r.result[0]) == asyncio.tasks.Task:
                         r.result = type(r.result) != list and [r.result] or r.result
                         self.__class__.running_jobs[self.__class__.job_cnt] = {"started_at" : time.time(),
@@ -89,7 +90,7 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
             for num,info in sorted(self.__class__.running_jobs.items()):
                 is_done = set([j.done() for j in info["jobs"]]) == set([True])
                 has_err = is_done and  [True for j in info["jobs"] if j.exception()] or None
-                outputs = is_done and ([j.exception() for j in info["jobs"] if j.exception()] or \
+                outputs = is_done and ([str(j.exception()) for j in info["jobs"] if j.exception()] or \
                             [j.result() for j in info["jobs"]]) or None
                 if is_done:
                     finished.append(num)

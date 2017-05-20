@@ -1,9 +1,6 @@
-import sys, re, math
-import os, glob
-import time
-import copy
-import importlib
-import pickle
+import os
+import time, hashlib
+import pickle, json
 from datetime import datetime
 from pprint import pformat
 import asyncio
@@ -11,25 +8,21 @@ from functools import partial
 import glob, random
 
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
-                                   dump, rmdashfr, loadobj
-from biothings.utils.mongo import doc_feeder, id_feeder
+                                   dump, rmdashfr, loadobj, md5sum
+from biothings.utils.mongo import id_feeder
 from biothings.utils.loggers import get_logger, HipchatHandler
-from biothings.utils.diff import diff_docs_jsonpatch
+from biothings.utils.diff import diff_docs_jsonpatch, generate_diff_folder
 from biothings import config as btconfig
 from biothings.utils.manager import BaseManager, ManagerError
 from biothings.databuild.backend import create_backend
+import biothings.utils.aws as aws
+from biothings.databuild.syncer import SyncerManager
 
 logging = btconfig.logger
 
 class DifferException(Exception):
     pass
 
-def generate_diff_folder(old_db_col_names,new_db_col_names):
-    new = create_backend(new_db_col_names,name_only=True)
-    old = create_backend(old_db_col_names,name_only=True)
-    diff_folder = os.path.join(btconfig.DIFF_PATH,
-                                   "%s-%s" % (old, new))
-    return diff_folder
 
 class BaseDiffer(object):
 
@@ -93,7 +86,7 @@ class BaseDiffer(object):
         diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
 
         if os.path.exists(diff_folder):
-            if mode == "purge":
+            if mode == "purge" and os.path.exists(diff_folder):
                 rmdashfr(diff_folder)
             else:
                 raise FileExistsError("Found existing files in '%s', use mode='purge'" % diff_folder)
@@ -105,28 +98,34 @@ class BaseDiffer(object):
         # and some summary data
         stats = {"update":0, "add":0, "delete":0}
         metadata = {
+                "diff_type" : self.diff_type,
+                "diff_func" : self.diff_func.__name__,
                 "old": old_db_col_names,
                 "new": new_db_col_names,
+                "old_version": old.version,
+                "new_version": new.version,
+                "diff_version": "%s.%s" % (old.version,new.version),
                 "batch_size": batch_size,
                 "steps": steps,
                 "mode": mode,
                 "exclude": exclude,
-                "generated_on": datetime.now(),
-                "stats": stats} # ref to stats
+                "generated_on": str(datetime.now()),
+                "stats": stats, # ref to stats
+                "diff_files": []}
         # dump it here for minimum information, in case we don't go further
-        pickle.dump(metadata,open(os.path.join(diff_folder,"metadata.pick"),"wb"))
+        json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"))
 
         if "count" in steps:
             cnt = 0
             pinfo = {"category" : "diff",
                      "step" : "count",
-                     "source" : "%s vs %s" % (new.target_collection.name,old.target_collection.name),
+                     "source" : "%s vs %s" % (new.target_name,old.target_name),
                      "description" : ""}
 
-            self.logger.info("Counting root keys in '%s'"  % new.target_collection)
+            self.logger.info("Counting root keys in '%s'"  % new.target_name)
             stats["root_keys"] = {}
             jobs = []
-            data_new = id_feeder(new.target_collection, batch_size=batch_size)
+            data_new = id_feeder(new, batch_size=batch_size)
             for id_list in data_new:
                 cnt += 1
                 pinfo["description"] = "batch #%s" % cnt
@@ -153,10 +152,11 @@ class BaseDiffer(object):
             cnt = 0
             jobs = []
             pinfo = {"category" : "diff",
-                     "source" : "%s vs %s" % (new.target_collection.name,old.target_collection.name),
+                     "source" : "%s vs %s" % (new.target_name,old.target_name),
                      "step" : "content: new vs old",
                      "description" : ""}
-            data_new = id_feeder(new.target_collection, batch_size=batch_size)
+            data_new = id_feeder(new, batch_size=batch_size)
+            selfcontained = "selfcontained" in self.diff_type
             for id_list_new in data_new:
                 cnt += 1
                 pinfo["description"] = "batch #%s" % cnt
@@ -164,17 +164,19 @@ class BaseDiffer(object):
                     res = f.result()
                     stats["update"] += res["update"]
                     stats["add"] += res["add"]
+                    if res.get("diff_file"):
+                        metadata["diff_files"].append(res["diff_file"])
                     self.logger.info("(Updated: {}, Added: {})".format(res["update"], res["add"]))
                 self.logger.info("Creating diff worker for batch #%s" % cnt)
                 job = yield from self.job_manager.defer_to_process(pinfo,
                         partial(diff_worker_new_vs_old, id_list_new, old_db_col_names,
-                                new_db_col_names, cnt , diff_folder, self.diff_func, exclude))
+                                new_db_col_names, cnt , diff_folder, self.diff_func, exclude, selfcontained))
                 job.add_done_callback(diffed)
                 jobs.append(job)
             yield from asyncio.gather(*jobs)
             self.logger.info("Finished calculating diff for the new collection. Total number of docs updated: {}, added: {}".format(stats["update"], stats["add"]))
 
-            data_old = id_feeder(old.target_collection, batch_size=batch_size)
+            data_old = id_feeder(old, batch_size=batch_size)
             jobs = []
             pinfo["step"] = "content: old vs new"
             for id_list_old in data_old:
@@ -183,6 +185,8 @@ class BaseDiffer(object):
                 def diffed(f):
                     res = f.result()
                     stats["delete"] += res["delete"]
+                    if res.get("diff_file"):
+                        metadata["diff_files"].append(res["diff_file"])
                     self.logger.info("(Deleted: {})".format(res["delete"]))
                 self.logger.info("Creating diff worker for batch #%s" % cnt)
                 job = yield from self.job_manager.defer_to_process(pinfo,
@@ -194,7 +198,7 @@ class BaseDiffer(object):
             self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {})".format(stats["update"], stats["add"], stats["delete"]))
 
         # pickle again with potentially more information (stats)
-        pickle.dump(metadata,open(os.path.join(diff_folder,"metadata.pick"),"wb"))
+        json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"))
         strargs = "[old=%s,new=%s,steps=%s,stats=%s]" % (old_db_col_names,new_db_col_names,steps,stats)
         self.logger.info("success %s" % strargs,extra={"notify":True})
         return stats
@@ -212,12 +216,16 @@ class JsonDiffer(BaseDiffer):
     def __init__(self, diff_func=diff_docs_jsonpatch, *args, **kwargs):
         super(JsonDiffer,self).__init__(diff_func=diff_func,*args,**kwargs)
 
+class SelfContainedJsonDiffer(JsonDiffer):
+
+    diff_type = "jsondiff-selfcontained"
+
 
 def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names,
-                           batch_num, diff_folder, diff_func, exclude=[]):
+                           batch_num, diff_folder, diff_func, exclude=[], selfcontained=False):
     new = create_backend(new_db_col_names)
     old = create_backend(old_db_col_names)
-    docs_common = old.target_collection.find({'_id': {'$in': id_list_new}}, projection=[])
+    docs_common = old.mget_from_ids(id_list_new)
     ids_common = [_doc['_id'] for _doc in docs_common]
     id_in_new = list(set(id_list_new) - set(ids_common))
     _updates = []
@@ -227,33 +235,49 @@ def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names,
     _result = {'add': id_in_new,
                'update': _updates,
                'delete': [],
-               'source': new.target_collection.name,
+               'source': new.target_name,
                'timestamp': get_timestamp()}
+    if selfcontained:
+        _result["add"] = new.mget_from_ids(id_in_new)
+    summary = {"add" : len(id_in_new), "update" : len(_updates), "delete" : 0}
     if len(_updates) != 0 or len(id_in_new) != 0:
         dump(_result, file_name)
+        # compute md5 so when downloaded, users can check integreity
+        md5 = md5sum(file_name)
+        summary["diff_file"] = {
+                "name" : os.path.basename(file_name),
+                "md5sum" : md5
+                }
 
-    return {"add" : len(id_in_new), "update" : len(_updates), "delete" : 0}
+    return summary
 
 def diff_worker_old_vs_new(id_list_old, new_db_col_names, batch_num, diff_folder):
     new = create_backend(new_db_col_names)
-    docs_common = new.target_collection.find({'_id': {'$in': id_list_old}}, projection=[])
+    docs_common = new.mget_from_ids(id_list_old)
     ids_common = [_doc['_id'] for _doc in docs_common]
     id_in_old = list(set(id_list_old)-set(ids_common))
     file_name = os.path.join(diff_folder,"%s.pyobj" % str(batch_num))
     _result = {'delete': id_in_old,
                'add': [],
                'update': [],
-               'source': new.target_collection.name,
+               'source': new.target_name,
                'timestamp': get_timestamp()}
+    summary = {"add" : 0, "update": 0, "delete" : len(id_in_old)}
     if len(id_in_old) != 0:
         dump(_result, file_name)
+        # compute md5 so when downloaded, users can check integreity
+        md5 = md5sum(file_name)
+        summary["diff_file"] = {
+                "name" : os.path.basename(file_name),
+                "md5sum" : md5
+                }
 
-    return {"add" : 0, "update": 0, "delete" : len(id_in_old)}
+    return summary
 
 
 def diff_worker_count(id_list, db_col_names, batch_num):
     col = create_backend(db_col_names)
-    docs = col.target_collection.find({'_id': {'$in': id_list}})
+    docs = col.mget_from_ids(id_list)
     res = {}
     for doc in docs:
         for k in doc:
@@ -406,8 +430,8 @@ class DifferManager(BaseManager):
         self.register[klass.diff_type] = partial(klass,log_folder=btconfig.LOG_FOLDER,
                                            job_manager=self.job_manager)
 
-    def sync(self):
-        for klass in [JsonDiffer]: # TODO: make it dynamic...
+    def configure(self):
+        for klass in [JsonDiffer,SelfContainedJsonDiffer]: # TODO: make it dynamic...
             self.register_differ(klass)
 
     def setup_log(self):
@@ -504,8 +528,8 @@ class DifferManager(BaseManager):
 
         metadata = {}
         try:
-            metafile = os.path.join(data_folder,"metadata.pick")
-            metadata = pickle.load(open(metafile,"rb"))
+            metafile = os.path.join(data_folder,"metadata.json")
+            metadata = json.load(open(metafile))
         except FileNotFoundError:
             logging.warning("Not metadata found in diff folder")
             if detailed:
@@ -558,3 +582,93 @@ class DifferManager(BaseManager):
         return {"added" : adds, "deleted": dels, "updated" : update_details,
                 "diff_folder" : diff_folder, "detailed": detailed,
                 "metadata": metadata}
+
+    def upload_diff(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None, steps=["reset","upload","meta"]):
+        # check what to do
+        if type(steps) == str:
+            steps = [steps]
+        if "meta" in steps:
+            assert getattr(btconfig,"BIOTHINGS_ROLE","master"), "Hub must be master to publish metadata about diff release"
+        if not diff_folder:
+            assert old_db_col_names and new_db_col_names, "No diff_folder specified, old_db_col_names and new_db_col_names are required"
+            diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
+        meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
+        diff_version = meta["diff_version"]
+        s3basedir = os.path.join(btconfig.S3_DIFF_FOLDER,diff_version)
+
+        @asyncio.coroutine
+        def do():
+            jobs = []
+            pinfo = {"category" : "upload_diff",
+                     "source" : diff_folder,
+                     "step": None,
+                     "description" : diff_version}
+
+            if "reset" in steps:
+                # first we need to reset "synced" flag in diff files to make
+                # sure all of them will be applied by client
+                pinfo["step"] = "reset synced"
+                self.logger.info("Resetting 'synced' flag in pyobj files located in folder '%s'" % diff_folder)
+                job = yield from self.job_manager.defer_to_thread(pinfo,partial(SyncerManager.reset_synced,diff_folder))
+                yield from job
+                jobs.append(job)
+
+            if "upload" in steps:
+                # then we upload all the folder content
+                pinfo["step"] = "upload"
+                self.logger.info("Uploading files from '%s' to s3" % diff_folder)
+                job = yield from self.job_manager.defer_to_thread(pinfo,partial(aws.send_s3_folder,
+                    diff_folder,s3basedir=s3basedir,
+                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                    s3_bucket=btconfig.S3_DIFF_BUCKET,
+                    overwrite=True,permissions="public-read"))
+                yield from job
+                jobs.append(job)
+
+            if "meta" in steps:
+                # finally we create a metadata json file pointing to this release
+                self.logger.info("ljlkjkljlkjkljlkj")
+                def gen_meta():
+                    pinfo["step"] = "generate meta"
+                    self.logger.info("Generating JSON metadata for incremental release '%s'" % diff_version)
+                    # generate json metadata about this diff release
+                    diff_meta = {
+                            "type": "incremental",
+                            "build_version": diff_version,
+                            "app_version": None,
+                            "metadata" : {"url" : aws.get_s3_url(os.path.join(s3basedir,"metadata.json"),
+                                aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_DIFF_BUCKET)}
+                            }
+                    diff_file = "%s.json" % diff_version
+                    diff_meta_path = os.path.join(btconfig.DIFF_PATH,diff_file)
+                    json.dump(diff_meta,open(diff_meta_path,"w"))
+                    # get a timestamp from metadata to force lastdmodifed header
+                    metadata = json.load(open(os.path.join(diff_folder,"metadata.json")))
+                    local_ts = datetime.strptime(metadata["generated_on"],"%Y-%m-%d %H:%M:%S.%f")
+                    utc_epoch = str(int(time.mktime(local_ts.timetuple())))
+                    s3key = os.path.join(btconfig.S3_DIFF_FOLDER,diff_file)
+                    aws.send_s3_file(diff_meta_path,s3key,
+                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                            s3_bucket=btconfig.S3_DIFF_BUCKET,metadata={"lastmodified":utc_epoch},
+                             overwrite=True,permissions="public-read")
+                    url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                            s3_bucket=btconfig.S3_DIFF_BUCKET)
+                    self.logger.info("Incremental release metadata published for version: '%s'" % url)
+                job = yield from self.job_manager.defer_to_thread(pinfo,gen_meta)
+                yield from job
+                jobs.append(job)
+
+            def uploaded(f):
+                try:
+                    res = f.result()
+                    self.logger.info("Diff folder '%s' uploaded to S3: %s" % (diff_folder,res),extra={"notify":True})
+                except Exception as e:
+                    self.logger.error("Failed to upload diff folder '%s' uploaded to S3: %s" % (diff_folder,e),extra={"notify":True})
+
+            yield from asyncio.wait(jobs)
+            task = asyncio.gather(*jobs)
+            task.add_done_callback(uploaded)
+            yield from task
+
+        return asyncio.ensure_future(do())
+

@@ -149,7 +149,7 @@ class BaseManager(object):
                     raise KeyError(src_name)
                 else:
                     return res
-            except (ValueError,KeyError):
+            except (ValueError,AttributeError,KeyError):
                 # nope, can't find it...
                 raise KeyError(src_name)
 
@@ -208,43 +208,43 @@ class BaseSourceManager(BaseManager):
             return []
 
 
-    def register_source(self,src_data,fail_on_notfound=True):
-        """Register a new data source. src_data can be a module where some classes
+    def register_source(self, src, fail_on_notfound=True):
+        """Register a new data source. src can be a module where some classes
         are defined. It can also be a module path as a string, or just a source name
         in which case it will try to find information from default path.
         """
-        if isinstance(src_data,str):
+        if isinstance(src,str):
             try:
-                src_m = importlib.import_module(src_data)
+                src_m = importlib.import_module(src)
             except ImportError:
                 try:
-                    src_m = importlib.import_module("%s.%s" % (self.default_src_path,src_data))
+                    src_m = importlib.import_module("%s.%s" % (self.default_src_path,src))
                 except ImportError:
-                    msg = "Can't find module '%s', even in '%s'" % (src_data,self.default_src_path)
+                    msg = "Can't find module '%s', even in '%s'" % (src,self.default_src_path)
                     logger.error(msg)
                     raise UnknownResource(msg)
 
-        elif isinstance(src_data,dict):
+        elif isinstance(src,dict):
             # source is comprised of several other sub sources
-            assert len(src_data) == 1, "Should have only one element in source dict '%s'" % src_data
-            _, sub_srcs = list(src_data.items())[0]
+            assert len(src) == 1, "Should have only one element in source dict '%s'" % src
+            _, sub_srcs = list(src.items())[0]
             for src in sub_srcs:
                 self.register_source(src,fail_on_notfound)
             return
         else:
-            src_m = src_data
+            src_m = src
         klasses = self.find_classes(src_m,fail_on_notfound)
         self.register_classes(klasses)
 
     def register_sources(self, sources):
         assert not isinstance(sources,str), "sources argument is a string, should pass a list"
         self.register.clear()
-        for src_data in sources:
+        for src in sources:
             try:
-# batch registration, we'll silently ignore not-found sources
-                self.register_source(src_data,fail_on_notfound=False)
+                # batch registration, we'll silently ignore not-found sources
+                self.register_source(src,fail_on_notfound=False)
             except UnknownResource as e:
-                logger.info("Can't register source '%s', skip it; %s" % (src_data,e))
+                logger.info("Can't register source '%s', skip it; %s" % (src,e))
                 import traceback
                 logger.error(traceback.format_exc())
 
@@ -305,9 +305,13 @@ class JobManager(object):
                 # thus memory usage can be modified on-the-fly
                 hub_mem = self.hub_memory
                 max_mem = self.max_memory_usage and self.max_memory_usage or self.avail_memory
-        if self.process_queue._queue_count > config.MAX_QUEUED_JOBS:
-            logger.info("Too much pending jobs in the queue")
+        pendings = len(self.process_queue._pending_work_items.keys()) - config.HUB_MAX_WORKERS
+        while pendings >= config.MAX_QUEUED_JOBS:
+            if not waited:
+                logger.info("Can't run job {cat:%s,source:%s,step:%s} right now, too much pending jobs in the queue (max: %s), will retry until possible" % \
+                        (pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), config.MAX_QUEUED_JOBS))
             yield from asyncio.sleep(sleep_time)
+            pendings = len(self.process_queue._pending_work_items.keys()) - config.HUB_MAX_WORKERS
             waited = True
         if waited:
             logger.info("Job {cat:%s,source:%s,step:%s} now can be launched (total waiting time: %s)" % (pinfo.get("category"),

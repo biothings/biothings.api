@@ -1,5 +1,7 @@
 ''' Backend access class. '''
 from biothings.utils.es import ESIndexer
+from biothings import config as btconfig
+from elasticsearch.exceptions import NotFoundError
 
 # Generic base backend
 class DocBackendBase(object):
@@ -8,6 +10,14 @@ class DocBackendBase(object):
     def prepare(self):
         '''if needed, add extra preparation steps here.'''
         pass
+
+    @property
+    def target_name(self):
+        raise NotImplemented
+
+    @property
+    def version(self):
+        raise NotImplemented
 
     def insert(self, doc_li):
         raise NotImplemented
@@ -38,7 +48,11 @@ class DocMemoryBackend(DocBackendBase):
     def __init__(self, target_name=None):
         """target_dict is None or a dict."""
         self.target_dict = {}
-        self.target_name = target_name or "unnamed"
+        self._target_name = target_name or "unnamed"
+
+    @property
+    def target_name(self):
+        return self._target_name
 
     def insert(self, doc_li):
         for doc in doc_li:
@@ -76,6 +90,30 @@ class DocMongoBackend(DocBackendBase):
             self._target_db = target_db
         if target_collection:
             self.target_collection = target_collection
+
+    @property
+    def target_name(self):
+        return self.target_collection.name
+
+    @property
+    def version(self):
+        import biothings.utils.mongo as mongo
+        if self.target_collection.database.name == btconfig.DATA_SRC_DATABASE:
+            fulln = mongo.get_source_fullname(self.target_collection.name)
+            if not fulln:
+                return
+            mainsrc = fulln.split(".")[0]
+            col = mongo.get_src_dump()
+            src = col.find_one({"_id":mainsrc})
+            return src.get("release")
+        elif self.target_collection.database.name == btconfig.DATA_TARGET_DATABASE:
+            col = mongo.get_src_build()
+            tgt = col.find_one({"build.%s" % self.target_collection.name: {"$exists":1}})
+            if not tgt:
+                return
+            return tgt["build"][self.target_collection.name].get("build_version")
+        else:
+            return None
 
     @property
     def target_db(self):
@@ -148,10 +186,10 @@ class DocMongoBackend(DocBackendBase):
         '''
         #this does not return doc in the same order of ids
         cur = self.target_collection.find({'_id': {'$in': ids}})
-        _d = dict([(d['_id'], d) for d in cur])
-        doc_li = [_d[_id] for _id in ids if _id in _d]
-        del _d
-        return iter(doc_li) if asiter else doc_li
+        if asiter:
+            return cur
+        else:
+            return [doc for doc in cur]
 
     def count_from_ids(self, ids, step=100000):
         '''return the count of docs matching with input ids
@@ -171,8 +209,11 @@ class DocMongoBackend(DocBackendBase):
         self.target_collection.database.client.fsync(async=True)
 
     def remove_from_ids(self, ids, step=10000):
+        deleted = 0
         for i in range(0, len(ids), step):
-            self.target_collection.remove({'_id': {'$in': ids[i:i + step]}})
+            res = self.target_collection.delete_many({'_id': {'$in': ids[i:i + step]}})
+            deleted += res.deleted_count
+        return deleted
 
 # backward-compatible
 DocMongoDBBackend = DocMongoBackend
@@ -183,6 +224,20 @@ class DocESBackend(DocBackendBase):
     def __init__(self, esidxer=None):
         """esidxer is an instance of utils.es.ESIndexer class."""
         self.target_esidxer = esidxer
+
+    @property
+    def target_name(self):
+        return self.target_esidxer._index
+
+    @property
+    def version(self):
+        try:
+            mapping = self.target_esidxer.get_mapping_meta()
+            if mapping.get("_meta"):
+                return mapping["_meta"].get("build_version")
+        except NotFoundError:
+            # index doesn't even exist
+            return None
 
     def prepare(self, update_mapping=True):
         self.target_esidxer.create_index()
@@ -217,13 +272,13 @@ class DocESBackend(DocBackendBase):
         conn.indices.refresh()
         self.target_esidxer.optimize()
 
-    def get_id_list(self):
-        return self.target_esidxer.get_id_list()
+    def get_id_list(self,step=None):
+        return self.target_esidxer.get_id_list(step=step)
 
     def get_from_id(self, id):
         return self.target_esidxer.get(id)
 
-    def mget_from_ids(self, ids, step=100000, only_source=True, **kwargs):
+    def mget_from_ids(self, ids, step=100000, only_source=True, asiter=True, **kwargs):
         '''ids is an id list. always return a generator'''
         return self.target_esidxer.get_docs(ids, step=step, only_source=only_source, **kwargs)
 
@@ -245,102 +300,6 @@ class DocESBackend(DocBackendBase):
         if not options.es_index or not options.es_host or not options.es_doc_type:
             raise Exception("Cannot create backend class from options, ensure that es_index, es_host, and es_doc_type are set")
         return cls(ESIndexer(index=options.es_index, doc_type=options.es_doc_type, es_host=options.es_host))
-
-class DocCouchDBBackend(DocBackendBase):
-    name = 'couchdb'
-
-    def __init__(self, target_server=None, db_name=None):
-        '''target_server is an instance of Couchdb Server class.'''
-        self.target_server = target_server
-        self.db_name = db_name
-        self._prepare(db_name)
-
-        self._doc_cache = {}
-
-    def _prepare(self, db_name):
-        from couchdb import ResourceNotFound
-        if db_name:
-            try:
-                self.target_db = self.target_server[db_name]
-            except ResourceNotFound:
-                self.target_db = self.target_server.create(db_name)
-
-    def _db_upload(self, doc_li, step=10000, verbose=True):
-        import time
-        from biothings.utils.common import timesofar
-        from biothings.utils.dataload import list2dict, list_itemcnt, listsort
-
-        output = []
-        t0 = time.time()
-        for i in range(0, len(doc_li), step):
-            output.extend(self.target_db.update(doc_li[i:i + step]))
-            if verbose:
-                print('\t%d-%d Done [%s]...' % (i + 1, min(i + step, len(doc_li)), timesofar(t0)))
-
-        res = list2dict(list_itemcnt([x[0] for x in output]), 0)
-        print("Done![%s, %d OK, %d Error]" % (timesofar(t0), res.get(True, 0), res.get(False, 0)))
-        res = listsort(list_itemcnt([x[2].args[0] for x in output if x[0] is False]), 1, reverse=True)
-        print('\n'.join(['\t%s\t%d' % x for x in res[:10]]))
-        if len(res) > 10:
-            print("\t%d lines omitted..." % (len(res) - 10))
-
-    def _homologene_trimming(self, species_li):
-        '''A special step to remove species not included in <species_li>
-           from "homologene" attributes.
-           species_li is a list of taxids
-        '''
-        species_set = set(species_li)
-        if self._doc_cache:
-            for gid, gdoc in self._doc_cache.iteritems():
-                hgene = gdoc.get('homologene', None)
-                if hgene:
-                    _genes = hgene.get('genes', None)
-                    if _genes:
-                        _genes_filtered = [g for g in _genes if g[0] in species_set]
-                        hgene['genes'] = _genes_filtered
-                        gdoc['homologene'] = hgene
-                        self._doc_cache[gid] = gdoc
-
-    def prepare(self):
-        self._prepare(self.db_name)
-
-    def insert(self, doc_li):
-        self.target_db.update(doc_li)
-
-    def update(self, id, extra_doc):
-        if not self._doc_cache:
-            self._doc_cache = dict([(item.id, item.doc) for item in self.target_db.view('_all_docs', include_docs=True)])
-        current_doc = self._doc_cache.get(id, None)
-        if current_doc:
-            current_doc.update(extra_doc)
-            self._doc_cache[id] = current_doc
-
-    def drop(self):
-        from couchdb import ResourceNotFound
-        try:
-            self.target_server.delete(self.db_name)
-        except ResourceNotFound:
-            pass
-
-    def finalize(self):
-        if len(self._doc_cache) > 0:
-            #do homologene trimming for nine species mygene.info current supported.
-            species_li = [9606, 10090, 10116, 7227, 6239, 7955, 3702, 8364, 9823]
-            self._homologene_trimming(species_li)
-            #perform final updates now
-            #self.target_db.update(self._doc_cache.values())
-            print("Now doing the actual updating...")
-            self._db_upload(self._doc_cache.values())
-            self._doc_cache = {}
-        self.target_db.commit()
-        self.target_db.compact()
-
-    def get_id_list(self):
-        return iter([item.id for item in self.target_db.view('_all_docs', include_docs=False)])
-
-    def get_from_id(self, id):
-        return self.target_db[id]
-
 
 class DocBackendOptions(object):
     def __init__(self, cls, es_index=None, es_host=None, es_doc_type=None,
