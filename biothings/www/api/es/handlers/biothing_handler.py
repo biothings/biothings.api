@@ -75,7 +75,8 @@ class BiothingHandler(BaseESRequestHandler):
                 doc_type=self._get_es_doc_type(options), es_options=options.es_kwargs, 
                 default_scopes=self.web_settings.DEFAULT_SCOPES)
         _backend = self.web_settings.ES_QUERY(client=self.web_settings.es_client, options=options.es_kwargs)
-        _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(options=options.transform_kwargs, host=self.request.host,
+        _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(options=options.transform_kwargs, 
+            host=self.request.host, doc_url_function=self.web_settings.doc_url,
             output_aliases=self.web_settings.OUTPUT_KEY_ALIASES, jsonld_context=self.web_settings._jsonld_context)
         
         ###################################################
@@ -173,7 +174,8 @@ class BiothingHandler(BaseESRequestHandler):
             regex_list=self.web_settings.ANNOTATION_ID_REGEX_LIST, index=self._get_es_index(options),
             doc_type=self._get_es_doc_type(options), es_options=options.es_kwargs, default_scopes=self.web_settings.DEFAULT_SCOPES)
         _backend = self.web_settings.ES_QUERY(client=self.web_settings.es_client, options=options.es_kwargs)
-        _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(options=options.transform_kwargs, host=self.request.host,
+        _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(options=options.transform_kwargs, 
+            host=self.request.host, doc_url_function=self.web_settings.doc_url,
             jsonld_context=self.web_settings._jsonld_context, output_aliases=self.web_settings.OUTPUT_KEY_ALIASES)
         
         ###################################################
