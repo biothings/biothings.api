@@ -157,6 +157,9 @@ GA_ACTION_QUERY_POST = 'query_post'
 GA_ACTION_ANNOTATION_GET = 'biothing_get'
 GA_ACTION_ANNOTATION_POST = 'biothing_post'
 
+# override with url for specific project
+URL_BASE = 'http://mybiothing.info'
+
 # parameter for JSONP
 JSONP_PARAMETER = 'callback'
 

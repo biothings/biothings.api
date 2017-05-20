@@ -83,6 +83,9 @@ class BiothingESWebSettings(BiothingWebSettings):
         # get es client for web
         self.es_client = self.get_es_client()
 
+    def doc_url(self, bid):
+        return os.path.join(self.URL_BASE, self.API_VERSION, self.ES_DOC_TYPE, bid)
+
     def get_es_client(self):
         '''Get the `Elasticsearch client <https://elasticsearch-py.readthedocs.io/en/master/>`_
         for this app, only called once on invocation of server. '''
