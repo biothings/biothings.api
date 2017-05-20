@@ -62,6 +62,7 @@ class ESQuery(object):
 
     def get_biothing(self, query_kwargs):
         ''' Return a biothing using the Elasticsearch client.get function '''
+        from elasticsearch import NotFoundError
         try:
             return self.client.get(**query_kwargs)
         except NotFoundError:
