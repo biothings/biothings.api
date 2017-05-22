@@ -68,6 +68,8 @@ class DataBuilder(object):
         self.mappers = {}
         self.timestamp = datetime.now()
         self.stats = {} # keep track of cnt per source, etc...
+        self.src_versions = {} # versions involved in this build
+        self.metadata = {} # custom metadata
 
         for mapper in mappers + [default_mapper_class()]:
             self.mappers[mapper.name] = mapper
@@ -260,7 +262,14 @@ class DataBuilder(object):
             # (it's been properly created before when init=True)
             build["jobs"][-1].update(job_info)
             # build_info is common to all jobs, so we want to keep
-            # any existing data
+            # any existing data (well... except if it's explicitely specified)
+            for k,v in build_info.items():
+                if type(v) == dict:
+                    replace = v.pop("__REPLACE__",False)
+                    if replace:
+                        build[k] = v
+                    else:
+                        build = update_dict_recur(build,build_info[k])
             build = update_dict_recur(build,build_info)
             src_build.replace_one({"_id" : build["_id"]}, build)
 
@@ -313,19 +322,29 @@ class DataBuilder(object):
         if self.doc_root_key and not self.doc_root_key in self.build_config:
             raise BuilderException("Root document key '%s' can't be found in build configuration" % self.doc_root_key)
 
-    def store_stats(self,f,sources):
-        try:
-            res = f.result() # consume future to potentially raise errors
-            self.target_backend.post_merge()
-            _src_versions = self.source_backend.get_src_versions()
-            strargs = "[sources=%s,stats=%s,versions=%s]" % (sources,self.stats,_src_versions)
-            self.register_status('success',build={"stats" : self.stats, "src_version" : _src_versions})
-            self.logger.info("success %s" % strargs,extra={"notify":True})
-        except Exception as e:
-            strargs = "[sources=%s]" % sources
-            self.register_status("failed",job={"err": repr(e)})
-            self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
-            raise
+    def get_metadata(self,sources,job_manager):
+        """
+        Return a dictionnary of metadata for this build. It's usually app-specific 
+        and this method may be overridden as needed. Default: return "stats"
+        (#docs involved in each single collections used in that build)
+
+        Return dictionary will potentially be merged with existing metadata in
+        src_build collection. This behavior can be changed by setting a special
+        key within metadata dict: {"__REPLACE__" : True} will... replace existing 
+        metadata with the one returned here.
+
+        "job_manager" is passed in case parallelization is needed. Be aware
+        that this method is already running in a dedicated thread, in order to
+        use job_manager, the following code must be used at the very beginning 
+        of its implementation:
+        asyncio.set_event_loop(job_manager.loop)
+        """
+        return self.stats
+
+    def store_stats(self,res,sources,job_manager):
+        self.target_backend.post_merge()
+        self.src_versions = self.source_backend.get_src_versions()
+        self.metadata = self.get_metadata(sources,job_manager)
 
     def resolve_sources(self,sources):
         """
@@ -383,11 +402,36 @@ class DataBuilder(object):
 
         self.logger.info("Merging into target collection '%s'" % self.target_backend.target_collection.name)
         strargs = "[sources=%s,target_name=%s]" % (sources,target_name)
+
         try:
-            job = self.merge_sources(source_names=sources, ids=ids, job_manager=job_manager,
-                                     *args, **kwargs)
-            task = asyncio.ensure_future(job)
-            task.add_done_callback(partial(self.store_stats,sources=sources))
+            @asyncio.coroutine
+            def do():
+                job = self.merge_sources(source_names=sources, ids=ids, job_manager=job_manager,
+                                         *args, **kwargs)
+                res = yield from job
+                pinfo = self.get_pinfo()
+                pinfo["step"] = "metadata"
+                postjob = yield from job_manager.defer_to_thread(pinfo,
+                        partial(self.store_stats,res,sources=sources,job_manager=job_manager))
+                def stored(f):
+                    try:
+                        res = f.result() # consume to trigger exceptions if any
+                        strargs = "[sources=%s,stats=%s,versions=%s]" % \
+                        (sources,self.stats,self.src_versions)
+                        self.register_status('success',build={
+                            "stats" : self.stats,
+                            "src_version" : self.src_versions, 
+                            "metadata" : self.metadata})
+                        self.logger.info("success %s" % strargs,extra={"notify":True})
+                    except Exception as e:
+                        strargs = "[sources=%s]" % sources
+                        self.register_status("failed",job={"err": repr(e)})
+                        self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
+                        raise
+                postjob.add_done_callback(stored)
+                yield from postjob
+
+            task = asyncio.ensure_future(do())
             return task
 
         except (KeyboardInterrupt,Exception) as e:
@@ -429,6 +473,8 @@ class DataBuilder(object):
         do_post_merge = "post" in steps
         total_docs = 0
         self.stats = {}
+        self.src_versions = {}
+        self.metadata = {}
         # try to identify root document sources amongst the list to first
         # process them (if any)
         defined_root_sources = self.get_root_document_sources()
