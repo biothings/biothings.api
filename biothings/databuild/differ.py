@@ -111,6 +111,7 @@ class BaseDiffer(object):
                 "exclude": exclude,
                 "generated_on": str(datetime.now()),
                 "stats": stats, # ref to stats
+                # TODO: add build_config info ?
                 "diff_files": []}
         # dump it here for minimum information, in case we don't go further
         json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"))

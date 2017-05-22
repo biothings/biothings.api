@@ -491,19 +491,29 @@ class ESIndexer():
         except RequestError as e:
             raise IndexerException("Can't snapshot '%s' (if already exists, use mode='purge'): %s" % (self._index,e))
 
-    def restore(self,repo_name,snapshot_name,purge=False,body=None):
+    def restore(self,repo_name,snapshot_name,index_name=None,purge=False,body=None):
+        index_name = index_name or snapshot_name
         if purge:
             try:
-                self._es.indices.get(snapshot_name)
+                self._es.indices.get(index_name)
                 # if we get there, it exists, delete it
-                self._es.indices.delete(snapshot_name)
+                self._es.indices.delete(index_name)
             except NotFoundError:
                 # no need to delete it,
                 pass
         try:
+            # this is just about renaming index within snapshot to index_name
+            body = {
+                    "indices": snapshot_name, # snaphost name is the same as index in snapshot
+                    "rename_replacement": index_name,
+                    "ignore_unavailable": True,
+                    "rename_pattern": "(.+)",
+                    "include_global_state": True
+                    }
             return self._es.snapshot.restore(repo_name,snapshot_name,body=body)
         except TransportError as e:
-            raise IndexerException("Can't restore snapshot '%s' (does index already exist ?): %s" % (snapshot_name,e))
+            raise IndexerException("Can't restore snapshot '%s' (does index '%s' already exist ?): %s" % \
+                    (snapshot_name,index_name,e))
 
     def get_repository(self,repo_name):
         return self._es.snapshot.get_repository(repo_name)

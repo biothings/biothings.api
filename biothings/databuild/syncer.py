@@ -66,23 +66,28 @@ class BaseSyncer(object):
         return self.logger
 
     @asyncio.coroutine
-    def sync_cols(self,old_db_col_names, new_db_col_names, batch_size=10000, mode=None, force=False):
-        diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
+    def sync_cols(self, diff_folder, batch_size=10000, mode=None, force=False):
+        """
+        Sync a collection with diff files located in diff_folder. This folder contains a metadata.json file which
+        describes the different involved collection: "old" is the collection to be synced, "new" is the collecion
+        that should be obtained once all diff files are applied (not used, just informative).
+        """
         got_error = False
         cnt = 0
         jobs = []
+        meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
+        diff_type = self.diff_type
+        selfcontained = "selfcontained" in meta["diff_type"]
+        old_db_col_names = meta["old"]
+        new_db_col_names = meta["new"]
         pinfo = {"category" : "sync",
                  "source" : "%s -> %s" % (old_db_col_names,new_db_col_names),
                  "step" : "",
                  "description" : ""}
-
-        meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
-        diff_type = self.diff_type
-        selfcontained = "selfcontained" in meta["diff_type"]
         if selfcontained:
             # selfconained is a worker param, isolate diff format
             diff_type = diff_type.replace("-selfcontained","")
-        diff_files = glob.glob(os.path.join(diff_folder,"*.pyobj"))
+        diff_files = [os.path.join(diff_folder,e["name"]) for e in meta["diff_files"]]
         total = len(diff_files)
         summary = {}
         self.logger.info("Syncing from %s to %s using diff files in '%s'" % (old_db_col_names,new_db_col_names,diff_folder))
@@ -116,9 +121,9 @@ class BaseSyncer(object):
                 (old_db_col_names, new_db_col_names, diff_folder,summary),extra={"notify":True})
         return summary
 
-    def sync(self, old_db_col_names, new_db_col_names, batch_size=10000, mode=None):
+    def sync(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None, batch_size=10000, mode=None):
         """wrapper over sync_cols() coroutine, return a task"""
-        job = asyncio.ensure_future(self.sync_cols(old_db_col_names, new_db_col_names, batch_size, mode))
+        job = asyncio.ensure_future(self.sync_cols(diff_folder, batch_size, mode))
         return job
 
 
@@ -199,9 +204,7 @@ def sync_es_jsondiff_worker(diff_file, index_name, new_db_col_names, batch_size,
         force=False, selfcontained=False):
     """Worker to sync data between a new mongo collection and an elasticsearch index"""
     new = create_backend(new_db_col_names) # mongo collection to sync from
-    # determine doc type in index. Fetch build info from new mongo collection
-    build = get_src_build().find_one({"build.target_name":new.target_collection.name})
-    indexer = ESIndexer(index_name,build["doc_type"],btconfig.ES_HOST)
+    indexer = ESIndexer(index_name,btconfig.ES_DOC_TYPE,btconfig.ES_HOST)
     diff = loadobj(diff_file)
     res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
     # check if diff files was already synced
@@ -296,8 +299,11 @@ class SyncerManager(BaseManager):
         pclass = BaseManager.__getitem__(self,diff_target)
         return pclass()
 
-    def sync(self, target, old_db_col_names, new_db_col_names, batch_size=100000, mode=None):
-        diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
+    def sync(self, target, old_db_col_names=None, new_db_col_names=None, diff_folder=None, batch_size=100000, mode=None):
+        self.logger.info("diff_folder: %s" % diff_folder)
+        if not diff_folder:
+            assert old_db_col_names and new_db_col_names, "2 No diff_folder specified, old_db_col_names and new_db_col_names are required"
+            diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
         if not os.path.exists(diff_folder):
             raise FileNotFoundError("Directory '%s' does not exist, run a diff first" % diff_folder)
 
@@ -317,15 +323,14 @@ class SyncerManager(BaseManager):
 
         try:
             syncer = self[(diff_type,target)]
-            job = syncer.sync(old_db_col_names, new_db_col_names,
+            job = syncer.sync(old_db_col_names, new_db_col_names, diff_folder,
                               batch_size=batch_size,
                               mode=mode)
             return job
         except KeyError as e:
             raise SyncerException("No such syncer (%s,%s) (error: %s)" % (diff_type,target,e))
 
-    @classmethod
-    def reset_synced(klass,diff_folder):
+    def reset_synced(self,diff_folder,backend=None):
         """
         Remove "synced" flag from any pyobj file in diff_folder
         """
@@ -333,7 +338,11 @@ class SyncerManager(BaseManager):
         for diff in diff_files:
             pyobj = loadobj(diff)
             if pyobj.get("synced"):
-                self.logger.info("Removing synced flag from '%s'" % diff)
-                pyobj.pop("synced")
-                dump(pyobj,diff_file)
+                if backend:
+                    self.logger.info("Removing synced flag from '%s' for backend '%s'" % (diff,backend))
+                    pyobj["synced"].pop(backend,None)
+                else:
+                    self.logger.info("Removing synced flag from '%s'" % diff)
+                    pyobj.pop("synced")
+                dump(pyobj,diff)
 
