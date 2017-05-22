@@ -37,8 +37,7 @@ class DataBuilder(object):
     keep_archive = 10 # number of archived collection to keep. Oldest get dropped first.
 
     def __init__(self, build_name, source_backend, target_backend, log_folder,
-                 doc_root_key="root", max_build_status=2,
-                 mappers=[], default_mapper_class=TransparentMapper,
+                 doc_root_key="root", mappers=[], default_mapper_class=TransparentMapper,
                  sources=None, target_name=None,**kwargs):
         self.init_state()
         self.build_name = build_name
@@ -52,7 +51,7 @@ class DataBuilder(object):
             self._partial_target_backend = target_backend
         else:
             self._state["target_backend"] = target_backend
-        # doc_root_key is a key name within src_build doc.
+        # doc_root_key is a key name within src_build_config doc.
         # it's a list of datasources that are able to create a document
         # even it doesn't exist. It root documents list is not empty, then
         # any other datasources not listed there won't be able to create
@@ -74,8 +73,6 @@ class DataBuilder(object):
             self.mappers[mapper.name] = mapper
 
         self.step = kwargs.get("step",10000)
-        # max no. of records kept in "build" field of src_build collection.
-        self.max_build_status = max_build_status
         self.prepared = False
 
     def init_state(self):
@@ -180,9 +177,9 @@ class DataBuilder(object):
         if force:
             # don't even bother
             return
-        src_build = self.source_backend.build
+        src_build_config = self.source_backend.build_config
         src_dump = self.source_backend.dump
-        _cfg = src_build.find_one({'_id': self.build_config['_id']})
+        _cfg = src_build_config.find_one({'_id': self.build_config['_id']})
         # check if all resources are uploaded
         for src_name in _cfg["sources"]:
             # "sources" in config is a list a collection names. src_dump _id is the name of the
@@ -204,19 +201,21 @@ class DataBuilder(object):
 
     def register_status(self,status,transient=False,init=False,**extra):
         """
-        Register current build status. A build status is a record in src_build's document
-        in "build" dictionnary. The key used in this dict the target_name. Then, any operation
+        Register current build status. A build status is a record in src_build
+        The key used in this dict the target_name. Then, any operation
         acting on this target_name is registered in a "jobs" list.
         """
         assert self.build_config, "build_config needs to be specified first"
         # get it from source_backend, kind of weird...
         src_build = self.source_backend.build
+        src_build_config = self.source_backend.build_config
         all_sources = self.build_config.get("sources",[])
         target_name = "%s" % self.target_backend.target_name
         build_version = self.get_build_version()
         if "." in build_version:
             raise BuilderException("Can't use '.' in build version '%s', it's reserved for minor versions" % build_version)
         build_info = {
+                '_id' : target_name,
                 'target_backend': self.target_backend.name,
                 'target_name': target_name,
                 'build_version' : build_version,
@@ -231,7 +230,7 @@ class DataBuilder(object):
                 }
         if status == "building":
             # reset the flag
-            src_build.update({"_id" : self.build_config["_id"]},{"$unset" : {"pending_to_build":None}})
+            src_build_config.update({"_id" : self.build_config["_id"]},{"$unset" : {"pending_to_build":None}})
         if transient:
             # record some "in-progress" information
             job_info['pid'] = os.getpid()
@@ -245,40 +244,25 @@ class DataBuilder(object):
         if "job" in extra:
             job_info.update(extra["job"])
         # create a new build entry in "build" dict if none exists
-        _cfg = src_build.find_one({'_id': self.build_config['_id']})
-        if not _cfg.get("build"):
-            src_build.update({'_id': self.build_config['_id']},
-                {"$set": {'build': {}}})
-            # refresh
-            _cfg = src_build.find_one({'_id': self.build_config['_id']})
-        if not target_name in _cfg.get("build"):
+        build = src_build.find_one({'_id': target_name})
+        if not build:
             # first record for target_name, keep a timestamp
             build_info["started_at"] = datetime.fromtimestamp(self.t0)
             build_info["jobs"] = []
-            src_build.update({'_id': self.build_config['_id']},
-                {"$set": {'build.%s' % target_name: build_info}})
+            src_build.insert_one(build_info)
         if init:
-            src_build.update({'_id': self.build_config['_id']}, {"$push": {'build.%s.jobs' % target_name: job_info}})
+            src_build.update({'_id': target_name}, {"$push": {'jobs': job_info}})
             # now refresh/sync
-            _cfg = src_build.find_one({'_id': self.build_config['_id']})
-            names_dates = [(k,_cfg["build"][k].get("started_at")) for k in _cfg["build"].keys() if "jobs" in _cfg["build"][k]]
-            # sort by started_at, oldest at the end
-            names_dates = sorted(names_dates,key=lambda e: e[1] or datetime(1970,1,1,0,0,0),reverse=True)
-            howmany = len(names_dates) - self.max_build_status
-            # we keep build information, but remove "jobs". We want to keep "howmany" records max
-            for _ in range(howmany):
-                # pop previous build starting from oldest ones
-                buildk = "build.%s.jobs" % names_dates.pop()[0]
-                src_build.update({'_id': self.build_config['_id']}, {"$unset": {buildk: 1}})
+            build = src_build.find_one({'_id': target_name})
         else:
-            # merge extra at root or "build" level
+            # merge extra at root level
             # (to keep building data...) and update the last one
             # (it's been properly created before when init=True)
-            _cfg["build"][target_name]["jobs"][-1].update(job_info)
+            build["jobs"][-1].update(job_info)
             # build_info is common to all jobs, so we want to keep
             # any existing data
-            _cfg["build"][target_name] = update_dict_recur(_cfg["build"][target_name],build_info)
-            src_build.replace_one({'_id': self.build_config['_id']},_cfg)
+            build = update_dict_recur(build,build_info)
+            src_build.replace_one({"_id" : build["_id"]}, build)
 
     def clean_old_collections(self):
         # use target_name is given, otherwise build name will be used 
@@ -648,12 +632,12 @@ def merger_worker(col_name,dest_name,ids,mapper,upsert,batch_num):
 
 
 def set_pending_to_build(conf_name=None):
-    src_build = mongo.get_src_build()
+    src_build_config = mongo.get_src_build_config()
     qfilter = {}
     if conf_name:
         qfilter = {"_id":conf_name}
     logging.info("Setting pending_to_build flag for configuration(s): %s" % (conf_name and conf_name or "all configuraitons"))
-    src_build.update(qfilter,{"$set":{"pending_to_build":True}})
+    src_build_config.update(qfilter,{"$set":{"pending_to_build":True}})
 
 
 class BuilderManager(BaseManager):
@@ -673,23 +657,23 @@ class BuilderManager(BaseManager):
         same arguments as the base DataBuilder
         """
         super(BuilderManager,self).__init__(*args,**kwargs)
-        self.src_build = mongo.get_src_build()
+        self.src_build_config = mongo.get_src_build_config()
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
         self.builder_class = builder_class
         self.poll_schedule = poll_schedule
         self.setup_log()
         # check if src_build exist and create it as necessary
-        if not self.src_build.name in self.src_build.database.collection_names():
-            logging.debug("Creating '%s' collection (one-time)" % self.src_build.name)
-            self.src_build.database.create_collection(self.src_build.name)
+        if not self.src_build_config.name in self.src_build_config.database.collection_names():
+            logging.debug("Creating '%s' collection (one-time)" % self.src_build_config.name)
+            self.src_build_config.database.create_collection(self.src_build_config.name)
             # this is dummy configuration, used as a template
             logging.debug("Creating dummy configuration (one-time)")
             conf = {"_id" : "placeholder",
                     "name" : "placeholder",
                     "root" : [],
                     "sources" : []}
-            self.src_build.insert_one(conf)
+            self.src_build_config.insert_one(conf)
 
     def register_builder(self,build_name):
         # will use partial to postponse object creations and their db connection
@@ -701,6 +685,7 @@ class BuilderManager(BaseManager):
             from biothings import config
             source_backend =  self.source_backend_factory and self.source_backend_factory() or \
                                     partial(backend.SourceDocMongoBackend,
+                                            build_config=partial(mongo.get_src_build_config),
                                             build=partial(mongo.get_src_build),
                                             master=partial(mongo.get_src_master),
                                             dump=partial(mongo.get_src_dump),
@@ -736,8 +721,8 @@ class BuilderManager(BaseManager):
         return pclass()
 
     def configure(self):
-        """Sync with src_build and register all build config"""
-        for conf in self.src_build.find():
+        """Sync with src_build_config and register all build config"""
+        for conf in self.src_build_config.find():
             self.register_builder(conf["_id"])
 
     def merge(self, build_name, sources=None, target_name=None, **kwargs):
@@ -757,7 +742,7 @@ class BuilderManager(BaseManager):
         """
         List all registered sources used to trigger a build named 'build_name'
         """
-        info = self.src_build.find_one({"_id":build_name})
+        info = self.src_build_config.find_one({"_id":build_name})
         return info and info["sources"] or []
 
     def clean_temp_collections(self,build_name,date=None,prefix=''):
@@ -780,10 +765,10 @@ class BuilderManager(BaseManager):
     def poll(self):
         if not self.poll_schedule:
             raise ManagerError("poll_schedule is not defined")
-        src_build = mongo.get_src_build()
+        src_build_config = mongo.get_src_build_config()
         @asyncio.coroutine
         def check_pending_to_build():
-            confs = [src['_id'] for src in src_build.find({'pending_to_build': True}) if type(src['_id']) == str]
+            confs = [src['_id'] for src in src_build_config.find({'pending_to_build': True}) if type(src['_id']) == str]
             logging.info("Found %d configuration(s) to build (%s)" % (len(confs),repr(confs)))
             for conf_name in confs:
                 logging.info("Launch build for '%s'" % conf_name)

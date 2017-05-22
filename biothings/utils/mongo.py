@@ -84,6 +84,10 @@ def get_src_build(conn=None):
     conn = conn or get_src_conn()
     return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
 
+@requires_config
+def get_src_build_config(conn=None):
+    conn = conn or get_src_conn()
+    return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_BUILD_COLLECTION + "_config"]
 
 @requires_config
 def get_target_conn():
