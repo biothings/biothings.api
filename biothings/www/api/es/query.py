@@ -36,8 +36,9 @@ class ESQuery(object):
 
     def _annotation_POST_query(self, query_kwargs):
         return self.client.msearch(**query_kwargs)
-   
+    
     def _query_GET_query(self, query_kwargs):
+        from elasticsearch import RequestError
         try:
             return self.client.search(**query_kwargs)
         except RequestError as e:
@@ -48,6 +49,7 @@ class ESQuery(object):
                 raise Exception('{0}'.format(e))
     
     def _query_POST_query(self, query_kwargs):
+        from elasticsearch import RequestError
         try:
             return self.client.msearch(**query_kwargs)
         except RequestError as e:
