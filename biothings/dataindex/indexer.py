@@ -388,6 +388,7 @@ class Indexer(object):
         '''collect mapping data from data sources.
            This is for GeneDocESBackend only.
         '''
+        raise Exception( "take it from src_build")
         mapping = {}
         src_master = mongo.get_src_master()
         for collection in self.build_config['sources']:
@@ -407,6 +408,7 @@ class Indexer(object):
         return mapping
 
     def get_metadata(self):
+        raise Exception( "take it from src_build")
         stats = self.get_stats()
         versions = self.get_src_versions()
         timestamp = self.get_timestamp()

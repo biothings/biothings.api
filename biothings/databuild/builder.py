@@ -70,6 +70,7 @@ class DataBuilder(object):
         self.stats = {} # keep track of cnt per source, etc...
         self.src_versions = {} # versions involved in this build
         self.metadata = {} # custom metadata
+        self.mapping = {} # ES mapping (merged from src_master's docs)
 
         for mapper in mappers + [default_mapper_class()]:
             self.mappers[mapper.name] = mapper
@@ -213,14 +214,11 @@ class DataBuilder(object):
         src_build_config = self.source_backend.build_config
         all_sources = self.build_config.get("sources",[])
         target_name = "%s" % self.target_backend.target_name
-        build_version = self.get_build_version()
-        if "." in build_version:
-            raise BuilderException("Can't use '.' in build version '%s', it's reserved for minor versions" % build_version)
         build_info = {
                 '_id' : target_name,
                 'target_backend': self.target_backend.name,
                 'target_name': target_name,
-                'build_version' : build_version,
+                'build_config': self.build_config,
                 # these are all the sources required to build target
                 # (not just the ones being processed, those are registered in jobs
                 'sources' : all_sources, 
@@ -263,14 +261,18 @@ class DataBuilder(object):
             build["jobs"][-1].update(job_info)
             # build_info is common to all jobs, so we want to keep
             # any existing data (well... except if it's explicitely specified)
-            for k,v in build_info.items():
-                if type(v) == dict:
-                    replace = v.pop("__REPLACE__",False)
-                    if replace:
-                        build[k] = v
-                    else:
-                        build = update_dict_recur(build,build_info[k])
-            build = update_dict_recur(build,build_info)
+            def merge_build_info(target,d):
+                if "__REPLACE__" in d.keys():
+                    d.pop("__REPLACE__")
+                    target = d
+                else:
+                    for k,v in d.items():
+                        if k in target and type(v) == dict:
+                            target[k] = merge_build_info(target[k],v) 
+                        else:
+                            target[k] = v
+                return target
+            build = merge_build_info(build,build_info)
             src_build.replace_one({"_id" : build["_id"]}, build)
 
     def clean_old_collections(self):
@@ -325,7 +327,7 @@ class DataBuilder(object):
     def get_metadata(self,sources,job_manager):
         """
         Return a dictionnary of metadata for this build. It's usually app-specific 
-        and this method may be overridden as needed. Default: return "stats"
+        and this method may be overridden as needed. Default: return "merge_stats"
         (#docs involved in each single collections used in that build)
 
         Return dictionary will potentially be merged with existing metadata in
@@ -341,10 +343,25 @@ class DataBuilder(object):
         """
         return self.stats
 
-    def store_stats(self,res,sources,job_manager):
+    def get_mapping(self,sources):
+        """
+        Merge mappings from src_master
+        """
+        mapping = {}
+        src_master = self.source_backend.master
+        for collection in self.build_config['sources']:
+            meta = src_master.find_one({"_id" : collection})
+            if 'mapping' in meta and meta["mapping"]:
+                mapping.update(meta['mapping'])
+            else:
+                self.logger.info('Warning: "%s" collection has no mapping data.' % collection)
+        return mapping
+
+    def store_metadata(self,res,sources,job_manager):
         self.target_backend.post_merge()
         self.src_versions = self.source_backend.get_src_versions()
         self.metadata = self.get_metadata(sources,job_manager)
+        self.mapping = self.get_mapping(sources)
 
     def resolve_sources(self,sources):
         """
@@ -398,6 +415,8 @@ class DataBuilder(object):
         if target_name:
             self.target_name = target_name
             self.target_backend.set_target_name(self.target_name)
+        else:
+            target_name = self.target_backend.target_collection.name
         self.clean_old_collections()
 
         self.logger.info("Merging into target collection '%s'" % self.target_backend.target_collection.name)
@@ -412,16 +431,27 @@ class DataBuilder(object):
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "metadata"
                 postjob = yield from job_manager.defer_to_thread(pinfo,
-                        partial(self.store_stats,res,sources=sources,job_manager=job_manager))
+                        partial(self.store_metadata,res,sources=sources,job_manager=job_manager))
                 def stored(f):
                     try:
                         res = f.result() # consume to trigger exceptions if any
                         strargs = "[sources=%s,stats=%s,versions=%s]" % \
-                        (sources,self.stats,self.src_versions)
+                                (sources,self.stats,self.src_versions)
+                        build_version = self.get_build_version()
+                        if "." in build_version:
+                            raise BuilderException("Can't use '.' in build version '%s', it's reserved for minor versions" % build_version)
+                        # get original start dt
+                        src_build = self.source_backend.build
+                        build = src_build.find_one({'_id': target_name})
                         self.register_status('success',build={
-                            "stats" : self.stats,
-                            "src_version" : self.src_versions, 
-                            "metadata" : self.metadata})
+                            "merge_stats" : self.stats,
+                            "mapping" : self.mapping,
+                            "_meta" : {
+                                "src_version" : self.src_versions, 
+                                "stats" : self.metadata,
+                                "build_version" : build_version,
+                                "timestamp" : str(build["started_at"])}
+                            })
                         self.logger.info("success %s" % strargs,extra={"notify":True})
                     except Exception as e:
                         strargs = "[sources=%s]" % sources
@@ -475,6 +505,7 @@ class DataBuilder(object):
         self.stats = {}
         self.src_versions = {}
         self.metadata = {}
+        self.mapping = {}
         # try to identify root document sources amongst the list to first
         # process them (if any)
         defined_root_sources = self.get_root_document_sources()

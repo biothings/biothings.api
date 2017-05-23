@@ -77,9 +77,9 @@ class BaseSyncer(object):
         jobs = []
         meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
         diff_type = self.diff_type
-        selfcontained = "selfcontained" in meta["diff_type"]
-        old_db_col_names = meta["old"]
-        new_db_col_names = meta["new"]
+        selfcontained = "selfcontained" in meta["diff"]["type"]
+        old_db_col_names = meta["old"]["backend"]
+        new_db_col_names = meta["new"]["backend"]
         pinfo = {"category" : "sync",
                  "source" : "%s -> %s" % (old_db_col_names,new_db_col_names),
                  "step" : "",
@@ -87,7 +87,7 @@ class BaseSyncer(object):
         if selfcontained:
             # selfconained is a worker param, isolate diff format
             diff_type = diff_type.replace("-selfcontained","")
-        diff_files = [os.path.join(diff_folder,e["name"]) for e in meta["diff_files"]]
+        diff_files = [os.path.join(diff_folder,e["name"]) for e in meta["diff"]["files"]]
         total = len(diff_files)
         summary = {}
         self.logger.info("Syncing from %s to %s using diff files in '%s'" % (old_db_col_names,new_db_col_names,diff_folder))
@@ -300,13 +300,11 @@ class SyncerManager(BaseManager):
         return pclass()
 
     def sync(self, target, old_db_col_names=None, new_db_col_names=None, diff_folder=None, batch_size=100000, mode=None):
-        self.logger.info("diff_folder: %s" % diff_folder)
         if not diff_folder:
-            assert old_db_col_names and new_db_col_names, "2 No diff_folder specified, old_db_col_names and new_db_col_names are required"
+            assert old_db_col_names and new_db_col_names, "No diff_folder specified, old_db_col_names and new_db_col_names are required"
             diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
         if not os.path.exists(diff_folder):
             raise FileNotFoundError("Directory '%s' does not exist, run a diff first" % diff_folder)
-
         # load metadata to know collections that have been diffed in diff_func protocol
         try:
             meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
@@ -316,7 +314,7 @@ class SyncerManager(BaseManager):
 
         self.logger.info("Found metadata information: %s" % meta)
         try:
-            diff_type = meta["diff_type"]
+            diff_type = meta["diff"]["type"]
         except KeyError as e:
             msg = "Can't find diff_type in metadata file located in '%s'" % diff_folder
             raise SyncerException(msg)
