@@ -267,8 +267,14 @@ class DataBuilder(object):
                     target = d
                 else:
                     for k,v in d.items():
-                        if k in target and type(v) == dict:
-                            target[k] = merge_build_info(target[k],v) 
+                        if type(v) == dict:
+                            if k in target:
+                                target[k] = merge_build_info(target[k],v) 
+                            else:
+                                v.pop("__REPLACE__",None)
+                                # merge v with "nothing" just to make sure to remove any "__REPLACE__"
+                                v = merge_build_info({},v)
+                                target[k] = v
                         else:
                             target[k] = v
                 return target
