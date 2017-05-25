@@ -141,6 +141,58 @@ class BaseDiffer(object):
         # dump it here for minimum information, in case we don't go further
         json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
 
+        got_error = False
+        if "mapping" in steps:
+            def diff_mapping(old,new,diff_folder):
+                summary = {}
+                old_build = get_src_build().find_one({"_id":old.target_collection.name})
+                new_build = get_src_build().find_one({"_id":new.target_collection.name})
+                if old_build and new_build:
+                    # mapping diff always in jsondiff
+                    mapping_diff = jsondiff(old_build["mapping"], new_build["mapping"])
+                    if mapping_diff:
+                        file_name = os.path.join(diff_folder,"mapping.pyobj")
+                        dump(mapping_diff, file_name)
+                        md5 = md5sum(file_name)
+                        summary["mapping_file"] = {
+                                "name" : os.path.basename(file_name),
+                                "md5sum" : md5
+                                }
+                else:
+                    self.logger.info("Neither '%s' nor '%s' have mappings associated to them, skip" % \
+                            (old.target_collection.name,new.target_collection.name))
+                return summary
+
+            def mapping_diffed(f):
+                res = f.result()
+                if res.get("mapping_file"):
+                    nonlocal got_error
+                    # check mapping differences: only "add" ops are allowed, as any others actions would be
+                    # ingored by ES once applied (you can't update/delete elements of an existing mapping)
+                    mf = os.path.join(diff_folder,res["mapping_file"]["name"])
+                    ops = loadobj(mf)
+                    for op in ops:
+                        if op["op"] != "add":
+                            err = DifferException("Found diff operation '%s' in mapping file, " % op["op"] + \
+                                " only 'add' operations are allowed. You can still produce the " + \
+                                "diff by removing 'mapping' from 'steps' arguments. " + \
+                                "Ex: steps=['count','content']. Diff operation was: %s" % op)
+                            got_error = err
+                    metadata["diff"]["mapping_file"] = mf
+                    diff_stats["mapping_changed"] = True
+                self.logger.info("Diff file containing mapping differences generated: %s" % res.get("mapping_file"))
+
+            pinfo = {"category" : "diff",
+                     "source" : "%s vs %s" % (new.target_name,old.target_name),
+                     "step" : "mapping: old vs new",
+                     "description" : ""}
+            job = yield from self.job_manager.defer_to_thread(pinfo,
+                    partial(diff_mapping, old, new, diff_folder))
+            job.add_done_callback(mapping_diffed)
+            yield from job
+            if got_error:
+                raise got_error
+
         if "count" in steps:
             cnt = 0
             pinfo = {"category" : "diff",
@@ -222,46 +274,8 @@ class BaseDiffer(object):
             yield from asyncio.gather(*jobs)
             self.logger.info("Finished calculating diff for the old collection. Total number of docs deleted: {}".format(diff_stats["delete"]))
 
-        if "mapping" in steps:
-            def diff_mapping(old,new,diff_folder):
-                summary = {}
-                old_build = get_src_build().find_one({"_id":old.target_collection.name})
-                new_build = get_src_build().find_one({"_id":new.target_collection.name})
-                if old_build and new_build:
-                    # mapping diff always in jsondiff
-                    mapping_diff = jsondiff(old_build["mapping"], new_build["mapping"])
-                    self.logger.info("mapping_diff: %s" % mapping_diff)
-                    if mapping_diff:
-                        file_name = os.path.join(diff_folder,"mapping.pyobj")
-                        dump(mapping_diff, file_name)
-                        md5 = md5sum(file_name)
-                        summary["mapping_file"] = {
-                                "name" : os.path.basename(file_name),
-                                "md5sum" : md5
-                                }
-                else:
-                    self.logger.info("Neither '%s' nor '%s' have mappings associated to them, skip" % \
-                            (old.target_collection.name,new.target_collection.name))
-                return summary
-
-            def mapping_diffed(f):
-                res = f.result()
-                self.logger.info("res : %s" % res)
-                if res.get("mapping_file"):
-                    metadata["diff"]["mapping_file"] = res["mapping_file"]
-                    diff_stats["mapping_changed"] = True
-                self.logger.info("Diff file containing mapping differences generated: %s" % res["mapping_file"])
-
-            pinfo = {"category" : "diff",
-                     "source" : "%s vs %s" % (new.target_name,old.target_name),
-                     "step" : "mapping: old vs new",
-                     "description" : ""}
-            job = yield from self.job_manager.defer_to_thread(pinfo,
-                    partial(diff_mapping, old, new, diff_folder))
-            job.add_done_callback(mapping_diffed)
-
-            self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {}, Mapping changed: {})".format(
-                diff_stats["update"], diff_stats["add"], diff_stats["delete"], diff_stats["mapping_changed"]))
+        self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {}, Mapping changed: {})".format(
+            diff_stats["update"], diff_stats["add"], diff_stats["delete"], diff_stats["mapping_changed"]))
 
         # pickle again with potentially more information (diff_stats)
         json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
@@ -269,7 +283,7 @@ class BaseDiffer(object):
         self.logger.info("success %s" % strargs,extra={"notify":True})
         return diff_stats
 
-    def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["count","content"], mode=None, exclude=[]):
+    def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["count","content","mapping"], mode=None, exclude=[]):
         """wrapper over diff_cols() coroutine, return a task"""
         job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, steps, mode, exclude))
         return job
@@ -512,7 +526,7 @@ class DifferManager(BaseManager):
         pclass = BaseManager.__getitem__(self,diff_type)
         return pclass()
 
-    def diff(self, diff_type, old_db_col_names, new_db_col_names, batch_size=100000, steps=["count","content"], mode=None, exclude=[]):
+    def diff(self, diff_type, old_db_col_names, new_db_col_names, batch_size=100000, steps=["count","content","mapping"], mode=None, exclude=[]):
         """
         Run a diff to compare old vs. new collections. using differ algorithm diff_type. Results are stored in
         a diff folder.
