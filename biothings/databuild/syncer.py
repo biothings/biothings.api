@@ -66,10 +66,10 @@ class BaseSyncer(object):
         return self.logger
 
     @asyncio.coroutine
-    def sync_cols(self, diff_folder, batch_size=10000, mode=None, force=False):
+    def sync_cols(self, diff_folder, batch_size=10000, mode=None, force=False, target_backend=None):
         """
         Sync a collection with diff files located in diff_folder. This folder contains a metadata.json file which
-        describes the different involved collection: "old" is the collection to be synced, "new" is the collecion
+        describes the different involved collection: "old" is the collection/index to be synced, "new" is the collecion
         that should be obtained once all diff files are applied (not used, just informative).
         """
         got_error = False
@@ -78,7 +78,7 @@ class BaseSyncer(object):
         meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
         diff_type = self.diff_type
         selfcontained = "selfcontained" in meta["diff"]["type"]
-        old_db_col_names = meta["old"]["backend"]
+        old_db_col_names = target_backend or meta["old"]["backend"]
         new_db_col_names = meta["new"]["backend"]
         pinfo = {"category" : "sync",
                  "source" : "%s -> %s" % (old_db_col_names,new_db_col_names),
@@ -117,13 +117,15 @@ class BaseSyncer(object):
             self.logger.error("Failed to sync collection from %s to %s using diff files in '%s': %s" % \
                 (old_db_col_names, new_db_col_names, diff_folder, got_error),extra={"notify":True})
             raise got_error
-        self.logger.info("Succesfully synced index %s from collection %s using diff files in '%s': %s" % \
+        self.logger.info("Succesfully synced index %s to reach collection %s using diff files in '%s': %s" % \
                 (old_db_col_names, new_db_col_names, diff_folder,summary),extra={"notify":True})
         return summary
 
-    def sync(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None, batch_size=10000, mode=None):
+    def sync(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None, batch_size=10000, mode=None,
+            target_backend=None):
         """wrapper over sync_cols() coroutine, return a task"""
-        job = asyncio.ensure_future(self.sync_cols(diff_folder, batch_size, mode))
+        job = asyncio.ensure_future(self.sync_cols(
+            diff_folder=diff_folder, batch_size=batch_size, mode=mode, target_backend=target_backend))
         return job
 
 
@@ -214,23 +216,31 @@ def sync_es_jsondiff_worker(diff_file, index_name, new_db_col_names, batch_size,
         return res
     assert new.target_collection.name == diff["source"], "Source is different in diff file '%s': %s" % (diff_file,diff["source"])
 
+    errors = []
     # add: get ids from "new" 
-    cur = doc_feeder(new.target_collection, step=batch_size, inbatch=False, query={'_id': {'$in': diff["add"]}})
+    if selfcontained:
+        # diff["add"] contains all documents, no mongo needed
+        cur = diff["add"]
+    else:
+        cur = doc_feeder(new.target_collection, step=batch_size, inbatch=False, query={'_id': {'$in': diff["add"]}})
     for docs in iter_n(cur,batch_size):
-        # use generator otherwise process/doc_iterator will require a dict (that's bad...)
         try:
             res["added"] += indexer.index_bulk(docs,batch_size,action="create")[0]
         except BulkIndexError:
-            # process the bulk one by one to avoid missing any docs
             for doc in docs:
                 try:
-                    # force action=create to spot docs already added
-                    indexer.index(doc,doc["_id"],action="create")
-                    res["added"] += 1
+                     # force action=create to spot docs already added
+                     indexer.index(doc,doc["_id"],action="create")
+                     res["added"] += 1
                 except ConflictError:
                     # already added
                     res["skipped"] += 1
                     continue
+                except Exception as e:
+                    errors.append({"_id":doc["_id"],"file":diff_file,"error":e})
+                    import pickle
+                    pickle.dump(errors,open("errors","wb"))
+                    raise
 
     # update: get doc from indexer and apply diff
     batch = []
@@ -299,7 +309,8 @@ class SyncerManager(BaseManager):
         pclass = BaseManager.__getitem__(self,diff_target)
         return pclass()
 
-    def sync(self, target, old_db_col_names=None, new_db_col_names=None, diff_folder=None, batch_size=100000, mode=None):
+    def sync(self, target, old_db_col_names=None, new_db_col_names=None, diff_folder=None, batch_size=100000, mode=None,
+            target_backend=None):
         if not diff_folder:
             assert old_db_col_names and new_db_col_names, "No diff_folder specified, old_db_col_names and new_db_col_names are required"
             diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
@@ -312,7 +323,7 @@ class SyncerManager(BaseManager):
             self.logger.error("Can't find metadata file in diff folder '%s'" % diff_folder)
             raise
 
-        self.logger.info("Found metadata information: %s" % meta)
+        self.logger.info("Found metadata information: %s" % pformat(meta))
         try:
             diff_type = meta["diff"]["type"]
         except KeyError as e:
@@ -322,25 +333,8 @@ class SyncerManager(BaseManager):
         try:
             syncer = self[(diff_type,target)]
             job = syncer.sync(old_db_col_names, new_db_col_names, diff_folder,
-                              batch_size=batch_size,
-                              mode=mode)
+                              batch_size=batch_size,mode=mode,target_backend=target_backend)
             return job
         except KeyError as e:
             raise SyncerException("No such syncer (%s,%s) (error: %s)" % (diff_type,target,e))
-
-    def reset_synced(self,diff_folder,backend=None):
-        """
-        Remove "synced" flag from any pyobj file in diff_folder
-        """
-        diff_files = glob.glob(os.path.join(diff_folder,"*.pyobj"))
-        for diff in diff_files:
-            pyobj = loadobj(diff)
-            if pyobj.get("synced"):
-                if backend:
-                    self.logger.info("Removing synced flag from '%s' for backend '%s'" % (diff,backend))
-                    pyobj["synced"].pop(backend,None)
-                else:
-                    self.logger.info("Removing synced flag from '%s'" % diff)
-                    pyobj.pop("synced")
-                dump(pyobj,diff)
 

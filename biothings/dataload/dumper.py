@@ -324,7 +324,6 @@ class BaseDumper(object):
 
     @property
     def current_release(self):
-        print(self.src_doc)
         return self.src_doc.get("release")
 
     @asyncio.coroutine

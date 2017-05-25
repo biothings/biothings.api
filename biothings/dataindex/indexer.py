@@ -1,6 +1,7 @@
 
 import sys, re, os, time, math
 from datetime import datetime
+from dateutil.parser import parse as dtparse
 import pickle, json
 from pprint import pformat
 import asyncio
@@ -68,41 +69,37 @@ class IndexerManager(BaseManager):
         return pclass()
 
     def configure(self):
-        """Sync with src_build and register all build config"""
-        for conf in self.src_build.find():
-            self.register_indexer(conf)
+        self.register_indexer("default")
 
     def register_indexer(self, conf):
-        def create(conf):
-            idxer = self.pindexer(build_name=conf["_id"])
+        def create():
+            idxer = self.pindexer()
             return idxer
-        self.register[conf["_id"]] = partial(create,conf)
+        self.register[conf] = partial(create)
 
-    def index(self, build_name, target_name=None, index_name=None, ids=None, **kwargs):
+    def index(self, target_name=None, index_name=None, ids=None, **kwargs):
         """
-        Trigger a merge for build named 'build_name'. Optional list of sources can be
-        passed (one single or a list). target_name is the target collection name used
-        to store to merge data. If none, each call will generate a unique target_name.
+        Trigger an index creation to index the collection target_name and create an 
+        index named index_name (or target_name if None). Optional list of IDs can be
+        passed to index specific documents.
         """
         t0 = time.time()
         def indexed(f):
-            t1 = timesofar(t0)
+            res = f.result()
             try:
-                self.logger.info("Done indexing target '%s' to index '%s' (%s)" % (target_name,index_name,t1))
+                self.logger.info("Done indexing target '%s' to index '%s': %s" % (target_name,index_name,res))
             except Exception as e:
                 import traceback
                 self.logger.error("Error while running merge job, %s:\n%s" % (e,traceback.format_exc()))
                 raise
-        try:
-            idx = self[build_name]
-            idx.target_name = target_name
-            index_name = index_name or target_name
-            job = idx.index(target_name, index_name, ids=ids, job_manager=self.job_manager, **kwargs)
-            job = asyncio.ensure_future(job)
-            job.add_done_callback(indexed)
-            return job
-        except KeyError as e:
-            raise IndexerException("No such builder for '%s'" % build_name)
+        idx = self["default"]
+        idx.target_name = target_name
+        index_name = index_name or target_name
+        job = idx.index(target_name, index_name, ids=ids, job_manager=self.job_manager, **kwargs)
+        job = asyncio.ensure_future(job)
+        job.add_done_callback(indexed)
+
+        return job
 
     def snapshot(self, index, snapshot=None, mode=None, steps=["snapshot","meta"]):
         # check what to do
@@ -179,11 +176,12 @@ class IndexerManager(BaseManager):
                             "metadata" : {"repository" : repo,
                                           "snapshot_name" : snapshot}
                             }
+                    assert esb.version, "Can't retrieve a version from index '%s'" % index
                     build_info = "%s.json" % esb.version
                     build_info_path = os.path.join(btconfig.DIFF_PATH,build_info)
                     json.dump(full_meta,open(build_info_path,"w"))
                     # override lastmodified header with our own timestamp
-                    local_ts = datetime.strptime(idxr.get_mapping_meta()["_meta"]["timestamp"],"%Y-%m-%dT%H:%M:%S.%f") 
+                    local_ts = dtparse(idxr.get_mapping_meta()["_meta"]["timestamp"])
                     utc_epoch = str(int(time.mktime(local_ts.timetuple())))
                     # it's a full release, but all build info metadata (full, incremental) all go
                     # to the diff bucket (this is the main entry)
@@ -206,17 +204,17 @@ class IndexerManager(BaseManager):
 
 class Indexer(object):
 
-    def __init__(self, build_name, es_host, target_name=None):
+    def __init__(self, es_host, target_name=None):
         self.host = es_host
         self.log_folder = LOG_FOLDER
         self.timestamp = datetime.now()
-        self.build_name = build_name
+        self.build_name = None
+        self.build_doc = None
         self.target_name = None
         self.index_name = None
         self.doc_type = None
         self.num_shards = None
         self.num_replicas = None
-        self.load_build_config(build_name)
 
     def get_pinfo(self):
         """
@@ -246,6 +244,7 @@ class Indexer(object):
         self.target_name = target_name
         self.index_name = index_name
         self.setup_log()
+        self.load_build()
 
         got_error = False
         cnt = 0
@@ -388,15 +387,7 @@ class Indexer(object):
         '''collect mapping data from data sources.
            This is for GeneDocESBackend only.
         '''
-        raise Exception( "take it from src_build")
-        mapping = {}
-        src_master = mongo.get_src_master()
-        for collection in self.build_config['sources']:
-            meta = src_master.find_one({"_id" : collection})
-            if 'mapping' in meta and meta["mapping"]:
-                mapping.update(meta['mapping'])
-            else:
-                self.logger.info('Warning: "%s" collection has no mapping data.' % collection)
+        mapping = self.build_doc.get("mapping",{})
         mapping = {"properties": mapping,
                    "dynamic": "false",
                    "include_in_all": "false"}
@@ -408,15 +399,7 @@ class Indexer(object):
         return mapping
 
     def get_metadata(self):
-        raise Exception( "take it from src_build")
-        stats = self.get_stats()
-        versions = self.get_src_versions()
-        timestamp = self.get_timestamp()
-        build_version = self.get_build_version()
-        return {"stats": stats,
-                "src_version": versions,
-                "build_version": build_version,
-                "timestamp": timestamp}
+        return self.build_doc.get("_meta",{})
 
     def get_build(self,target_name=None):
         target_name = target_name or self.target_name
@@ -441,10 +424,13 @@ class Indexer(object):
         build = self.get_build()
         return build["build_version"]
 
-    def load_build_config(self, build):
-        '''Load build config from src_build collection.'''
+    def load_build(self, target_name=None):
+        '''Load build info from src_build collection.'''
+        target_name = target_name or self.target_name
         src_build = mongo.get_src_build()
-        _cfg = src_build.find_one({'_id': build})
+        self.build_doc = src_build.find_one({'_id': target_name})
+        assert self.build_doc, "Can't find build document associated to '%s'" % target_name
+        _cfg = self.build_doc.get("build_config")
         if _cfg:
             self.build_config = _cfg
             if not "doc_type" in _cfg:
@@ -454,8 +440,9 @@ class Indexer(object):
             self.num_shards = self.num_shards and int(self.num_shards) or self.num_shards
             self.num_replicas = _cfg.get("num_replicas",0) # optional
             self.num_replicas = self.num_replicas and int(self.num_replicas) or self.num_replicas
+            self.build_name = _cfg["name"]
         else:
-            raise ValueError('Cannot find build config named "%s"' % build)
+            raise ValueError("Cannot find build config associated to '%s'" % target_name)
         return _cfg
 
 

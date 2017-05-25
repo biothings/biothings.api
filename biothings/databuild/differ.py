@@ -2,6 +2,7 @@ import os
 import time, hashlib
 import pickle, json
 from datetime import datetime
+from dateutil.parser import parse as dtparse
 from pprint import pformat
 import asyncio
 from functools import partial
@@ -109,6 +110,13 @@ class BaseDiffer(object):
                     "files": [],
                     # when "new" is a target collection:
                     "mapping_file": None,
+                    "info" : {
+                        "generated_on": str(datetime.now()),
+                        "exclude": exclude,
+                        "steps": steps,
+                        "mode": mode,
+                        "batch_size": batch_size
+                        }
                     },
                 "old": {
                     "backend" : old_db_col_names,
@@ -118,22 +126,20 @@ class BaseDiffer(object):
                     "backend" : new_db_col_names,
                     "version": new.version
                     },
-                "batch_size": batch_size,
-                "steps": steps,
-                "mode": mode,
-                "exclude": exclude,
-                "generated_on": str(datetime.now()),
                 # when "new" is a target collection:
                 "_meta" : {},
                 "build_config": {},
                 }
         if isinstance(new,DocMongoBackend) and new.target_collection.database.name == btconfig.DATA_TARGET_DATABASE:
             build_doc = get_src_build().find_one({"_id":new.target_collection.name})
+            if not build_doc:
+                raise DifferException("Collection '%s' has no corresponding build document" % \
+                        new.target_collection.name)
             metadata["_meta"] = build_doc.get("_meta",{})
             metadata["build_config"] = build_doc.get("build_config")
 
         # dump it here for minimum information, in case we don't go further
-        json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"))
+        json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
 
         if "count" in steps:
             cnt = 0
@@ -258,7 +264,7 @@ class BaseDiffer(object):
                 diff_stats["update"], diff_stats["add"], diff_stats["delete"], diff_stats["mapping_changed"]))
 
         # pickle again with potentially more information (diff_stats)
-        json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"))
+        json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
         strargs = "[old=%s,new=%s,steps=%s,diff_stats=%s]" % (old_db_col_names,new_db_col_names,steps,diff_stats)
         self.logger.info("success %s" % strargs,extra={"notify":True})
         return diff_stats
@@ -402,10 +408,10 @@ class DiffReportTxt(DiffReportRendererBase):
         if report.get("metadata",{}):
             txt += "Old collection: %s\n" % repr(report["metadata"].get("old"))
             txt += "New collection: %s\n" % repr(report["metadata"].get("new"))
-            txt += "Batch size: %s\n" % report["metadata"].get("batch_size")
-            txt += "Steps: %s\n" % report["metadata"].get("steps")
-            txt += "Key(s) excluded: %s\n" % report["metadata"].get("exclude")
-            txt += "Diff generated on: %s\n" % report["metadata"].get("generated_on")
+            txt += "Batch size: %s\n" % report["metadata"]["diff"]["info"].get("batch_size")
+            txt += "Steps: %s\n" % report["metadata"]["diff"]["info"].get("steps")
+            txt += "Key(s) excluded: %s\n" % report["metadata"]["diff"]["info"].get("exclude")
+            txt += "Diff generated on: %s\n" % report["metadata"]["diff"]["info"].get("generated_on")
         else:
             txt+= "No metadata found in report\n"
         txt += "\n"
@@ -599,17 +605,24 @@ class DifferManager(BaseManager):
             data = loadobj(diff_file)
             sources[data["source"]] = 1
             if detailed:
-                new_col = create_backend(metadata["new"])
-                old_col = create_backend(metadata["old"])
+                # TODO: if self-contained, no db connection needed
+                new_col = create_backend(metadata["new"]["backend"])
+                old_col = create_backend(metadata["old"]["backend"])
             if len(adds) < max_reported_ids:
                 if detailed:
                     # look for which root keys were added in new collection
                     for _id in data["add"]:
+                        # selfcontained = dict for whole doc (see TODO above)
+                        if type(_id) == dict:
+                            _id = _id["_id"]
                         doc = new_col.get_from_id(_id)
                         rkeys = sorted(doc.keys())
                         adds["ids"].append([_id,rkeys])
                 else:
-                    adds["ids"].extend(data["add"])
+                    if data["add"] and type(data["add"][0]) == dict:
+                        adds["ids"].extend([d["_id"] for d in data["add"]])
+                    else:
+                        adds["ids"].extend(data["add"])
             adds["count"] += len(data["add"])
             if len(dels) < max_reported_ids:
                 if detailed:
@@ -619,7 +632,7 @@ class DifferManager(BaseManager):
                         rkeys = sorted(doc.keys())
                         dels["ids"].append([_id,rkeys])
                 else:
-                    dels["ids"].extend(data["add"])
+                    dels["ids"].extend(data["delete"])
             dels["count"] += len(data["delete"])
             for up in data["update"]:
                 for patch in up["patch"]:
@@ -643,6 +656,22 @@ class DifferManager(BaseManager):
                 "diff_folder" : diff_folder, "detailed": detailed,
                 "metadata": metadata}
 
+    def reset_synced(self,diff_folder,backend=None):
+        """
+        Remove "synced" flag from any pyobj file in diff_folder
+        """
+        diff_files = glob.glob(os.path.join(diff_folder,"*.pyobj"))
+        for diff in diff_files:
+            pyobj = loadobj(diff)
+            if pyobj.get("synced"):
+                if backend:
+                    self.logger.info("Removing synced flag from '%s' for backend '%s'" % (diff,backend))
+                    pyobj["synced"].pop(backend,None)
+                else:
+                    self.logger.info("Removing synced flag from '%s'" % diff)
+                    pyobj.pop("synced")
+                dump(pyobj,diff)
+
     def upload_diff(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None, steps=["reset","upload","meta"]):
         # check what to do
         if type(steps) == str:
@@ -653,7 +682,7 @@ class DifferManager(BaseManager):
             assert old_db_col_names and new_db_col_names, "No diff_folder specified, old_db_col_names and new_db_col_names are required"
             diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
         meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
-        diff_version = meta["diff_version"]
+        diff_version = meta["diff"]["version"]
         s3basedir = os.path.join(btconfig.S3_DIFF_FOLDER,diff_version)
 
         @asyncio.coroutine
@@ -669,7 +698,7 @@ class DifferManager(BaseManager):
                 # sure all of them will be applied by client
                 pinfo["step"] = "reset synced"
                 self.logger.info("Resetting 'synced' flag in pyobj files located in folder '%s'" % diff_folder)
-                job = yield from self.job_manager.defer_to_thread(pinfo,partial(SyncerManager.reset_synced,diff_folder))
+                job = yield from self.job_manager.defer_to_thread(pinfo,partial(self.reset_synced,diff_folder))
                 yield from job
                 jobs.append(job)
 
@@ -694,19 +723,20 @@ class DifferManager(BaseManager):
                     diff_meta = {
                             "type": "incremental",
                             "build_version": diff_version,
+                            "require_version": meta["old"]["version"],
                             "app_version": None,
                             "metadata" : {"url" : aws.get_s3_url(os.path.join(s3basedir,"metadata.json"),
                                 aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_DIFF_BUCKET)}
                             }
                     diff_file = "%s.json" % diff_version
                     diff_meta_path = os.path.join(btconfig.DIFF_PATH,diff_file)
-                    json.dump(diff_meta,open(diff_meta_path,"w"))
+                    json.dump(diff_meta,open(diff_meta_path,"w"),indent=True)
                     # get a timestamp from metadata to force lastdmodifed header
                     # timestamp is when the new collection was built (not when the diff 
                     # was generated, as diff can be generated way after). New collection's
                     # timestamp remains a good choice as data (diff) relates to that date anyway
                     metadata = json.load(open(os.path.join(diff_folder,"metadata.json")))
-                    local_ts = datetime.strptime(metadata["_meta"]["timestamp"],"%Y-%m-%d %H:%M:%S.%f")
+                    local_ts = dtparse(metadata["_meta"]["timestamp"])
                     utc_epoch = str(int(time.mktime(local_ts.timetuple())))
                     s3key = os.path.join(btconfig.S3_DIFF_FOLDER,diff_file)
                     aws.send_s3_file(diff_meta_path,s3key,
