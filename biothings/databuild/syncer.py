@@ -66,7 +66,8 @@ class BaseSyncer(object):
         return self.logger
 
     @asyncio.coroutine
-    def sync_cols(self, diff_folder, batch_size=10000, mode=None, force=False, target_backend=None):
+    def sync_cols(self, diff_folder, batch_size=10000, mode=None, force=False,
+            target_backend=None,steps=["mapping","content","meta"]):
         """
         Sync a collection with diff files located in diff_folder. This folder contains a metadata.json file which
         describes the different involved collection: "old" is the collection/index to be synced, "new" is the collecion
@@ -78,47 +79,119 @@ class BaseSyncer(object):
         meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
         diff_type = self.diff_type
         selfcontained = "selfcontained" in meta["diff"]["type"]
-        old_db_col_names = target_backend or meta["old"]["backend"]
+        old_db_col_names = target_backend or btconfig.ES_INDEX_NAME or meta["old"]["backend"]
         new_db_col_names = meta["new"]["backend"]
+        diff_mapping_file = meta["diff"]["mapping_file"]
         pinfo = {"category" : "sync",
                  "source" : "%s -> %s" % (old_db_col_names,new_db_col_names),
                  "step" : "",
                  "description" : ""}
-        if selfcontained:
-            # selfconained is a worker param, isolate diff format
-            diff_type = diff_type.replace("-selfcontained","")
-        diff_files = [os.path.join(diff_folder,e["name"]) for e in meta["diff"]["files"]]
-        total = len(diff_files)
         summary = {}
-        self.logger.info("Syncing from %s to %s using diff files in '%s'" % (old_db_col_names,new_db_col_names,diff_folder))
-        for diff_file in diff_files:
-            cnt += 1
-            pinfo["description"] = "file %s (%s/%s)" % (diff_file,cnt,total)
-            worker = getattr(sys.modules[self.__class__.__module__],"sync_%s_%s_worker" % \
-                    (self.target_backend,diff_type))
-            self.logger.info("Creating sync worker %s for file %s (%s/%s)" % (worker.__name__,diff_file,cnt,total))
-            job = yield from self.job_manager.defer_to_process(pinfo,
-                    partial(worker, diff_file, old_db_col_names, new_db_col_names, batch_size, cnt,
-                        force, selfcontained))
-            jobs.append(job)
-        def synced(f):
-            try:
-                for d in f.result():
-                    for k in d:
-                        summary.setdefault(k,0)
-                        summary[k] += d[k] 
-            except Exception as e:
-                got_error = e
-                raise
-        tasks = asyncio.gather(*jobs)
-        tasks.add_done_callback(synced)
-        yield from tasks
-        if got_error:
-            self.logger.error("Failed to sync collection from %s to %s using diff files in '%s': %s" % \
-                (old_db_col_names, new_db_col_names, diff_folder, got_error),extra={"notify":True})
-            raise got_error
+        if "mapping" in steps and self.target_backend == "es":
+            if diff_mapping_file:
+                # old_db_col_names is actually the index name in that case
+                index_name = old_db_col_names
+                doc_type = meta["build_config"]["doc_type"]
+                indexer = ESIndexer(index_name,doc_type,btconfig.ES_HOST)
+                pinfo["step"] = "mapping"
+                pinfo["description"] = diff_mapping_file
+
+                def update_mapping():
+                    diffm = os.path.join(diff_folder,diff_mapping_file)
+                    ops = loadobj(diffm)
+                    mapping = indexer.get_mapping()
+                    # we should have the same doc type declared in the mapping
+                    mapping[doc_type]["properties"] = jsonpatch.apply_patch(mapping[doc_type]["properties"],ops)
+                    res = indexer.update_mapping(mapping)
+                    return res
+
+                job = yield from self.job_manager.defer_to_thread(pinfo, partial(update_mapping))
+
+                def updated(f):
+                    try:
+                        res = f.result()
+                        self.logger.info("Mapping updated on index '%s'" % index_name)
+                        summary["mapping_updated"] = True
+                    except Exception as e:
+                        self.logger.error("Failed to update mapping on index '%s': %s" % (index_name,e))
+                        got_error = e
+
+                job.add_done_callback(updated)
+                yield from job
+
+            if got_error:
+                self.logger.error("Failed to update mapping on index '%s': %s" % \
+                    (old_db_col_names, got_error),extra={"notify":True})
+                raise got_error
+
+        if "content" in steps:
+            if selfcontained:
+                # selfconained is a worker param, isolate diff format
+                diff_type = diff_type.replace("-selfcontained","")
+            diff_files = [os.path.join(diff_folder,e["name"]) for e in meta["diff"]["files"]]
+            total = len(diff_files)
+            self.logger.info("Syncing from %s to %s using diff files in '%s'" % (old_db_col_names,new_db_col_names,diff_folder))
+            for diff_file in diff_files:
+                cnt += 1
+                pinfo["description"] = "file %s (%s/%s)" % (diff_file,cnt,total)
+                worker = getattr(sys.modules[self.__class__.__module__],"sync_%s_%s_worker" % \
+                        (self.target_backend,diff_type))
+                self.logger.info("Creating sync worker %s for file %s (%s/%s)" % (worker.__name__,diff_file,cnt,total))
+                job = yield from self.job_manager.defer_to_process(pinfo,
+                        partial(worker, diff_file, old_db_col_names, new_db_col_names, batch_size, cnt,
+                            force, selfcontained, meta))
+                jobs.append(job)
+            def synced(f):
+                try:
+                    for d in f.result():
+                        for k in d:
+                            summary.setdefault(k,0)
+                            summary[k] += d[k] 
+                except Exception as e:
+                    got_error = e
+                    raise
+            tasks = asyncio.gather(*jobs)
+            tasks.add_done_callback(synced)
+            yield from tasks
+            if got_error:
+                self.logger.error("Failed to sync collection from %s to %s using diff files in '%s': %s" % \
+                    (old_db_col_names, new_db_col_names, diff_folder, got_error),extra={"notify":True})
+                raise got_error
+
+        if "meta" in steps and self.target_backend == "es":
+            # old_db_col_names is actually the index name in that case
+            index_name = old_db_col_names
+            doc_type = meta["build_config"]["doc_type"]
+            indexer = ESIndexer(index_name,doc_type,btconfig.ES_HOST)
+            new_meta = meta["_meta"]
+            pinfo["step"] = "metadata"
+
+            def update_metadata():
+                res = indexer.update_mapping_meta({"_meta" : new_meta})
+                return res
+
+            job = yield from self.job_manager.defer_to_thread(pinfo, partial(update_metadata))
+
+            def updated(f):
+                try:
+                    res = f.result()
+                    self.logger.info("Metadata updated on index '%s'" % index_name)
+                    summary["metadata_updated"] = True
+                except Exception as e:
+                    self.logger.error("Failed to update metadata on index '%s': %s" % (index_name,e))
+                    got_error = e
+
+            job.add_done_callback(updated)
+            yield from job
+            
+            if got_error:
+                self.logger.error("Failed to update metadata on index '%s': %s" % \
+                    (old_db_col_names, got_error),extra={"notify":True})
+                raise got_error
+
         self.logger.info("Succesfully synced index %s to reach collection %s using diff files in '%s': %s" % \
                 (old_db_col_names, new_db_col_names, diff_folder,summary),extra={"notify":True})
+
         return summary
 
     def sync(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None, batch_size=10000, mode=None,
@@ -148,7 +221,7 @@ class ESJsonDiffSelfContainedSyncer(BaseSyncer):
 
 # TODO: refactor workers (see sync_es_...)
 def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, batch_size, cnt,
-        force=False, selfcontained=False):
+        force=False, selfcontained=False, metadata={}):
     """Worker to sync data between a new and an old mongo collection"""
     new = create_backend(new_db_col_names)
     old = create_backend(old_db_col_names)
@@ -203,10 +276,10 @@ def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, ba
 
 
 def sync_es_jsondiff_worker(diff_file, index_name, new_db_col_names, batch_size, cnt,
-        force=False, selfcontained=False):
+        force=False, selfcontained=False, metadata={}):
     """Worker to sync data between a new mongo collection and an elasticsearch index"""
     new = create_backend(new_db_col_names) # mongo collection to sync from
-    indexer = ESIndexer(index_name,btconfig.ES_DOC_TYPE,btconfig.ES_HOST)
+    indexer = ESIndexer(index_name,metadata["build_config"]["doc_type"],btconfig.ES_HOST)
     diff = loadobj(diff_file)
     res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
     # check if diff files was already synced

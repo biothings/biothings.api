@@ -3,7 +3,7 @@
 # To run this program, the file ``ssh_host_key`` must exist with an SSH
 # private key in it to use as a server host key.
 
-import os, glob, re, pickle, datetime
+import os, glob, re, pickle, datetime, json
 import asyncio, asyncssh, crypt, sys, io
 import types, aiocron, time
 from functools import partial
@@ -14,10 +14,14 @@ from collections import OrderedDict
 
 from biothings import config
 from biothings.utils.common import timesofar, sizeof_fmt
+import biothings.utils.aws as aws
 
 # useful variables to bring into hub namespace
 pending = "pending"
 done = "done"
+
+VERSIONS = config.HUB_ENV and "%s-versions" % config.HUB_ENV or "versions"
+LATEST = config.HUB_ENV and "%s-latest" % config.HUB_ENV or "latest"
 
 
 ##############
@@ -442,4 +446,49 @@ def top(pqueue,tqueue,pid=None):
 
 def stats(src_dump):
     pass
+
+def publish_data_version(version,env=None,update_latest=True):
+    """
+    Update remote files:
+    - versions.json: add version to the JSON list
+                     or replace if arg version is a list
+    - latest.json: update redirect so it points to version
+    """
+    # TODO: check if a "version".json exists
+    # register version
+    versionskey = os.path.join(config.S3_DIFF_FOLDER,"%s.json" % VERSIONS)
+    try:
+        versions = aws.get_s3_file(versionskey,return_what="content",
+                aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
+                s3_bucket=config.S3_DIFF_BUCKET)
+        versions = json.loads(versions.decode()) # S3 returns bytes
+    except FileNotFoundError:
+        versions = []
+    if type(version) == list:
+        versions = version
+    else:
+        versions.append(version)
+    versions = list(set(versions))
+    aws.send_s3_file(None,versionskey,content=json.dumps(versions),
+            aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
+            s3_bucket=config.S3_DIFF_BUCKET,overwrite=True)
+
+    # update latest
+    if type(version) != list and update_latest:
+        latestkey = os.path.join(config.S3_DIFF_FOLDER,"%s.json" % LATEST)
+        try:
+            key = aws.get_s3_file(latestkey,return_what="key",
+                    aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
+                    s3_bucket=config.S3_DIFF_BUCKET)
+        except FileNotFoundError:
+            aws.send_s3_file(None,latestkey,content=json.dumps(""),
+                    aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
+                    s3_bucket=config.S3_DIFF_BUCKET)
+            key = aws.get_s3_file(latestkey,return_what="key",
+                    aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
+                    s3_bucket=config.S3_DIFF_BUCKET)
+        newredir = os.path.join("/",config.S3_DIFF_FOLDER,"%s.json" % version)
+        key.set_redirect(newredir)
+            
+
 

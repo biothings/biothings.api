@@ -20,8 +20,10 @@ from biothings.utils.backend import DocMongoBackend
 import biothings.utils.aws as aws
 from biothings.databuild.syncer import SyncerManager
 from biothings.utils.jsondiff import make as jsondiff
+from biothings.utils.hub import publish_data_version
 
 logging = btconfig.logger
+
 
 class DifferException(Exception):
     pass
@@ -760,6 +762,8 @@ class DifferManager(BaseManager):
                     url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
                             s3_bucket=btconfig.S3_DIFF_BUCKET)
                     self.logger.info("Incremental release metadata published for version: '%s'" % url)
+                    publish_data_version(diff_version)
+                    self.logger.info("Registered version '%s'" % (diff_version))
                 job = yield from self.job_manager.defer_to_thread(pinfo,gen_meta)
                 yield from job
                 jobs.append(job)

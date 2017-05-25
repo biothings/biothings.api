@@ -225,18 +225,17 @@ class ESIndexer():
     def get_mapping(self):
         """return the current index mapping"""
         m = self._es.indices.get_mapping(index=self._index, doc_type=self._doc_type)
-        return m
+        return m[self._index]["mappings"]
 
     def update_mapping(self, m):
-        assert list(m) == [self._doc_type]
-        assert 'properties' in m[self._doc_type]
+        assert list(m) == [self._doc_type], "Bad mapping format, should have one doc_type, got: %s" % list(m)
+        assert 'properties' in m[self._doc_type], "Bad mapping format, no 'properties' key"
         return self._es.indices.put_mapping(index=self._index, doc_type=self._doc_type, body=m)
 
     def get_mapping_meta(self):
         """return the current _meta field."""
         m = self.get_mapping()
-        m = m[self._index]['mappings'][self._doc_type]
-        return {"_meta": m["_meta"]}
+        return {"_meta": m[self._doc_type]["_meta"]}
 
     def update_mapping_meta(self, meta):
         allowed_keys = set(['_meta', '_timestamp'])

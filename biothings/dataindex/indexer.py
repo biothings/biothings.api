@@ -16,7 +16,8 @@ from biothings.utils.es import ESIndexer
 from biothings.utils.backend import DocESBackend
 from biothings import config as btconfig
 from biothings.utils.mongo import doc_feeder, id_feeder
-from config import LOG_FOLDER, logger as logging
+from config import LOG_FOLDER, logger as logging, HUB_ENV
+from biothings.utils.hub import publish_data_version
 
 
 class IndexerException(Exception):
@@ -189,10 +190,12 @@ class IndexerManager(BaseManager):
                     aws.send_s3_file(build_info_path,s3key,
                             aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
                             s3_bucket=btconfig.S3_DIFF_BUCKET,metadata={"lastmodified":utc_epoch},
-                             overwrite=True,permissions="public-read")
+                             overwrite=True)
                     url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
                             s3_bucket=btconfig.S3_DIFF_BUCKET)
                     self.logger.info("Full release metadata published for version: '%s'" % url)
+                    publish_data_version(esb.version)
+                    self.logger.info("Registered version '%s'" % (esb.version))
                     fut.set_result("SUCCESS")
                 except Exception as e:
                     self.logger.error("Error while publishing metadata for snapshot '%s': %s" % (snapshot,e))
