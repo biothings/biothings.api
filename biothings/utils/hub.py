@@ -454,7 +454,7 @@ def publish_data_version(version,env=None,update_latest=True):
                      or replace if arg version is a list
     - latest.json: update redirect so it points to version
     """
-    # TODO: check if a "version".json exists
+    # TODO: check if a <version>.json exists
     # register version
     versionskey = os.path.join(config.S3_DIFF_FOLDER,"%s.json" % VERSIONS)
     try:
@@ -462,7 +462,7 @@ def publish_data_version(version,env=None,update_latest=True):
                 aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
                 s3_bucket=config.S3_DIFF_BUCKET)
         versions = json.loads(versions.decode()) # S3 returns bytes
-    except FileNotFoundError:
+    except (FileNotFoundError,json.JSONDecodeError):
         versions = []
     if type(version) == list:
         versions = version
@@ -470,25 +470,26 @@ def publish_data_version(version,env=None,update_latest=True):
         versions.append(version)
     versions = list(set(versions))
     aws.send_s3_file(None,versionskey,content=json.dumps(versions),
-            aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
-            s3_bucket=config.S3_DIFF_BUCKET,overwrite=True)
+            aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,s3_bucket=config.S3_DIFF_BUCKET,
+            content_type="application/json",overwrite=True)
 
     # update latest
     if type(version) != list and update_latest:
         latestkey = os.path.join(config.S3_DIFF_FOLDER,"%s.json" % LATEST)
+        key = None
         try:
             key = aws.get_s3_file(latestkey,return_what="key",
                     aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
                     s3_bucket=config.S3_DIFF_BUCKET)
         except FileNotFoundError:
-            aws.send_s3_file(None,latestkey,content=json.dumps(""),
-                    aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
-                    s3_bucket=config.S3_DIFF_BUCKET)
+            pass
+        aws.send_s3_file(None,latestkey,content=json.dumps(version),content_type="application/json",
+                aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
+                s3_bucket=config.S3_DIFF_BUCKET,overwrite=True)
+        if not key:
             key = aws.get_s3_file(latestkey,return_what="key",
                     aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
                     s3_bucket=config.S3_DIFF_BUCKET)
         newredir = os.path.join("/",config.S3_DIFF_FOLDER,"%s.json" % version)
         key.set_redirect(newredir)
             
-
-
