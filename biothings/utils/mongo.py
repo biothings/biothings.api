@@ -84,6 +84,10 @@ def get_src_build(conn=None):
     conn = conn or get_src_conn()
     return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
 
+@requires_config
+def get_src_build_config(conn=None):
+    conn = conn or get_src_conn()
+    return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_BUILD_COLLECTION + "_config"]
 
 @requires_config
 def get_target_conn():
@@ -221,17 +225,11 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
 
     try:
         if col.database.name == config.DATA_TARGET_DATABASE:
-            # TODO: if col.name is present in different build config, that will pick one
-            # (order not ensured) and maybe timestamp will be wrong. It's based on naming
-            # convention or at least the fact we don't use the same name for 2 different
-            # build config
-            info = src_db["src_build"].find_one({"build.target_name" : col.name},{"build.started_at":1})
+            info = src_db["src_build"].find_one({"_id": col.name})
             if not info:
                 logger.warning("Can't find information for target collection '%s'" % col.name)
-            elif not len(info["build"]) > 0:
-                logger.warning("Missing build information for targer collection '%s'" % col.name)
             else:
-                ts = info["build"][-1]["started_at"].timestamp()
+                ts = info["started_at"].timestamp()
         elif col.database.name == config.DATA_SRC_DATABASE:
             info = src_db["src_dump"].find_one({"$where":"function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}}" % col.name})
             if not info:
@@ -244,8 +242,8 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             build_cache = False
     except KeyError:
         logger.warning("Couldn't find timestamp in database for '%s'" % col.name)
-    except Exception:
-        logger.info("%s is not a mongo collection, _id cache won't be built" % col)
+    except Exception as e:
+        logger.info("%s is not a mongo collection, _id cache won't be built (error: %s)" % (col,e))
         build_cache = False
 
     # try to find a cache file

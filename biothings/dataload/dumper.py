@@ -21,7 +21,7 @@ class BaseDumper(object):
     SRC_ROOT_FOLDER = None # source folder (without version/dates)
 
     # Should an upload be triggered after dump ?
-    NEED_UPLOAD = True
+    AUTO_UPLOAD = True
 
     # attribute used to generate data folder path suffix
     SUFFIX_ATTR = "release"
@@ -95,7 +95,7 @@ class BaseDumper(object):
     def src_doc(self, value):
         self._state["src_doc"] = value
 
-    def create_todump_list(self,force=False):
+    def create_todump_list(self,force=False,**kwargs):
         """Fill self.to_dump list with dict("remote":remote_path,"local":local_path)
         elements. This is the todo list for the dumper. It's a good place to
         check whether needs to be downloaded. If 'force' is True though, all files
@@ -121,7 +121,10 @@ class BaseDumper(object):
         raise NotImplementedError("Define in subclass")
 
     def download(self,remotefile,localfile):
-        """Download "remotefile' to local location defined by 'localfile'"""
+        """
+        Download "remotefile' to local location defined by 'localfile'
+        Return relevant information about remotefile (depends on the actual client)
+        """
         raise NotImplementedError("Define in subclass")
 
     def post_download(self, remotefile, localfile):
@@ -190,9 +193,16 @@ class BaseDumper(object):
         self.src_doc = self.src_dump.find_one({'_id': self.src_name}) or {}
 
     def register_status(self,status,transient=False,**extra):
+        try:
+            # is status is "failed" and depending on where it failed,
+            # we may not be able to get the new_data_folder (if dumper didn't reach 
+            # the release information for instance). Default to current if failing
+            data_folder = self.new_data_folder
+        except DumperException:
+            data_folder = self.current_data_folder
         self.src_doc = {
                 '_id': self.src_name,
-               'data_folder': self.new_data_folder,
+               'data_folder': data_folder,
                'release': getattr(self,self.__class__.SUFFIX_ATTR),
                'download' : {
                    'logfile': self.logfile,
@@ -211,7 +221,7 @@ class BaseDumper(object):
         self.src_dump.save(self.src_doc)
 
     @asyncio.coroutine
-    def dump(self, steps=None, force=False, job_manager=None):
+    def dump(self, steps=None, force=False, job_manager=None, **kwargs):
         '''
         Dump (ie. download) resource as needed
         this should be called after instance creation
@@ -230,7 +240,7 @@ class BaseDumper(object):
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "check"
                 # TODO: blocking call for now, FTP client can't be properly set in thread after
-                self.create_todump_list(force=force)
+                self.create_todump_list(force=force, **kwargs)
                 if self.to_dump:
                     # mark the download starts
                     self.register_status("downloading",transient=True)
@@ -244,22 +254,30 @@ class BaseDumper(object):
                     self.logger.info("Nothing to dump",extra={"notify":True})
                     return
             if "post" in self.steps:
+                got_error = False
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "post_dump"
                 # for some reason (like maintaining object's state between pickling).
                 # we can't use process there. Need to use thread to maintain that state without
                 # building an unmaintainable monster
                 job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
-                yield from asyncio.gather(job) # consume future
+                def postdumped(f):
+                    if f.exception():
+                        got_error = f.exception()
+                job.add_done_callback(postdumped)
+                yield from job
+                if got_error:
+                    raise got_error
                 # set it to success at the very end
-                self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
+                self.register_status("success",pending_to_upload=self.__class__.AUTO_UPLOAD)
                 self.logger.info("success %s" % strargs,extra={"notify":True})
         except (KeyboardInterrupt,Exception) as e:
             self.logger.error("Error while dumping source: %s" % e)
             import traceback
             self.logger.error(traceback.format_exc())
-            self.register_status("failed",download={"err" : repr(e)})
+            self.register_status("failed",download={"err" : str(e)})
             self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
+            raise
         finally:
             if self.client:
                 self.release_client()
@@ -298,7 +316,15 @@ class BaseDumper(object):
 
     @property
     def current_data_folder(self):
-        return self.src_doc.get("data_folder") or self.new_data_folder
+        try:
+            return self.src_doc.get("data_folder") or self.new_data_folder
+        except DumperException:
+            # exception raied from new_data_folder generation, we give up
+            return None
+
+    @property
+    def current_release(self):
+        return self.src_doc.get("release")
 
     @asyncio.coroutine
     def do_dump(self,job_manager=None):
@@ -364,6 +390,7 @@ class FTPDumper(BaseDumper):
         # an example: 'last-modified': '20121128150000'
         lastmodified = time.mktime(datetime.strptime(lastmodified, '%Y%m%d%H%M%S').timetuple())
         os.utime(localfile, (lastmodified, lastmodified))
+        return code
 
     def remote_is_better(self,remotefile,localfile):
         """'remotefile' is relative path from current working dir (CWD_DIR), 
@@ -412,15 +439,19 @@ class HTTPDumper(BaseDumper):
         self.prepare_local_folders(localfile)
         self.logger.debug("Downloading '%s'" % remoteurl)
         res = self.client.get(remoteurl,stream=True,headers=headers)
+        if not res.status_code == 200:
+            raise DumperException("Error while downloading '%s' (status: %s, reason: %s)" % \
+                    (remoteurl,res.status_code,res.reason))
         fout = open(localfile, 'wb')
         for chunk in res.iter_content(chunk_size=512 * 1024):
             if chunk:
                 fout.write(chunk)
         fout.close()
+        return res
 
 class WgetDumper(BaseDumper):
 
-    def create_todump_list(self,force=False):
+    def create_todump_list(self,force=False,**kwargs):
         """Fill self.to_dump list with dict("remote":remote_path,"local":local_path)
         elements. This is the todo list for the dumper. It's a good place to
         check whether needs to be downloaded. If 'force' is True though, all files
@@ -477,7 +508,7 @@ class DummyDumper(BaseDumper):
         job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
         yield from asyncio.gather(job) # consume future
         self.logger.info("Registering success")
-        self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
+        self.register_status("success",pending_to_upload=self.__class__.AUTO_UPLOAD)
         self.logger.info("success",extra={"notify":True})
 
 class ManualDumper(BaseDumper):
@@ -541,7 +572,7 @@ class ManualDumper(BaseDumper):
         job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
         yield from asyncio.gather(job) # consume future
         # ok, good to go
-        self.register_status("success",pending_to_upload=self.__class__.NEED_UPLOAD)
+        self.register_status("success",pending_to_upload=self.__class__.AUTO_UPLOAD)
         self.logger.info("success %s" % strargs,extra={"notify":True})
         self.logger.info("Manually dumped resource (data_folder: '%s')" % self.new_data_folder)
 
@@ -600,7 +631,7 @@ class GoogleDriveDumper(HTTPDumper):
             raise DumperException("Can't find a download link from '%s': %s" % (dl_url,html))
         href = link.get("href")
         # now build the final GET request, using cookies to simulate browser
-        super(GoogleDriveDumper,self).download("https://docs.google.com" + href, localfile, headers={"cookie": res.headers["set-cookie"]})
+        return super(GoogleDriveDumper,self).download("https://docs.google.com" + href, localfile, headers={"cookie": res.headers["set-cookie"]})
 
 ####################
 

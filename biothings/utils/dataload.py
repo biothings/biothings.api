@@ -8,6 +8,7 @@ import itertools
 import csv
 import os, os.path
 import json
+import collections
 
 from .common import open_anyfile, is_str, ask, safewfile, anyfile
 
@@ -485,6 +486,20 @@ def updated_dict(_dict, attrs):
     out = _dict.copy()
     out.update(attrs)
     return out
+
+
+def update_dict_recur(d,u):
+    """
+    Update dict d with dict u's values, recursively
+    (so existing values d but not in u are kept even if nested)
+    """
+    for k, v in u.items():
+        if isinstance(v, collections.Mapping):
+            r = update_dict_recur(d.get(k, {}), v)
+            d[k] = r
+        else:
+            d[k] = u[k]
+    return d
 
 
 def merge_dict(dict_li, attr_li, missingvalue=None):

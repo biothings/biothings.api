@@ -1,6 +1,6 @@
 import time, copy
 import json
-from elasticsearch import Elasticsearch, NotFoundError, RequestError
+from elasticsearch import Elasticsearch, NotFoundError, RequestError, TransportError
 from elasticsearch import helpers
 import logging
 import itertools
@@ -66,6 +66,7 @@ class IndexerException(Exception): pass
 class ESIndexer():
     def __init__(self, index, doc_type, es_host, step=10000,
                  number_of_shards=10, number_of_replicas=0):
+        self.es_host = es_host
         self._es = get_es(es_host)
         self._index = index
         self._doc_type = doc_type
@@ -224,18 +225,17 @@ class ESIndexer():
     def get_mapping(self):
         """return the current index mapping"""
         m = self._es.indices.get_mapping(index=self._index, doc_type=self._doc_type)
-        return m
+        return m[self._index]["mappings"]
 
     def update_mapping(self, m):
-        assert list(m) == [self._doc_type]
-        assert 'properties' in m[self._doc_type]
+        assert list(m) == [self._doc_type], "Bad mapping format, should have one doc_type, got: %s" % list(m)
+        assert 'properties' in m[self._doc_type], "Bad mapping format, no 'properties' key"
         return self._es.indices.put_mapping(index=self._index, doc_type=self._doc_type, body=m)
 
     def get_mapping_meta(self):
         """return the current _meta field."""
         m = self.get_mapping()
-        m = m[self._index]['mappings'][self._doc_type]
-        return {"_meta": m["_meta"]}
+        return {"_meta": m[self._doc_type]["_meta"]}
 
     def update_mapping_meta(self, meta):
         allowed_keys = set(['_meta', '_timestamp'])
@@ -490,18 +490,67 @@ class ESIndexer():
         except RequestError as e:
             raise IndexerException("Can't snapshot '%s' (if already exists, use mode='purge'): %s" % (self._index,e))
 
+    def restore(self,repo_name,snapshot_name,index_name=None,purge=False,body=None):
+        index_name = index_name or snapshot_name
+        if purge:
+            try:
+                self._es.indices.get(index_name)
+                # if we get there, it exists, delete it
+                self._es.indices.delete(index_name)
+            except NotFoundError:
+                # no need to delete it,
+                pass
+        try:
+            # this is just about renaming index within snapshot to index_name
+            body = {
+                    "indices": snapshot_name, # snaphost name is the same as index in snapshot
+                    "rename_replacement": index_name,
+                    "ignore_unavailable": True,
+                    "rename_pattern": "(.+)",
+                    "include_global_state": True
+                    }
+            return self._es.snapshot.restore(repo_name,snapshot_name,body=body)
+        except TransportError as e:
+            raise IndexerException("Can't restore snapshot '%s' (does index '%s' already exist ?): %s" % \
+                    (snapshot_name,index_name,e))
+
+    def get_repository(self,repo_name):
+        return self._es.snapshot.get_repository(repo_name)
+
+    def create_repository(self,repo_name,settings):
+        try:
+            self._es.snapshot.create_repository(repo_name,settings)
+        except TransportError as e:
+            raise IndexerException("Can't create snapshot repository '%s': %s" % (repo_name,e))
+
     def get_snapshot_status(self,repo,snapshot):
         return self._es.snapshot.status(repo,snapshot)
+
+    def get_restore_status(self,index_name=None):
+        index_name = index_name or self._index
+        recov = self._es.indices.recovery(index_name)
+        if not index_name in recov:
+            return {"status": "INIT", "progress" : "0%"}
+        shards = recov[index_name]["shards"]
+        # get all shards status
+        shards_status = [s["stage"] for s in shards]
+        done = len([s for s in shards_status if s == "DONE"])
+        if set(shards_status) == {"DONE"}:
+            return {"status": "DONE", "progress" : "100%"}
+        else:
+            return {"status" : "IN_PROGRESS", "progress": "%.2f%%" % (done/len(shards_status)*100)}
 
 
 def generate_es_mapping(inspect_doc,init=True,level=0):
     """Generate an ES mapping according to "inspect_doc", which is 
     produced by biothings.utils.inspect module"""
-    type_map = {int:"integer",
-                bool:"boolean",
-                float:"float",
-                str:"string",
-                }
+    map_tpl= {
+            int: {"type": "integer"},
+            bool: {"type": "boolean"},
+            float: {"type": "float"},
+            str: {"type": "string","analyzer":"string_lowercase"}, # not splittable (like an ID for instance)
+            "split_str": {"type": "string"}
+            }
     if init and not "_id" in inspect_doc:
         raise ValueError("Not _id key found, documents won't be indexed")
     mapping = {}
@@ -522,7 +571,12 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
         if list in keys:
             # we explore directly the list w/ inspect_doc[rootk][list] as param. 
             # (similar to skipping list type, as there's no such list type in ES mapping)
-            res = generate_es_mapping(inspect_doc[rootk][list],init=False,level=level+1)
+            # carefull: there could be list of list, if which we move further into the structure
+            # to skip them
+            toexplore = inspect_doc[rootk][list]
+            while list in toexplore:
+                toexplore = toexplore[list]
+            res = generate_es_mapping(toexplore,init=False,level=level+1)
             # is it the only key or do we have more ? (ie. some docs have data as "x", some 
             # others have list("x")
             if len(keys) > 1:
@@ -544,11 +598,13 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
                 raise Exception("More than one type")
             try:
                 typ = list(inspect_doc[rootk].keys())[0]
-                mapping[rootk] = {"type":type_map[typ]}
+                if "split" in inspect_doc[rootk][typ]:
+                    typ = "split_str"
+                mapping[rootk] = map_tpl[typ]
             except Exception as e:
                 raise ValueError("Can't find map type %s for key %s" % (rootk,inspect_doc[rootk]))
         elif inspect_doc[rootk] == {}:
-            return {"type" : type_map[rootk]}
+            return map_tpl[rootk]
         else:
             mapping[rootk] = {"properties" : {}}
             mapping[rootk]["properties"] = generate_es_mapping(inspect_doc[rootk],init=False,level=level+1)

@@ -16,19 +16,21 @@ class ESResultTransformer(object):
 
     :param options: Options from the URL string controlling result transformer
     :param host: Host name (extracted from request), used for JSON-LD address generation
+    :param doc_url_function: a function that takes one argument (a biothing id) and returns a URL to that biothing
     :param jsonld_context: JSON-LD context for this app (optional)
     :param data_sources: unused currently (optional)
     :param output_aliases: list of output key names to alias, unused currently (optional)
     :param app_dir: Application directory for this app (used for getting app information in /metadata)'''
-    def __init__(self, options, host, jsonld_context={}, data_sources={}, output_aliases={}, app_dir=''):
+    def __init__(self, options, host, doc_url_function=lambda x: x, jsonld_context={}, data_sources={}, output_aliases={}, app_dir=''):
         self.options = options
         self.host = host
+        self.doc_url_function = doc_url_function
         self.jsonld_context = jsonld_context
         self.data_sources = data_sources
         self.output_aliases = output_aliases
         self.app_dir = app_dir
 
-    def _flatten_doc(self, doc, outfield_sep='.', context_sep='/'):
+    def _flatten_doc(self, doc, outfield_sep='.', context_sep='.'):
         def _recursion_helper(d, ret, path, out):
             if isinstance(d, dict):
                 for key in d:
@@ -51,23 +53,21 @@ class ESResultTransformer(object):
         _recursion_helper(doc, ret, '', '')
         return OrderedDict([(k,v) for (k,v) in sorted(ret.items(), key=lambda x: x[0])])
     
-    def _sort_and_annotate_doc(self, doc, sort=True, jsonld=False, data_src=False, field_sep='/'):
-        def _recursion_helper(doc, context_key):
+    def _sort_and_annotate_doc(self, doc, sort=True, data_src=False, field_sep='.'):
+        def _recursion_helper(doc, path):
             if is_seq(doc):
-                return [_recursion_helper(_doc, context_key) for _doc in doc]
+                return [_recursion_helper(_doc, path) for _doc in doc]
             elif isinstance(doc, dict):
-                if jsonld and context_key in self.jsonld_context:
-                    doc['@context'] = self.jsonld_context[context_key]['@context']
-                if data_src and context_key in self.data_sources:
-                    doc['@sources'] = self.data_sources[context_key]['@sources']
+                if data_src and path in self.data_sources:
+                    doc['@sources'] = self.data_sources[path]['@sources']
                 if sort:
                     _doc = sorted(doc)
                 else:
                     _doc = doc.keys()
                 this_list = []
                 for key in _doc:
-                    new_context = key if context_key == 'root' else field_sep.join([context_key, key])
-                    this_list.append((self._alias_output_keys(new_context, key), _recursion_helper(doc[key], new_context)))
+                    new_path = key if not path else field_sep.join([path, key])
+                    this_list.append((self._alias_output_keys(new_path, key), _recursion_helper(doc[key], new_path)))
                 if sort:
                     return OrderedDict(this_list)
                 else:
@@ -75,7 +75,7 @@ class ESResultTransformer(object):
             else:
                 return doc
 
-        return _recursion_helper(doc, 'root') 
+        return _recursion_helper(doc, '')
 
     def _form_doc(self, doc, score=True):
         _doc = doc.get('_source', doc.get('fields', {}))
@@ -91,11 +91,15 @@ class ESResultTransformer(object):
 
         self._modify_doc(_doc)
            
-        if self.options.dotfield:
+        if self.options.jsonld:
+            _d = OrderedDict([('@context', self.jsonld_context['@context']), 
+                              ('@id', self.doc_url_function(_doc['_id']))])
+            _d.update(self._flatten_doc(_doc))
+            return _d
+        elif self.options.dotfield:
             return self._flatten_doc(_doc)
         else:
-            return self._sort_and_annotate_doc(_doc, jsonld=self.options.jsonld, 
-                            sort=self.options._sorted, data_src=self.options.datasource)
+            return self._sort_and_annotate_doc(_doc, sort=self.options._sorted, data_src=self.options.datasource)
 
     def _modify_doc(self, doc):
         ''' Override to add custom fields to doc before flattening/sorting '''

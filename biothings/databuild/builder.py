@@ -18,6 +18,7 @@ from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.databuild.mapper import TransparentMapper
 from biothings.dataload.uploader import ResourceNotReady
 from biothings.utils.manager import BaseManager, ManagerError
+from biothings.utils.dataload import update_dict_recur
 import biothings.utils.mongo as mongo
 import biothings.databuild.backend as backend
 from biothings.databuild.backend import TargetDocMongoBackend
@@ -36,8 +37,7 @@ class DataBuilder(object):
     keep_archive = 10 # number of archived collection to keep. Oldest get dropped first.
 
     def __init__(self, build_name, source_backend, target_backend, log_folder,
-                 doc_root_key="root", max_build_status=10,
-                 mappers=[], default_mapper_class=TransparentMapper,
+                 doc_root_key="root", mappers=[], default_mapper_class=TransparentMapper,
                  sources=None, target_name=None,**kwargs):
         self.init_state()
         self.build_name = build_name
@@ -51,7 +51,7 @@ class DataBuilder(object):
             self._partial_target_backend = target_backend
         else:
             self._state["target_backend"] = target_backend
-        # doc_root_key is a key name within src_build doc.
+        # doc_root_key is a key name within src_build_config doc.
         # it's a list of datasources that are able to create a document
         # even it doesn't exist. It root documents list is not empty, then
         # any other datasources not listed there won't be able to create
@@ -68,13 +68,14 @@ class DataBuilder(object):
         self.mappers = {}
         self.timestamp = datetime.now()
         self.stats = {} # keep track of cnt per source, etc...
+        self.src_versions = {} # versions involved in this build
+        self.metadata = {} # custom metadata
+        self.mapping = {} # ES mapping (merged from src_master's docs)
 
         for mapper in mappers + [default_mapper_class()]:
             self.mappers[mapper.name] = mapper
 
         self.step = kwargs.get("step",10000)
-        # max no. of records kept in "build" field of src_build collection.
-        self.max_build_status = max_build_status
         self.prepared = False
 
     def init_state(self):
@@ -179,9 +180,9 @@ class DataBuilder(object):
         if force:
             # don't even bother
             return
-        src_build = self.source_backend.build
+        src_build_config = self.source_backend.build_config
         src_dump = self.source_backend.dump
-        _cfg = src_build.find_one({'_id': self.build_config['_id']})
+        _cfg = src_build_config.find_one({'_id': self.build_config['_id']})
         # check if all resources are uploaded
         for src_name in _cfg["sources"]:
             # "sources" in config is a list a collection names. src_dump _id is the name of the
@@ -193,52 +194,92 @@ class DataBuilder(object):
             if not src_doc.get("upload",{}).get("jobs",{}).get(src_name,{}).get("status") == "success":
                 raise ResourceNotReady("No successful upload found for resource '%s'" % src_name)
 
+    def get_build_version(self):
+        """
+        Generate an arbitrary major build version. Default is using a timestamp (YYMMDD)
+        '.' char isn't allowed in build version as it's reserved for minor versions
+        """
+        d = datetime.fromtimestamp(self.t0)
+        return "%d%02d%02d" % (d.year,d.month,d.day)
+
     def register_status(self,status,transient=False,init=False,**extra):
+        """
+        Register current build status. A build status is a record in src_build
+        The key used in this dict the target_name. Then, any operation
+        acting on this target_name is registered in a "jobs" list.
+        """
         assert self.build_config, "build_config needs to be specified first"
         # get it from source_backend, kind of weird...
         src_build = self.source_backend.build
+        src_build_config = self.source_backend.build_config
+        all_sources = self.build_config.get("sources",[])
+        target_name = "%s" % self.target_backend.target_name
         build_info = {
-            'status': status,
-            'step_started_at': datetime.now(),
-            'started_at' : datetime.fromtimestamp(self.t0),
-            'logfile': self.logfile,
-            'target_backend': self.target_backend.name,
-            'target_name': self.target_backend.target_name}
+                '_id' : target_name,
+                'target_backend': self.target_backend.name,
+                'target_name': target_name,
+                'build_config': self.build_config,
+                # these are all the sources required to build target
+                # (not just the ones being processed, those are registered in jobs
+                'sources' : all_sources, 
+                }
+        job_info = {
+                'status': status,
+                'step_started_at': datetime.now(),
+                'logfile': self.logfile,
+                }
         if status == "building":
             # reset the flag
-            src_build.update({"_id" : self.build_config["_id"]},{"$unset" : {"pending_to_build":None}})
+            src_build_config.update({"_id" : self.build_config["_id"]},{"$unset" : {"pending_to_build":None}})
         if transient:
             # record some "in-progress" information
-            build_info['pid'] = os.getpid()
+            job_info['pid'] = os.getpid()
         else:
             # only register time when it's a final state
-            build_info["time"] = timesofar(self.t0)
+            job_info["time"] = timesofar(self.t0)
             t1 = round(time.time() - self.t0, 0)
-            build_info["time_in_s"] = t1
+            job_info["time_in_s"] = t1
         if "build" in extra:
             build_info.update(extra["build"])
-        # create a new build entry at the end and clean extra one (not needed/wanted)
-        _cfg = src_build.find_one({'_id': self.build_config['_id']})
+        if "job" in extra:
+            job_info.update(extra["job"])
+        # create a new build entry in "build" dict if none exists
+        build = src_build.find_one({'_id': target_name})
+        if not build:
+            # first record for target_name, keep a timestamp
+            build_info["started_at"] = datetime.fromtimestamp(self.t0)
+            build_info["jobs"] = []
+            src_build.insert_one(build_info)
         if init:
-            if not "build" in _cfg:
-                # no build entrey yet, need to init the list
-                src_build.update({'_id': self.build_config['_id']}, {"$set": {'build': [build_info]}})
-            else:
-                src_build.update({'_id': self.build_config['_id']}, {"$push": {'build': build_info}})
+            src_build.update({'_id': target_name}, {"$push": {'jobs': job_info}})
             # now refresh/sync
-            _cfg = src_build.find_one({'_id': self.build_config['_id']})
-            if len(_cfg['build']) > self.max_build_status:
-                howmany = len(_cfg['build']) - self.max_build_status
-                #remove any status not needed anymore
-                for _ in range(howmany):
-                    # pop previous build starting from oldest ones
-                    src_build.update({'_id': self.build_config['_id']}, {"$pop": {'build': -1}})
+            build = src_build.find_one({'_id': target_name})
         else:
-            # merge extra at root or "build" level
+            # merge extra at root level
             # (to keep building data...) and update the last one
             # (it's been properly created before when init=True)
-            _cfg["build"][-1].update(build_info)
-            src_build.replace_one({'_id': self.build_config['_id']},_cfg)
+            build["jobs"][-1].update(job_info)
+            # build_info is common to all jobs, so we want to keep
+            # any existing data (well... except if it's explicitely specified)
+            def merge_build_info(target,d):
+                if "__REPLACE__" in d.keys():
+                    d.pop("__REPLACE__")
+                    target = d
+                else:
+                    for k,v in d.items():
+                        if type(v) == dict:
+                            if k in target:
+                                target[k] = merge_build_info(target[k],v) 
+                            else:
+                                v.pop("__REPLACE__",None)
+                                # merge v with "nothing" just to make sure to remove any "__REPLACE__"
+                                v = merge_build_info({},v)
+                                target[k] = v
+                        else:
+                            target[k] = v
+                return target
+            build = merge_build_info(build,build_info)
+            src_build.replace_one({"_id" : build["_id"]}, build)
 
     def clean_old_collections(self):
         # use target_name is given, otherwise build name will be used 
@@ -289,18 +330,44 @@ class DataBuilder(object):
         if self.doc_root_key and not self.doc_root_key in self.build_config:
             raise BuilderException("Root document key '%s' can't be found in build configuration" % self.doc_root_key)
 
-    def store_stats(self,f,sources):
-        try:
-            self.target_backend.post_merge()
-            _src_versions = self.source_backend.get_src_versions()
-            strargs = "[sources=%s,stats=%s,versions=%s]" % (sources,self.stats,_src_versions)
-            self.register_status('success',build={"stats" : self.stats, "src_version" : _src_versions})
-            self.logger.info("success %s" % strargs,extra={"notify":True})
-        except Exception as e:
-            strargs = "[sources=%s]" % sources
-            self.register_status("failed",build={"err": repr(e)})
-            self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
-            raise
+    def get_metadata(self,sources,job_manager):
+        """
+        Return a dictionnary of metadata for this build. It's usually app-specific 
+        and this method may be overridden as needed. Default: return "merge_stats"
+        (#docs involved in each single collections used in that build)
+
+        Return dictionary will potentially be merged with existing metadata in
+        src_build collection. This behavior can be changed by setting a special
+        key within metadata dict: {"__REPLACE__" : True} will... replace existing 
+        metadata with the one returned here.
+
+        "job_manager" is passed in case parallelization is needed. Be aware
+        that this method is already running in a dedicated thread, in order to
+        use job_manager, the following code must be used at the very beginning 
+        of its implementation:
+        asyncio.set_event_loop(job_manager.loop)
+        """
+        return self.stats
+
+    def get_mapping(self,sources):
+        """
+        Merge mappings from src_master
+        """
+        mapping = {}
+        src_master = self.source_backend.master
+        for collection in self.build_config['sources']:
+            meta = src_master.find_one({"_id" : collection})
+            if 'mapping' in meta and meta["mapping"]:
+                mapping.update(meta['mapping'])
+            else:
+                self.logger.info('Warning: "%s" collection has no mapping data.' % collection)
+        return mapping
+
+    def store_metadata(self,res,sources,job_manager):
+        self.target_backend.post_merge()
+        self.src_versions = self.source_backend.get_src_versions()
+        self.metadata = self.get_metadata(sources,job_manager)
+        self.mapping = self.get_mapping(sources)
 
     def resolve_sources(self,sources):
         """
@@ -354,22 +421,58 @@ class DataBuilder(object):
         if target_name:
             self.target_name = target_name
             self.target_backend.set_target_name(self.target_name)
+        else:
+            target_name = self.target_backend.target_collection.name
         self.clean_old_collections()
 
         self.logger.info("Merging into target collection '%s'" % self.target_backend.target_collection.name)
         strargs = "[sources=%s,target_name=%s]" % (sources,target_name)
+
         try:
-            self.register_status("building",transient=True,init=True,
-                                 build={"step":"init","sources":sources})
-            job = self.merge_sources(source_names=sources, ids=ids, job_manager=job_manager,
-                                     *args, **kwargs)
-            task = asyncio.ensure_future(job)
-            task.add_done_callback(partial(self.store_stats,sources=sources))
+            @asyncio.coroutine
+            def do():
+                job = self.merge_sources(source_names=sources, ids=ids, job_manager=job_manager,
+                                         *args, **kwargs)
+                res = yield from job
+                pinfo = self.get_pinfo()
+                pinfo["step"] = "metadata"
+                postjob = yield from job_manager.defer_to_thread(pinfo,
+                        partial(self.store_metadata,res,sources=sources,job_manager=job_manager))
+                def stored(f):
+                    try:
+                        res = f.result() # consume to trigger exceptions if any
+                        strargs = "[sources=%s,stats=%s,versions=%s]" % \
+                                (sources,self.stats,self.src_versions)
+                        build_version = self.get_build_version()
+                        if "." in build_version:
+                            raise BuilderException("Can't use '.' in build version '%s', it's reserved for minor versions" % build_version)
+                        # get original start dt
+                        src_build = self.source_backend.build
+                        build = src_build.find_one({'_id': target_name})
+                        self.register_status('success',build={
+                            "merge_stats" : self.stats,
+                            "mapping" : self.mapping,
+                            "_meta" : {
+                                "src_version" : self.src_versions, 
+                                "stats" : self.metadata,
+                                "build_version" : build_version,
+                                "timestamp" : str(build["started_at"])}
+                            })
+                        self.logger.info("success %s" % strargs,extra={"notify":True})
+                    except Exception as e:
+                        strargs = "[sources=%s]" % sources
+                        self.register_status("failed",job={"err": repr(e)})
+                        self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
+                        raise
+                postjob.add_done_callback(stored)
+                yield from postjob
+
+            task = asyncio.ensure_future(do())
             return task
 
         except (KeyboardInterrupt,Exception) as e:
             self.logger.exception(e)
-            self.register_status("failed",build={"err": repr(e)})
+            self.register_status("failed",job={"err": repr(e)})
             self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
             raise
 
@@ -406,6 +509,9 @@ class DataBuilder(object):
         do_post_merge = "post" in steps
         total_docs = 0
         self.stats = {}
+        self.src_versions = {}
+        self.metadata = {}
+        self.mapping = {}
         # try to identify root document sources amongst the list to first
         # process them (if any)
         defined_root_sources = self.get_root_document_sources()
@@ -452,36 +558,46 @@ class DataBuilder(object):
 
         if do_merge:
             if root_sources:
-                self.register_status("building",transient=True,
-                        build={"step":"merge-root","sources":root_sources})
+                self.register_status("building",transient=True,init=True,
+                        job={"step":"merge-root","sources":root_sources})
                 self.logger.info("Merging root document sources: %s" % root_sources)
                 yield from merge(root_sources)
+                self.register_status("success",job={"step":"merge-root","sources":root_sources})
 
             if other_sources:
-                self.register_status("building",transient=True,
-                        build={"step":"merge-others","sources":other_sources})
+                self.register_status("building",transient=True,init=True,
+                        job={"step":"merge-others","sources":other_sources})
                 self.logger.info("Merging other resources: %s" % other_sources)
                 yield from merge(other_sources)
+                self.register_status("success",job={"step":"merge-others","sources":other_sources})
 
-            self.register_status("building",transient=True,
-                    build={"step":"finalizing"})
+            self.register_status("building",transient=True,init=True,
+                    job={"step":"finalizing"})
             self.logger.info("Finalizing target backend")
             self.target_backend.finalize()
+            self.register_status("success",job={"step":"finalizing"})
         else:
             self.logger.info("Skip data merging")
 
         if do_post_merge:
             self.logger.info("Running post-merge process")
-            self.register_status("building",transient=True,
-                    build={"step":"post-merge"})
+            self.register_status("building",transient=True,init=True,job={"step":"post-merge"})
             pinfo = self.get_pinfo()
             pinfo["step"] = "post-merge"
             job = yield from job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
             job = asyncio.ensure_future(job)
             def postmerged(f):
-                self.logger.info("Post-merge completed [%s]" % f.result())
+                try:
+                    self.logger.info("Post-merge completed [%s]" % f.result())
+                    self.register_status("success",job={"step":"post-merge"})
+                except Exception as e:
+                    self.logger.exception("Failed post-merging source: %s" % e)
+                    nonlocal got_error
+                    got_error = e
             job.add_done_callback(postmerged)
             res = yield from job
+            if got_error:
+                raise got_error
         else:
             self.logger.info("Skip post-merge process")
 
@@ -599,12 +715,12 @@ def merger_worker(col_name,dest_name,ids,mapper,upsert,batch_num):
 
 
 def set_pending_to_build(conf_name=None):
-    src_build = mongo.get_src_build()
+    src_build_config = mongo.get_src_build_config()
     qfilter = {}
     if conf_name:
         qfilter = {"_id":conf_name}
     logging.info("Setting pending_to_build flag for configuration(s): %s" % (conf_name and conf_name or "all configuraitons"))
-    src_build.update(qfilter,{"$set":{"pending_to_build":True}})
+    src_build_config.update(qfilter,{"$set":{"pending_to_build":True}})
 
 
 class BuilderManager(BaseManager):
@@ -624,23 +740,23 @@ class BuilderManager(BaseManager):
         same arguments as the base DataBuilder
         """
         super(BuilderManager,self).__init__(*args,**kwargs)
-        self.src_build = mongo.get_src_build()
+        self.src_build_config = mongo.get_src_build_config()
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
         self.builder_class = builder_class
         self.poll_schedule = poll_schedule
         self.setup_log()
         # check if src_build exist and create it as necessary
-        if not self.src_build.name in self.src_build.database.collection_names():
-            logging.debug("Creating '%s' collection (one-time)" % self.src_build.name)
-            self.src_build.database.create_collection(self.src_build.name)
+        if not self.src_build_config.name in self.src_build_config.database.collection_names():
+            logging.debug("Creating '%s' collection (one-time)" % self.src_build_config.name)
+            self.src_build_config.database.create_collection(self.src_build_config.name)
             # this is dummy configuration, used as a template
             logging.debug("Creating dummy configuration (one-time)")
             conf = {"_id" : "placeholder",
                     "name" : "placeholder",
                     "root" : [],
                     "sources" : []}
-            self.src_build.insert_one(conf)
+            self.src_build_config.insert_one(conf)
 
     def register_builder(self,build_name):
         # will use partial to postponse object creations and their db connection
@@ -652,6 +768,7 @@ class BuilderManager(BaseManager):
             from biothings import config
             source_backend =  self.source_backend_factory and self.source_backend_factory() or \
                                     partial(backend.SourceDocMongoBackend,
+                                            build_config=partial(mongo.get_src_build_config),
                                             build=partial(mongo.get_src_build),
                                             master=partial(mongo.get_src_master),
                                             dump=partial(mongo.get_src_dump),
@@ -687,8 +804,8 @@ class BuilderManager(BaseManager):
         return pclass()
 
     def configure(self):
-        """Sync with src_build and register all build config"""
-        for conf in self.src_build.find():
+        """Sync with src_build_config and register all build config"""
+        for conf in self.src_build_config.find():
             self.register_builder(conf["_id"])
 
     def merge(self, build_name, sources=None, target_name=None, **kwargs):
@@ -708,7 +825,7 @@ class BuilderManager(BaseManager):
         """
         List all registered sources used to trigger a build named 'build_name'
         """
-        info = self.src_build.find_one({"_id":build_name})
+        info = self.src_build_config.find_one({"_id":build_name})
         return info and info["sources"] or []
 
     def clean_temp_collections(self,build_name,date=None,prefix=''):
@@ -731,10 +848,10 @@ class BuilderManager(BaseManager):
     def poll(self):
         if not self.poll_schedule:
             raise ManagerError("poll_schedule is not defined")
-        src_build = mongo.get_src_build()
+        src_build_config = mongo.get_src_build_config()
         @asyncio.coroutine
         def check_pending_to_build():
-            confs = [src['_id'] for src in src_build.find({'pending_to_build': True}) if type(src['_id']) == str]
+            confs = [src['_id'] for src in src_build_config.find({'pending_to_build': True}) if type(src['_id']) == str]
             logging.info("Found %d configuration(s) to build (%s)" % (len(confs),repr(confs)))
             for conf_name in confs:
                 logging.info("Launch build for '%s'" % conf_name)

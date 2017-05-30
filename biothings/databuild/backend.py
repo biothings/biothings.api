@@ -11,7 +11,13 @@ import biothings.utils.mongo as mongo
 # Source specific backend (deals with build config, master docs, etc...)
 class SourceDocBackendBase(DocBackendBase):
 
-    def __init__(self, build, master, dump, sources):
+    def __init__(self, build_config, build, master, dump, sources):
+        if type(build_config) == partial:
+            self._build_config_provider = build_config
+            self._build_config = None
+        else:
+            self._build_config_provider = None
+            self._build_config = build_config
         if type(build) == partial:
             self._build_provider = build
             self._build = None
@@ -42,7 +48,7 @@ class SourceDocBackendBase(DocBackendBase):
         self.sources_accessed = {}
 
     def __getattr__(self,attr):
-        if attr not in ["build","dump","master","sources"]:
+        if attr not in ["build_config","build","dump","master","sources"]:
             return AttributeError(attr)
         privattr = "_" + attr
         if getattr(self,privattr) is None:
@@ -53,7 +59,7 @@ class SourceDocBackendBase(DocBackendBase):
             setattr(self,privattr,res)
         return getattr(self,privattr)
 
-    def get_build_configuration(self, build):
+    def get_build_configuration(self, build_name):
         raise NotImplementedError("sub-class and implement me")
 
     def get_src_master_docs(self):
@@ -75,14 +81,14 @@ class TargetDocBackend(DocBackendBase):
 
     def __init__(self,*args,**kwargs):
         super(TargetDocBackend,self).__init__(*args,**kwargs)
-        self.target_name = None
+        self._target_name = None
 
     def set_target_name(self,target_name, build_name=None):
         """
         Create/prepare a target backend, either strictly named "target_name"
         or named derived from "build_name" (for temporary backends)
         """
-        self.target_name = target_name or self.generate_target_name(build_name)
+        self._target_name = target_name or self.generate_target_name(build_name)
 
     def generate_target_name(self,build_config_name):
         assert not build_config_name is None
@@ -94,9 +100,9 @@ class TargetDocBackend(DocBackendBase):
 
 class SourceDocMongoBackend(SourceDocBackendBase):
 
-    def get_build_configuration(self, build):
-        self._build_config = self.build.find_one({'_id' : build})
-        return self._build_config
+    def get_build_configuration(self, build_name):
+        self._config = self.build_config.find_one({'_id' : build_name})
+        return self._config
 
     def validate_sources(self,sources=None):
         assert self._build_config, "'self._build_config' cannot be empty."
@@ -138,7 +144,7 @@ class TargetDocMongoBackend(TargetDocBackend,DocMongoBackend):
 
     def set_target_name(self,target_name=None, build_name=None):
         super(TargetDocMongoBackend,self).set_target_name(target_name,build_name)
-        self.target_collection = self.target_db[self.target_name]
+        self.target_collection = self.target_db[self._target_name]
 
 
 def create_backend(db_col_names,name_only=False):
