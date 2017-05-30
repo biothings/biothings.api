@@ -220,9 +220,9 @@ def sync_es_jsondiff_worker(diff_file, index_name, new_db_col_names, batch_size,
 
     # delete: remove from "old"
     for ids in iter_n(diff["delete"],batch_size):
-        res = indexer.delete_docs(ids)
-        res["deleted"] += res[0]
-        res["skipped"] += res[1]
+        del_skip = indexer.delete_docs(ids)
+        res["deleted"] += del_skip[0]
+        res["skipped"] += del_skip[1]
 
     logging.info("Done applying diff from file '%s': %s" % (diff_file,res))
     diff.setdefault("synced",{}).setdefault("es",True)

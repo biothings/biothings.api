@@ -216,6 +216,9 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
     ts = None
     found_meta = True
 
+    if isinstance(col,DocMongoBackend):
+        col = col.target_collection
+
     try:
         if col.database.name == config.DATA_TARGET_DATABASE:
             # TODO: if col.name is present in different build config, that will pick one

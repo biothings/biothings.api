@@ -176,14 +176,15 @@ class Indexer(object):
                 "description" : ""}
 
     @asyncio.coroutine
-    def index(self, target_name, index_name, job_manager, steps=["index","post"], batch_size=10000, ids=None, mode=None):
+    def index(self, target_name, index_name, job_manager, steps=["index","post"], batch_size=10000, ids=None, mode="index"):
         """
         Build an index named "index_name" with data from collection
         "target_collection". "ids" can be passed to selectively index documents. "mode" can have the following
         values:
         - 'purge': will delete index if it exists
-        - 'add': will use existing index and add documents (usually usefull with "ids" param to complete
-                 an existing index)
+        - 'resume': will use existing index and add documents. "ids" can be passed as a list of missing IDs, 
+                 or, if not pass, ES will be queried to identify which IDs are missing for each batch in
+                 order to complete the index.
         - None (default): will create a new index, assuming it doesn't already exist
         """
         # check what to do
@@ -214,10 +215,10 @@ class Indexer(object):
             if es_idxer.exists_index():
                 if mode == "purge":
                     es_idxer.delete_index()
-                elif mode != "add":
-                    raise IndexerException("Index already '%s' exists, (use mode='purge' to auto-delete it or mode='add' to add more documents)" % index_name)
+                elif mode != "resume":
+                    raise IndexerException("Index already '%s' exists, (use mode='purge' to auto-delete it or mode='resume' to add more documents)" % index_name)
 
-            if mode != "add":
+            if mode != "resume":
                 es_idxer.create_index({self.doc_type:_mapping},_extra)
 
             jobs = []
@@ -244,12 +245,13 @@ class Indexer(object):
                             self.target_name,
                             ids,
                             partial_idxer,
-                            bnum))
+                            bnum,
+                            mode))
                 def batch_indexed(f,batch_num):
                     nonlocal got_error
                     res = f.result()
                     if type(res) != tuple or type(res[0]) != int:
-                        got_error = Exception("Batch #%s failed while indexing collection '%s' [%s]" % (batch_num,self.target_name,f.result()))
+                        got_error = Exception("Batch #%s failed while indexing collection '%s' [result:%s]" % (batch_num,self.target_name,repr(f.result())))
                 job.add_done_callback(partial(batch_indexed,batch_num=bnum))
                 jobs.append(job)
                 bnum += 1
@@ -419,14 +421,27 @@ class Indexer(object):
         return _cfg
 
 
-def indexer_worker(col_name,ids,pindexer,batch_num):
-    try:
+def do_index_worker(col_name,ids,pindexer,batch_num):
         tgt = mongo.get_target_db()
         col = tgt[col_name]
         idxer = pindexer()
         cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}})
         cnt = idxer.index_bulk(cur)
         return cnt
+
+def indexer_worker(col_name,ids,pindexer,batch_num,mode="index"):
+    try:
+        if mode == "index":
+            return do_index_worker(col_name,ids,pindexer,batch_num)
+        elif mode == "resume":
+            idxr = pindexer()
+            es_ids = idxr.mexists(ids)
+            missing_ids = [e[0] for e in es_ids if e[1] == False]
+            if missing_ids:
+                return do_index_worker(col_name,missing_ids,pindexer,batch_num)
+            else:
+                # fake indexer results, it has to be a tuple, first elem is num of indexed docs
+                return (0,None)
     except Exception as e:
         logger_name = "index_%s_%s_batch_%s" % (pindexer.keywords.get("index","index"),col_name,batch_num)
         logger = get_logger(logger_name, btconfig.LOG_FOLDER)
@@ -435,3 +450,4 @@ def indexer_worker(col_name,ids,pindexer,batch_num):
         pickle.dump({"exc":e,"ids":ids},open(exc_fn,"wb"))
         logger.info("Exception and IDs were dumped in pickle file '%s'" % exc_fn)
         raise
+    
