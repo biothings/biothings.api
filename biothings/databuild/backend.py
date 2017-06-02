@@ -68,7 +68,7 @@ class SourceDocBackendBase(DocBackendBase):
     def validate_sources(self,sources=None):
         raise NotImplementedError("sub-class and implement me")
 
-    def get_src_versions(self):
+    def get_src_metadata(self):
         raise NotImplementedError("sub-class and implement me")
 
     def __getitem__(self,src_name):
@@ -112,7 +112,7 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             self.src_masterdocs = dict([(src['_id'], src) for src in list(self.master.find())])
         return self.src_masterdocs
 
-    def get_src_versions(self,src_filter=[]):
+    def get_src_metadata(self,src_filter=[]):
         """
         Return source versions which have been previously accessed wit this backend object
         or all source versions if none were accessed. Accessing means going through __getitem__
@@ -121,6 +121,9 @@ class SourceDocMongoBackend(SourceDocBackendBase):
         src_filter can be passed (list of source _id) to add a filter step.
         """
         src_version = {}
+        # what's registered in each uploader, from src_master.
+        # also includes versions and "src_version" key as a temp duplicate
+        src_meta = {}
         srcs = []
         if self.sources_accessed:
             for src in self.sources_accessed:
@@ -137,7 +140,33 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             version = src.get('release', src.get('timestamp', None))
             if version:
                 src_version[src['_id']] = version
-        return src_version
+                src_meta.setdefault(src["_id"],{}).setdefault("version",version)
+            # now merge other extra information from src_master (src_meta key). src_master _id
+            # are sub-source names, not main source so we have to deal with src_dump as well
+            # in order to resolve/map main/sub source name
+            if src and src.get("upload"):
+                meta = []
+                for job_name in src["upload"].get("jobs",[]):
+                    job = src["upload"]["jobs"][job_name]
+                    # "step" is the actual sub-source name
+                    docm  = self.master.find_one({"_id":job.get("step")})
+                    if docm and docm.get("src_meta"):
+                        meta.append(docm["src_meta"])
+                # we'll make sure to have the same src_meta at main source level,
+                # whatever we have at sub-source level. In other words, if a main source
+                # has multiple sub-sources, there should be only src metadata anyway
+                if len(meta) > 1:
+                    first = meta[0]
+                    assert set([e == first for e in meta[1:]]) == {True}, \
+                        "Source '%s' has different metadata declared in its sub-sources" % src["_id"]
+                # now we can safely merge src_meta
+                if meta:
+                    first = meta[0]
+                    for k,v in first.items():
+                        src_meta.setdefault(src["_id"],{}).setdefault(k,v)
+        # backward compatibility
+        src_meta["src_version"] = src_version
+        return src_meta
 
 
 class TargetDocMongoBackend(TargetDocBackend,DocMongoBackend):

@@ -365,9 +365,12 @@ class DataBuilder(object):
 
     def store_metadata(self,res,sources,job_manager):
         self.target_backend.post_merge()
-        self.src_versions = self.source_backend.get_src_versions()
-        self.metadata = self.get_metadata(sources,job_manager)
+        self.src_meta = self.source_backend.get_src_metadata()
+        # TODO: backward compatible src_version key, should be removed
+        # eventually as all informations are avail in src_meta
+        self.src_versions = self.src_meta.pop("src_version")
         self.mapping = self.get_mapping(sources)
+        self.metadata = self.get_metadata(sources,job_manager)
 
     def resolve_sources(self,sources):
         """
@@ -453,7 +456,8 @@ class DataBuilder(object):
                             "merge_stats" : self.stats,
                             "mapping" : self.mapping,
                             "_meta" : {
-                                "src_version" : self.src_versions, 
+                                "src_version" : self.src_versions,
+                                "src" : self.src_meta,
                                 "stats" : self.metadata,
                                 "build_version" : build_version,
                                 "timestamp" : str(build["started_at"])}
