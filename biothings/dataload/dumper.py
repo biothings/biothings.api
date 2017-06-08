@@ -251,7 +251,7 @@ class BaseDumper(object):
                     self.prepare(state)
                 else:
                     # if nothing to dump, don't do post process
-                    self.logger.info("Nothing to dump",extra={"notify":True})
+                    self.logger.debug("Nothing to dump",extra={"notify":True})
                     return
             if "post" in self.steps:
                 got_error = False
