@@ -53,6 +53,35 @@ def to_number(val):
     return val
 
 
+def boolean_convert(d, added_keys=[]):
+    """convert into boolean, add converting 
+       keys in added_list"""
+    for key, val in d.items():
+        if isinstance(val, dict):
+            boolean_convert(val, added_keys)
+        if key in added_keys:
+            if isinstance(val, list):
+               d[key] = [to_boolean(x) for x in val]
+            elif isinstance(val, tuple):
+                d[key] = tuple([to_boolean(x) for x in val])
+            elif isinstance(val, dict):
+                for x in val:
+                    val[x] = to_boolean(val[x])
+            elif isinstance(val, collections.OrderedDict):
+                d[key] = collections.OrderedDict([to_boolean(x) for x in val])
+            else:
+                d[key] = to_boolean(val)
+    return d
+
+
+def to_boolean(val,true_str=['true','1', 't', 'y', 'yes', 'Y','Yes','YES',1],false_str=['false','0','f','n','N','No','no','NO',0]):
+    if type(val)!=str:
+        return bool(val)
+    else:
+        if val in true_str:
+            return True
+        elif val in false_str:
+            return False
 
 
 def merge_duplicate_rows(rows, db):
