@@ -2,13 +2,114 @@
 Tutorials
 #########
 
-***************
-Simple Tutorial
-***************
-Simple Hello World example goes here.
+***********************************************
+Single Data Source, No Source Updating Tutorial
+***********************************************
+
+The following tutorial shows a minimal use-case for the BioThings SDK: creating a
+high-performance, high-concurrency API from a single flat-file.  The BioThings SDK
+is broadly divided into two sections, the hub and the web.  The hub section is a 
+collection of tools to automate the downloading of source data files, the merging 
+of different sources, and the updating of the Elasticsearch index.  The web section
+is a Tornado-based API app that subsequently serves data from this Elasticsearch index.
+
+Because we are using a single flat-file from a single download, no updating or merging 
+is required which allows a very thin data-loading section.  Additionally, the web section 
+can also be minimal because the web app provides a robust query language by default.  
+The following tutorial shows how to set up a BioThings API using the BioThings SDK with 
+data from a single source.
+
+Prerequisites
+^^^^^^^^^^^^^
+
+Docker container
+================
+
+You can access a docker container with all requirements installed and configured (for
+common use-cases) here.
+
+Software
+========
+
+Before starting, there are a few requirements that need to be installed and configured.
+
+python
+------
+
+BioThings SDK
+-------------
+
+Either install from source, or use pip.
+
+Elasticsearch
+-------------
+
+BioThings APIs currently serve data from an Elasticsearch index, so Elasticsearch is a requirement.
+Install elasticsearch as in https://www.elastic.co/guide/en/elasticsearch/reference/2.4/_installation.html.
+
+Configure Elasticsearch
++++++++++++++++++++++++
+
+http.enabled: True on node taking requests (ES_HOST in config file)
+search threadpool size
+
+Pharmgkb Gene
+^^^^^^^^^^^^^
+
+Once all prerequisites have been installed, the data loading step can begin.
+Consider the following script, which defines a "load_data" function that parses
+the Pharmgkb gene flat file and then iterates through it, storing the results in
+an Elasticsearch index using biothings.utils.es.ESIndexer.
+
+.. code-block:: python
+
+    In [1]: import re
+
+    In [2]: from biothings.utils.es import ESIndexer
+
+    In [3]: def load_data(f):
+       ...:     for (i, line) in enumerate(f):
+       ...:         line = line.strip('\n')
+       ...:         if i == 0:  # get the column header names in the first row
+       ...:             header_dict = dict([(p, re.sub(r'\s', '_', h.lower())) for (p, h) in enumerate(line.split('\t'))])
+       ...:         else:
+       ...:             _r = {}
+       ...:             for (pos, val) in enumerate(line.split('\t')):
+       ...:                 if val:
+       ...:                     _r[header_dict[pos]] = val if '","' not in val else val.strip('"').split('","')
+       ...:             yield _r
+       ...:
+
+    In [4]: indexer = ESIndexer(index='pharmgkb_gene_current', doc_type='pharmgkb_gene', es_host='localhost:9200')
+
+    In [5]: indexer.create_index(mapping={'pharmgkb_gene':{'dynamic': True}})
+    WARNING:elasticsearch:Undecodable raw error response from server: Expecting value: line 1 column 1 (char 0)
+
+    In [6]: with open('genes.tsv', 'r') as gene_file:
+       ...:     indexer.index_bulk(load_data(gene_file))
+
+Generate BioThings API 
+^^^^^^^^^^^^^^^^^^^^^^
+
+Now that we have an Elasticsearch index with our indexed gene data in it, we can create and start
+an API.  Change to a directory you want to store the front-end code, and type:
+
+.. code-block:: bash
+
+    biothings-admin.py pharmgkb_gene . -o src_package pharmgkb_gene
+
+Now you can start your API by typing:
+
+.. code-block:: bash
+
+    cd pharmgkb_gene
+    pip install -r requirements_web.txt
+    python www/index.py --debug --port=8001
+
+Your API is live.
 
 *****************
-Advanced tutorial
+Taxonomy tutorial
 *****************
 
 The following tutorial shows how to create a "hub", a piece of software used to
