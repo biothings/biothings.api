@@ -20,6 +20,8 @@ ES_SCROLL_TIME = '1m'
 ES_SCROLL_SIZE = 1000
 # Maximum size of result return
 ES_SIZE_CAP = 1000
+# Maximum result window => maximum for "from" parameter
+ES_RESULT_WINDOW_SIZE_CAP = 10000
 
 # For the userquery folder for this app
 USERQUERY_DIR = ''

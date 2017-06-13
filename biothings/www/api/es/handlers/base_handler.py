@@ -1,4 +1,4 @@
-from biothings.www.api.helper import BaseHandler
+from biothings.www.api.helper import BaseHandler, BiothingParameterTypeError
 from biothings.utils.common import dotdict, is_str
 import re
 import logging
@@ -65,6 +65,12 @@ class BaseESRequestHandler(BaseHandler):
             kwargs['aggs'] = dict([(field, {"terms": {"field": field}}) for field in kwargs['aggs']])
         return kwargs
 
+    def _sanitize_from_param(self, kwargs):
+        # cap from
+        if self._should_sanitize('from', kwargs) and kwargs['from'] > self.web_settings.ES_RESULT_WINDOW_SIZE_CAP:
+            raise BiothingParameterTypeError('"from" parameter cannot be greater than {0}'.format(self.web_settings.ES_RESULT_WINDOW_SIZE_CAP))
+        return kwargs
+
     def get_cleaned_options(self, kwargs):
         ''' Separate URL keyword arguments into their functional category.
         Incoming kwargs are separated into one of 4 categories, depending on how the argument controls the
@@ -98,6 +104,7 @@ class BaseESRequestHandler(BaseHandler):
         kwargs = self._sanitize_size_param(kwargs)
         kwargs = self._sanitize_sort_param(kwargs)
         kwargs = self._sanitize_aggs_param(kwargs)
+        kwargs = self._sanitize_from_param(kwargs)
         return kwargs
     
     def _get_es_index(self, options):
