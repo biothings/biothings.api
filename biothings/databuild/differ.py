@@ -180,7 +180,7 @@ class BaseDiffer(object):
                                 "diff by removing 'mapping' from 'steps' arguments. " + \
                                 "Ex: steps=['count','content']. Diff operation was: %s" % op)
                             got_error = err
-                    metadata["diff"]["mapping_file"] = mf
+                    metadata["diff"]["mapping_file"] = res["mapping_file"]
                     diff_stats["mapping_changed"] = True
                 self.logger.info("Diff file containing mapping differences generated: %s" % res.get("mapping_file"))
 
@@ -666,6 +666,9 @@ class DifferManager(BaseManager):
         files = glob.glob(os.path.join(data_folder,"*.pyobj"))
         random.shuffle(files)
         for f in files:
+            if os.path.basename(f).startswith("mapping"):
+                logging.debug("Skip mapping file")
+                continue
             logging.info("Running report worker for '%s'" % f)
             analyze(f, detailed)
         return {"added" : adds, "deleted": dels, "updated" : update_details,

@@ -97,14 +97,14 @@ class BaseSyncer(object):
         if "mapping" in steps and self.target_backend == "es":
             if diff_mapping_file:
                 # old_db_col_names is actually the index name in that case
-                index_name = old_db_col_names
+                index_name = old_db_col_names[1]
                 doc_type = meta["build_config"]["doc_type"]
                 indexer = create_backend(old_db_col_names).target_esidxer
                 pinfo["step"] = "mapping"
                 pinfo["description"] = diff_mapping_file
 
                 def update_mapping():
-                    diffm = os.path.join(diff_folder,diff_mapping_file)
+                    diffm = os.path.join(diff_folder,diff_mapping_file["name"])
                     ops = loadobj(diffm)
                     mapping = indexer.get_mapping()
                     # we should have the same doc type declared in the mapping
