@@ -68,7 +68,16 @@ class ESIndexer():
                  number_of_shards=10, number_of_replicas=0):
         self.es_host = es_host
         self._es = get_es(es_host)
-        self._index = index
+        # if index is actually an alias, resolve the alias to
+        # the real underlying index
+        try:
+            res = self._es.indices.get_alias(index)
+            # this was an alias
+            assert len(res) == 1
+            self._index = list(res.keys())[0]
+        except NotFoundError:
+            # this was a real index name
+            self._index = index
         self._doc_type = doc_type
         self.number_of_shards = number_of_shards # set number_of_shards when create_index
         self.number_of_replicas = number_of_replicas # set number_of_replicas when create_index
