@@ -31,7 +31,7 @@ class BaseDumper(object):
 
     SCHEDULE = None # crontab format schedule, if None, won't be scheduled
 
-    def __init__(self, src_name=None, src_root_folder=None, log_folder=None, no_confirm=True, archive=True):
+    def __init__(self, src_name=None, src_root_folder=None, log_folder=None, no_confirm=True, archive=None):
         # unpickable attrs, grouped
         self.init_state()
         self.src_name = src_name or self.SRC_NAME
@@ -239,6 +239,14 @@ class BaseDumper(object):
             if "dump" in self.steps:
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "check"
+                # if last download failed (or was interrupted), we want to force the dump again
+                try:
+                    if self.src_doc["download"]["status"] in ["failed","downloading"]:
+                        self.logger.info("Forcing dump because previous failed (so let's try again)")
+                        force = True
+                except (AttributeError,KeyError) as e:
+                    # no src_doc or no download info
+                    pass
                 # TODO: blocking call for now, FTP client can't be properly set in thread after
                 self.create_todump_list(force=force, **kwargs)
                 if self.to_dump:
@@ -301,15 +309,15 @@ class BaseDumper(object):
         when the dumper actually knows some information about the resource,
         like the actual release.
         """
-        if not getattr(self,self.__class__.SUFFIX_ATTR):
-            # if step is "post" only, it means we didn't even check a new version and we
-            # want to run "post" step on current version again
-            if self.steps == ["post"]:
-                return self.current_data_folder
-            else:
-                raise DumperException("Can't generate new data folder, attribute used for suffix (%s) isn't set" % self.__class__.SUFFIX_ATTR)
-        suffix = getattr(self,self.__class__.SUFFIX_ATTR)
         if self.archive:
+            if not getattr(self,self.__class__.SUFFIX_ATTR):
+                # if step is "post" only, it means we didn't even check a new version and we
+                # want to run "post" step on current version again
+                if self.steps == ["post"]:
+                    return self.current_data_folder
+                else:
+                    raise DumperException("Can't generate new data folder, attribute used for suffix (%s) isn't set" % self.__class__.SUFFIX_ATTR)
+            suffix = getattr(self,self.__class__.SUFFIX_ATTR)
             return os.path.join(self.src_root_folder, suffix)
         else:
             return  os.path.join(self.src_root_folder, 'latest')

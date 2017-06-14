@@ -490,7 +490,9 @@ class ParallelizedSourceUploader(BaseSourceUploader):
 
     def jobs(self):
         """Return list of (*arguments) passed to self.load_data, in order. for
-        each parallelized jobs. Ex: [(x,1),(y,2),(z,3)]"""
+        each parallelized jobs. Ex: [(x,1),(y,2),(z,3)]
+        If only one argument is required, it still must be passed as a 1-element tuple
+        """
         raise NotImplementedError("implement me in subclass")
 
     @asyncio.coroutine
