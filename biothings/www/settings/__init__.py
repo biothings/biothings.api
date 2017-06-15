@@ -83,8 +83,25 @@ class BiothingESWebSettings(BiothingWebSettings):
         # get es client for web
         self.es_client = self.get_es_client()
 
+        # populate the metadata for this project
+        self.source_metadata()
+
     def doc_url(self, bid):
+        ''' Function to return a url on this biothing API to the biothing object specified by bid.'''
         return os.path.join(self.URL_BASE, self.API_VERSION, self.ES_DOC_TYPE, bid)
+
+    def _source_metadata_object(self):
+        ''' Override me to return metadata for your project '''
+        return {}
+
+    def source_metadata(self):
+        ''' Function to cache return of the source metadata stored in _meta of index mappings '''
+        if getattr(self, '_source_metadata', False):
+            return self._source_metadata
+
+        self._source_metadata = self._source_metadata_object()
+
+        return self._source_metadata
 
     def get_es_client(self):
         '''Get the `Elasticsearch client <https://elasticsearch-py.readthedocs.io/en/master/>`_

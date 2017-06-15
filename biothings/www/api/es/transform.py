@@ -20,8 +20,9 @@ class ESResultTransformer(object):
     :param jsonld_context: JSON-LD context for this app (optional)
     :param data_sources: unused currently (optional)
     :param output_aliases: list of output key names to alias, unused currently (optional)
-    :param app_dir: Application directory for this app (used for getting app information in /metadata)'''
-    def __init__(self, options, host, doc_url_function=lambda x: x, jsonld_context={}, data_sources={}, output_aliases={}, app_dir=''):
+    :param app_dir: Application directory for this app (used for getting app information in /metadata)
+    :param source_metadata: Metadata object containing source information for _license keys'''
+    def __init__(self, options, host, doc_url_function=lambda x: x, jsonld_context={}, data_sources={}, output_aliases={}, app_dir='', source_metadata={}):
         self.options = options
         self.host = host
         self.doc_url_function = doc_url_function
@@ -29,6 +30,7 @@ class ESResultTransformer(object):
         self.data_sources = data_sources
         self.output_aliases = output_aliases
         self.app_dir = app_dir
+        self.source_metadata = source_metadata
 
     def _flatten_doc(self, doc, outfield_sep='.', context_sep='.'):
         def _recursion_helper(d, ret, path, out):

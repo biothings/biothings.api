@@ -83,7 +83,7 @@ class QueryHandler(BaseESRequestHandler):
         _backend = self.web_settings.ES_QUERY(client=self.web_settings.es_client, options=options.es_kwargs)
         _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(options=options.transform_kwargs, 
             host=self.request.host, jsonld_context=self.web_settings._jsonld_context, 
-            doc_url_function=self.web_settings.doc_url, output_aliases=self.web_settings.OUTPUT_KEY_ALIASES)
+            doc_url_function=self.web_settings.doc_url, output_aliases=self.web_settings.OUTPUT_KEY_ALIASES, source_metadata=self.web_settings.source_metadata())
 
         ###################################################
         #           Scroll request pipeline
@@ -243,7 +243,7 @@ class QueryHandler(BaseESRequestHandler):
         _backend = self.web_settings.ES_QUERY(client=self.web_settings.es_client, options=options.es_kwargs)
         _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(options=options.transform_kwargs, host=self.request.host,
             doc_url_function=self.web_settings.doc_url,
-            jsonld_context=self.web_settings._jsonld_context, output_aliases=self.web_settings.OUTPUT_KEY_ALIASES)
+            jsonld_context=self.web_settings._jsonld_context, output_aliases=self.web_settings.OUTPUT_KEY_ALIASES, source_metadata=self.web_settings.source_metadata())
         
         ###################################################
         #                  Build query
