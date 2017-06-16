@@ -24,6 +24,7 @@ class BaseESRequestHandler(BaseHandler):
         else:
             self.return_json(data)
         self.ga_track(event=self.ga_event_object(ga_event_data))
+        self.self_track(data=self.ga_event_object_ret)
         return
 
     def return_raw_query_json(self, query):

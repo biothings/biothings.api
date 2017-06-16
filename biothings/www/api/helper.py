@@ -3,6 +3,7 @@ import datetime
 import tornado.web
 import re
 from biothings.utils.www.analytics import GAMixIn
+from biothings.utils.www.tracking import StandaloneTrackingMixin
 from biothings.utils.common import is_str, is_seq
 try:
     from raven.contrib.tornado import SentryMixin
@@ -38,7 +39,7 @@ class DateTimeJSONEncoder(json.JSONEncoder):
 class BiothingParameterTypeError(Exception):
     pass
 
-class BaseHandler(tornado.web.RequestHandler, GAMixIn, SentryMixin):
+class BaseHandler(tornado.web.RequestHandler, GAMixIn, SentryMixin, StandaloneTrackingMixin):
     ''' Parent class of all biothings handlers, only direct descendant of
         `tornado.web.RequestHandler <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler>`_, 
         contains the common functions in the biothings handler universe:

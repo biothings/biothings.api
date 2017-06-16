@@ -159,6 +159,9 @@ GA_ACTION_QUERY_POST = 'query_post'
 GA_ACTION_ANNOTATION_GET = 'biothing_get'
 GA_ACTION_ANNOTATION_POST = 'biothing_post'
 
+# for standalone instance tracking
+STANDALONE_TRACKING_URL = ''
+
 # override with url for specific project
 URL_BASE = 'http://mybiothing.info'
 
