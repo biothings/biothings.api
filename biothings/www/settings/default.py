@@ -161,6 +161,8 @@ GA_ACTION_ANNOTATION_POST = 'biothing_post'
 
 # for standalone instance tracking
 STANDALONE_TRACKING_URL = ''
+# dictionary with AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY k,v for standalone user AWS IAM
+STANDALONE_AWS_CREDENTIALS = {}
 
 # override with url for specific project
 URL_BASE = 'http://mybiothing.info'
