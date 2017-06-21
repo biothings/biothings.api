@@ -321,7 +321,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
         else:
             raise Exception("Unknown backend %s" % col)
         for doc_ids in doc_feeder_func():
-            doc_ids = [_doc["_id"] for _doc in doc_ids]
+            doc_ids = [str(_doc["_id"]) for _doc in doc_ids]
             if build_cache:
                 strout = "\n".join(doc_ids) + "\n"
                 if cache_format:

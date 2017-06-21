@@ -80,14 +80,20 @@ class ESIndexer():
             self._index = index
         self._doc_type = doc_type
         self.number_of_shards = number_of_shards # set number_of_shards when create_index
-        self.number_of_replicas = number_of_replicas # set number_of_replicas when create_index
+        self.number_of_replicas = int(number_of_replicas) # set number_of_replicas when create_index
         self.step = step  # the bulk size when doing bulk operation.
         self.s = None   # optionally, can specify number of records to skip,
                         # useful to continue indexing after an error.
 
     @wrapper
-    def get_biothing(self, bid, **kwargs):
-        return self._es.get(index=self._index, id=bid, doc_type=self._doc_type, **kwargs)
+    def get_biothing(self, bid, only_source=False, **kwargs):
+        rawdoc = self._es.get(index=self._index, id=bid, doc_type=self._doc_type, **kwargs)
+        if not only_source:
+            return rawdoc
+        else:
+            doc = rawdoc['_source']
+            doc["_id"] = rawdoc["_id"]
+            return doc
 
     @wrapper
     def exists(self, bid):
@@ -387,7 +393,7 @@ class ESIndexer():
         if _li:
             if not dryrun:
                 self._es.bulk(body=_li)
-        
+
         return {"total": cnt, "updated": cnt - cnt_orphan_doc, "deleted": cnt_orphan_doc} 
 
     @wrapper

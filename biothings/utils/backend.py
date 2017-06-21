@@ -276,7 +276,7 @@ class DocESBackend(DocBackendBase):
         return self.target_esidxer.get_id_list(step=step)
 
     def get_from_id(self, id):
-        return self.target_esidxer.get(id)
+        return self.target_esidxer.get_biothing(id,only_source=True)
 
     def mget_from_ids(self, ids, step=100000, only_source=True, asiter=True, **kwargs):
         '''ids is an id list. always return a generator'''
