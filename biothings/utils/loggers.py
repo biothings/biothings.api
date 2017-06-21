@@ -3,7 +3,7 @@ import logging
 import asyncio
 from functools import partial
 
-from .hipchat import hipchat_msg
+from .hipchat import hipchat_msg, hipchat_file
 
 def setup_default_log(default_logger_name,log_folder,level=logging.DEBUG):
     # this will affect any logging calls
@@ -65,10 +65,21 @@ class HipchatHandler(logging.StreamHandler):
             fut = yield from loop.run_in_executor(None,partial(
                 hipchat_msg,msg,color=color))
             return fut
+        def aioshare():
+            fut = yield from loop.run_in_executor(None,partial(
+                hipchat_file,filepath,message=filepath))
+            return fut
         if record.__dict__.get("notify"):
             loop = asyncio.get_event_loop()
             msg = self.format(record)
             color = self.__class__.colors.get(record.levelno,"gray")
             fut = aioemit()
             asyncio.ensure_future(fut)
+            if record.__dict__.get("attach"):
+                filepath = record.__dict__["attach"]
+                fut = aioshare()
+                asyncio.ensure_future(fut)
+
+
+
 

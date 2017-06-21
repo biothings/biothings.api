@@ -43,7 +43,6 @@ class BaseDiffer(object):
         self.setup_log()
 
     def setup_log(self):
-        # TODO: use bt.utils.loggers.get_logger
         import logging as logging_mod
         if not os.path.exists(self.log_folder):
             os.makedirs(self.log_folder)
@@ -504,6 +503,8 @@ class DifferManager(BaseManager):
         analyze diff between datasources.
         """
         super(DifferManager,self).__init__(*args,**kwargs)
+        self.log_folder = btconfig.LOG_FOLDER
+        self.timestamp = datetime.now()
         self.setup_log()
 
     def register_differ(self,klass):
@@ -517,7 +518,24 @@ class DifferManager(BaseManager):
             self.register_differ(klass)
 
     def setup_log(self):
-        self.logger = btconfig.logger
+        import logging as logging_mod
+        if not os.path.exists(self.log_folder):
+            os.makedirs(self.log_folder)
+        self.logfile = os.path.join(self.log_folder, 'diffmanager_%s.log' % (time.strftime("%Y%m%d",self.timestamp.timetuple())))
+        fh = logging_mod.FileHandler(self.logfile)
+        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S")
+        fh.setFormatter(fmt)
+        fh.name = "logfile"
+        nh = HipchatHandler(btconfig.HIPCHAT_CONFIG)
+        nh.setFormatter(fmt)
+        nh.name = "hipchat"
+        self.logger = logging_mod.getLogger("diffmanager")
+        self.logger.setLevel(logging_mod.DEBUG)
+        if not fh.name in [h.name for h in self.logger.handlers]:
+            self.logger.addHandler(fh)
+        if not nh.name in [h.name for h in self.logger.handlers]:
+            self.logger.addHandler(nh)
+        return self.logger
 
     def __getitem__(self,diff_type):
         """
@@ -549,15 +567,20 @@ class DifferManager(BaseManager):
 
 
     def diff_report(self, old_db_col_names, new_db_col_names, report_filename="report.txt", format="txt", detailed=True,
-                    max_reported_ids=btconfig.MAX_REPORTED_IDS, max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED):
+                    max_reported_ids=btconfig.MAX_REPORTED_IDS, max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED,
+                    mode=None):
 
         def do():
-            report = self.build_diff_report(diff_folder, detailed, max_reported_ids)
-            assert format == "txt", "Only 'txt' format supported for now"
-            render = DiffReportTxt(max_reported_ids=max_reported_ids,
-                                   max_randomly_picked=max_randomly_picked,
-                                   detailed=detailed)
-            return render.save(report,report_filename)
+            if mode == "purge" and not os.path.exists(reportfilepath):
+                report = self.build_diff_report(diff_folder, detailed, max_reported_ids)
+                assert format == "txt", "Only 'txt' format supported for now"
+                render = DiffReportTxt(max_reported_ids=max_reported_ids,
+                                       max_randomly_picked=max_randomly_picked,
+                                       detailed=detailed)
+                return render.save(report,report_filename)
+            else:
+                self.logger.debug("Report already generated, now using it")
+                return open(reportfilepath).read()
 
         @asyncio.coroutine
         def main(diff_folder):
@@ -571,7 +594,7 @@ class DifferManager(BaseManager):
                 nonlocal got_error
                 try:
                     res = f.result()
-                    self.logger.info("Diff report ready, saved in %s:\n%s" % (os.path.join(diff_folder,report_filename),res),extra={"notify":True})
+                    self.logger.info("Diff report ready, saved in %s" % reportfilepath,extra={"notify":True,"attach":reportfilepath})
                 except Exception as e:
                     got_error = e
             job.add_done_callback(reported)
@@ -581,6 +604,7 @@ class DifferManager(BaseManager):
                 raise got_error
 
         diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
+        reportfilepath = os.path.join(diff_folder,report_filename)
         job = asyncio.ensure_future(main(diff_folder))
         return job
 
@@ -624,7 +648,7 @@ class DifferManager(BaseManager):
                 # TODO: if self-contained, no db connection needed
                 new_col = create_backend(metadata["new"]["backend"])
                 old_col = create_backend(metadata["old"]["backend"])
-            if len(adds) < max_reported_ids:
+            if len(adds["ids"]) < max_reported_ids:
                 if detailed:
                     # look for which root keys were added in new collection
                     for _id in data["add"]:
@@ -640,7 +664,7 @@ class DifferManager(BaseManager):
                     else:
                         adds["ids"].extend(data["add"])
             adds["count"] += len(data["add"])
-            if len(dels) < max_reported_ids:
+            if len(dels["ids"]) < max_reported_ids:
                 if detailed:
                     # look for which root keys were deleted in old collection
                     for _id in data["delete"]:
@@ -665,11 +689,12 @@ class DifferManager(BaseManager):
         # we won't have a representative sample
         files = glob.glob(os.path.join(data_folder,"*.pyobj"))
         random.shuffle(files)
-        for f in files:
+        total = len(files)
+        for i,f in enumerate(files):
             if os.path.basename(f).startswith("mapping"):
                 logging.debug("Skip mapping file")
                 continue
-            logging.info("Running report worker for '%s'" % f)
+            logging.info("Running report worker for '%s' (%d/%d)" % (f,i+1,total))
             analyze(f, detailed)
         return {"added" : adds, "deleted": dels, "updated" : update_details,
                 "diff_folder" : diff_folder, "detailed": detailed,
