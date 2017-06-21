@@ -758,6 +758,7 @@ class BuilderManager(BaseManager):
             logging.debug("Creating dummy configuration (one-time)")
             conf = {"_id" : "placeholder",
                     "name" : "placeholder",
+                    "doc_type" : "doctypename",
                     "root" : [],
                     "sources" : []}
             self.src_build_config.insert_one(conf)
