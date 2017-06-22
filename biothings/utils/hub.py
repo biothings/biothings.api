@@ -468,7 +468,7 @@ def publish_data_version(version,env=None,update_latest=True):
         versions = version
     else:
         versions.append(version)
-    versions = list(set(versions))
+    versions = sorted(list(set(versions)))
     aws.send_s3_file(None,versionskey,content=json.dumps(versions),
             aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,s3_bucket=config.S3_DIFF_BUCKET,
             content_type="application/json",overwrite=True)
