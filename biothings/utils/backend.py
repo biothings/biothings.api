@@ -1,4 +1,6 @@
 ''' Backend access class. '''
+from functools import partial
+
 from biothings.utils.es import ESIndexer
 from biothings import config as btconfig
 from elasticsearch.exceptions import NotFoundError
@@ -223,7 +225,18 @@ class DocESBackend(DocBackendBase):
 
     def __init__(self, esidxer=None):
         """esidxer is an instance of utils.es.ESIndexer class."""
-        self.target_esidxer = esidxer
+        if type(esidxer) == partial:
+            self._target_esidxer_provider = esidxer
+            self._target_esidxer= None
+        else:
+            _target_esidxer_provider = None
+            self._target_esidxer = esidxer
+
+    @property
+    def target_esidxer(self):
+        if not self._target_esidxer:
+            self._target_esidxer = self._target_esidxer_provider()
+        return self._target_esidxer
 
     @property
     def target_name(self):

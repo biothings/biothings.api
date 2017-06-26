@@ -8,7 +8,7 @@ from collections import OrderedDict
 from biothings import config
 logger = config.logger
 
-from biothings.utils.mongo import get_src_conn
+from biothings.utils.internal_backend import get_config_conn
 from biothings.utils.common import timesofar, get_random_string, sizeof_fmt
 from biothings.utils.hub import find_process
 
@@ -166,7 +166,7 @@ class BaseSourceManager(BaseManager):
 
     def __init__(self, job_manager, datasource_path="dataload.sources", *args, **kwargs):
         super(BaseSourceManager,self).__init__(job_manager,*args,**kwargs)
-        self.conn = get_src_conn()
+        self.conn = get_config_conn()
         self.default_src_path = datasource_path
 
     def filter_class(self,klass):

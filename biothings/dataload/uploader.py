@@ -5,7 +5,8 @@ import logging as loggingmod
 from functools import wraps, partial
 
 from biothings.utils.common import get_timestamp, get_random_string, timesofar, iter_n
-from biothings.utils.mongo import get_src_conn, get_src_dump
+from biothings.utils.internal_backend import get_src_dump, get_src_master
+from biothings.utils.mongo import get_src_conn
 from biothings.utils.dataload import merge_struct
 from biothings.utils.manager import BaseSourceManager, \
                                     ManagerError, ResourceNotFound
@@ -149,6 +150,7 @@ class BaseSourceUploader(object):
         self._state["db"] = self.conn[self.__class__.__database__]
         self._state["collection"] = self.db[self.collection_name]
         self._state["src_dump"] = self.prepare_src_dump()
+        self._state["src_master"] = get_src_master()
         self._state["logger"] = self.setup_log()
         self.data_folder = self.src_doc.get("data_folder")
         # flag ready
@@ -165,6 +167,7 @@ class BaseSourceUploader(object):
             "conn" : self._state["conn"],
             "collection" : self._state["collection"],
             "src_dump" : self._state["src_dump"],
+            "src_master" : self._state["src_master"],
             "logger" : self._state["logger"]
         }
         for k in state:
@@ -293,13 +296,12 @@ class BaseSourceUploader(object):
         self.save_doc_src_master(_doc)
 
     def save_doc_src_master(self,_doc):
-        coll = self.conn[DocSourceMaster.__database__][DocSourceMaster.__collection__]
         dkey = {"_id": _doc["_id"]}
-        prev = coll.find_one(dkey)
+        prev = self.src_master.find_one(dkey)
         if prev:
-            coll.replace_one(dkey, _doc)
+            self.src_master.replace_one(dkey, _doc)
         else:
-            coll.insert_one(_doc)
+            self.src_master.insert_one(_doc)
 
     def register_status(self,status,**extra):
         """
@@ -676,7 +678,7 @@ class UploaderManager(BaseSourceManager):
             return jobs
         except Exception as e:
             self.register_status(src,"failed",err=str(e))
-            self.logger.exception("Error while uploading '%s': %s" % (src,e),extra={"notify":True})
+            logging.exception("Error while uploading '%s': %s" % (src,e),extra={"notify":True})
             raise
 
     @asyncio.coroutine

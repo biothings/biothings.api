@@ -3,7 +3,7 @@ import sqlite3
 import json
 
 from biothings import config
-from biothings.utils.internal_backend import Connection
+from biothings.utils.internal_backend import IConnection
 from biothings.utils.dotfield import parse_dot_fields
 from biothings.utils.dataload import update_dict_recur
 
@@ -16,31 +16,51 @@ def json_serial(obj):
         return serial
     raise TypeError ("Type %s not serializable" % type(obj))
 
-def get_src_conn():
-    return Database(config.DATA_SRC_DATABASE)
+def get_config_conn():
+    return Database(config.DATA_CONFIG_DATABASE)
 
 def get_src_dump():
-    db = Database(config.DATA_SRC_DATABASE)
+    db = Database(config.DATA_CONFIG_DATABASE)
     return db[config.DATA_SRC_DUMP_COLLECTION]
 
 def get_src_master():
-    db = Database(config.DATA_SRC_DATABASE)
+    db = Database(config.DATA_CONFIG_DATABASE)
     return db[config.DATA_SRC_MASTER_COLLECTION]
 
 def get_src_build():
-    db = Database(config.DATA_SRC_DATABASE)
+    db = Database(config.DATA_CONFIG_DATABASE)
     return db[config.DATA_SRC_BUILD_COLLECTION]
 
 def get_src_build_config():
-    db = Database(config.DATA_SRC_DATABASE)
+    db = Database(config.DATA_CONFIG_DATABASE)
     return db[config.DATA_SRC_BUILD_CONFIG_COLLECTION]
 
-class Database(Connection):
+def get_source_fullname(col_name):
+    """
+    Assuming col_name is a collection created from an upload process,
+    find the main source & sub_source associated.
+    """
+    src_dump = get_src_dump()
+    info = None
+    for doc in src_dump.find():
+        if col_name in doc.get("upload",{}).get("jobs",{}).keys():
+            info = doc
+    if info:
+        name = info["_id"]
+        if name != col_name:
+            # col_name was a sub-source name
+            return "%s.%s" % (name,col_name)
+        else:
+            return name
+
+class Database(IConnection):
 
     def __init__(self,dbname):
         super(Database,self).__init__()
         self.dbname = dbname
-        self.dbfile = os.path.join(config.SQLITE_DB_FOLDER,dbname)
+        if not os.path.exists(config.CONFIG_BACKEND["sqlite_db_folder"]):
+            os.makedirs(config.CONFIG_BACKEND["sqlite_db_folder"])
+        self.dbfile = os.path.join(config.CONFIG_BACKEND["sqlite_db_folder"],dbname)
         self.cols = {}
 
     def get_conn(self):
@@ -99,6 +119,8 @@ class Collection(object):
                 return self.find(*args,find_one=True)
         elif args or kwargs:
             raise NotImplementedError("find(): %s %s" % (repr(args),repr(kwargs)))
+        else:
+            return self.find(find_one=True)
 
     def find(self,*args,**kwargs):
         results = []
@@ -136,7 +158,7 @@ class Collection(object):
 
     def update_one(self,query,what):
         assert len(what) == 1 and ("$set" in what or \
-                "$unset" in what), "$set/$unset operators not found"
+                "$unset" in what or "$push" in what), "$set/$unset/$push operators not found"
         doc = self.find_one(query)
         if doc:
             if "$set" in what:
@@ -148,6 +170,11 @@ class Collection(object):
             elif "$unset" in what:
                 for keytounset in what["$unset"].keys():
                     doc.pop(keytounset,None)
+            elif "$push" in what:
+                for listkey,elem in what["$push"].items():
+                    assert not "." in listkey, "$push not supported for nested keys: %s" % listkey
+                    doc.setdefault(listkey,[]).append(elem)
+
             self.save(doc)
 
     def update(self,query,what):
@@ -163,7 +190,21 @@ class Collection(object):
                 conn.commit()
         else:
             self.insert_one(doc)
-    replace_one = save
+
+    def replace_one(self,query,doc):
+        orig = self.find_one(query)
+        if orig:
+            with self.get_conn() as conn:
+                conn.execute("UPDATE %s SET document = ? WHERE _id = ?" % self.colname,
+                        (json.dumps(doc,default=json_serial),orig["_id"]))
+                conn.commit()
+
+    def remove(self,query):
+        docs = self.find(query)
+        with self.get_conn() as conn:
+            for doc in docs:
+                conn.execute("DELETE FROM %s WHERE _id = ?" % self.colname,(doc["_id"],)).fetchone()
+            conn.commit()
 
     def count(self):
         return self.get_conn().execute("SELECT count(_id) FROM %s" % self.colname).fetchone()[0]

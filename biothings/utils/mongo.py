@@ -1,4 +1,3 @@
-
 import time, logging, os, io, glob, datetime
 from functools import wraps
 from pymongo import MongoClient
@@ -8,28 +7,12 @@ from functools import partial
 from biothings.utils.common import timesofar, get_random_string, iter_n, \
                                    open_compressed_file, get_compressed_outfile
 from biothings.utils.backend import DocESBackend, DocMongoBackend
+from biothings.utils.internal_backend import IConnection
 # stub, until set to real config module
 config = None
 
-class Connection(MongoClient):
-    """
-    This class mimicks / is a mock for mongokit.Connection class,
-    used to keep used interface (registering document model for instance)
-    """
-    def __init__(self, *args, **kwargs):
-        super(Connection,self).__init__(*args,**kwargs)
-        self._registered_documents = {}
-    def register(self, obj):
-        self._registered_documents[obj.__name__] = obj
-    def __getattr__(self,key):
-        if key in self._registered_documents:
-            document = self._registered_documents[key]
-            return document
-        else:
-            try:
-                return self[key]
-            except Exception:
-                raise AttributeError(key)
+class Connection(IConnection,MongoClient):
+    pass
 
 def requires_config(func):
     @wraps(func)
@@ -55,6 +38,10 @@ def get_conn(server, port):
     conn = Connection(uri)
     return conn
 
+@requires_config
+def get_config_conn():
+    conn = Connection(config.CONFIG_BACKEND["uri"])
+    return conn
 
 @requires_config
 def get_src_conn():
@@ -69,25 +56,25 @@ def get_src_db(conn=None):
 
 @requires_config
 def get_src_master(conn=None):
-    conn = conn or get_src_conn()
-    return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_MASTER_COLLECTION]
+    conn = conn or get_config_conn()
+    return conn[config.DATA_CONFIG_DATABASE][config.DATA_SRC_MASTER_COLLECTION]
 
 
 @requires_config
 def get_src_dump(conn=None):
-    conn = conn or get_src_conn()
-    return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_DUMP_COLLECTION]
+    conn = conn or get_config_conn()
+    return conn[config.DATA_CONFIG_DATABASE][config.DATA_SRC_DUMP_COLLECTION]
 
 
 @requires_config
 def get_src_build(conn=None):
-    conn = conn or get_src_conn()
-    return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
+    conn = conn or get_config_conn()
+    return conn[config.DATA_CONFIG_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
 
 @requires_config
 def get_src_build_config(conn=None):
-    conn = conn or get_src_conn()
-    return conn[config.DATA_SRC_DATABASE][config.DATA_SRC_BUILD_COLLECTION + "_config"]
+    conn = conn or get_config_conn()
+    return conn[config.DATA_CONFIG_DATABASE][config.DATA_SRC_BUILD_COLLECTION + "_config"]
 
 @requires_config
 def get_target_conn():
@@ -120,6 +107,9 @@ def get_source_fullname(col_name):
     find the main source & sub_source associated.
     """
     src_dump = get_src_dump()
+    # "sources" in config is a list a collection names. src_dump _id is the name of the
+    # resource but can have sub-resources with different collection names. We need
+    # to query inner keys upload.job.*.step, which always contains the collection name  
     info = src_dump.find_one({"$where":"function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}}" % col_name})
     if info:
         name = info["_id"]
@@ -198,6 +188,41 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
         logger.info('Finished.[total time: %s]' % timesofar(t0))
     finally:
         cur.close()
+
+
+def get_cache_filename(col_name):
+    cache_folder = getattr(config,"CACHE_FOLDER",None)
+    if not cache_folder:
+        return # we don't even use cache, forget it
+    cache_format = getattr(config,"CACHE_FORMAT",None)
+    cache_file = os.path.join(config.CACHE_FOLDER,col_name)
+    cache_file = cache_format and (cache_file + ".%s" % cache_format) or cache_file
+    return cache_file
+
+
+def invalidate_cache(col_name,col_type="src"):
+    if col_type == "src":
+        src_dump = get_src_dump()
+        if not "." in col_name:
+            fullname = get_source_fullname(col_name)
+        assert fullname, "Can't resolve source '%s' (does it exist ?)" % col_name
+
+        main,sub = fullname.split(".")
+        doc = src_dump.find_one({"_id":main})
+        assert doc, "No such source '%s'" % main
+        assert doc.get("upload",{}).get("jobs",{}).get(sub), "No such sub-source '%s'" % sub
+        # this will make the cache too old
+        doc["upload"]["jobs"][sub]["started_at"] = datetime.datetime.now()
+        src_dump.update_one({"_id":main},{"$set" : {"upload.jobs.%s.started_at" % sub:datetime.datetime.now()}})
+    elif col_type == "target":
+        # just delete the cache file
+        cache_file = get_cache_filename(col_name)
+        if cache_file:
+            try:
+                os.remove(cache_file)
+            except FileNotFoundError:
+                pass
+
 
 # TODO: this func deals with different backend, should not be in bt.utils.mongo
 # and doc_feeder should do the same as this function regarding backend support
@@ -334,146 +359,3 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             cache_out.close()
             cache_final = os.path.splitext(cache_temp)[0]
             os.rename(cache_temp,cache_final)
-
-
-def src_clean_archives(keep_last=1, src=None, verbose=True, noconfirm=False):
-    '''clean up archive collections in src db, only keep last <kepp_last>
-       number of archive.
-    '''
-    from biothings.utils.dataload import list2dict
-    from biothings.utils.common import ask
-
-    src = src or get_src_db()
-
-    archive_li = sorted([(coll.split('_archive_')[0], coll) for coll in src.collection_names()
-                         if coll.find('archive') != -1])
-    archive_d = list2dict(archive_li, 0, alwayslist=1)
-    coll_to_remove = []
-    for k, v in archive_d.items():
-        print(k, end='')
-        #check current collection exists
-        if src[k].count() > 0:
-            cnt = 0
-            for coll in sorted(v)[:-keep_last]:
-                coll_to_remove.append(coll)
-                cnt += 1
-            print("\t\t%s archived collections marked to remove." % cnt)
-        else:
-            print('skipped. Missing current "%s" collection!' % k)
-    if len(coll_to_remove) > 0:
-        print("%d archived collections will be removed." % len(coll_to_remove))
-        if verbose:
-            for coll in coll_to_remove:
-                print('\t', coll)
-        if noconfirm or ask("Continue?") == 'Y':
-            for coll in coll_to_remove:
-                src[coll].drop()
-            print("Done.[%s collections removed]" % len(coll_to_remove))
-        else:
-            print("Aborted.")
-    else:
-        print("Nothing needs to be removed.")
-
-
-def target_clean_collections(keep_last=2, target=None, verbose=True, noconfirm=False):
-    '''clean up collections in target db, only keep last <keep_last> number of collections.'''
-    import re
-    from biothings.utils.common import ask
-
-    target = target or get_target_db()
-    coll_list = target.collection_names()
-
-    for prefix in ('genedoc_mygene', 'genedoc_mygene_allspecies'):
-        pat = prefix + '_(\d{8})_\w{8}'
-        _li = []
-        for coll_name in coll_list:
-            mat = re.match(pat, coll_name)
-            if mat:
-                _li.append((mat.group(1), coll_name))
-        _li.sort()   # older collection appears first
-        coll_to_remove = [x[1] for x in _li[:-keep_last]]   # keep last # of newer collections
-        if len(coll_to_remove) > 0:
-            print('{} "{}*" collection(s) will be removed.'.format(len(coll_to_remove), prefix))
-            if verbose:
-                for coll in coll_to_remove:
-                    print('\t', coll)
-            if noconfirm or ask("Continue?") == 'Y':
-                for coll in coll_to_remove:
-                    target[coll].drop()
-                print("Done.[%s collection(s) removed]" % len(coll_to_remove))
-            else:
-                print("Aborted.")
-        else:
-            print("Nothing needs to be removed.")
-
-
-def backup_src_configs():
-    import json
-    import os
-    from .common import get_timestamp, DateTimeJSONEncoder
-    from .aws import send_s3_file
-
-    db = get_src_db()
-    for cfg in ['src_dump', 'src_master', 'src_build']:
-        xli = list(db[cfg].find())
-        bakfile = '/tmp/{}_{}.json'.format(cfg, get_timestamp())
-        bak_f = file(bakfile, 'w')
-        json.dump(xli, bak_f, cls=DateTimeJSONEncoder, indent=2)
-        bak_f.close()
-        bakfile_key = 'genedoc_src_config_bk/' + os.path.split(bakfile)[1]
-        print('Saving to S3: "{}"... '.format(bakfile_key), end='')
-        send_s3_file(bakfile, bakfile_key, overwrite=True)
-        os.remove(bakfile)
-        print('Done.')
-
-
-def get_data_folder(src_name):
-    src_dump = get_src_dump()
-    src_doc = src_dump.find_one({'_id': src_name})
-    if not src_doc:
-        raise ValueError("Can't find any datasource information for '%s'" % src_name)
-    # ensure we're not in a transient state
-    assert src_doc.get("download",{}).get('status') in ['success','failed'], "Source files are not ready yet [status: \"%s\"]." % src_doc['status']
-    return src_doc['data_folder']
-
-def get_latest_build(build_name):
-    src_build = get_src_build()
-    doc = src_build.find_one({"_id":build_name})
-    if doc and doc.get("build"):
-        target = doc["build"][-1]["target_name"]
-        return target
-    else:
-        return None
-
-def get_cache_filename(col_name):
-    cache_folder = getattr(config,"CACHE_FOLDER",None)
-    if not cache_folder:
-        return # we don't even use cache, forget it
-    cache_format = getattr(config,"CACHE_FORMAT",None)
-    cache_file = os.path.join(config.CACHE_FOLDER,col_name)
-    cache_file = cache_format and (cache_file + ".%s" % cache_format) or cache_file
-    return cache_file
-
-def invalidate_cache(col_name,col_type="src"):
-    if col_type == "src":
-        src_dump = get_src_dump()
-        if not "." in col_name:
-            fullname = get_source_fullname(col_name)
-        assert fullname, "Can't resolve source '%s' (does it exist ?)" % col_name
-
-        main,sub = fullname.split(".")
-        doc = src_dump.find_one({"_id":main})
-        assert doc, "No such source '%s'" % main
-        assert doc.get("upload",{}).get("jobs",{}).get(sub), "No such sub-source '%s'" % sub
-        # this will make the cache too old
-        doc["upload"]["jobs"][sub]["started_at"] = datetime.datetime.now()
-        src_dump.update_one({"_id":main},{"$set" : {"upload.jobs.%s.started_at" % sub:datetime.datetime.now()}})
-    elif col_type == "target":
-        # just delete the cache file
-        cache_file = get_cache_filename(col_name)
-        if cache_file:
-            try:
-                os.remove(cache_file)
-            except FileNotFoundError:
-                pass
-

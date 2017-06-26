@@ -15,6 +15,15 @@ def config_for_app(config_mod):
     # (but "import biothings.config" won't b/c not a real module within biothings
     globals()["config"] = config_mod
     config.APP_PATH = app_path
+    if not hasattr(config_mod,"CONFIG_BACKEND"):
+        import biothings.utils.mongo
+        config.internal_backend = biothings.utils.mongo
+    else:
+        import importlib
+        config.internal_backend = importlib.import_module(config.CONFIG_BACKEND["module"])
+        import biothings.utils.internal_backend
+        biothings.utils.internal_backend.setup()
+
 
 def get_loop(max_workers=None):
     loop = asyncio.get_event_loop()
