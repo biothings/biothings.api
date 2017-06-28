@@ -571,7 +571,7 @@ class DifferManager(BaseManager):
                     mode=None):
 
         def do():
-            if mode == "purge" and not os.path.exists(reportfilepath):
+            if mode == "purge" or not os.path.exists(reportfilepath):
                 report = self.build_diff_report(diff_folder, detailed, max_reported_ids)
                 assert format == "txt", "Only 'txt' format supported for now"
                 render = DiffReportTxt(max_reported_ids=max_reported_ids,
