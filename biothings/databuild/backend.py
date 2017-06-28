@@ -210,8 +210,8 @@ def create_backend(db_col_names,name_only=False):
         assert len(db_col_names) == 2, "Missing connection information for %s" % repr(db_col_names)
         db = db_col_names[0] == "target" and mongo.get_target_db() or mongo.get_src_db()
         col = db[db_col_names[1]]
-        # normalize params
-        db_col_names = ["%s:%s" % (db.client.HOST,db.client.PORT),db.name,col.name]
+        # normalize params (0:host, 1:port)
+        db_col_names = ["%s:%s" % (db.client.address[0],db.client.address[1]),db.name,col.name]
     assert not col is None, "Could not create collection object from %s" % repr(db_col_names)
     if name_only:
         if is_mongo:
