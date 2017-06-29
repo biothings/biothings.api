@@ -4,7 +4,7 @@ import os
 import shelve
 
 from biothings import config
-from biothings.utils.internal_backend import Connection
+from biothings.utils.hub_db import IConnection
 from biothings.utils.dotfield import parse_dot_fields
 from biothings.utils.dataload import update_dict_recur
 

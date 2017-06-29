@@ -5,7 +5,7 @@ import logging as loggingmod
 from functools import wraps, partial
 
 from biothings.utils.common import get_timestamp, get_random_string, timesofar, iter_n
-from biothings.utils.internal_backend import get_src_dump, get_src_master
+from biothings.utils.hub_db import get_src_dump, get_src_master
 from biothings.utils.mongo import get_src_conn
 from biothings.utils.dataload import merge_struct
 from biothings.utils.manager import BaseSourceManager, \

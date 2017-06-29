@@ -3,7 +3,7 @@ import sqlite3
 import json
 
 from biothings import config
-from biothings.utils.internal_backend import IConnection
+from biothings.utils.hub_db import IConnection
 from biothings.utils.dotfield import parse_dot_fields
 from biothings.utils.dataload import update_dict_recur
 
@@ -16,23 +16,23 @@ def json_serial(obj):
         return serial
     raise TypeError ("Type %s not serializable" % type(obj))
 
-def get_config_conn():
-    return Database(config.DATA_CONFIG_DATABASE)
+def get_hub_db_conn():
+    return Database(config.DATA_HUB_DB_DATABASE)
 
 def get_src_dump():
-    db = Database(config.DATA_CONFIG_DATABASE)
+    db = Database(config.DATA_HUB_DB_DATABASE)
     return db[config.DATA_SRC_DUMP_COLLECTION]
 
 def get_src_master():
-    db = Database(config.DATA_CONFIG_DATABASE)
+    db = Database(config.DATA_HUB_DB_DATABASE)
     return db[config.DATA_SRC_MASTER_COLLECTION]
 
 def get_src_build():
-    db = Database(config.DATA_CONFIG_DATABASE)
+    db = Database(config.DATA_HUB_DB_DATABASE)
     return db[config.DATA_SRC_BUILD_COLLECTION]
 
 def get_src_build_config():
-    db = Database(config.DATA_CONFIG_DATABASE)
+    db = Database(config.DATA_HUB_DB_DATABASE)
     return db[config.DATA_SRC_BUILD_CONFIG_COLLECTION]
 
 def get_source_fullname(col_name):
@@ -58,9 +58,9 @@ class Database(IConnection):
     def __init__(self,dbname):
         super(Database,self).__init__()
         self.dbname = dbname
-        if not os.path.exists(config.CONFIG_BACKEND["sqlite_db_folder"]):
-            os.makedirs(config.CONFIG_BACKEND["sqlite_db_folder"])
-        self.dbfile = os.path.join(config.CONFIG_BACKEND["sqlite_db_folder"],dbname)
+        if not os.path.exists(config.HUB_DB_BACKEND["sqlite_db_folder"]):
+            os.makedirs(config.HUB_DB_BACKEND["sqlite_db_folder"])
+        self.dbfile = os.path.join(config.HUB_DB_BACKEND["sqlite_db_folder"],dbname)
         self.cols = {}
 
     def get_conn(self):

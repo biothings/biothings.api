@@ -4,7 +4,7 @@ from datetime import datetime
 import asyncio
 from functools import partial
 
-from biothings.utils.internal_backend import get_src_dump
+from biothings.utils.hub_db import get_src_dump
 from biothings.utils.common import timesofar
 from biothings.utils.loggers import HipchatHandler
 from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER

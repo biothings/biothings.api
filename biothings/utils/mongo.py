@@ -7,7 +7,7 @@ from functools import partial
 from biothings.utils.common import timesofar, get_random_string, iter_n, \
                                    open_compressed_file, get_compressed_outfile
 from biothings.utils.backend import DocESBackend, DocMongoBackend
-from biothings.utils.internal_backend import IConnection
+from biothings.utils.hub_db import IConnection
 # stub, until set to real config module
 config = None
 
@@ -39,7 +39,7 @@ def get_conn(server, port):
     return conn
 
 @requires_config
-def get_config_conn():
+def get_hub_db_conn():
     conn = Connection(config.CONFIG_BACKEND["uri"])
     return conn
 
@@ -56,24 +56,24 @@ def get_src_db(conn=None):
 
 @requires_config
 def get_src_master(conn=None):
-    conn = conn or get_config_conn()
+    conn = conn or get_hub_db_conn()
     return conn[config.DATA_CONFIG_DATABASE][config.DATA_SRC_MASTER_COLLECTION]
 
 
 @requires_config
 def get_src_dump(conn=None):
-    conn = conn or get_config_conn()
+    conn = conn or get_hub_db_conn()
     return conn[config.DATA_CONFIG_DATABASE][config.DATA_SRC_DUMP_COLLECTION]
 
 
 @requires_config
 def get_src_build(conn=None):
-    conn = conn or get_config_conn()
+    conn = conn or get_hub_db_conn()
     return conn[config.DATA_CONFIG_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
 
 @requires_config
 def get_src_build_config(conn=None):
-    conn = conn or get_config_conn()
+    conn = conn or get_hub_db_conn()
     return conn[config.DATA_CONFIG_DATABASE][config.DATA_SRC_BUILD_COLLECTION + "_config"]
 
 @requires_config

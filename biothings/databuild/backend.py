@@ -7,7 +7,7 @@ from biothings.utils.common import get_timestamp, get_random_string
 from biothings.utils.backend import DocBackendBase, DocMongoBackend, DocESBackend
 from biothings.utils.es import ESIndexer
 import biothings.utils.mongo as mongo
-import biothings.utils.internal_backend as ib
+from biothings.utils.hub_db import get_source_fullname
 
 # Source specific backend (deals with build config, master docs, etc...)
 class SourceDocBackendBase(DocBackendBase):
@@ -128,7 +128,7 @@ class SourceDocMongoBackend(SourceDocBackendBase):
         srcs = []
         if self.sources_accessed:
             for src in self.sources_accessed:
-                fullname = ib.get_source_fullname(src)
+                fullname = get_source_fullname(src)
                 main_name = fullname.split(".")[0]
                 doc = self.dump.find_one({"_id":main_name})
                 srcs.append(doc["_id"])
