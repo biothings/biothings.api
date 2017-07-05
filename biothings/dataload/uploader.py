@@ -613,7 +613,6 @@ class UploaderManager(BaseSourceManager):
                 self.register.setdefault(klass.main_source,[]).append(klass)
             else:
                 self.register.setdefault(klass.name,[]).append(klass)
-            self.conn.register(klass)
 
     def register_status(self,src_name,status,**extra):
         """

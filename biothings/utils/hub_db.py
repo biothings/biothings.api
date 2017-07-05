@@ -13,7 +13,6 @@ classes below. See biothings.utils.mongo and biothings.utils.sqlit3 for
 some examples.
 """
 
-from biothings import config
 
 def get_hub_db_conn():
     """Return a Database instance (connection to hub db)"""
@@ -48,37 +47,27 @@ def get_source_fullname(col_name):
     raise NotImplementedError()
 
 
-class IConnection(object):
+class IDatabase(object):
     """
     This class declares an interface and partially implements some of it, 
     mimicking mongokit.Connection class. It's used to keep used document model.
     Any internal backend should implement (derives) this interface
     """
-    def __init__(self, *args, **kwargs):
-        super(IConnection,self).__init__(*args,**kwargs)
-        self._registered_documents = {}
-    def register(self, obj):
-        self._registered_documents[obj.__name__] = obj
-    def __getattr__(self,key):
-        if key in self._registered_documents:
-            document = self._registered_documents[key]
-            return document
-        else:
-            try:
-                return self[key]
-            except Exception:
-                raise AttributeError(key)
 
-class Database(IConnection):
-    """Defines a connection to a database. Also used
-    to access collections/tables from that database"""
-
-    def __init__(self,dbname):
-        super(Database,self).__init__()
-        self.dbname = dbname
+    def __init__(self):
+        super(IDatabase,self).__init__()
+        self.dbname = None # should be set from config module
         # any other initialization can be done here, 
         # depending on the backend specifics
 
+    @property
+    def address(self):
+        """Returns sufficient information so a connection to a database
+        can be created. Information can be a dictionary, object, etc...
+        and depends on the actual backend"""
+        raise NotImplementedError()
+
+    #TODO: really needed ? on is it for src_db only ?
     def collection_names(self):
         """Return a list of all collections (or tables) found in this database"""
         raise NotImplementedError()
@@ -95,7 +84,7 @@ class Database(IConnection):
         raise NotImplementedError()
 
     def __repr__(self):
-        return "<%s at %s, %s>" % (self.__class__.__name__,hex(id(self)),self.dbname)
+        return "<%s at %s, %s>" % (self.__class__.__name__,hex(id(self)),self.address)
 
 
 class Collection(object):
@@ -131,6 +120,7 @@ class Collection(object):
         by MongoDB. Dict can contain the name of a key, and the value being searched for.
         Ex: {"field1":"value1"} will return all documents where field1 == "value1".
         Nested key (field1.subfield1) aren't supported (no need to implement).
+        Exact matches only are required.
 
         If no query is passed, or if query is an empty dict, return all documents.
         """
@@ -173,7 +163,7 @@ class Collection(object):
         raise NotImplementedError()
 
 
-def setup():
+def setup(config):
     global get_hub_db_conn
     global get_src_dump
     global get_src_master
@@ -186,5 +176,7 @@ def setup():
     get_src_build = config.hub_db.get_src_build
     get_src_build_config = config.hub_db.get_src_build_config
     get_source_fullname = config.hub_db.get_source_fullname
+    # propagate config module to classes
+    config.hub_db.Database.CONFIG = config
 
 

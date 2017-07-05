@@ -657,7 +657,6 @@ class DumperManager(BaseSourceManager):
                 self.register.setdefault(klass.SRC_NAME,[]).append(klass)
             else:
                 self.register[klass.name] = klass 
-            self.conn.register(klass)
 
     def dump_all(self, force=False, **kwargs):
         """

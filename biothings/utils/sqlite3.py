@@ -3,37 +3,29 @@ import sqlite3
 import json
 
 from biothings import config
-from biothings.utils.hub_db import IConnection
+from biothings.utils.hub_db import IDatabase
 from biothings.utils.dotfield import parse_dot_fields
 from biothings.utils.dataload import update_dict_recur
-
-# https://stackoverflow.com/questions/11875770/how-to-overcome-datetime-datetime-not-json-serializable
-from datetime import date, datetime
-def json_serial(obj):
-    """JSON serializer for objects not serializable by default json code"""
-    if isinstance(obj, (datetime, date)):
-        serial = obj.isoformat()
-        return serial
-    raise TypeError ("Type %s not serializable" % type(obj))
+from biothings.utils.common import json_serial
 
 def get_hub_db_conn():
-    return Database(config.DATA_HUB_DB_DATABASE)
+    return Database()
 
 def get_src_dump():
-    db = Database(config.DATA_HUB_DB_DATABASE)
-    return db[config.DATA_SRC_DUMP_COLLECTION]
+    db = Database()
+    return db[db.CONFIG.DATA_SRC_DUMP_COLLECTION]
 
 def get_src_master():
-    db = Database(config.DATA_HUB_DB_DATABASE)
-    return db[config.DATA_SRC_MASTER_COLLECTION]
+    db = Database()
+    return db[db.CONFIG.DATA_SRC_MASTER_COLLECTION]
 
 def get_src_build():
-    db = Database(config.DATA_HUB_DB_DATABASE)
-    return db[config.DATA_SRC_BUILD_COLLECTION]
+    db = Database()
+    return db[db.CONFIG.DATA_SRC_BUILD_COLLECTION]
 
 def get_src_build_config():
-    db = Database(config.DATA_HUB_DB_DATABASE)
-    return db[config.DATA_SRC_BUILD_CONFIG_COLLECTION]
+    db = Database()
+    return db[db.CONFIG.DATA_SRC_BUILD_CONFIG_COLLECTION]
 
 def get_source_fullname(col_name):
     """
@@ -53,15 +45,19 @@ def get_source_fullname(col_name):
         else:
             return name
 
-class Database(IConnection):
+class Database(IDatabase):
 
-    def __init__(self,dbname):
+    def __init__(self):
         super(Database,self).__init__()
-        self.dbname = dbname
-        if not os.path.exists(config.HUB_DB_BACKEND["sqlite_db_folder"]):
-            os.makedirs(config.HUB_DB_BACKEND["sqlite_db_folder"])
-        self.dbfile = os.path.join(config.HUB_DB_BACKEND["sqlite_db_folder"],dbname)
+        self.dbname = self.CONFIG.DATA_HUB_DB_DATABASE
+        if not os.path.exists(self.CONFIG.HUB_DB_BACKEND["sqlite_db_folder"]):
+            os.makedirs(self.CONFIG.HUB_DB_BACKEND["sqlite_db_folder"])
+        self.dbfile = os.path.join(self.CONFIG.HUB_DB_BACKEND["sqlite_db_folder"],self.dbname)
         self.cols = {}
+
+    @property
+    def address(self):
+        return self.dbfile
 
     def get_conn(self):
         return sqlite3.connect(self.dbfile)
@@ -85,9 +81,6 @@ class Database(IConnection):
             self.create_if_needed(colname)
             self.cols[colname] = Collection(colname,self)
         return self.cols[colname]
-
-    def __repr__(self):
-        return "<%s at %s, %s>" % (self.__class__.__name__,hex(id(self)),self.dbname)
 
 
 class Collection(object):
