@@ -19,6 +19,7 @@ import logging
 import importlib
 import math, statistics
 import hashlib
+from datetime import date, datetime
 
 if sys.version_info.major == 3:
     str_types = str
@@ -543,6 +544,16 @@ class DateTimeJSONEncoder(json.JSONEncoder):
             return obj.isoformat()
         else:
             return super(DateTimeJSONEncoder, self).default(obj)
+
+
+# https://stackoverflow.com/questions/11875770/how-to-overcome-datetime-datetime-not-json-serializable
+def json_serial(obj):
+    """JSON serializer for objects not serializable by default json code"""
+    if isinstance(obj, (datetime, date)):
+        serial = obj.isoformat()
+        return serial
+    raise TypeError ("Type %s not serializable" % type(obj))
+
 
 def rmdashfr(top):
     '''Recursively delete dirs and files from "top" directory, then delete "top" dir'''
