@@ -1,8 +1,5 @@
-import pkg_resources
 import sys, os, asyncio
 import concurrent.futures
-
-__version__ = pkg_resources.require("biothings")[0].version
 
 def get_version():
     return __version__
