@@ -7,12 +7,15 @@ from functools import partial
 from biothings.utils.common import timesofar, get_random_string, iter_n, \
                                    open_compressed_file, get_compressed_outfile
 from biothings.utils.backend import DocESBackend, DocMongoBackend
-from biothings.utils.hub_db import IConnection
+from biothings.utils.hub_db import IDatabase
 # stub, until set to real config module
 config = None
 
-class Connection(IConnection,MongoClient):
-    pass
+class Database(MongoClient,IDatabase):
+
+    def __init__(self,dbname,*args,**kwargs):
+        super(Database,self).__init__()
+        self.dbname = dbname
 
 def requires_config(func):
     @wraps(func)
@@ -35,12 +38,12 @@ def get_conn(server, port):
                                              server, port)
     else:
         uri = "mongodb://{}:{}".format(server, port)
-    conn = Connection(uri)
+    conn = Database(uri)
     return conn
 
 @requires_config
 def get_hub_db_conn():
-    conn = Connection(config.CONFIG_BACKEND["uri"])
+    conn = Database(config.HUB_DB_BACKEND["uri"])
     return conn
 
 @requires_config
@@ -57,24 +60,24 @@ def get_src_db(conn=None):
 @requires_config
 def get_src_master(conn=None):
     conn = conn or get_hub_db_conn()
-    return conn[config.DATA_CONFIG_DATABASE][config.DATA_SRC_MASTER_COLLECTION]
+    return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_MASTER_COLLECTION]
 
 
 @requires_config
 def get_src_dump(conn=None):
     conn = conn or get_hub_db_conn()
-    return conn[config.DATA_CONFIG_DATABASE][config.DATA_SRC_DUMP_COLLECTION]
+    return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_DUMP_COLLECTION]
 
 
 @requires_config
 def get_src_build(conn=None):
     conn = conn or get_hub_db_conn()
-    return conn[config.DATA_CONFIG_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
+    return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
 
 @requires_config
 def get_src_build_config(conn=None):
     conn = conn or get_hub_db_conn()
-    return conn[config.DATA_CONFIG_DATABASE][config.DATA_SRC_BUILD_COLLECTION + "_config"]
+    return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_BUILD_COLLECTION + "_config"]
 
 @requires_config
 def get_target_conn():
@@ -85,7 +88,7 @@ def get_target_conn():
                                              config.DATA_TARGET_PORT)
     else:
         uri = "mongodb://{}:{}".format(config.DATA_TARGET_SERVER,config.DATA_TARGET_PORT)
-    conn = Connection(uri)
+    conn = Database(uri)
     return conn
 
 
