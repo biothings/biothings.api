@@ -85,6 +85,9 @@ class BiothingESWebSettings(BiothingWebSettings):
 
         # populate the metadata for this project
         self.source_metadata()
+        
+        # initialize payload for standalone tracking batch
+        self.tracking_payload = []   
 
     def doc_url(self, bid):
         ''' Function to return a url on this biothing API to the biothing object specified by bid.'''

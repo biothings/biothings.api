@@ -108,7 +108,8 @@ QUERY_GET_CONTROL_KWARGS = {'raw': {'default': False, 'type': bool},
                                     #(re.compile(r'chr:', re.I), r'chrom:')
                                 ]
                             },
-                            'scroll_id': {'default': None, 'type': str}}
+                            'scroll_id': {'default': None, 'type': str},
+                            'fetch_all': {'default': False, 'type': bool}}
 QUERY_GET_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 100, 'alias': ['fields', 'filter']},
                        'from': {'default': None, 'type': int, 'alias': 'skip'},
                        'size': {'default': None, 'type': int, 'alias': 'limit'},
@@ -163,6 +164,8 @@ GA_ACTION_ANNOTATION_POST = 'biothing_post'
 STANDALONE_TRACKING_URL = ''
 # dictionary with AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY k,v for standalone user AWS IAM
 STANDALONE_AWS_CREDENTIALS = {}
+# batch size for standalone tracking (sending requests to AWS lambda)
+STANDALONE_TRACKING_BATCH_SIZE = 1000
 
 # override with url for specific project
 URL_BASE = 'http://mybiothing.info'

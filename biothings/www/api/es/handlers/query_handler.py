@@ -170,6 +170,7 @@ class QueryHandler(BaseESRequestHandler):
                                                 ga_event_data={'total': 0})
                 return
 
+            #logging.debug("Raw query result")
             #logging.debug("Raw query result: {}".format(res))
 
             # return raw result if requested
@@ -182,12 +183,12 @@ class QueryHandler(BaseESRequestHandler):
             ###################################################
             #            Transform query results
             ###################################################
-
             # clean result
             try:
                 res = _result_transformer.clean_query_GET_response(res)
             except Exception as e:
                 self.log_exceptions("Error transforming query")
+                logging.debug("Return query GET")
                 self._return_data_and_track({'success': False, 'error': 'Error transforming query result'},
                                             ga_event_data={'total': res.get('total', 0)})
                 return
@@ -196,9 +197,11 @@ class QueryHandler(BaseESRequestHandler):
 
         # return and track
         self.return_json(res)
+        logging.debug("options.control_kwargs.fetch_all: {}".format(options.control_kwargs.fetch_all))
         if options.control_kwargs.fetch_all:
             self.ga_event_object_ret['action'] = 'fetch_all'
         self.ga_track(event=self.ga_event_object({'total': res.get('total', 0)}))
+        self.self_track(data=self.ga_event_object_ret)
         return
 
     ###########################################################################
@@ -253,6 +256,7 @@ class QueryHandler(BaseESRequestHandler):
             _query = _query_builder.query_POST_query(qs=options.control_kwargs.q, scopes=options.esqb_kwargs.scopes)
         except Exception as e:
             self.log_exceptions("Error building POST query")
+            logging.debug("Returning query POST")
             self._return_data_and_track({'success': False, 'error': 'Error building query'}, ga_event_data={'qsize': len(options.control_kwargs.q)})
             return
 
