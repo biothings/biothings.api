@@ -13,28 +13,19 @@ collection of tools to automate the downloading of source data files, the mergin
 of different sources, and the updating of the Elasticsearch index.  The web component
 is a Tornado-based API app that subsequently serves data from this Elasticsearch index.
 
-Because we are using a single flat-file from a single download, no updating or merging 
-is required which allows a very thin data-loading section.  Additionally, the web section 
-can also be minimal because the web app provides a robust query language by default.  
-The following tutorial shows how to set up a BioThings API using the BioThings SDK with 
-data from a single source.
-
 Prerequisites
 ^^^^^^^^^^^^^
 
-Software
-========
-
 Before starting, there are a few requirements that need to be installed and configured.
 
-python
-------
+Python
+======
 
-The BioThings SDK requires `python >= 3.3 <>`_ for full functionality.  We recommend installing 
-all python dependencies into a `virtualenv <https://virtualenv.pypa.io/en/stable/>`_.
+The BioThings SDK requires `Python version 3.3 or higher <https://www.python.org/>`_ for full functionality.  
+We recommend installing all python dependencies into a `virtualenv <https://virtualenv.pypa.io/en/stable/>`_.
 
 BioThings SDK
--------------
+=============
 
 Either install from source, like:
 
@@ -51,11 +42,11 @@ or use pip, like:
     pip install git+https://github.com/biothings/biothings.api.git#egg=biothings
 
 Elasticsearch
--------------
+=============
 
 BioThings APIs currently serve data from an Elasticsearch index, so Elasticsearch is a requirement.
 Install Elasticsearch 2.4 either `directly <https://www.elastic.co/guide/en/elasticsearch/reference/2.4/_installation.html>`_, 
-or as a `docker container`_.
+or as a `docker container <https://www.elastic.co/guide/en/elasticsearch/reference/current/docker.html>`_.
 
 Configure Elasticsearch
 +++++++++++++++++++++++
@@ -73,9 +64,7 @@ Pharmgkb Gene
 
 Once all prerequisites have been installed, the data loading step can begin.
 Consider the following script, which defines a "load_data" function that parses
-the `Pharmgkb gene flat file <https://api.pharmgkb.org/v1/download/file/data/genes.zip>`_
- and then iterates through it, storing the results in an Elasticsearch index using 
-biothings.utils.es.ESIndexer.
+the `Pharmgkb gene flat file <https://api.pharmgkb.org/v1/download/file/data/genes.zip>`_ and then iterates through it, storing the results in an Elasticsearch index using biothings.utils.es.ESIndexer.
 
 .. code-block:: python
 
