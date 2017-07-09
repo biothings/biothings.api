@@ -28,21 +28,6 @@ BioThings.API tutorials
 
 Check out a simple ``"Hello, World!"`` example, or more advanced tutorials `here <doc/tutorial.html>`_.
 
-BioThings.API overview
-----------------------
-.. raw :: html
-
-    <div>
-    <center><img src="_static/biothings_overview.png" usemap="#overviewmap"></center>
-
-    <map name="overviewmap">
-        <area shape="rect" coords="7,7,314,284" href="doc/data_loading.html">
-        <area shape="rect" coords="7,313,313,458" href="doc/web.html">
-    </map>
-    </div>
-
-    <div id="spacer" style="height:300px"></div>
-
 .. toctree::
    :maxdepth: 3
 

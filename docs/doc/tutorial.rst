@@ -8,9 +8,9 @@ Single Data Source, No Source Updating Tutorial
 
 The following tutorial shows a minimal use-case for the BioThings SDK: creating a
 high-performance, high-concurrency API from a single flat-file.  The BioThings SDK
-is broadly divided into two sections, the hub and the web.  The hub section is a 
+is broadly divided into two components, the hub and the web.  The hub component is a 
 collection of tools to automate the downloading of source data files, the merging 
-of different sources, and the updating of the Elasticsearch index.  The web section
+of different sources, and the updating of the Elasticsearch index.  The web component
 is a Tornado-based API app that subsequently serves data from this Elasticsearch index.
 
 Because we are using a single flat-file from a single download, no updating or merging 
@@ -22,12 +22,6 @@ data from a single source.
 Prerequisites
 ^^^^^^^^^^^^^
 
-Docker container
-================
-
-You can access a docker container with all requirements installed and configured (for
-common use-cases) here.
-
 Software
 ========
 
@@ -36,30 +30,52 @@ Before starting, there are a few requirements that need to be installed and conf
 python
 ------
 
+The BioThings SDK requires `python >= 3.3 <>`_ for full functionality.  We recommend installing 
+all python dependencies into a `virtualenv <https://virtualenv.pypa.io/en/stable/>`_.
+
 BioThings SDK
 -------------
 
-Either install from source, or use pip.
+Either install from source, like:
+
+.. code-block:: bash
+    
+    git clone https://github.com/biothings/biothings.api.git
+    cd biothings.api
+    python setup.py install
+
+or use pip, like:
+
+.. code-block:: bash
+
+    pip install git+https://github.com/biothings/biothings.api.git#egg=biothings
 
 Elasticsearch
 -------------
 
 BioThings APIs currently serve data from an Elasticsearch index, so Elasticsearch is a requirement.
-Install elasticsearch as in https://www.elastic.co/guide/en/elasticsearch/reference/2.4/_installation.html.
+Install Elasticsearch 2.4 either `directly <https://www.elastic.co/guide/en/elasticsearch/reference/2.4/_installation.html>`_, 
+or as a `docker container`_.
 
 Configure Elasticsearch
 +++++++++++++++++++++++
 
-http.enabled: True on node taking requests (ES_HOST in config file)
-search threadpool size
+To configure Elasticsearch, execute the following commands as su.
+
+.. code-block:: bash
+
+    echo 'http.enabled: True' >> /etc/elasticsearch/elasticsearch.yml
+    echo 'network.host: "0.0.0.0"' >> /etc/elasticsearch/elasticsearch.yml
+
 
 Pharmgkb Gene
 ^^^^^^^^^^^^^
 
 Once all prerequisites have been installed, the data loading step can begin.
 Consider the following script, which defines a "load_data" function that parses
-the Pharmgkb gene flat file and then iterates through it, storing the results in
-an Elasticsearch index using biothings.utils.es.ESIndexer.
+the `Pharmgkb gene flat file <https://api.pharmgkb.org/v1/download/file/data/genes.zip>`_
+ and then iterates through it, storing the results in an Elasticsearch index using 
+biothings.utils.es.ESIndexer.
 
 .. code-block:: python
 
@@ -96,21 +112,112 @@ an API.  Change to a directory you want to store the front-end code, and type:
 
 .. code-block:: bash
 
-    biothings-admin.py pharmgkb_gene . -o src_package pharmgkb_gene
+    biothings-admin.py pharmgkb_gene . -o src_package=pharmgkb_gene
 
 Now you can start your API by typing:
 
 .. code-block:: bash
 
-    cd pharmgkb_gene
-    pip install -r requirements_web.txt
+    cd pharmgkb_gene/src
+    pip install -r ../requirements_web.txt
     python www/index.py --debug --port=8001
 
-Your API is live.
+Your API is live.  To use it, you can query it with a curl (or your local browser).  For example,
+if you wanted to find the PharmGKB accession for an NCBI gene (or gene list) you have, you could do a query
+like:
 
-*****************
-Taxonomy tutorial
-*****************
+.. code-block:: bash
+
+    curl "http://localhost:8001/v1/query?q=ncbi_gene_id:1017&fields=pharmgkb_accession_id"
+    {
+      "max_score": 8.178926,
+      "took": 9,
+      "total": 1,
+      "hits": [
+        {
+          "_id": "AVydiHIJYMgArMwkfE8R",
+          "_score": 8.178926,
+          "pharmgkb_accession_id": "PA101"
+        }
+      ]
+    }
+
+Or, to find all PharmGKB genes that have a CDK* symbol, you can do this query:
+
+.. code-block:: bash
+
+    curl "http://localhost:8001/v1/query?q=symbol:CDK*&fields=pharmgkb_accession_id,symbol"
+    {
+      "max_score": 1.0,
+      "took": 11,
+      "total": 50,
+      "hits": [
+        {
+          "_id": "AVydiHIJYMgArMwkfE8F",
+          "_score": 1.0,
+          "pharmgkb_accession_id": "PA99",
+          "symbol": "CDK1"
+        },
+        {
+          "_id": "AVydiHIJYMgArMwkfE8H",
+          "_score": 1.0,
+          "pharmgkb_accession_id": "PA26263",
+          "symbol": "CDK11A"
+        },
+        {
+          "_id": "AVydiHIJYMgArMwkfE8M",
+          "_score": 1.0,
+          "pharmgkb_accession_id": "PA165696414",
+          "symbol": "CDK15"
+        },
+        {
+          "_id": "AVydiHIJYMgArMwkfE8R",
+          "_score": 1.0,
+          "pharmgkb_accession_id": "PA101",
+          "symbol": "CDK2"
+        },
+        {
+          "_id": "AVydiHIJYMgArMwkfE8n",
+          "_score": 1.0,
+          "pharmgkb_accession_id": "PA26317",
+          "symbol": "CDKL1"
+        },
+        {
+          "_id": "AVydiHIJYMgArMwkfE8N",
+          "_score": 1.0,
+          "pharmgkb_accession_id": "PA33095",
+          "symbol": "CDK16"
+        },
+        {
+          "_id": "AVydiHIJYMgArMwkfE8e",
+          "_score": 1.0,
+          "pharmgkb_accession_id": "PA38632",
+          "symbol": "CDK5RAP2"
+        },
+        {
+          "_id": "AVydiHIJYMgArMwkfE8h",
+          "_score": 1.0,
+          "pharmgkb_accession_id": "PA26314",
+          "symbol": "CDK7"
+        },
+        {
+          "_id": "AVydiHIJYMgArMwkfE8m",
+          "_score": 1.0,
+          "pharmgkb_accession_id": "PA134871999",
+          "symbol": "CDKAL1"
+        },
+        {
+          "_id": "AVydiHIJYMgArMwkfE8v",
+          "_score": 1.0,
+          "pharmgkb_accession_id": "PA106",
+          "symbol": "CDKN2A"
+        }
+      ]
+    }
+
+*********************************************************
+Multiple Data Sources, Automated Source Updating Tutorial
+*********************************************************
 
 The following tutorial shows how to create a "hub", a piece of software used to
 download, maintain up-to-date, process, merge data. This part of Biothings is used
