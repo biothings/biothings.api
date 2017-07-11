@@ -403,8 +403,12 @@ class DataBuilder(object):
                     found.append(col)
         return found
 
-    def merge(self, sources=None, target_name=None, force=False, ids=None, job_manager=None, *args,**kwargs):
+    def merge(self, sources=None, target_name=None, force=False, ids=None,steps=["merge","post","metadata"],
+            job_manager=None, *args,**kwargs):
         assert job_manager
+        # check what to do
+        if type(steps) == str:
+            steps = [steps]
         self.t0 = time.time()
         self.check_ready(force)
         # normalize
@@ -434,42 +438,47 @@ class DataBuilder(object):
         try:
             @asyncio.coroutine
             def do():
-                job = self.merge_sources(source_names=sources, ids=ids, job_manager=job_manager,
-                                         *args, **kwargs)
-                res = yield from job
-                pinfo = self.get_pinfo()
-                pinfo["step"] = "metadata"
-                postjob = yield from job_manager.defer_to_thread(pinfo,
-                        partial(self.store_metadata,res,sources=sources,job_manager=job_manager))
-                def stored(f):
-                    try:
-                        res = f.result() # consume to trigger exceptions if any
-                        strargs = "[sources=%s,stats=%s,versions=%s]" % \
-                                (sources,self.stats,self.src_versions)
-                        build_version = self.get_build_version()
-                        if "." in build_version:
-                            raise BuilderException("Can't use '.' in build version '%s', it's reserved for minor versions" % build_version)
-                        # get original start dt
-                        src_build = self.source_backend.build
-                        build = src_build.find_one({'_id': target_name})
-                        self.register_status('success',build={
-                            "merge_stats" : self.stats,
-                            "mapping" : self.mapping,
-                            "_meta" : {
-                                "src_version" : self.src_versions,
-                                "src" : self.src_meta,
-                                "stats" : self.metadata,
-                                "build_version" : build_version,
-                                "timestamp" : build["started_at"].isoformat()}
-                            })
-                        self.logger.info("success %s" % strargs,extra={"notify":True})
-                    except Exception as e:
-                        strargs = "[sources=%s]" % sources
-                        self.register_status("failed",job={"err": repr(e)})
-                        self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
-                        raise
-                postjob.add_done_callback(stored)
-                yield from postjob
+                res = None
+                if "merge" in steps:
+                    job = self.merge_sources(source_names=sources, ids=ids, steps=steps,
+                            job_manager=job_manager, *args, **kwargs)
+                    res = yield from job
+                if "metadata" in steps:
+                    pinfo = self.get_pinfo()
+                    pinfo["step"] = "metadata"
+                    postjob = yield from job_manager.defer_to_thread(pinfo,
+                            partial(self.store_metadata,res,sources=sources,job_manager=job_manager))
+                    def stored(f):
+                        try:
+                            nonlocal res
+                            if res:
+                                res = f.result() # consume to trigger exceptions if any
+                            strargs = "[sources=%s,stats=%s,versions=%s]" % \
+                                    (sources,self.stats,self.src_versions)
+                            build_version = self.get_build_version()
+                            if "." in build_version:
+                                raise BuilderException("Can't use '.' in build version '%s', it's reserved for minor versions" % build_version)
+                            # get original start dt
+                            src_build = self.source_backend.build
+                            build = src_build.find_one({'_id': target_name})
+                            self.register_status('success',build={
+                                "merge_stats" : self.stats,
+                                "mapping" : self.mapping,
+                                "_meta" : {
+                                    "src_version" : self.src_versions,
+                                    "src" : self.src_meta,
+                                    "stats" : self.metadata,
+                                    "build_version" : build_version,
+                                    "timestamp" : build["started_at"].isoformat()}
+                                })
+                            self.logger.info("success %s" % strargs,extra={"notify":True})
+                        except Exception as e:
+                            strargs = "[sources=%s]" % sources
+                            self.register_status("failed",job={"err": repr(e)})
+                            self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
+                            raise
+                    postjob.add_done_callback(stored)
+                    yield from postjob
 
             task = asyncio.ensure_future(do())
             return task

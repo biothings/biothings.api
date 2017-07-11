@@ -284,7 +284,7 @@ class BaseDiffer(object):
         self.logger.info("success %s" % strargs,extra={"notify":True})
         return diff_stats
 
-    def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["count","content","mapping"], mode=None, exclude=[]):
+    def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["content","mapping"], mode=None, exclude=[]):
         """wrapper over diff_cols() coroutine, return a task"""
         job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, steps, mode, exclude))
         return job
@@ -546,7 +546,7 @@ class DifferManager(BaseManager):
         pclass = BaseManager.__getitem__(self,diff_type)
         return pclass()
 
-    def diff(self, diff_type, old_db_col_names, new_db_col_names, batch_size=100000, steps=["count","content","mapping"], mode=None, exclude=[]):
+    def diff(self, diff_type, old_db_col_names, new_db_col_names, batch_size=100000, steps=["content","mapping"], mode=None, exclude=[]):
         """
         Run a diff to compare old vs. new collections. using differ algorithm diff_type. Results are stored in
         a diff folder.
