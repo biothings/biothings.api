@@ -619,7 +619,10 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             except Exception as e:
                 raise ValueError("Can't find map type %s for key %s" % (rootk,inspect_doc[rootk]))
         elif inspect_doc[rootk] == {}:
-            return map_tpl[rootk]
+            typ = rootk
+            if typ == "split":
+                typ = "split_str"
+            return map_tpl[typ]
         else:
             mapping[rootk] = {"properties" : {}}
             mapping[rootk]["properties"] = generate_es_mapping(inspect_doc[rootk],init=False,level=level+1)
