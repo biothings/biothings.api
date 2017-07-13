@@ -1,8 +1,8 @@
-#########
-Web tools
-#########
+#############
+Web component
+#############
 
-The BioThings.API web tools use the Tornado Web Server to respond to incoming API requests.
+The BioThings SDK web component contains tools used to generate and customize an API, given an Elasticsearch index with data.  The web component uses the Tornado Web Server to respond to incoming API requests.
 
 .. py:module:: biothings
 
@@ -25,6 +25,7 @@ Config module
 
 BiothingWebSettings
 ===================
+
 .. autoclass:: biothings.www.settings.BiothingWebSettings
     :members:
 
