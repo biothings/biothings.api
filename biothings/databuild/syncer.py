@@ -12,7 +12,8 @@ from elasticsearch.helpers import BulkIndexError
 from elasticsearch.exceptions import NotFoundError, ConflictError
 
 from biothings.utils.common import timesofar, iter_n, loadobj, dump
-from biothings.utils.mongo import doc_feeder, get_target_db, get_src_build, invalidate_cache
+from biothings.utils.mongo import doc_feeder, get_target_db, invalidate_cache
+from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings import config as btconfig
 from biothings.utils.manager import BaseManager, ManagerError

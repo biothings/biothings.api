@@ -8,6 +8,7 @@ import asyncio
 from functools import partial
 
 import biothings.utils.mongo as mongo
+from biothings.utils.hub_db import get_src_build
 import biothings.utils.aws as aws
 from biothings.utils.common import timesofar
 from biothings.utils.loggers import HipchatHandler, get_logger
@@ -29,7 +30,7 @@ class IndexerManager(BaseManager):
     def __init__(self, pindexer, *args, **kwargs):
         super(IndexerManager,self).__init__(*args, **kwargs)
         self.pindexer = pindexer
-        self.src_build = mongo.get_src_build()
+        self.src_build = get_src_build()
         self.target_db = mongo.get_target_db()
         self.t0 = time.time()
         self.prepared = False
@@ -432,7 +433,7 @@ class Indexer(object):
     def load_build(self, target_name=None):
         '''Load build info from src_build collection.'''
         target_name = target_name or self.target_name
-        src_build = mongo.get_src_build()
+        src_build = get_src_build()
         self.build_doc = src_build.find_one({'_id': target_name})
         assert self.build_doc, "Can't find build document associated to '%s'" % target_name
         _cfg = self.build_doc.get("build_config")

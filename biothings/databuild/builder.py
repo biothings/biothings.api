@@ -20,6 +20,8 @@ from biothings.dataload.uploader import ResourceNotReady
 from biothings.utils.manager import BaseManager, ManagerError
 from biothings.utils.dataload import update_dict_recur
 import biothings.utils.mongo as mongo
+from biothings.utils.hub_db import get_source_fullname, get_src_build_config, \
+                                   get_src_build, get_src_dump, get_src_master
 import biothings.databuild.backend as backend
 from biothings.databuild.backend import TargetDocMongoBackend
 from biothings import config as btconfig
@@ -185,12 +187,13 @@ class DataBuilder(object):
         _cfg = src_build_config.find_one({'_id': self.build_config['_id']})
         # check if all resources are uploaded
         for src_name in _cfg["sources"]:
-            # "sources" in config is a list a collection names. src_dump _id is the name of the
-            # resource but can have sub-resources with different collection names. We need
-            # to query inner keys upload.job.*.step, which always contains the collection name
-            src_doc = src_dump.find_one({"$where":"function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}}" % src_name})
+            fullname = get_source_fullname(src_name)
+            if not fullname:
+                raise ResourceNotReady("Can't find source '%s'" % src_name)
+            main_name = fullname.split(".")[0]
+            src_doc = src_dump.find_one({"_id":main_name})
             if not src_doc:
-                raise ResourceNotReady("Missing information for source '%s' to start upload" % src_name)
+                raise ResourceNotReady("Missing information for source '%s' to start merging" % src_name)
             if not src_doc.get("upload",{}).get("jobs",{}).get(src_name,{}).get("status") == "success":
                 raise ResourceNotReady("No successful upload found for resource '%s'" % src_name)
 
@@ -702,7 +705,6 @@ class DataBuilder(object):
 
 
 from biothings.utils.backend import DocMongoBackend
-import biothings.utils.mongo as mongo
 
 def merger_worker(col_name,dest_name,ids,mapper,upsert,batch_num):
     try:
@@ -728,7 +730,7 @@ def merger_worker(col_name,dest_name,ids,mapper,upsert,batch_num):
 
 
 def set_pending_to_build(conf_name=None):
-    src_build_config = mongo.get_src_build_config()
+    src_build_config = get_src_build_config()
     qfilter = {}
     if conf_name:
         qfilter = {"_id":conf_name}
@@ -753,14 +755,14 @@ class BuilderManager(BaseManager):
         same arguments as the base DataBuilder
         """
         super(BuilderManager,self).__init__(*args,**kwargs)
-        self.src_build_config = mongo.get_src_build_config()
+        self.src_build_config = get_src_build_config()
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
         self.builder_class = builder_class
         self.poll_schedule = poll_schedule
         self.setup_log()
         # check if src_build exist and create it as necessary
-        if not self.src_build_config.name in self.src_build_config.database.collection_names():
+        if self.src_build_config.count() == 0:
             logging.debug("Creating '%s' collection (one-time)" % self.src_build_config.name)
             self.src_build_config.database.create_collection(self.src_build_config.name)
             # this is dummy configuration, used as a template
@@ -782,10 +784,10 @@ class BuilderManager(BaseManager):
             from biothings import config
             source_backend =  self.source_backend_factory and self.source_backend_factory() or \
                                     partial(backend.SourceDocMongoBackend,
-                                            build_config=partial(mongo.get_src_build_config),
-                                            build=partial(mongo.get_src_build),
-                                            master=partial(mongo.get_src_master),
-                                            dump=partial(mongo.get_src_dump),
+                                            build_config=partial(get_src_build_config),
+                                            build=partial(get_src_build),
+                                            master=partial(get_src_master),
+                                            dump=partial(get_src_dump),
                                             sources=partial(mongo.get_src_db))
 
             # declare target backend
@@ -862,7 +864,7 @@ class BuilderManager(BaseManager):
     def poll(self):
         if not self.poll_schedule:
             raise ManagerError("poll_schedule is not defined")
-        src_build_config = mongo.get_src_build_config()
+        src_build_config = get_src_build_config()
         @asyncio.coroutine
         def check_pending_to_build():
             confs = [src['_id'] for src in src_build_config.find({'pending_to_build': True}) if type(src['_id']) == str]

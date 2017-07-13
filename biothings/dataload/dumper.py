@@ -4,7 +4,7 @@ from datetime import datetime
 import asyncio
 from functools import partial
 
-from biothings.utils.mongo import get_src_dump
+from biothings.utils.hub_db import get_src_dump
 from biothings.utils.common import timesofar
 from biothings.utils.loggers import HipchatHandler
 from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER
@@ -657,7 +657,6 @@ class DumperManager(BaseSourceManager):
                 self.register.setdefault(klass.SRC_NAME,[]).append(klass)
             else:
                 self.register[klass.name] = klass 
-            self.conn.register(klass)
 
     def dump_all(self, force=False, **kwargs):
         """

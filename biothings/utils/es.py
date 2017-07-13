@@ -163,7 +163,7 @@ class ESIndexer():
         '''add a doc to the index. If id is not None, the existing doc will be
            updated.
         '''
-        return self._es.index(self._index, self._doc_type, doc, id=id, params={"op_type":action})
+        self._es.index(self._index, self._doc_type, doc, id=id, params={"op_type":action})
 
     def index_bulk(self, docs, step=None, action='index'):
         index_name = self._index
@@ -627,3 +627,163 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             mapping[rootk] = {"properties" : {}}
             mapping[rootk]["properties"] = generate_es_mapping(inspect_doc[rootk],init=False,level=level+1)
     return mapping
+
+######################@#
+# ES as HUB DB backend #
+#@######################
+from biothings.utils.hub_db import IDatabase
+from biothings.utils.dotfield import parse_dot_fields
+from biothings.utils.dataload import update_dict_recur
+from biothings.utils.common import json_serial
+
+def get_hub_db_conn():
+    return Database()
+
+def get_src_dump():
+    db = Database()
+    return db[db.CONFIG.DATA_SRC_DUMP_COLLECTION]
+
+def get_src_master():
+    db = Database()
+    return db[db.CONFIG.DATA_SRC_MASTER_COLLECTION]
+
+def get_src_build():
+    db = Database()
+    return db[db.CONFIG.DATA_SRC_BUILD_COLLECTION]
+
+def get_src_build_config():
+    db = Database()
+    return db[db.CONFIG.DATA_SRC_BUILD_CONFIG_COLLECTION]
+
+def get_source_fullname(col_name):
+    pass
+
+
+class Database(IDatabase):
+
+    CONFIG = None # will be set by bt.utils.hub_db.setup()
+
+    def __init__(self):
+        super(Database,self).__init__()
+        self.dbname = self.CONFIG.DATA_HUB_DB_DATABASE
+        self.es_host = self.CONFIG.HUB_DB_BACKEND["host"]
+        self.cols = {}
+        self.setup()
+
+    @property
+    def address(self):
+        return self.es_host
+
+    def setup(self):
+        # check if index exists
+        conn = self.get_conn()
+        if not conn.indices.exists(self.dbname):
+            conn.indices.create(self.dbname)
+
+    def get_conn(self):
+        return get_es(self.es_host)
+
+    def create_collection(self,colname):
+        return self[colname]
+
+    def create_if_needed(self,table):
+        conn = self.get_conn()
+        if not conn.indices.get_mapping(self.dbname,table):
+            conn.indices.put_mapping(table,{"dynamic":True},index=self.dbname)
+
+    def __getitem__(self, colname):
+        if not colname in self.cols:
+            self.create_if_needed(colname)
+            self.cols[colname] = Collection(colname,self)
+        return self.cols[colname]
+
+
+class Collection(object):
+
+    def __init__(self, colname, db):
+        self.colname = colname
+        self.db = db
+
+    def get_conn(self):
+        return self.db.get_conn() 
+
+    @property
+    def name(self):
+        return self.colname
+
+    @property
+    def database(self):
+        return self.db
+
+    def find_one(self,*args,**kwargs):
+        return self.find(*args,find_one=True)
+
+    def find(self,*args,**kwargs):
+        results = []
+        query = {}
+        if args and len(args) == 1 and type(args[0]) == dict and len(args[0]) > 0:
+            query = {"query":{"match":args[0]}}
+        # it's key/value search, let's iterate
+        res = self.get_conn().search(self.db.dbname,self.colname,query)
+        for _src in res["hits"]["hits"]:
+            doc = {"_id":_src["_id"]}
+            doc.update(_src["_source"])
+            if "find_one" in kwargs:
+                return doc
+            else:
+                results.append(doc)
+        return results
+
+    def insert_one(self,doc,check_unique=True):
+        assert "_id" in doc
+        _id = doc.pop("_id")
+        res = self.get_conn().index(self.db.dbname,self.colname,doc,id=_id,refresh=True)
+        if check_unique and not res["created"]:
+            raise Exception("Couldn't insert document '%s'" % doc)
+
+    def update_one(self,query,what):
+        assert len(what) == 1 and ("$set" in what or \
+                "$unset" in what or "$push" in what), "$set/$unset/$push operators not found"
+        doc = self.find_one(query)
+        if doc:
+            if "$set" in what:
+                # parse_dot_fields uses json.dumps internally, we can to make
+                # sure everything is serializable first
+                what = json.loads(json.dumps(what,default=json_serial))
+                what = parse_dot_fields(what["$set"])
+                doc = update_dict_recur(doc,what)
+            elif "$unset" in what:
+                for keytounset in what["$unset"].keys():
+                    doc.pop(keytounset,None)
+            elif "$push" in what:
+                for listkey,elem in what["$push"].items():
+                    assert not "." in listkey, "$push not supported for nested keys: %s" % listkey
+                    doc.setdefault(listkey,[]).append(elem)
+
+            self.save(doc)
+
+    def update(self,query,what):
+        docs = self.find(query)
+        for doc in docs:
+            self.update_one({"_id":doc["_id"]},what)
+
+    def save(self,doc):
+        return self.insert_one(doc,check_unique=False)
+
+    def replace_one(self,query,doc):
+        orig = self.find_one(query)
+        if orig:
+            self.insert_one(doc,check_unique=False)
+
+    def remove(self,query):
+        docs = self.find(query)
+        conn = self.get_conn()
+        for doc in docs:
+            conn.delete(self.db.dbname,self.colname,id=doc["_id"],refresh=True)
+
+    def count(self):
+        return self.get_conn().count(self.db.dbname,self.colname)["count"]
+
+    def __getitem__(self, _id):
+        return self.find_one({"_id":_id})
+
