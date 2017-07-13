@@ -14,7 +14,7 @@ config = None
 class Database(MongoClient,IDatabase):
 
     def __init__(self,dbname,*args,**kwargs):
-        super(Database,self).__init__()
+        super(Database,self).__init__(dbname)
         self.dbname = dbname
 
 def requires_config(func):
