@@ -296,3 +296,11 @@ except ImportError:
     pass
 
 autoclass_content = 'both'
+
+import biothings
+
+with open('sphinx_config.py', 'w') as sphinx_file:
+    # emulate a dummy config file for now
+    sphinx_file.write('logging = ''\nHIPCHAT_CONFIG=''\nLOG_FOLDER=''')
+
+biothings.config_for_app('sphinx_config')
