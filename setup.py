@@ -8,28 +8,32 @@ setup_path = os.path.dirname(__file__)
 def read(fname):
     return open(os.path.join(setup_path, fname)).read()
 
-MAJOR_VERSION = 0
-MINOR_VERSION = 0
-REPO_URL = "https://github.com/SuLab/biothings.api"
+# get version
+with open('biothings/version.py', 'r') as bt_ver:
+    exec(bt_ver.read())
 
+# should fail if installed form source or from pypi
 try:
-    MICRO_VERSION = int(check_output("git rev-list --count master", shell=True).decode('utf-8').strip('\n'))
+    MICRO_VER = int(check_output("git rev-list --count master", shell=True).decode('utf-8').strip('\n'))
 except:
-    MICRO_VERSION = 2
+    pass
 
-# Calculate commit hash 
+REPO_URL = "https://github.com/biothings/biothings.api"
+
+# Calculate commit hash, should fail if installed from source or from pypi
 try:
     commit_hash = check_output("git rev-parse HEAD", shell=True).decode('utf-8').strip('\n')
 except CalledProcessError:
+    # put commit hash for current release
     commit_hash = ''
 
-# Write these to file inside package, that can be read later
+# Write commit to file inside package, that can be read later
 with open('biothings/.git-commit-hash', 'w') as git_file:
     git_file.write("{}.git\n{}".format(REPO_URL, commit_hash))
 
 setup(
     name="biothings",
-    version="{}.{}.{}".format(MAJOR_VERSION, MINOR_VERSION, MICRO_VERSION),
+    version="{}.{}.{}".format(MAJOR_VER, MINOR_VER, MICRO_VER),
     author="Cyrus Afrasiabi, Chunlei Wu, Sebastien Lelong, Kevin Xin",
     author_email="cyrus@scripps.edu",
     description="Python package for biothings framework",

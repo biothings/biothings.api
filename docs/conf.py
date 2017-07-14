@@ -297,13 +297,11 @@ except ImportError:
 
 autoclass_content = 'both'
 
-# create a temporary dummy file
+# create a dummy config object
+class DummyConfig(object):
+    def __getattr__(self, item):
+        setattr(self, item, None)
+        return getattr(self, item)
 
-import biothings
-(biothings_dir, init_file) = os.path.split(biothings.__file__)
-(src_dir, bt_dir) = os.path.split(biothings_dir)
-with open(os.path.join(biothings_dir, 'config.py'), 'w') as biothings_config_file,
-    open(os.path.join(src_dir, 'config.py'), 'w') as root_config_file:
-    # emulate a dummy config file for now
-    biothings_config_file.write('logger = ""\nHIPCHAT_CONFIG=""\nLOG_FOLDER=""')
-    root_config_file.write('logger = ""\nHIPCHAT_CONFIG=""\nLOG_FOLDER=""')
+sys.modules["config"] = DummyConfig()
+sys.modules["biothings.config"] = DummyConfig()
