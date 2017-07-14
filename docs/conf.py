@@ -301,9 +301,9 @@ autoclass_content = 'both'
 
 import biothings
 (biothings_dir, init_file) = os.path.split(biothings.__file__)
-
-with open(os.path.join(biothings_dir, 'config.py'), 'w') as sphinx_file:
+(src_dir, bt_dir) = os.path.split(biothings_dir)
+with open(os.path.join(biothings_dir, 'config.py'), 'w') as biothings_config_file,
+    open(os.path.join(src_dir, 'config.py'), 'w') as root_config_file:
     # emulate a dummy config file for now
-    sphinx_file.write('logging = ""\nHIPCHAT_CONFIG=""\nLOG_FOLDER=""')
-
-#biothings.config_for_app(sphinx_config)
+    biothings_config_file.write('logger = ""\nHIPCHAT_CONFIG=""\nLOG_FOLDER=""')
+    root_config_file.write('logger = ""\nHIPCHAT_CONFIG=""\nLOG_FOLDER=""')
