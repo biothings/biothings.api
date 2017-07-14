@@ -20,15 +20,56 @@ Finally, Biothings SDK is written in python, so you must know some basics.
 Configuration file
 ^^^^^^^^^^^^^^^^^^
 
-Before starting to implement our hub, we first need to define a configuration file. There’s a **config.py.example** that
-can be used as a template. Some important settings are about:
+Before starting to implement our hub, we first need to define a configuration file. A 
+`config_common.py <https://github.com/biothings/biothings.species/blob/master/src/config_common.py>` file
+contains all the required configuration variables, some **have** to be defined in your own application, other
+**can** be overriden as needed.
+
+Typically we will have to define the following:
 
 * MongDB connections parameters, ``DATA_SRC_*`` and ``DATA_TARGET_*`` parameters. They define connections to two different databases,
   one will contain individual collections for each datasource (SRC) and the other will contain merged collections (TARGET).
 
+* ``HUB_DB_BACKEND`` defines a database connection for hub purpose (application specific data, like sources status, etc...). Default backend type
+  is MongoDB. We will need to provide a valid mongodb:// URI. Other backend types are available, like sqlite3 and ElasticSearch, but since
+  we'll use MongoDB to store and process our data, we'll stick to the default.
+
 * ``DATA_ARCHIVE_ROOT`` contains the path of the root folder that will contain all the downloaded and processed data.
-  Other parameters should be self-explanatory and probably don’t need to be changed. Copy **config.py.example** as **config.py**
-  and adjust it to your need.
+  Other parameters should be self-explanatory and probably don’t need to be changed.
+
+* ``LOG_FOLDER`` contains the log files produced by the hub
+
+
+Create a **config.py** and add ``from config_common import *`` then define all required variables above. **config.py**
+will look something like this:
+
+.. code-block:: python
+
+  from config_common import *
+
+  DATA_SRC_SERVER = "myhost"
+  DATA_SRC_PORT = 27017
+  DATA_SRC_DATABASE = "tutorial_src"
+  DATA_SRC_SERVER_USERNAME = None
+  DATA_SRC_SERVER_PASSWORD = None
+
+  DATA_TARGET_SERVER = "myhost"
+  DATA_TARGET_PORT = 27017
+  DATA_TARGET_DATABASE = "tutorial"
+  DATA_TARGET_SERVER_USERNAME = None
+  DATA_TARGET_SERVER_PASSWORD = None
+
+  HUB_DB_BACKEND = {
+          "module" : "biothings.utils.mongo",
+          "uri" : "mongodb://myhost:27017",
+          }
+
+  DATA_ARCHIVE_ROOT = "/tmp/tutorial"
+  LOG_FOLDER = "/tmp/tutorial/logs"
+
+
+Note: Log folder must be created manually
+
 
 hub.py
 ^^^^^^
@@ -312,15 +353,15 @@ file available. Let’s try that, here are the logs:
 
    DEBUG:taxonomy.hub:Creating new TaxonomyDumper instance
    DEBUG:taxonomy_dump:'taxdump.tar.gz' is up-to-date, no need to download
-   INFO:taxonomy_dump:Nothing to dum
+   INFO:taxonomy_dump:Nothing to dump
 
 So far so good! The actual file, depending on the configuration settings, it’s located in **./data/taxonomy/20170125/taxdump.tar.gz**.
 We can notice the timestamp used to create the folder. Let’s also have a look at in the internal database to see the resource status. Connect to mongoDB:
 
 .. code:: javascript
 
-   > use dev_speciesdoc_src
-   switched to db dev_speciesdoc_src
+   > use hub_config
+   switched to db hub_config
    > db.src_dump.find()
    {
            "_id" : "taxonomy",
@@ -440,9 +481,9 @@ Running the hub, we’ll see the kind of log statements:
 
    INFO:taxonomy.hub:Found 2 resources to upload (['species', 'geneinfo'])
    INFO:taxonomy.hub:Launch upload for 'species'
-   ERROR:taxonomy.hub:Resource 'species' needs upload but is not registerd in manager
+   ERROR:taxonomy.hub:Resource 'species' needs upload but is not registered in manager
    INFO:taxonomy.hub:Launch upload for 'geneinfo'
-   ERROR:taxonomy.hub:Resource 'geneinfo' needs upload but is not registerd in manager
+   ERROR:taxonomy.hub:Resource 'geneinfo' needs upload but is not registered in manager
    ...
 
 Indeed, datasources have been dumped, and a ``pending_to_upload`` flag has been to True in ``src_dump``. UploadManager polls this ``src_dump``
@@ -466,7 +507,7 @@ This data is processed internally by the base uploader class (``BaseSourceUpload
 There are other storages available, depending on how data should be inserted (eg. IgnoreDuplicatedStorage will ignore any duplicated data error).
 While choosing a base uploader class, we need to consider which storage class it’s actually using behind-the-scene (an alternative way to do this is
 using ``BaseSourceUploader`` and set the class attribute storage_class, such as in this uploader:
-`biothings/dataload/uploader.py#L417 <https://github.com/biothings/biothings.api/blob/master/biothings/dataload/uploader.py#L418>`_).
+`biothings/dataload/uploader.py#L447 <https://github.com/biothings/biothings.api/blob/master/biothings/dataload/uploader.py#L447>`_).
 
 The first uploader will take care of nodes.dmp parsing and storage.
 
@@ -796,8 +837,9 @@ Let’s first define a BuilderManager in the hub.
 .. code-block:: python
 
    import biothings.databuild.builder as builder
-   bmanager = builder.BuilderManager(job_manager=jmanager)
-   bmanager.sync()
+   bmanager = builder.BuilderManager(poll_schedule='* * * * * */10', job_manager=jmanager)
+   bmanager.configure()
+   bmanager.poll()
 
    COMMANDS = {
    ...
@@ -962,8 +1004,8 @@ Let’s have a look at the content (remember, collection is in target database, 
 
 .. code:: javascript
 
-   > use dev_speciesdoc
-   switched to db dev_speciesdoc
+   > use tutorial
+   switched to db tutorial
    > db.mytaxonomy_20170127_pn1ygtqp.count()
    1552809
    > db.mytaxonomy_20170127_pn1ygtqp.find({_id:9606})
@@ -1037,12 +1079,16 @@ we modify the way we define the builder manager:
 
 .. code-block:: python
 
+   import biothings.databuild.builder as builder
+   from databuild.mapper import HasGeneMapper
    hasgene = HasGeneMapper(name="has_gene")
    pbuilder = partial(builder.DataBuilder,mappers=[hasgene])
    bmanager = builder.BuilderManager(
+           poll_schedule='* * * * * */10',
            job_manager=jmanager,
            builder_class=pbuilder)
-   bmanager.sync()
+   bmanager.configure()
+   bmanager.poll()
 
 First we instantiate a mapper object and give it a name (more on this later). While creating the manager, we need to pass a builder class.
 The problem here is we also have to give our mapper to that class while it’s instantiated. We’re using ``partial`` (from ``functools``),
@@ -1162,8 +1208,8 @@ Once done, we can query the merged collection to check the data:
 
 .. code:: javascript
 
-   > use dev_speciesdoc
-   switched to db dev_speciesdoc
+   > use tutorial
+   switched to db tutorial
    > db.mytaxonomy_test.find({_id:9606})
    {
            "_id" : "9606",
@@ -1310,8 +1356,8 @@ After a while, process is done. We can test our updated data:
 
 .. code:: javascript
 
-   > use dev_speciesdoc
-   switched to db dev_speciesdoc
+   > use tutorial
+   switched to db tutorial
    > db.mytaxonomy_test.find({_id:9606})
    {
            "_id" : 9606,
