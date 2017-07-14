@@ -1,5 +1,8 @@
 import sys, os, asyncio
 import concurrent.futures
+from .version import MAJOR_VER, MINOR_VER, MICRO_VER
+
+__version__ = '{}.{}.{}'.format(MAJOR_VER, MINOR_VER, MICRO_VER)
 
 def get_version():
     return __version__
