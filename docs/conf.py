@@ -19,7 +19,7 @@ import shlex
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-#sys.path.insert(0, os.path.abspath('.'))
+#sys.path.insert(0, os.path.abspath('..'))
 
 # -- General configuration ------------------------------------------------
 
@@ -297,10 +297,10 @@ except ImportError:
 
 autoclass_content = 'both'
 
-import biothings
-
 with open('sphinx_config.py', 'w') as sphinx_file:
     # emulate a dummy config file for now
-    sphinx_file.write('logging = ''\nHIPCHAT_CONFIG=''\nLOG_FOLDER=''')
+    sphinx_file.write('logging = ""\nHIPCHAT_CONFIG=""\nLOG_FOLDER=""')
 
-biothings.config_for_app('sphinx_config')
+import biothings, sphinx_config
+
+biothings.config_for_app(sphinx_config)
