@@ -304,8 +304,7 @@ import biothings
 (src_dir, bt_dir) = os.path.split(biothings_dir)
 # use a dummy config for sphinx build for now....these are the minimum variables required to be defined
 # in the config file for the imports to succeed when generating autodocs
-dummy_config = 'logger = ""\nHIPCHAT_CONFIG = ""\nLOG_FOLDER = ""\nHUB_ENV=""\nMAX_REPORTED_IDS=0\n' +
-                'DATA_SRC_MASTER_COLLECTION=""\nDATA_SRC_DATABASE=""\nMAX_RANDOMLY_PICKED=0'
+dummy_config = 'logger = ""\nHIPCHAT_CONFIG = ""\nLOG_FOLDER = ""\nHUB_ENV=""\nMAX_REPORTED_IDS=0\nDATA_SRC_MASTER_COLLECTION=""\nDATA_SRC_DATABASE=""\nMAX_RANDOMLY_PICKED=0'
 with open(os.path.join(biothings_dir, 'config.py'), 'w') as biothings_config_file:
     biothings_config_file.write(dummy_config)
 with open(os.path.join(src_dir, 'config.py'), 'w') as root_config_file:
