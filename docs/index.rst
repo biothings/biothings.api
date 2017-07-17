@@ -11,12 +11,12 @@ Introduction
 
 What's BioThings?
 *****************
-We use "**BioThings**" to refer to objects of any biomedical entity-types represented in the biological knowledge space, such as genes, genetic variants, drugs, chemicals, diseases, etc.
+We use "**BioThings**" to refer to objects of any biomedical entity-type represented in the biological knowledge space, such as genes, genetic variants, drugs, chemicals, diseases, etc.
 
 BioThings SDK
 *************
 
-SDK represents "Software Development Kit". BioThings SDK provides a `Python-based <https://www.python.org/>`_ toolkit to build high-performance data APIs (or web services) from a single data source or multiple data sources. It has the particular focus on building data APIs for biomedical-related entities, a.k.a "*BioThings*", though it's not necessarily limited to the biomedical scope.  For any given "*BioThings" type, BioThings SDK helps developers to aggregate annotations from multiple data sources, and expose them as a clean and high-performance web API.
+SDK represents "Software Development Kit". BioThings SDK provides a `Python-based <https://www.python.org/>`_ toolkit to build high-performance data APIs (or web services) from a single data source or multiple data sources. It has the particular focus on building data APIs for biomedical-related entities, a.k.a "*BioThings*", though it's not necessarily limited to the biomedical scope.  For any given "*BioThings*" type, BioThings SDK helps developers to aggregate annotations from multiple data sources, and expose them as a clean and high-performance web API.
 
 The BioThings SDK can be roughly divided into two main components: data hub (or just "hub") component and web component. The hub component allows developers to automate the process of monitoring, parsing and uploading your data source to an `Elasticsearch <https://www.elastic.co/products/elasticsearch>`_ backend. From here, the web component, built on the high-concurrency `Tornado Web Server <http://www.tornadoweb.org/en/stable/>`_ , allows you to easily setup a live high-performance API. The API endpoints expose simple-to-use yet powerful query features using `Elasticsearch's full-text query capabilities and query language <https://www.elastic.co/guide/en/elasticsearch/reference/2.4/query-dsl-query-string-query.html#query-string-syntax>`_.
 
