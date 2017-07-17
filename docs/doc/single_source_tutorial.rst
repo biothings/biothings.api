@@ -55,12 +55,12 @@ To configure Elasticsearch, execute the following commands as su.
     echo 'network.host: "0.0.0.0"' >> /etc/elasticsearch/elasticsearch.yml
 
 
-Pharmgkb Gene
+PharmGKB Gene
 ^^^^^^^^^^^^^
 
 Once all prerequisites have been installed, the data loading step can begin.
 Consider the following script, which defines a "load_data" function that parses
-the `Pharmgkb gene flat file <https://api.pharmgkb.org/v1/download/file/data/genes.zip>`_ and then iterates through it, storing the results in an Elasticsearch index using biothings.utils.es.ESIndexer.
+the `PharmGKB gene flat file <https://api.pharmgkb.org/v1/download/file/data/genes.zip>`_ and then iterates through it, storing the results in an Elasticsearch index using biothings.utils.es.ESIndexer.
 
 .. code-block:: python
 
@@ -84,7 +84,6 @@ the `Pharmgkb gene flat file <https://api.pharmgkb.org/v1/download/file/data/gen
     In [4]: indexer = ESIndexer(index='pharmgkb_gene_current', doc_type='pharmgkb_gene', es_host='localhost:9200')
 
     In [5]: indexer.create_index(mapping={'pharmgkb_gene':{'dynamic': True}})
-    WARNING:elasticsearch:Undecodable raw error response from server: Expecting value: line 1 column 1 (char 0)
 
     In [6]: with open('genes.tsv', 'r') as gene_file:
        ...:     indexer.index_bulk(load_data(gene_file))

@@ -6,52 +6,6 @@ The purpose of the BioThings hub component is to allow you to easily automate th
 
 .. py:module:: biothings
 
-********
-uploader
-********
-
-BaseSourceUploader
-==================
-
-.. autoclass:: biothings.dataload.uploader.BaseSourceUploader
-    :members:
-
-NoBatchIgnoreDuplicatedSourceUploader
--------------------------------------
-
-.. autoclass:: biothings.dataload.uploader.NoBatchIgnoreDuplicatedSourceUploader
-    :members:
-
-IgnoreDuplicatedSourceUploader
-------------------------------
-
-.. autoclass:: biothings.dataload.uploader.IgnoreDuplicatedSourceUploader
-    :members:
-
-MergerSourceUploader
---------------------
-
-.. autoclass:: biothings.dataload.uploader.MergerSourceUploader
-    :members:
-
-DummySourceUploader
--------------------
-
-.. autoclass:: biothings.dataload.uploader.DummySourceUploader
-    :members:
-
-ParallelizedSourceUploader
---------------------------
-
-.. autoclass:: biothings.dataload.uploader.ParallelizedSourceUploader
-    :members:
-
-NoDataSourceUploader
---------------------
-
-.. autoclass:: biothings.dataload.uploader.NoDataSourceUploader
-    :members:
-
 ******
 dumper
 ******
@@ -98,14 +52,50 @@ ManualDumper
 .. autoclass:: biothings.dataload.dumper.ManualDumper
     :members:
 
-*******
-indexer
-*******
+********
+uploader
+********
 
-Indexer
-=======
+BaseSourceUploader
+==================
 
-.. autoclass:: biothings.dataindex.indexer.Indexer
+.. autoclass:: biothings.dataload.uploader.BaseSourceUploader
+    :members:
+
+NoBatchIgnoreDuplicatedSourceUploader
+-------------------------------------
+
+.. autoclass:: biothings.dataload.uploader.NoBatchIgnoreDuplicatedSourceUploader
+    :members:
+
+IgnoreDuplicatedSourceUploader
+------------------------------
+
+.. autoclass:: biothings.dataload.uploader.IgnoreDuplicatedSourceUploader
+    :members:
+
+MergerSourceUploader
+--------------------
+
+.. autoclass:: biothings.dataload.uploader.MergerSourceUploader
+    :members:
+
+DummySourceUploader
+-------------------
+
+.. autoclass:: biothings.dataload.uploader.DummySourceUploader
+    :members:
+
+ParallelizedSourceUploader
+--------------------------
+
+.. autoclass:: biothings.dataload.uploader.ParallelizedSourceUploader
+    :members:
+
+NoDataSourceUploader
+--------------------
+
+.. autoclass:: biothings.dataload.uploader.NoDataSourceUploader
     :members:
 
 *******
@@ -116,6 +106,16 @@ DataBuilder
 ===========
 
 .. autoclass:: biothings.databuild.builder.DataBuilder
+    :members:
+
+*******
+indexer
+*******
+
+Indexer
+=======
+
+.. autoclass:: biothings.dataindex.indexer.Indexer
     :members:
 
 ******
