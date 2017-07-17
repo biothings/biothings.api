@@ -2,10 +2,13 @@ import sys, os, asyncio
 import concurrent.futures
 from .version import MAJOR_VER, MINOR_VER, MICRO_VER
 
-__version__ = '{}.{}.{}'.format(MAJOR_VER, MINOR_VER, MICRO_VER)
-
 def get_version():
-    return __version__
+    try:
+        import pkg_resources
+        return pkg_resources.require("biothings")[0].version
+    except:
+        return '{}.{}.{}'.format(MAJOR_VER, MINOR_VER, MICRO_VER)
+
 
 def config_for_app(config_mod):
     app_path = os.path.split(config_mod.__file__)[0]
