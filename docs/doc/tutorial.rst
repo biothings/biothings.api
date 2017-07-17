@@ -2,7 +2,7 @@
 Tutorials
 #########
 
-The following tutorials explain 2 different use cases for the BioThings SDK.  The first tutorial shows a minimal use-case: creating an API from a single flat-file.  The second tutorial is more extensive, and describes how to create an API from multiple data sources with automatic source updating - similar to the `MyGene.info <https://mygene.info>`_ and `MyVariant.info <https://myvariant.info>`_ pipelines.
+The following tutorials explain 2 different use cases for the BioThings SDK.  The first tutorial shows a minimal use case: creating an API from a single flat-file.  The second tutorial is more extensive, and describes how to create an API from multiple data sources with automatic source updating - similar to the `MyGene.info <https://mygene.info>`_ and `MyVariant.info <https://myvariant.info>`_ pipelines.
 
 Single data source, no source updating 
 --------------------------------------
