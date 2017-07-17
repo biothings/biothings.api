@@ -47,13 +47,14 @@ or as a `docker container <https://www.elastic.co/guide/en/elasticsearch/referen
 Configure Elasticsearch
 +++++++++++++++++++++++
 
-To configure Elasticsearch, execute the following commands as su (this guide was created on Ubuntu 16.04, the exact location of elasticsearch.yml may vary in other platforms).
+To configure Elasticsearch, execute the following commands as su:
 
 .. code-block:: bash
 
     echo 'http.enabled: True' >> /etc/elasticsearch/elasticsearch.yml
     echo 'network.host: "0.0.0.0"' >> /etc/elasticsearch/elasticsearch.yml
 
+.. note:: This guide was created using Ubuntu 16.04, the exact location of elasticsearch.yml may vary in other platforms.
 
 PharmGKB Gene
 ^^^^^^^^^^^^^
