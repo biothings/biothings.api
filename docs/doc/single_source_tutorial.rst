@@ -2,7 +2,7 @@
 Single Data Source, No Source Updating Tutorial
 ***********************************************
 
-The following tutorial shows a minimal use-case for the BioThings SDK: creating a
+The following tutorial shows a minimal use case for the BioThings SDK: creating a
 high-performance, high-concurrency API from a single flat-file.  The BioThings SDK
 is broadly divided into two components, the hub and the web.  The hub component is a
 collection of tools to automate the downloading of source data files, the merging
@@ -17,7 +17,7 @@ Before starting, there are a few requirements that need to be installed and conf
 Python
 ======
 
-The BioThings SDK requires `Python version 3.3 or higher <https://www.python.org/>`_ for full functionality.
+The BioThings SDK requires `Python version 3.4 or higher <https://www.python.org/>`_ for full functionality.
 We recommend installing all python dependencies into a `virtualenv <https://virtualenv.pypa.io/en/stable/>`_.
 
 BioThings SDK
