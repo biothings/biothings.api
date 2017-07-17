@@ -47,7 +47,7 @@ or as a `docker container <https://www.elastic.co/guide/en/elasticsearch/referen
 Configure Elasticsearch
 +++++++++++++++++++++++
 
-To configure Elasticsearch, execute the following commands as su.
+To configure Elasticsearch, execute the following commands as su (this guide was created on Ubuntu 16.04, the exact location of elasticsearch.yml may vary in other platforms).
 
 .. code-block:: bash
 
