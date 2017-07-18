@@ -47,14 +47,14 @@ Check out a simple ``"Hello, World!"`` example, or more advanced tutorials `here
 
 .. toctree::
     :maxdepth: 3
-    :caption: BioThings Tutorials
+    :caption: Tutorials
  
     doc/single_source_tutorial
     doc/multiple_sources_tutorial
 
 .. toctree::
     :maxdepth: 3
-    :caption: BioThings Code Documentation
+    :caption: Documentation
 
     doc/hub
     doc/web
