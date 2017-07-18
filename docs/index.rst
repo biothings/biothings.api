@@ -40,10 +40,6 @@ Alternatively, you can download the source code, or clone the `BioThings SDK rep
 
     python setup.py install
 
-BioThings SDK Tutorials
------------------------
-
-Check out a simple ``"Hello, World!"`` example, or more advanced tutorials `here <doc/tutorial.html>`_.
 
 .. toctree::
     :maxdepth: 3
