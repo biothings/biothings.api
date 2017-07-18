@@ -31,6 +31,12 @@ except CalledProcessError:
 with open('biothings/.git-commit-hash', 'w') as git_file:
     git_file.write("{}.git\n{}".format(REPO_URL, commit_hash))
 
+install_requires = [
+        'requests>=2.3.0',
+        'tornado',
+        'elasticsearch==2.4.0',
+    ]
+    
 setup(
     name="biothings",
     version="{}.{}.{}".format(MAJOR_VER, MINOR_VER, MICRO_VER),
@@ -56,8 +62,8 @@ setup(
         "Topic :: Utilities",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
     ],
-    install_requires=[
-        'requests>=2.3.0',
-        'tornado',
-    ],
+    install_requires=install_requires,
+    extras_require={
+        'dev':  install_requires + ['sphinx' + 'sphinx_rtd_theme']
+    },
 )
