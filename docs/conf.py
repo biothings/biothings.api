@@ -49,7 +49,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'BioThings'
+project = u'BioThings SDK'
 copyright = u'2017, BioThings'
 author = u'BioThings team'
 
