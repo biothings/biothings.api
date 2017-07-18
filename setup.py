@@ -32,38 +32,53 @@ with open('biothings/.git-commit-hash', 'w') as git_file:
     git_file.write("{}.git\n{}".format(REPO_URL, commit_hash))
 
 install_requires = [
-        'requests>=2.3.0',
-        'tornado',
-        'elasticsearch==2.4.0',
-    ]
+    'requests>=2.3.0',
+    'tornado',
+    'elasticsearch==2.4.0',
+]
+hub_requires = [
+    'beautifulsoup4',
+    'aiocron',
+    'asyncssh==1.7.1',
+    'pymongo',
+    'psutil',
+    'jsonpointer',
+    'IPython',
+    'boto'
+]
     
 setup(
     name="biothings",
     version="{}.{}.{}".format(MAJOR_VER, MINOR_VER, MICRO_VER),
-    author="Cyrus Afrasiabi, Chunlei Wu, Sebastien Lelong, Kevin Xin",
-    author_email="cyrus@scripps.edu",
-    description="Python package for biothings framework",
-    license="BSD",
+    author="Cyrus Afrasiabi, Sebastien Lelong, Chunlei Wu",
+    author_email="cwu@scripps.edu",
+    description="a toolkit for building high-performance data APIs in biology",
+    license="Apache License, Version 2.0",
     keywords="biology annotation web service client api",
     url=REPO_URL,
     packages=find_packages(),
     include_package_data=True,
-    scripts=['biothings/bin/biothings-admin.py','biothings/bin/generate-client.py'],
+    scripts=['biothings/bin/biothings-admin.py'],
     long_description=read('README.md'),
     classifiers=[
         "Programming Language :: Python",
-        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.4",
+        "Programming Language :: Python :: 3.5",
+        "Programming Language :: Python :: 3.6",
         "Development Status :: 4 - Beta",
-        "License :: OSI Approved :: BSD License",
+        "License :: OSI Approved :: Apache Software License",
+        "Operating System :: OS Independent",        
         "Operating System :: POSIX",
         "Operating System :: MacOS :: MacOS X",
         "Operating System :: Microsoft :: Windows",
+        "Intended Audience :: Developers",
         "Intended Audience :: Science/Research",
         "Topic :: Utilities",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
     ],
     install_requires=install_requires,
     extras_require={
-        'dev':  install_requires + ['sphinx' + 'sphinx_rtd_theme']
+        'hub': hub_requires,
+        'dev':  hub_requires + ['sphinx' + 'sphinx_rtd_theme']
     },
 )
