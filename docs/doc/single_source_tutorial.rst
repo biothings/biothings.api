@@ -2,7 +2,7 @@
 Single Data Source, No Source Updating Tutorial
 ***********************************************
 
-The following tutorial shows a minimal use-case for the BioThings SDK: creating a
+The following tutorial shows a minimal use case for the BioThings SDK: creating a
 high-performance, high-concurrency API from a single flat-file.  The BioThings SDK
 is broadly divided into two components, the hub and the web.  The hub component is a
 collection of tools to automate the downloading of source data files, the merging
@@ -17,7 +17,7 @@ Before starting, there are a few requirements that need to be installed and conf
 Python
 ======
 
-The BioThings SDK requires `Python version 3.3 or higher <https://www.python.org/>`_ for full functionality.
+The BioThings SDK requires `Python version 3.4 or higher <https://www.python.org/>`_ for full functionality.
 We recommend installing all python dependencies into a `virtualenv <https://virtualenv.pypa.io/en/stable/>`_.
 
 BioThings SDK
@@ -47,13 +47,14 @@ or as a `docker container <https://www.elastic.co/guide/en/elasticsearch/referen
 Configure Elasticsearch
 +++++++++++++++++++++++
 
-To configure Elasticsearch, execute the following commands as su.
+To configure Elasticsearch, execute the following commands as su:
 
 .. code-block:: bash
 
     echo 'http.enabled: True' >> /etc/elasticsearch/elasticsearch.yml
     echo 'network.host: "0.0.0.0"' >> /etc/elasticsearch/elasticsearch.yml
 
+.. note:: This guide was created using Ubuntu 16.04, the exact location of elasticsearch.yml may vary in other platforms.
 
 PharmGKB Gene
 ^^^^^^^^^^^^^

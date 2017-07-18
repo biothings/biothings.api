@@ -3,7 +3,7 @@ Multiple Data Sources, Automated Source Updating Tutorial
 *********************************************************
 
 The following tutorial shows how to create a "hub", a piece of software used to
-download, maintain up-to-date, process, merge data. This part of Biothings is used
+download, maintain up-to-date, process, merge data. This part of BioThings is used
 to create an Elasticsearch index.  Once the index is created, the tutorial will
 guide you through setting up and customizing a new BioThings webservice API to query
 the data.
@@ -11,11 +11,11 @@ the data.
 Prerequesites
 ^^^^^^^^^^^^^
 
-Biothings SDK uses MongoDB as backend. You must a have working MongoDB instance you can connect to.
-We'll also perform some basic commands. You must also have Biothings SDK installed (
+BioThings SDK uses MongoDB as backend. You must a have working MongoDB instance you can connect to.
+We'll also perform some basic commands. You must also have BioThings SDK installed (
 ``git clone https://github.com/biothings/biothings.api.git`` is usually enough, followed by
 ``pip install -r requirements.txt``). You may want to use ``virtualenv`` to isolate your installation.
-Finally, Biothings SDK is written in python, so you must know some basics.
+Finally, BioThings SDK is written in python, so you must know some basics.
 
 Configuration file
 ^^^^^^^^^^^^^^^^^^
@@ -27,7 +27,7 @@ contains all the required configuration variables, some **have** to be defined i
 
 Typically we will have to define the following:
 
-* MongDB connections parameters, ``DATA_SRC_*`` and ``DATA_TARGET_*`` parameters. They define connections to two different databases,
+* MongoDB connections parameters, ``DATA_SRC_*`` and ``DATA_TARGET_*`` parameters. They define connections to two different databases,
   one will contain individual collections for each datasource (SRC) and the other will contain merged collections (TARGET).
 
 * ``HUB_DB_BACKEND`` defines a database connection for hub purpose (application specific data, like sources status, etc...). Default backend type
@@ -169,7 +169,7 @@ Nothing fancy here, we don’t have much in our hub yet, but everything is runni
 Dumpers
 ^^^^^^^
 
-Biothings species API gathers data from different datasources. We will need to define
+BioThings species API gathers data from different datasources. We will need to define
 different dumpers to make this data available locally for further processing.
 
 Taxonomy dumper
@@ -178,7 +178,7 @@ This dumper will download taxonomy data from NCBI FTP server. There’s one file
 available at this location: ftp://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz.
 
 When defining a dumper, we’ll need to choose a base class to derive our dumper class from.
-There are different base dumper classes available in Biothings SDK, depending on the protocol
+There are different base dumper classes available in BioThings SDK, depending on the protocol
 we want to use to download data. In this case, we’ll derive our class from ``biothings.dataload.dumper.FTPDumper``.
 In addition to defining some specific class attributes, we will need to implement a method called ``create_todump_list()``.
 This method fills ``self.to_dump`` list, which is later going to be used to download data.
@@ -197,7 +197,7 @@ Let’s start coding. We’ll save that python module in `dataload/sources/taxon
    import biothings, config
    biothings.config_for_app(config)
 
-Those lines are used to configure Biothings SDK according to our own configuration information.
+Those lines are used to configure BioThings SDK according to our own configuration information.
 
 .. code-block:: python
 
@@ -223,8 +223,8 @@ We then import a configuration constant, and the FTPDumper base class.
 * ``FTP_HOST`` and ``CWD_DIR`` gives information to connect to the remove FTP server and move to appropriate
   remote directory (``FTP_USER`` and ``FTP_PASSWD`` constants can also be used for authentication).
 * ``SUFFIX_ATTR`` defines the attributes that’s going to be used to create folder for each downloaded version.
-  It’s basically either “release” or “timestamp”, depending on whether the resource we’re trying to dump
-  has an actual version. Here, for taxdump file, there’s no version, so we’re going to use “timestamp”.
+  It’s basically either "release" or "timestamp", depending on whether the resource we’re trying to dump
+  has an actual version. Here, for taxdump file, there’s no version, so we’re going to use "timestamp".
   This attribute is automatically set to current date, so folders will look like that: **.../taxonomy/20170120**, **.../taxonomy/20170121**, etc…
 * Finally ``SCHEDULE``, if defined, will allow that dumper to regularly run within the hub.
   This is a cron-like notation (see aiocron documentation for more).
@@ -356,7 +356,7 @@ file available. Let’s try that, here are the logs:
    INFO:taxonomy_dump:Nothing to dump
 
 So far so good! The actual file, depending on the configuration settings, it’s located in **./data/taxonomy/20170125/taxdump.tar.gz**.
-We can notice the timestamp used to create the folder. Let’s also have a look at in the internal database to see the resource status. Connect to mongoDB:
+We can notice the timestamp used to create the folder. Let’s also have a look at in the internal database to see the resource status. Connect to MongoDB:
 
 .. code:: javascript
 
@@ -390,7 +390,7 @@ There are two options there, by overriding one of those methods:
    def post_download(self, remotefile, localfile): triggered for each downloaded file
    def post_dump(self): triggered once all files have been downloaded
 
-We could use either, but there’s a utility function available in BiothingsSDK that uncompress everything in a directory, let’s use it in a global post-dump step:
+We could use either, but there’s a utility function available in BioThings SDK that uncompress everything in a directory, let’s use it in a global post-dump step:
 
 .. code-block:: python
 
@@ -431,7 +431,7 @@ After typing either of these commands, logs will show some information about the
 
 Folder contains all uncompressed files, ready to be process by an uploader.
 
-Uniprot species dumper
+UniProt species dumper
 ======================
 
 Following guideline from previous taxonomy dumper, we’re now implementing a new dumper used to download species list.
@@ -495,15 +495,15 @@ Taxonomy uploader
 
 The taxonomy files we downloaded need to be parsed and stored into a MongoDB collection. We won’t go in too much details regarding the actual parsing,
 there are two parsers, one for **nodes.dmp** and another for **names.dmp** files. They yield dictionaries as the result of this parsing step. We just
-need to “connect” those parsers to uploaders.
+need to "connect" those parsers to uploaders.
 
-Following the same approach as for dumpers, we’re going to implement our first uploaders by inheriting one the base classes available in Biothings SDK.
-We have two files to parse, data will stored in two different mongoDB collections, so we’re going to have two uploaders. Each inherits from
-``biothings.dataload.uploader.BaseSourceUploader``, ``load_data`` method has to be implemented, this is where we “connect” parsers.
+Following the same approach as for dumpers, we’re going to implement our first uploaders by inheriting one the base classes available in BioThings SDK.
+We have two files to parse, data will stored in two different MongoDB collections, so we’re going to have two uploaders. Each inherits from
+``biothings.dataload.uploader.BaseSourceUploader``, ``load_data`` method has to be implemented, this is where we "connect" parsers.
 
 Beside this method, another important point relates to the storage engine. ``load_data`` will, through the parser, yield documents (dictionaries).
 This data is processed internally by the base uploader class (``BaseSourceUploader``) using a storage engine. ``BaseSourceUploader`` uses
-``biothings.dataload.storage.BasicStorage`` as its engine. This storage inserts data in mongoDB collection using bulk operations for better performances.
+``biothings.dataload.storage.BasicStorage`` as its engine. This storage inserts data in MongoDB collection using bulk operations for better performances.
 There are other storages available, depending on how data should be inserted (eg. IgnoreDuplicatedStorage will ignore any duplicated data error).
 While choosing a base uploader class, we need to consider which storage class it’s actually using behind-the-scene (an alternative way to do this is
 using ``BaseSourceUploader`` and set the class attribute storage_class, such as in this uploader:
@@ -530,10 +530,10 @@ The first uploader will take care of nodes.dmp parsing and storage.
 * ``name`` gives the name of the collection used to store the data. If ``main_source`` is *not* defined,
   it must match ``SRC_NAME`` in dumper’s attributes
 * ``main_source`` is optional and allows to define main sources and sub-sources. Since we have 2 parsers here,
-  we’re going to have 2 collections created. For this one, we want the collection named “nodes”. But this parser
+  we’re going to have 2 collections created. For this one, we want the collection named "nodes". But this parser
   relates to *taxonomy* datasource, so we define a ``main source`` called **taxonomy**, which matches ``SRC_NAME`` in dumper’s attributes.
 * ``load_data()``  has ``data_folder`` as parameter. It will be set accordingly, to the path of the last version dumped.
-  Also, that method gets data from parsing function ``parse_refseq_nodes``. It’s where we “connect” the parser. We just need to
+  Also, that method gets data from parsing function ``parse_refseq_nodes``. It’s where we "connect" the parser. We just need to
   return parser’s result so the storage can actually store the data.
 
 The other parser, for names.dmp, is almost the same:
@@ -550,7 +550,7 @@ The other parser, for names.dmp, is almost the same:
            self.logger.info("Load data from file '%s'" % names_file)
            return parse_refseq_names(open(names_file))
 
-We then need to “expose” those parsers in taxonomy package, in `dataload/sources/taxonomy/__init__.py <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/taxonomy/__init__.py>`_:
+We then need to "expose" those parsers in taxonomy package, in `dataload/sources/taxonomy/__init__.py <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/taxonomy/__init__.py>`_:
 
 .. code-block:: python
 
@@ -678,7 +678,7 @@ In the end, two collections were created, containing parsed data:
    }
 
 
-Uniprot species uploader
+UniProt species uploader
 ========================
 
 Following the same guideline, we’re going to create another uploader for species file.
@@ -698,7 +698,7 @@ Following the same guideline, we’re going to create another uploader for speci
            return parse_uniprot_speclist(open(nodes_file))
 
 
-In that case, we need only one uploader, so we just define “name” (no need to define main_source here).
+In that case, we need only one uploader, so we just define "name" (no need to define main_source here).
 
 We need to expose that uploader from the package, in `dataload/sources/uniprot/__init__.py <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/uniprot/__init__.py>`_:
 
@@ -706,7 +706,7 @@ We need to expose that uploader from the package, in `dataload/sources/uniprot/_
 
    from .uploader import UniprotSpeciesUploader
 
-Let’s run this through the hub. We can use the “upload” command there (though manager should trigger the upload itself):
+Let’s run this through the hub. We can use the "upload" command there (though manager should trigger the upload itself):
 
 .. code:: bash
 
@@ -763,7 +763,7 @@ Though we could process data in memory -- processed data is rather small in the 
            return parse_geneinfo_taxid(open(gene_file))
 
 * ``storage_class``: this is the most important setting in this case, we want to use a storage that will ignore any duplicated records.
-* ``parse_geneinfo_taxid`` : is the parsing function, yield documents as ``{“_id” : "taxid"}``
+* ``parse_geneinfo_taxid`` : is the parsing function, yield documents as ``{"_id" : "taxid"}``
 
 The rest is closed to what we already encountered. Code is available on github in
 `dataload/sources/geneinfo/uploader.py <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/geneinfo/uploader.py>`_
@@ -872,20 +872,20 @@ and create configuration placeholder.
 We’re going to use that template to create our own configuration:
 
 * **_id** and name are the name of the configuration (they can be different but really, _id is the one used here)...
-  We’ll set these as:  ``{“_id”:”mytaxonomy”, “name”:”mytaxonomy” }``.
+  We’ll set these as:  ``{"_id":"mytaxonomy", "name":"mytaxonomy" }``.
 * **sources** is a list of collection names used for the merge. A element is this can also be a regular expression
   matching collection names. If we have data spread across different collection, like one collection per chromosome data,
   we could use a regex such as ``data_chr.*``. We’ll set this as:  ``{"sources":["names" ,"species", "nodes", "geneinfo"]}``
-* ``root** defines root datasources, that is, datasources that can be used to initiate document creation.
+* **root** defines root datasources, that is, datasources that can be used to initiate document creation.
   Sometimes, we want data to be merged only if an existing document previously exists in the merged collection.
   If root sources are defined, they will be merged first, then the other remaining in sources will be merged with existing documents.
   If root doesn’t exist (or list is empty), all sources can initiate documents creation. root can be a list of collection names,
   or a negation (not a mix of both). So, for instance, if we want all datasources to be root, except source10,
-  we can specify: ``“root” :  [“!source10”]``. Finally, all root sources must all be declared in sources (root is a subset of sources).
-  That said, it’s interesting in our case because we have taxonomy information coming from NCBI and Uniprot,
-  but we want to make sure a document built from Uniprot only doesn’t exist (it’s because we need parent_taxid field which
+  we can specify: ``"root" :  ["!source10"]``. Finally, all root sources must all be declared in sources (root is a subset of sources).
+  That said, it’s interesting in our case because we have taxonomy information coming from NCBI and UniProt,
+  but we want to make sure a document built from UniProt only doesn’t exist (it’s because we need parent_taxid field which
   only exists in NCBI data, so we give priority to those sources first). So root sources are going to be ``names`` and ``nodes``,
-  but because we’re lazy typist, we’re going to set this to: ``{“root” : [“!species”]}``
+  but because we’re lazy typist, we’re going to set this to: ``{"root" : ["!species"]}``
 
 The resulting document should look like this. Let’s save this in src_build (and also remove the placeholder, not useful anymore):
 
@@ -901,7 +901,7 @@ The resulting document should look like this. Let’s save this in src_build (an
                    "nodes",
                    "geneinfo"
            ],
-           "root" : [“!uniprot_species”]
+           "root" : ["!uniprot_species"]
    }
    > db.src_build.save(conf)
    > db.src_build.remove({_id:"placeholder"})
@@ -1096,7 +1096,7 @@ which allows to partially define the class instantiation. In the end, builder_cl
 
 Let’s try if our mapper works (restart the hub). Inside the hub, we’re going to manually get a builder instance.
 Remember through the SSH connection, we can access python interpreter’s namespace, which is very handy when it comes
-to develop and debug as we can directly access and “play” with objects and their states:
+to develop and debug as we can directly access and "play" with objects and their states:
 
 First we get a builder instance from the manager:
 
@@ -1232,7 +1232,7 @@ OK, there’s a ``has_gene`` flag that’s been set. So far so good !
 Post-merge process
 ==================
 
-The last part is the trickier. We need to add lineage and parent taxid information for each of these documents.
+We need to add lineage and parent taxid information for each of these documents.
 We’ll implement that last part as a post-merge step, iterating over each of them. In order to do so, we need to define
 our own builder class to override proper methodes there. Let’s define it in `databuild/builder.py. <https://github.com/biothings/biothings.species/blob/master/src/databuild/builder.py>`_.
 
@@ -1379,10 +1379,10 @@ After a while, process is done. We can test our updated data:
    }
 
 OK, we have new lineage information (truncated for sanity purpose). Merged collection is ready to be used. It can be used for instance
-to create and send documents to an ElasticSearch database. This is what's actually occuring when creating a Biothings web-servuce API.
+to create and send documents to an ElasticSearch database. This is what's actually occuring when creating a BioThings web-servuce API.
 That step will be covered in another tutorial.
 
 Full updated and maintained code for this hub is available here: https://github.com/biothings/biothings.species
 
-Also, taxonomy Biotghins API can be queried as this URL: http://t.biothings.io
+Also, taxonomy BioThings API can be queried as this URL: http://t.biothings.io
 
