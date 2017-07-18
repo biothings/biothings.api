@@ -29,11 +29,18 @@ BioThings Tutorials
 Check out a simple ``"Hello, World!"`` example, or more advanced tutorials `here <doc/tutorial.html>`_.
 
 .. toctree::
-   :maxdepth: 3
+    :maxdepth: 3
+    :caption: BioThings Tutorials
+ 
+    doc/single_source_tutorial
+    doc/multiple_sources_tutorial
 
-   doc/tutorial
-   doc/hub
-   doc/web
+.. toctree::
+    :maxdepth: 3
+    :caption: BioThings Code Documentation
+
+    doc/hub
+    doc/web
 
 .. Indices and tables
 .. ==================
