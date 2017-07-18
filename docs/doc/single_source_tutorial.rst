@@ -56,10 +56,19 @@ To configure Elasticsearch, execute the following commands as su:
 
 .. note:: This guide was created using Ubuntu 16.04, the exact location of elasticsearch.yml may vary in other platforms.
 
+Install Elasticsearch Python client
++++++++++++++++++++++++++++++++++++
+
+Install the official `Elasticsearch Python client v2.4.0 <http://elasticsearch-py.readthedocs.io/en/2.4.0/>`_ like:
+
+.. code-block:: bash
+
+    pip install elasticsearch==2.4.0
+
 PharmGKB Gene
 ^^^^^^^^^^^^^
 
-Once all prerequisites have been installed, the data loading step can begin.
+Once all prerequisites have been installed and Elasticsearch is running, the data loading step can begin.
 Consider the following script, which defines a "load_data" function that parses
 the `PharmGKB gene flat file <https://api.pharmgkb.org/v1/download/file/data/genes.zip>`_ and then iterates through it, storing the results in an Elasticsearch index using biothings.utils.es.ESIndexer.
 
