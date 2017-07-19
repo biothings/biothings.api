@@ -2,11 +2,13 @@
 Multiple Data Sources, Automated Source Updating Tutorial
 *********************************************************
 
-The following tutorial shows how to create a "hub", a piece of software used to
-download, maintain up-to-date, process, merge data. This part of BioThings is used
-to create an Elasticsearch index.  Once the index is created, the tutorial will
-guide you through setting up and customizing a new BioThings webservice API to query
-the data.
+In this tutorial, we will build the whole process, or "hub", which produces the data
+for Taxonomy BioThings API, accessible at `<t.biothings.io>`. This API serves information
+about species, lineage, etc... This "hub" is used to download, maintain up-to-date,
+process, merge data. At the end of this process, an Elasticsearch index is created
+containing all the data of interest, ready to be served as an API, using
+Biothings SDK Web component (covered in another tutorial).
+Taxonomy Biothings API code is avaiable at `<https://github.com/biothings/biothings.species>`
 
 Prerequesites
 ^^^^^^^^^^^^^
@@ -1381,6 +1383,11 @@ After a while, process is done. We can test our updated data:
 OK, we have new lineage information (truncated for sanity purpose). Merged collection is ready to be used. It can be used for instance
 to create and send documents to an ElasticSearch database. This is what's actually occuring when creating a BioThings web-servuce API.
 That step will be covered in another tutorial.
+
+Indexers
+^^^^^^^^
+
+Coming soon!
 
 Full updated and maintained code for this hub is available here: https://github.com/biothings/biothings.species
 
