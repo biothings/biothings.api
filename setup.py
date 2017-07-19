@@ -29,8 +29,8 @@ version = "{}.{}.{}".format(MAJOR_VER, MINOR_VER, MICRO_VER)
 try:
     commit_hash = check_output("git rev-parse HEAD", shell=True).decode('utf-8').strip('\n')
 except CalledProcessError:
-    # put commit hash for current release
-    commit_hash = ''
+    # put commit hash for current release -1
+    commit_hash = '23101aab328e653225dd63cd7c071f680dc00b0e'
 
 # Write commit to file inside package, that can be read later
 if commit_hash:
