@@ -56,10 +56,6 @@ To configure Elasticsearch, execute the following commands as su:
 
 .. note:: This guide was created using Ubuntu 16.04, the exact location of elasticsearch.yml may vary in other platforms.
 
-.. code-block:: bash
-
-    pip install elasticsearch==2.4.0
-
 PharmGKB Gene
 ^^^^^^^^^^^^^
 
