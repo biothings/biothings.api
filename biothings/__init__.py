@@ -3,6 +3,8 @@ import concurrent.futures
 from .version import MAJOR_VER, MINOR_VER, MICRO_VER
 
 def get_version():
+    # try to get the version from the package metadata, otherwise
+    # fallback to what's in version
     try:
         import pkg_resources
         return pkg_resources.require("biothings")[0].version

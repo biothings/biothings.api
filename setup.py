@@ -8,17 +8,22 @@ setup_path = os.path.dirname(__file__)
 def read(fname):
     return open(os.path.join(setup_path, fname)).read()
 
-# get version
-with open('biothings/version.py', 'r') as bt_ver:
-    exec(bt_ver.read())
+REPO_URL = "https://github.com/biothings/biothings.api"
 
-# should fail if installed form source or from pypi
+# get version
+bt_mod = __import__('biothings')
+MAJOR_VER = bt_mod.MAJOR_VER
+MINOR_VER = bt_mod.MINOR_VER
+
+# should fail if installed from source or from pypi,
+# version gets set to MAJOR.MINOR.# commits on master branch if installed from pip repo
+# otherwise to MAJOR.MINOR.MICRO as defined in biothings.version
 try:
     MICRO_VER = int(check_output("git rev-list --count master", shell=True).decode('utf-8').strip('\n'))
 except:
-    pass
+    MICRO_VER = bt_mod.MICRO_VER
 
-REPO_URL = "https://github.com/biothings/biothings.api"
+version = "{}.{}.{}".format(MAJOR_VER, MINOR_VER, MICRO_VER)
 
 # Calculate commit hash, should fail if installed from source or from pypi
 try:
@@ -28,8 +33,9 @@ except CalledProcessError:
     commit_hash = ''
 
 # Write commit to file inside package, that can be read later
-with open('biothings/.git-commit-hash', 'w') as git_file:
-    git_file.write("{}.git\n{}".format(REPO_URL, commit_hash))
+if commit_hash:
+    with open('biothings/.git-commit-hash', 'w') as git_file:
+        git_file.write("{}.git\n{}".format(REPO_URL, commit_hash))
 
 install_requires = [
     'requests>=2.3.0',
@@ -49,7 +55,7 @@ hub_requires = [
     
 setup(
     name="biothings",
-    version="{}.{}.{}".format(MAJOR_VER, MINOR_VER, MICRO_VER),
+    version=version,
     author="Cyrus Afrasiabi, Sebastien Lelong, Chunlei Wu",
     author_email="cwu@scripps.edu",
     description="a toolkit for building high-performance data APIs in biology",
