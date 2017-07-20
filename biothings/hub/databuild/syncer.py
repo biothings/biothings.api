@@ -17,8 +17,8 @@ from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings import config as btconfig
 from biothings.utils.manager import BaseManager, ManagerError
-from biothings.databuild.backend import create_backend
-from biothings.dataload.storage import UpsertStorage
+from .backend import create_backend
+from ..dataload.storage import UpsertStorage
 from biothings.utils.es import ESIndexer
 import biothings.utils.jsonpatch as jsonpatch
 from biothings.utils.diff import generate_diff_folder

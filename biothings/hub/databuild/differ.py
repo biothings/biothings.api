@@ -15,10 +15,10 @@ from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.utils.diff import diff_docs_jsonpatch, generate_diff_folder
 from biothings import config as btconfig
 from biothings.utils.manager import BaseManager, ManagerError
-from biothings.databuild.backend import create_backend
+from .backend import create_backend
+from .syncer import SyncerManager
 from biothings.utils.backend import DocMongoBackend
 import biothings.utils.aws as aws
-from biothings.databuild.syncer import SyncerManager
 from biothings.utils.jsondiff import make as jsondiff
 from biothings.utils.hub import publish_data_version
 

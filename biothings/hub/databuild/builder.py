@@ -11,19 +11,18 @@ from functools import partial
 import glob, random
 import aiocron
 
+from .mapper import TransparentMapper
+from ..dataload.uploader import ResourceNotReady
+from ..databuild.backend import SourceDocMongoBackend, TargetDocMongoBackend
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj
 from biothings.utils.mongo import doc_feeder, id_feeder
 from biothings.utils.loggers import get_logger, HipchatHandler
-from biothings.databuild.mapper import TransparentMapper
-from biothings.dataload.uploader import ResourceNotReady
 from biothings.utils.manager import BaseManager, ManagerError
 from biothings.utils.dataload import update_dict_recur
 import biothings.utils.mongo as mongo
 from biothings.utils.hub_db import get_source_fullname, get_src_build_config, \
                                    get_src_build, get_src_dump, get_src_master
-import biothings.databuild.backend as backend
-from biothings.databuild.backend import TargetDocMongoBackend
 from biothings import config as btconfig
 
 logging = btconfig.logger
@@ -783,7 +782,7 @@ class BuilderManager(BaseManager):
             # before actual call time
             from biothings import config
             source_backend =  self.source_backend_factory and self.source_backend_factory() or \
-                                    partial(backend.SourceDocMongoBackend,
+                                    partial(SourceDocMongoBackend,
                                             build_config=partial(get_src_build_config),
                                             build=partial(get_src_build),
                                             master=partial(get_src_master),
