@@ -28,7 +28,13 @@ We also use "*BioThings API*" (or *BioThings APIs*) to refer to an API (or a col
 Installing BioThings SDK
 ------------------------
 
-You can install the BioThings SDK with pip, like:
+You can install the latest stable BioThings SDK release with pip from `PyPI <https://pypi.python.org/pypi>`_, like:
+
+::
+
+    pip install biothings
+
+You can install the latest development version of BioThings SDK directly from our github repository like:
 
 ::
 

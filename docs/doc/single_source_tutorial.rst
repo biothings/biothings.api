@@ -35,6 +35,12 @@ or use pip, like:
 
 .. code-block:: bash
 
+    pip install biothings
+
+or directly from our repository, like:
+
+.. code-block:: bash
+
     pip install git+https://github.com/biothings/biothings.api.git#egg=biothings
 
 Elasticsearch
