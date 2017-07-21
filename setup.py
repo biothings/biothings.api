@@ -1,4 +1,5 @@
 import os
+import glob
 from setuptools import setup, find_packages
 from subprocess import check_output
 from subprocess import CalledProcessError
@@ -59,7 +60,7 @@ setup(
     url=REPO_URL,
     packages=find_packages(),
     include_package_data=True,
-    scripts=['biothings/bin/biothings-admin.py'],
+    scripts=list(glob.glob('biothings/bin/*')),
     long_description=read('README.md'),
     classifiers=[
         "Programming Language :: Python",
