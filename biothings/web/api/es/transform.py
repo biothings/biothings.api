@@ -94,7 +94,7 @@ class ESResultTransformer(object):
         self._modify_doc(_doc)
            
         if self.options.jsonld:
-            _d = OrderedDict([('@context', self.jsonld_context['@context']), 
+            _d = OrderedDict([('@context', self.jsonld_context.get('@context', {})), 
                               ('@id', self.doc_url_function(_doc['_id']))])
             _d.update(self._flatten_doc(_doc))
             return _d
