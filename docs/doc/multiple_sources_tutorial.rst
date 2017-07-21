@@ -13,7 +13,8 @@ Taxonomy Biothings API code is avaiable at `<https://github.com/biothings/biothi
 Prerequesites
 ^^^^^^^^^^^^^
 
-BioThings SDK uses MongoDB as backend. You must a have working MongoDB instance you can connect to.
+BioThings SDK uses MongoDB as the "staging" storage backend for JSON objects before they are sent to 
+Elasticsearch for indexing. You must a have working MongoDB instance you can connect to.
 We'll also perform some basic commands. You must also have BioThings SDK installed (
 ``git clone https://github.com/biothings/biothings.api.git`` is usually enough, followed by
 ``pip install -r requirements.txt``). You may want to use ``virtualenv`` to isolate your installation.
