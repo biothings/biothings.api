@@ -105,7 +105,7 @@ Now you can start your API by typing:
 
     cd pharmgkb_gene/src
     pip install -r ../requirements_web.txt
-    python www/index.py --debug --port=8001
+    python web/index.py --debug --port=8001
 
 Your API is live.  To use it, you can query it with a curl (or your local browser).  For example,
 if you wanted to find the PharmGKB accession for an NCBI gene (or gene list) you have, you could do a query
