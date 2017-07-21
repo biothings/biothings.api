@@ -1,5 +1,5 @@
 from tornado.web import HTTPError
-from biothings.www.api.es.handlers.base_handler import BaseESRequestHandler
+from biothings.web.api.es.handlers.base_handler import BaseESRequestHandler
 
 class StatusHandler(BaseESRequestHandler):
     ''' Handles requests to check the status of the server. '''

@@ -1,4 +1,4 @@
-from biothings.www.api.helper import BaseHandler, BiothingParameterTypeError
+from biothings.web.api.helper import BaseHandler, BiothingParameterTypeError
 from biothings.utils.common import dotdict, is_str
 import re
 import logging

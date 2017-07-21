@@ -1,6 +1,6 @@
-from biothings.www.api.es.query import ESQuery as DefaultESQuery
-from biothings.www.api.es.query_builder import ESQueryBuilder as DefaultESQueryBuilder
-from biothings.www.api.es.transform import ESResultTransformer as DefaultESResultTransformer
+from biothings.web.api.es.query import ESQuery as DefaultESQuery
+from biothings.web.api.es.query_builder import ESQueryBuilder as DefaultESQueryBuilder
+from biothings.web.api.es.transform import ESResultTransformer as DefaultESResultTransformer
 import re
 
 # *****************************************************************************
@@ -36,16 +36,16 @@ API_VERSION = 'v1'
 APP_LIST = []
 
 # *****************************************************************************
-# Subclass of biothings.www.api.es.query_builder.ESQueryBuilder to build
+# Subclass of biothings.web.api.es.query_builder.ESQueryBuilder to build
 # queries for this app
 # *****************************************************************************
 ES_QUERY_BUILDER = DefaultESQueryBuilder
 # *****************************************************************************
-# Subclass of biothings.www.api.es.query.ESQuery to execute queries for this app
+# Subclass of biothings.web.api.es.query.ESQuery to execute queries for this app
 # *****************************************************************************
 ES_QUERY = DefaultESQuery
 # *****************************************************************************
-# Subclass of biothings.www.api.es.transform.ESResultTransformer to transform
+# Subclass of biothings.web.api.es.transform.ESResultTransformer to transform
 # ES results for this app
 # *****************************************************************************
 ES_RESULT_TRANSFORMER = DefaultESResultTransformer

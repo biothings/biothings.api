@@ -1,7 +1,7 @@
 from tornado.web import HTTPError
-from biothings.www.api.es.handlers.base_handler import BaseESRequestHandler
-from biothings.utils.www import sum_arg_dicts
-from biothings.www.api.helper import BiothingParameterTypeError
+from biothings.web.api.es.handlers.base_handler import BaseESRequestHandler
+from biothings.utils.web import sum_arg_dicts
+from biothings.web.api.helper import BiothingParameterTypeError
 import logging
 import traceback
 
