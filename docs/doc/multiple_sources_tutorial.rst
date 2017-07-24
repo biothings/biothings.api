@@ -15,9 +15,28 @@ Prerequesites
 
 BioThings SDK uses MongoDB as the "staging" storage backend for JSON objects before they are sent to 
 Elasticsearch for indexing. You must a have working MongoDB instance you can connect to.
-We'll also perform some basic commands. You must also have BioThings SDK installed (
-``git clone https://github.com/biothings/biothings.api.git`` is usually enough, followed by
-``pip install -r requirements.txt``). You may want to use ``virtualenv`` to isolate your installation.
+We'll also perform some basic commands.
+
+You also have to install the latest stable BioThings SDK release, with pip from `PyPI <https://pypi.python.org/pypi/biothings>`_:
+
+::
+
+    pip install biothings
+
+You can install the latest development version of BioThings SDK directly from our github repository like:
+
+::
+
+    pip install git+https://github.com/biothings/biothings.api.git#egg=biothings
+
+Alternatively, you can download the source code, or clone the `BioThings SDK repository <http://github.com/biothings/biothings.api>`_ and run:
+
+::
+
+    python setup.py install
+
+You may want to use ``virtualenv`` to isolate your installation.
+
 Finally, BioThings SDK is written in python, so you must know some basics.
 
 Configuration file
