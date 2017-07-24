@@ -530,7 +530,10 @@ class ESIndexer():
                     (snapshot_name,index_name,e))
 
     def get_repository(self,repo_name):
-        return self._es.snapshot.get_repository(repo_name)
+        try:
+            return self._es.snapshot.get_repository(repo_name)
+        except NotFoundError:
+            raise IndexerException("Repository '%s' doesn't exist" % repo_name)
 
     def create_repository(self,repo_name,settings):
         try:

@@ -82,7 +82,7 @@ class BaseSyncer(object):
         meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
         diff_type = self.diff_type
         selfcontained = "selfcontained" in meta["diff"]["type"]
-        # first try to use what's been passed explicitely 
+        # first try to use what's been passed explicitely
         # then default to what's in config (tuple will be used for create_backend() call)
         # or use what we have in the diff metadata
         old_db_col_names = target_backend or \
@@ -192,7 +192,7 @@ class BaseSyncer(object):
 
             job.add_done_callback(updated)
             yield from job
-            
+
             if got_error:
                 self.logger.error("Failed to update metadata on index '%s': %s" % \
                     (old_db_col_names, got_error),extra={"notify":True})
@@ -331,7 +331,10 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
     for i,doc in enumerate(indexer.get_docs(ids)):
         try:
             patch_info = diff["update"][i] # same order as what's return by get_doc()...
-            assert patch_info["_id"] == doc["_id"] # ... but just make sure
+            # ... but just make sure
+            assert patch_info["_id"] == doc["_id"], "Different ID found when patching (patchID: %s, docID: %s" % \
+                    (patch_info["_id"],doc["_id"])
+
             newdoc = jsonpatch.apply_patch(doc,patch_info["patch"])
             if newdoc == doc:
                 # already applied
