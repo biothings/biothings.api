@@ -89,9 +89,9 @@ class ESQueryBuilder(object):
     def _build_single_query(self, term, scopes=None):
         scopes = scopes or self.default_scopes
         if len(scopes) == 1:
-            return self.queries.match({scopes[0]:{"query": "{}".format(term), "operator": "and"}})
+            return ESQueries().match({scopes[0]:{"query": "{}".format(term), "operator": "and"}})
         else:
-            return self.queries.multi_match({"query":"{}".format(term), "fields":scopes, "operator":"and"})
+            return ESQueries().multi_match({"query":"{}".format(term), "fields":scopes, "operator":"and"})
 
     def _build_multiple_query(self, terms, scopes=None):
         _q = []
@@ -104,7 +104,7 @@ class ESQueryBuilder(object):
 
     def _default_query(self, q):
         ''' Override me '''
-        return self.queries.query_string({"query": q})
+        return ESQueries().query_string({"query": q})
 
     def _is_match_all(self, q):
         return (q == '__all__')
@@ -115,7 +115,7 @@ class ESQueryBuilder(object):
 
     def _match_all(self, q):
         ''' Override me '''
-        return self.queries.match_all({})
+        return ESQueries().match_all({})
 
     def _is_user_query(self, text_file='query.txt'):
         try:
@@ -130,7 +130,7 @@ class ESQueryBuilder(object):
         _args.update(getattr(self.options, 'userquery_kwargs', {}))
         _ret = json.loads(get_userquery(os.path.abspath(self.userquery_dir), 
                             self.options.userquery).format(**_args))
-        return self.queries.raw_query(_ret)
+        return ESQueries().raw_query(_ret)
 
     def _user_query_filter(self):
         return json.loads(get_userfilter(os.path.abspath(self.userquery_dir), self.options.userquery))
@@ -145,7 +145,7 @@ class ESQueryBuilder(object):
         ''' Override me to add more query filters '''
         return self._get_query_filters()
 
-    def _add_extra_filters(self, q):
+    def add_extra_filters(self, q):
         ''' Override me to add more filters '''
         return q
 
@@ -194,8 +194,9 @@ class ESQueryBuilder(object):
             _query = self._default_query(q)
 
         _query = self.add_query_filters(_query)
+        _query = self.add_extra_filters(_query)
 
-        _query = self._add_extra_filters(_query)
+        _query = self.queries.raw_query(_query)
 
         _ret = self._return_query_kwargs({'body': _query})
 
