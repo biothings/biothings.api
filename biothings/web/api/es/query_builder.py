@@ -89,9 +89,9 @@ class ESQueryBuilder(object):
     def _build_single_query(self, term, scopes=None):
         scopes = scopes or self.default_scopes
         if len(scopes) == 1:
-            return ESQueries().match({scopes[0]:{"query": "{}".format(term), "operator": "and"}})
+            return self.queries.match({scopes[0]:{"query": "{}".format(term), "operator": "and"}})
         else:
-            return ESQueries().multi_match({"query":"{}".format(term), "fields":scopes, "operator":"and"})
+            return self.queries.multi_match({"query":"{}".format(term), "fields":scopes, "operator":"and"})
 
     def _build_multiple_query(self, terms, scopes=None):
         _q = []
