@@ -145,6 +145,10 @@ class ESQueryBuilder(object):
         ''' Override me to add more query filters '''
         return self._get_query_filters()
 
+    def _add_extra_filters(self, q):
+        ''' Override me to add more filters '''
+        return q
+
     def add_query_filters(self, _query):
         ''' Given a query, add any other filters '''
         filters = self.get_query_filters()
@@ -190,6 +194,8 @@ class ESQueryBuilder(object):
             _query = self._default_query(q)
 
         _query = self.add_query_filters(_query)
+
+        _query = self._add_extra_filters(_query)
 
         _ret = self._return_query_kwargs({'body': _query})
 
