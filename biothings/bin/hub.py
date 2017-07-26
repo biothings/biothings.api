@@ -72,6 +72,7 @@ from biothings.utils.hub import schedule, top, pending, done
 
 COMMANDS = {
         # dump commands
+        "check" : partial(dmanager.dump_src,"biothings",check_only=True),
         "download" : partial(dmanager.dump_src,"biothings"),
         # upload commands
         "apply" : partial(umanager.upload_src,"biothings"),

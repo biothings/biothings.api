@@ -221,7 +221,7 @@ class BaseDumper(object):
         self.src_dump.save(self.src_doc)
 
     @asyncio.coroutine
-    def dump(self, steps=None, force=False, job_manager=None, **kwargs):
+    def dump(self, steps=None, force=False, job_manager=None, check_only=False, **kwargs):
         '''
         Dump (ie. download) resource as needed
         this should be called after instance creation
@@ -250,6 +250,10 @@ class BaseDumper(object):
                 # TODO: blocking call for now, FTP client can't be properly set in thread after
                 self.create_todump_list(force=force, **kwargs)
                 if self.to_dump:
+                    if check_only:
+                        self.logger.info("New release available, '%s', %s file(s) to download" % \
+                            (self.release,len(self.to_dump)),extra={"notify":True})
+                        return self.release
                     # mark the download starts
                     self.register_status("downloading",transient=True)
                     # unsync to make it pickable
@@ -260,7 +264,7 @@ class BaseDumper(object):
                 else:
                     # if nothing to dump, don't do post process
                     self.logger.debug("Nothing to dump",extra={"notify":True})
-                    return
+                    return "Nothing to dump"
             if "post" in self.steps:
                 got_error = False
                 pinfo = self.get_pinfo()
@@ -696,7 +700,8 @@ class DumperManager(BaseSourceManager):
     @asyncio.coroutine
     def create_and_dump(self,klass,*args,**kwargs):
         inst = self.create_instance(klass)
-        yield from inst.dump(*args,**kwargs)
+        res = yield from inst.dump(*args,**kwargs)
+        return res
 
     def schedule_all(self, raise_on_error=False, **kwargs):
         """
