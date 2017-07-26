@@ -13,6 +13,7 @@ from pprint import pprint
 from collections import OrderedDict
 
 from biothings import config
+logging = config.logger
 from biothings.utils.common import timesofar, sizeof_fmt
 import biothings.utils.aws as aws
 
@@ -31,12 +32,14 @@ LATEST = config.HUB_ENV and "%s-latest" % config.HUB_ENV or "latest"
 class HubSSHServerSession(asyncssh.SSHServerSession):
 
     running_jobs = {}
-    chained_jobs = {}
     job_cnt = 1
 
     def __init__(self, name, commands):
         # update with ssh server default commands
         commands["cancel"] = self.__class__.cancel
+        # for boolean calls
+        commands["_and"] = _and
+        commands["partial"] = partial
         self.shell = InteractiveShell(user_ns=commands)
         self.name = name
         self._input = ''
@@ -58,23 +61,31 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         self._input += data
 
         lines = self._input.split('\n')
-        chained_ready = dict([(n,j) for n,j in self.__class__.chained_jobs.items() if j["waiting"] == False])
-        [self.__class__.chained_jobs.pop(n) for n in chained_ready.keys()]
-        for line in lines[:-1] + [j["cmd"] for j in chained_ready.values()]:
+        for line in lines[:-1]:
             if not line:
                 continue
             line = line.strip()
-            self.origout.write("run %s " % repr(line))
-            chained_jobs = list(map(str.strip,line.split("&&")))
-            if len(chained_jobs) > 1:
-                # "&&".join(): we dealt with first of a chain, maybe there's more than one behind so construct the line
-                # again with && to keep the whole chain
-                self.__class__.chained_jobs[self.__class__.job_cnt] = {"cmd":"&&".join(chained_jobs[1:]),"waiting":True}
-                line = chained_jobs[0]
             if line in [j["cmd"] for j in self.__class__.running_jobs.values()]:
                 self._chan.write("Command '%s' is already running\n" % repr(line))
                 continue
-            r = self.shell.run_cell(line,store_history=True)
+            # cmdline is the actual command sent to shell, line is the one displayed
+            # they can be different if there's a preprocessing
+            cmdline = line
+            # && jobs ? ie. chained jobs
+            chained_jobs = list(map(str.strip,line.split("&&")))
+            if len(chained_jobs) > 1:
+                # need to build a command with _and and using partial, meaning passing original func param
+                # to the partials
+                strjobs = []
+                for job in chained_jobs:
+                    func,args = re.match("(.*)\((.*)\)",job).groups()
+                    if args:
+                        strjobs.append("partial(%s,%s)" % (func,args))
+                    else:
+                        strjobs.append("partial(%s)" % func)
+                cmdline = "_and(%s)" % ",".join(strjobs)
+            logging.info("Run: %s " % repr(cmdline))
+            r = self.shell.run_cell(cmdline,store_history=True)
             if not r.success:
                 self.origout.write("Error\n")
                 self._chan.write("Error: %s\n" % repr(r.error_in_exec))
@@ -107,13 +118,6 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
                 if is_done:
                     finished.append(num)
                     self._chan.write("[%s] %s %s: finished, %s\n" % (num,has_err and "ERR" or "OK ",info["cmd"], outputs))
-                    if num in self.__class__.chained_jobs:
-                        if not has_err:
-                            self.__class__.chained_jobs[num]["waiting"] = False
-                        else:
-                            self._chan.write("[%s+] %s %s: cancelled\n" % \
-                                    (num,"CAN",self.__class__.chained_jobs[num]["cmd"]))
-                            self.__class__.chained_jobs.pop(num)
                 else:
                     self._chan.write("[%s] RUN {%s} %s\n" % (num,timesofar(info["started_at"]),info["cmd"]))
             if finished:
@@ -508,4 +512,33 @@ def publish_data_version(version,env=None,update_latest=True):
         newredir = os.path.join("/",config.S3_DIFF_FOLDER,"%s.json" % version)
         key.set_redirect(newredir)
 
+
+def _and(*funcs):
+    """
+    Calls passed functions, one by one. If one fails, then it stops.
+    Function should return a asyncio Task. List of one Task only are also permitted.
+    Partial can be used to pass arguments to functions.
+    Ex: _and(f1,f2,partial(f3,arg1,kw=arg2))
+    """
+    all_res = []
+    func1 = funcs[0]
+    func2 = None
+    fut1 = func1()
+    if type(fut1) == list:
+        assert len(fut1) == 1, "Can't deal with list of more than 1 task: %s" % fut1
+        fut1 = fut1.pop()
+    all_res.append(fut1)
+    err = None
+    def do(f,cb):
+        res = f.result() # consume exception if any
+        if cb:
+            all_res.extend(_and(cb,*funcs))
+    if len(funcs) > 1:
+        func2 = funcs[1]
+        if len(funcs) > 2:
+            funcs = funcs[2:]
+        else:
+            funcs = []
+    fut1.add_done_callback(partial(do,cb=func2))
+    return all_res
 
