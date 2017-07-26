@@ -52,6 +52,10 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         sys.stdout = self.buf
 
     def shell_requested(self):
+        return False
+
+    def exec_requested(self,command):
+        self.data_received("%s\n" % command,None)
         return True
 
     def session_started(self):
