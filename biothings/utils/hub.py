@@ -31,6 +31,7 @@ LATEST = config.HUB_ENV and "%s-latest" % config.HUB_ENV or "latest"
 class HubSSHServerSession(asyncssh.SSHServerSession):
 
     running_jobs = {}
+    chained_jobs = {}
     job_cnt = 1
 
     def __init__(self, name, commands):
@@ -57,12 +58,20 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         self._input += data
 
         lines = self._input.split('\n')
-        for line in lines[:-1]:
+        chained_ready = dict([(n,j) for n,j in self.__class__.chained_jobs.items() if j["waiting"] == False])
+        [self.__class__.chained_jobs.pop(n) for n in chained_ready.keys()]
+        for line in lines[:-1] + [j["cmd"] for j in chained_ready.values()]:
             if not line:
                 continue
             line = line.strip()
             self.origout.write("run %s " % repr(line))
-            if line in self.__class__.running_jobs:
+            chained_jobs = list(map(str.strip,line.split("&&")))
+            if len(chained_jobs) > 1:
+                # "&&".join(): we dealt with first of a chain, maybe there's more than one behind so construct the line
+                # again with && to keep the whole chain
+                self.__class__.chained_jobs[self.__class__.job_cnt] = {"cmd":"&&".join(chained_jobs[1:]),"waiting":True}
+                line = chained_jobs[0]
+            if line in [j["cmd"] for j in self.__class__.running_jobs.values()]:
                 self._chan.write("Command '%s' is already running\n" % repr(line))
                 continue
             r = self.shell.run_cell(line,store_history=True)
@@ -70,7 +79,6 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
                 self.origout.write("Error\n")
                 self._chan.write("Error: %s\n" % repr(r.error_in_exec))
             else:
-                #self.origout.write(self.buf.read() + '\n')
                 if r.result is None:
                     self.origout.write("OK: %s\n" % repr(r.result))
                     self.buf.seek(0)
@@ -99,6 +107,13 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
                 if is_done:
                     finished.append(num)
                     self._chan.write("[%s] %s %s: finished, %s\n" % (num,has_err and "ERR" or "OK ",info["cmd"], outputs))
+                    if num in self.__class__.chained_jobs:
+                        if not has_err:
+                            self.__class__.chained_jobs[num]["waiting"] = False
+                        else:
+                            self._chan.write("[%s+] %s %s: cancelled\n" % \
+                                    (num,"CAN",self.__class__.chained_jobs[num]["cmd"]))
+                            self.__class__.chained_jobs.pop(num)
                 else:
                     self._chan.write("[%s] RUN {%s} %s\n" % (num,timesofar(info["started_at"]),info["cmd"]))
             if finished:
@@ -492,4 +507,5 @@ def publish_data_version(version,env=None,update_latest=True):
                     s3_bucket=config.S3_DIFF_BUCKET)
         newredir = os.path.join("/",config.S3_DIFF_FOLDER,"%s.json" % version)
         key.set_redirect(newredir)
-            
+
+
