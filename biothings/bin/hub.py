@@ -68,7 +68,7 @@ BiothingsUploader.AUTO_PURGE_INDEX = True # because we believe
 umanager.register_classes([BiothingsUploader])
 umanager.poll()
 
-from biothings.utils.hub import schedule, top, pending, done
+from biothings.utils.hub import schedule, top, pending, done, HubCommand
 
 COMMANDS = {
         # dump commands
@@ -76,6 +76,7 @@ COMMANDS = {
         "download" : partial(dmanager.dump_src,"biothings"),
         # upload commands
         "apply" : partial(umanager.upload_src,"biothings"),
+        "update": HubCommand("download() && apply()"),
         ## admin/advanced
         "g": globals(),
         "sch" : partial(schedule,loop),

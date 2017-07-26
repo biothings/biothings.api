@@ -36,11 +36,12 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
 
     def __init__(self, name, commands):
         # update with ssh server default commands
-        commands["cancel"] = self.__class__.cancel
+        self.commands = commands
+        self.commands["cancel"] = self.__class__.cancel
         # for boolean calls
-        commands["_and"] = _and
-        commands["partial"] = partial
-        self.shell = InteractiveShell(user_ns=commands)
+        self.commands["_and"] = _and
+        self.commands["partial"] = partial
+        self.shell = InteractiveShell(user_ns=self.commands)
         self.name = name
         self._input = ''
 
@@ -68,6 +69,15 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
             if line in [j["cmd"] for j in self.__class__.running_jobs.values()]:
                 self._chan.write("Command '%s' is already running\n" % repr(line))
                 continue
+            self.origout.write("line %s\n" % line)
+            # is it a hub command, in which case, intercept and run the actual declared cmd
+            m = re.match("(.*)\(.*\)",line)
+            if m:
+                cmd = m.groups()[0].strip()
+                if cmd in self.commands and \
+                        isinstance(self.commands[cmd],HubCommand):
+                    self.origout.write("%s -> %s\n" % (line,self.commands[cmd]))
+                    line = self.commands[cmd]
             # cmdline is the actual command sent to shell, line is the one displayed
             # they can be different if there's a preprocessing
             cmdline = line
@@ -542,3 +552,9 @@ def _and(*funcs):
     fut1.add_done_callback(partial(do,cb=func2))
     return all_res
 
+
+class HubCommand(str):
+    def __init__(self,cmd):
+        self.cmd = cmd
+    def __str__(self):
+        return "<HubCommand: '%s'>" % self.cmd

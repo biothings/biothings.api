@@ -132,6 +132,8 @@ class BiothingsDumper(HTTPDumper):
         """
         # 1st pass
         # TODO: implemente inc/full preferences, for now prefer incremental
+        if not versions:
+            raise DumperException("No compatible version found")
         preferreds = [v for v in versions if "." in v]
         if preferreds:
             self.logger.info("Preferred versions (according to preferences): %s" % preferreds)
