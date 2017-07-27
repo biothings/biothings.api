@@ -407,6 +407,17 @@ class DataBuilder(object):
 
     def merge(self, sources=None, target_name=None, force=False, ids=None,steps=["merge","post","metadata"],
             job_manager=None, *args,**kwargs):
+        """Merge given sources into a collection named target_name. If sources argument is omitted,
+        all sources defined for this merger will be merged together, according to what is defined
+        insrc_build_config. If target_name is not defined, a unique name will be generated.
+          - force=True will bypass any safety check
+          - ids: list of _ids to merge, specifically. If None, all documents are merged.
+          - steps:
+             * merge: actual merge step, create merged documents and store them
+             * post: once merge, run optional post-merge process
+             * metadata: generate and store metadata (depends on merger, usually specifies the amount
+                         of merged data, source versions, etc...)
+        """
         assert job_manager
         # check what to do
         if type(steps) == str:

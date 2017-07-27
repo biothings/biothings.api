@@ -672,7 +672,7 @@ class DumperManager(BaseSourceManager):
             jobs.extend(job)
         return asyncio.gather(*jobs)
 
-    def dump_src(self, src, force=False, skip_manual=False, schedule=False, **kwargs):
+    def dump_src(self, src, force=False, skip_manual=False, schedule=False, check_only=False, **kwargs):
         if src in self.register:
             klasses = self.register[src]
         else:
@@ -690,7 +690,8 @@ class DumperManager(BaseSourceManager):
                         crontab = klass.SCHEDULE
                     else:
                         raise DumperException("Missing scheduling information")
-                job = self.job_manager.submit(partial(self.create_and_dump,klass,force=force,job_manager=self.job_manager,**kwargs),schedule=crontab)
+                job = self.job_manager.submit(partial(self.create_and_dump,klass,force=force,job_manager=self.job_manager,
+                    check_only=check_only,**kwargs),schedule=crontab)
                 jobs.append(job)
             return jobs
         except Exception as e:

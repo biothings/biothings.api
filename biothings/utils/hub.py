@@ -3,7 +3,7 @@
 # To run this program, the file ``ssh_host_key`` must exist with an SSH
 # private key in it to use as a server host key.
 
-import os, glob, re, pickle, datetime, json
+import os, glob, re, pickle, datetime, json, pydoc
 import asyncio, asyncssh, crypt, sys, io
 import types, aiocron, time
 from functools import partial
@@ -35,16 +35,45 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
     running_jobs = {}
     job_cnt = 1
 
-    def __init__(self, name, commands):
+    def __init__(self, name, commands, extra_ns):
         # update with ssh server default commands
         self.commands = commands
-        self.commands["cancel"] = self.__class__.cancel
+        self.extra_ns = extra_ns
+        self.extra_ns["cancel"] = self.__class__.cancel
         # for boolean calls
-        self.commands["_and"] = _and
-        self.commands["partial"] = partial
-        self.shell = InteractiveShell(user_ns=self.commands)
+        self.extra_ns["_and"] = _and
+        self.extra_ns["partial"] = partial
+        self.extra_ns["hub"] = self
+        self.commands["help"] = self.help
+        # merge official/public commands with hidden/private to
+        # make the whole available in shell's namespace
+        self.extra_ns.update(self.commands)
+        self.shell = InteractiveShell(user_ns=self.extra_ns)
         self.name = name
         self._input = ''
+
+    def help(self, func=None):
+        """
+        Display help on given function/object or list all available commands
+        """
+        if not func:
+            cmds = "\nAvailable commands:\n\n"
+            for k in self.commands:
+                cmds += "\t%s\n" % k
+            cmds += "\nType: 'help(command)' for more\n"
+            return cmds
+        elif isinstance(func,partial):
+            docstr = "\n" + pydoc.render_doc(func.func,title="Hub documentation: %s")
+            docstr += "\nDefined et as a partial, with:\nargs:%s\nkwargs:%s\n" % (repr(func.args),repr(func.keywords))
+            return docstr
+        elif isinstance(func,HubCommand):
+            docstr = "\nComposite command:\n\n%s\n" % func
+            return docstr
+        else:
+            try:
+                return "\n" + pydoc.render_doc(func,title="Hub documentation: %s")
+            except ImportError:
+                return "\nHelp not available for this command\n"
 
     def connection_made(self, chan):
         self._chan = chan
@@ -158,12 +187,14 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
 
 class HubSSHServer(asyncssh.SSHServer):
 
-    COMMANDS = {}
+    COMMANDS = OrderedDict() # public hub commands
+    EXTRA_NS = {} # extra commands, kind-of of hidden/private
     PASSWORDS = {}
 
     def session_requested(self):
         return HubSSHServerSession(self.__class__.NAME,
-                                   self.__class__.COMMANDS)
+                                   self.__class__.COMMANDS,
+                                   self.__class__.EXTRA_NS)
 
     def connection_made(self, conn):
         print('SSH connection received from %s.' %
@@ -187,15 +218,18 @@ class HubSSHServer(asyncssh.SSHServer):
         return crypt.crypt(password, pw) == pw
 
 
-async def start_server(loop,name,passwords,keys=['bin/ssh_host_key'],
-                        host='',port=8022,commands={}):
+@asyncio.coroutine
+def start_server(loop,name,passwords,keys=['bin/ssh_host_key'],
+                        host='',port=8022,commands={},extra_ns={}):
     for key in keys:
         assert os.path.exists(key),"Missing key '%s' (use: 'ssh-keygen -f %s' to generate it" % (key,key)
     HubSSHServer.PASSWORDS = passwords
     HubSSHServer.NAME = name
     if commands:
         HubSSHServer.COMMANDS.update(commands)
-    await asyncssh.create_server(HubSSHServer, host, port, loop=loop,
+    if extra_ns:
+        HubSSHServer.EXTRA_NS.update(extra_ns)
+    yield from asyncssh.create_server(HubSSHServer, host, port, loop=loop,
                                  server_host_keys=keys)
 
 
@@ -559,7 +593,13 @@ def _and(*funcs):
 
 
 class HubCommand(str):
+    """
+    Defines a composite hub commands, that is,
+    a new command made of other commands. Useful to define
+    shortcuts when typing commands in hub console.
+    """
     def __init__(self,cmd):
         self.cmd = cmd
     def __str__(self):
         return "<HubCommand: '%s'>" % self.cmd
+
