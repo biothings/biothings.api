@@ -21,8 +21,9 @@ import biothings.utils.aws as aws
 pending = "pending"
 done = "done"
 
-VERSIONS = config.HUB_ENV and "%s-versions" % config.HUB_ENV or "versions"
-LATEST = config.HUB_ENV and "%s-latest" % config.HUB_ENV or "latest"
+HUB_ENV = hasattr(config,"HUB_ENV") and config.HUB_ENV or "" # default: prod (or "normal")
+VERSIONS = HUB_ENV and "%s-versions" % HUB_ENV or "versions"
+LATEST = HUB_ENV and "%s-latest" % HUB_ENV or "latest"
 
 
 ##############

@@ -17,7 +17,7 @@ from biothings.utils.es import ESIndexer
 from biothings.utils.backend import DocESBackend
 from biothings import config as btconfig
 from biothings.utils.mongo import doc_feeder, id_feeder
-from config import LOG_FOLDER, logger as logging, HUB_ENV
+from config import LOG_FOLDER, logger as logging
 from biothings.utils.hub import publish_data_version
 
 

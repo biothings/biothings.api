@@ -5,10 +5,11 @@ from functools import partial
 import biothings, config
 biothings.config_for_app(config)
 
-from config import DATA_ARCHIVE_ROOT, HUB_ENV
+from config import DATA_ARCHIVE_ROOT
 from biothings.hub.dataload.dumper import HTTPDumper, DumperException
 from biothings.utils.common import gunzipall, md5sum
 
+HUB_ENV = hasattr(config,"HUB_ENV") and config.HUB_ENV or "" # default to prod (normal)
 LATEST = HUB_ENV and "%s-latest" % HUB_ENV or "latest"
 VERSIONS = HUB_ENV and "%s-versions" % HUB_ENV or "versions"
 
