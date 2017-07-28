@@ -261,7 +261,8 @@ class JobManager(object):
     def __init__(self, loop, process_queue=None, thread_queue=None, max_memory_usage=None,
             num_workers=None,default_executor="thread"):
         self.loop = loop
-        self.process_queue = process_queue or concurrent.futures.ProcessPoolExecutor(max_workers=num_workers)
+        self.num_workers = num_workers
+        self.process_queue = process_queue or concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
         # TODO: limit the number of threads (as argument) ?
         self.thread_queue = thread_queue or concurrent.futures.ThreadPoolExecutor()
         if default_executor == "thread":
@@ -269,6 +270,7 @@ class JobManager(object):
         else:
             self.loop.set_default_executor(self.process_queue)
         self.ok_to_run = asyncio.Semaphore()
+        self.process_submit = asyncio.Semaphore()
 
         if max_memory_usage == "auto":
             # try to find a nice limit...
@@ -296,7 +298,7 @@ class JobManager(object):
                 continue
             pid = int(pid[0].split("_")[0])
             if not pid in children_pids:
-                print("Removing staled pid file '%s'" % fn)
+                logging.info("Removing staled pid file '%s'" % fn)
                 os.unlink(fn)
         tid_pat = re.compile(".*/(Thread-\d+)_.*\.pickle")
         for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
@@ -304,8 +306,50 @@ class JobManager(object):
             if not tid:
                 continue
             if not tid in active_tids:
-                print("Removing staled thread file '%s'" % fn)
+                logger.info("Removing staled thread file '%s'" % fn)
                 os.unlink(fn)
+
+    def recycle_process_queue(self):
+        """
+        Replace current process queue with a new one. When processes
+        are used over and over again, memory tends to grow as python
+        interpreter keeps some data (...). Calling this method will
+        perform a clean shutdown on current queue, waiting for running
+        processes to terminate, then discard current queue and replace
+        it a new one.
+        """
+        @asyncio.coroutine
+        def do():
+            #get the semaphore to prevent any other jobs to start
+            logger.info("Preventing process submission...")
+            yield from self.process_submit.acquire()
+            try:
+                # shutting down the process queue can take a while
+                # if some processes are still running (it'll wait until they're done)
+                # we'll wait in a thread to prevent the hub from being blocked
+                logger.info("Shutting down current process queue...")
+                pinfo = {"category" : "admin",
+                         "source" : "maintenance",
+                         "step" : "",
+                         "description" : "Recycling process queue"}
+                j = yield from self.defer_to_thread(pinfo,self.process_queue.shutdown)
+                yield from j
+                # now replace
+                logger.info("Replacing process queue with new one")
+                self.process_queue = concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
+                # and ready to go
+            except Exception as e:
+                logger.error("Error while recycling the process queue: %s" % e)
+                raise
+            finally:
+                logger.info("Allowing process submission again")
+                self.process_submit.release()
+        def done(f):
+            f.result() # consume future's result to potentially raise exception
+        fut = asyncio.ensure_future(do())
+        fut.add_done_callback(done)
+        return fut
+
 
     @asyncio.coroutine
     def checkmem(self,pinfo=None):
@@ -360,6 +404,7 @@ class JobManager(object):
         def run(future):
             yield from self.checkmem(pinfo)
             self.ok_to_run.release()
+            self.process_submit.release()
             res = yield from self.loop.run_in_executor(self.process_queue,
                     partial(do_work,"process",pinfo,func,*args))
             # process could generate other parallelized jobs and return a Future/Task
@@ -368,6 +413,7 @@ class JobManager(object):
                 res = yield from res
             future.set_result(res)
         yield from self.ok_to_run.acquire()
+        yield from self.process_submit.acquire()
         f = asyncio.Future()
         def runned(innerf):
             if innerf.exception():
@@ -437,14 +483,10 @@ class JobManager(object):
         for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
             try:
                 pid = int(pat.findall(fn)[0].split("_")[0])
-                if not pid in children_pids:
-                    print("Removing staled pid file '%s'" % fn)
-                    os.unlink(fn)
-                else:
-                    if not child or child.pid == pid:
-                        worker = pickle.load(open(fn,"rb"))
-                        worker["process"] = pchildren[children_pids.index(pid)]
-                        pids[pid] = worker
+                if not child or child.pid == pid:
+                    worker = pickle.load(open(fn,"rb"))
+                    worker["process"] = pchildren[children_pids.index(pid)]
+                    pids[pid] = worker
             except IndexError:
                 # weird though... should have only pid files there...
                 pass
@@ -459,13 +501,9 @@ class JobManager(object):
         for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
             try:
                 tid = pat.findall(fn)[0].split("_")[0]
-                if not tid in active_tids:
-                    print("Removing staled thread file '%s'" % fn)
-                    os.unlink(fn)
-                else:
-                    worker = pickle.load(open(fn,"rb"))
-                    worker["process"] = self.hub_process # misleading... it's the hub process
-                    tids[tid] = worker
+                worker = pickle.load(open(fn,"rb"))
+                worker["process"] = self.hub_process # misleading... it's the hub process
+                tids[tid] = worker
             except IndexError:
                 # weird though... should have only pid files there...
                 pass
