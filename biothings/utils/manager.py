@@ -259,7 +259,7 @@ class JobManager(object):
     DATALINE = HEADERLINE.replace("^","<")
 
     def __init__(self, loop, process_queue=None, thread_queue=None, max_memory_usage=None,
-            num_workers=None,default_executor="thread"):
+            num_workers=None,default_executor="thread",auto_recycle=True):
         self.loop = loop
         self.num_workers = num_workers
         self.process_queue = process_queue or concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
@@ -286,6 +286,8 @@ class JobManager(object):
         if not os.path.exists(donedir):
             os.makedirs(donedir)
         self.clean_staled()
+        self.auto_recycle = auto_recycle # active
+        self.auto_recycle_setting = auto_recycle # keep setting if we need to restore it its orig value
 
     def clean_staled(self):
         # clean old/staled files
@@ -328,7 +330,9 @@ class JobManager(object):
                 # if some processes are still running (it'll wait until they're done)
                 # we'll wait in a thread to prevent the hub from being blocked
                 logger.info("Shutting down current process queue...")
-                pinfo = {"category" : "admin",
+                pinfo = {"__skip_check__" : True, # skip sanity check, mem check to make sure
+                                                  # this worker will be run
+                         "category" : "admin",
                          "source" : "maintenance",
                          "step" : "",
                          "description" : "Recycling process queue"}
@@ -363,6 +367,22 @@ class JobManager(object):
         if self.max_memory_usage:
             hub_mem = self.hub_memory
             while hub_mem >= self.max_memory_usage:
+                if self.auto_recycle:
+                    pworkers = self.get_pid_files()
+                    tworkers = self.get_thread_files()
+                    if len(pworkers) == 0 and len(tworkers) == 0:
+                        logger.info("No worker running, recycling the process queue...")
+                        fut = self.recycle_process_queue()
+                        def recycled(f):
+                            res = f.result()
+                            # still out of memory ?
+                            avail_mem = self.max_memory_usage - self.hub_memory
+                            if avail_mem <= 0:
+                                logger.error("After recycling process queue, " + \
+                                             "memory usage is still too high (needs at least %s more)" % sizeof_fmt(abs(avail_mem)) + \
+                                             "now turn auto-recycling off to prevent infinite recycling...")
+                                self.auto_recycle = False
+                        fut.add_done_callback(recycled)
                 logger.info("Hub is using too much memory to launch job {cat:%s,source:%s,step:%s} (%s used, more than max allowed %s), wait a little (job's already been postponed for %s)" % \
                         (pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), sizeof_fmt(hub_mem),
                          sizeof_fmt(self.max_memory_usage),timesofar(t0)))
@@ -396,6 +416,11 @@ class JobManager(object):
         if waited:
             logger.info("Job {cat:%s,source:%s,step:%s} now can be launched (total waiting time: %s)" % (pinfo.get("category"),
                 pinfo.get("source"), pinfo.get("step"), timesofar(t0)))
+            # auto-recycle could have been temporarily disabled until more mem is assigned.
+            # if we've been able to run the job, it means we had enough mem so restore
+            # recycling setting (if auto_recycle was False, it's ignored
+            if self.auto_recycle_setting:
+                self.auto_recycle = self.auto_recycle_setting
 
     @asyncio.coroutine
     def defer_to_process(self, pinfo=None, func=None, *args):
@@ -404,16 +429,16 @@ class JobManager(object):
         def run(future):
             yield from self.checkmem(pinfo)
             self.ok_to_run.release()
-            self.process_submit.release()
+            yield from self.process_submit.acquire()
             res = yield from self.loop.run_in_executor(self.process_queue,
                     partial(do_work,"process",pinfo,func,*args))
+            self.process_submit.release()
             # process could generate other parallelized jobs and return a Future/Task
             # If so, we want to make sure we get the results from that task
             if type(res) == asyncio.Task:
                 res = yield from res
             future.set_result(res)
         yield from self.ok_to_run.acquire()
-        yield from self.process_submit.acquire()
         f = asyncio.Future()
         def runned(innerf):
             if innerf.exception():
@@ -425,10 +450,13 @@ class JobManager(object):
     @asyncio.coroutine
     def defer_to_thread(self, pinfo=None, func=None, *args):
 
+        skip_check = pinfo.get("__skip_check__", False)
+
         @asyncio.coroutine
         def run(future):
-            yield from self.checkmem(pinfo)
-            self.ok_to_run.release()
+            if not skip_check:
+                yield from self.checkmem(pinfo)
+                self.ok_to_run.release()
             res = yield from self.loop.run_in_executor(self.thread_queue,
                     partial(do_work,"thread",pinfo,func,*args))
             # thread could generate other parallelized jobs and return a Future/Task
@@ -436,7 +464,8 @@ class JobManager(object):
             if type(res) == asyncio.Task:
                 res = yield from res
             future.set_result(res)
-        yield from self.ok_to_run.acquire()
+        if not skip_check:
+            yield from self.ok_to_run.acquire()
         f = asyncio.Future()
         def runned(innerf):
             if innerf.exception():
@@ -633,16 +662,6 @@ class JobManager(object):
                 if purge:
                     os.unlink(jfile)
 
-    def get_runs(self, pworkers=None, tworkers=None):
-        for workers in [pworkers,tworkers]:
-            if workers:
-                for pid in workers:
-                    worker = workers[pid]
-                    info = self.extract_worker_info(worker)
-                    tt = datetime.datetime.fromtimestamp(info["started_at"]).timetuple()
-                    info["started_at"] = time.strftime("%Y/%m/%d %H:%M:%S",tt)
-                    yield info
-
     def top(self, action="summary"):
         pending = False
         done = False
@@ -665,8 +684,6 @@ class JobManager(object):
             return self.get_pendings(running=len(pworkers))
         elif action == "done":
             return self.get_dones(done_jobs)
-        elif action == "run":
-            return self.get_runs(pworkers,tworkers)
         elif action == "summary":
             return self.get_summary()
         else:
