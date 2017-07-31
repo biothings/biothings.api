@@ -270,7 +270,6 @@ class JobManager(object):
         else:
             self.loop.set_default_executor(self.process_queue)
         self.ok_to_run = asyncio.Semaphore()
-        self.process_submit = asyncio.Semaphore()
 
         if max_memory_usage == "auto":
             # try to find a nice limit...
@@ -322,9 +321,6 @@ class JobManager(object):
         """
         @asyncio.coroutine
         def do():
-            #get the semaphore to prevent any other jobs to start
-            logger.info("Preventing process submission...")
-            yield from self.process_submit.acquire()
             try:
                 # shutting down the process queue can take a while
                 # if some processes are still running (it'll wait until they're done)
@@ -345,9 +341,6 @@ class JobManager(object):
             except Exception as e:
                 logger.error("Error while recycling the process queue: %s" % e)
                 raise
-            finally:
-                logger.info("Allowing process submission again")
-                self.process_submit.release()
         def done(f):
             f.result() # consume future's result to potentially raise exception
         fut = asyncio.ensure_future(do())
@@ -429,10 +422,8 @@ class JobManager(object):
         def run(future):
             yield from self.checkmem(pinfo)
             self.ok_to_run.release()
-            yield from self.process_submit.acquire()
             res = yield from self.loop.run_in_executor(self.process_queue,
                     partial(do_work,"process",pinfo,func,*args))
-            self.process_submit.release()
             # process could generate other parallelized jobs and return a Future/Task
             # If so, we want to make sure we get the results from that task
             if type(res) == asyncio.Task:
