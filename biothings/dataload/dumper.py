@@ -457,6 +457,46 @@ class HTTPDumper(BaseDumper):
         fout.close()
         return res
 
+class LastModifiedHTTPDumper(HTTPDumper):
+    """Given a list of URLs, check Last-Modified header to see 
+    whether the file should be downloaded. Sub-class should only have
+    to declare SRC_URLS. Optionally, another field name can be used instead
+    of Last-Modified, but date format must follow RFC 2616"""
+    LAST_MODIFIED = "Last-Modified"
+    SRC_URLS = [] # must be overridden in subclass
+
+    def remote_is_better(self,remotefile,localfile):
+        res = self.client.head(remotefile)
+        remote_dt =  datetime.strptime(res.headers[self.__class__.LAST_MODIFIED], '%a, %d %b %Y %H:%M:%S GMT')
+        remote_lastmodified = time.mktime(remote_dt.timetuple())
+        # also set release attr
+        self.release = remote_dt.strftime("%Y-%m-%d")
+        try:
+            res = os.stat(localfile)
+            local_lastmodified = int(res.st_mtime)
+        except FileNotFoundError:
+            return True # doesn't even exist, need to dump
+        if remote_lastmodified > local_lastmodified:
+            self.logger.debug("Remote file '%s' is newer (remote: %s, local: %s)" %
+                    (remotefile,remote_lastmodified,local_lastmodified))
+            return True
+        else:
+            return False
+
+    def create_todump_list(self, force=False):
+        for src_url in self.__class__.SRC_URLS:
+            filename = os.path.basename(src_url)
+            try:
+                current_localfile = os.path.join(self.current_data_folder,filename)
+            except TypeError:
+                # current data folder doesn't even exist
+                current_localfile = None
+            remote_better = self.remote_is_better(src_url,current_localfile)
+            if force or current_localfile is None or remote_better:
+                new_localfile = os.path.join(self.new_data_folder,filename)
+                self.to_dump.append({"remote":src_url, "local":new_localfile})
+
+
 class WgetDumper(BaseDumper):
 
     def create_todump_list(self,force=False,**kwargs):
