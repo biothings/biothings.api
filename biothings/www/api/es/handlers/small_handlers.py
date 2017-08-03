@@ -1,16 +1,21 @@
 from tornado.web import HTTPError
 from biothings.www.api.es.handlers.base_handler import BaseESRequestHandler
+import logging
 
 class StatusHandler(BaseESRequestHandler):
     ''' Handles requests to check the status of the server. '''
-
     def head(self):
-        #r = self.esq.status_check(self.web_settings.STATUS_CHECK_ID)
-        #if r is None:
-        #    # we failed to retrieve ref/test doc, something is wrong -> service unavailable
-        #    raise HTTPError(503)
-        pass
+        try:
+            r = self.web_settings.es_client.get(**self.web_settings.STATUS_CHECK)
+        except:
+            raise HTTPError(503)
+
+        if not r:
+            raise HTTPError(503)
 
     def get(self):
         self.head()
         self.write('OK')
+
+    def post(self):
+        raise HTTPError(405)
