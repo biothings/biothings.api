@@ -67,6 +67,13 @@ USERQUERY_KWARG_REGEX = re.compile(r'^uq_\w+$')
 # transform to use on the userquery arg
 USERQUERY_KWARG_TRANSFORM = lambda x: x[3:]
 
+# kwargs passed into Elasticsearch.get() for /status endpoint
+STATUS_CHECK = {
+    'id': '',
+    'index': '',
+    'doc_type': ''
+}
+
 # Keyword Argument Control
 # 
 # These parameters control which input kwargs go to which kwarg group for each
