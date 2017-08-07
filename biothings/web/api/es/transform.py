@@ -137,12 +137,12 @@ class ESResultTransformer(object):
                     _res.append(_ret)
         return _res
 
-    def _clean_annotation_GET_response(self, res):
+    def _clean_annotation_GET_response(self, res, score=False):
         # if the search was from an es.get
         if 'hits' not in res:
-            return self._form_doc(res, score=False)
+            return self._form_doc(res, score=score)
         # if the search was from an es.search
-        _res = [self._form_doc(hit, score=False) for hit in res['hits']['hits']]
+        _res = [self._form_doc(hit, score=score) for hit in res['hits']['hits']]
         if len(_res) == 1:
             return _res[0]
         return _res
