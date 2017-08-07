@@ -311,16 +311,17 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
             res["added"] += indexer.index_bulk(docs,batch_size,action="create")[0]
         except BulkIndexError:
             for doc in docs:
+                _id = doc.pop("_id")
                 try:
                      # force action=create to spot docs already added
-                     indexer.index(doc,doc["_id"],action="create")
+                     indexer.index(doc,_id,action="create")
                      res["added"] += 1
                 except ConflictError:
                     # already added
                     res["skipped"] += 1
                     continue
                 except Exception as e:
-                    errors.append({"_id":doc["_id"],"file":diff_file,"error":e})
+                    errors.append({"_id":_id,"file":diff_file,"error":e})
                     import pickle
                     pickle.dump(errors,open("errors","wb"))
                     raise
@@ -331,7 +332,7 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
     for i,doc in enumerate(indexer.get_docs(ids)):
         try:
             patch_info = diff["update"][i] # same order as what's return by get_doc()...
-            assert patch_info["_id"] == doc["_id"] # ... but just make sure
+            assert patch_info["_id"] == doc["_id"],"%s != %s" % (patch_info["_id"],doc["_id"]) # ... but just make sure
             newdoc = jsonpatch.apply_patch(doc,patch_info["patch"])
             if newdoc == doc:
                 # already applied
