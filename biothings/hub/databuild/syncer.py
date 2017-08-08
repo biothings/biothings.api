@@ -17,8 +17,8 @@ from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings import config as btconfig
 from biothings.utils.manager import BaseManager, ManagerError
-from biothings.databuild.backend import create_backend
-from biothings.dataload.storage import UpsertStorage
+from .backend import create_backend
+from ..dataload.storage import UpsertStorage
 from biothings.utils.es import ESIndexer
 import biothings.utils.jsonpatch as jsonpatch
 from biothings.utils.diff import generate_diff_folder
@@ -82,7 +82,7 @@ class BaseSyncer(object):
         meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
         diff_type = self.diff_type
         selfcontained = "selfcontained" in meta["diff"]["type"]
-        # first try to use what's been passed explicitely 
+        # first try to use what's been passed explicitely
         # then default to what's in config (tuple will be used for create_backend() call)
         # or use what we have in the diff metadata
         old_db_col_names = target_backend or \
@@ -192,7 +192,7 @@ class BaseSyncer(object):
 
             job.add_done_callback(updated)
             yield from job
-            
+
             if got_error:
                 self.logger.error("Failed to update metadata on index '%s': %s" % \
                     (old_db_col_names, got_error),extra={"notify":True})

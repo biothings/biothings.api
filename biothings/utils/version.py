@@ -6,6 +6,10 @@ import pip
 import os, sys
 import biothings
 
+# cache these
+BIOTHINGS_REPO_DATA = {}
+APP_REPO_DATA = {}
+
 def get_python_version():
     ''' Get a list of python packages installed and their versions. '''
     so = StringIO()
@@ -20,18 +24,28 @@ def get_python_version():
 
 def get_biothings_commit():
     ''' Gets the biothings commit information. '''
+    global BIOTHINGS_REPO_DATA
+    if BIOTHINGS_REPO_DATA:
+        return BIOTHINGS_REPO_DATA
+
     try:
         with open(os.path.join(os.path.dirname(biothings.__file__), '.git-info'), 'r') as f:
             lines = [l.strip('\n') for l in f.readlines()]
-        return {'repository-url': lines[0], 'commit-hash': lines[1], 'master-commits': lines[2], 'version': biothings.get_version()}
+        BIOTHINGS_REPO_DATA = {'repository-url': lines[0], 'commit-hash': lines[1], 'master-commits': lines[2], 'version': biothings.get_version()}
     except:
-        return {'repository-url': '', 'commit-hash': '', 'master-commits': '', 'version': biothings.get_version()}
+        BIOTHINGS_REPO_DATA = {'repository-url': '', 'commit-hash': '', 'master-commits': '', 'version': biothings.get_version()}
 
+    return BIOTHINGS_REPO_DATA
 
 def get_repository_information(app_dir=None):
     ''' Get the repository information for the local repository, if it exists. '''
+    global APP_REPO_DATA
+    if APP_REPO_DATA:
+        return APP_REPO_DATA
+
     if not app_dir:
-        return {'repository-url': '', 'commit-hash': ''}
+        APP_REPO_DATA = {'repository-url': '', 'commit-hash': ''}
+        return APP_REPO_DATA
 
     try:
         commit_hash = check_output("cd {};git rev-parse HEAD".format(os.path.abspath(app_dir)), 
@@ -45,7 +59,9 @@ def get_repository_information(app_dir=None):
     except:
         repository_url = ''
 
-    return {'repository-url': repository_url, 'commit-hash': commit_hash}
+    APP_REPO_DATA = {'repository-url': repository_url, 'commit-hash': commit_hash}
+
+    return APP_REPO_DATA
 
 def get_python_exec_version():
     return {

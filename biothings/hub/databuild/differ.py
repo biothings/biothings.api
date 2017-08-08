@@ -15,10 +15,10 @@ from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.utils.diff import diff_docs_jsonpatch, generate_diff_folder
 from biothings import config as btconfig
 from biothings.utils.manager import BaseManager, ManagerError
-from biothings.databuild.backend import create_backend
+from .backend import create_backend
+from .syncer import SyncerManager
 from biothings.utils.backend import DocMongoBackend
 import biothings.utils.aws as aws
-from biothings.databuild.syncer import SyncerManager
 from biothings.utils.jsondiff import make as jsondiff
 from biothings.utils.hub import publish_data_version
 
@@ -370,11 +370,13 @@ def diff_worker_count(id_list, db_col_names, batch_num):
 class DiffReportRendererBase(object):
 
     def __init__(self,
-                 max_reported_ids=btconfig.MAX_REPORTED_IDS,
-                 max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED,
+                 max_reported_ids=None,
+                 max_randomly_picked=None,
                  detailed=False):
-        self.max_reported_ids = max_reported_ids
-        self.max_randomly_picked = max_randomly_picked
+        self.max_reported_ids = max_reported_ids or hasattr(btconfig,"MAX_REPORTED_IDS") and \
+                btconfig.MAX_REPORTED_IDS or 1000
+        self.max_randomly_picked = max_randomly_picked or hasattr(btconfig,"MAX_RANDOMLY_PICKED") and \
+                btconfig.MAX_RANDOMLY_PICKED or 10
         self.detailed = detailed
 
     def save(self,report,filename):
@@ -567,9 +569,12 @@ class DifferManager(BaseManager):
 
 
     def diff_report(self, old_db_col_names, new_db_col_names, report_filename="report.txt", format="txt", detailed=True,
-                    max_reported_ids=btconfig.MAX_REPORTED_IDS, max_randomly_picked=btconfig.MAX_RANDOMLY_PICKED,
-                    mode=None):
+                    max_reported_ids=None, max_randomly_picked=None, mode=None):
 
+        max_reported_ids = max_reported_ids or hasattr(btconfig,"MAX_REPORTED_IDS") and \
+                btconfig.MAX_REPORTED_IDS or 1000
+        max_randomly_picked = max_randomly_picked or hasattr(btconfig,"MAX_RANDOMLY_PICKED") and \
+                btconfig.MAX_RANDOMLY_PICKED or 10
         def do():
             if mode == "purge" or not os.path.exists(reportfilepath):
                 report = self.build_diff_report(diff_folder, detailed, max_reported_ids)
@@ -608,13 +613,15 @@ class DifferManager(BaseManager):
         job = asyncio.ensure_future(main(diff_folder))
         return job
 
-    def build_diff_report(self, diff_folder, detailed=True,
-                          max_reported_ids=btconfig.MAX_REPORTED_IDS):
+    def build_diff_report(self, diff_folder, detailed=True, max_reported_ids=None):
         """
         Analyze diff files in diff_folder and give a summy of changes.
         max_reported_ids is the number of IDs contained in the report for each part.
         detailed will trigger a deeper analysis, takes more time.
         """
+
+        max_reported_ids = max_reported_ids or hasattr(btconfig,"MAX_REPORTED_IDS") and \
+                btconfig.MAX_REPORTED_IDS or 1000
 
         update_details = {
                 "add": {},# "count": 0, "data": {} },

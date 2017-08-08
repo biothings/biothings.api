@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-'''Settings objects used to configure the www API
+'''Settings objects used to configure the web API
 These settings get passed into the handler.initialize() function,
 of each request, and configure the web API endpoint.  They are mostly
 a container for the `Config module`_, and any other settings that
@@ -9,7 +9,7 @@ import logging
 import os
 import socket
 from importlib import import_module
-from biothings.utils.www.log import get_hipchat_logger
+from biothings.utils.web.log import get_hipchat_logger
 import json
 
 # Error class
@@ -19,7 +19,7 @@ class BiothingConfigError(Exception):
 class BiothingWebSettings(object):
     ''' A container for the settings that configure the web API '''
 
-    def __init__(self, config='biothings.www.settings.default'):
+    def __init__(self, config='biothings.web.settings.default'):
         ''' The ``config`` init parameter specifies a module that configures 
         this biothing.  For more information see `config module`_ documentation.''' 
         self.config_mod = import_module(config)
@@ -75,7 +75,7 @@ class BiothingWebSettings(object):
 
 class BiothingESWebSettings(BiothingWebSettings):
     ''' `BiothingWebSettings`_ subclass with functions specific to an elasticsearch backend '''
-    def __init__(self, config='biothings.www.settings.default'):
+    def __init__(self, config='biothings.web.settings.default'):
         ''' The ``config`` init parameter specifies a module that configures 
         this biothing.  For more information see `config module`_ documentation.''' 
         super(BiothingESWebSettings, self).__init__(config)

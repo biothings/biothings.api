@@ -11,19 +11,18 @@ from functools import partial
 import glob, random
 import aiocron
 
+from .mapper import TransparentMapper
+from ..dataload.uploader import ResourceNotReady
+from ..databuild.backend import SourceDocMongoBackend, TargetDocMongoBackend
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj
 from biothings.utils.mongo import doc_feeder, id_feeder
 from biothings.utils.loggers import get_logger, HipchatHandler
-from biothings.databuild.mapper import TransparentMapper
-from biothings.dataload.uploader import ResourceNotReady
 from biothings.utils.manager import BaseManager, ManagerError
 from biothings.utils.dataload import update_dict_recur
 import biothings.utils.mongo as mongo
 from biothings.utils.hub_db import get_source_fullname, get_src_build_config, \
                                    get_src_build, get_src_dump, get_src_master
-import biothings.databuild.backend as backend
-from biothings.databuild.backend import TargetDocMongoBackend
 from biothings import config as btconfig
 
 logging = btconfig.logger
@@ -408,6 +407,17 @@ class DataBuilder(object):
 
     def merge(self, sources=None, target_name=None, force=False, ids=None,steps=["merge","post","metadata"],
             job_manager=None, *args,**kwargs):
+        """Merge given sources into a collection named target_name. If sources argument is omitted,
+        all sources defined for this merger will be merged together, according to what is defined
+        insrc_build_config. If target_name is not defined, a unique name will be generated.
+          - force=True will bypass any safety check
+          - ids: list of _ids to merge, specifically. If None, all documents are merged.
+          - steps:
+             * merge: actual merge step, create merged documents and store them
+             * post: once merge, run optional post-merge process
+             * metadata: generate and store metadata (depends on merger, usually specifies the amount
+                         of merged data, source versions, etc...)
+        """
         assert job_manager
         # check what to do
         if type(steps) == str:
@@ -783,7 +793,7 @@ class BuilderManager(BaseManager):
             # before actual call time
             from biothings import config
             source_backend =  self.source_backend_factory and self.source_backend_factory() or \
-                                    partial(backend.SourceDocMongoBackend,
+                                    partial(SourceDocMongoBackend,
                                             build_config=partial(get_src_build_config),
                                             build=partial(get_src_build),
                                             master=partial(get_src_master),

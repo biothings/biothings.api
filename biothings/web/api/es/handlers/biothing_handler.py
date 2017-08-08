@@ -1,7 +1,7 @@
 from tornado.web import HTTPError
-from biothings.www.api.es.handlers.base_handler import BaseESRequestHandler
-from biothings.utils.www import sum_arg_dicts
-from biothings.www.api.helper import BiothingParameterTypeError
+from biothings.web.api.es.handlers.base_handler import BaseESRequestHandler
+from biothings.utils.web import sum_arg_dicts
+from biothings.web.api.helper import BiothingParameterTypeError
 import logging
 import traceback
 
@@ -103,7 +103,7 @@ class BiothingHandler(BaseESRequestHandler):
             res = _backend.annotation_GET_query(_query)
         except Exception:
             self.log_exceptions("Error executing query")
-            raise HttpError(404)
+            raise HTTPError(404)
         
         #logging.debug("Raw query result: {}".format(res))
 
@@ -123,7 +123,7 @@ class BiothingHandler(BaseESRequestHandler):
             res = _result_transformer.clean_annotation_GET_response(res)
         except Exception:
             self.log_exceptions("Error transforming result")
-            raise HttpError(404)
+            raise HTTPError(404)
 
         # return result
         if not res:

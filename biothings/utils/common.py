@@ -307,11 +307,9 @@ def dump(obj, filename, bin=2, compress='gzip'):
     '''Saves a compressed object to disk
        binary protocol 2 is compatible with py2, 3 and 4 are for py3
     '''
-    print('Dumping into "%s"...' % filename, end='')
     out_f = get_compressed_outfile(filename, compress=compress)
     pickle.dump(obj, out_f, protocol=bin)
     out_f.close()
-    print('Done. [%s]' % os.stat(filename).st_size)
 
 
 def dump2gridfs(object, filename, db, bin=2):

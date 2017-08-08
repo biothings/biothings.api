@@ -4,7 +4,7 @@ import tornado.httpserver
 import tornado.ioloop
 import tornado.web
 import tornado.escape
-from biothings.www.settings import BiothingESWebSettings
+from biothings.web.settings import BiothingESWebSettings
 from biothings.utils.common import is_str
 from tempfile import NamedTemporaryFile
 from string import Template
@@ -62,8 +62,8 @@ class BiothingsAPIApp(object):
 
     def _configure_by_object_name(self, object_name):
         # get the config file template
-        config_string = """from biothings.www.settings.default import *\n""" + \
-                        """from biothings.www.api.es.handlers import *\n""" + \
+        config_string = """from biothings.web.settings.default import *\n""" + \
+                        """from biothings.web.api.es.handlers import *\n""" + \
                         """ES_INDEX = '${src_package}_current'\n""" + \
                         """ES_DOC_TYPE = '${es_doctype}'\n""" + \
                         """API_VERSION = 'v1'\n""" + \
@@ -79,7 +79,7 @@ class BiothingsAPIApp(object):
         self.settings_mod = config_module
 
     def _configure_by_kwargs(self, **kwargs):
-        self.settings_str = """from biothings.www.settings.default import *\nfrom biothings.www.api.es.handlers import *\n"""
+        self.settings_str = """from biothings.web.settings.default import *\nfrom biothings.web.api.es.handlers import *\n"""
         for (k,v) in kwargs.items():
             if k == 'APP_LIST':
                 self.settings_str += '{k}=['.format(k=k)

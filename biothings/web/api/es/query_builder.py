@@ -1,7 +1,7 @@
 import logging
 import json
 from biothings.utils.common import is_seq
-from biothings.utils.www.userquery import get_userquery, get_userfilter
+from biothings.utils.web.userquery import get_userquery, get_userfilter
 try:
     from re import fullmatch as match
 except ImportError:
@@ -104,7 +104,7 @@ class ESQueryBuilder(object):
 
     def _default_query(self, q):
         ''' Override me '''
-        return self.queries.query_string({"query": q})
+        return ESQueries().query_string({"query": q})
 
     def _is_match_all(self, q):
         return (q == '__all__')
@@ -115,7 +115,7 @@ class ESQueryBuilder(object):
 
     def _match_all(self, q):
         ''' Override me '''
-        return self.queries.match_all({})
+        return ESQueries().match_all({})
 
     def _is_user_query(self, text_file='query.txt'):
         try:
@@ -130,7 +130,7 @@ class ESQueryBuilder(object):
         _args.update(getattr(self.options, 'userquery_kwargs', {}))
         _ret = json.loads(get_userquery(os.path.abspath(self.userquery_dir), 
                             self.options.userquery).format(**_args))
-        return self.queries.raw_query(_ret)
+        return ESQueries().raw_query(_ret)
 
     def _user_query_filter(self):
         return json.loads(get_userfilter(os.path.abspath(self.userquery_dir), self.options.userquery))
@@ -144,6 +144,10 @@ class ESQueryBuilder(object):
     def get_query_filters(self):
         ''' Override me to add more query filters '''
         return self._get_query_filters()
+
+    def add_extra_filters(self, q):
+        ''' Override me to add more filters '''
+        return q
 
     def add_query_filters(self, _query):
         ''' Given a query, add any other filters '''
@@ -190,6 +194,9 @@ class ESQueryBuilder(object):
             _query = self._default_query(q)
 
         _query = self.add_query_filters(_query)
+        _query = self.add_extra_filters(_query)
+
+        _query = self.queries.raw_query(_query)
 
         _ret = self._return_query_kwargs({'body': _query})
 

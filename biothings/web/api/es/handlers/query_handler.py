@@ -1,9 +1,9 @@
 from tornado.web import HTTPError
-from biothings.www.api.es.handlers.base_handler import BaseESRequestHandler
-from biothings.www.api.es.transform import ScrollIterationDone
-from biothings.www.api.es.query import BiothingScrollError, BiothingSearchError
-from biothings.www.api.helper import BiothingParameterTypeError
-from biothings.utils.www import sum_arg_dicts
+from biothings.web.api.es.handlers.base_handler import BaseESRequestHandler
+from biothings.web.api.es.transform import ScrollIterationDone
+from biothings.web.api.es.query import BiothingScrollError, BiothingSearchError
+from biothings.web.api.helper import BiothingParameterTypeError
+from biothings.utils.web import sum_arg_dicts
 import logging
 
 class QueryHandler(BaseESRequestHandler):

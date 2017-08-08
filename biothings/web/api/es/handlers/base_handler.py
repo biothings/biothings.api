@@ -1,4 +1,4 @@
-from biothings.www.api.helper import BaseHandler, BiothingParameterTypeError
+from biothings.web.api.helper import BaseHandler, BiothingParameterTypeError
 from biothings.utils.common import dotdict, is_str
 import re
 import logging
@@ -91,7 +91,7 @@ class BaseESRequestHandler(BaseHandler):
         for kwarg_category in ["control_kwargs", "es_kwargs", "esqb_kwargs", "transform_kwargs"]:
             options.setdefault(kwarg_category, dotdict())
             for option, settings in getattr(self, kwarg_category, {}).items():
-                if kwargs.get(option, None) or settings.get('default', None) is not None:
+                if option in kwargs or settings.get('default', None) is not None:
                     options.get(kwarg_category).setdefault(option, kwargs.get(option, settings['default']))
                 # check here for userquery kwargs
                 if re.match(self.web_settings.USERQUERY_KWARG_REGEX, option) and kwarg_category == "esqb_kwargs":

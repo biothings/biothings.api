@@ -2,8 +2,8 @@ import json
 import datetime
 import tornado.web
 import re
-from biothings.utils.www.analytics import GAMixIn
-from biothings.utils.www.tracking import StandaloneTrackingMixin
+from biothings.utils.web.analytics import GAMixIn
+from biothings.utils.web.tracking import StandaloneTrackingMixin
 from biothings.utils.common import is_str, is_seq
 try:
     from raven.contrib.tornado import SentryMixin
