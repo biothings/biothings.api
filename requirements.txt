@@ -6,3 +6,4 @@ psutil
 IPython
 boto
 jsonpointer
+prettytable # diff report renderer
