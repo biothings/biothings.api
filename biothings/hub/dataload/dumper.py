@@ -719,3 +719,14 @@ class DumperManager(BaseSourceManager):
         if errors:
             logging.warning("Found errors while scheduling:\n%s" % pprint.pformat(errors))
             return errors
+
+    def source_info(self,source=None):
+        src_dump = get_src_dump()
+        if source:
+            if source in self.register:
+                return src_dump.find_one({"_id":source})
+            else:
+                return None
+        else:
+            return [d for d in src_dump.find({"_id":{"$in":list(self.register.keys())}})]
+

@@ -704,3 +704,13 @@ class UploaderManager(BaseSourceManager):
                     logging.error("Resource '%s' needs upload but is not registered in manager" % src_name)
         cron = aiocron.crontab(self.poll_schedule,func=partial(check_pending_to_upload),
                 start=True, loop=self.job_manager.loop)
+
+    def source_info(self,source=None):
+        src_dump = get_src_dump()
+        if source:
+            if source in self.register:
+                return src_dump.find_one({"_id":source})
+            else:
+                return None
+        else:
+            return [d for d in src_dump.find({"_id":{"$in":list(self.register.keys())}})]

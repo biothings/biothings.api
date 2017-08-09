@@ -6,3 +6,4 @@ psutil
 IPython
 boto
 jsonpointer
+pyrestful==0.4.2 # hub rest api

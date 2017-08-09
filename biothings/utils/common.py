@@ -553,6 +553,12 @@ def json_serial(obj):
     raise TypeError ("Type %s not serializable" % type(obj))
 
 
+def json_encode(obj):
+    """Tornado-aimed json encoder, it does the same job as tornado.escape.json_encode
+    but also deals with datetime encoding"""
+    return json.dumps(obj,default=json_serial).replace("</", "<\/")
+
+
 def rmdashfr(top):
     '''Recursively delete dirs and files from "top" directory, then delete "top" dir'''
     for root, dirs, files in os.walk(top, topdown=False):

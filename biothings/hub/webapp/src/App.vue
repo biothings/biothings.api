@@ -1,30 +1,71 @@
 <template>
   <div id="app">
-    <img src="./assets/logo.png">
-    <h1>{{ msg }}</h1>
-    <h2>Essential Links</h2>
-    <ul>
-      <li><a href="https://vuejs.org" target="_blank">Core Docs</a></li>
-      <li><a href="https://forum.vuejs.org" target="_blank">Forum</a></li>
-      <li><a href="https://gitter.im/vuejs/vue" target="_blank">Gitter Chat</a></li>
-      <li><a href="https://twitter.com/vuejs" target="_blank">Twitter</a></li>
-    </ul>
-    <h2>Ecosystem</h2>
-    <ul>
-      <li><a href="http://router.vuejs.org/" target="_blank">vue-router</a></li>
-      <li><a href="http://vuex.vuejs.org/" target="_blank">vuex</a></li>
-      <li><a href="http://vue-loader.vuejs.org/" target="_blank">vue-loader</a></li>
-      <li><a href="https://github.com/vuejs/awesome-vue" target="_blank">awesome-vue</a></li>
-    </ul>
+    <div class="ui fixed inverted menu">
+      <div class="ui container">
+        <a href="#" class="header item">
+          <img class="logo" src="./assets/biothings_logo.png">
+          Biothings Hub
+        </a>
+        <a href="#" class="item">Home</a>
+        <!--div class="ui simple dropdown item">
+        Dropdown <i class="dropdown icon"></i>
+        <div class="menu">
+          <a class="item" href="#">Link Item</a>
+          <a class="item" href="#">Link Item</a>
+          <div class="divider"></div>
+          <div class="header">Header Item</div>
+          <div class="item">
+            <i class="dropdown icon"></i>
+            Sub Menu
+            <div class="menu">
+              <a class="item" href="#">Link Item</a>
+              <a class="item" href="#">Link Item</a>
+            </div>
+          </div>
+          <a class="item" href="#">Link Item</a>
+        </div>
+        </div-->
+      </div>
+    </div>
+
+    <data-source-grid v-bind:sources="sources"></data-source-grid>
+
   </div>
 </template>
 
 <script>
+import axios from 'axios';
+
+import Vue2Filters from 'vue2-filters'
+import Vue from 'vue'
+Vue.use(Vue2Filters)
+
+import DataSourceGrid from './DataSourceGrid.vue';
+
 export default {
   name: 'app',
+  components: { DataSourceGrid, },
+  mounted () {
+    console.log("mounted");
+    this.getSourcesStatus();
+  },
   data () {
-    return {
-      msg: 'Welcome to Your Vue.js App'
+    return  {
+      source : {},
+      sources: [{"_id":"blbal"}],
+      errors: [],
+    }
+  },
+  methods: {
+    getSourcesStatus: function() {
+      axios.get('http://localhost:7042/source')
+      .then(response => {
+        console.log(response.data.result);
+        this.sources = response.data.result;
+      })
+      .catch(err => {
+        console.log("Error getting sources information: " + err);
+      })
     }
   }
 }
