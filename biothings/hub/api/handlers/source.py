@@ -78,8 +78,3 @@ class SourceHandler(BaseHandler):
         else:
             self.write(self.get_sources(debug))
 
-    #@get(_path="/source/{name}",_types=[str],_produces=mediatypes.APPLICATION_JSON)
-    #def get_one_source(self,name):
-    #    logging.error("name: %s" % name)
-    #    return self.get_source(name)
-
