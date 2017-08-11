@@ -482,7 +482,7 @@ class DataBuilder(object):
                                     "src" : self.src_meta,
                                     "stats" : self.metadata,
                                     "build_version" : build_version,
-                                    "timestamp" : build["started_at"].isoformat()}
+                                    "timestamp" : datetime.fromtimestamp(self.t0).isoformat()}
                                 })
                             self.logger.info("success %s" % strargs,extra={"notify":True})
                         except Exception as e:
