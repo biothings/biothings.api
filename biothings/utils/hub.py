@@ -116,18 +116,22 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
             # they can be different if there's a preprocessing
             cmdline = line
             # && jobs ? ie. chained jobs
-            chained_jobs = list(map(str.strip,line.split("&&")))
-            if len(chained_jobs) > 1:
-                # need to build a command with _and and using partial, meaning passing original func param
-                # to the partials
-                strjobs = []
-                for job in chained_jobs:
-                    func,args = re.match("(.*)\((.*)\)",job).groups()
-                    if args:
-                        strjobs.append("partial(%s,%s)" % (func,args))
-                    else:
-                        strjobs.append("partial(%s)" % func)
-                cmdline = "_and(%s)" % ",".join(strjobs)
+            if "&&" in line:
+                chained_jobs = [cmd for cmd in map(str.strip,line.split("&&")) if cmd]
+                if len(chained_jobs) > 1:
+                    # need to build a command with _and and using partial, meaning passing original func param
+                    # to the partials
+                    strjobs = []
+                    for job in chained_jobs:
+                        func,args = re.match("(.*)\((.*)\)",job).groups()
+                        if args:
+                            strjobs.append("partial(%s,%s)" % (func,args))
+                        else:
+                            strjobs.append("partial(%s)" % func)
+                    cmdline = "_and(%s)" % ",".join(strjobs)
+                else:
+                    self._chan.write("Error: using '&&' operator required two operands\n")
+                    continue
             logging.info("Run: %s " % repr(cmdline))
             r = self.shell.run_cell(cmdline,store_history=True)
             if not r.success:
