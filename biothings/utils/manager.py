@@ -595,6 +595,46 @@ class JobManager(object):
             print(e)
             pprint(info)
 
+    def get_process_summary(self):
+        running_pids = self.get_pid_files()
+        pchildren = self.hub_process.children()
+        res = {}
+        for child in pchildren:
+            mem = child.memory_info().rss
+            pio = child.io_counters()
+            res[child.pid] = {
+                    "memory" : {
+                        "size" : child.memory_info().rss,
+                        "percent": child.memory_percent(),
+                        },
+                    "cpu" : {
+                        "status" : child.status(),
+                        "percent" : child.cpu_percent()
+                        },
+                    "io" : {
+                        "read_count" : pio.read_count,
+                        "write_count" : pio.write_count,
+                        "read_bytes" : pio.read_bytes,
+                        "write_bytes" : pio.write_bytes
+                        }
+                    }
+
+            if child.pid in running_pids:
+                # something is running on that child process
+                job = running_pids[child.pid]
+                res[child.pid]["job"] = {
+                        "started_at": job["started_at"],
+                        "duration" : timesofar(job["started_at"],0),
+                        "func_name" : job["func_name"],
+                        "category" : job["info"]["category"],
+                        "description" : job["info"]["description"],
+                        "source" : job["info"]["source"],
+                        "step" : job["info"]["step"],
+                        }
+
+        return res
+
+
     def get_summary(self,child=None):
         pworkers = self.get_pid_files(child)
         tworkers = self.get_thread_files()
