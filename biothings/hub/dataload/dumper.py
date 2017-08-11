@@ -470,7 +470,7 @@ class LastModifiedHTTPDumper(HTTPDumper):
     SRC_URLS = [] # must be overridden in subclass
 
     def remote_is_better(self,remotefile,localfile):
-        res = self.client.head(remotefile)
+        res = self.client.head(remotefile,allow_redirects=True)
         remote_dt =  datetime.strptime(res.headers[self.__class__.LAST_MODIFIED], '%a, %d %b %Y %H:%M:%S GMT')
         remote_lastmodified = time.mktime(remote_dt.timetuple())
         # also set release attr
@@ -488,6 +488,7 @@ class LastModifiedHTTPDumper(HTTPDumper):
             return False
 
     def create_todump_list(self, force=False):
+        assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
         for src_url in self.__class__.SRC_URLS:
             filename = os.path.basename(src_url)
             try:
