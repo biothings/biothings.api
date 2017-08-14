@@ -7,7 +7,8 @@
           Biothings Hub
         </a>
         <a href="#" class="item">Home</a>
-        <!--div class="ui simple dropdown item">
+
+        <!--div class="ui simple dropdown item right">
         Dropdown <i class="dropdown icon"></i>
         <div class="menu">
           <a class="item" href="#">Link Item</a>
@@ -25,6 +26,11 @@
           <a class="item" href="#">Link Item</a>
         </div>
         </div-->
+
+        <div class="ui item right">
+          <job-summary></job-summary>
+        </div>
+
       </div>
     </div>
 
@@ -36,15 +42,47 @@
 <script>
 import axios from 'axios';
 
-import Vue2Filters from 'vue2-filters'
-import Vue from 'vue'
-Vue.use(Vue2Filters)
+import Vue2Filters from 'vue2-filters';
+import Vue from 'vue';
+Vue.use(Vue2Filters);
+
+
+var UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+var STEP = 1024;
+
+
+function pretty_size(bytes,precision=2) {
+	var units = [
+		'bytes',
+		'KB',
+		'MB',
+		'GB',
+		'TB',
+		'PB'
+	];
+
+	if ( isNaN( parseFloat( bytes )) || ! isFinite( bytes ) ) {
+		return '?';
+	}
+
+	var unit = 0;
+
+	while ( bytes >= 1024 ) {
+		bytes /= 1024;
+		unit ++;
+	}
+
+	return bytes.toFixed( + precision ) + ' ' + units[ unit ];
+};
+
+Vue.filter('pretty_size',pretty_size);
 
 import DataSourceGrid from './DataSourceGrid.vue';
+import JobSummary from './JobSummary.vue';
 
 export default {
   name: 'app',
-  components: { DataSourceGrid, },
+  components: { DataSourceGrid, JobSummary},
   mounted () {
     console.log("mounted");
     this.getSourcesStatus();
