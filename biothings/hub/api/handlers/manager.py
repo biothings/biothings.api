@@ -52,21 +52,20 @@ def diff_info(differ_manager):
 
 
 def job_info(job_manager):
+    summary = job_manager.get_summary()
+    prunning = summary["process"]["running"]
+    trunning = summary["thread"]["running"]
+    ppending = summary["process"]["pending"]
+    tpending = summary["thread"]["pending"]
     return {
             "queue" : {
-                "process" : {
-                    "max_workers" : job_manager.process_queue._max_workers,
-                    "workers" : len(job_manager.process_queue._processes),
-                    },
-                "thread" : {
-                    "max_workers" : job_manager.thread_queue._max_workers,
-                    "workers" : len(job_manager.thread_queue._threads),
-                    },
+                "process" : summary["process"],
+                "thread" : summary["thread"],
                 },
-            "memory" : job_manager.hub_memory,
-            "available_system_memory" : job_manager.avail_memory,
-            "max_memory_usage" : job_manager.max_memory_usage,
-            "hub_pid" : job_manager.hub_process.pid
+            "memory" : summary["memory"],
+            "available_system_memory" : summary["available_system_memory"],
+            "max_memory_usage" : summary["max_memory_usage"],
+            "hub_pid" : summary["hub_pid"],
             }
 
 
@@ -97,22 +96,3 @@ class ManagerHandler(BaseHandler):
 
         self.write(res)
 
-
-class JobManagerHandler(BaseHandler):
-
-    @asyncio.coroutine
-    def get(self,name,queue_name=None):
-        res = {}
-        manager = None
-        for managername,manager in self.managers.items():
-            if name and managername != name:
-                continue
-            break
-        if not manager:
-            raise tornado.web.HTTPError(404,reason="No such JobManager named '%s'" % name)
-        if queue_name is None:
-            self.write(self.job_info(manager))
-        elif queue_name == "process":
-            self.write(manager.get_process_summary())
-        else:
-            raise tornado.web.HTTPError(404,reason="No such queue named '%s' (process|thread)" % queue_name)

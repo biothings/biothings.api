@@ -25,17 +25,17 @@ class SourceHandler(BaseHandler):
             if len(src["upload"]["jobs"]) > 1:
                 for job,info in src["upload"]["jobs"].items():
                     mini["upload"][job] = {
-                            "time" : info["time"],
+                            "time" : info.get("time"),
                             "status" : info["status"],
-                            "count" : info["count"]}
-                    count += info["count"]
+                            "count" : info.get("count")}
+                    count += info.get("count",0)
             else:
                 job,info = list(src["upload"]["jobs"].items())[0]
                 mini["upload"][job] = {
-                        "time" : info["time"],
+                        "time" : info.get("time"),
                         "status" : info["status"],
-                        "count" : info["count"]}
-                count += info["count"]
+                        "count" : info.get("count")}
+                count += info.get("count",0)
         mini["count"] = count
 
         return mini

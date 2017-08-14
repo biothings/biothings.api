@@ -1,7 +1,7 @@
 import tornado.web
 from biothings.hub.api.handlers.hub import HubHandler
 from biothings.hub.api.handlers.source import SourceHandler
-from biothings.hub.api.handlers.manager import ManagerHandler, JobManagerHandler
+from biothings.hub.api.handlers.manager import ManagerHandler
 
 def get_api_app(managers, settings={}):
 
@@ -12,7 +12,6 @@ def get_api_app(managers, settings={}):
               # manager
               (r"/manager/?", ManagerHandler, {"managers":managers}),
               (r"/manager/(\w+)", ManagerHandler, {"managers":managers}),
-              (r"/manager/(\w+)/queue/(\w+)?", JobManagerHandler, {"managers":managers}),
               # misc/static
               (r"/static/(.*)", tornado.web.StaticFileHandler,{"path":"biothings/hub/app/static"}),
               (r"/home()",tornado.web.StaticFileHandler,{"path":"biothings/hub/app/html/index.html"})]
