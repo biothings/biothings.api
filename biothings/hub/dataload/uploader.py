@@ -3,6 +3,7 @@ import datetime, pprint
 import asyncio
 import logging as loggingmod
 from functools import wraps, partial
+import inspect
 
 from biothings.utils.common import get_timestamp, get_random_string, timesofar, iter_n
 from biothings.utils.hub_db import get_src_dump, get_src_master
@@ -707,10 +708,29 @@ class UploaderManager(BaseSourceManager):
 
     def source_info(self,source=None):
         src_dump = get_src_dump()
+        src_ids = list(self.register.keys())
         if source:
-            if source in self.register:
-                return src_dump.find_one({"_id":source})
+            if source in src_ids:
+                src_ids = [source]
             else:
                 return None
+        res = []
+        for _id in src_ids:
+            src = src_dump.find_one({"_id":_id}) or {}
+            uploaders = self.register[_id]
+            src.setdefault("upload",{})
+            for uploader in uploaders:
+                logging.info(uploader)
+                upl = {
+                        "name": "%s.%s" % (inspect.getmodule(uploader).__name__,uploader.__name__),
+                        "bases": ["%s.%s" % (inspect.getmodule(k).__name__,k.__name__) for k in uploader.__bases__],
+                        "dummy" : issubclass(uploader,DummySourceUploader),
+                        }
+                src["upload"].setdefault("jobs",{}).setdefault(uploader.name,{})
+                src["upload"]["jobs"][uploader.name]["uploader"] = upl
+            src["name"] = _id
+            res.append(src)
+        if source:
+            return res.pop()
         else:
-            return [d for d in src_dump.find({"_id":{"$in":list(self.register.keys())}})]
+            return res

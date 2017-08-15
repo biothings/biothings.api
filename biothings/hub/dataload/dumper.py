@@ -734,9 +734,11 @@ class DumperManager(BaseSourceManager):
             src = src_dump.find_one({"_id":_id}) or {}
             assert len(self.register[_id]) == 1
             dumper = self.register[_id][0]
-            src["dumper"] = {
+            src.setdefault("download",{})
+            src["download"]["dumper"] = {
                     "name": "%s.%s" % (inspect.getmodule(dumper).__name__,dumper.__name__),
-                    "bases": ["%s.%s" % (inspect.getmodule(k).__name__,k.__name__) for k in dumper.__bases__]
+                    "bases": ["%s.%s" % (inspect.getmodule(k).__name__,k.__name__) for k in dumper.__bases__],
+                    "manual" : issubclass(dumper,ManualDumper),
                     }
             src["name"] = _id
             res.append(src)
