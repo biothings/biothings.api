@@ -720,7 +720,6 @@ class UploaderManager(BaseSourceManager):
             uploaders = self.register[_id]
             src.setdefault("upload",{})
             for uploader in uploaders:
-                logging.info(uploader)
                 upl = {
                         "name": "%s.%s" % (inspect.getmodule(uploader).__name__,uploader.__name__),
                         "bases": ["%s.%s" % (inspect.getmodule(k).__name__,k.__name__) for k in uploader.__bases__],

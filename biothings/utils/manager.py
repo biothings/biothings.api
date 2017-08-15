@@ -640,6 +640,31 @@ class JobManager(object):
 
         return res
 
+    def get_thread_summary(self):
+        running_tids = self.get_thread_files()
+        tchildren = self.thread_queue._threads
+        res = {}
+        for child in tchildren:
+            res[child.name] = {
+                    "is_alive" : child.isAlive(),
+                    "is_daemon" : child.isDaemon(),
+                    }
+
+            if child.name in running_tids:
+                # something is running on that child process
+                job = running_tids[child.name]
+                res[child.name]["job"] = {
+                        "started_at": job["started_at"],
+                        "duration" : timesofar(job["started_at"],0),
+                        "func_name" : job["func_name"],
+                        "category" : job["info"]["category"],
+                        "description" : job["info"]["description"],
+                        "source" : job["info"]["source"],
+                        "step" : job["info"]["step"],
+                        "id" : job["info"]["id"],
+                        }
+
+        return res
 
     def get_summary(self,child=None):
         pworkers = self.get_pid_files(child)
@@ -656,7 +681,7 @@ class JobManager(object):
                 "thread" : {
                     "running" : list(tworkers.keys()),
                     "pending" : list(tpendings.keys()),
-                    "all" : {}, # TODO:
+                    "all" : self.get_thread_summary(),
                     "max" : self.thread_queue._max_workers,
                     },
                 "memory" : self.hub_memory,
@@ -740,10 +765,10 @@ class JobManager(object):
             return self.get_dones(done_jobs)
         elif action == "summary":
             res = self.get_summary()
-            pworkers = dict([(pid,proc) for pid,proc in res["process"]["all"].items() if pid in                 res["process"]["running"]])
-            tworkers = dict([(tid,thread) for tid,thread in res["thread"]["all"].items() if tid in                 res["thread"]["running"]])
+            pworkers = dict([(pid,proc) for pid,proc in res["process"]["all"].items() if pid in res["process"]["running"]])
+            tworkers = dict([(tid,thread) for tid,thread in res["thread"]["all"].items() if tid in res["thread"]["running"]])
             self.print_workers(pworkers)
-            self.print_workers(res["thread"]["running"])
+            self.print_workers(tworkers)
             print("%d running job(s)" % (len(pworkers) + len(tworkers)))
             print("%s, type 'top(pending)' for more" % self.get_pending_summary())
             if done_jobs:
