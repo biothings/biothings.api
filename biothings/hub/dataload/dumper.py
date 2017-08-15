@@ -3,6 +3,7 @@ import os, pprint
 from datetime import datetime
 import asyncio
 from functools import partial
+import inspect
 
 from biothings.utils.hub_db import get_src_dump
 from biothings.utils.common import timesofar
@@ -722,11 +723,26 @@ class DumperManager(BaseSourceManager):
 
     def source_info(self,source=None):
         src_dump = get_src_dump()
+        src_ids = list(self.register.keys())
         if source:
-            if source in self.register:
-                return src_dump.find_one({"_id":source})
+            if source in src_ids:
+                src_ids = [source]
             else:
                 return None
+        res = []
+        for _id in src_ids:
+            src = src_dump.find_one({"_id":_id}) or {}
+            assert len(self.register[_id]) == 1
+            dumper = self.register[_id][0]
+            src["dumper"] = {
+                    "name": "%s.%s" % (inspect.getmodule(dumper).__name__,dumper.__name__),
+                    "bases": ["%s.%s" % (inspect.getmodule(k).__name__,k.__name__) for k in dumper.__bases__]
+                    }
+            src["name"] = _id
+            res.append(src)
+        if source:
+            return res.pop()
         else:
-            return [d for d in src_dump.find({"_id":{"$in":list(self.register.keys())}})]
+            return res
+
 

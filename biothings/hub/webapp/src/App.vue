@@ -34,7 +34,7 @@
       </div>
     </div>
 
-    <data-source-grid v-bind:sources="sources"></data-source-grid>
+    <data-source-grid></data-source-grid>
 
   </div>
 </template>
@@ -45,6 +45,7 @@ import axios from 'axios';
 import Vue2Filters from 'vue2-filters';
 import Vue from 'vue';
 Vue.use(Vue2Filters);
+Vue.use(require('vue-moment'));
 
 
 var UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
@@ -74,8 +75,12 @@ function pretty_size(bytes,precision=2) {
 
 	return bytes.toFixed( + precision ) + ' ' + units[ unit ];
 };
-
 Vue.filter('pretty_size',pretty_size);
+
+function split_and_join(str,sep="_",glue=" ") {
+    return str.split(sep).join(" ");
+}
+Vue.filter('splitjoin',split_and_join);
 
 import DataSourceGrid from './DataSourceGrid.vue';
 import JobSummary from './JobSummary.vue';
@@ -83,29 +88,6 @@ import JobSummary from './JobSummary.vue';
 export default {
   name: 'app',
   components: { DataSourceGrid, JobSummary},
-  mounted () {
-    console.log("mounted");
-    this.getSourcesStatus();
-  },
-  data () {
-    return  {
-      source : {},
-      sources: [{"_id":"blbal"}],
-      errors: [],
-    }
-  },
-  methods: {
-    getSourcesStatus: function() {
-      axios.get('http://localhost:7042/source')
-      .then(response => {
-        console.log(response.data.result);
-        this.sources = response.data.result;
-      })
-      .catch(err => {
-        console.log("Error getting sources information: " + err);
-      })
-    }
-  }
 }
 </script>
 

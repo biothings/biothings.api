@@ -12,30 +12,46 @@ class SourceHandler(BaseHandler):
         """Return minimal info about src"""
 
         mini = {
-                "_id" : src["_id"],
-                "release" : src["release"],
-                "dumper" : "???"}
+                "name" : src["name"],
+                "release" : src.get("release"),
+                "dumper" : src["dumper"]}
+        if src.get("locked"):
+            mini["locked"] = src["locked"]
         if src.get("download"):
             mini["download"] = {
                     "status" : src["download"]["status"],
-                    "time" : src["download"]["time"]}
+                    "time" : src["download"].get("time"),
+                    "started_at" : src["download"]["started_at"]
+                    }
         count = 0
         if src.get("upload"):
             mini["upload"] = {}
+            all_status = set()
             if len(src["upload"]["jobs"]) > 1:
                 for job,info in src["upload"]["jobs"].items():
                     mini["upload"][job] = {
                             "time" : info.get("time"),
                             "status" : info["status"],
-                            "count" : info.get("count")}
+                            "count" : info.get("count"),
+                            "started_at" : info["started_at"]
+                            }
                     count += info.get("count",0)
+                    all_status.add(info["status"])
+                if len(all_status) == 1:
+                    mini["upload"]["status"] = all_status.pop()
+                elif "uploading" in all_status:
+                    mini["upload"]["status"] = "uploading"
+
             else:
                 job,info = list(src["upload"]["jobs"].items())[0]
                 mini["upload"][job] = {
                         "time" : info.get("time"),
                         "status" : info["status"],
-                        "count" : info.get("count")}
+                        "count" : info.get("count"),
+                        "started_at" : info["started_at"]
+                        }
                 count += info.get("count",0)
+                mini["upload"]["status"] = info["status"]
         mini["count"] = count
 
         return mini
@@ -72,7 +88,6 @@ class SourceHandler(BaseHandler):
     @asyncio.coroutine
     def get(self,name=None):
         debug = to_boolean(self.get_query_argument("debug",False))
-        logging.error("debug %s" % debug)
         if name:
             self.write(self.get_source(name,debug))
         else:

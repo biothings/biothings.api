@@ -5,7 +5,8 @@
       data-tooltip="Number of running processes"
       data-position="bottom center"
       v-if="job_manager.queue">
-      P<div class="detail">{{job_manager.queue.process.running.length}}/{{job_manager.queue.process.max}}
+      <i class="rocket icon"></i>
+      <div class="detail">{{job_manager.queue.process.running.length}}/{{job_manager.queue.process.max}}
       </div>
     </div>
     <!-- jobs (threads) -->
@@ -13,7 +14,8 @@
       data-tooltip="Number of running threads"
       data-position="bottom center"
       v-if="job_manager.queue">
-      T<div class="detail">{{job_manager.queue.thread.running.length}}/{{job_manager.queue.thread.max}}
+      <i class="lightning icon"></i>
+      <div class="detail">{{job_manager.queue.thread.running.length}}/{{job_manager.queue.thread.max}}
       </div>
     </div>
     <!-- jobs (pendings) -->
@@ -21,7 +23,8 @@
       data-tooltip="Number of queued jobs"
       data-position="bottom center"
       v-if="job_manager.queue">
-      Q<div class="detail">{{job_manager.queue.thread.pending.length + job_manager.queue.process.pending.length }}
+      <i class="hourglass start icon"></i>
+      <div class="detail">{{job_manager.queue.thread.pending.length + job_manager.queue.process.pending.length }}
       </div>
     </div>
     <!-- memory -->
@@ -46,9 +49,11 @@ export default {
   mounted () {
     console.log("mounted");
     this.getJobSummary();
-    setInterval(function () {
+    /*setInterval(function () {
+      console.log("on set interval" + this);
       this.getJobSummary();
-    }.bind(this), 10000);
+    }.bind(this), 10000);*/
+    setInterval(this.getJobSummary,10000);
   },
   data () {
     return  {

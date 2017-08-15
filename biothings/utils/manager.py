@@ -676,7 +676,6 @@ class JobManager(object):
         pendings = sorted(self.process_queue._pending_work_items.items())
         running = len(self.get_pid_files())
         import logging
-        logging.error("pendings: %s" % pendings)
         actual_pendings = dict(pendings[running:])
         return actual_pendings
 
