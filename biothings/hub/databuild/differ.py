@@ -10,7 +10,7 @@ import glob, random
 
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj, md5sum
-from biothings.utils.mongo import id_feeder, get_src_build
+from biothings.utils.mongo import id_feeder, get_src_build, get_source_fullnames
 from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.utils.diff import diff_docs_jsonpatch, generate_diff_folder
 from biothings import config as btconfig
@@ -63,7 +63,8 @@ class BaseDiffer(object):
         return self.logger
 
     @asyncio.coroutine
-    def diff_cols(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["count","content","mapping"], mode=None, exclude=[]):
+    def diff_cols(self,old_db_col_names, new_db_col_names, batch_size=100000,
+            steps=["count","content","mapping","changes"], mode=None, exclude=[]):
         """
         Compare new with old collections and produce diff files. Root keys can be excluded from
         comparison with "exclude" parameter.
@@ -76,10 +77,12 @@ class BaseDiffer(object):
          3. tuple with 3 elements (URI,db,collection), looking like:
             ("mongodb://user:pass@host","dbname","collection"), allowing to specify
             any connection on any server
-        steps: 'count' will count the root keys for every documents in new collection 
-               (to check number of docs from datasources).
-               'content' will perform diff on actual content.
-               'mapping' will perform diff on ES mappings (if target collection involved)
+        steps: - 'count' will count the root keys for every documents in new collection
+                 (to check number of docs from datasources).
+               - 'content' will perform diff on actual content.
+               - 'mapping' will perform diff on ES mappings (if target collection involved)
+               - 'changes' will generate a short summary for the main changes (usefull to
+                 create a release notes)
         mode: 'purge' will remove any existing files for this comparison.
         """
         new = create_backend(new_db_col_names)
@@ -90,7 +93,7 @@ class BaseDiffer(object):
 
         diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
 
-        if os.path.exists(diff_folder):
+        if mode != "force" and os.path.exists(diff_folder):
             if mode == "purge" and os.path.exists(diff_folder):
                 rmdashfr(diff_folder)
             else:
@@ -127,17 +130,92 @@ class BaseDiffer(object):
                     "backend" : new_db_col_names,
                     "version": new.version
                     },
-                # when "new" is a target collection:
+                # when "new" is a mongodb target collection:
                 "_meta" : {},
                 "build_config": {},
+                # when "old" and "new" are mongondb target collections
+                "changes" : {},
                 }
         if isinstance(new,DocMongoBackend) and new.target_collection.database.name == btconfig.DATA_TARGET_DATABASE:
-            build_doc = get_src_build().find_one({"_id":new.target_collection.name})
-            if not build_doc:
+            new_doc = get_src_build().find_one({"_id":new.target_collection.name})
+            if not new_doc:
                 raise DifferException("Collection '%s' has no corresponding build document" % \
                         new.target_collection.name)
-            metadata["_meta"] = build_doc.get("_meta",{})
-            metadata["build_config"] = build_doc.get("build_config")
+            metadata["_meta"] = new_doc.get("_meta",{})
+            metadata["build_config"] = new_doc.get("build_config")
+
+            if "changes" in steps and \
+                    isinstance(old,DocMongoBackend) \
+                    and old.target_collection.database.name == btconfig.DATA_TARGET_DATABASE:
+
+                old_doc = get_src_build().find_one({"_id":old.target_collection.name})
+                if not old_doc:
+                    raise DifferException("Collection '%s' has no corresponding build document" % \
+                            old.target_collection.name)
+                changes = {
+                        "old" : old.version,
+                        "new" : new.version,
+                        "generated_on": str(datetime.now()),
+                        "sources" : {
+                            "added" : {},
+                            "deleted" : {},
+                            "updated" : {},
+                        },
+                        "fields" : {
+                            "added" : []
+                            },
+                        }
+                # we're only interested in actual keys matching sources + total
+                # (eg. myvariant /chrom is a post-processed generated field, not useful)
+                new_stats = new_doc["_meta"]["stats"]
+                old_stats = old_doc["_meta"]["stats"]
+                # only main-source
+                new_srcs = set([src.split(".")[0] for src in \
+                    get_source_fullnames(new_doc["build_config"]["sources"])] + ["total"])
+                new_versions = dict((k,v["version"]) for k,v in new_doc["_meta"]["src"].items() if v.get("version"))
+                old_versions = dict((k,v["version"]) for k,v in old_doc["_meta"]["src"].items() if v.get("version"))
+                #old_doc["_meta"]["src_version"]
+                # first detect new datasources and changes in documents counts
+                ops = jsondiff(old_stats,new_stats)
+                for op in ops:
+                    src = op["path"].strip("/")
+                    if not src in new_srcs:
+                        continue
+                    print(op)
+                    new_count = op.get("value")
+                    if op["op"] == "add" and src in new_srcs:
+                        changes["sources"]["added"][src] = {"count": new_count}
+                    elif op["op"] == "remove":
+                        old_count = old_stats[src]
+                        changes["sources"]["deleted"][src] = {"old_count" : old_count}
+                    elif op["op"] == "replace":
+                        old_count = old_stats[src]
+                        changes["sources"]["updated"][src] = {"old_count": old_count,
+                            "new_count": new_count, "delta" : new_count - old_count}
+
+                # then deal with version changes
+                ops = jsondiff(old_versions,new_versions)
+                for op in ops:
+                    src = op["path"].strip("/")
+                    new_version = op.get("value")
+                    if op["op"] == "add" and src in new_srcs:
+                        assert src in changes["sources"]["added"], \
+                                "Found new version '%s' for source '%s' but no document count associated" % (new_version,src)
+                        changes["sources"]["added"][src]["version"] = new_version
+                    elif op["op"] == "remove":
+                        old_version = old_versions[src]
+                        assert src in changes["sources"]["deleted"], \
+                                "Found deleted version '%s' but source '%s' wasn't found in deleted ones" % (old_version,src)
+                        changes["sources"]["deleted"][src]["old_version"] = old_version
+                    elif op["op"] == "replace":
+                        old_version = old_versions[src]
+                        # when a source is updated, version can change but the number
+                        # of documents doesn't necessarily change
+                        changes["sources"]["updated"].setdefault(src,{})
+                        changes["sources"]["updated"][src]["new_version"] = new_version
+                        changes["sources"]["updated"][src]["old_version"] = old_version
+
+                metadata["changes"] = changes
 
         # dump it here for minimum information, in case we don't go further
         json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
@@ -181,6 +259,11 @@ class BaseDiffer(object):
                             got_error = err
                     metadata["diff"]["mapping_file"] = res["mapping_file"]
                     diff_stats["mapping_changed"] = True
+                    # update "changes" as needed
+                    if "changes" in steps:
+                        metadata["changes"]["fields"]["added"] = [op["path"].strip("/").replace("/",".") for op in ops]
+
+
                 self.logger.info("Diff file containing mapping differences generated: %s" % res.get("mapping_file"))
 
             pinfo = {"category" : "diff",
@@ -577,8 +660,8 @@ class DifferManager(BaseManager):
                 btconfig.MAX_RANDOMLY_PICKED or 10
         def do():
             if mode == "purge" or not os.path.exists(reportfilepath):
-                report = self.build_diff_report(diff_folder, detailed, max_reported_ids)
                 assert format == "txt", "Only 'txt' format supported for now"
+                report = self.build_diff_report(diff_folder, detailed, max_reported_ids)
                 render = DiffReportTxt(max_reported_ids=max_reported_ids,
                                        max_randomly_picked=max_randomly_picked,
                                        detailed=detailed)
