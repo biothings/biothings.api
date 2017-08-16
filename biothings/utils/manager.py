@@ -299,7 +299,7 @@ class JobManager(object):
                 continue
             pid = int(pid[0].split("_")[0])
             if not pid in children_pids:
-                logging.info("Removing staled pid file '%s'" % fn)
+                logger.info("Removing staled pid file '%s'" % fn)
                 os.unlink(fn)
         tid_pat = re.compile(".*/(Thread-\d+)_.*\.pickle")
         for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):

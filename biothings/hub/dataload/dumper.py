@@ -601,7 +601,7 @@ class ManualDumper(BaseDumper):
         self.logger.info("Manual dumper, assuming data will be downloaded manually")
 
     @asyncio.coroutine
-    def dump(self, path, release=None, force=False, job_manager=None):
+    def dump(self, path, release=None, force=False, job_manager=None, **kwargs):
         if os.path.isabs(path):
             self.new_data_folder = path
         elif path:

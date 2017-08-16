@@ -40,6 +40,9 @@ def upload_worker(name, storage_class, loaddata_func, col_name,
         logger_name = "%s_batch_%s" % (name,batch_num)
         logger = get_logger(logger_name, config.LOG_FOLDER)
         logger.exception(e)
+        logger.error("Parameters:\nname=%s\nstorage_class=%s\n" % (name,storage_class) + \
+                "loaddata_func=%s\ncol_name=%s\nbatch_size=%s\n" % (loaddata_func,col_name,batch_size,) + \
+                "args=%s" % args)
         raise
 
 
