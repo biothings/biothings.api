@@ -1,5 +1,6 @@
 import logging
 import json
+import os
 from biothings.utils.common import is_seq
 from biothings.utils.web.userquery import get_userquery, get_userfilter
 try:
@@ -119,9 +120,9 @@ class ESQueryBuilder(object):
 
     def _is_user_query(self, text_file='query.txt'):
         try:
-            query_dir = os.path.abspath(self.userquery_dir)
-            return (hasattr(self.options, 'userquery') and (os.path.exists(query_dir)) and
-                (os.path.isdir(query_dir)) and (os.path.exists(os.path.join(query_dir, text_file))))
+            query_dir = os.path.join(os.path.abspath(self.userquery_dir), self.options.userquery)
+            return (os.path.exists(query_dir) and (os.path.isdir(query_dir)) and 
+                    (os.path.exists(os.path.join(query_dir, text_file))))
         except Exception:
             return False
     
