@@ -89,20 +89,19 @@ def merge_duplicate_rows(rows, db):
     @param db: database name, string
     """
     rows = list(rows)
-    result = collections.defaultdict(set)
+    first_row = rows[0]
+    merged = collections.defaultdict(set)
     for row in rows:
-        for k , v in row[db].items():
-            result[k].add(v)
-
-    result = dict(result)
-    for k in result:
-        if len(result[k]) == 1:
-            result[k] =  result[k].pop()
+        for k, v in row[db].items():
+            merged[k].add(v)
+    merged = dict(merged)
+    for k in merged:
+        if len(merged[k]) == 1:
+            merged[k] = merged[k].pop()
         else:
-            result[k] = list(result[k])
-
-    rows[0][db] = result
-    return rows[0]
+            merged[k] = list(merged[k])
+    first_row[db] = merged
+    return first_row
 
 
 def unique_ids(src_module):
