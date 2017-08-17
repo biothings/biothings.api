@@ -26,13 +26,14 @@ def dict_sweep(d, vals=[".", "-", "", "NA", "none", " ", "Not Available", "unkno
         if val in vals:
             del d[key]
         elif isinstance(val, list):
+            val = [v for v in val if v not in vals]
             for item in val:
-                if item in vals:
-                    val.remove(item)
-                elif isinstance(item, dict):
+                if isinstance(item, dict):
                     dict_sweep(item, vals)
             if len(val) == 0:
                 del d[key]
+            else:
+                d[key] = val
         elif isinstance(val, dict):
             dict_sweep(val, vals)
             if len(val) == 0:
@@ -88,20 +89,20 @@ def merge_duplicate_rows(rows, db):
     @param db: database name, string
     """
     rows = list(rows)
-    first_row = rows[0]
-    other_rows = rows[1:]
-    for row in other_rows:
-        for i in first_row[db]:
-            if i in row[db]:
-                if row[db][i] != first_row[db][i]:
-                    aa = first_row[db][i]
-                    if not isinstance(aa, list):
-                        aa = [aa]
-                    aa.append(row[db][i])
-                    first_row[db][i] = aa
-            else:
-                continue
-    return first_row
+    result = collections.defaultdict(set)
+    for row in rows:
+        for k , v in row[db].items():
+            result[k].add(v)
+
+    result = dict(result)
+    for k in result:
+        if len(result[k]) == 1:
+            result[k] =  result[k].pop()
+        else:
+            result[k] = list(result[k])
+
+    rows[0][db] = result
+    return rows[0]
 
 
 def unique_ids(src_module):
