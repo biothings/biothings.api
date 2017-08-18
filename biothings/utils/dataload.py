@@ -89,18 +89,27 @@ def merge_duplicate_rows(rows, db):
     @param db: database name, string
     """
     rows = list(rows)
-    first_row = rows[0]
-    merged = collections.defaultdict(set)
+    keys = set()
     for row in rows:
-        for k, v in row[db].items():
-            merged[k].add(v)
-    merged = dict(merged)
-    for k in merged:
-        if len(merged[k]) == 1:
-            merged[k] = merged[k].pop()
-        else:
-            merged[k] = list(merged[k])
-    first_row[db] = merged
+        for k in row[db]:
+            keys.add(k)
+    first_row = rows[0]
+    other_rows = rows[1:]
+    for row in other_rows:
+        for i in keys:
+            try:
+                aa = first_row[db][i]
+            except KeyError:
+                first_row[db][i] = row[db][i]
+                continue
+            if i in row[db]:
+                if row[db][i] != first_row[db][i]:
+                    if not isinstance(aa, list):
+                        aa = [aa]
+                    aa.append(row[db][i])
+                    first_row[db][i] = aa
+            else:
+                continue
     return first_row
 
 
