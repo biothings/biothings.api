@@ -68,7 +68,7 @@ class BaseDiffer(object):
         """
         Compare new with old collections and produce diff files. Root keys can be excluded from
         comparison with "exclude" parameter.
-        *_db_col_names can be: 
+        *_db_col_names can be:
          1. a colleciton name (as a string) asusming they are
             in the target database.
          2. tuple with 2 elements, the first one is then either "source" or "target"
@@ -153,8 +153,15 @@ class BaseDiffer(object):
                     raise DifferException("Collection '%s' has no corresponding build document" % \
                             old.target_collection.name)
                 changes = {
-                        "old" : old.version,
-                        "new" : new.version,
+                        "old" : {
+                            "version" : old.version,
+                            "count" : old_doc["_meta"]["stats"].get("total")
+                            },
+                        "new" : {
+                            "version" : new.version,
+                            "count" : new_doc["_meta"]["stats"].get("total"),
+                            "summary" : {}, # later during "content" step
+                            },
                         "generated_on": str(datetime.now()),
                         "sources" : {
                             "added" : {},
@@ -162,7 +169,7 @@ class BaseDiffer(object):
                             "updated" : {},
                         },
                         "fields" : {
-                            "added" : []
+                            "added" : [], # later, during "mapping" step
                             },
                         }
                 # we're only interested in actual keys matching sources + total
@@ -171,7 +178,7 @@ class BaseDiffer(object):
                 old_stats = old_doc["_meta"]["stats"]
                 # only main-source
                 new_srcs = set([src.split(".")[0] for src in \
-                    get_source_fullnames(new_doc["build_config"]["sources"])] + ["total"])
+                    get_source_fullnames(new_doc["build_config"]["sources"])])
                 new_versions = dict((k,v["version"]) for k,v in new_doc["_meta"]["src"].items() if v.get("version"))
                 old_versions = dict((k,v["version"]) for k,v in old_doc["_meta"]["src"].items() if v.get("version"))
                 #old_doc["_meta"]["src_version"]
@@ -187,11 +194,14 @@ class BaseDiffer(object):
                         changes["sources"]["added"][src] = {"count": new_count}
                     elif op["op"] == "remove":
                         old_count = old_stats[src]
-                        changes["sources"]["deleted"][src] = {"old_count" : old_count}
+                        changes["sources"]["deleted"][src] = {"count" : old_count}
                     elif op["op"] == "replace":
                         old_count = old_stats[src]
-                        changes["sources"]["updated"][src] = {"old_count": old_count,
-                            "new_count": new_count, "delta" : new_count - old_count}
+                        # put version there, even if there's no changes, so we can display in the report anyway
+                        changes["sources"]["updated"][src] = {
+                                "old" : {"count" : old_count, "version" : old_doc["_meta"]["src"][src].get("version")},
+                                "new" : {"count" : new_count, "version" : new_doc["_meta"]["src"][src].get("version")}
+                                }
 
                 # then deal with version changes
                 ops = jsondiff(old_versions,new_versions)
@@ -206,14 +216,22 @@ class BaseDiffer(object):
                         old_version = old_versions[src]
                         assert src in changes["sources"]["deleted"], \
                                 "Found deleted version '%s' but source '%s' wasn't found in deleted ones" % (old_version,src)
-                        changes["sources"]["deleted"][src]["old_version"] = old_version
+                        changes["sources"]["deleted"][src]["version"] = old_version
                     elif op["op"] == "replace":
                         old_version = old_versions[src]
                         # when a source is updated, version can change but the number
-                        # of documents doesn't necessarily change
-                        changes["sources"]["updated"].setdefault(src,{})
-                        changes["sources"]["updated"][src]["new_version"] = new_version
-                        changes["sources"]["updated"][src]["old_version"] = old_version
+                        # of documents doesn't necessarily change. In that case, diff won't
+                        # report any differences, but we want to report the #docs anyway
+                        # to avoid confusion of having an empty cell/information
+                        if not changes["sources"]["updated"].get(src):
+                            old_count = old_stats.get(src)
+                            new_count = new_stats.get(src)
+                            changes["sources"]["updated"][src] = {
+                                    "old" : {"count" : old_count},
+                                    "new" : {"count" : new_count}
+                                    }
+                        changes["sources"]["updated"][src]["new"]["version"] = new_version
+                        changes["sources"]["updated"][src]["old"]["version"] = old_version
 
                 metadata["changes"] = changes
 
@@ -357,6 +375,9 @@ class BaseDiffer(object):
                 jobs.append(job)
             yield from asyncio.gather(*jobs)
             self.logger.info("Finished calculating diff for the old collection. Total number of docs deleted: {}".format(diff_stats["delete"]))
+            # update "changes" as needed
+            if "changes" in steps:
+                metadata["changes"]["new"]["summary"] = diff_stats
 
         self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {}, Mapping changed: {})".format(
             diff_stats["update"], diff_stats["add"], diff_stats["delete"], diff_stats["mapping_changed"]))
@@ -467,6 +488,97 @@ class DiffReportRendererBase(object):
         Save report output (rendered) into filename
         """
         raise NotImplementedError("implement me")
+
+
+import locale
+locale.setlocale(locale.LC_ALL, '')
+class ReleaseNoteTxt(object):
+
+    def __init__(self, meta):
+        self.metadata = meta
+
+    def save(self, filepath):
+        try:
+            import prettytable
+        except ImportError:
+            raise ImportError("Please install prettytable to use this rendered")
+
+        def format_number(n, sign=None):
+            s = ""
+            if sign:
+                if n > 0:
+                    s = "+"
+                elif n < 0:
+                    s = "-"
+            n = abs(n)
+            strn = "%s%s" % (s,locale.format("%d", n, grouping=True))
+            return strn
+
+        changes = self.metadata.get("changes")
+        if not changes:
+            return
+        txt = ""
+        title = "Build version: '%s'" % changes["new"]["version"]
+        txt += title + "\n"
+        txt += "".join(["="] * len(title)) + "\n"
+        dt = dtparse(changes["generated_on"])
+        txt += "Generated on: %s\n" % dt.strftime("%Y-%m-%d at %H:%M:%S")
+        txt += "\n"
+
+        table = prettytable.PrettyTable(["Datasource","last release","new release",
+            "last # of docs","new # of docs"])
+        table.align["Datasource"] = "l"
+        table.align["last release"] = "c"
+        table.align["new release"] = "c"
+        table.align["last # of docs"] = "r"
+        table.align["new # of docs"] = "r"
+
+        for src,info in sorted(changes["sources"]["added"].items(),key=lambda e: e[0]):
+            table.add_row([src,"-",info["version"],"-",format_number(info["count"])])
+
+        for src,info in sorted(changes["sources"]["deleted"].items(),key=lambda e: e[0]):
+            table.add_row([src,info["version"],"-",format_number(info["count"]),"-"])
+
+        for src,info in sorted(changes["sources"]["updated"].items(),key=lambda e: e[0]):
+            table.add_row([src,info["old"].get("version","-"),info["new"].get("version","-"),
+                format_number(info["old"].get("count","-")),format_number(info["new"].get("count","-"))])
+        txt += table.get_string()
+        txt += "\n\n"
+
+        total_count = changes["new"].get("count")
+        if changes["sources"]["added"]:
+            txt += "New datasource(s): %s\n" % ", ".join(sorted(list(changes["sources"]["added"])))
+        if changes["sources"]["deleted"]:
+            txt += "Deleted datasource(s): %s\n" % ", ".join(sorted(list(changes["sources"]["deleted"])))
+        txt += "\n"
+
+        if changes.get("fields"):
+            new_fields = sorted(changes["fields"].get("added",[]))
+            deleted_fields = changes["fields"].get("deleted",[])
+            if new_fields:
+                txt += "New field(s): %s\n" % ", ".join(new_fields)
+            if deleted_fields:
+                txt += "Deleted field(s): %s\n" % ", ".join(deleted_fields)
+        txt += "\n"
+
+        if total_count:
+            txt += "Overall, %s documents in this release\n" % (format_number(total_count))
+        if changes["new"]["summary"]:
+            sumups = []
+            if changes["new"]["summary"].get("add"):
+                sumups.append("%s document(s) added" % format_number(changes["new"]["summary"]["add"]))
+            if changes["new"]["summary"].get("delete"):
+                sumups.append("%s document(s) deleted" % format_number(changes["new"]["summary"]["delete"]))
+            if changes["new"]["summary"].get("update"):
+                sumups.append("%s document(s) updated" % format_number(changes["new"]["summary"]["update"]))
+            txt += ", ".join(sumups) + "\n"
+
+
+        with open(filepath,"w") as fout:
+            fout.write(txt)
+
+        print(txt)
+        return txt
 
 
 class DiffReportTxt(DiffReportRendererBase):
@@ -693,6 +805,46 @@ class DifferManager(BaseManager):
 
         diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
         reportfilepath = os.path.join(diff_folder,report_filename)
+        job = asyncio.ensure_future(main(diff_folder))
+        return job
+
+    def release_note(self, old_db_col_names, new_db_col_names, filename=None,format="txt"):
+
+        diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
+        filepath = None
+
+        def do():
+            nonlocal filepath
+            nonlocal filename
+            assert format == "txt", "Only 'txt' format supported for now"
+            meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
+            filename = filename or "release_%s.txt" % meta["diff"]["version"]
+            filepath = os.path.join(diff_folder,filename)
+            render = ReleaseNoteTxt(meta)
+            return render.save(filepath)
+
+        @asyncio.coroutine
+        def main(diff_folder):
+            got_error = False
+            pinfo = {"category" : "diff",
+                     "step" : "release_note",
+                     "source" : diff_folder,
+                     "description" : filename}
+            job = yield from self.job_manager.defer_to_thread(pinfo,do)
+            def reported(f):
+                nonlocal got_error
+                try:
+                    res = f.result()
+                    assert filepath, "No filename defined for generated report, can't attach"
+                    self.logger.info("Diff report ready, saved in %s" % diff_folder,extra={"notify":True,"attach":filepath})
+                except Exception as e:
+                    got_error = e
+            job.add_done_callback(reported)
+            yield from job
+            if got_error:
+                self.logger.exception("Failed to create diff report: %s" % got_error,extra={"notify":True})
+                raise got_error
+
         job = asyncio.ensure_future(main(diff_folder))
         return job
 
