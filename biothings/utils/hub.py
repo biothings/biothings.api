@@ -323,7 +323,6 @@ def publish_data_version(version,env=None,update_latest=True):
                      or replace if arg version is a list
     - latest.json: update redirect so it points to version
     """
-    # TODO: check if a <version>.json exists
     # register version
     versionskey = os.path.join(config.S3_DIFF_FOLDER,"%s.json" % VERSIONS)
     try:

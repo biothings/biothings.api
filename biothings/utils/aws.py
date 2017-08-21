@@ -1,9 +1,10 @@
 import os, logging
 from boto import connect_s3
-try:       
-    from biothings import config      
-except ImportError:      
-    # assuming key, secret and bucket will be passed 
+from urllib.parse import urlparse
+try:
+    from biothings import config
+except ImportError:
+    # assuming key, secret and bucket will be passed
     # to all functions
     pass
 
@@ -78,7 +79,7 @@ def get_s3_folder(s3folder, basedir=None, aws_key=None, aws_secret=None, s3_buck
     finally:
         os.chdir(cwd)
 
-    
+
 def send_s3_folder(folder, s3basedir=None, permissions=None, overwrite=False,
         aws_key=None, aws_secret=None, s3_bucket=None):
     aws_key = aws_key or getattr(config,"AWS_SECRET")
@@ -96,9 +97,12 @@ def send_s3_folder(folder, s3basedir=None, permissions=None, overwrite=False,
 
 
 def get_s3_url(s3key,aws_key=None, aws_secret=None, s3_bucket=None):
-    aws_key = aws_key or getattr(config,"AWS_SECRET")
-    aws_secret = aws_secret or getattr(config,"AWS_SECRET")
-    s3_bucket = s3_bucket or getattr(config,"S3_BUCKET")
-    s3 = connect_s3(aws_key, aws_secret)
-    bucket = s3.get_bucket(s3_bucket)
-    return "http://%s/%s" % (bucket.get_website_endpoint(),s3key)
+    try:
+        k = get_s3_file(s3key,return_what="key",
+                aws_key=aws_key,aws_secret=aws_secret,s3_bucket=s3_bucket)
+    except FileNotFoundError:
+        return None
+    # generate_url will include some acdesskey, signature, etc... we want to remove this
+    # as the bucket is public anyway and want "clean" url
+    url = k.generate_url(expires_in=0) # never (and whatever, we
+    return urlparse(url)._replace(query="").geturl()
