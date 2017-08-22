@@ -1,5 +1,5 @@
 
-import sys, re, os, time, math
+import sys, re, os, time, math, glob
 from datetime import datetime
 from dateutil.parser import parse as dtparse
 import pickle, json
@@ -19,6 +19,7 @@ from biothings import config as btconfig
 from biothings.utils.mongo import doc_feeder, id_feeder
 from config import LOG_FOLDER, logger as logging
 from biothings.utils.hub import publish_data_version
+from biothings.utils.diff import generate_diff_folder
 
 
 class IndexerException(Exception):
@@ -103,13 +104,10 @@ class IndexerManager(BaseManager):
 
         return job
 
-    def snapshot(self, index, snapshot=None, mode=None, steps=["snapshot","meta"]):
+    def snapshot(self, index, snapshot=None, mode=None, steps=["snapshot"]):
         # check what to do
         if type(steps) == str:
             steps = [steps]
-        if "meta" in steps:
-            assert getattr(btconfig,"BIOTHINGS_ROLE",None) == "master","Hub needs to be master to publish metadata about snapshots"
-            assert hasattr(btconfig,"URL_SNAPSHOT_REPOSITORY"), "URL_SNAPSHOT_REPOSITORY must be defined to publish metadata about snapshots"
         snapshot = snapshot or index
         es_snapshot_host = getattr(btconfig,"ES_SNAPSHOT_HOST",btconfig.ES_HOST)
         idxr = ESIndexer(index=index,doc_type=btconfig.ES_DOC_TYPE,es_host=es_snapshot_host)
@@ -152,9 +150,7 @@ class IndexerManager(BaseManager):
                         yield from asyncio.sleep(getattr(btconfig,"MONITOR_SNAPSHOT_DELAY",60))
                     else:
                         if state == "SUCCESS":
-                            # if "meta" is required, it will set the result later
-                            if not "meta" in steps:
-                                fut.set_result(state)
+                            fut.set_result(state)
                             self.logger.info("Snapshot '%s' successfully created (host: '%s', repository: '%s')" % \
                                     (snapshot,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY),extra={"notify":True})
                         else:
@@ -165,45 +161,88 @@ class IndexerManager(BaseManager):
                             raise e
                         break
 
-            if "meta" in steps:
-                try:
-                    esb = DocESBackend(idxr)
-                    self.logger.info("Generating JSON metadata for full release '%s'" % esb.version)
-                    repo = idxr._es.snapshot.get_repository(btconfig.URL_SNAPSHOT_REPOSITORY)
-                    # generate json metadata about this diff release
-                    full_meta = {
-                            "type": "full",
-                            "build_version": esb.version,
-                            "app_version": None,
-                            "metadata" : {"repository" : repo,
-                                          "snapshot_name" : snapshot}
-                            }
-                    assert esb.version, "Can't retrieve a version from index '%s'" % index
-                    build_info = "%s.json" % esb.version
-                    build_info_path = os.path.join(btconfig.DIFF_PATH,build_info)
-                    json.dump(full_meta,open(build_info_path,"w"))
-                    # override lastmodified header with our own timestamp
-                    local_ts = dtparse(idxr.get_mapping_meta()["_meta"]["timestamp"])
-                    utc_epoch = str(int(time.mktime(local_ts.timetuple())))
-                    # it's a full release, but all build info metadata (full, incremental) all go
-                    # to the diff bucket (this is the main entry)
-                    s3key = os.path.join(btconfig.S3_DIFF_FOLDER,build_info)
-                    aws.send_s3_file(build_info_path,s3key,
-                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                            s3_bucket=btconfig.S3_DIFF_BUCKET,metadata={"lastmodified":utc_epoch},
-                             overwrite=True)
-                    url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                            s3_bucket=btconfig.S3_DIFF_BUCKET)
-                    self.logger.info("Full release metadata published for version: '%s'" % url)
-                    publish_data_version(esb.version)
-                    self.logger.info("Registered version '%s'" % (esb.version))
-                    fut.set_result("SUCCESS")
-                except Exception as e:
-                    self.logger.error("Error while publishing metadata for snapshot '%s': %s" % (snapshot,e))
-                    fut.set_exception(e)
-
         task = asyncio.ensure_future(do(index))
         return fut
+
+    def publish_snapshot(self, prev=None, snapshot=None, diff_folder=None, index=None):
+        """
+        Publish snapshot metadata (not the actal snapshot, but the metadata, release notes, etc... associated to it) to S3,
+        and then register that version to it's available to auto-updating hub.
+
+        Though snapshots don't need any previous version to be applied on, a release note with significant changes
+        between current snapshot and a previous version could have been generated. In that case, 
+
+        'prev' and 'snaphost' must be defined (as strings, should match merged collections names) to generate
+        a diff folder, or directly diff_folder. If all 3 are None, no release note will be referenced in snapshot metadata.
+
+        'snapshot' and actual underlying index can have different names, if so, 'index' can be specified.
+        """
+        assert getattr(btconfig,"BIOTHINGS_ROLE",None) == "master","Hub needs to be master to publish metadata about snapshots"
+        assert hasattr(btconfig,"READONLY_SNAPSHOT_REPOSITORY"), "READONLY_SNAPSHOT_REPOSITORY must be defined to publish metadata about snapshots"
+        es_snapshot_host = getattr(btconfig,"ES_SNAPSHOT_HOST",btconfig.ES_HOST)
+        index = index or snapshot
+        idxr = ESIndexer(index=index,doc_type=btconfig.ES_DOC_TYPE,es_host=es_snapshot_host)
+        esb = DocESBackend(idxr)
+        assert esb.version, "Can't retrieve a version from index '%s'" % indew
+        self.logger.info("Generating JSON metadata for full release '%s'" % esb.version)
+        repo = idxr._es.snapshot.get_repository(btconfig.READONLY_SNAPSHOT_REPOSITORY)
+        release_note = "release_%s" % esb.version
+        # generate json metadata about this diff release
+        full_meta = {
+                "type": "full",
+                "build_version": esb.version,
+                "app_version": None,
+                "metadata" : {"repository" : repo,
+                              "snapshot_name" : snapshot}
+                }
+        # TODO: merged collection name can be != index name which can be != snapshot name...
+        if prev and index:
+            diff_folder = generate_diff_folder(prev,index)
+        if diff_folder and os.path.exists(diff_folder):
+            # ok, we have something in that folder, just pick the release note files
+            # (we can generate diff + snaphost at the same time, so there could be diff files in that folder
+            # from a diff process done before. release notes will be the same though)
+            self.logger.info("Uploading release notes from '%s' to s3" % diff_folder)
+            notes = glob.glob(os.path.join(diff_folder,"%s.*" % release_note))
+            s3basedir = os.path.join(btconfig.S3_DIFF_FOLDER,esb.version)
+            for note in notes:
+                if os.path.exists(note):
+                    s3key = os.path.join(s3basedir,os.path.basename(note))
+                    aws.send_s3_file(note,s3key,
+                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                            s3_bucket=btconfig.S3_DIFF_BUCKET,
+                             overwrite=True,permissions="public-read")
+            # specify release note URLs in metadata
+            rel_txt_url = aws.get_s3_url(os.path.join(s3basedir,"%s.txt" % release_note),
+                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_DIFF_BUCKET)
+            rel_json_url = aws.get_s3_url(os.path.join(s3basedir,"%s.json" % release_note),
+                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_DIFF_BUCKET)
+            if rel_txt_url:
+                full_meta.setdefault("changes",{})
+                full_meta["changes"]["txt"] = {"url" : rel_txt_url}
+            if rel_json_url:
+                full_meta.setdefault("changes",{})
+                full_meta["changes"]["json"] = {"url" : rel_json_url}
+        
+        # now dump that metadata
+        build_info = "%s.json" % esb.version
+        build_info_path = os.path.join(btconfig.DIFF_PATH,build_info)
+        json.dump(full_meta,open(build_info_path,"w"))
+        # override lastmodified header with our own timestamp
+        local_ts = dtparse(idxr.get_mapping_meta()["_meta"]["timestamp"])
+        utc_epoch = str(int(time.mktime(local_ts.timetuple())))
+        # it's a full release, but all build info metadata (full, incremental) all go
+        # to the diff bucket (this is the main entry)
+        s3key = os.path.join(btconfig.S3_DIFF_FOLDER,build_info)
+        aws.send_s3_file(build_info_path,s3key,
+                aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                s3_bucket=btconfig.S3_DIFF_BUCKET,metadata={"lastmodified":utc_epoch},
+                 overwrite=True)
+        url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                s3_bucket=btconfig.S3_DIFF_BUCKET)
+        self.logger.info("Full release metadata published for version: '%s'" % url)
+        publish_data_version(esb.version)
+        self.logger.info("Registered version '%s'" % (esb.version))
 
 
 class Indexer(object):

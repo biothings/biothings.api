@@ -73,7 +73,7 @@ class ESIndexer():
         try:
             res = self._es.indices.get_alias(index)
             # this was an alias
-            assert len(res) == 1
+            assert len(res) == 1, "Expecing '%s' to be an alias, but got nothing..." % index
             self._index = list(res.keys())[0]
         except NotFoundError:
             # this was a real index name
