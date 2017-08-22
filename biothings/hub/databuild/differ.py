@@ -10,7 +10,8 @@ import glob, random
 
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj, md5sum
-from biothings.utils.mongo import id_feeder, get_src_build, get_source_fullnames
+from biothings.utils.mongo import id_feeder, get_src_build, get_source_fullname, \
+                                  get_target_db
 from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.utils.diff import diff_docs_jsonpatch, generate_diff_folder
 from biothings import config as btconfig
@@ -408,8 +409,12 @@ class ReleaseNoteTxt(object):
                     s = "+"
                 elif n < 0:
                     s = "-"
-            n = abs(n)
-            strn = "%s%s" % (s,locale.format("%d", n, grouping=True))
+            try:
+                n = abs(n)
+                strn = "%s%s" % (s,locale.format("%d", n, grouping=True))
+            except TypeError:
+                # something wrong with converting, maybe we don't even have a number to format...
+                strn = "N.A"
             return strn
 
         txt = ""
@@ -417,15 +422,16 @@ class ReleaseNoteTxt(object):
         txt += title + "\n"
         txt += "".join(["="] * len(title)) + "\n"
         dt = dtparse(self.changes["generated_on"])
+        txt += "Previous build version: '%s'\n" % self.changes["old"]["version"]
         txt += "Generated on: %s\n" % dt.strftime("%Y-%m-%d at %H:%M:%S")
         txt += "\n"
 
-        table = prettytable.PrettyTable(["Datasource","last release","new release",
-            "last # of docs","new # of docs"])
+        table = prettytable.PrettyTable(["Datasource","prev. release","new release",
+            "prev. # of docs","new # of docs"])
         table.align["Datasource"] = "l"
-        table.align["last release"] = "c"
+        table.align["prev. release"] = "c"
         table.align["new release"] = "c"
-        table.align["last # of docs"] = "r"
+        table.align["prev. # of docs"] = "r"
         table.align["new # of docs"] = "r"
 
         for src,info in sorted(self.changes["sources"]["added"].items(),key=lambda e: e[0]):
@@ -475,8 +481,6 @@ class ReleaseNoteTxt(object):
 
         with open(filepath,"w") as fout:
             fout.write(txt)
-
-        print(txt)
 
         return txt
 
@@ -783,16 +787,16 @@ class DifferManager(BaseManager):
         try:
             metafile = os.path.join(diff_folder,"metadata.json")
             metadata = json.load(open(metafile))
-            old_db_col_names = metadata["new"]["backend"]
-            new_db_col_names = metadata["old"]["backend"]
+            old_db_col_names = metadata["old"]["backend"]
+            new_db_col_names = metadata["new"]["backend"]
             diff_stats = metadata["diff"]["stats"]
         except FileNotFoundError:
             # we're generating a release note without diff information
             self.logger.info("No metadata.json file found, this release note won't have diff stats included")
             diff_stats = {}
 
-        new = create_backend(old_db_col_names)
-        old = create_backend(new_db_col_names)
+        new = create_backend(new_db_col_names)
+        old = create_backend(old_db_col_names)
         assert isinstance(old,DocMongoBackend) and isinstance(new,DocMongoBackend), \
                 "Only MongoDB backend types are allowed when generating a release note"
         assert old.target_collection.database.name == btconfig.DATA_TARGET_DATABASE and \
@@ -807,14 +811,17 @@ class DifferManager(BaseManager):
             raise DifferException("Collection '%s' has no corresponding build document" % \
                         old.target_collection.name)
 
+        tgt_db = get_target_db()
+        old_total = tgt_db[old.target_collection.name].count()
+        new_total = tgt_db[new.target_collection.name].count()
         changes = {
                 "old" : {
                     "version" : old.version,
-                    "count" : old_doc["_meta"]["stats"].get("total")
+                    "count" : old_total,
                     },
                 "new" : {
                     "version" : new.version,
-                    "count" : new_doc["_meta"]["stats"].get("total"),
+                    "count" : new_total,
                     "fields" : {},
                     "summary" : diff_stats,
                     },
@@ -825,22 +832,25 @@ class DifferManager(BaseManager):
                     "updated" : {},
                     }
                 }
-        # we're only interested in actual keys matching sources + total
-        # (eg. myvariant /chrom is a post-processed generated field, not useful)
-        new_stats = new_doc["_meta"]["stats"]
-        old_stats = old_doc["_meta"]["stats"]
-        # only main-source
-        new_srcs = set([src.split(".")[0] for src in \
-            get_source_fullnames(new_doc["build_config"]["sources"])])
-        new_versions = dict((k,v["version"]) for k,v in new_doc["_meta"]["src"].items() if v.get("version"))
-        old_versions = dict((k,v["version"]) for k,v in old_doc["_meta"]["src"].items() if v.get("version"))
-        #old_doc["_meta"]["src_version"]
+        def get_counts(doc):
+            stats = {}
+            for subsrc,count in doc["merge_stats"].items():
+                src = get_source_fullname(subsrc).split(".")[0]
+                stats.setdefault(src,0)
+                stats[src] += count
+            return stats
+        new_stats = get_counts(new_doc)
+        old_stats = get_counts(old_doc)
+        # source names in merge_stats and sources are the same type (ie. actual collection name)
+        # so there's no need to convert to main source at this point
+        new_srcs = new_doc["build_config"]["sources"]
         # first detect new datasources and changes in documents counts
         ops = jsondiff(old_stats,new_stats)
         for op in ops:
             src = op["path"].strip("/")
-            if not src in new_srcs:
-                continue
+            assert src in new_srcs, "Source '%s' has been merged but is not part of the the configuration" % src
+            #if not src in new_srcs:
+            #    continue
             new_count = op.get("value")
             if op["op"] == "add" and src in new_srcs:
                 changes["sources"]["added"][src] = {"count": new_count}
@@ -856,6 +866,15 @@ class DifferManager(BaseManager):
                         }
 
         # then deal with version changes
+        def get_versions(doc):
+            try:
+                versions = dict((k,v["version"]) for k,v in doc["_meta"]["src"].items() if v.get("version"))
+            except KeyError:
+                # previous version format
+                versions = dict((k,v) for k,v in doc["_meta"]["src_version"].items())
+            return versions
+        new_versions = get_versions(new_doc)
+        old_versions = get_versions(old_doc)
         ops = jsondiff(old_versions,new_versions)
         for op in ops:
             src = op["path"].strip("/")
