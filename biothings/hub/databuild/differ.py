@@ -10,8 +10,8 @@ import glob, random
 
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj, md5sum
-from biothings.utils.mongo import id_feeder, get_src_build, get_source_fullname, \
-                                  get_target_db
+from biothings.utils.mongo import id_feeder, get_target_db
+from biothings.utils.hub_db import get_src_build, get_source_fullname
 from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.utils.diff import diff_docs_jsonpatch, generate_diff_folder
 from biothings import config as btconfig
@@ -22,6 +22,7 @@ from biothings.utils.backend import DocMongoBackend
 import biothings.utils.aws as aws
 from biothings.utils.jsondiff import make as jsondiff
 from biothings.utils.hub import publish_data_version
+from biothings.utils.dataload import update_dict_recur
 
 logging = btconfig.logger
 
@@ -418,11 +419,11 @@ class ReleaseNoteTxt(object):
             return strn
 
         txt = ""
-        title = "Build version: '%s'" % self.changes["new"]["version"]
+        title = "Build version: '%s'" % self.changes["new"]["_version"]
         txt += title + "\n"
         txt += "".join(["="] * len(title)) + "\n"
         dt = dtparse(self.changes["generated_on"])
-        txt += "Previous build version: '%s'\n" % self.changes["old"]["version"]
+        txt += "Previous build version: '%s'\n" % self.changes["old"]["_version"]
         txt += "Generated on: %s\n" % dt.strftime("%Y-%m-%d at %H:%M:%S")
         txt += "\n"
 
@@ -435,18 +436,51 @@ class ReleaseNoteTxt(object):
         table.align["new # of docs"] = "r"
 
         for src,info in sorted(self.changes["sources"]["added"].items(),key=lambda e: e[0]):
-            table.add_row([src,"-",info["version"],"-",format_number(info["count"])])
-
+            main_info = dict([(k,v) for k,v in info.items() if k.startswith("_")])
+            sub_infos = dict([(k,v) for k,v in info.items() if not k.startswith("_")])
+            if sub_infos:
+                for sub,sub_info in sub_infos.items():
+                    table.add_row(["%s.%s" % (src,sub),"-",main_info["_version"],"-",format_number(sub_info["_count"])]) # only _count avail there
+            else:
+                main_count = main_info.get("_count") and format_number(main_info["_count"]) or ""
+                table.add_row([src,"-",main_info["_version"],"-",main_count])
         for src,info in sorted(self.changes["sources"]["deleted"].items(),key=lambda e: e[0]):
-            table.add_row([src,info["version"],"-",format_number(info["count"]),"-"])
-
+            main_info = dict([(k,v) for k,v in info.items() if k.startswith("_")])
+            sub_infos = dict([(k,v) for k,v in info.items() if not k.startswith("_")])
+            if sub_infos:
+                for sub,sub_info in sub_infos.items():
+                    table.add_row(["%s.%s" % (src,sub),main_info["_version"],"-",format_number(sub_info["_count"]),"-"]) # only _count avail there
+            else:
+                main_count = main_info.get("_count") and format_number(main_info["_count"]) or ""
+                table.add_row([src,main_info["_version"],"-",main_count,"-"])
         for src,info in sorted(self.changes["sources"]["updated"].items(),key=lambda e: e[0]):
-            table.add_row([src,info["old"].get("version","-"),info["new"].get("version","-"),
-                format_number(info["old"].get("count","-")),format_number(info["new"].get("count","-"))])
+            # extract information from main-source
+            old_main_info = dict([(k,v) for k,v in info["old"].items() if k.startswith("_")])
+            new_main_info = dict([(k,v) for k,v in info["new"].items() if k.startswith("_")])
+            old_main_count = old_main_info.get("_count") and format_number(old_main_info["_count"]) or None
+            new_main_count = new_main_info.get("_count") and format_number(new_main_info["_count"]) or None
+            if old_main_count is None:
+                assert new_main_count is None, "Sub-sources found, old and new count should " + \
+                        "both be None. Info was: %s" % info
+                old_sub_infos = dict([(k,v) for k,v in info["old"].items() if not k.startswith("_")])
+                new_sub_infos = dict([(k,v) for k,v in info["new"].items() if not k.startswith("_")])
+                # old & new sub_infos should have the same structure (same existing keys)
+                # so we just use one of them to explore
+                if old_sub_infos:
+                    assert new_sub_infos
+                    for sub,sub_info in old_sub_infos.items():
+                        table.add_row(["%s.%s" % (src,sub),old_main_info["_version"],new_main_info["_version"],
+                            format_number(sub_info["_count"]),format_number(new_sub_infos[sub]["_count"])])
+            else:
+                assert not new_main_count is None, "No sub-sources found, old and new count should NOT " + \
+                        "both be None. Info was: %s" % info
+                table.add_row([src,old_main_info["_version"],new_main_info["_version"],
+                    old_main_count,new_main_count])
+
         txt += table.get_string()
         txt += "\n"
 
-        total_count = self.changes["new"].get("count")
+        total_count = self.changes["new"].get("_count")
         if self.changes["sources"]["added"]:
             txt += "New datasource(s): %s\n" % ", ".join(sorted(list(self.changes["sources"]["added"])))
         if self.changes["sources"]["deleted"]:
@@ -454,10 +488,10 @@ class ReleaseNoteTxt(object):
         if self.changes["sources"]:
             txt += "\n"
 
-        if self.changes["new"]["fields"]:
-            new_fields = sorted(self.changes["new"]["fields"].get("add",[]))
-            deleted_fields = self.changes["new"]["fields"].get("remove",[])
-            updated_fields = self.changes["new"]["fields"].get("replace",[])
+        if self.changes["new"]["_fields"]:
+            new_fields = sorted(self.changes["new"]["_fields"].get("add",[]))
+            deleted_fields = self.changes["new"]["_fields"].get("remove",[])
+            updated_fields = self.changes["new"]["_fields"].get("replace",[])
             if new_fields:
                 txt += "New field(s): %s\n" % ", ".join(new_fields)
             if deleted_fields:
@@ -468,16 +502,14 @@ class ReleaseNoteTxt(object):
 
         if total_count:
             txt += "Overall, %s documents in this release\n" % (format_number(total_count))
-        if self.changes["new"]["summary"]:
+        if self.changes["new"]["_summary"]:
             sumups = []
-            if self.changes["new"]["summary"].get("add"):
-                sumups.append("%s document(s) added" % format_number(self.changes["new"]["summary"]["add"]))
-            if self.changes["new"]["summary"].get("delete"):
-                sumups.append("%s document(s) deleted" % format_number(self.changes["new"]["summary"]["delete"]))
-            if self.changes["new"]["summary"].get("update"):
-                sumups.append("%s document(s) updated" % format_number(self.changes["new"]["summary"]["update"]))
+            sumups.append("%s document(s) added" % format_number(self.changes["new"]["_summary"].get("add",0)))
+            sumups.append("%s document(s) deleted" % format_number(self.changes["new"]["_summary"].get("delete",0)))
+            sumups.append("%s document(s) updated" % format_number(self.changes["new"]["_summary"].get("update",0)))
             txt += ", ".join(sumups) + "\n"
-
+        else:
+            txt += "No information available for added/deleted/updated documents\n"
 
         with open(filepath,"w") as fout:
             fout.write(txt)
@@ -734,7 +766,7 @@ class DifferManager(BaseManager):
             nonlocal filepath
             nonlocal filename
             assert format == "txt", "Only 'txt' format supported for now"
-            filename = filename or "release_%s.%s" % (changes["new"]["version"],format)
+            filename = filename or "release_%s.%s" % (changes["new"]["_version"],format)
             filepath = os.path.join(diff_folder,filename)
             render = ReleaseNoteTxt(changes)
             render.save(filepath)
@@ -779,6 +811,27 @@ class DifferManager(BaseManager):
 
         Return a dictionnary containing significant changes.
         """
+        def get_counts(doc):
+            stats = {}
+            for subsrc,count in doc["merge_stats"].items():
+                src_sub = get_source_fullname(subsrc).split(".")
+                if len(src_sub) > 1:
+                    # we have sub-sources we need to split the count
+                    src,sub = src_sub
+                    stats.setdefault(src,{})
+                    stats[src][sub] = {"_count" : count}
+                else:
+                    src = src_sub[0]
+                    stats[src] = {"_count" : count}
+            return stats
+        
+        def get_versions(doc):
+            try:
+                versions = dict((k,{"_version" :v["version"]}) for k,v in doc["_meta"]["src"].items() if v.get("version"))
+            except KeyError:
+                # previous version format
+                versions = dict((k,{"_version" : v}) for k,v in doc["_meta"]["src_version"].items())
+            return versions
 
         if old_db_col_names is None and new_db_col_names is None:
             assert diff_folder, "Need at least diff_folder parameter"
@@ -810,20 +863,19 @@ class DifferManager(BaseManager):
         if not old_doc:
             raise DifferException("Collection '%s' has no corresponding build document" % \
                         old.target_collection.name)
-
         tgt_db = get_target_db()
         old_total = tgt_db[old.target_collection.name].count()
         new_total = tgt_db[new.target_collection.name].count()
         changes = {
                 "old" : {
-                    "version" : old.version,
-                    "count" : old_total,
+                    "_version" : old.version,
+                    "_count" : old_total,
                     },
                 "new" : {
-                    "version" : new.version,
-                    "count" : new_total,
-                    "fields" : {},
-                    "summary" : diff_stats,
+                    "_version" : new.version,
+                    "_count" : new_total,
+                    "_fields" : {},
+                    "_summary" : diff_stats,
                     },
                 "generated_on": str(datetime.now()),
                 "sources" : {
@@ -832,77 +884,35 @@ class DifferManager(BaseManager):
                     "updated" : {},
                     }
                 }
-        def get_counts(doc):
-            stats = {}
-            for subsrc,count in doc["merge_stats"].items():
-                src = get_source_fullname(subsrc).split(".")[0]
-                stats.setdefault(src,0)
-                stats[src] += count
-            return stats
-        new_stats = get_counts(new_doc)
-        old_stats = get_counts(old_doc)
-        # source names in merge_stats and sources are the same type (ie. actual collection name)
-        # so there's no need to convert to main source at this point
-        new_srcs = new_doc["build_config"]["sources"]
-        # first detect new datasources and changes in documents counts
-        ops = jsondiff(old_stats,new_stats)
-        for op in ops:
-            src = op["path"].strip("/")
-            assert src in new_srcs, "Source '%s' has been merged but is not part of the the configuration" % src
-            #if not src in new_srcs:
-            #    continue
-            new_count = op.get("value")
-            if op["op"] == "add" and src in new_srcs:
-                changes["sources"]["added"][src] = {"count": new_count}
-            elif op["op"] == "remove":
-                old_count = old_stats[src]
-                changes["sources"]["deleted"][src] = {"count" : old_count}
-            elif op["op"] == "replace":
-                old_count = old_stats[src]
-                # put version there, even if there's no changes, so we can display in the report anyway
-                changes["sources"]["updated"][src] = {
-                        "old" : {"count" : old_count, "version" : old_doc["_meta"]["src"][src].get("version")},
-                        "new" : {"count" : new_count, "version" : new_doc["_meta"]["src"][src].get("version")}
-                        }
-
-        # then deal with version changes
-        def get_versions(doc):
-            try:
-                versions = dict((k,v["version"]) for k,v in doc["_meta"]["src"].items() if v.get("version"))
-            except KeyError:
-                # previous version format
-                versions = dict((k,v) for k,v in doc["_meta"]["src_version"].items())
-            return versions
+        op_map = {"replace" : "updated",
+                  "add" : "added",
+                  "delete" : "deleted"}
+        # for later use
         new_versions = get_versions(new_doc)
         old_versions = get_versions(old_doc)
-        ops = jsondiff(old_versions,new_versions)
+        # now deal with stats/counts. Counts are related to uploader, ie. sub-sources
+        new_stats = get_counts(new_doc)
+        old_stats = get_counts(old_doc)
+
+        new_info = update_dict_recur(new_versions,new_stats)
+        old_info = update_dict_recur(old_versions,old_stats)
+
+        ops = jsondiff(old_info,new_info)
         for op in ops:
-            src = op["path"].strip("/")
-            new_version = op.get("value")
-            if op["op"] == "add" and src in new_srcs:
-                assert src in changes["sources"]["added"], \
-                        "Found new version '%s' for source '%s' but no document count associated" % (new_version,src)
-                changes["sources"]["added"][src]["version"] = new_version
+            # get main source
+            main_src = op["path"].strip("/").split("/")[0]
+            if op["op"] == "add":
+                for k,v in op["value"].items():
+                    changes["sources"]["added"][main_src] = new_info[main_src]
             elif op["op"] == "remove":
-                old_version = old_versions[src]
-                assert src in changes["sources"]["deleted"], \
-                        "Found deleted version '%s' but source '%s' wasn't found in deleted ones" % (old_version,src)
-                changes["sources"]["deleted"][src]["version"] = old_version
+                changes["sources"]["deleted"][main_src] = old_info[main_src]
             elif op["op"] == "replace":
-                old_version = old_versions[src]
-                # when a source is updated, version can change but the number
-                # of documents doesn't necessarily change. In that case, diff won't
-                # report any differences, but we want to report the #docs anyway
-                # to avoid confusion of having an empty cell/information
-                if not changes["sources"]["updated"].get(src):
-                    old_count = old_stats.get(src)
-                    new_count = new_stats.get(src)
-                    changes["sources"]["updated"][src] = {
-                            "old" : {"count" : old_count},
-                            "new" : {"count" : new_count}
-                            }
-                changes["sources"]["updated"][src]["new"]["version"] = new_version
-                changes["sources"]["updated"][src]["old"]["version"] = old_version
+                remains = op["path"].strip("/").split("/")[1:]
+                changes["sources"]["updated"][main_src] = {
+                        "new" : new_info[main_src],
+                        "old" : old_info[main_src]}
+            else:
+                raise ValueError("Unknown operation '%s' while computing changes" % op["op"])
 
         # mapping diff: we re-compute them and don't use any mapping.pyobj because that file
         # only allows "add" operation as a safety rule (can't delete fields in ES mapping once indexed)
@@ -911,6 +921,7 @@ class DifferManager(BaseManager):
             changes["new"]["fields"].setdefault(op["op"],[]).append(op["path"].strip("/").replace("/","."))
 
         return changes
+
 
     def build_diff_report(self, diff_folder, detailed=True, max_reported_ids=None):
         """
