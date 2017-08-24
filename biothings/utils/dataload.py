@@ -83,16 +83,18 @@ def to_boolean(val,true_str=['true','1', 't', 'y', 'yes', 'Y','Yes','YES',1],fal
             return False
 
 
-def merge_duplicate_rows(rows, db):
+def merge_duplicate_rows_2(rows, db):
     """
     @param rows: rows to be grouped by
     @param db: database name, string
     """
     rows = list(rows)
+
     keys = set()
     for row in rows:
         for k in row[db]:
             keys.add(k)
+
     first_row = rows[0]
     other_rows = rows[1:]
     for row in other_rows:
@@ -100,7 +102,10 @@ def merge_duplicate_rows(rows, db):
             try:
                 aa = first_row[db][i]
             except KeyError:
-                first_row[db][i] = row[db][i]
+                try:
+                    first_row[db][i] = row[db][i]
+                except:
+                    pass
                 continue
             if i in row[db]:
                 if row[db][i] != first_row[db][i]:
