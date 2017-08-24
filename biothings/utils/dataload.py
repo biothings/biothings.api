@@ -83,7 +83,7 @@ def to_boolean(val,true_str=['true','1', 't', 'y', 'yes', 'Y','Yes','YES',1],fal
             return False
 
 
-def merge_duplicate_rows_2(rows, db):
+def merge_duplicate_rows(rows, db):
     """
     @param rows: rows to be grouped by
     @param db: database name, string
