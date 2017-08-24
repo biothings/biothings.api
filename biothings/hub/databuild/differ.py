@@ -443,16 +443,16 @@ class ReleaseNoteTxt(object):
                     table.add_row(["%s.%s" % (src,sub),"-",main_info["_version"],"-",format_number(sub_info["_count"])]) # only _count avail there
             else:
                 main_count = main_info.get("_count") and format_number(main_info["_count"]) or ""
-                table.add_row([src,"-",main_info["_version"],"-",main_count])
+                table.add_row([src,"-",main_info.get("_version",""),"-",main_count])
         for src,info in sorted(self.changes["sources"]["deleted"].items(),key=lambda e: e[0]):
             main_info = dict([(k,v) for k,v in info.items() if k.startswith("_")])
             sub_infos = dict([(k,v) for k,v in info.items() if not k.startswith("_")])
             if sub_infos:
                 for sub,sub_info in sub_infos.items():
-                    table.add_row(["%s.%s" % (src,sub),main_info["_version"],"-",format_number(sub_info["_count"]),"-"]) # only _count avail there
+                    table.add_row(["%s.%s" % (src,sub),main_info.get("_version",""),"-",format_number(sub_info["_count"]),"-"]) # only _count avail there
             else:
                 main_count = main_info.get("_count") and format_number(main_info["_count"]) or ""
-                table.add_row([src,main_info["_version"],"-",main_count,"-"])
+                table.add_row([src,main_info.get("_version",""),"-",main_count,"-"])
         for src,info in sorted(self.changes["sources"]["updated"].items(),key=lambda e: e[0]):
             # extract information from main-source
             old_main_info = dict([(k,v) for k,v in info["old"].items() if k.startswith("_")])
@@ -460,7 +460,7 @@ class ReleaseNoteTxt(object):
             old_main_count = old_main_info.get("_count") and format_number(old_main_info["_count"]) or None
             new_main_count = new_main_info.get("_count") and format_number(new_main_info["_count"]) or None
             if old_main_count is None:
-                assert new_main_count is None, "Sub-sources found, old and new count should " + \
+                assert new_main_count is None, "Sub-sources found for '%s', old and new count should " % src + \
                         "both be None. Info was: %s" % info
                 old_sub_infos = dict([(k,v) for k,v in info["old"].items() if not k.startswith("_")])
                 new_sub_infos = dict([(k,v) for k,v in info["new"].items() if not k.startswith("_")])
@@ -469,12 +469,12 @@ class ReleaseNoteTxt(object):
                 if old_sub_infos:
                     assert new_sub_infos
                     for sub,sub_info in old_sub_infos.items():
-                        table.add_row(["%s.%s" % (src,sub),old_main_info["_version"],new_main_info["_version"],
+                        table.add_row(["%s.%s" % (src,sub),old_main_info.get("_version",""),new_main_info.get("_version",""),
                             format_number(sub_info["_count"]),format_number(new_sub_infos[sub]["_count"])])
             else:
                 assert not new_main_count is None, "No sub-sources found, old and new count should NOT " + \
                         "both be None. Info was: %s" % info
-                table.add_row([src,old_main_info["_version"],new_main_info["_version"],
+                table.add_row([src,old_main_info.get("_version",""),new_main_info.get("_version",""),
                     old_main_count,new_main_count])
 
         txt += table.get_string()
@@ -893,17 +893,18 @@ class DifferManager(BaseManager):
         # now deal with stats/counts. Counts are related to uploader, ie. sub-sources
         new_stats = get_counts(new_doc)
         old_stats = get_counts(old_doc)
-
         new_info = update_dict_recur(new_versions,new_stats)
         old_info = update_dict_recur(old_versions,old_stats)
+        #print("new_info = %s" % new_info)
+        #print("old_info = %s" % old_info)
 
         ops = jsondiff(old_info,new_info)
         for op in ops:
             # get main source
             main_src = op["path"].strip("/").split("/")[0]
             if op["op"] == "add":
-                for k,v in op["value"].items():
-                    changes["sources"]["added"][main_src] = new_info[main_src]
+                print(op)
+                changes["sources"]["added"][main_src] = new_info[main_src]
             elif op["op"] == "remove":
                 changes["sources"]["deleted"][main_src] = old_info[main_src]
             elif op["op"] == "replace":
