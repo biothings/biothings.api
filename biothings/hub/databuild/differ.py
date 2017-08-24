@@ -1040,7 +1040,7 @@ class DifferManager(BaseManager):
 
     def publish_diff(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None, steps=["reset","upload","meta"]):
         """
-        Publish diff data (diff files, metadata, release notes, etc...) to S3, and then register that version to it's
+        Publish diff data (diff files, metadata, release notes, etc...) to S3, and then register that version so it's
         available to auto-updating hub.
         - either pass old_db_col_names and new_db_col_names collections names, or diff_folder containing diff data.
         - steps:
