@@ -93,6 +93,16 @@ class BiothingTestHelperMixin(object):
         assert res.status == 200, "status {} != 200 for GET to url: {}".format(res.status, url)
         return con
 
+    def get_status_code(self, url, status_code):
+        res, con = self.h.request((url))
+        assert res.status == status_code, "status {} != {} for GET to url: {}".format(res.status, status_code, url)
+    
+    def post_status_code(self, url, params, status_code):
+        headers = {'Content-type': 'application/x-www-form-urlencoded'}
+        res, con = self.h.request(url, 'POST', urlencode(self.encode_dict(params)), headers=headers)
+        assert res.status == status_code, "status {} != {} for url: {}\nparams: {}".format(res.status, status_code, url, params)
+        #return con
+
     def get_404(self, url):
         res, con = self.h.request((url))
         assert res.status == 404, "status {} != 404 for GET to url: {}".format(res.status, url)
