@@ -154,7 +154,7 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn, SentryMixin, StandaloneTr
         _args = self._sanitize_params(_args)
         return _args
 
-    def return_json(self, data, encode=True, indent=None):
+    def return_json(self, data, encode=True, indent=None, status_code=200, content_type_header='application/json; charset=UTF-8'):
         '''Return passed data object as JSON response.
         If **jsonp** parameter is set in the  request, return a valid 
         `JSONP <https://en.wikipedia.org/wiki/JSONP>`_ response.
@@ -162,15 +162,17 @@ class BaseHandler(tornado.web.RequestHandler, GAMixIn, SentryMixin, StandaloneTr
         :param data: object to return as JSON
         :param encode: if encode is False, assumes input data is already a JSON encoded string.
         :param indent: number of indents per level in JSON string
+        :param status_code: HTTP status code for response
         '''    
         # call the recursive function to sort the data by keys and add the json-ld information
         indent = indent or 2   # tmp settings
+        self.set_status(status_code)
         if SUPPORT_MSGPACK and self.web_settings.ENABLE_MSGPACK and getattr(self, 'use_msgpack', False):
             _json_data = msgpack.packb(data, use_bin_type=True, default=msgpack_encode_datetime)
             self.set_header("Content-Type", "application/x-msgpack")
         else:
             _json_data = json.dumps(data, cls=DateTimeJSONEncoder, indent=indent) if encode else data
-            self.set_header("Content-Type", "application/json; charset=UTF-8")
+            self.set_header("Content-Type", content_type_header)
         if not self.web_settings.DISABLE_CACHING:
             #get etag if data is a dictionary and has "etag" attribute.
             etag = data.get('etag', None) if isinstance(data, dict) else None
