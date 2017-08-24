@@ -164,7 +164,7 @@ class IndexerManager(BaseManager):
         task = asyncio.ensure_future(do(index))
         return fut
 
-    def publish_snapshot(self, prev=None, snapshot=None, diff_folder=None, index=None):
+    def publish_snapshot(self, s3_folder, prev=None, snapshot=None, diff_folder=None, index=None):
         """
         Publish snapshot metadata (not the actal snapshot, but the metadata, release notes, etc... associated to it) to S3,
         and then register that version to it's available to auto-updating hub.
@@ -204,7 +204,7 @@ class IndexerManager(BaseManager):
             # from a diff process done before. release notes will be the same though)
             self.logger.info("Uploading release notes from '%s' to s3" % diff_folder)
             notes = glob.glob(os.path.join(diff_folder,"%s.*" % release_note))
-            s3basedir = os.path.join(btconfig.S3_DIFF_FOLDER,esb.version)
+            s3basedir = os.path.join(s3_folder,esb.version)
             for note in notes:
                 if os.path.exists(note):
                     s3key = os.path.join(s3basedir,os.path.basename(note))
@@ -233,7 +233,7 @@ class IndexerManager(BaseManager):
         utc_epoch = str(int(time.mktime(local_ts.timetuple())))
         # it's a full release, but all build info metadata (full, incremental) all go
         # to the diff bucket (this is the main entry)
-        s3key = os.path.join(btconfig.S3_DIFF_FOLDER,build_info)
+        s3key = os.path.join(s3_folder,build_info)
         aws.send_s3_file(build_info_path,s3key,
                 aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
                 s3_bucket=btconfig.S3_DIFF_BUCKET,metadata={"lastmodified":utc_epoch},
@@ -241,7 +241,7 @@ class IndexerManager(BaseManager):
         url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
                 s3_bucket=btconfig.S3_DIFF_BUCKET)
         self.logger.info("Full release metadata published for version: '%s'" % url)
-        publish_data_version(esb.version)
+        publish_data_version(s3_folder,esb.version)
         self.logger.info("Registered version '%s'" % (esb.version))
 
 

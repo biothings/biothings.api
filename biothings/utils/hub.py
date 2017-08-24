@@ -316,7 +316,7 @@ def stats(src_dump):
     pass
 
 
-def publish_data_version(version,env=None,update_latest=True):
+def publish_data_version(s3_folder,version,env=None,update_latest=True):
     """
     Update remote files:
     - versions.json: add version to the JSON list
@@ -324,7 +324,7 @@ def publish_data_version(version,env=None,update_latest=True):
     - latest.json: update redirect so it points to version
     """
     # register version
-    versionskey = os.path.join(config.S3_DIFF_FOLDER,"%s.json" % VERSIONS)
+    versionskey = os.path.join(s3_folder,"%s.json" % VERSIONS)
     try:
         versions = aws.get_s3_file(versionskey,return_what="content",
                 aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
@@ -343,7 +343,7 @@ def publish_data_version(version,env=None,update_latest=True):
 
     # update latest
     if type(version) != list and update_latest:
-        latestkey = os.path.join(config.S3_DIFF_FOLDER,"%s.json" % LATEST)
+        latestkey = os.path.join(s3_folder,"%s.json" % LATEST)
         key = None
         try:
             key = aws.get_s3_file(latestkey,return_what="key",
@@ -358,7 +358,7 @@ def publish_data_version(version,env=None,update_latest=True):
             key = aws.get_s3_file(latestkey,return_what="key",
                     aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
                     s3_bucket=config.S3_DIFF_BUCKET)
-        newredir = os.path.join("/",config.S3_DIFF_FOLDER,"%s.json" % version)
+        newredir = os.path.join("/",s3_folder,"%s.json" % version)
         key.set_redirect(newredir)
 
 

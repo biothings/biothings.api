@@ -1038,10 +1038,10 @@ class DifferManager(BaseManager):
                 # pyobj not a dict
                 continue
 
-    def publish_diff(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None, steps=["reset","upload","meta"]):
+    def publish_diff(self, s3_folder, old_db_col_names=None, new_db_col_names=None, diff_folder=None, steps=["reset","upload","meta"]):
         """
-        Publish diff data (diff files, metadata, release notes, etc...) to S3, and then register that version so it's
-        available to auto-updating hub.
+        Publish diff data (diff files, metadata, release notes, etc...) to s3_folder (within config.S3_DIFF_BUCKET),
+        and then register that version so it's available to auto-updating hub.
         - either pass old_db_col_names and new_db_col_names collections names, or diff_folder containing diff data.
         - steps:
           * reset: highly recommended, reset synced flag in diff files so they won't get skipped when used...
@@ -1061,7 +1061,7 @@ class DifferManager(BaseManager):
         except FileNotFoundError:
             raise FileNotFoundError("metadata.json is missing")
         diff_version = meta["diff"]["version"]
-        s3basedir = os.path.join(btconfig.S3_DIFF_FOLDER,diff_version)
+        s3basedir = os.path.join(s3_folder,diff_version)
         release_note = "release_%s" % meta["new"]["version"]
 
         @asyncio.coroutine
@@ -1128,7 +1128,7 @@ class DifferManager(BaseManager):
                     metadata = json.load(open(os.path.join(diff_folder,"metadata.json")))
                     local_ts = dtparse(metadata["_meta"]["timestamp"])
                     utc_epoch = str(int(time.mktime(local_ts.timetuple())))
-                    s3key = os.path.join(btconfig.S3_DIFF_FOLDER,diff_file)
+                    s3key = os.path.join(s3_folder,diff_file)
                     aws.send_s3_file(diff_meta_path,s3key,
                             aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
                             s3_bucket=btconfig.S3_DIFF_BUCKET,metadata={"lastmodified":utc_epoch},
@@ -1136,7 +1136,7 @@ class DifferManager(BaseManager):
                     url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
                             s3_bucket=btconfig.S3_DIFF_BUCKET)
                     self.logger.info("Incremental release metadata published for version: '%s'" % url)
-                    publish_data_version(diff_version)
+                    publish_data_version(s3_folder,diff_version)
                     self.logger.info("Registered version '%s'" % (diff_version))
                 job = yield from self.job_manager.defer_to_thread(pinfo,gen_meta)
                 yield from job
