@@ -259,7 +259,8 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             else:
                 ts = info["started_at"].timestamp()
         elif col.database.name == config.DATA_SRC_DATABASE:
-            info = src_db["src_dump"].find_one({"$where":"function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}}" % col.name})
+            src_dump = get_src_dump()
+            info = src_dump.find_one({"$where":"function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}}" % col.name})
             if not info:
                 logger.warning("Can't find information for source collection '%s'" % col.name)
             else:
@@ -296,6 +297,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             else:
                 mt = os.path.getmtime(cache_file)
                 if ts and mt >= ts:
+                    logging.debug("Cache is valid, modiftime_cache:%s >= col_timestamp:%s" % (mt,ts))
                     use_cache = True
                 else:
                     logger.info("Cache is too old, discard it")
