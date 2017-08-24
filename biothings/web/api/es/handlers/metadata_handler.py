@@ -41,12 +41,12 @@ class MetadataHandler(BaseESRequestHandler):
                     host=self.request.host, app_dir=self.web_settings._app_git_repo)
 
         # get the query for annotation GET handler
-        try:
-            _query = _query_builder.metadata_query()
-        except Exception as e:
-            self.log_exceptions("Error building metadata query")
-            self.return_json({'success': False, 'error': 'Error building query'})
-            return
+        #try:
+        _query = _query_builder.metadata_query()
+        #except Exception as e:
+        #    self.log_exceptions("Error building metadata query")
+        #    self.return_json({'success': False, 'error': 'Error building query'})
+        #    return
 
         logging.debug("Request query kwargs: {}".format(_query))
 
@@ -57,12 +57,12 @@ class MetadataHandler(BaseESRequestHandler):
 
         _query = self._pre_query_GET_hook(options, _query)
 
-        try:
-            res = _backend.metadata_query(_query)
-        except Exception:
-            self.log_exceptions("Error running query")
-            self.return_json({'success': False, 'error': 'Error executing query'})
-            return
+        #try:
+        res = _backend.metadata_query(_query)
+        #except Exception:
+        #    self.log_exceptions("Error running query")
+        #    self.return_json({'success': False, 'error': 'Error executing query'})
+        #    return
 
         #logging.debug("Raw query result: {}".format(res))
 
@@ -74,12 +74,12 @@ class MetadataHandler(BaseESRequestHandler):
         res = self._pre_transform_GET_hook(options, res)
 
         # clean result
-        try:
-            res = _result_transformer.clean_metadata_response(res, fields=self.request.path.endswith('fields'))
-        except Exception:
-            self.log_exceptions("Error transforming result")
-            self.return_json({'success': False, 'error': 'Error transforming query result'})
-            return
+        #try:
+        res = _result_transformer.clean_metadata_response(res, fields=self.request.path.endswith('fields'))
+        #except Exception:
+        #    self.log_exceptions("Error transforming result")
+        #    self.return_json({'success': False, 'error': 'Error transforming query result'})
+        #    return
 
         res = self._pre_finish_GET_hook(options, res)
 
