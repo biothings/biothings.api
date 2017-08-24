@@ -40,8 +40,8 @@ class BiothingHandler(BaseESRequestHandler):
     def get(self, bid=None):
         ''' Handle a GET to the annotation lookup endpoint.'''
         if not bid:
-            raise HTTPError(404)
-            #return
+            self.return_json(self.web_settings.FOUR_HUNDRED_TEMPLATE.format(msg=self.web_settings.ID_REQUIRED_MESSAGE), encode=False, status_code=404, content_type_header='text/html; charset=UTF-8')
+            return
             
         # redirect this id
         self._regex_redirect(bid)
@@ -103,7 +103,9 @@ class BiothingHandler(BaseESRequestHandler):
             res = _backend.annotation_GET_query(_query)
         except Exception:
             self.log_exceptions("Error executing query")
-            raise HTTPError(404)
+            self.return_json(self.web_settings.FOUR_HUNDRED_TEMPLATE.format(msg=self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)), encode=False, status_code=404, content_type_header='text/html; charset=UTF-8')
+            #raise HTTPError(404)
+            return
         
         #logging.debug("Raw query result: {}".format(res))
 
@@ -123,12 +125,15 @@ class BiothingHandler(BaseESRequestHandler):
             res = _result_transformer.clean_annotation_GET_response(res)
         except Exception:
             self.log_exceptions("Error transforming result")
-            raise HTTPError(404)
+            self.return_json(self.web_settings.FOUR_HUNDRED_TEMPLATE.format(msg=self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)), encode=False, status_code=404, content_type_header='text/html; charset=UTF-8')
+            #raise HTTPError(404)
+            return
 
         # return result
         if not res:
-            raise HTTPError(404)
-            #return
+            self.return_json(self.web_settings.FOUR_HUNDRED_TEMPLATE.format(msg=self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)), encode=False, status_code=404, content_type_header='text/html; charset=UTF-8')
+            #raise HTTPError(404)
+            return
 
         res = self._pre_finish_GET_hook(options, res)
 
@@ -146,12 +151,12 @@ class BiothingHandler(BaseESRequestHandler):
         try:
             kwargs = self.get_query_params()
         except BiothingParameterTypeError as e:
-            self._return_data_and_track({'success': False, 'error': "{0}".format(e)}, ga_event_data={'qsize': 0})
+            self._return_data_and_track({'success': False, 'error': "{0}".format(e)}, ga_event_data={'qsize': 0}, status_code=400)
             return
-        except Exception as e:
-            self.log_exceptions("Error in get_query_params")
-            self._return_data_and_track({'success': False, 'error': "Error parsing input parameter, check input types"}, ga_event_data={'qsize': 0})
-            return 
+        #except Exception as e:
+        #    self.log_exceptions("Error in get_query_params")
+        #    self._return_data_and_track({'success': False, 'error': "Error parsing input parameter, check input types"}, ga_event_data={'qsize': 0})
+        #    return 
 
         # split kwargs into options
         options = self.get_cleaned_options(kwargs)
@@ -161,7 +166,7 @@ class BiothingHandler(BaseESRequestHandler):
         
         if not options.control_kwargs.ids:
             self._return_data_and_track({'success': False, 'error': "Missing required parameters."}, 
-                                        ga_event_data={'qsize': 0})
+                                        ga_event_data={'qsize': 0}, status_code=400)
             return
         
         options = self._pre_query_builder_POST_hook(options)
@@ -182,12 +187,13 @@ class BiothingHandler(BaseESRequestHandler):
         #           Build query    
         ###################################################
 
-        try:
-            _query = _query_builder.annotation_POST_query(options.control_kwargs.ids)
-        except Exception as e:
-            self.log_exceptions("Error building annotation POST query")
-            self._return_data_and_track({'success': False, 'error': 'Error building query'}, ga_event_data={'qsize': len(options.control_kwargs.ids)})
-            return
+        _query = _query_builder.annotation_POST_query(options.control_kwargs.ids)
+        #try:
+        #    _query = _query_builder.annotation_POST_query(options.control_kwargs.ids)
+        #except Exception as e:
+        #    self.log_exceptions("Error building annotation POST query")
+        #    self._return_data_and_track({'success': False, 'error': 'Error building query'}, ga_event_data={'qsize': len(options.control_kwargs.ids)})
+        #    return
 
         logging.debug("Request query: {}".format(_query))
 
@@ -206,7 +212,7 @@ class BiothingHandler(BaseESRequestHandler):
         except TypeError as e:
             self.log_exceptions("Error executing annotation POST query")
             self._return_data_and_track({'success': False, 'error': 'Error executing query'},
-                            ga_event_data={'qsize': len(options.control_kwargs.ids)})
+                            ga_event_data={'qsize': len(options.control_kwargs.ids)}, status_code=400)
             return
 
         #logging.debug("Raw query result: {}".format(res))
@@ -223,12 +229,13 @@ class BiothingHandler(BaseESRequestHandler):
         ###################################################
 
         # clean result
-        try:
-            res = _result_transformer.clean_annotation_POST_response(bid_list=options.control_kwargs.ids, res=res)
-        except Exception as e:
-            self.log_exceptions("Error transforming annotation POST results")
-            self._return_data_and_track({'success': False, 'error': 'Error transforming results'},
-                            ga_event_data={'qsize': len(options.control_kwargs.ids)})       
+        res = _result_transformer.clean_annotation_POST_response(bid_list=options.control_kwargs.ids, res=res)
+        #try:
+        #    res = _result_transformer.clean_annotation_POST_response(bid_list=options.control_kwargs.ids, res=res)
+        #except Exception as e:
+        #    self.log_exceptions("Error transforming annotation POST results")
+        #    self._return_data_and_track({'success': False, 'error': 'Error transforming results'},
+        #                    ga_event_data={'qsize': len(options.control_kwargs.ids)})       
  
         res = self._pre_finish_POST_hook(options, res)
 
