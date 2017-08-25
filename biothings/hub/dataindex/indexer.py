@@ -173,9 +173,12 @@ class IndexerManager(BaseManager):
         between current snapshot and a previous version could have been generated. In that case, 
 
         'prev' and 'snaphost' must be defined (as strings, should match merged collections names) to generate
-        a release folder, or directly release_folder. If all 3 are None, no release note will be referenced in snapshot metadata.
+        a release folder, or directly release_folder (if it's required to find release notes).
+        If all 3 are None, no release note will be referenced in snapshot metadata.
 
         'snapshot' and actual underlying index can have different names, if so, 'index' can be specified.
+        'index' is mainly used to get the build_version from metadata as this information isn't part of snapshot
+        information. It means in order to publish a snaphost, both the snapshot *and* the index must exist.
         """
         assert getattr(btconfig,"BIOTHINGS_ROLE",None) == "master","Hub needs to be master to publish metadata about snapshots"
         assert hasattr(btconfig,"READONLY_SNAPSHOT_REPOSITORY"), "READONLY_SNAPSHOT_REPOSITORY must be defined to publish metadata about snapshots"
@@ -197,15 +200,15 @@ class IndexerManager(BaseManager):
                               "snapshot_name" : snapshot}
                 }
         # TODO: merged collection name can be != index name which can be != snapshot name...
-        if prev and index:
-            release_folder = generate_diff_folder(prev,index)
+        if prev and index and not release_folder:
+            release_folder = generate_folder(btconfig.RELEASE_PATH,prev,index)
         if release_folder and os.path.exists(release_folder):
             # ok, we have something in that folder, just pick the release note files
             # (we can generate diff + snaphost at the same time, so there could be diff files in that folder
             # from a diff process done before. release notes will be the same though)
-            self.logger.info("Uploading release notes from '%s' to s3" % release_folder)
-            notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
             s3basedir = os.path.join(s3_folder,esb.version)
+            notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
+            self.logger.info("Uploading release notes from '%s' to s3 folder '%s'" % (notes,s3basedir))
             for note in notes:
                 if os.path.exists(note):
                     s3key = os.path.join(s3basedir,os.path.basename(note))
@@ -223,6 +226,8 @@ class IndexerManager(BaseManager):
             if rel_json_url:
                 full_meta.setdefault("changes",{})
                 full_meta["changes"]["json"] = {"url" : rel_json_url}
+        else:
+            self.logger.info("No release_folder found, no release notes will be part of the publishing")
         
         # now dump that metadata
         build_info = "%s.json" % esb.version

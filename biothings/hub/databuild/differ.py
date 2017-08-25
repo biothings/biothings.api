@@ -823,7 +823,7 @@ class DifferManager(BaseManager):
         """
         def get_counts(doc):
             stats = {}
-            for subsrc,count in doc["merge_stats"].items():
+            for subsrc,count in doc.get("merge_stats",{}).items():
                 src_sub = get_source_fullname(subsrc).split(".")
                 if len(src_sub) > 1:
                     # we have sub-sources we need to split the count
@@ -837,10 +837,11 @@ class DifferManager(BaseManager):
         
         def get_versions(doc):
             try:
-                versions = dict((k,{"_version" :v["version"]}) for k,v in doc["_meta"]["src"].items() if v.get("version"))
+                versions = dict((k,{"_version" :v["version"]}) for k,v in \
+                        doc.get("_meta",{}).get("src",{}).items() if v.get("version"))
             except KeyError:
                 # previous version format
-                versions = dict((k,{"_version" : v}) for k,v in doc["_meta"]["src_version"].items())
+                versions = dict((k,{"_version" : v}) for k,v in doc.get("_meta",{}).get("src_version",{}).items())
             return versions
 
         if old_db_col_names is None and new_db_col_names is None:
@@ -869,10 +870,9 @@ class DifferManager(BaseManager):
         if not new_doc:
             raise DifferException("Collection '%s' has no corresponding build document" % \
                     new.target_collection.name)
-        old_doc = get_src_build().find_one({"_id":old.target_collection.name})
-        if not old_doc:
-            raise DifferException("Collection '%s' has no corresponding build document" % \
-                        old.target_collection.name)
+        # old_doc doesn't have to exist (but new_doc has) in case we build a initial release note
+        # compared against nothing
+        old_doc = get_src_build().find_one({"_id":old.target_collection.name}) or {}
         tgt_db = get_target_db()
         old_total = tgt_db[old.target_collection.name].count()
         new_total = tgt_db[new.target_collection.name].count()
@@ -928,9 +928,9 @@ class DifferManager(BaseManager):
 
         # mapping diff: we re-compute them and don't use any mapping.pyobj because that file
         # only allows "add" operation as a safety rule (can't delete fields in ES mapping once indexed)
-        ops = jsondiff(old_doc["mapping"],new_doc["mapping"])
+        ops = jsondiff(old_doc.get("mapping",{}),new_doc["mapping"])
         for op in ops:
-            changes["new"]["fields"].setdefault(op["op"],[]).append(op["path"].strip("/").replace("/","."))
+            changes["new"]["_fields"].setdefault(op["op"],[]).append(op["path"].strip("/").replace("/","."))
 
         return changes
 
