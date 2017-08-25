@@ -2,6 +2,7 @@
 Backend for storing merged genedoc after building.
 Support MongoDB, ES, CouchDB
 '''
+import os
 from functools import partial
 from biothings.utils.common import get_timestamp, get_random_string
 from biothings.utils.backend import DocBackendBase, DocMongoBackend, DocESBackend
@@ -228,4 +229,10 @@ def create_backend(db_col_names,name_only=False):
             return DocMongoBackend(db,col)
         else:
             return DocESBackend(db)
+
+def generate_folder(root_folder, old_db_col_names, new_db_col_names):
+    new = create_backend(new_db_col_names,name_only=True)
+    old = create_backend(old_db_col_names,name_only=True)
+    diff_folder = os.path.join(root_folder, "%s-%s" % (old, new))
+    return diff_folder
 

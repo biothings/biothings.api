@@ -21,7 +21,6 @@ from .backend import create_backend
 from ..dataload.storage import UpsertStorage
 from biothings.utils.es import ESIndexer
 import biothings.utils.jsonpatch as jsonpatch
-from biothings.utils.diff import generate_diff_folder
 
 logging = btconfig.logger
 

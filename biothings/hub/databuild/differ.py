@@ -13,7 +13,8 @@ from biothings.utils.common import timesofar, iter_n, get_timestamp, \
 from biothings.utils.mongo import id_feeder, get_target_db
 from biothings.utils.hub_db import get_src_build, get_source_fullname
 from biothings.utils.loggers import get_logger, HipchatHandler
-from biothings.utils.diff import diff_docs_jsonpatch, generate_diff_folder
+from biothings.utils.diff import diff_docs_jsonpatch
+from biothings.hub.databuild.backend import generate_folder
 from biothings import config as btconfig
 from biothings.utils.manager import BaseManager, ManagerError
 from .backend import create_backend
@@ -92,7 +93,7 @@ class BaseDiffer(object):
         if type(steps) == str:
             steps = [steps]
 
-        diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
+        diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
 
         if mode != "force" and os.path.exists(diff_folder):
             if mode == "purge" and os.path.exists(diff_folder):
@@ -477,8 +478,11 @@ class ReleaseNoteTxt(object):
                 table.add_row([src,old_main_info.get("_version",""),new_main_info.get("_version",""),
                     old_main_count,new_main_count])
 
-        txt += table.get_string()
-        txt += "\n"
+        if table._rows:
+            txt += table.get_string()
+            txt += "\n"
+        else:
+            txt += "No datasource changed.\n"
 
         total_count = self.changes["new"].get("_count")
         if self.changes["sources"]["added"]:
@@ -510,6 +514,10 @@ class ReleaseNoteTxt(object):
             txt += ", ".join(sumups) + "\n"
         else:
             txt += "No information available for added/deleted/updated documents\n"
+
+        if self.changes.get("note"):
+            txt += "\n"
+            txt += "Note: %s\n" % self.changes["note"]
 
         with open(filepath,"w") as fout:
             fout.write(txt)
@@ -739,47 +747,49 @@ class DifferManager(BaseManager):
                 self.logger.exception("Failed to create diff report: %s" % got_error,extra={"notify":True})
                 raise got_error
 
-        diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
+        diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
         reportfilepath = os.path.join(diff_folder,report_filename)
         job = asyncio.ensure_future(main(diff_folder))
         return job
 
-    def release_note(self, old_db_col_names, new_db_col_names, filename=None,format="txt"):
+    def release_note(self, old_db_col_names, new_db_col_names, filename=None, note=None, format="txt"):
         """
         Generate release note files, in TXT and JSON format, containing significant changes
         summary between target collections old_db_col_names and new_db_col_names. Output files
-        are stored in a diff folder using generate_diff_folder(old,new).
+        are stored in a diff folder using generate_folder(old,new).
 
         'filename' can optionally be specified, though it's not recommended as the publishing pipeline,
         using these files, expects a filenaming convention.
 
+        'note' is an optional free text that can be added to the release note, at the end.
+
         txt 'format' is the only one supported for now.
         """
 
-        diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
-        if not os.path.exists(diff_folder):
-            os.makedirs(diff_folder)
+        release_folder = generate_folder(btconfig.RELEASE_PATH,old_db_col_names,new_db_col_names)
+        if not os.path.exists(release_folder):
+            os.makedirs(release_folder)
         filepath = None
 
         def do():
-            changes = self.build_release_note(old_db_col_names,new_db_col_names)
+            changes = self.build_release_note(old_db_col_names,new_db_col_names,note=note)
             nonlocal filepath
             nonlocal filename
             assert format == "txt", "Only 'txt' format supported for now"
             filename = filename or "release_%s.%s" % (changes["new"]["_version"],format)
-            filepath = os.path.join(diff_folder,filename)
+            filepath = os.path.join(release_folder,filename)
             render = ReleaseNoteTxt(changes)
             render.save(filepath)
             filename = filename.replace(".%s" % format,".json")
-            filepath = os.path.join(diff_folder,filename)
+            filepath = os.path.join(release_folder,filename)
             json.dump(changes,open(filepath,"w"),indent=True)
 
         @asyncio.coroutine
-        def main(diff_folder):
+        def main(release_folder):
             got_error = False
             pinfo = {"category" : "diff",
                      "step" : "release_note",
-                     "source" : diff_folder,
+                     "source" : release_folder,
                      "description" : filename}
             job = yield from self.job_manager.defer_to_thread(pinfo,do)
             def reported(f):
@@ -787,19 +797,19 @@ class DifferManager(BaseManager):
                 try:
                     res = f.result()
                     assert filepath, "No filename defined for generated report, can't attach"
-                    self.logger.info("Release note ready, saved in %s" % diff_folder,extra={"notify":True,"attach":filepath})
+                    self.logger.info("Release note ready, saved in %s" % release_folder,extra={"notify":True,"attach":filepath})
                 except Exception as e:
                     got_error = e
             job.add_done_callback(reported)
             yield from job
             if got_error:
-                self.logger.exception("Failed to create diff report: %s" % got_error,extra={"notify":True})
+                self.logger.exception("Failed to create release note: %s" % got_error,extra={"notify":True})
                 raise got_error
 
-        job = asyncio.ensure_future(main(diff_folder))
+        job = asyncio.ensure_future(main(release_folder))
         return job
 
-    def build_release_note(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None):
+    def build_release_note(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None, note=None):
         """
         Build a release note containing most significant changes between old_db_col_names and new_db_col_names
         collection (they have to be target collections, coming from a merging process). "diff_folder" can
@@ -836,7 +846,7 @@ class DifferManager(BaseManager):
         if old_db_col_names is None and new_db_col_names is None:
             assert diff_folder, "Need at least diff_folder parameter"
         else:
-            diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
+            diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
         try:
             metafile = os.path.join(diff_folder,"metadata.json")
             metadata = json.load(open(metafile))
@@ -877,6 +887,7 @@ class DifferManager(BaseManager):
                     "_fields" : {},
                     "_summary" : diff_stats,
                     },
+                "note" : note,
                 "generated_on": str(datetime.now()),
                 "sources" : {
                     "added" : {},
@@ -1038,11 +1049,13 @@ class DifferManager(BaseManager):
                 # pyobj not a dict
                 continue
 
-    def publish_diff(self, s3_folder, old_db_col_names=None, new_db_col_names=None, diff_folder=None, steps=["reset","upload","meta"]):
+    def publish_diff(self, s3_folder, old_db_col_names=None, new_db_col_names=None,
+            diff_folder=None, release_folder=None, steps=["reset","upload","meta"]):
         """
-        Publish diff data (diff files, metadata, release notes, etc...) to s3_folder (within config.S3_DIFF_BUCKET),
-        and then register that version so it's available to auto-updating hub.
+        Publish diff data diff files in config.S3_DIFF_BUCKET/s3_folder and metadata, release notes, etc...
+        in config.S3_RELEASE_BUCKET/s3_folder, and then register that version so it's available to auto-updating hub.
         - either pass old_db_col_names and new_db_col_names collections names, or diff_folder containing diff data.
+        - same for 'release_folder'
         - steps:
           * reset: highly recommended, reset synced flag in diff files so they won't get skipped when used...
           * upload: upload diff_folder content to S3
@@ -1055,7 +1068,10 @@ class DifferManager(BaseManager):
             assert getattr(btconfig,"BIOTHINGS_ROLE","master"), "Hub must be master to publish metadata about diff release"
         if not diff_folder:
             assert old_db_col_names and new_db_col_names, "No diff_folder specified, old_db_col_names and new_db_col_names are required"
-            diff_folder = generate_diff_folder(old_db_col_names,new_db_col_names)
+            diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
+        if not release_folder:
+            assert old_db_col_names and new_db_col_names, "No release_folder specified, old_db_col_names and new_db_col_names are required"
+            release_folder = generate_folder(btconfig.RELEASE_PATH,old_db_col_names,new_db_col_names)
         try:
             meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
         except FileNotFoundError:
@@ -1088,8 +1104,7 @@ class DifferManager(BaseManager):
                 job = yield from self.job_manager.defer_to_thread(pinfo,partial(aws.send_s3_folder,
                     diff_folder,s3basedir=s3basedir,
                     aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                    s3_bucket=btconfig.S3_DIFF_BUCKET,
-                    overwrite=True,permissions="public-read"))
+                    s3_bucket=btconfig.S3_DIFF_BUCKET,overwrite=True))
                 yield from job
                 jobs.append(job)
 
@@ -1103,14 +1118,24 @@ class DifferManager(BaseManager):
                             "type": "incremental",
                             "build_version": diff_version,
                             "require_version": meta["old"]["version"],
+                            "target_version": meta["new"]["version"],
                             "app_version": None,
                             "metadata" : {"url" : aws.get_s3_url(os.path.join(s3basedir,"metadata.json"),
                                 aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_DIFF_BUCKET)},
                             }
+                    # upload release notes
+                    notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
+                    for note in notes:
+                        if os.path.exists(note):
+                            s3key = os.path.join(s3basedir,os.path.basename(note))
+                            aws.send_s3_file(note,s3key,
+                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                                    s3_bucket=btconfig.S3_RELEASE_BUCKET,overwrite=True)
+
                     rel_txt_url = aws.get_s3_url(os.path.join(s3basedir,"%s.txt" % release_note),
-                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_DIFF_BUCKET)
+                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
                     rel_json_url = aws.get_s3_url(os.path.join(s3basedir,"%s.json" % release_note),
-                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_DIFF_BUCKET)
+                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
                     if rel_txt_url:
                         diff_meta.setdefault("changes",{})
                         diff_meta["changes"]["txt"] = {"url" : rel_txt_url}
@@ -1119,7 +1144,7 @@ class DifferManager(BaseManager):
                         diff_meta["changes"]["json"] = {"url" : rel_json_url}
 
                     diff_file = "%s.json" % diff_version
-                    diff_meta_path = os.path.join(btconfig.DIFF_PATH,diff_file)
+                    diff_meta_path = os.path.join(btconfig.RELEASE_PATH,diff_file)
                     json.dump(diff_meta,open(diff_meta_path,"w"),indent=True)
                     # get a timestamp from metadata to force lastdmodifed header
                     # timestamp is when the new collection was built (not when the diff
@@ -1131,10 +1156,10 @@ class DifferManager(BaseManager):
                     s3key = os.path.join(s3_folder,diff_file)
                     aws.send_s3_file(diff_meta_path,s3key,
                             aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                            s3_bucket=btconfig.S3_DIFF_BUCKET,metadata={"lastmodified":utc_epoch},
-                             overwrite=True,permissions="public-read")
+                            s3_bucket=btconfig.S3_RELEASE_BUCKET,metadata={"lastmodified":utc_epoch},
+                             overwrite=True)
                     url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                            s3_bucket=btconfig.S3_DIFF_BUCKET)
+                            s3_bucket=btconfig.S3_RELEASE_BUCKET)
                     self.logger.info("Incremental release metadata published for version: '%s'" % url)
                     publish_data_version(s3_folder,diff_version)
                     self.logger.info("Registered version '%s'" % (diff_version))

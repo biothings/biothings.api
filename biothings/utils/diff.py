@@ -294,11 +294,3 @@ def diff_collections_batches(b1, b2, result_dir, step=10000):
     print("="*100)
     print("Summary: (Updated: {}, Added: {}, Deleted: {})".format(cnt_update, cnt_add, cnt_delete))
 
-
-def generate_diff_folder(old_db_col_names,new_db_col_names):
-    from biothings import config as btconfig
-    new = create_backend(new_db_col_names,name_only=True)
-    old = create_backend(old_db_col_names,name_only=True)
-    diff_folder = os.path.join(btconfig.DIFF_PATH, "%s-%s" % (old, new))
-    return diff_folder
-

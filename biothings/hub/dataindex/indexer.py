@@ -19,7 +19,7 @@ from biothings import config as btconfig
 from biothings.utils.mongo import doc_feeder, id_feeder
 from config import LOG_FOLDER, logger as logging
 from biothings.utils.hub import publish_data_version
-from biothings.utils.diff import generate_diff_folder
+from biothings.hub.databuild.backend import generate_folder
 
 
 class IndexerException(Exception):
@@ -164,7 +164,7 @@ class IndexerManager(BaseManager):
         task = asyncio.ensure_future(do(index))
         return fut
 
-    def publish_snapshot(self, s3_folder, prev=None, snapshot=None, diff_folder=None, index=None):
+    def publish_snapshot(self, s3_folder, prev=None, snapshot=None, release_folder=None, index=None):
         """
         Publish snapshot metadata (not the actal snapshot, but the metadata, release notes, etc... associated to it) to S3,
         and then register that version to it's available to auto-updating hub.
@@ -173,7 +173,7 @@ class IndexerManager(BaseManager):
         between current snapshot and a previous version could have been generated. In that case, 
 
         'prev' and 'snaphost' must be defined (as strings, should match merged collections names) to generate
-        a diff folder, or directly diff_folder. If all 3 are None, no release note will be referenced in snapshot metadata.
+        a release folder, or directly release_folder. If all 3 are None, no release note will be referenced in snapshot metadata.
 
         'snapshot' and actual underlying index can have different names, if so, 'index' can be specified.
         """
@@ -191,32 +191,32 @@ class IndexerManager(BaseManager):
         full_meta = {
                 "type": "full",
                 "build_version": esb.version,
+                "target_version": esb.version,
                 "app_version": None,
                 "metadata" : {"repository" : repo,
                               "snapshot_name" : snapshot}
                 }
         # TODO: merged collection name can be != index name which can be != snapshot name...
         if prev and index:
-            diff_folder = generate_diff_folder(prev,index)
-        if diff_folder and os.path.exists(diff_folder):
+            release_folder = generate_diff_folder(prev,index)
+        if release_folder and os.path.exists(release_folder):
             # ok, we have something in that folder, just pick the release note files
             # (we can generate diff + snaphost at the same time, so there could be diff files in that folder
             # from a diff process done before. release notes will be the same though)
-            self.logger.info("Uploading release notes from '%s' to s3" % diff_folder)
-            notes = glob.glob(os.path.join(diff_folder,"%s.*" % release_note))
+            self.logger.info("Uploading release notes from '%s' to s3" % release_folder)
+            notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
             s3basedir = os.path.join(s3_folder,esb.version)
             for note in notes:
                 if os.path.exists(note):
                     s3key = os.path.join(s3basedir,os.path.basename(note))
                     aws.send_s3_file(note,s3key,
                             aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                            s3_bucket=btconfig.S3_DIFF_BUCKET,
-                             overwrite=True,permissions="public-read")
+                            s3_bucket=btconfig.S3_RELEASE_BUCKET,overwrite=True)
             # specify release note URLs in metadata
             rel_txt_url = aws.get_s3_url(os.path.join(s3basedir,"%s.txt" % release_note),
-                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_DIFF_BUCKET)
+                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
             rel_json_url = aws.get_s3_url(os.path.join(s3basedir,"%s.json" % release_note),
-                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_DIFF_BUCKET)
+                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
             if rel_txt_url:
                 full_meta.setdefault("changes",{})
                 full_meta["changes"]["txt"] = {"url" : rel_txt_url}
@@ -236,10 +236,10 @@ class IndexerManager(BaseManager):
         s3key = os.path.join(s3_folder,build_info)
         aws.send_s3_file(build_info_path,s3key,
                 aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                s3_bucket=btconfig.S3_DIFF_BUCKET,metadata={"lastmodified":utc_epoch},
+                s3_bucket=btconfig.S3_RELEASE_BUCKET,metadata={"lastmodified":utc_epoch},
                  overwrite=True)
         url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                s3_bucket=btconfig.S3_DIFF_BUCKET)
+                s3_bucket=btconfig.S3_RELEASE_BUCKET)
         self.logger.info("Full release metadata published for version: '%s'" % url)
         publish_data_version(s3_folder,esb.version)
         self.logger.info("Registered version '%s'" % (esb.version))

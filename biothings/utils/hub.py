@@ -328,7 +328,7 @@ def publish_data_version(s3_folder,version,env=None,update_latest=True):
     try:
         versions = aws.get_s3_file(versionskey,return_what="content",
                 aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
-                s3_bucket=config.S3_DIFF_BUCKET)
+                s3_bucket=config.S3_RELEASE_BUCKET)
         versions = json.loads(versions.decode()) # S3 returns bytes
     except (FileNotFoundError,json.JSONDecodeError):
         versions = []
@@ -338,7 +338,7 @@ def publish_data_version(s3_folder,version,env=None,update_latest=True):
         versions.append(version)
     versions = sorted(list(set(versions)))
     aws.send_s3_file(None,versionskey,content=json.dumps(versions),
-            aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,s3_bucket=config.S3_DIFF_BUCKET,
+            aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,s3_bucket=config.S3_RELEASE_BUCKET,
             content_type="application/json",overwrite=True)
 
     # update latest
@@ -348,16 +348,16 @@ def publish_data_version(s3_folder,version,env=None,update_latest=True):
         try:
             key = aws.get_s3_file(latestkey,return_what="key",
                     aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
-                    s3_bucket=config.S3_DIFF_BUCKET)
+                    s3_bucket=config.S3_RELEASE_BUCKET)
         except FileNotFoundError:
             pass
         aws.send_s3_file(None,latestkey,content=json.dumps(version),content_type="application/json",
                 aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
-                s3_bucket=config.S3_DIFF_BUCKET,overwrite=True)
+                s3_bucket=config.S3_RELEASE_BUCKET,overwrite=True)
         if not key:
             key = aws.get_s3_file(latestkey,return_what="key",
                     aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
-                    s3_bucket=config.S3_DIFF_BUCKET)
+                    s3_bucket=config.S3_RELEASE_BUCKET)
         newredir = os.path.join("/",s3_folder,"%s.json" % version)
         key.set_redirect(newredir)
 
