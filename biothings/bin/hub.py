@@ -3,6 +3,7 @@
 import asyncio, asyncssh, sys
 import concurrent.futures
 from functools import partial
+from collections import OrderedDict
 
 import config, biothings
 biothings.config_for_app(config)
@@ -62,28 +63,36 @@ umanager = uploader.UploaderManager(poll_schedule = '* * * * * */10', job_manage
 from biothings.hub.autoupdate import BiothingsUploader
 BiothingsUploader.TARGET_BACKEND = partial_backend
 # syncer will work on index used in web part
-partial_syncer = partial(syncer_manager.sync,"es",target_backend=config.ES_BACKEND)
+partial_syncer = partial(syncer_manager.sync,"es",target_backend=config.ES_HOST)
 BiothingsUploader.SYNCER_FUNC = partial_syncer
 BiothingsUploader.AUTO_PURGE_INDEX = True # because we believe
 umanager.register_classes([BiothingsUploader])
 umanager.poll()
 
-from biothings.utils.hub import schedule, top, pending, done, HubCommand
+from biothings.utils.hub import schedule, pending, done, HubCommand
 
-COMMANDS = {
-        # dump commands
-        "check" : partial(dmanager.dump_src,"biothings",check_only=True),
-        "download" : partial(dmanager.dump_src,"biothings"),
-        # upload commands
-        "apply" : partial(umanager.upload_src,"biothings"),
-        "update": HubCommand("download() && apply()"),
-        ## admin/advanced
-        "g": globals(),
-        "sch" : partial(schedule,loop),
-        "top" : partial(top,process_queue,thread_queue),
-        "pending" : pending,
-        "done" : done,
-        }
+COMMANDS = OrderedDict()
+# dump commands
+COMMANDS["check"] = partial(dmanager.dump_src,"biothings",check_only=True)
+COMMANDS["download"] = partial(dmanager.dump_src,"biothings")
+# upload commands
+COMMANDS["apply"] = partial(umanager.upload_src,"biothings")
+COMMANDS["update"] = HubCommand("download() && apply()")
+
+# admin/advanced
+EXTRA_NS = {
+    "dm" : dmanager,
+    "um" : umanager,
+    "jm" : jmanager,
+    "q" : jmanager.process_queue,
+    "t": jmanager.thread_queue,
+    "g" : globals(),
+    "l" : loop,
+    "sch" : partial(schedule,loop),
+    "top" : jmanager.top,
+    "pending" : pending,
+    "done" : done
+    }
 
 passwords = hasattr(config,"HUB_ACCOUNTS") and config.HUB_ACCOUNTS or {
         'guest': '', # guest account with no password
@@ -92,7 +101,7 @@ passwords = hasattr(config,"HUB_ACCOUNTS") and config.HUB_ACCOUNTS or {
 from biothings.utils.hub import start_server
 
 server = start_server(loop, "Auto-hub",passwords=passwords,
-        port=config.HUB_SSH_PORT,commands=COMMANDS)
+        port=config.HUB_SSH_PORT,commands=COMMANDS,extra_ns=EXTRA_NS)
 
 try:
     loop.run_until_complete(server)
