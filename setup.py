@@ -7,7 +7,7 @@ from subprocess import CalledProcessError
 setup_path = os.path.dirname(__file__)
 
 def read(fname):
-    return open(os.path.join(setup_path, fname),encoding"utf8").read()
+    return open(os.path.join(setup_path, fname),encoding="utf8").read()
 
 REPO_URL = "https://github.com/biothings/biothings.api"
 
