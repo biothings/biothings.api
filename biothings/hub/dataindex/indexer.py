@@ -32,7 +32,6 @@ class IndexerManager(BaseManager):
         super(IndexerManager,self).__init__(*args, **kwargs)
         self.pindexer = pindexer
         self.src_build = get_src_build()
-        self.target_db = mongo.get_target_db()
         self.t0 = time.time()
         self.prepared = False
         self.log_folder = LOG_FOLDER
