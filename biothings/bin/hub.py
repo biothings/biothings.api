@@ -8,6 +8,9 @@ from collections import OrderedDict
 import config, biothings
 biothings.config_for_app(config)
 
+if not hasattr(config,"ES_BACKEND") or len(config.ES_BACKEND) != 3:
+    raise Exception("Config file must declare ES_BACKEND as tuple(es_host,es_index,es_doctype)")
+
 import logging
 # shut some mouths...
 logging.getLogger("elasticsearch").setLevel(logging.ERROR)
@@ -63,7 +66,7 @@ umanager = uploader.UploaderManager(poll_schedule = '* * * * * */10', job_manage
 from biothings.hub.autoupdate import BiothingsUploader
 BiothingsUploader.TARGET_BACKEND = partial_backend
 # syncer will work on index used in web part
-partial_syncer = partial(syncer_manager.sync,"es",target_backend=config.ES_HOST)
+partial_syncer = partial(syncer_manager.sync,"es",target_backend=config.ES_BACKEND)
 BiothingsUploader.SYNCER_FUNC = partial_syncer
 BiothingsUploader.AUTO_PURGE_INDEX = True # because we believe
 umanager.register_classes([BiothingsUploader])

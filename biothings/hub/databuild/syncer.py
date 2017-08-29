@@ -287,7 +287,6 @@ def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, ba
 def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, cnt,
         force=False, selfcontained=False, metadata={}):
     """Worker to sync data between a new mongo collection and an elasticsearch index"""
-    new = create_backend(new_db_col_names) # mongo collection to sync from
     indexer = create_backend(es_config).target_esidxer
     diff = loadobj(diff_file)
     res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
@@ -296,14 +295,14 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
         logging.info("Diff file '%s' already synced, skip it" % diff_file)
         res["skipped"] += len(diff["add"]) + len(diff["delete"]) + len(diff["update"])
         return res
-    assert new.target_collection.name == diff["source"], "Source is different in diff file '%s': %s" % (diff_file,diff["source"])
-
     errors = []
     # add: get ids from "new" 
     if selfcontained:
         # diff["add"] contains all documents, no mongo needed
         cur = diff["add"]
     else:
+        new = create_backend(new_db_col_names) # mongo collection to sync from
+        assert new.target_collection.name == diff["source"], "Source is different in diff file '%s': %s" % (diff_file,diff["source"])
         cur = doc_feeder(new.target_collection, step=batch_size, inbatch=False, query={'_id': {'$in': diff["add"]}})
     for docs in iter_n(cur,batch_size):
         try:

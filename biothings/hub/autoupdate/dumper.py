@@ -31,7 +31,7 @@ class BiothingsDumper(HTTPDumper):
     SRC_ROOT_FOLDER = os.path.join(DATA_ARCHIVE_ROOT, SRC_NAME)
 
     # URL is always the same, but headers change (template for app + version)
-    SRC_URL = "http://biothings-diffs.s3-website-us-east-1.amazonaws.com/%s/%s.json"
+    SRC_URL = "http://biothings-releases.s3-website-us-west-2.amazonaws.com/%s/%s.json"
 
     # Auto-deploy data update ?
     AUTO_UPLOAD = False
