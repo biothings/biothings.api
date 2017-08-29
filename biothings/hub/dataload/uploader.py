@@ -150,8 +150,8 @@ class BaseSourceUploader(object):
                 self._state[k] = state[k]
             return
         self._state["conn"] = get_src_conn()
-        self._state["db"] = self.conn[self.__class__.__database__]
-        self._state["collection"] = self.db[self.collection_name]
+        self._state["db"] = self._state["conn"][self.__class__.__database__]
+        self._state["collection"] = self._state["db"][self.collection_name]
         self._state["src_dump"] = self.prepare_src_dump()
         self._state["src_master"] = get_src_master()
         self._state["logger"] = self.setup_log()

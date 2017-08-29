@@ -3,6 +3,7 @@ from functools import wraps
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from functools import partial
+from collections import defaultdict
 
 from biothings.utils.common import timesofar, get_random_string, iter_n, \
                                    open_compressed_file, get_compressed_outfile
@@ -10,6 +11,21 @@ from biothings.utils.backend import DocESBackend, DocMongoBackend
 from biothings.utils.hub_db import IDatabase
 # stub, until set to real config module
 config = None
+
+
+class DummyCollection(object):
+    def count(self):
+        return None
+    def drop(self):
+        pass
+
+
+class DummyDatabase(object):
+    def collection_names(self):
+        return []
+    def __getitem__(self,what):
+        return DummyCollection()
+
 
 class Database(MongoClient,IDatabase):
 
@@ -32,14 +48,21 @@ def requires_config(func):
 
 @requires_config
 def get_conn(server, port):
-    if config.DATA_SRC_SERVER_USERNAME and config.DATA_SRC_SERVER_PASSWORD:
-        uri = "mongodb://{}:{}@{}:{}".format(config.DATA_SRC_SERVER_USERNAME,
-                                             config.DATA_SRC_SERVER_PASSWORD,
-                                             server, port)
-    else:
-        uri = "mongodb://{}:{}".format(server, port)
-    conn = Database(uri)
-    return conn
+    try:
+        if config.DATA_SRC_SERVER_USERNAME and config.DATA_SRC_SERVER_PASSWORD:
+            uri = "mongodb://{}:{}@{}:{}".format(config.DATA_SRC_SERVER_USERNAME,
+                                                 config.DATA_SRC_SERVER_PASSWORD,
+                                                 server, port)
+        else:
+            uri = "mongodb://{}:{}".format(server, port)
+        conn = Database(uri)
+        return conn
+    except (AttributeError,ValueError) as e:
+        # missing config variables (or invalid), we'll pretend it's a dummy access to mongo
+        # (dummy here means there really shouldn't be any call to get_conn()
+        # but mongo is too much tied to the code and needs more work to 
+        # unlink it
+        return defaultdict(lambda:DummyDatabase())
 
 @requires_config
 def get_hub_db_conn():
