@@ -170,6 +170,7 @@ class BiothingsDumper(HTTPDumper):
             current_localfile = None
         self.logger.info("Local file: %s" % current_localfile)
         self.logger.info("Remote url : %s" % file_url)
+        self.logger.info("Force: %s" % force)
         if force or current_localfile is None or self.remote_is_better(file_url,current_localfile):
             # manually get the diff meta file (ie. not using download() because we don't know the version yet,
             # it's in the diff meta
@@ -273,8 +274,10 @@ class BiothingsDumper(HTTPDumper):
                     self.logger.debug("md5 check success for file '%s'" % fname)
 
     @asyncio.coroutine
-    def info(self,version):
+    def info(self,version=LATEST):
         """Display version information (release note, etc...) for given version"""
+        txt = ">>> Current local version: '%s'\n" % self.target_backend.version
+        txt += ">>> Release note for remote version '%s':\n" % version
         file_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_APP,version)
         build_meta = self.load_remote_json(file_url)
         if not build_meta:
@@ -283,11 +286,11 @@ class BiothingsDumper(HTTPDumper):
             relnote_url = build_meta["changes"]["txt"]["url"]
             res = self.client.get(relnote_url)
             if res.status_code == 200:
-                return res.text
+                return txt + res.text
             else:
                 raise DumperException("Error while downloading release note '%s': %s" % (version,res))
         else:
-            return "No information found for release '%s'" % version
+            return txt + "No information found for release '%s'" % version
 
     @asyncio.coroutine
     def versions(self):

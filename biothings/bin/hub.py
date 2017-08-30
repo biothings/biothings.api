@@ -32,13 +32,9 @@ jmanager = JobManager(loop,
 
 import biothings.hub.dataload.uploader as uploader
 import biothings.hub.dataload.dumper as dumper
-import biothings.hub.databuild.builder as builder
-import biothings.hub.databuild.differ as differ
 import biothings.hub.databuild.syncer as syncer
 import biothings.hub.dataindex.indexer as indexer
 
-differ_manager = differ.DifferManager(job_manager=jmanager)
-differ_manager.configure()
 syncer_manager = syncer.SyncerManager(job_manager=jmanager)
 syncer_manager.configure()
 import biothings.hub.dataindex.indexer as indexer
@@ -51,6 +47,7 @@ dmanager.schedule_all()
 # manually register biothings source dumper
 # this dumper will download whatever is necessary to update an ES index
 from biothings.hub.autoupdate import BiothingsDumper
+from biothings.hub.autoupdate.dumper import LATEST
 from biothings.utils.es import ESIndexer
 from biothings.utils.backend import DocESBackend
 BiothingsDumper.BIOTHINGS_APP = "t.biothings.io"
@@ -74,6 +71,47 @@ umanager.poll()
 
 from biothings.utils.hub import schedule, pending, done, HubCommand
 
+
+def cycle_update(version=LATEST, max_cycles=10):
+    """
+    Update hub's data up to the given version (default is latest available),
+    using full and incremental updates to get up to that given version (if possible).
+    To prevent any infinite loop that could occur (eg. network issues), a max of
+    max_cycles will be considered to bring the hub up-to-date.
+    """
+    @asyncio.coroutine
+    def do(version):
+        cycle = True
+        count = 0
+        while cycle:
+            jobs = dmanager.dump_src("biothings",version=version,check_only=True)
+            check = asyncio.gather(*jobs)
+            res = yield from check
+            assert len(res) == 1
+            if res[0] == "Nothing to dump":
+                cycle = False
+            else:
+                remote_version = res[0]
+                jobs = dmanager.dump_src("biothings",version=remote_version)
+                download = asyncio.gather(*jobs)
+                res = yield from download
+                assert len(res) == 1
+                if res[0] == None:
+                    # download ready, now update
+                    jobs = umanager.upload_src("biothings")
+                    upload = asyncio.gather(*jobs)
+                    res = yield from upload
+                else:
+                    assert res[0] == "Nothing to dump"
+                    cycle = False
+            count += 1
+            if count >= max_cycles:
+                logging.warning("Reach max updating cycle (%s), now aborting process" % count)
+                cycle = False
+
+    return asyncio.ensure_future(do(version))
+
+
 COMMANDS = OrderedDict()
 # dump commands
 COMMANDS["versions"] = partial(dmanager.call,"biothings","versions")
@@ -82,7 +120,8 @@ COMMANDS["info"] = partial(dmanager.call,"biothings","info")
 COMMANDS["download"] = partial(dmanager.dump_src,"biothings")
 # upload commands
 COMMANDS["apply"] = partial(umanager.upload_src,"biothings")
-COMMANDS["update"] = HubCommand("download() && apply()")
+COMMANDS["step_update"] = HubCommand("download() && apply()")
+COMMANDS["update"] = cycle_update
 
 # admin/advanced
 EXTRA_NS = {

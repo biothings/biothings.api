@@ -914,7 +914,6 @@ class DifferManager(BaseManager):
             # get main source
             main_src = op["path"].strip("/").split("/")[0]
             if op["op"] == "add":
-                print(op)
                 changes["sources"]["added"][main_src] = new_info[main_src]
             elif op["op"] == "remove":
                 changes["sources"]["deleted"][main_src] = old_info[main_src]
