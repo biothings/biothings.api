@@ -1,4 +1,5 @@
 import os, sys, time, datetime, json
+import asyncio
 from urllib.parse import urlparse, urljoin
 from functools import partial
 
@@ -271,3 +272,29 @@ class BiothingsDumper(HTTPDumper):
                 else:
                     self.logger.debug("md5 check success for file '%s'" % fname)
 
+    @asyncio.coroutine
+    def info(self,version):
+        """Display version information (release note, etc...) for given version"""
+        file_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_APP,version)
+        build_meta = self.load_remote_json(file_url)
+        if not build_meta:
+            raise DumperException("Can't find version '%s'" % version)
+        if build_meta.get("changes") and build_meta["changes"].get("txt"):
+            relnote_url = build_meta["changes"]["txt"]["url"]
+            res = self.client.get(relnote_url)
+            if res.status_code == 200:
+                return res.text
+            else:
+                raise DumperException("Error while downloading release note '%s': %s" % (version,res))
+        else:
+            return "No information found for release '%s'" % version
+
+    @asyncio.coroutine
+    def versions(self):
+        """Display all available versions"""
+        versions_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_APP,VERSIONS)
+        avail_versions = self.load_remote_json(versions_url)
+        if not avail_versions:
+            raise DumperException("Can't find any versions available...'")
+        else:
+            return "\n".join(avail_versions)

@@ -76,7 +76,9 @@ from biothings.utils.hub import schedule, pending, done, HubCommand
 
 COMMANDS = OrderedDict()
 # dump commands
+COMMANDS["versions"] = partial(dmanager.call,"biothings","versions")
 COMMANDS["check"] = partial(dmanager.dump_src,"biothings",check_only=True)
+COMMANDS["info"] = partial(dmanager.call,"biothings","info")
 COMMANDS["download"] = partial(dmanager.dump_src,"biothings")
 # upload commands
 COMMANDS["apply"] = partial(umanager.upload_src,"biothings")

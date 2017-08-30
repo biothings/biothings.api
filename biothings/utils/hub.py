@@ -163,9 +163,11 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
                 has_err = is_done and  [True for j in info["jobs"] if j.exception()] or None
                 outputs = is_done and ([str(j.exception()) for j in info["jobs"] if j.exception()] or \
                             [j.result() for j in info["jobs"]]) or None
+                if not has_err and outputs and set(map(type,outputs)) == {str}:
+                    outputs = "\n" + "".join(outputs)
                 if is_done:
                     finished.append(num)
-                    self._chan.write("[%s] %s %s: finished, %s\n" % (num,has_err and "ERR" or "OK ",info["cmd"], outputs))
+                    self._chan.write("[%s] %s %s: finished %s\n" % (num,has_err and "ERR" or "OK ",info["cmd"], outputs))
                 else:
                     self._chan.write("[%s] RUN {%s} %s\n" % (num,timesofar(info["started_at"]),info["cmd"]))
             if finished:

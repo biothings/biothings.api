@@ -739,10 +739,38 @@ class DumperManager(BaseSourceManager):
             logging.error("Error while dumping '%s': %s" % (src,e))
             raise
 
+    def call(self,src,method_name,*args,**kwargs):
+        """
+        Create a dumper for datasource "src" and call method "method_name" on it, 
+        with given arguments. Used to create arbitrary calls on a dumper.
+        "method_name" within dumper definition must a coroutine.
+        """
+        if src in self.register:
+            klasses = self.register[src]
+        else:
+            raise DumperException("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
+
+        jobs = []
+        try:
+            for i,klass in enumerate(klasses):
+                pfunc = partial(self.create_and_call,klass,method_name,*args,**kwargs)
+                job = asyncio.ensure_future(pfunc())
+                jobs.append(job)
+            return jobs
+        except Exception as e:
+            logging.error("Error while dumping '%s': %s" % (src,e))
+            raise
+
     @asyncio.coroutine
     def create_and_dump(self,klass,*args,**kwargs):
         inst = self.create_instance(klass)
         res = yield from inst.dump(*args,**kwargs)
+        return res
+
+    @asyncio.coroutine
+    def create_and_call(self,klass,method_name,*args,**kwargs):
+        inst = self.create_instance(klass)
+        res = yield from getattr(inst,method_name)(*args,**kwargs)
         return res
 
     def schedule_all(self, raise_on_error=False, **kwargs):
