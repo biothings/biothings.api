@@ -428,9 +428,9 @@ class ReleaseNoteTxt(object):
         txt += "Generated on: %s\n" % dt.strftime("%Y-%m-%d at %H:%M:%S")
         txt += "\n"
 
-        table = prettytable.PrettyTable(["Datasource","prev. release","new release",
+        table = prettytable.PrettyTable(["Updated datasource","prev. release","new release",
             "prev. # of docs","new # of docs"])
-        table.align["Datasource"] = "l"
+        table.align["Updated datasource"] = "l"
         table.align["prev. release"] = "c"
         table.align["new release"] = "c"
         table.align["prev. # of docs"] = "r"
