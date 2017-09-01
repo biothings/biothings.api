@@ -185,7 +185,7 @@ class IndexerManager(BaseManager):
         index = index or snapshot
         idxr = ESIndexer(index=index,doc_type=btconfig.ES_DOC_TYPE,es_host=es_snapshot_host)
         esb = DocESBackend(idxr)
-        assert esb.version, "Can't retrieve a version from index '%s'" % indew
+        assert esb.version, "Can't retrieve a version from index '%s'" % index
         self.logger.info("Generating JSON metadata for full release '%s'" % esb.version)
         repo = idxr._es.snapshot.get_repository(btconfig.READONLY_SNAPSHOT_REPOSITORY)
         release_note = "release_%s" % esb.version
