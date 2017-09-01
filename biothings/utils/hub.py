@@ -324,6 +324,12 @@ def publish_data_version(s3_folder,version,env=None,update_latest=True):
     - versions.json: add version to the JSON list
                      or replace if arg version is a list
     - latest.json: update redirect so it points to version
+    "versions" is dict such as:
+        {"build_version":"...",         # version name for this release/build
+         "require_version":"...",       # version required for incremental update
+         "target_version": "...",       # version reached once update is applied
+         "type" : "incremental|full"    # release type
+         "release_date" : "..."}           # ISO 8601 timestamp, release date/time
     """
     # register version
     versionskey = os.path.join(s3_folder,"%s.json" % VERSIONS)
@@ -333,12 +339,15 @@ def publish_data_version(s3_folder,version,env=None,update_latest=True):
                 s3_bucket=config.S3_RELEASE_BUCKET)
         versions = json.loads(versions.decode()) # S3 returns bytes
     except (FileNotFoundError,json.JSONDecodeError):
-        versions = []
+        versions = {"format" : "1.0","versions" : []}
     if type(version) == list:
-        versions = version
+        versions["versions"] = version
     else:
-        versions.append(version)
-    versions = sorted(list(set(versions)))
+        versions["versions"].append(version)
+    # check duplicates, order by build_version
+    tmp = {}
+    [tmp.setdefault(e["build_version"],e) for e in versions["versions"]]
+    versions["versions"] = sorted(tmp.values(),key=lambda e: e["build_version"])
     aws.send_s3_file(None,versionskey,content=json.dumps(versions),
             aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,s3_bucket=config.S3_RELEASE_BUCKET,
             content_type="application/json",overwrite=True)
@@ -353,14 +362,14 @@ def publish_data_version(s3_folder,version,env=None,update_latest=True):
                     s3_bucket=config.S3_RELEASE_BUCKET)
         except FileNotFoundError:
             pass
-        aws.send_s3_file(None,latestkey,content=json.dumps(version),content_type="application/json",
+        aws.send_s3_file(None,latestkey,content=json.dumps(version["build_version"]),content_type="application/json",
                 aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
                 s3_bucket=config.S3_RELEASE_BUCKET,overwrite=True)
         if not key:
             key = aws.get_s3_file(latestkey,return_what="key",
                     aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
                     s3_bucket=config.S3_RELEASE_BUCKET)
-        newredir = os.path.join("/",s3_folder,"%s.json" % version)
+        newredir = os.path.join("/",s3_folder,"%s.json" % version["build_version"])
         key.set_redirect(newredir)
 
 

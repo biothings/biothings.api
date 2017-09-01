@@ -1151,16 +1151,23 @@ class DifferManager(BaseManager):
                     # timestamp remains a good choice as data (diff) relates to that date anyway
                     metadata = json.load(open(os.path.join(diff_folder,"metadata.json")))
                     local_ts = dtparse(metadata["_meta"]["timestamp"])
-                    utc_epoch = str(int(time.mktime(local_ts.timetuple())))
+                    utc_epoch = int(time.mktime(local_ts.timetuple()))
+                    utc_ts = datetime.fromtimestamp(time.mktime(time.gmtime(utc_epoch)))
+                    str_utc_epoch = str(utc_epoch)
                     s3key = os.path.join(s3_folder,diff_file)
                     aws.send_s3_file(diff_meta_path,s3key,
                             aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                            s3_bucket=btconfig.S3_RELEASE_BUCKET,metadata={"lastmodified":utc_epoch},
+                            s3_bucket=btconfig.S3_RELEASE_BUCKET,metadata={"lastmodified":str_utc_epoch},
                              overwrite=True)
                     url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
                             s3_bucket=btconfig.S3_RELEASE_BUCKET)
                     self.logger.info("Incremental release metadata published for version: '%s'" % url)
-                    publish_data_version(s3_folder,diff_version)
+                    version_info = {"build_version":diff_meta["build_version"],
+                            "require_version":diff_meta["require_version"],
+                            "target_version":diff_meta["target_version"],
+                            "type":diff_meta["type"],
+                            "release_date":utc_ts.isoformat()}
+                    publish_data_version(s3_folder,version_info)
                     self.logger.info("Registered version '%s'" % (diff_version))
                 job = yield from self.job_manager.defer_to_thread(pinfo,gen_meta)
                 yield from job

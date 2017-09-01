@@ -234,18 +234,25 @@ class IndexerManager(BaseManager):
         json.dump(full_meta,open(build_info_path,"w"))
         # override lastmodified header with our own timestamp
         local_ts = dtparse(idxr.get_mapping_meta()["_meta"]["timestamp"])
-        utc_epoch = str(int(time.mktime(local_ts.timetuple())))
+        utc_epoch = int(time.mktime(local_ts.timetuple()))
+        utc_ts = datetime.fromtimestamp(time.mktime(time.gmtime(utc_epoch)))
+        str_utc_epoch = str(utc_epoch)
         # it's a full release, but all build info metadata (full, incremental) all go
         # to the diff bucket (this is the main entry)
         s3key = os.path.join(s3_folder,build_info)
         aws.send_s3_file(build_info_path,s3key,
                 aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                s3_bucket=btconfig.S3_RELEASE_BUCKET,metadata={"lastmodified":utc_epoch},
+                s3_bucket=btconfig.S3_RELEASE_BUCKET,metadata={"lastmodified":str_utc_epoch},
                  overwrite=True)
         url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
                 s3_bucket=btconfig.S3_RELEASE_BUCKET)
         self.logger.info("Full release metadata published for version: '%s'" % url)
-        publish_data_version(s3_folder,esb.version)
+        full_info = {"build_version":full_meta["build_version"],
+                "require_version":None,
+                "target_version":full_meta["target_version"],
+                "type":full_meta["type"],
+                "release_date":utc_ts.isoformat()}
+        publish_data_version(s3_folder,full_info)
         self.logger.info("Registered version '%s'" % (esb.version))
 
 
