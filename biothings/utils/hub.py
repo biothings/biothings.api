@@ -318,18 +318,19 @@ def stats(src_dump):
     pass
 
 
-def publish_data_version(s3_folder,version,env=None,update_latest=True):
+def publish_data_version(s3_folder,version_info,env=None,update_latest=True):
     """
     Update remote files:
-    - versions.json: add version to the JSON list
-                     or replace if arg version is a list
-    - latest.json: update redirect so it points to version
+    - versions.json: add version_info to the JSON list
+                     or replace if arg version_info is a list
+    - latest.json: update redirect so it points to latest version url
     "versions" is dict such as:
         {"build_version":"...",         # version name for this release/build
          "require_version":"...",       # version required for incremental update
          "target_version": "...",       # version reached once update is applied
          "type" : "incremental|full"    # release type
-         "release_date" : "..."}           # ISO 8601 timestamp, release date/time
+         "release_date" : "...",        # ISO 8601 timestamp, release date/time
+         "url": "http...."}             # url pointing to release metadata
     """
     # register version
     versionskey = os.path.join(s3_folder,"%s.json" % VERSIONS)
@@ -340,20 +341,22 @@ def publish_data_version(s3_folder,version,env=None,update_latest=True):
         versions = json.loads(versions.decode()) # S3 returns bytes
     except (FileNotFoundError,json.JSONDecodeError):
         versions = {"format" : "1.0","versions" : []}
-    if type(version) == list:
-        versions["versions"] = version
+    if type(version_info) == list:
+        versions["versions"] = version_info
     else:
-        versions["versions"].append(version)
-    # check duplicates, order by build_version
-    tmp = {}
-    [tmp.setdefault(e["build_version"],e) for e in versions["versions"]]
-    versions["versions"] = sorted(tmp.values(),key=lambda e: e["build_version"])
+        # used to check duplicates
+        tmp = {}
+        [tmp.setdefault(e["build_version"],e) for e in versions["versions"]]
+        tmp[version_info["build_version"]] = version_info
+        # order by build_version
+        versions["versions"] = sorted(tmp.values(),key=lambda e: e["build_version"])
+
     aws.send_s3_file(None,versionskey,content=json.dumps(versions),
             aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,s3_bucket=config.S3_RELEASE_BUCKET,
             content_type="application/json",overwrite=True)
 
     # update latest
-    if type(version) != list and update_latest:
+    if type(version_info) != list and update_latest:
         latestkey = os.path.join(s3_folder,"%s.json" % LATEST)
         key = None
         try:
@@ -362,14 +365,14 @@ def publish_data_version(s3_folder,version,env=None,update_latest=True):
                     s3_bucket=config.S3_RELEASE_BUCKET)
         except FileNotFoundError:
             pass
-        aws.send_s3_file(None,latestkey,content=json.dumps(version["build_version"]),content_type="application/json",
+        aws.send_s3_file(None,latestkey,content=json.dumps(version_info["build_version"]),content_type="application/json",
                 aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
                 s3_bucket=config.S3_RELEASE_BUCKET,overwrite=True)
         if not key:
             key = aws.get_s3_file(latestkey,return_what="key",
                     aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
                     s3_bucket=config.S3_RELEASE_BUCKET)
-        newredir = os.path.join("/",s3_folder,"%s.json" % version["build_version"])
+        newredir = os.path.join("/",s3_folder,"%s.json" % version_info["build_version"])
         key.set_redirect(newredir)
 
 

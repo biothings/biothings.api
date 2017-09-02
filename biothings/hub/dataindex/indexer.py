@@ -251,7 +251,8 @@ class IndexerManager(BaseManager):
                 "require_version":None,
                 "target_version":full_meta["target_version"],
                 "type":full_meta["type"],
-                "release_date":utc_ts.isoformat()}
+                "release_date":utc_ts.isoformat(),
+                "url":url}
         publish_data_version(s3_folder,full_info)
         self.logger.info("Registered version '%s'" % (esb.version))
 

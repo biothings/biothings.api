@@ -1166,7 +1166,8 @@ class DifferManager(BaseManager):
                             "require_version":diff_meta["require_version"],
                             "target_version":diff_meta["target_version"],
                             "type":diff_meta["type"],
-                            "release_date":utc_ts.isoformat()}
+                            "release_date":utc_ts.isoformat(),
+                            "url":url}
                     publish_data_version(s3_folder,version_info)
                     self.logger.info("Registered version '%s'" % (diff_version))
                 job = yield from self.job_manager.defer_to_thread(pinfo,gen_meta)
