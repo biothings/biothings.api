@@ -144,12 +144,12 @@ class BiothingsDumper(HTTPDumper):
         # - version is a string
         # - format if YYYYMMDD 
         # - when incremental, it's always old_version.new_version
-        return max(versions)
+        return max(versions,key=lambda e: e["build_version"])
 
-    def create_todump_list(self, force=False, version=LATEST):
+    def create_todump_list(self, force=False, version=LATEST, url=None):
         assert self.__class__.BIOTHINGS_APP, "BIOTHINGS_APP class attribute is not set"
         self.logger.info("Dumping version '%s'" % version)
-        file_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_APP,version)
+        file_url = url or self.__class__.SRC_URL % (self.__class__.BIOTHINGS_APP,version)
         filename = os.path.basename(self.__class__.SRC_URL)
         # if "latest", we compare current json file we have (because we don't know what's behind latest)
         # otherwise json file should match version explicitely in current folder.
@@ -207,18 +207,20 @@ class BiothingsDumper(HTTPDumper):
                     required_version = build_meta["require_version"]
                     versions_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_APP,VERSIONS)
                     avail_versions = self.load_remote_json(versions_url)
+                    assert avail_versions["format"] == "1.0", "versions.json format has changed: %s" % avail_versions["format"]
                     if not avail_versions:
                         self.logger.error("Can't find versions information from URL %s, will try '%s'" % \
                                 (versions_url,required_version))
                     else:
                         # if any of available versions end with "require_version", then it means it's compatible
-                        compatibles = [v for v in avail_versions if v.endswith(build_meta["require_version"])]
+                        compatibles = [v for v in avail_versions["versions"] if v["build_version"].endswith(build_meta["require_version"])]
                         self.logger.info("Compatible versions from which we can apply this update: %s" % compatibles)
                         best_version = self.choose_best_version(compatibles)
                         self.logger.info("Best version found: '%s'" % best_version)
                         required_version = best_version
                     # let's get what we need
-                    return self.create_todump_list(force=force,version=required_version)
+                    return self.create_todump_list(force=force,
+                            version=required_version["build_version"],url=required_version["url"])
                 self.release = build_meta["build_version"]
                 # ok, now we can use download()
                 # we will download it again during the normal process so we can then compare
@@ -299,5 +301,10 @@ class BiothingsDumper(HTTPDumper):
         avail_versions = self.load_remote_json(versions_url)
         if not avail_versions:
             raise DumperException("Can't find any versions available...'")
-        else:
-            return "\n".join(avail_versions)
+        res = []
+        assert avail_versions["format"] == "1.0", "versions.json format has changed: %s" % avail_versions["format"]
+        for ver in avail_versions["versions"]:
+            res.append("version=%s date=%s type=%s" % ('{0: <20}'.format(ver["build_version"]),'{0: <20}'.format(ver["release_date"]),
+            '{0: <16}'.format(ver["type"])))
+        return "\n".join(res)
+
