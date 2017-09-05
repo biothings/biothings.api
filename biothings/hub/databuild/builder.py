@@ -258,7 +258,7 @@ class DataBuilder(object):
             # merge extra at root level
             # (to keep building data...) and update the last one
             # (it's been properly created before when init=True)
-            build["jobs"][-1].update(job_info)
+            build["jobs"] and build["jobs"][-1].update(job_info)
             # build_info is common to all jobs, so we want to keep
             # any existing data (well... except if it's explicitely specified)
             def merge_build_info(target,d):
@@ -433,7 +433,7 @@ class DataBuilder(object):
 
         orig_sources = sources
         sources = self.resolve_sources(sources)
-        if not sources:
+        if not sources and "merge" in steps:
             raise BuilderException("No source found, got %s while available sources are: %s" % \
                     (repr(orig_sources),repr(avail_sources)))
         if target_name:
