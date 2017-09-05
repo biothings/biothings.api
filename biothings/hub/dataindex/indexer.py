@@ -182,7 +182,9 @@ class IndexerManager(BaseManager):
         assert getattr(btconfig,"BIOTHINGS_ROLE",None) == "master","Hub needs to be master to publish metadata about snapshots"
         assert hasattr(btconfig,"READONLY_SNAPSHOT_REPOSITORY"), "READONLY_SNAPSHOT_REPOSITORY must be defined to publish metadata about snapshots"
         es_snapshot_host = getattr(btconfig,"ES_SNAPSHOT_HOST",btconfig.ES_HOST)
+        # keep passed values if any, otherwise derive them
         index = index or snapshot
+        snapshot = snapshot or index
         idxr = ESIndexer(index=index,doc_type=btconfig.ES_DOC_TYPE,es_host=es_snapshot_host)
         esb = DocESBackend(idxr)
         assert esb.version, "Can't retrieve a version from index '%s'" % index
@@ -190,6 +192,7 @@ class IndexerManager(BaseManager):
         repo = idxr._es.snapshot.get_repository(btconfig.READONLY_SNAPSHOT_REPOSITORY)
         release_note = "release_%s" % esb.version
         # generate json metadata about this diff release
+        assert snapshot, "Missing snapshot name information"
         full_meta = {
                 "type": "full",
                 "build_version": esb.version,
