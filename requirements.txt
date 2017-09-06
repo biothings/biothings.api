@@ -7,3 +7,4 @@ IPython
 boto
 jsonpointer
 prettytable # diff report renderer
+pympler # compute diff size

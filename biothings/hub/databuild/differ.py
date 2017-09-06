@@ -7,6 +7,7 @@ from pprint import pformat
 import asyncio
 from functools import partial
 import glob, random
+from pympler.asizeof import asizeof
 
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj, md5sum
@@ -83,8 +84,7 @@ class BaseDiffer(object):
                  (to check number of docs from datasources).
                - 'content' will perform diff on actual content.
                - 'mapping' will perform diff on ES mappings (if target collection involved)
-               - 'changes' will generate a short summary for the main changes (usefull to
-                 create a release notes)
+               - 'post' will merge diff files, trying to avoid having many small files
         mode: 'purge' will remove any existing files for this comparison.
         """
         new = create_backend(new_db_col_names)
@@ -95,7 +95,7 @@ class BaseDiffer(object):
 
         diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
 
-        if mode != "force" and os.path.exists(diff_folder):
+        if mode != "force" and os.path.exists(diff_folder) and "content" in steps:
             if mode == "purge" and os.path.exists(diff_folder):
                 rmdashfr(diff_folder)
             else:
@@ -283,13 +283,80 @@ class BaseDiffer(object):
         self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {}, Mapping changed: {})".format(
             diff_stats["update"], diff_stats["add"], diff_stats["delete"], diff_stats["mapping_changed"]))
 
-        # pickle again with potentially more information (diff_stats)
+        if "post" in steps:
+            def merge_diff():
+                self.logger.info("Reduce/merge diff files")
+                max_diff_size = getattr(btconfig,"MAX_DIFF_SIZE",10*1024**2)
+                current_size = 0
+                diff_data = None
+                cnt = 0
+                res = []
+                # .done contains original diff files
+                done_folder = os.path.join(diff_folder,".done")
+                try:
+                    os.mkdir(done_folder)
+                except FileExistsError:
+                    pass
+                diff_files = [f for f in glob.glob(os.path.join(diff_folder,"*.pyobj")) \
+                        if not os.path.basename(f).startswith("mapping")]
+                self.logger.info("%d diff files to process in total" % len(diff_files))
+                while diff_files:
+                    if len(diff_files) % 100 == 0:
+                        self.logger.info("%d diff files to process" % len(diff_files))
+                    if current_size > max_diff_size:
+                        fn = "diff_%s.pyobj" % cnt
+                        dump(diff_data,os.path.join(diff_folder,fn),compress="lzma")
+                        res.append({"name":fn,"md5sum":md5sum(os.path.join(diff_folder,fn))})
+                        diff_data = None
+                        current_size = 0
+                        cnt += 1
+                    if diff_data is None:
+                        diff_file = diff_files.pop()
+                        diff_data = loadobj(diff_file)
+                        os.rename(diff_file,os.path.join(done_folder,os.path.basename(diff_file)))
+                        current_size += asizeof(diff_data)
+
+                    diff_file = diff_files.pop()
+                    tomerge = loadobj(diff_file)
+                    os.rename(diff_file,os.path.join(done_folder,os.path.basename(diff_file)))
+
+                    current_size += asizeof(tomerge)
+                    assert diff_data["source"] == tomerge["source"]
+                    for k in ["add","delete","update"]:
+                        diff_data[k].extend(tomerge[k])
+
+                if diff_data:
+                    fn = "diff_%s.pyobj" % cnt
+                    dump(diff_data,os.path.join(diff_folder,fn),compress="lzma")
+                    res.append({"name":fn,"md5sum":md5sum(os.path.join(diff_folder,fn))})
+
+                return res
+
+            pinfo = {"category" : "diff",
+                     "step" : "reduce",
+                     "source" : diff_folder}
+            job = yield from self.job_manager.defer_to_thread(pinfo,merge_diff)
+            def reduced(f):
+                nonlocal got_error
+                try:
+                    res = f.result()
+                    metadata["diff"]["files"] = res
+                    self.logger.info("Diff files reduced")
+                except Exception as e:
+                    got_error = e
+            job.add_done_callback(reduced)
+            yield from job
+            if got_error:
+                self.logger.exception("Failed to reduce diff files: %s" % got_error,extra={"notify":True})
+                raise got_error
+
+        # pickl again with potentially more information (diff_stats)
         json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
         strargs = "[old=%s,new=%s,steps=%s,diff_stats=%s]" % (old_db_col_names,new_db_col_names,steps,diff_stats)
         self.logger.info("success %s" % strargs,extra={"notify":True})
         return diff_stats
 
-    def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["content","mapping"], mode=None, exclude=[]):
+    def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["content","mapping","post"], mode=None, exclude=[]):
         """wrapper over diff_cols() coroutine, return a task"""
         job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, steps, mode, exclude))
         return job

@@ -90,7 +90,7 @@ def send_s3_folder(folder, s3basedir=None, permissions=None, overwrite=False,
     cwd = os.getcwd()
     if not s3basedir:
         s3basedir = os.path.basename(cwd)
-    for localf in os.listdir(folder):
+    for localf in [f for f in os.listdir(folder) if not f.startswith(".")]:
         send_s3_file(os.path.join(folder,localf), os.path.join(s3basedir,localf),
                 overwrite=overwrite, permissions=permissions,
                 aws_key=aws_key,aws_secret=aws_secret,s3_bucket=s3_bucket)
