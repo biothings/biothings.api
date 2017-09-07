@@ -213,7 +213,7 @@ class BiothingsDumper(HTTPDumper):
                                 (versions_url,required_version))
                     else:
                         # if any of available versions end with "require_version", then it means it's compatible
-                        compatibles = [v for v in avail_versions["versions"] if v["build_version"].endswith(build_meta["require_version"])]
+                        compatibles = [v for v in avail_versions["versions"] if v["require_version"] == self.target_backend.version] #v["target_version"] == build_meta["require_version"]]
                         self.logger.info("Compatible versions from which we can apply this update: %s" % compatibles)
                         best_version = self.choose_best_version(compatibles)
                         self.logger.info("Best version found: '%s'" % best_version)
