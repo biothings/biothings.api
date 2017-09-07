@@ -197,6 +197,7 @@ class IndexerManager(BaseManager):
                 "type": "full",
                 "build_version": esb.version,
                 "target_version": esb.version,
+                "release_date" : datetime.now().isoformat(),
                 "app_version": None,
                 "metadata" : {"repository" : repo,
                               "snapshot_name" : snapshot}
@@ -254,7 +255,7 @@ class IndexerManager(BaseManager):
                 "require_version":None,
                 "target_version":full_meta["target_version"],
                 "type":full_meta["type"],
-                "release_date":utc_ts.isoformat(),
+                "release_date":full_meta["release_date"],
                 "url":url}
         publish_data_version(s3_folder,full_info)
         self.logger.info("Registered version '%s'" % (esb.version))

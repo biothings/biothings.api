@@ -754,7 +754,7 @@ class DifferManager(BaseManager):
         pclass = BaseManager.__getitem__(self,diff_type)
         return pclass()
 
-    def diff(self, diff_type, old_db_col_names, new_db_col_names, batch_size=100000, steps=["content","mapping"], mode=None, exclude=[]):
+    def diff(self, diff_type, old_db_col_names, new_db_col_names, batch_size=100000, steps=["content","mapping","post"], mode=None, exclude=[]):
         """
         Run a diff to compare old vs. new collections. using differ algorithm diff_type. Results are stored in
         a diff folder.
@@ -1179,12 +1179,19 @@ class DifferManager(BaseManager):
                 def gen_meta():
                     pinfo["step"] = "generate meta"
                     self.logger.info("Generating JSON metadata for incremental release '%s'" % diff_version)
+                    # if the same, this would create an infinite loop in autoupdate hub
+                    # (X requires X, where to find X ? there, but X requires X, where to find X ?...)
+                    if meta["old"]["version"] == meta["new"]["version"]:
+                        raise DifferException("Required version is the same as target version " + \
+                                "('%s'), prevent publishing to avoid infinite loop " % meta["new"]["version"] + \
+                                "while resolving updates in auto-update hub")
                     # generate json metadata about this diff release
                     diff_meta = {
                             "type": "incremental",
                             "build_version": diff_version,
                             "require_version": meta["old"]["version"],
                             "target_version": meta["new"]["version"],
+                            "release_date" : datetime.now().isoformat(),
                             "app_version": None,
                             "metadata" : {"url" : aws.get_s3_url(os.path.join(s3basedir,"metadata.json"),
                                 aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_DIFF_BUCKET)},
@@ -1217,7 +1224,7 @@ class DifferManager(BaseManager):
                     # was generated, as diff can be generated way after). New collection's
                     # timestamp remains a good choice as data (diff) relates to that date anyway
                     metadata = json.load(open(os.path.join(diff_folder,"metadata.json")))
-                    local_ts = dtparse(metadata["_meta"]["timestamp"])
+                    local_ts = dtparse(diff_meta["release_date"])
                     utc_epoch = int(time.mktime(local_ts.timetuple()))
                     utc_ts = datetime.fromtimestamp(time.mktime(time.gmtime(utc_epoch)))
                     str_utc_epoch = str(utc_epoch)
@@ -1233,7 +1240,7 @@ class DifferManager(BaseManager):
                             "require_version":diff_meta["require_version"],
                             "target_version":diff_meta["target_version"],
                             "type":diff_meta["type"],
-                            "release_date":utc_ts.isoformat(),
+                            "release_date":diff_meta["release_date"],
                             "url":url}
                     publish_data_version(s3_folder,version_info)
                     self.logger.info("Registered version '%s'" % (diff_version))
