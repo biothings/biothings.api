@@ -613,7 +613,7 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             # it's a type declaration, no explore
             typs = list(map(type,keys))
             if len(typs) > 1:
-                raise Exception("More than one type")
+                raise Exception("More than one type (key:%s,types:%s)" % (repr(rootk),repr(keys)))
             try:
                 typ = list(inspect_doc[rootk].keys())[0]
                 if "split" in inspect_doc[rootk][typ]:
