@@ -691,19 +691,11 @@ class UploaderManager(BaseSourceManager):
         for inst in insts:
             yield from inst.load(*args,**kwargs)
 
-    def poll(self):
-        if not self.poll_schedule:
-            raise ManagerError("poll_schedule is not defined")
-        src_dump = get_src_dump()
-        @asyncio.coroutine
-        def check_pending_to_upload():
-            sources = [src['_id'] for src in src_dump.find({'pending_to_upload': True}) if type(src['_id']) == str]
-            logging.info("Found %d resources to upload (%s)" % (len(sources),repr(sources)))
-            for src_name in sources:
-                logging.info("Launch upload for '%s'" % src_name)
-                try:
-                    self.upload_src(src_name)
-                except ResourceNotFound:
-                    logging.error("Resource '%s' needs upload but is not registered in manager" % src_name)
-        cron = aiocron.crontab(self.poll_schedule,func=partial(check_pending_to_upload),
-                start=True, loop=self.job_manager.loop)
+    def trigger_upload(self,doc):
+        # just a wrapper over upload_src, for poll()
+        return self.upload_src(doc["_id"])
+
+
+def set_pending_to_upload(src_name):
+    src_dump = get_src_dump()
+    src_dump.update({"_id":src_name},{"$addToSet":{"pending":"upload"}})

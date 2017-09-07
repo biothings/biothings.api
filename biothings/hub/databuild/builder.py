@@ -230,9 +230,6 @@ class DataBuilder(object):
                 'step_started_at': datetime.now(),
                 'logfile': self.logfile,
                 }
-        if status == "building":
-            # reset the flag
-            src_build_config.update({"_id" : self.build_config["_id"]},{"$unset" : {"pending_to_build":None}})
         if transient:
             # record some "in-progress" information
             job_info['pid'] = os.getpid()
@@ -745,7 +742,7 @@ def set_pending_to_build(conf_name=None):
     if conf_name:
         qfilter = {"_id":conf_name}
     logging.info("Setting pending_to_build flag for configuration(s): %s" % (conf_name and conf_name or "all configuraitons"))
-    src_build_config.update(qfilter,{"$set":{"pending_to_build":True}})
+    src_build_config.update(qfilter,{"$addToSet" : {"pending":"build"} })
 
 
 class BuilderManager(BaseManager):
@@ -871,22 +868,29 @@ class BuilderManager(BaseManager):
                 logging.info("Dropping target collection '%s" % col_name)
                 target_db[col_name].drop()
 
-    def poll(self):
+    def poll_config(self,state,func):
+        '''
+        Search for source with a pending flag list containing 'state' and
+        and call 'func' for each document found (with doc as only param)
+        '''
         if not self.poll_schedule:
             raise ManagerError("poll_schedule is not defined")
         src_build_config = get_src_build_config()
         @asyncio.coroutine
-        def check_pending_to_build():
-            confs = [src['_id'] for src in src_build_config.find({'pending_to_build': True}) if type(src['_id']) == str]
-            logging.info("Found %d configuration(s) to build (%s)" % (len(confs),repr(confs)))
-            for conf_name in confs:
-                logging.info("Launch build for '%s'" % conf_name)
+        def check_pending(state):
+            sources = [src for src in src_build_config.find({'pending': {"$in":[state]}}) if type(src['_id']) == str]
+            self.logger.info("Found %d resources with pending flag %s (%s)" % (len(sources),state,repr(sources)))
+            for src in sources:
+                self.logger.info("Run %s for pending flag %s on source '%s'" % (func,state,src["_id"]))
                 try:
-                    self.merge(conf_name)
-                except Exception as e:
-                    import traceback
-                    logging.error("Build for configuration '%s' failed: %s\n%s" % (conf_name,e,traceback.format_exc()))
-                    raise
-        cron = aiocron.crontab(self.poll_schedule,func=partial(check_pending_to_build),
+                    # first reset flag to make sure we won't call func multiple time
+                    src_build_config.update({"_id":src["_id"]},{"$pull":{"pending":state}})
+                    func(src)
+                except ResourceNotFound:
+                    self.logger.error("Resource '%s' has a pending flag set to %s but is not registered in manager" % \
+                        (src["_id"],state))
+        cron = aiocron.crontab(self.poll_schedule,func=partial(check_pending,state),
                 start=True, loop=self.job_manager.loop)
 
+    def trigger_merge(self,doc):
+        return self.merge(doc["_id"])

@@ -10,6 +10,7 @@ from biothings.utils.loggers import HipchatHandler
 from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER
 
 from biothings.utils.manager import BaseSourceManager
+from biothings.hub.dataload.uploader import set_pending_to_upload
 
 
 class DumperException(Exception):
@@ -281,7 +282,9 @@ class BaseDumper(object):
                 if got_error:
                     raise got_error
                 # set it to success at the very end
-                self.register_status("success",pending_to_upload=self.__class__.AUTO_UPLOAD)
+                self.register_status("success")
+                if self.__class__.AUTO_UPLOAD:
+                    set_pending_to_upload(self.src_name)
                 self.logger.info("success %s" % strargs,extra={"notify":True})
         except (KeyboardInterrupt,Exception) as e:
             self.logger.error("Error while dumping source: %s" % e)
@@ -561,7 +564,9 @@ class DummyDumper(BaseDumper):
         job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
         yield from asyncio.gather(job) # consume future
         self.logger.info("Registering success")
-        self.register_status("success",pending_to_upload=self.__class__.AUTO_UPLOAD)
+        self.register_status("success")
+        if self.__class__.AUTO_UPLOAD:
+            set_pending_to_upload(self.src_name)
         self.logger.info("success",extra={"notify":True})
 
 class ManualDumper(BaseDumper):
@@ -625,7 +630,9 @@ class ManualDumper(BaseDumper):
         job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
         yield from asyncio.gather(job) # consume future
         # ok, good to go
-        self.register_status("success",pending_to_upload=self.__class__.AUTO_UPLOAD)
+        self.register_status("success")
+        if self.__class__.AUTO_UPLOAD:
+            set_pending_to_upload(self.src_name)
         self.logger.info("success %s" % strargs,extra={"notify":True})
         self.logger.info("Manually dumped resource (data_folder: '%s')" % self.new_data_folder)
 
