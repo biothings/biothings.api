@@ -156,12 +156,30 @@ class BaseManager(object):
                 # nope, can't find it...
                 raise KeyError(src_name)
 
-    def poll(self,state,func):
+    def poll(self,state,func,col):
         '''
-        Search for source with a pending flag list containing 'state' and
-        and call 'func' for each document found (with doc as only param)
+        Search for source in collection 'col' with a pending flag list 
+        containing 'state' and and call 'func' for each document found
+        (with doc as only param)
         '''
-        raise NotImplementedError()
+        if not self.poll_schedule:
+            raise ManagerError("poll_schedule is not defined")
+        @asyncio.coroutine
+        def check_pending(state):
+            sources = [src for src in col.find({'pending': {"$in":[state]}}) if type(src['_id']) == str]
+            logger.info("Found %d resources with pending flag %s (%s)" % \
+                    (len(sources),state,repr([src["_id"] for src in sources])))
+            for src in sources:
+                logger.info("Run %s for pending flag %s on source '%s'" % (func,state,src["_id"]))
+                try:
+                    # first reset flag to make sure we won't call func multiple time
+                    col.update({"_id":src["_id"]},{"$pull":{"pending":state}})
+                    func(src)
+                except ResourceNotFound:
+                    logger.error("Resource '%s' has a pending flag set to %s but is not registered in manager" % \
+                        (src["_id"],state))
+        cron = aiocron.crontab(self.poll_schedule,func=partial(check_pending,state),
+                start=True, loop=self.job_manager.loop)
 
 
 class BaseSourceManager(BaseManager):
@@ -257,26 +275,6 @@ class BaseSourceManager(BaseManager):
                 logger.info("Can't register source '%s', skip it; %s" % (src,e))
                 import traceback
                 logger.error(traceback.format_exc())
-
-    def poll(self,state,func):
-        if not self.poll_schedule:
-            raise ManagerError("poll_schedule is not defined")
-        src_dump = get_src_dump()
-        @asyncio.coroutine
-        def check_pending(state):
-            sources = [src for src in src_dump.find({'pending': {"$in":[state]}}) if type(src['_id']) == str]
-            logger.info("Found %d resources with pending flag %s (%s)" % (len(sources),state,repr(sources)))
-            for src in sources:
-                logger.info("Run %s for pending flag %s on source '%s'" % (func,state,src["_id"]))
-                try:
-                    # first reset flag to make sure we won't call func multiple time
-                    src_dump.update({"_id":src["_id"]},{"$pull":{"pending":state}})
-                    func(src)
-                except ResourceNotFound:
-                    logger.error("Resource '%s' has a pending flag set to %s but is not registered in manager" % \
-                        (src["_id"],state))
-        cron = aiocron.crontab(self.poll_schedule,func=partial(check_pending,state),
-                start=True, loop=self.job_manager.loop)
 
 
 class JobManager(object):

@@ -13,6 +13,7 @@ import aiocron
 
 from .mapper import TransparentMapper
 from ..dataload.uploader import ResourceNotReady
+from .differ import set_pending_to_diff
 from ..databuild.backend import SourceDocMongoBackend, TargetDocMongoBackend
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj
@@ -482,6 +483,7 @@ class DataBuilder(object):
                                     "build_date" : datetime.fromtimestamp(self.t0).isoformat()}
                                 })
                             self.logger.info("success %s" % strargs,extra={"notify":True})
+                            set_pending_to_diff(target_name)
                         except Exception as e:
                             strargs = "[sources=%s]" % sources
                             self.register_status("failed",job={"err": repr(e)})
@@ -868,29 +870,8 @@ class BuilderManager(BaseManager):
                 logging.info("Dropping target collection '%s" % col_name)
                 target_db[col_name].drop()
 
-    def poll_config(self,state,func):
-        '''
-        Search for source with a pending flag list containing 'state' and
-        and call 'func' for each document found (with doc as only param)
-        '''
-        if not self.poll_schedule:
-            raise ManagerError("poll_schedule is not defined")
-        src_build_config = get_src_build_config()
-        @asyncio.coroutine
-        def check_pending(state):
-            sources = [src for src in src_build_config.find({'pending': {"$in":[state]}}) if type(src['_id']) == str]
-            self.logger.info("Found %d resources with pending flag %s (%s)" % (len(sources),state,repr(sources)))
-            for src in sources:
-                self.logger.info("Run %s for pending flag %s on source '%s'" % (func,state,src["_id"]))
-                try:
-                    # first reset flag to make sure we won't call func multiple time
-                    src_build_config.update({"_id":src["_id"]},{"$pull":{"pending":state}})
-                    func(src)
-                except ResourceNotFound:
-                    self.logger.error("Resource '%s' has a pending flag set to %s but is not registered in manager" % \
-                        (src["_id"],state))
-        cron = aiocron.crontab(self.poll_schedule,func=partial(check_pending,state),
-                start=True, loop=self.job_manager.loop)
+    def poll(self,state,func):
+        super(BuilderManager,self).poll(state,func,col=get_src_build_config())
 
     def trigger_merge(self,doc):
         return self.merge(doc["_id"])

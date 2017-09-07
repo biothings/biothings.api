@@ -691,9 +691,8 @@ class UploaderManager(BaseSourceManager):
         for inst in insts:
             yield from inst.load(*args,**kwargs)
 
-    def trigger_upload(self,doc):
-        # just a wrapper over upload_src, for poll()
-        return self.upload_src(doc["_id"])
+    def poll(self,state,func):
+        super(UploaderManager,self).poll(state,func,col=get_src_dump())
 
 
 def set_pending_to_upload(src_name):

@@ -705,7 +705,7 @@ class DiffReportTxt(DiffReportRendererBase):
 
 class DifferManager(BaseManager):
 
-    def __init__(self, *args,**kwargs):
+    def __init__(self, poll_schedule=None, *args,**kwargs):
         """
         DifferManager deals with the different differ objects used to create and
         analyze diff between datasources.
@@ -713,6 +713,7 @@ class DifferManager(BaseManager):
         super(DifferManager,self).__init__(*args,**kwargs)
         self.log_folder = btconfig.LOG_FOLDER
         self.timestamp = datetime.now()
+        self.poll_schedule = poll_schedule
         self.setup_log()
 
     def register_differ(self,klass):
@@ -754,7 +755,7 @@ class DifferManager(BaseManager):
         pclass = BaseManager.__getitem__(self,diff_type)
         return pclass()
 
-    def diff(self, diff_type, old_db_col_names, new_db_col_names, batch_size=100000, steps=["content","mapping","post"], mode=None, exclude=[]):
+    def diff(self, diff_type, old, new, batch_size=100000, steps=["content","mapping","post"], mode=None, exclude=[]):
         """
         Run a diff to compare old vs. new collections. using differ algorithm diff_type. Results are stored in
         a diff folder.
@@ -764,12 +765,20 @@ class DifferManager(BaseManager):
         """
         try:
             differ = self[diff_type]
-            job = differ.diff(old_db_col_names, new_db_col_names,
+            old = old or self.select_old_collection(new)
+            job = differ.diff(old, new,
                               batch_size=batch_size,
                               steps=steps,
                               mode=mode,
                               exclude=exclude)
-            return job
+            def diffed(f):
+                try:
+                    res = f.result()
+                    set_pending_to_release_note(new)
+                except Exception as e:
+                    self.logger.error("Error during diff: %s" % e)
+                    raise
+            job.add_done_callback(diffed)
         except KeyError as e:
             raise DifferException("No such differ '%s' (error: %s)" % (diff_type,e))
 
@@ -819,10 +828,10 @@ class DifferManager(BaseManager):
         job = asyncio.ensure_future(main(diff_folder))
         return job
 
-    def release_note(self, old_db_col_names, new_db_col_names, filename=None, note=None, format="txt"):
+    def release_note(self, old, new, filename=None, note=None, format="txt"):
         """
         Generate release note files, in TXT and JSON format, containing significant changes
-        summary between target collections old_db_col_names and new_db_col_names. Output files
+        summary between target collections old and new. Output files
         are stored in a diff folder using generate_folder(old,new).
 
         'filename' can optionally be specified, though it's not recommended as the publishing pipeline,
@@ -832,14 +841,14 @@ class DifferManager(BaseManager):
 
         txt 'format' is the only one supported for now.
         """
-
-        release_folder = generate_folder(btconfig.RELEASE_PATH,old_db_col_names,new_db_col_names)
+        old = old or self.select_old_collection(new)
+        release_folder = generate_folder(btconfig.RELEASE_PATH,old,new)
         if not os.path.exists(release_folder):
             os.makedirs(release_folder)
         filepath = None
 
         def do():
-            changes = self.build_release_note(old_db_col_names,new_db_col_names,note=note)
+            changes = self.build_release_note(old,new,note=note)
             nonlocal filepath
             nonlocal filename
             assert format == "txt", "Only 'txt' format supported for now"
@@ -865,6 +874,7 @@ class DifferManager(BaseManager):
                     res = f.result()
                     assert filepath, "No filename defined for generated report, can't attach"
                     self.logger.info("Release note ready, saved in %s" % release_folder,extra={"notify":True,"attach":filepath})
+                    set_pending_to_publish(new)
                 except Exception as e:
                     got_error = e
             job.add_done_callback(reported)
@@ -1262,3 +1272,52 @@ class DifferManager(BaseManager):
 
         return asyncio.ensure_future(do())
 
+    def select_old_collection(self,new_id):
+        """
+        Given 'new_id', an _id from src_build, as the "new" collection,
+        automatically select an "old" collection. By default, src_build's documents
+        will be sorted according to their name (_id) and old colleciton is the one
+        just before new_id.
+        """
+        docs = get_src_build().find({"_id":{"$lte":new_id}},{"_id":1}).sort([("_id",-1)]).limit(2) 
+        _ids = [d["_id"] for d in docs]
+        assert len(_ids) == 2, "Expecting 2 collection _ids, got: %s" % _ids
+        assert _ids[0] == new_id, "Can't find collection _id '%s'" % new_id
+        return _ids[1]
+
+    def poll(self,state,func):
+        super(DifferManager,self).poll(state,func,col=get_src_build())
+
+    def trigger_diff(self,diff_type,doc,**kwargs):
+        """
+        Launch a diff given a src_build document. In order to 
+        know the first collection to diff against, select_old_collection()
+        method is used.
+        """
+        new_db_col_names = doc["_id"]
+        old_db_col_names = self.select_old_collection(doc)
+        self.diff(diff_type, old_db_col_names, new_db_col_names, **kwargs)
+
+    def trigger_release_note(self,doc,**kwargs):
+        """
+        Launch a release note generation given a src_build document. In order to 
+        know the first collection to compare with, select_old_collection()
+        method is used. release_note() method will get **kwargs for more optional
+        parameters.
+        """
+        new_db_col_names = doc["_id"]
+        old_db_col_names = self.select_old_collection(doc)
+        self.release_note(old_db_col_names, new_db_col_names, **kwargs)
+
+
+def set_pending_to_diff(col_name):
+    src_build = get_src_build()
+    src_build.update({"_id":col_name},{"$addToSet" : {"pending":"diff"} })
+
+def set_pending_to_release_note(col_name):
+    src_build = get_src_build()
+    src_build.update({"_id":col_name},{"$addToSet" : {"pending":"release_note"} })
+
+def set_pending_to_publish(col_name):
+    src_build = get_src_build()
+    src_build.update({"_id":col_name},{"$addToSet" : {"pending":"publish"} })
