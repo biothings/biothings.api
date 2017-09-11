@@ -124,8 +124,6 @@ class MergerStorage(BasicStorage):
             total += nbinsert
 
         self.logger.info('Done[%s]' % timesofar(t0))
-        self.switch_collection()
-        self.post_update_data()
 
         return total
 
@@ -183,8 +181,6 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
                 dups += 1
                 pass
         self.logger.info('Done[%s]' % timesofar(t0))
-        self.switch_collection()
-        self.post_update_data()
 
         return total
 
