@@ -5,6 +5,7 @@ import asyncio
 from pymongo.errors import DuplicateKeyError, BulkWriteError
 
 from biothings.utils.common import timesofar, iter_n
+from biothings.utils.dataload import merge_struct
 from biothings.utils.mongo import get_src_db
 
 

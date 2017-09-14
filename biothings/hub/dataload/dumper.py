@@ -32,13 +32,12 @@ class BaseDumper(object):
 
     SCHEDULE = None # crontab format schedule, if None, won't be scheduled
 
-    def __init__(self, src_name=None, src_root_folder=None, log_folder=None, no_confirm=True, archive=None):
+    def __init__(self, src_name=None, src_root_folder=None, log_folder=None, archive=None):
         # unpickable attrs, grouped
         self.init_state()
         self.src_name = src_name or self.SRC_NAME
         self.src_root_folder = src_root_folder or self.SRC_ROOT_FOLDER
         self.log_folder = log_folder or LOG_FOLDER
-        self.no_confirm = no_confirm
         self.archive = archive or self.ARCHIVE
         self.to_dump = []
         self.release = None
@@ -133,7 +132,7 @@ class BaseDumper(object):
         This is a good place to check file's integrity. Optional"""
         pass
 
-    def post_dump(self):
+    def post_dump(self, *args, **kwargs):
         """
         Placeholder to add a custom process once the whole resource 
         has been dumped. Optional.
@@ -273,7 +272,8 @@ class BaseDumper(object):
                 # for some reason (like maintaining object's state between pickling).
                 # we can't use process there. Need to use thread to maintain that state without
                 # building an unmaintainable monster
-                job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
+                job = yield from job_manager.defer_to_thread(pinfo,
+                        partial(self.post_dump,job_manager=job_manager))
                 def postdumped(f):
                     if f.exception():
                         got_error = f.exception()
@@ -561,7 +561,8 @@ class DummyDumper(BaseDumper):
         # this is the only interesting thing happening here
         pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
-        job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
+        job = yield from job_manager.defer_to_thread(pinfo,
+                partial(self.post_dump,job_manager=job_manager))
         yield from asyncio.gather(job) # consume future
         self.logger.info("Registering success")
         self.register_status("success")
@@ -627,7 +628,8 @@ class ManualDumper(BaseDumper):
         pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
         strargs = "[path=%s,release=%s]" % (self.new_data_folder,self.release)
-        job = yield from job_manager.defer_to_thread(pinfo, self.post_dump)
+        job = yield from job_manager.defer_to_thread(pinfo,
+                partial(self.post_dump,job_manager=job_manager))
         yield from asyncio.gather(job) # consume future
         # ok, good to go
         self.register_status("success")
