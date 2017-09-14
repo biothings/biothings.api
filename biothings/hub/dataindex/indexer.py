@@ -237,7 +237,7 @@ class IndexerManager(BaseManager):
         build_info_path = os.path.join(btconfig.DIFF_PATH,build_info)
         json.dump(full_meta,open(build_info_path,"w"))
         # override lastmodified header with our own timestamp
-        local_ts = dtparse(idxr.get_mapping_meta()["_meta"]["timestamp"])
+        local_ts = dtparse(idxr.get_mapping_meta()["_meta"]["build_date"])
         utc_epoch = int(time.mktime(local_ts.timetuple()))
         utc_ts = datetime.fromtimestamp(time.mktime(time.gmtime(utc_epoch)))
         str_utc_epoch = str(utc_epoch)

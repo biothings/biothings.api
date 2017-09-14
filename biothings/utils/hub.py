@@ -351,7 +351,7 @@ def publish_data_version(s3_folder,version_info,env=None,update_latest=True):
         # order by build_version
         versions["versions"] = sorted(tmp.values(),key=lambda e: e["build_version"])
 
-    aws.send_s3_file(None,versionskey,content=json.dumps(versions),
+    aws.send_s3_file(None,versionskey,content=json.dumps(versions,indent=True),
             aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,s3_bucket=config.S3_RELEASE_BUCKET,
             content_type="application/json",overwrite=True)
 
@@ -365,8 +365,8 @@ def publish_data_version(s3_folder,version_info,env=None,update_latest=True):
                     s3_bucket=config.S3_RELEASE_BUCKET)
         except FileNotFoundError:
             pass
-        aws.send_s3_file(None,latestkey,content=json.dumps(version_info["build_version"]),content_type="application/json",
-                aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
+        aws.send_s3_file(None,latestkey,content=json.dumps(version_info["build_version"],indent=True),
+                content_type="application/json",aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
                 s3_bucket=config.S3_RELEASE_BUCKET,overwrite=True)
         if not key:
             key = aws.get_s3_file(latestkey,return_what="key",
