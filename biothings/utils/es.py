@@ -595,8 +595,9 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             while list in toexplore:
                 toexplore = toexplore[list]
             if len(toexplore) > 1:
-            # we want to make sure that, whatever the structure, the types involved were the same
-                other_types = set([k for k in toexplore.keys() if k != list and type(k) == type])
+                # we want to make sure that, whatever the structure, the types involved were the same
+                # Exception: None is allowed with other types (translates to 'null' in ES)
+                other_types = set([k for k in toexplore.keys() if k != list and type(k) == type and not k is type(None)])
                 if len(other_types) > 1:
                     raise Exception("Mixing types for key '%s': %s" % (rootk,other_types))
             res = generate_es_mapping(toexplore,init=False,level=level+1)
