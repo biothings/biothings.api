@@ -739,33 +739,3 @@ def merge_struct(v1, v2,aslistofdict=None):
     #print("return %s" % v1)
     return v1
 
-
-#===============================================================================
-# Network Utility functions
-#===============================================================================
-def download(url, output_folder, output_file, no_confirm=False, use_axel=False):
-    orig_path = os.getcwd()
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)  # create output_folder if doesn not exist
-    try:
-        os.chdir(output_folder)
-        if os.path.exists(output_file):
-            if no_confirm or ask('Remove existing file "%s"?' % output_file) == 'Y':
-                os.remove(output_file)
-            else:
-                print("Skipped!")
-                return
-        print('Downloading "%s"...' % output_file)
-        if use_axel:
-            #faster than wget using 5 connections
-            cmdline = 'axel -a -n 5 "{}" -o "{}"'.format(url, output_file)
-        else:
-            cmdline = 'wget "{}" -O "{}"'.format(url, output_file)
-        return_code = os.system(cmdline)
-        if return_code == 0:
-            print("Success.")
-        else:
-            print("Failed with return code (%s)." % return_code)
-        print("="*50)
-    finally:
-        os.chdir(orig_path)
