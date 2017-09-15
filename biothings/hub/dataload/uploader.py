@@ -482,7 +482,7 @@ class DummySourceUploader(BaseSourceUploader):
 
     @asyncio.coroutine
     def update_data(self, batch_size, job_manager=None, release=None):
-        assert release, "Dummy uploader requires 'release' argument to be specified"
+        assert not release is None, "Dummy uploader requires 'release' argument to be specified"
         self.logger.info("Dummy uploader, nothing to upload")
         # by-pass register_status and store release here (it's usually done by dumpers but 
         # dummy uploaders have no dumper associated b/c it's collection-only resource)
