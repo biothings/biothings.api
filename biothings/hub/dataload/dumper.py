@@ -27,6 +27,9 @@ class BaseDumper(object):
     # attribute used to generate data folder path suffix
     SUFFIX_ATTR = "release"
 
+    # Max parallel downloads (None = no limit).
+    MAX_PARALLEL_DUMP = None
+
     # keep all release (True) or keep only the latest ?
     ARCHIVE = True
 
@@ -249,6 +252,9 @@ class BaseDumper(object):
                     pass
                 # TODO: blocking call for now, FTP client can't be properly set in thread after
                 self.create_todump_list(force=force, **kwargs)
+                # make sure we release (disconnect) client so we don't keep an open
+                # connection for nothing
+                self.release_client()
                 if self.to_dump:
                     if check_only:
                         self.logger.info("New release available, '%s', %s file(s) to download" % \
@@ -344,16 +350,25 @@ class BaseDumper(object):
     @asyncio.coroutine
     def do_dump(self,job_manager=None):
         self.logger.info("%d file(s) to download" % len(self.to_dump))
+        # should downloads be throttled ?
+        max_dump = self.__class__.MAX_PARALLEL_DUMP and asyncio.Semaphore(self.__class__.MAX_PARALLEL_DUMP)
         jobs = []
         state = self.unprepare()
         for todo in self.to_dump:
             remote = todo["remote"]
             local = todo["local"]
             def done(job):
+                nonlocal max_dump
+                if max_dump:
+                    #self.logger.debug("Releasing download semaphore: %s" % max_dump)
+                    max_dump.release()
                 self.post_download(remote,local)
             pinfo = self.get_pinfo()
             pinfo["step"] = "dump"
             pinfo["description"] = remote
+            if max_dump:
+                yield from max_dump.acquire()
+                #self.logger.info("Throttling parallelized downloads: %s" % max_dump)
             job = yield from job_manager.defer_to_process(pinfo, partial(self.download,remote,local))
             job.add_done_callback(done)
             jobs.append(job)
@@ -397,15 +412,18 @@ class FTPDumper(BaseDumper):
     def download(self,remotefile,localfile):
         self.prepare_local_folders(localfile)
         self.logger.debug("Downloading '%s'" % remotefile)
-        with open(localfile,"wb") as out_f:
-            self.client.retrbinary('RETR %s' % remotefile, out_f.write)
-        # set the mtime to match remote ftp server
-        response = self.client.sendcmd('MDTM ' + remotefile)
-        code, lastmodified = response.split()
-        # an example: 'last-modified': '20121128150000'
-        lastmodified = time.mktime(datetime.strptime(lastmodified, '%Y%m%d%H%M%S').timetuple())
-        os.utime(localfile, (lastmodified, lastmodified))
-        return code
+        try:
+            with open(localfile,"wb") as out_f:
+                self.client.retrbinary('RETR %s' % remotefile, out_f.write)
+            # set the mtime to match remote ftp server
+            response = self.client.sendcmd('MDTM ' + remotefile)
+            code, lastmodified = response.split()
+            # an example: 'last-modified': '20121128150000'
+            lastmodified = time.mktime(datetime.strptime(lastmodified, '%Y%m%d%H%M%S').timetuple())
+            os.utime(localfile, (lastmodified, lastmodified))
+            return code
+        finally:
+            self.release_client()
 
     def remote_is_better(self,remotefile,localfile):
         """'remotefile' is relative path from current working dir (CWD_DIR), 
@@ -465,7 +483,7 @@ class HTTPDumper(BaseDumper):
         return res
 
 class LastModifiedHTTPDumper(HTTPDumper):
-    """Given a list of URLs, check Last-Modified header to see 
+    """Given a list of URLs, check Last-Modified header to see
     whether the file should be downloaded. Sub-class should only have
     to declare SRC_URLS. Optionally, another field name can be used instead
     of Last-Modified, but date format must follow RFC 2616"""
