@@ -556,6 +556,46 @@ class WgetDumper(BaseDumper):
         else:
             self.logger.error("Failed with return code (%s)." % return_code)
 
+
+class FilesystemDumper(BaseDumper):
+    """
+    This dumpers works locally and copy (or move) files to datasource folder
+    """
+
+    FS_OP = "cp" # or 'mv' if file needs to be delete from original folder
+
+    def prepare_client(self):
+        """Check if 'cp' and 'mv' executable exists..."""
+        for cmd in ["cp","mv"]:
+            ret = os.system("type %s 2>&1 > /dev/null" % cmd)
+            if not ret == 0:
+                raise DumperException("Can't find '%s' executable" % cmd)
+
+    def need_prepare(self):
+        return False
+
+    def release_client(self):
+        pass
+
+    def remote_is_better(self,remotefile,localfile):
+        res = os.stat(remotefile)
+        remote_lastmodified = int(res.st_mtime)
+        res = os.stat(localfile)
+        local_lastmodified = int(res.st_mtime)
+        if remote_lastmodified > local_lastmodified:
+            return True
+        else:
+            return False
+
+    def download(self,remotefile,localfile):
+        self.prepare_local_folders(localfile)
+        cmdline = "%s -f %s %s" % (self.__class__.FS_OP,remotefile, localfile)
+        return_code = os.system(cmdline)
+        if return_code == 0:
+            self.logger.info("Success.")
+        else:
+            self.logger.error("Failed with return code (%s)." % return_code)
+
 class DummyDumper(BaseDumper):
     """DummyDumper will do nothing...
     (useful for datasources that can't be downloaded anymore
