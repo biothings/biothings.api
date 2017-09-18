@@ -36,7 +36,7 @@ class IDBaseMapper(BaseMapper):
         'name' may match a "mapper" metatdata field (see uploaders). If None, mapper
         will be applied to any document from a resource without "mapper" argument
         """
-        super(IDBaseMapper,self).__init__(self,name=name)
+        super(IDBaseMapper,self).__init__(name=name)
         self.map = None
         self.convert_func = convert_func
 
@@ -49,7 +49,7 @@ class IDBaseMapper(BaseMapper):
             self.load()
         default = transparent and _id or None
         conv = self.convert_func or (lambda x: x)
-        return self.map.get(self.conv(_id),default)
+        return self.map.get(conv(_id),default)
 
     def __contains__(self,_id):
         if self.need_load():

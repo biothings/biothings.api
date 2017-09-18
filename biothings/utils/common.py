@@ -316,7 +316,6 @@ def dump2gridfs(object, filename, db, bin=2):
     '''Save a compressed (support gzip only) object to MongoDB gridfs.'''
     import gridfs
     import gzip
-    print('Dumping into "MongoDB:%s/%s"...' % (db.name, filename), end='')
     fs = gridfs.GridFS(db)
     if fs.exists(_id=filename):
         fs.delete(filename)
@@ -327,7 +326,6 @@ def dump2gridfs(object, filename, db, bin=2):
     finally:
         gzfobj.close()
         fobj.close()
-    print('Done. [%s]' % fs.get(filename).length)
 
 
 def loadobj(filename, mode='file'):
@@ -342,7 +340,7 @@ def loadobj(filename, mode='file'):
         import gridfs
         filename, db = filename   # input is a tuple of (filename, mongo_db)
         fs = gridfs.GridFS(db)
-        fobj = fs.get(filename)
+        fobj = gzip.GzipFile(fileobj=fs.get(filename))
     else:
         if is_str(filename):
             fobj = open_compressed_file(filename)
