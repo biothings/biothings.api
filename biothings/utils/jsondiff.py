@@ -22,6 +22,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 
+# when comparing list, should we have the same order ?
+# default: yes, so no unordered lists
+UNORDERED_LIST = False
+# when adjusting list diff, should we use list operations
+# like (add,replace,move) ? Default: no, bc otherwise
+# we can't patch a doc multiple time
+USE_LIST_OPS = False
+
 
 __all__ = ["make",] 
 
@@ -244,7 +252,7 @@ def _item_removed(path, key, info, item):
 def _item_replaced(path, key, info, item):
     info.insert(_op_replace(path, key, item))
 
-def _compare_dicts(path, info, src, dst, use_list_ops=False):
+def _compare_dicts(path, info, src, dst):
     added_keys = dst.keys() - src.keys()
     removed_keys = src.keys() - dst.keys()
     for key in removed_keys:
@@ -252,11 +260,11 @@ def _compare_dicts(path, info, src, dst, use_list_ops=False):
     for key in added_keys:
         _item_added(path, str(key), info, dst[key])
     for key in src.keys() & dst.keys():
-        _compare_values(path, key, info, src[key], dst[key], use_list_ops)
+        _compare_values(path, key, info, src[key], dst[key])
 
-def _compare_lists(path, info, src, dst, use_list_ops=False):
+def _compare_lists(path, info, src, dst):
     len_src, len_dst = len(src), len(dst)
-    if use_list_ops:
+    if USE_LIST_OPS:
         max_len = max(len_src, len_dst)
         min_len = min(len_src, len_dst)
         for key in range(max_len):
@@ -271,23 +279,34 @@ def _compare_lists(path, info, src, dst, use_list_ops=False):
             else:
                 _item_added(path, key, info, dst[key])
     else:
-        if len_src != len_dst or src != dst:
+        if len_src != len_dst or (not UNORDERED_LIST and src != dst):
             _item_replaced(path, None , info, dst)
+        else:
+            found_diff = False
+            # lengths are the same so we just need to compare src against dst
+            # (dst against src isn't necessary)
+            for e in src:
+                if not e in dst:
+                    found_diff = True
+                    break
+            if found_diff:
+                _item_replaced(path, None , info, dst)
 
-def _compare_values(path, key, info, src, dst, use_list_ops=False):
+
+def _compare_values(path, key, info, src, dst):
     if src == dst:
         return
     elif isinstance(src, dict) and \
             isinstance(dst, dict):
-        _compare_dicts(_path_join(path, key), info, src, dst, use_list_ops)
+        _compare_dicts(_path_join(path, key), info, src, dst)
     elif isinstance(src, list) and \
             isinstance(dst, list):
-        _compare_lists(_path_join(path, key), info, src, dst, use_list_ops)
+        _compare_lists(_path_join(path, key), info, src, dst)
     else:
         _item_replaced(path, key, info, dst)
 
-def make(src, dst, use_list_ops=False, **kwargs):
+def make(src, dst, **kwargs):
     info = _compare_info()
-    _compare_values('', None, info, src, dst, use_list_ops=use_list_ops)
+    _compare_values('', None, info, src, dst)
     return [op for op in info.execute()]
 
