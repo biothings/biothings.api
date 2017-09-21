@@ -1,4 +1,5 @@
 import time, logging, os, io, glob, datetime
+import dateutil.parser as dtparser
 from functools import wraps
 from pymongo import MongoClient
 from pymongo.collection import Collection
@@ -280,7 +281,8 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             if not info:
                 logger.warning("Can't find information for target collection '%s'" % col.name)
             else:
-                ts = info["started_at"].timestamp()
+                ts = info.get("_meta",{}).get("build_date")
+                ts = ts and dtparser.parse(ts).timestamp()
         elif col.database.name == config.DATA_SRC_DATABASE:
             src_dump = get_src_dump()
             info = src_dump.find_one({"$where":"function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}}" % col.name})
@@ -320,7 +322,9 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             else:
                 mt = os.path.getmtime(cache_file)
                 if ts and mt >= ts:
-                    logging.debug("Cache is valid, modiftime_cache:%s >= col_timestamp:%s" % (mt,ts))
+                    dtmt = datetime.datetime.fromtimestamp(mt).isoformat()
+                    dtts = datetime.datetime.fromtimestamp(ts).isoformat()
+                    logging.debug("Cache is valid, modiftime_cache:%s >= col_timestamp:%s" % (dtmt,dtts))
                     use_cache = True
                 else:
                     logger.info("Cache is too old, discard it")
