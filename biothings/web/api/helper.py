@@ -39,7 +39,7 @@ class DateTimeJSONEncoder(json.JSONEncoder):
 class BiothingParameterTypeError(Exception):
     pass
 
-class BaseHandler(tornado.web.RequestHandler, GAMixIn, SentryMixin, StandaloneTrackingMixin):
+class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTrackingMixin):
     ''' Parent class of all biothings handlers, only direct descendant of
         `tornado.web.RequestHandler <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler>`_, 
         contains the common functions in the biothings handler universe:
