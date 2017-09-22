@@ -40,7 +40,7 @@ class BiothingHandler(BaseESRequestHandler):
     def get(self, bid=None):
         ''' Handle a GET to the annotation lookup endpoint.'''
         if not bid:
-            self.return_json(self.web_settings.FOUR_HUNDRED_TEMPLATE.format(msg=self.web_settings.ID_REQUIRED_MESSAGE), encode=False, status_code=404, content_type_header='text/html; charset=UTF-8')
+            self.return_json({'success': False, 'error': self.web_settings.ID_REQUIRED_MESSAGE}, status_code=404)
             return
             
         # redirect this id
@@ -103,7 +103,7 @@ class BiothingHandler(BaseESRequestHandler):
             res = _backend.annotation_GET_query(_query)
         except Exception:
             self.log_exceptions("Error executing query")
-            self.return_json(self.web_settings.FOUR_HUNDRED_TEMPLATE.format(msg=self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)), encode=False, status_code=404, content_type_header='text/html; charset=UTF-8')
+            self.return_json({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404)
             #raise HTTPError(404)
             return
         
@@ -125,13 +125,13 @@ class BiothingHandler(BaseESRequestHandler):
             res = _result_transformer.clean_annotation_GET_response(res)
         except Exception:
             self.log_exceptions("Error transforming result")
-            self.return_json(self.web_settings.FOUR_HUNDRED_TEMPLATE.format(msg=self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)), encode=False, status_code=404, content_type_header='text/html; charset=UTF-8')
+            self.return_json({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404)
             #raise HTTPError(404)
             return
 
         # return result
         if not res:
-            self.return_json(self.web_settings.FOUR_HUNDRED_TEMPLATE.format(msg=self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)), encode=False, status_code=404, content_type_header='text/html; charset=UTF-8')
+            self.return_json({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404)
             #raise HTTPError(404)
             return
 
