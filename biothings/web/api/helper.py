@@ -154,7 +154,7 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         _args = self._sanitize_params(_args)
         return _args
 
-    def return_json(self, data, encode=True, indent=None, status_code=200, content_type_header='application/json; charset=UTF-8'):
+    def return_json(self, data, encode=True, indent=None, status_code=200):
         '''Return passed data object as JSON response.
         If **jsonp** parameter is set in the  request, return a valid 
         `JSONP <https://en.wikipedia.org/wiki/JSONP>`_ response.
@@ -172,7 +172,7 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
             self.set_header("Content-Type", "application/x-msgpack")
         else:
             _json_data = json.dumps(data, cls=DateTimeJSONEncoder, indent=indent) if encode else data
-            self.set_header("Content-Type", content_type_header)
+            self.set_header("Content-Type", "application/json; charset=UTF-8")
         if not self.web_settings.DISABLE_CACHING:
             #get etag if data is a dictionary and has "etag" attribute.
             etag = data.get('etag', None) if isinstance(data, dict) else None
