@@ -629,8 +629,14 @@ class DataBuilder(object):
         yield from asyncio.sleep(0.0)
         return self.stats
 
-    def clean_document_to_merge(self,doc):
-        return doc
+    def document_cleaner(self,src_name,*args,**kwargs):
+        """
+        Return a function taking a document as argument, cleaning the doc
+        as needed, and returning that doc. If no function is needed, None.
+        Note: the returned function must be pickleable, careful with lambdas
+        and closures.
+        """
+        return None
 
     @asyncio.coroutine
     def merge_source(self, src_name, batch_size=100000, ids=None, job_manager=None):
@@ -670,6 +676,7 @@ class DataBuilder(object):
             id_provider = ids and [ids] or id_feeder(self.source_backend[src_name],
                     batch_size=id_batch_size,logger=self.logger)
 
+        doc_cleaner = self.document_cleaner(src_name)
         for big_doc_ids in id_provider:
             for doc_ids in iter_n(big_doc_ids,batch_size):
                 # try to put some async here to give control back
@@ -688,6 +695,7 @@ class DataBuilder(object):
                             self.target_backend.target_name,
                             doc_ids,
                             self.get_mapper_for_source(src_name,init=False),
+                            doc_cleaner,
                             upsert,
                             bnum))
                 def batch_merged(f,batch_num):
@@ -723,7 +731,7 @@ class DataBuilder(object):
 
 from biothings.utils.backend import DocMongoBackend
 
-def merger_worker(col_name,dest_name,ids,mapper,upsert,batch_num):
+def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,batch_num):
     try:
         src = mongo.get_src_db()
         tgt = mongo.get_target_db()
@@ -732,6 +740,8 @@ def merger_worker(col_name,dest_name,ids,mapper,upsert,batch_num):
         #    raise ValueError("oula pa bon")
         dest = DocMongoBackend(tgt,tgt[dest_name])
         cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}})
+        if cleaner:
+            cur = map(cleaner,cur)
         mapper.load()
         docs = mapper.process(cur)
         cnt = dest.update(docs, upsert=upsert)
