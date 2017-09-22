@@ -779,6 +779,7 @@ class DifferManager(BaseManager):
                     self.logger.error("Error during diff: %s" % e)
                     raise
             job.add_done_callback(diffed)
+            return job
         except KeyError as e:
             raise DifferException("No such differ '%s' (error: %s)" % (diff_type,e))
 
