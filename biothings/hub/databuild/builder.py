@@ -16,7 +16,7 @@ from ..dataload.uploader import ResourceNotReady
 from .differ import set_pending_to_diff
 from ..databuild.backend import SourceDocMongoBackend, TargetDocMongoBackend
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
-                                   dump, rmdashfr, loadobj
+                                   dump, rmdashfr, loadobj, open_compressed_file
 from biothings.utils.mongo import doc_feeder, id_feeder
 from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.utils.manager import BaseManager, ManagerError
@@ -668,12 +668,13 @@ class DataBuilder(object):
             id_provider = id_feeder(self.source_backend[src_name], batch_size=id_batch_size)
 
         if _query:
+            assert ids is None
             self.logger.info("Query/filter involved, can't use cache to fetch _ids")
             # use doc_feeder but post-process doc to keep only the _id
             id_provider = map(lambda docs: [d["_id"] for d in docs],doc_feeder(self.source_backend[src_name], query=_query,
                     step=batch_size, inbatch=True, fields={"_id":1}))
         else:
-            id_provider = ids and [ids] or id_feeder(self.source_backend[src_name],
+            id_provider = ids and iter_n(ids,id_batch_size) or id_feeder(self.source_backend[src_name],
                     batch_size=id_batch_size,logger=self.logger)
 
         doc_cleaner = self.document_cleaner(src_name)
@@ -754,6 +755,16 @@ def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,batch_num):
         pickle.dump(e,open(exc_fn,"wb"))
         logger.info("Exception was dumped in pickle file '%s'" % exc_fn)
         raise
+
+class DemoDataBuilder(DataBuilder):
+
+    def __init__(self,build_name,ids_files,*args,**kwargs):
+        self.ids_files = ids_files
+        super(DemoDataBuilder,self).__init__(build_name,*args,**kwargs)
+
+    def merge(self, *args, **kwargs):
+        ids = list(map(lambda l: l.decode().strip(),open_compressed_file(self.ids_files[self.build_name]).readlines()))
+        return super(DemoDataBuilder,self).merge(ids=ids,*args,**kwargs)
 
 
 def set_pending_to_build(conf_name=None):

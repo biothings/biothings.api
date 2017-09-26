@@ -135,17 +135,6 @@ def rec_handler(infile, block_end='\n', skip=0, include_block_end=False, as_list
 
 
 #===============================================================================
-# Misc. Utility functions
-#===============================================================================
-def load_start(datafile):
-    print('Loading "%s"...' % os.path.split(datafile)[1], end='')
-
-
-def load_done(msg=''):
-    print("Done." + msg)
-
-
-#===============================================================================
 # List Utility functions
 #===============================================================================
 
