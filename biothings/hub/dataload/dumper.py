@@ -203,7 +203,7 @@ class BaseDumper(object):
             data_folder = self.new_data_folder
         except DumperException:
             data_folder = self.current_data_folder
-        self.src_doc = {
+        self.src_doc.update({
                 '_id': self.src_name,
                'data_folder': data_folder,
                'release': getattr(self,self.__class__.SUFFIX_ATTR),
@@ -211,7 +211,7 @@ class BaseDumper(object):
                    'logfile': self.logfile,
                    'started_at': datetime.now(),
                    'status': status}
-               }
+               })
         # only register time when it's a final state
         if transient:
             self.src_doc["download"]["pid"] = os.getpid()
