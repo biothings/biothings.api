@@ -856,10 +856,11 @@ class DifferManager(BaseManager):
             filename = filename or "release_%s.%s" % (changes["new"]["_version"],format)
             filepath = os.path.join(release_folder,filename)
             render = ReleaseNoteTxt(changes)
-            render.save(filepath)
+            txt = render.save(filepath)
             filename = filename.replace(".%s" % format,".json")
             filepath = os.path.join(release_folder,filename)
             json.dump(changes,open(filepath,"w"),indent=True)
+            return txt
 
         @asyncio.coroutine
         def main(release_folder):
@@ -874,7 +875,7 @@ class DifferManager(BaseManager):
                 try:
                     res = f.result()
                     assert filepath, "No filename defined for generated report, can't attach"
-                    self.logger.info("Release note ready, saved in %s" % release_folder,extra={"notify":True,"attach":filepath})
+                    self.logger.info("Release note ready, saved in %s: %s" % (release_folder,res),extra={"notify":True})
                     set_pending_to_publish(new)
                 except Exception as e:
                     got_error = e
