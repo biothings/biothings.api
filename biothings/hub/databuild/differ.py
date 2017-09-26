@@ -1279,8 +1279,23 @@ class DifferManager(BaseManager):
         automatically select an "old" collection. By default, src_build's documents
         will be sorted according to their name (_id) and old colleciton is the one
         just before new_id.
+        Note: because there can more than one build config used, the actual build config
+        name is first determined using new_id collection name, then the find.sort is done
+        on collections containing that build config name.
         """
-        docs = get_src_build().find({"_id":{"$lte":new_id}},{"_id":1}).sort([("_id",-1)]).limit(2) 
+        col = get_src_build()
+        doc = col.find_one({"_id":new_id})
+        assert doc, "No build document found for '%s'" % new_id
+        assert "build_config" in doc, "No build configuration found for document '%s'" % new_id 
+        assert doc["build_config"]["name"] == doc["build_config"]["_id"]
+        confname = doc["build_config"]["name"]
+        docs = get_src_build().find({
+            "$and":[
+                {"_id":{"$lte":new_id}},
+                {"_id":{"$regex":"^%s.*" % confname}}
+                ]},
+            {"_id":1}).sort([("_id",-1)]).limit(2) 
+
         _ids = [d["_id"] for d in docs]
         assert len(_ids) == 2, "Expecting 2 collection _ids, got: %s" % _ids
         assert _ids[0] == new_id, "Can't find collection _id '%s'" % new_id
