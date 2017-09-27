@@ -431,6 +431,16 @@ class DataBuilder(object):
         elif isinstance(sources,str):
             sources = [sources]
 
+        if ids is None:
+            # nothing passed specifically, let's have a look at the config
+            ids = self.build_config.get("ids")
+            if ids:
+                # config calls for a merge on specific _ids
+                if type(ids) == str:
+                    # path to a file
+                    m = map(lambda l: l.decode().strip(),open_compressed_file(ids).readlines())
+                    ids = [_id for _id in m if not _id.startswith("#")]
+
         orig_sources = sources
         sources = self.resolve_sources(sources)
         if not sources and "merge" in steps:
@@ -667,8 +677,10 @@ class DataBuilder(object):
             self.logger.info("Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d" % (src_name, id_batch_size, batch_size))
             id_provider = id_feeder(self.source_backend[src_name], batch_size=id_batch_size)
 
-        if _query:
-            assert ids is None
+        if _query and not ids is None:
+            self.logger.info("Query/filter involved, but also specific list of _ids. Ignoring query and use _ids")
+
+        if _query and ids is None:
             self.logger.info("Query/filter involved, can't use cache to fetch _ids")
             # use doc_feeder but post-process doc to keep only the _id
             id_provider = map(lambda docs: [d["_id"] for d in docs],doc_feeder(self.source_backend[src_name], query=_query,
@@ -755,17 +767,6 @@ def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,batch_num):
         pickle.dump(e,open(exc_fn,"wb"))
         logger.info("Exception was dumped in pickle file '%s'" % exc_fn)
         raise
-
-class DemoDataBuilder(DataBuilder):
-
-    def __init__(self,build_name,ids_files,*args,**kwargs):
-        self.ids_files = ids_files
-        super(DemoDataBuilder,self).__init__(build_name,*args,**kwargs)
-
-    def merge(self, *args, **kwargs):
-        m = map(lambda l: l.decode().strip(),open_compressed_file(self.ids_files[self.build_name]).readlines())
-        ids = [_id for _id in m if not _id.startswith("#")]
-        return super(DemoDataBuilder,self).merge(ids=ids,*args,**kwargs)
 
 
 def set_pending_to_build(conf_name=None):
