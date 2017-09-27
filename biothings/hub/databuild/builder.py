@@ -763,7 +763,8 @@ class DemoDataBuilder(DataBuilder):
         super(DemoDataBuilder,self).__init__(build_name,*args,**kwargs)
 
     def merge(self, *args, **kwargs):
-        ids = list(map(lambda l: l.decode().strip(),open_compressed_file(self.ids_files[self.build_name]).readlines()))
+        m = map(lambda l: l.decode().strip(),open_compressed_file(self.ids_files[self.build_name]).readlines())
+        ids = [_id for _id in m if not _id.startswith("#")]
         return super(DemoDataBuilder,self).merge(ids=ids,*args,**kwargs)
 
 
