@@ -50,7 +50,7 @@ from biothings.hub.autoupdate import BiothingsDumper
 from biothings.hub.autoupdate.dumper import LATEST
 from biothings.utils.es import ESIndexer
 from biothings.utils.backend import DocESBackend
-BiothingsDumper.BIOTHINGS_APP = "t.biothings.io"
+BiothingsDumper.BIOTHINGS_APP = config.BIOTHINGS_APP
 pidxr = partial(ESIndexer,index=config.ES_INDEX_NAME,doc_type=config.ES_DOC_TYPE,es_host=config.ES_HOST)
 partial_backend = partial(DocESBackend,pidxr)
 BiothingsDumper.TARGET_BACKEND = partial_backend
@@ -67,7 +67,7 @@ partial_syncer = partial(syncer_manager.sync,"es",target_backend=config.ES_BACKE
 BiothingsUploader.SYNCER_FUNC = partial_syncer
 BiothingsUploader.AUTO_PURGE_INDEX = True # because we believe
 umanager.register_classes([BiothingsUploader])
-umanager.poll()
+umanager.poll('upload',lambda doc: upload_manager.upload_src(doc["_id"]))
 
 from biothings.utils.hub import schedule, pending, done, HubCommand
 
