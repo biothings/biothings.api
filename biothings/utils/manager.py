@@ -166,7 +166,7 @@ class BaseManager(object):
             raise ManagerError("poll_schedule is not defined")
         @asyncio.coroutine
         def check_pending(state):
-            sources = [src for src in col.find({'pending': {"$in":[state]}}) if type(src['_id']) == str]
+            sources = [src for src in col.find({'pending': state}) if type(src['_id']) == str]
             logger.info("Found %d resources with pending flag %s (%s)" % \
                     (len(sources),state,repr([src["_id"] for src in sources])))
             for src in sources:

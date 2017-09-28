@@ -255,7 +255,7 @@ class BiothingsDumper(HTTPDumper):
             self._target_backend = None
             return self.release
 
-    def post_dump(self):
+    def post_dump(self, *args, **kwargs):
         if not self.release:
             # wasn't set before, means no need to post-process (ie. up-to-date, already done)
             return
