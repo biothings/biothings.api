@@ -26,7 +26,7 @@ class BiothingsDumper(HTTPDumper):
     be considered when selecting the preferred way).
     """
     # App name for this biothings API. Must be set when using this dumper
-    BIOTHINGS_APP = None
+    BIOTHINGS_S3_FOLDER = None
 
     SRC_NAME = "biothings"
     SRC_ROOT_FOLDER = os.path.join(DATA_ARCHIVE_ROOT, SRC_NAME)
@@ -147,9 +147,9 @@ class BiothingsDumper(HTTPDumper):
         return max(versions,key=lambda e: e["build_version"])
 
     def create_todump_list(self, force=False, version=LATEST, url=None):
-        assert self.__class__.BIOTHINGS_APP, "BIOTHINGS_APP class attribute is not set"
+        assert self.__class__.BIOTHINGS_S3_FOLDER, "BIOTHINGS_S3_FOLDER class attribute is not set"
         self.logger.info("Dumping version '%s'" % version)
-        file_url = url or self.__class__.SRC_URL % (self.__class__.BIOTHINGS_APP,version)
+        file_url = url or self.__class__.SRC_URL % (self.__class__.BIOTHINGS_S3_FOLDER,version)
         filename = os.path.basename(self.__class__.SRC_URL)
         # if "latest", we compare current json file we have (because we don't know what's behind latest)
         # otherwise json file should match version explicitely in current folder.
@@ -205,7 +205,7 @@ class BiothingsDumper(HTTPDumper):
                     self.logger.info("Now looking for a compatible version")
                     # by default we'll check directly the required version
                     required_version = build_meta["require_version"]
-                    versions_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_APP,VERSIONS)
+                    versions_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_S3_FOLDER,VERSIONS)
                     avail_versions = self.load_remote_json(versions_url)
                     assert avail_versions["format"] == "1.0", "versions.json format has changed: %s" % avail_versions["format"]
                     if not avail_versions:
@@ -280,7 +280,7 @@ class BiothingsDumper(HTTPDumper):
         """Display version information (release note, etc...) for given version"""
         txt = ">>> Current local version: '%s'\n" % self.target_backend.version
         txt += ">>> Release note for remote version '%s':\n" % version
-        file_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_APP,version)
+        file_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_S3_FOLDER,version)
         build_meta = self.load_remote_json(file_url)
         if not build_meta:
             raise DumperException("Can't find version '%s'" % version)
@@ -297,7 +297,7 @@ class BiothingsDumper(HTTPDumper):
     @asyncio.coroutine
     def versions(self):
         """Display all available versions"""
-        versions_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_APP,VERSIONS)
+        versions_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_S3_FOLDER,VERSIONS)
         avail_versions = self.load_remote_json(versions_url)
         if not avail_versions:
             raise DumperException("Can't find any versions available...'")
