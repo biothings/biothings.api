@@ -111,19 +111,16 @@ from biothings.utils.hub import schedule, pending, done, HubCommand
 
 COMMANDS = OrderedDict()
 
+s3_folders = config.BIOTHINGS_S3_FOLDER.split(",")
+for s3_folder in s3_folders:
 
-if type(config.BIOTHINGS_S3_FOLDER) == str:
-    config.BIOTHINGS_S3_FOLDER = [config.BIOTHINGS_S3_FOLDER]
-    
-for btapp in config.BIOTHINGS_S3_FOLDER: 
-
-    BiothingsDumper.BIOTHINGS_S3_FOLDER = btapp
+    BiothingsDumper.BIOTHINGS_S3_FOLDER = s3_folder
     suffix = ""
-    if len(config.BIOTHINGS_S3_FOLDER) > 1:
+    if len(s3_folders) > 1:
         # it's biothings API with more than 1 index, meaning they are suffixed.
-        # as a convention, use the btapp's suffix to complete index name
+        # as a convention, use the s3_folder's suffix to complete index name
         # TODO: really ? maybe be more explicit ??
-        suffix = "_%s" % btapp.split("-")[-1]
+        suffix = "_%s" % s3_folder.split("-")[-1]
     pidxr = partial(ESIndexer,index=config.ES_INDEX_NAME + suffix,
                     doc_type=config.ES_DOC_TYPE,es_host=config.ES_HOST)
     partial_backend = partial(DocESBackend,pidxr)
@@ -133,8 +130,8 @@ for btapp in config.BIOTHINGS_S3_FOLDER:
         TARGET_BACKEND = partial_backend
         SRC_NAME = BiothingsDumper.SRC_NAME + suffix
         SRC_ROOT_FOLDER = os.path.join(config.DATA_ARCHIVE_ROOT, SRC_NAME)
-        BIOTHINGS_S3_FOLDER = btapp
-    dmanager.register_classes([dumper_klass])    
+        BIOTHINGS_S3_FOLDER = s3_folder
+    dmanager.register_classes([dumper_klass])
     # dump commands
     COMMANDS["versions%s" % suffix] = partial(dmanager.call,"biothings%s" % suffix,"versions")
     COMMANDS["check%s" % suffix] = partial(dmanager.dump_src,"biothings%s" % suffix,check_only=True)
