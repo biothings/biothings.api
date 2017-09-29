@@ -1,7 +1,14 @@
 #!/usr/bin/env python
 
-import asyncio, asyncssh, sys
+# because we'll generate dynamic nested class, 
+# which are un-pickleable by default, we need to 
+# override multiprocessing with one using "dill",
+# which allows pickling nested classes (and many other things)
 import concurrent.futures
+import multiprocessing_on_dill
+concurrent.futures.process.multiprocessing = multiprocessing_on_dill
+
+import asyncio, asyncssh, sys, os
 from functools import partial
 from collections import OrderedDict
 
@@ -44,35 +51,14 @@ index_manager.configure()
 
 dmanager = dumper.DumperManager(job_manager=jmanager)
 dmanager.schedule_all()
-# manually register biothings source dumper
-# this dumper will download whatever is necessary to update an ES index
-from biothings.hub.autoupdate import BiothingsDumper
-from biothings.hub.autoupdate.dumper import LATEST
-from biothings.utils.es import ESIndexer
-from biothings.utils.backend import DocESBackend
-BiothingsDumper.BIOTHINGS_APP = config.BIOTHINGS_APP
-pidxr = partial(ESIndexer,index=config.ES_INDEX_NAME,doc_type=config.ES_DOC_TYPE,es_host=config.ES_HOST)
-partial_backend = partial(DocESBackend,pidxr)
-BiothingsDumper.TARGET_BACKEND = partial_backend
-dmanager.register_classes([BiothingsDumper])
 
 # will check every 10 seconds for sources to upload
 umanager = uploader.UploaderManager(poll_schedule = '* * * * * */10', job_manager=jmanager)
-# manually register biothings source uploader
-# this uploader will use dumped data to update an ES index
-from biothings.hub.autoupdate import BiothingsUploader
-BiothingsUploader.TARGET_BACKEND = partial_backend
-# syncer will work on index used in web part
-partial_syncer = partial(syncer_manager.sync,"es",target_backend=config.ES_BACKEND)
-BiothingsUploader.SYNCER_FUNC = partial_syncer
-BiothingsUploader.AUTO_PURGE_INDEX = True # because we believe
-umanager.register_classes([BiothingsUploader])
 umanager.poll('upload',lambda doc: upload_manager.upload_src(doc["_id"]))
 
-from biothings.utils.hub import schedule, pending, done, HubCommand
 
-
-def cycle_update(version=LATEST, max_cycles=10):
+from biothings.hub.autoupdate.dumper import LATEST
+def cycle_update(src_name, version=LATEST, max_cycles=10):
     """
     Update hub's data up to the given version (default is latest available),
     using full and incremental updates to get up to that given version (if possible).
@@ -84,7 +70,7 @@ def cycle_update(version=LATEST, max_cycles=10):
         cycle = True
         count = 0
         while cycle:
-            jobs = dmanager.dump_src("biothings",version=version,check_only=True)
+            jobs = dmanager.dump_src(src_name,version=version,check_only=True)
             check = asyncio.gather(*jobs)
             res = yield from check
             assert len(res) == 1
@@ -92,13 +78,13 @@ def cycle_update(version=LATEST, max_cycles=10):
                 cycle = False
             else:
                 remote_version = res[0]
-                jobs = dmanager.dump_src("biothings",version=remote_version)
+                jobs = dmanager.dump_src(src_name,version=remote_version)
                 download = asyncio.gather(*jobs)
                 res = yield from download
                 assert len(res) == 1
                 if res[0] == None:
                     # download ready, now update
-                    jobs = umanager.upload_src("biothings")
+                    jobs = umanager.upload_src(src_name)
                     upload = asyncio.gather(*jobs)
                     res = yield from upload
                 else:
@@ -112,16 +98,65 @@ def cycle_update(version=LATEST, max_cycles=10):
     return asyncio.ensure_future(do(version))
 
 
+
+from biothings.hub.autoupdate import BiothingsDumper
+from biothings.hub.autoupdate import BiothingsUploader
+from biothings.utils.es import ESIndexer
+from biothings.utils.backend import DocESBackend
+from biothings.utils.hub import schedule, pending, done, HubCommand
+
+# Generate dumper, uploader classes dynamically according
+# to the number of "BIOTHINGS_S3_FOLDER" we need to deal with.
+# Also generate specific hub commands to deal with those dumpers/uploaders
+
 COMMANDS = OrderedDict()
-# dump commands
-COMMANDS["versions"] = partial(dmanager.call,"biothings","versions")
-COMMANDS["check"] = partial(dmanager.dump_src,"biothings",check_only=True)
-COMMANDS["info"] = partial(dmanager.call,"biothings","info")
-COMMANDS["download"] = partial(dmanager.dump_src,"biothings")
-# upload commands
-COMMANDS["apply"] = partial(umanager.upload_src,"biothings")
-COMMANDS["step_update"] = HubCommand("download() && apply()")
-COMMANDS["update"] = cycle_update
+
+
+if type(config.BIOTHINGS_S3_FOLDER) == str:
+    config.BIOTHINGS_S3_FOLDER = [config.BIOTHINGS_S3_FOLDER]
+    
+for btapp in config.BIOTHINGS_S3_FOLDER: 
+
+    BiothingsDumper.BIOTHINGS_S3_FOLDER = btapp
+    suffix = ""
+    if len(config.BIOTHINGS_S3_FOLDER) > 1:
+        # it's biothings API with more than 1 index, meaning they are suffixed.
+        # as a convention, use the btapp's suffix to complete index name
+        # TODO: really ? maybe be more explicit ??
+        suffix = "_%s" % btapp.split("-")[-1]
+    pidxr = partial(ESIndexer,index=config.ES_INDEX_NAME + suffix,
+                    doc_type=config.ES_DOC_TYPE,es_host=config.ES_HOST)
+    partial_backend = partial(DocESBackend,pidxr)
+
+    # dumper
+    class dumper_klass(BiothingsDumper):
+        TARGET_BACKEND = partial_backend
+        SRC_NAME = BiothingsDumper.SRC_NAME + suffix
+        SRC_ROOT_FOLDER = os.path.join(config.DATA_ARCHIVE_ROOT, SRC_NAME)
+        BIOTHINGS_S3_FOLDER = btapp
+    dmanager.register_classes([dumper_klass])    
+    # dump commands
+    COMMANDS["versions%s" % suffix] = partial(dmanager.call,"biothings%s" % suffix,"versions")
+    COMMANDS["check%s" % suffix] = partial(dmanager.dump_src,"biothings%s" % suffix,check_only=True)
+    COMMANDS["info%s" % suffix] = partial(dmanager.call,"biothings%s" % suffix,"info")
+    COMMANDS["download%s" % suffix] = partial(dmanager.dump_src,"biothings%s" % suffix)
+
+    # uploader
+    # syncer will work on index used in web part
+    partial_syncer = partial(syncer_manager.sync,"es",target_backend=config.ES_BACKEND)
+    # manually register biothings source uploader
+    # this uploader will use dumped data to update an ES index
+    class uploader_klass(BiothingsUploader):
+        TARGET_BACKEND = partial_backend
+        SYNCER_FUNC = partial_syncer
+        AUTO_PURGE_INDEX = True # because we believe
+        name = BiothingsUploader.name + suffix
+    umanager.register_classes([uploader_klass])
+    # upload commands
+    COMMANDS["apply%s" % suffix] = partial(umanager.upload_src,"biothings%s" % suffix)
+    COMMANDS["step_update%s" % suffix] = HubCommand("download%s() && apply%s()" % (suffix,suffix))
+    COMMANDS["update%s" % suffix] = partial(cycle_update,"biothings%s" % suffix)
+
 
 # admin/advanced
 EXTRA_NS = {
