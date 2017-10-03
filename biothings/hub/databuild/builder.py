@@ -686,7 +686,8 @@ class DataBuilder(object):
             id_provider = map(lambda docs: [d["_id"] for d in docs],doc_feeder(self.source_backend[src_name], query=_query,
                     step=batch_size, inbatch=True, fields={"_id":1}))
         else:
-            id_provider = ids and iter_n(ids,id_batch_size) or id_feeder(self.source_backend[src_name],
+            # when passing a list of _ids, IDs will be sent to the query, so we need to reduce the batch size
+            id_provider = ids and iter_n(ids,int(batch_size/100)) or id_feeder(self.source_backend[src_name],
                     batch_size=id_batch_size,logger=self.logger)
 
         doc_cleaner = self.document_cleaner(src_name)
