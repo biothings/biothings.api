@@ -263,7 +263,7 @@ class IndexerManager(BaseManager):
 
 class Indexer(object):
 
-    def __init__(self, es_host, target_name=None):
+    def __init__(self, es_host, target_name=None, **kwargs):
         self.host = es_host
         self.log_folder = LOG_FOLDER
         self.timestamp = datetime.now()
@@ -274,6 +274,7 @@ class Indexer(object):
         self.doc_type = None
         self.num_shards = None
         self.num_replicas = None
+        self.kwargs = kwargs
 
     def get_pinfo(self):
         """
@@ -321,7 +322,8 @@ class Indexer(object):
                                  es_host=self.host,
                                  step=batch_size,
                                  number_of_shards=self.num_shards,
-                                 number_of_replicas=self.num_replicas)
+                                 number_of_replicas=self.num_replicas,
+                                 **self.kwargs)
             # instantiate one here for index creation
             es_idxer = partial_idxer()
             if es_idxer.exists_index():

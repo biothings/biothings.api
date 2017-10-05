@@ -180,7 +180,7 @@ class TargetDocMongoBackend(TargetDocBackend,DocMongoBackend):
         self.target_collection = self.target_db[self._target_name]
 
 
-def create_backend(db_col_names,name_only=False):
+def create_backend(db_col_names,name_only=False,**kwargs):
     """
     Guess what's inside 'db_col_names' and return the corresponding backend.
     - It could be a string (by default, will lookup a mongo collection in target database)
@@ -207,7 +207,7 @@ def create_backend(db_col_names,name_only=False):
         db_col_names = ["%s:%s" % (db.client.HOST,db.client.PORT),db.name,col.name]
     elif len(db_col_names) == 3 and ":" in db_col_names[0]:
         is_mongo = False
-        idxr = ESIndexer(index=db_col_names[1],doc_type=db_col_names[2],es_host=db_col_names[0])
+        idxr = ESIndexer(index=db_col_names[1],doc_type=db_col_names[2],es_host=db_col_names[0],**kwargs)
         db = idxr
         col = db_col_names[1]
     else:

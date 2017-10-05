@@ -1,4 +1,4 @@
-import os
+import os, re
 import time, hashlib
 import pickle, json
 from datetime import datetime
@@ -1116,21 +1116,10 @@ class DifferManager(BaseManager):
         """
         Remove "synced" flag from any pyobj file in diff_folder
         """
-        diff_files = glob.glob(os.path.join(diff_folder,"*.pyobj"))
-        for diff in diff_files:
-            pyobj = loadobj(diff)
-            try:
-                if pyobj.get("synced"):
-                    if backend:
-                        self.logger.info("Removing synced flag from '%s' for backend '%s'" % (diff,backend))
-                        pyobj["synced"].pop(backend,None)
-                    else:
-                        self.logger.info("Removing synced flag from '%s'" % diff)
-                        pyobj.pop("synced")
-                    dump(pyobj,diff)
-            except AttributeError:
-                # pyobj not a dict
-                continue
+        synced_files = glob.glob(os.path.join(diff_folder,"*.pyobj.synced"))
+        for synced in synced_files:
+            diff_file = re.sub("\.pyobj\.synced$",".pyobj",synced)
+            os.rename(synced,diff_file)
 
     def publish_diff(self, s3_folder, old_db_col_names=None, new_db_col_names=None,
             diff_folder=None, release_folder=None, steps=["reset","upload","meta"]):

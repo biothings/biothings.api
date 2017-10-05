@@ -19,7 +19,6 @@ from biothings import config as btconfig
 from biothings.utils.manager import BaseManager, ManagerError
 from .backend import create_backend
 from ..dataload.storage import UpsertStorage
-from biothings.utils.es import ESIndexer
 import biothings.utils.jsonpatch as jsonpatch
 
 logging = btconfig.logger
@@ -232,16 +231,18 @@ class ESJsonDiffSelfContainedSyncer(BaseSyncer):
 def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, batch_size, cnt,
         force=False, selfcontained=False, metadata={}):
     """Worker to sync data between a new and an old mongo collection"""
+    # check if diff files was already synced
+    res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
+    synced_file = "%s.synced" % diff_file
+    if os.path.exists(synced_file):
+        logging.info("Diff file '%s' already synced, skip it" % os.path.basename(diff_file))
+        diff = loadobj(synced_file)
+        res["skipped"] += len(diff["add"]) + len(diff["delete"]) + len(diff["update"])
+        return res
     new = create_backend(new_db_col_names)
     old = create_backend(old_db_col_names)
     storage = UpsertStorage(get_target_db(),old.target_collection.name,logging)
     diff = loadobj(diff_file)
-    res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
-    # check if diff files was already synced
-    if not force and diff.get("synced",{}).get("mongo") == True:
-        logging.info("Diff file '%s' already synced, skip it" % diff_file)
-        res["skipped"] += len(diff["add"]) + len(diff["delete"]) + len(diff["update"])
-        return res
     assert new.target_collection.name == diff["source"], "Source is different in diff file '%s': %s" % (diff_file,diff["source"])
 
     # add: get ids from "new" 
@@ -279,22 +280,34 @@ def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, ba
     # we potentially modified the "old" collection so invalidate cache just to make sure
     invalidate_cache(old.target_collection.name,"target")
     logging.info("Done applying diff from file '%s': %s" % (diff_file,res))
-    diff.setdefault("synced",{}).setdefault("mongo",True)
-    dump(diff,diff_file)
+    # mark as synced
+    os.rename(diff_file,synced_file)
     return res
 
 
 def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, cnt,
         force=False, selfcontained=False, metadata={}):
     """Worker to sync data between a new mongo collection and an elasticsearch index"""
-    indexer = create_backend(es_config).target_esidxer
-    diff = loadobj(diff_file)
     res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
     # check if diff files was already synced
-    if not force and diff.get("synced",{}).get("es") == True:
-        logging.info("Diff file '%s' already synced, skip it" % diff_file)
+    synced_file = "%s.synced" % diff_file
+    if os.path.exists(synced_file):
+        logging.info("Diff file '%s' already synced, skip it" % os.path.basename(diff_file))
+        diff = loadobj(synced_file)
         res["skipped"] += len(diff["add"]) + len(diff["delete"]) + len(diff["update"])
         return res
+    eskwargs = {}
+    # pass optional ES Indexer args
+    if hasattr(btconfig,"ES_TIMEOUT"):
+        eskwargs["timeout"] = btconfig.ES_TIMEOUT
+    if hasattr(btconfig,"ES_MAX_RETRY"):
+        eskwargs["max_retries"] = btconfig.ES_MAX_RETRY
+    if hasattr(btconfig,"ES_RETRY"):
+        eskwargs["retry_on_timeout"] = btconfig.ES_RETRY
+    logging.debug("Create ES backend with args: (%s,%s)" % (es_config,eskwargs))
+    bckend = create_backend(es_config,**eskwargs)
+    indexer = bckend.target_esidxer
+    diff = loadobj(diff_file)
     errors = []
     # add: get ids from "new" 
     if selfcontained:
@@ -354,8 +367,8 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
         res["skipped"] += del_skip[1]
 
     logging.info("Done applying diff from file '%s': %s" % (diff_file,res))
-    diff.setdefault("synced",{}).setdefault("es",True)
-    dump(diff,diff_file)
+    # mark as synced
+    os.rename(diff_file,synced_file)
     return res
 
 

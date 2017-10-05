@@ -43,8 +43,9 @@ def verify_ids(doc_iter, index, doc_type, step=100000, ):
     return out
 
 
-def get_es(es_host):
-    es = Elasticsearch(es_host, timeout=120)
+def get_es(es_host, timeout=120, max_retries=3, retry_on_timeout=False):
+    es = Elasticsearch(es_host, timeout=timeout, max_retries=max_retries,
+                       retry_on_timeout=retry_on_timeout)
     return es
 
 
@@ -65,9 +66,9 @@ class IndexerException(Exception): pass
 
 class ESIndexer():
     def __init__(self, index, doc_type, es_host, step=10000,
-                 number_of_shards=10, number_of_replicas=0):
+                 number_of_shards=10, number_of_replicas=0,**kwargs):
         self.es_host = es_host
-        self._es = get_es(es_host)
+        self._es = get_es(es_host,**kwargs)
         # if index is actually an alias, resolve the alias to
         # the real underlying index
         try:
