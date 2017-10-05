@@ -316,14 +316,18 @@ class BaseDiffer(object):
                         os.rename(diff_file,os.path.join(done_folder,os.path.basename(diff_file)))
                         current_size += asizeof(diff_data)
 
-                    diff_file = diff_files.pop()
-                    tomerge = loadobj(diff_file)
-                    os.rename(diff_file,os.path.join(done_folder,os.path.basename(diff_file)))
-
-                    current_size += asizeof(tomerge)
-                    assert diff_data["source"] == tomerge["source"]
-                    for k in ["add","delete","update"]:
-                        diff_data[k].extend(tomerge[k])
+                    
+                    # still something to merge ? It could not be, if diff files are even, 
+                    # the last one will be processed just above with the diff_files.pop()
+                    # leaving that diff_files empty
+                    if diff_files:
+                        diff_file = diff_files.pop()
+                        tomerge = loadobj(diff_file)
+                        os.rename(diff_file,os.path.join(done_folder,os.path.basename(diff_file)))
+                        current_size += asizeof(tomerge)
+                        assert diff_data["source"] == tomerge["source"]
+                        for k in ["add","delete","update"]:
+                            diff_data[k].extend(tomerge[k])
 
                 if diff_data:
                     fn = "diff_%s.pyobj" % cnt
@@ -391,7 +395,8 @@ def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names,
                'source': new.target_name,
                'timestamp': get_timestamp()}
     if selfcontained:
-        _result["add"] = new.mget_from_ids(id_in_new)
+        # consume generator as result will be pickled
+        _result["add"] = [d for d in new.mget_from_ids(id_in_new)]
     summary = {"add" : len(id_in_new), "update" : len(_updates), "delete" : 0}
     if len(_updates) != 0 or len(id_in_new) != 0:
         dump(_result, file_name)
