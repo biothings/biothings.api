@@ -261,7 +261,13 @@ class JobRenderer(object):
         r = self.rendered.get(type(job._callback))
         rstr = r(job._callback)
         delta = job._when - job._loop.time()
+        days = None
+        if delta > 86400:
+            days = int(delta/86400)
+            delta = delta - 86400
         strdelta = time.strftime("%Hh:%Mm:%Ss", time.gmtime(int(delta)))
+        if days:
+            strdelta = "%d day(s) %s" % (days,strdelta)
         return "%s {run in %s}" % (rstr,strdelta)
 
     def render_partial(self,p):

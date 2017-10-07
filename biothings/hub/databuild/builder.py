@@ -848,6 +848,22 @@ class BuilderManager(BaseManager):
 
         self.register[build_name] = partial(create,build_name)
 
+    def delete_merge(self,merge_name):
+        """Delete merged collections and associated metadata"""
+        db = get_src_build()
+        meta = db.find_one({"_id":merge_name})
+        if meta:
+            db.remove({"_id":merge_name})
+        else:
+            self.logger.warning("No metadata found for merged collection '%s'" % merge_name)
+        target_db = mongo.get_target_db()
+        col = target_db[merge_name]
+        col.drop()
+
+    def list_merge(self):
+        docs = get_src_build().find()
+        return sorted([d["_id"] for d in docs])
+
     def setup_log(self):
         self.logger = btconfig.logger
 
