@@ -36,7 +36,7 @@ if commit_hash or num_commits:
 install_requires = [
     'requests>=2.3.0',
     'tornado',
-    'elasticsearch==2.4.0',
+    'elasticsearch>=2.4.0,<5.0.0',
 ]
 hub_requires = [
     'beautifulsoup4',
