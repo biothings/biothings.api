@@ -10,15 +10,15 @@ The BioThings SDK web component contains tools used to generate and customize an
 Server boot script
 ******************
 
-.. automodule:: biothings.www.index_base
+.. automodule:: biothings.web.index_base
 
-.. automethod:: biothings.www.index_base.main
+.. automethod:: biothings.web.index_base.main
 
 ********
 Settings
 ********
 
-.. automodule:: biothings.www.settings
+.. automodule:: biothings.web.settings
 
 Config module
 =============
@@ -26,13 +26,13 @@ Config module
 BiothingWebSettings
 ===================
 
-.. autoclass:: biothings.www.settings.BiothingWebSettings
+.. autoclass:: biothings.web.settings.BiothingWebSettings
     :members:
 
 BiothingESWebSettings
 =====================
 
-.. autoclass:: biothings.www.settings.BiothingESWebSettings
+.. autoclass:: biothings.web.settings.BiothingESWebSettings
     :members:
 
 ********
@@ -42,53 +42,53 @@ Handlers
 BaseHandler
 ===========
 
-.. autoclass:: biothings.www.api.helper.BaseHandler
+.. autoclass:: biothings.web.api.helper.BaseHandler
     :members:
 
 BaseESRequestHandler
 ====================
 
-.. autoclass:: biothings.www.api.es.handlers.base_handler.BaseESRequestHandler
+.. autoclass:: biothings.web.api.es.handlers.base_handler.BaseESRequestHandler
     :members:
 
 BiothingHandler
 ---------------
 
-.. autoclass:: biothings.www.api.es.handlers.biothing_handler.BiothingHandler
+.. autoclass:: biothings.web.api.es.handlers.biothing_handler.BiothingHandler
     :members:
 
 QueryHandler
 ------------
 
-.. autoclass:: biothings.www.api.es.handlers.query_handler.QueryHandler
+.. autoclass:: biothings.web.api.es.handlers.query_handler.QueryHandler
     :members:
 
 MetadataHandler
 ---------------
 
-.. autoclass:: biothings.www.api.es.handlers.metadata_handler.MetadataHandler
+.. autoclass:: biothings.web.api.es.handlers.metadata_handler.MetadataHandler
     :members:
 
 ***************************
 Elasticsearch Query Builder
 ***************************
 
-.. autoclass:: biothings.www.api.es.query_builder.ESQueries
+.. autoclass:: biothings.web.api.es.query_builder.ESQueries
     :members:
 
-.. autoclass:: biothings.www.api.es.query_builder.ESQueryBuilder
+.. autoclass:: biothings.web.api.es.query_builder.ESQueryBuilder
     :members:
 
 *******************
 Elasticsearch Query
 *******************
 
-.. autoclass:: biothings.www.api.es.query.ESQuery
+.. autoclass:: biothings.web.api.es.query.ESQuery
     :members:
 
 ********************************
 Elasticsearch Result Transformer
 ********************************
 
-.. autoclass:: biothings.www.api.es.transform.ESResultTransformer
+.. autoclass:: biothings.web.api.es.transform.ESResultTransformer
     :members:
