@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-from biothings.www.api.es.handlers import BiothingHandler
-from biothings.www.api.es.handlers import MetadataHandler
-from biothings.www.api.es.handlers import QueryHandler
-from biothings.www.api.es.handlers import StatusHandler
+from biothings.web.api.es.handlers import BiothingHandler
+from biothings.web.api.es.handlers import MetadataHandler
+from biothings.web.api.es.handlers import QueryHandler
+from biothings.web.api.es.handlers import StatusHandler
 
 class ${annotation_handler_name}(BiothingHandler):
     ''' This class is for the /${annotation_endpoint} endpoint. '''
