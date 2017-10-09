@@ -9,8 +9,8 @@ from tornado.testing import AsyncHTTPTestCase
 from tornado.web import Application
 from tests.tests import {% nosetest_settings_class %}
 from biothings.tests.test_helper import TornadoRequestHelper
-from www.api.handlers import return_applist
-import unittest
+#from web.api.handlers import return_applist
+"""import unittest
 
 class {% nosetest_settings_class %}TornadoClient(AsyncHTTPTestCase, {% nosetest_settings_class %}):
     __test__ = True
@@ -23,4 +23,4 @@ class {% nosetest_settings_class %}TornadoClient(AsyncHTTPTestCase, {% nosetest_
         return Application(return_applist())
 
 if __name__ == "__main__":
-    unittest.TextTestRunner().run({% nosetest_settings_class %}TornadoClient.suite())
+    unittest.TextTestRunner().run({% nosetest_settings_class %}TornadoClient.suite())"""
