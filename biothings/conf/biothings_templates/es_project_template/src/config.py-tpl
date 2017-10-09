@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 from biothings.www.settings.default import *
-from www.api.query_builder import ESQueryBuilder
-from www.api.query import ESQuery
-from www.api.transform import ESResultTransformer
-from www.api.handlers import ${annotation_handler_name}, ${query_handler_name}, MetadataHandler, StatusHandler
+from web.api.query_builder import ESQueryBuilder
+from web.api.query import ESQuery
+from web.api.transform import ESResultTransformer
+from web.api.handlers import ${annotation_handler_name}, ${query_handler_name}, MetadataHandler, StatusHandler
 
 # *****************************************************************************
 # Elasticsearch variables
