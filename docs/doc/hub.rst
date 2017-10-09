@@ -13,43 +13,43 @@ dumper
 BaseDumper
 ==========
 
-.. autoclass:: biothings.dataload.dumper.BaseDumper
+.. autoclass:: biothings.hub.dataload.dumper.BaseDumper
     :members:
 
 FTPDumper
 ---------
 
-.. autoclass:: biothings.dataload.dumper.FTPDumper
+.. autoclass:: biothings.hub.dataload.dumper.FTPDumper
     :members:
 
 HTTPDumper
 ----------
 
-.. autoclass:: biothings.dataload.dumper.HTTPDumper
+.. autoclass:: biothings.hub.dataload.dumper.HTTPDumper
     :members:
 
 GoogleDriveDumper
 +++++++++++++++++
 
-.. autoclass:: biothings.dataload.dumper.GoogleDriveDumper
+.. autoclass:: biothings.hub.dataload.dumper.GoogleDriveDumper
     :members:
 
 WgetDumper
 ----------
 
-.. autoclass:: biothings.dataload.dumper.WgetDumper
+.. autoclass:: biothings.hub.dataload.dumper.WgetDumper
     :members:
 
 DummyDumper
 -----------
 
-.. autoclass:: biothings.dataload.dumper.DummyDumper
+.. autoclass:: biothings.hub.dataload.dumper.DummyDumper
     :members:
 
 ManualDumper
 -----------
 
-.. autoclass:: biothings.dataload.dumper.ManualDumper
+.. autoclass:: biothings.hub.dataload.dumper.ManualDumper
     :members:
 
 ********
@@ -59,43 +59,43 @@ uploader
 BaseSourceUploader
 ==================
 
-.. autoclass:: biothings.dataload.uploader.BaseSourceUploader
+.. autoclass:: biothings.hub.dataload.uploader.BaseSourceUploader
     :members:
 
 NoBatchIgnoreDuplicatedSourceUploader
 -------------------------------------
 
-.. autoclass:: biothings.dataload.uploader.NoBatchIgnoreDuplicatedSourceUploader
+.. autoclass:: biothings.hub.dataload.uploader.NoBatchIgnoreDuplicatedSourceUploader
     :members:
 
 IgnoreDuplicatedSourceUploader
 ------------------------------
 
-.. autoclass:: biothings.dataload.uploader.IgnoreDuplicatedSourceUploader
+.. autoclass:: biothings.hub.dataload.uploader.IgnoreDuplicatedSourceUploader
     :members:
 
 MergerSourceUploader
 --------------------
 
-.. autoclass:: biothings.dataload.uploader.MergerSourceUploader
+.. autoclass:: biothings.hub.dataload.uploader.MergerSourceUploader
     :members:
 
 DummySourceUploader
 -------------------
 
-.. autoclass:: biothings.dataload.uploader.DummySourceUploader
+.. autoclass:: biothings.hub.dataload.uploader.DummySourceUploader
     :members:
 
 ParallelizedSourceUploader
 --------------------------
 
-.. autoclass:: biothings.dataload.uploader.ParallelizedSourceUploader
+.. autoclass:: biothings.hub.dataload.uploader.ParallelizedSourceUploader
     :members:
 
 NoDataSourceUploader
 --------------------
 
-.. autoclass:: biothings.dataload.uploader.NoDataSourceUploader
+.. autoclass:: biothings.hub.dataload.uploader.NoDataSourceUploader
     :members:
 
 *******
@@ -105,7 +105,7 @@ builder
 DataBuilder
 ===========
 
-.. autoclass:: biothings.databuild.builder.DataBuilder
+.. autoclass:: biothings.hub.databuild.builder.DataBuilder
     :members:
 
 *******
@@ -115,7 +115,7 @@ indexer
 Indexer
 =======
 
-.. autoclass:: biothings.dataindex.indexer.Indexer
+.. autoclass:: biothings.hub.dataindex.indexer.Indexer
     :members:
 
 ******
@@ -125,31 +125,31 @@ differ
 BaseDiffer
 ==========
 
-.. autoclass:: biothings.databuild.differ.BaseDiffer
+.. autoclass:: biothings.hub.databuild.differ.BaseDiffer
     :members:
 
 JsonDiffer
 ----------
 
-.. autoclass:: biothings.databuild.differ.JsonDiffer
+.. autoclass:: biothings.hub.databuild.differ.JsonDiffer
     :members:
 
 SelfContainedJsonDiffer
 +++++++++++++++++++++++
 
-.. autoclass:: biothings.databuild.differ.SelfContainedJsonDiffer
+.. autoclass:: biothings.hub.databuild.differ.SelfContainedJsonDiffer
     :members:
 
 DiffReportRendererBase
 ======================
 
-.. autoclass:: biothings.databuild.differ.DiffReportRendererBase
+.. autoclass:: biothings.hub.databuild.differ.DiffReportRendererBase
     :members:   
 
 DiffReportTxt
 -------------
 
-.. autoclass:: biothings.databuild.differ.DiffReportTxt
+.. autoclass:: biothings.hub.databuild.differ.DiffReportTxt
     :members:
 
 ******
@@ -159,29 +159,29 @@ syncer
 BaseSyncer
 ==========
 
-.. autoclass:: biothings.databuild.syncer.BaseSyncer
+.. autoclass:: biothings.hub.databuild.syncer.BaseSyncer
     :members:
 
 MongoJsonDiffSyncer
 -------------------
 
-.. autoclass:: biothings.databuild.syncer.MongoJsonDiffSyncer
+.. autoclass:: biothings.hub.databuild.syncer.MongoJsonDiffSyncer
     :members:
 
 MongoJsonDiffSelfContainedSyncer
 --------------------------------
 
-.. autoclass:: biothings.databuild.syncer.MongoJsonDiffSelfContainedSyncer
+.. autoclass:: biothings.hub.databuild.syncer.MongoJsonDiffSelfContainedSyncer
     :members:
 
 ESJsonDiffSyncer
 ----------------
 
-.. autoclass:: biothings.databuild.syncer.ESJsonDiffSyncer
+.. autoclass:: biothings.hub.databuild.syncer.ESJsonDiffSyncer
     :members:
 
 ESJsonDiffSelfContainedSyncer
 -----------------------------
 
-.. autoclass:: biothings.databuild.syncer.ESJsonDiffSelfContainedSyncer
+.. autoclass:: biothings.hub.databuild.syncer.ESJsonDiffSelfContainedSyncer
     :members:
