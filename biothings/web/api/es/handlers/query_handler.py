@@ -131,7 +131,7 @@ class QueryHandler(BaseESRequestHandler):
             try:
                 res = _result_transformer.clean_scroll_response(res)
             except ScrollIterationDone as e:
-                self._return_data_and_track({'success': False, 'error': '{}'.format(e)}, ga_event_data={'total': res.get('total', 0)}, status_code=400)
+                self._return_data_and_track({'success': False, 'error': '{}'.format(e)}, ga_event_data={'total': res.get('total', 0)}, status_code=200)
                 return
             #except Exception as e:
             #    self.log_exceptions("Error transforming scroll batch")
