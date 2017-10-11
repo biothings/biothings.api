@@ -120,7 +120,7 @@ for s3_folder in s3_folders:
         # it's biothings API with more than 1 index, meaning they are suffixed.
         # as a convention, use the s3_folder's suffix to complete index name
         # TODO: really ? maybe be more explicit ??
-        suffix = "_%s" % s3_folder.split("-")[-1]
+        suffix = "_%s" % s3_folder.split("-")[-1].replace("demo_","")
     pidxr = partial(ESIndexer,index=config.ES_INDEX_NAME + suffix,
                     doc_type=config.ES_DOC_TYPE,es_host=config.ES_HOST)
     partial_backend = partial(DocESBackend,pidxr)
