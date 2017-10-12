@@ -120,7 +120,7 @@ for s3_folder in s3_folders:
         # it's biothings API with more than 1 index, meaning they are suffixed.
         # as a convention, use the s3_folder's suffix to complete index name
         # TODO: really ? maybe be more explicit ??
-        suffix = "_%s" % s3_folder.split("-")[-1].replace("demo_","")
+        suffix = "_%s" % s3_folder.split("-")[-1]
     pidxr = partial(ESIndexer,index=config.ES_INDEX_NAME + suffix,
                     doc_type=config.ES_DOC_TYPE,es_host=config.ES_HOST)
     partial_backend = partial(DocESBackend,pidxr)
@@ -133,10 +133,11 @@ for s3_folder in s3_folders:
         BIOTHINGS_S3_FOLDER = s3_folder
     dmanager.register_classes([dumper_klass])
     # dump commands
-    COMMANDS["versions%s" % suffix] = partial(dmanager.call,"biothings%s" % suffix,"versions")
-    COMMANDS["check%s" % suffix] = partial(dmanager.dump_src,"biothings%s" % suffix,check_only=True)
-    COMMANDS["info%s" % suffix] = partial(dmanager.call,"biothings%s" % suffix,"info")
-    COMMANDS["download%s" % suffix] = partial(dmanager.dump_src,"biothings%s" % suffix)
+    cmdsuffix = suffix.replace("demo_","")
+    COMMANDS["versions%s" % cmdsuffix] = partial(dmanager.call,"biothings%s" % suffix,"versions")
+    COMMANDS["check%s" % cmdsuffix] = partial(dmanager.dump_src,"biothings%s" % suffix,check_only=True)
+    COMMANDS["info%s" % cmdsuffix] = partial(dmanager.call,"biothings%s" % suffix,"info")
+    COMMANDS["download%s" % cmdsuffix] = partial(dmanager.dump_src,"biothings%s" % suffix)
 
     # uploader
     # syncer will work on index used in web part
@@ -150,9 +151,9 @@ for s3_folder in s3_folders:
         name = BiothingsUploader.name + suffix
     umanager.register_classes([uploader_klass])
     # upload commands
-    COMMANDS["apply%s" % suffix] = partial(umanager.upload_src,"biothings%s" % suffix)
-    COMMANDS["step_update%s" % suffix] = HubCommand("download%s() && apply%s()" % (suffix,suffix))
-    COMMANDS["update%s" % suffix] = partial(cycle_update,"biothings%s" % suffix)
+    COMMANDS["apply%s" % cmdsuffix] = partial(umanager.upload_src,"biothings%s" % suffix)
+    COMMANDS["step_update%s" % cmdsuffix] = HubCommand("download%s() && apply%s()" % (cmdsuffix,cmdsuffix))
+    COMMANDS["update%s" % cmdsuffix] = partial(cycle_update,"biothings%s" % suffix)
 
 
 # admin/advanced
