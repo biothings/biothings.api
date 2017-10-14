@@ -1,6 +1,7 @@
 import importlib, threading, re
 import asyncio, aiocron
-import os, pickle, inspect, types, glob, psutil
+import os, inspect, types, glob, psutil
+import dill as pickle
 from functools import wraps, partial
 import time, datetime
 from pprint import pprint
@@ -19,20 +20,21 @@ from biothings.utils.hub_db import get_src_dump, get_src_build
 def track(func):
     @wraps(func)
     def func_wrapper(*args,**kwargs):
-        ptype = args[0] # tracking process or thread ?
+        job_id = args[0]
+        ptype = args[1] # tracking process or thread ?
         # we're looking for some "pinfo" value (process info) to later
         # reporting. If we can't find any, we'll try our best to figure out
         # what this is about...
         # func is the do_work wrapper, we want the actual partial
         # is first arg a callable (func) or pinfo ?
-        if callable(args[1]):
-            innerfunc = args[1]
-            innerargs = args[2:]
-            pinfo = None
-        else:
+        if callable(args[2]):
             innerfunc = args[2]
             innerargs = args[3:]
-            pinfo = args[1]
+            pinfo = None
+        else:
+            innerfunc = args[3]
+            innerargs = args[4:]
+            pinfo = args[2]
 
         # make sure we can pickle the whole thing (and it's
         # just informative, so stringify is just ok there)
@@ -60,14 +62,13 @@ def track(func):
         trace = None
         try:
             _id = None
-            rnd = get_random_string()
             if ptype == "thread":
                 _id = "%s" % threading.current_thread().getName()
             else:
                 _id = os.getpid()
             # add random chars: 2 jobs handled by the same slot (pid or thread) 
             # would override filename otherwise
-            fn = "%s_%s" % (_id,rnd)
+            fn = "%s_%s" % (_id,job_id)
             worker["info"]["id"] = _id
             pidfile = os.path.join(config.RUN_DIR,"%s.pickle" % fn)
             pickle.dump(worker, open(pidfile,"wb"))
@@ -102,7 +103,7 @@ def track(func):
     return func_wrapper
 
 @track
-def do_work(ptype, pinfo=None, func=None, *args, **kwargs):
+def do_work(job_id, ptype, pinfo=None, func=None, *args, **kwargs):
     # pinfo is optional, and func is not. and args and kwargs must 
     # be after func. just to say func is mandatory, despite what the
     # signature says
@@ -313,6 +314,7 @@ class JobManager(object):
         self.clean_staled()
         self.auto_recycle = auto_recycle # active
         self.auto_recycle_setting = auto_recycle # keep setting if we need to restore it its orig value
+        self.jobs = {} # all active jobs (thread/process)
 
     def clean_staled(self):
         # clean old/staled files
@@ -373,9 +375,8 @@ class JobManager(object):
         fut.add_done_callback(done)
         return fut
 
-
     @asyncio.coroutine
-    def checkmem(self,pinfo=None):
+    def check_constraints(self,pinfo=None):
         mem_req = pinfo and pinfo.get("__reqs__",{}).get("mem") or 0
         t0 = time.time()
         waited = False
@@ -432,6 +433,24 @@ class JobManager(object):
             yield from asyncio.sleep(sleep_time)
             pendings = len(self.process_queue._pending_work_items.keys()) - config.HUB_MAX_WORKERS
             waited = True
+        # finally check custom predicates
+        predicates =  pinfo and pinfo.get("__predicates__",[])
+        failed_predicate = None
+        while True:
+            for predicate in predicates:
+                if not predicate():
+                    failed_predicate = predicate
+                    break # for loop (most inner one)
+                else:
+                    # reset flag
+                    failed_predicate = None
+            if failed_predicate:
+                logger.info("Can't run job {cat:%s,source:%s,step:%s} right now, predicate %s failed, will retry until possible" % \
+                        (pinfo.get("category"), pinfo.get("source"), pinfo.get("step"),failed_predicate))
+                yield from asyncio.sleep(sleep_time)
+                waited = True
+            else:
+                break # while loop
         if waited:
             logger.info("Job {cat:%s,source:%s,step:%s} now can be launched (total waiting time: %s)" % (pinfo.get("category"),
                 pinfo.get("source"), pinfo.get("step"), timesofar(t0)))
@@ -445,11 +464,22 @@ class JobManager(object):
     def defer_to_process(self, pinfo=None, func=None, *args):
 
         @asyncio.coroutine
-        def run(future):
-            yield from self.checkmem(pinfo)
+        def run(future, job_id):
+            yield from self.check_constraints(pinfo)
             self.ok_to_run.release()
-            res = yield from self.loop.run_in_executor(self.process_queue,
-                    partial(do_work,"process",pinfo,func,*args))
+            self.jobs[job_id] = pinfo
+            res = self.loop.run_in_executor(self.process_queue,
+                    partial(do_work,job_id,"process",pinfo,func,*args))
+            def ran(f):
+                try:
+                    # consume future, just to trigger potential exceptions
+                    r = f.result()
+                finally:
+                    # whatever the result we want to make sure to clean the job registry
+                    # to keep it sync with actual running jobs
+                    self.jobs.pop(job_id)
+            res.add_done_callback(ran)
+            res = yield from res
             # process could generate other parallelized jobs and return a Future/Task
             # If so, we want to make sure we get the results from that task
             if type(res) == asyncio.Task:
@@ -457,11 +487,12 @@ class JobManager(object):
             future.set_result(res)
         yield from self.ok_to_run.acquire()
         f = asyncio.Future()
-        def runned(innerf):
+        def runned(innerf,job_id):
             if innerf.exception():
                 f.set_exception(innerf.exception())
-        fut = asyncio.ensure_future(run(f))
-        fut.add_done_callback(runned)
+        job_id = get_random_string()
+        fut = asyncio.ensure_future(run(f,job_id))
+        fut.add_done_callback(partial(runned,job_id=job_id))
         return f
 
     @asyncio.coroutine
@@ -470,12 +501,22 @@ class JobManager(object):
         skip_check = pinfo.get("__skip_check__", False)
 
         @asyncio.coroutine
-        def run(future):
+        def run(future, job_id):
             if not skip_check:
-                yield from self.checkmem(pinfo)
+                yield from self.check_constraints(pinfo)
                 self.ok_to_run.release()
-            res = yield from self.loop.run_in_executor(self.thread_queue,
-                    partial(do_work,"thread",pinfo,func,*args))
+            self.jobs[job_id] = pinfo
+            res = self.loop.run_in_executor(self.thread_queue,
+                    partial(do_work,job_id,"thread",pinfo,func,*args))
+            def ran(f):
+                try:
+                    r = f.result()
+                finally:
+                    # whatever the result we want to make sure to clean the job registry
+                    # to keep it sync with actual running jobs
+                    self.jobs.pop(job_id)
+            res.add_done_callback(ran)
+            yield from res
             # thread could generate other parallelized jobs and return a Future/Task
             # If so, we want to make sure we get the results from that task
             if type(res) == asyncio.Task:
@@ -484,11 +525,12 @@ class JobManager(object):
         if not skip_check:
             yield from self.ok_to_run.acquire()
         f = asyncio.Future()
-        def runned(innerf):
+        def runned(innerf, job_id):
             if innerf.exception():
                 f.set_exception(innerf.exception())
-        fut = asyncio.ensure_future(run(f))
-        fut.add_done_callback(runned)
+        job_id = get_random_string()
+        fut = asyncio.ensure_future(run(f,job_id))
+        fut.add_done_callback(partial(runned,job_id=job_id))
         return f
 
     def submit(self,pfunc,schedule=None):

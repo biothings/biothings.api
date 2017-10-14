@@ -9,3 +9,4 @@ jsonpointer
 prettytable # diff report renderer
 pympler # compute diff size
 multiprocessing_on_dill # to replace pickler in concurrent.futures
+dill # default pickler for job_manager (so we can pickle lambda)

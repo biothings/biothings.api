@@ -37,9 +37,10 @@ class BaseSyncer(object):
     # must be set in sub-class
     target_backend = None
 
-    def __init__(self, job_manager, log_folder):
+    def __init__(self, job_manager, log_folder, predicates=[]):
         self.log_folder = log_folder
         self.job_manager = job_manager
+        self.predicates = predicates
         self.timestamp = datetime.now()
         self.setup_log()
 
@@ -63,6 +64,14 @@ class BaseSyncer(object):
         if not nh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(nh)
         return self.logger
+
+    def get_pinfo(self):
+        pinfo = {"category" : "sync",
+                 "step" : "",
+                 "description" : ""}
+        if self.predicates:
+            pinfo["__predicates__"] = self.predicates
+        return pinfo
 
     @asyncio.coroutine
     def sync_cols(self, diff_folder, batch_size=10000, mode=None, force=False,
@@ -88,10 +97,8 @@ class BaseSyncer(object):
             meta["old"]["backend"]
         new_db_col_names = meta["new"]["backend"]
         diff_mapping_file = meta["diff"]["mapping_file"]
-        pinfo = {"category" : "sync",
-                 "source" : "%s -> %s" % (old_db_col_names,new_db_col_names),
-                 "step" : "",
-                 "description" : ""}
+        pinfo = self.get_pinfo()
+        pinfo["source"] = "%s -> %s" % (old_db_col_names,new_db_col_names),
         summary = {}
         if "mapping" in steps and self.target_backend == "es":
             if diff_mapping_file:
@@ -374,22 +381,23 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
 
 class SyncerManager(BaseManager):
 
-    def __init__(self, *args,**kwargs):
+    def __init__(self, predicates=[], *args,**kwargs):
         """
         SyncerManager deals with the different syncer objects used to synchronize
         different collections or indices using diff files
         """
         super(SyncerManager,self).__init__(*args,**kwargs)
+        self.predicates = predicates
         self.setup_log()
 
     def register_syncer(self,klass):
         self.register[(klass.diff_type,klass.target_backend)] = partial(klass,log_folder=btconfig.LOG_FOLDER,
-                                           job_manager=self.job_manager)
+                                           job_manager=self.job_manager,predicates=self.predicates)
 
-    def configure(self):
-        # TODO: make it dynamic...
-        for klass in [MongoJsonDiffSyncer,ESJsonDiffSyncer,
-                MongoJsonDiffSelfContainedSyncer,ESJsonDiffSelfContainedSyncer]:
+    def configure(self,klasses=None):
+        klasses = klasses or [MongoJsonDiffSyncer,ESJsonDiffSyncer,
+                MongoJsonDiffSelfContainedSyncer,ESJsonDiffSelfContainedSyncer]
+        for klass in klasses:
             self.register_syncer(klass)
 
     def setup_log(self):
