@@ -391,8 +391,8 @@ class SyncerManager(BaseManager):
         self.setup_log()
 
     def register_syncer(self,klass):
-        self.register[(klass.diff_type,klass.target_backend)] = partial(klass,log_folder=btconfig.LOG_FOLDER,
-                                           job_manager=self.job_manager,predicates=self.predicates)
+        self.register[(klass.diff_type,klass.target_backend)] = partial(klass, log_folder=btconfig.LOG_FOLDER,
+                                           job_manager=self.job_manager, predicates=self.predicates)
 
     def configure(self,klasses=None):
         klasses = klasses or [MongoJsonDiffSyncer,ESJsonDiffSyncer,

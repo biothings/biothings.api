@@ -178,15 +178,30 @@ class BaseSourceUploader(object):
         self.prepared = False
         return state
 
-    def get_pinfo(self):
+    def get_predicates(self, running_jobs={}):
+        if not running_jobs:
+            return None
+        def no_dumper_running():
+            return len([j for j in running_jobs.values() if \
+                    j["source"] == self.fullname.split(".")[0] and j["category"] == "dumper"]) == 0
+        def no_same_uploader_running():
+            return len([j for j in running_jobs.values() if \
+                    j["source"] == self.fullname and j["category"] == "uploader"]) == 0
+        return [no_dumper_running,no_same_uploader_running]
+
+    def get_pinfo(self, job_manager=None):
         """
         Return dict containing information about the current process
         (used to report in the hub)
         """
-        return {"category" : "uploader",
+        pinfo = {"category" : "uploader",
                 "source" : self.fullname,
                 "step" : "",
                 "description" : ""}
+        preds = self.get_predicates(job_manager.jobs)
+        if preds:
+            pinfo["__predicates__"] = preds
+        return pinfo
 
     def check_ready(self,force=False):
         if not self.src_doc:
@@ -256,7 +271,7 @@ class BaseSourceUploader(object):
         """
         Iterate over load_data() to pull data and store it
         """
-        pinfo = self.get_pinfo()
+        pinfo = self.get_pinfo(job_manager)
         pinfo["step"] = "update_data"
         got_error = False
         self.unprepare()
@@ -371,7 +386,7 @@ class BaseSourceUploader(object):
             if post_update_data:
                 got_error = False
                 self.unprepare()
-                pinfo = self.get_pinfo()
+                pinfo = self.get_pinfo(job_manager)
                 pinfo["step"] = "post_update_data"
                 f2 = yield from job_manager.defer_to_thread(pinfo,
                         partial(self.post_update_data, steps, force, batch_size, job_manager, **kwargs))
@@ -519,7 +534,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
         # in other words: once unprepared, self should never be changed until all 
         # jobs are submitted
         for bnum,args in enumerate(job_params):
-            pinfo = self.get_pinfo()
+            pinfo = self.get_pinfo(job_manager)
             pinfo["step"] = "update_data"
             pinfo["description"] = "%s" % str(args)
             job = yield from job_manager.defer_to_process(

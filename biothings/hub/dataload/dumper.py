@@ -1,4 +1,4 @@
-import time
+import time, copy
 import os, pprint
 from datetime import datetime
 import asyncio
@@ -240,7 +240,7 @@ class BaseDumper(object):
         strargs = "[steps=%s]" % ",".join(self.steps)
         try:
             if "dump" in self.steps:
-                pinfo = self.get_pinfo()
+                pinfo = self.get_pinfo(job_manager)
                 pinfo["step"] = "check"
                 # if last download failed (or was interrupted), we want to force the dump again
                 try:
@@ -273,7 +273,7 @@ class BaseDumper(object):
                     return "Nothing to dump"
             if "post" in self.steps:
                 got_error = False
-                pinfo = self.get_pinfo()
+                pinfo = self.get_pinfo(job_manager)
                 pinfo["step"] = "post_dump"
                 # for some reason (like maintaining object's state between pickling).
                 # we can't use process there. Need to use thread to maintain that state without
@@ -303,15 +303,27 @@ class BaseDumper(object):
             if self.client:
                 self.release_client()
 
-    def get_pinfo(self):
+    def get_predicates(self, running_jobs={}):
+        if not running_jobs:
+            return None
+        def no_same_dumper_running():
+            return len([j for j in running_jobs.values() if \
+                    j["source"] == self.src_name and j["category"] == "dumper"]) == 0
+        return [no_same_dumper_running]
+
+    def get_pinfo(self, job_manager=None):
         """
         Return dict containing information about the current process
         (used to report in the hub)
         """
-        return {"category" : "dumper",
+        pinfo = {"category" : "dumper",
                 "source" : self.src_name,
                 "step" : None,
                 "description" : None}
+        preds = self.get_predicates(job_manager.jobs)
+        if preds:
+            pinfo["__predicates__"] = preds
+        return pinfo
 
     @property
     def new_data_folder(self):
@@ -363,7 +375,7 @@ class BaseDumper(object):
                     #self.logger.debug("Releasing download semaphore: %s" % max_dump)
                     max_dump.release()
                 self.post_download(remote,local)
-            pinfo = self.get_pinfo()
+            pinfo = self.get_pinfo(job_manager)
             pinfo["step"] = "dump"
             pinfo["description"] = remote
             if max_dump:
@@ -617,7 +629,7 @@ class DummyDumper(BaseDumper):
         self.logger.debug("Dummy dumper, nothing to download...")
         self.prepare_local_folders(os.path.join(self.new_data_folder,"dummy_file"))
         # this is the only interesting thing happening here
-        pinfo = self.get_pinfo()
+        pinfo = self.get_pinfo(job_manager)
         pinfo["step"] = "post_dump"
         job = yield from job_manager.defer_to_thread(pinfo,
                 partial(self.post_dump,job_manager=job_manager))
@@ -683,7 +695,7 @@ class ManualDumper(BaseDumper):
         if not os.listdir(self.new_data_folder):
             raise DumperException("Directory '%s' is empty (did you download data first ?)" % self.new_data_folder)
 
-        pinfo = self.get_pinfo()
+        pinfo = self.get_pinfo(job_manager)
         pinfo["step"] = "post_dump"
         strargs = "[path=%s,release=%s]" % (self.new_data_folder,self.release)
         job = yield from job_manager.defer_to_thread(pinfo,

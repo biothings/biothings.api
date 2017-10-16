@@ -70,6 +70,7 @@ def track(func):
             # would override filename otherwise
             fn = "%s_%s" % (_id,job_id)
             worker["info"]["id"] = _id
+            worker["info"].pop("__predicates__",None)
             pidfile = os.path.join(config.RUN_DIR,"%s.pickle" % fn)
             pickle.dump(worker, open(pidfile,"wb"))
             results = func(*args,**kwargs)
