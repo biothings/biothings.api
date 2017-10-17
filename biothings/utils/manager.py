@@ -517,7 +517,7 @@ class JobManager(object):
                     # to keep it sync with actual running jobs
                     self.jobs.pop(job_id)
             res.add_done_callback(ran)
-            yield from res
+            res = yield from res
             # thread could generate other parallelized jobs and return a Future/Task
             # If so, we want to make sure we get the results from that task
             if type(res) == asyncio.Task:
