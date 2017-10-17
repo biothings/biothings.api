@@ -25,6 +25,7 @@ import biothings.utils.aws as aws
 from biothings.utils.jsondiff import make as jsondiff
 from biothings.utils.hub import publish_data_version
 from biothings.utils.dataload import update_dict_recur
+from biothings.hub import DIFFER_CATEGORY, DIFFMANAGER_CATEGORY
 
 logging = btconfig.logger
 
@@ -65,6 +66,23 @@ class BaseDiffer(object):
         if not nh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(nh)
         return self.logger
+
+    def get_predicates(self, running_jobs={}):
+        return []
+
+    def get_pinfo(self, job_manager=None):
+        """
+        Return dict containing information about the current process
+        (used to report in the hub)
+        """
+        pinfo = {"category" : DIFFER_CATEGORY,
+                "source" : "",
+                "step" : "",
+                "description" : ""}
+        preds = self.get_predicates(job_manager.jobs)
+        if preds:
+            pinfo["__predicates__"] = preds
+        return pinfo
 
     @asyncio.coroutine
     def diff_cols(self,old_db_col_names, new_db_col_names, batch_size, steps, mode=None, exclude=[]):
@@ -188,10 +206,9 @@ class BaseDiffer(object):
 
                 self.logger.info("Diff file containing mapping differences generated: %s" % res.get("mapping_file"))
 
-            pinfo = {"category" : "diff",
-                     "source" : "%s vs %s" % (new.target_name,old.target_name),
-                     "step" : "mapping: old vs new",
-                     "description" : ""}
+            pinfo = self.get_pinfo(self.job_manager)
+            pinfo["source"] = "%s vs %s" % (new.target_name,old.target_name)
+            pinfo["step"] = "mapping: old vs new"
             job = yield from self.job_manager.defer_to_thread(pinfo,
                     partial(diff_mapping, old, new, diff_folder))
             job.add_done_callback(mapping_diffed)
@@ -201,11 +218,9 @@ class BaseDiffer(object):
 
         if "count" in steps:
             cnt = 0
-            pinfo = {"category" : "diff",
-                     "step" : "count",
-                     "source" : "%s vs %s" % (new.target_name,old.target_name),
-                     "description" : ""}
-
+            pinfo = self.get_pinfo(self.job_manager)
+            pinfo["source"] = "%s vs %s" % (new.target_name,old.target_name)
+            pinfo["step"] = "count"
             self.logger.info("Counting root keys in '%s'"  % new.target_name)
             diff_stats["root_keys"] = {}
             jobs = []
@@ -235,10 +250,9 @@ class BaseDiffer(object):
             skip = 0
             cnt = 0
             jobs = []
-            pinfo = {"category" : "diff",
-                     "source" : "%s vs %s" % (new.target_name,old.target_name),
-                     "step" : "content: new vs old",
-                     "description" : ""}
+            pinfo = self.get_pinfo(self.job_manager)
+            pinfo["source"] = "%s vs %s" % (new.target_name,old.target_name)
+            pinfo["step"] = "content: new vs old"
             data_new = id_feeder(new, batch_size=batch_size)
             selfcontained = "selfcontained" in self.diff_type
             for id_list_new in data_new:
@@ -262,6 +276,8 @@ class BaseDiffer(object):
 
             data_old = id_feeder(old, batch_size=batch_size)
             jobs = []
+            pinfo = self.get_pinfo(self.job_manager)
+            pinfo["source"] = "%s vs %s" % (new.target_name,old.target_name)
             pinfo["step"] = "content: old vs new"
             for id_list_old in data_old:
                 cnt += 1
@@ -316,7 +332,6 @@ class BaseDiffer(object):
                         os.rename(diff_file,os.path.join(done_folder,os.path.basename(diff_file)))
                         current_size += asizeof(diff_data)
 
-                    
                     # still something to merge ? It could not be, if diff files are even, 
                     # the last one will be processed just above with the diff_files.pop()
                     # leaving that diff_files empty
@@ -336,9 +351,9 @@ class BaseDiffer(object):
 
                 return res
 
-            pinfo = {"category" : "diff",
-                     "step" : "reduce",
-                     "source" : diff_folder}
+            pinfo = self.get_pinfo(self.job_manager)
+            pinfo["source"] = "diff_folder"
+            pinfo["step"] = "reduce"
             job = yield from self.job_manager.defer_to_thread(pinfo,merge_diff)
             def reduced(f):
                 nonlocal got_error
@@ -751,6 +766,32 @@ class DifferManager(BaseManager):
             self.logger.addHandler(nh)
         return self.logger
 
+    def get_predicates(self, running_jobs={}):
+        if not running_jobs:
+            return None
+        def no_other_diffmanager_step_running():
+            """DiffManager deals with diff report, release note, publishing,
+            none of them should run more than one at a time"""
+            # Note: report output is part a publish_diff, release_note is impacted by diff content,
+            # overall we keep things simple and don't allow more than one diff manager job to run
+            # at the same time
+            return len([j for j in running_jobs.values() if j["category"] == DIFFMANAGER_CATEGORY]) == 0
+        return [no_other_diffmanager_step_running]
+
+    def get_pinfo(self, job_manager=None):
+        """
+        Return dict containing information about the current process
+        (used to report in the hub)
+        """
+        pinfo = {"category" : DIFFMANAGER_CATEGORY,
+                "source" : "",
+                "step" : "",
+                "description" : ""}
+        preds = self.get_predicates(job_manager.jobs)
+        if preds:
+            pinfo["__predicates__"] = preds
+        return pinfo
+
     def __getitem__(self,diff_type):
         """
         Return an instance of a builder for the build named 'build_name'
@@ -811,10 +852,10 @@ class DifferManager(BaseManager):
         @asyncio.coroutine
         def main(diff_folder):
             got_error = False
-            pinfo = {"category" : "diff",
-                     "step" : "report",
-                     "source" : diff_folder,
-                     "description" : report_filename}
+            pinfo = self.get_pinfo(self.job_manager)
+            pinfo["step"] = "report"
+            pinfo["source"] = diff_folder
+            pinfo["description"] = report_filename
             job = yield from self.job_manager.defer_to_thread(pinfo,do)
             def reported(f):
                 nonlocal got_error
@@ -870,10 +911,10 @@ class DifferManager(BaseManager):
         @asyncio.coroutine
         def main(release_folder):
             got_error = False
-            pinfo = {"category" : "diff",
-                     "step" : "release_note",
-                     "source" : release_folder,
-                     "description" : filename}
+            pinfo = self.get_pinfo(self.job_manager)
+            pinfo["step"] = "release_note"
+            pinfo["source"] = release_folder
+            pinfo["description"] = filename
             job = yield from self.job_manager.defer_to_thread(pinfo,do)
             def reported(f):
                 nonlocal got_error
@@ -918,7 +959,7 @@ class DifferManager(BaseManager):
                     src = src_sub[0]
                     stats[src] = {"_count" : count}
             return stats
-        
+
         def get_versions(doc):
             try:
                 versions = dict((k,{"_version" :v["version"]}) for k,v in \
@@ -1155,11 +1196,10 @@ class DifferManager(BaseManager):
         @asyncio.coroutine
         def do():
             jobs = []
-            pinfo = {"category" : "upload_diff",
-                     "source" : diff_folder,
-                     "step": None,
-                     "description" : diff_version}
-
+            pinfo = self.get_pinfo(self.job_manager)
+            pinfo["step"] = "upload_diff"
+            pinfo["source"] = diff_folder
+            pinfo["description"] = diff_version
             if "reset" in steps:
                 # first we need to reset "synced" flag in diff files to make
                 # sure all of them will be applied by client
@@ -1278,6 +1318,8 @@ class DifferManager(BaseManager):
         name is first determined using new_id collection name, then the find.sort is done
         on collections containing that build config name.
         """
+        # TODO: this is not compatible with a generic hub_db backend
+        # TODO: this should return a collection with status=success
         col = get_src_build()
         doc = col.find_one({"_id":new_id})
         assert doc, "No build document found for '%s'" % new_id

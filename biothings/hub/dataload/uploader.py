@@ -15,6 +15,7 @@ from .storage import IgnoreDuplicatedStorage, MergerStorage, \
                      NoStorage
 from biothings.utils.loggers import HipchatHandler, get_logger
 from biothings import config
+from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, BUILDER_CATEGORY
 
 logging = config.logger
 
@@ -75,11 +76,11 @@ class BaseSourceUploader(object):
     # Will be override in subclasses
     # name of the resource and collection name used to store data
     # (see regex_name though for exceptions)
-    name = None 
+    name = None
     # if several resources, this one if the main name,
     # it's also the _id of the resource in src_dump collection
     # if set to None, it will be set to the value of variable "name"
-    main_source =None 
+    main_source =None
     # in case resource used split collections (so data is spread accross
     # different colleciton, regex_name should be specified so all those split
     # collections can be found using it (used when selecting mappers for instance)
@@ -182,19 +183,32 @@ class BaseSourceUploader(object):
         if not running_jobs:
             return None
         def no_dumper_running():
+            """
+            Dumpers could change the files uploader is currently using
+            """
             return len([j for j in running_jobs.values() if \
-                    j["source"] == self.fullname.split(".")[0] and j["category"] == "dumper"]) == 0
-        def no_same_uploader_running():
-            return len([j for j in running_jobs.values() if \
-                    j["source"] == self.fullname and j["category"] == "uploader"]) == 0
-        return [no_dumper_running,no_same_uploader_running]
+                    j["source"] == self.fullname.split(".")[0] and j["category"] == DUMPER_CATEGORY]) == 0
+        def no_builder_running():
+            """
+            Builders (mergers) read data from single datasource under control of uploader
+            don't change the data while it's being used
+            """
+            return len([j for j in running_jobs.values() if j["category"] == BUILDER_CATEGORY]) == 0
+        # TODO: can't use this one below for parallized uploader
+        #def no_same_uploader_running():
+        #    """
+        #    Avoid collision at mongo's level (and what's the point anyway?)
+        #    """
+        #    return len([j for j in running_jobs.values() if \
+        #            j["source"] == self.fullname and j["category"] == UPLOADER_CATEGORY]) == 0
+        return [no_dumper_running,no_builder_running]
 
     def get_pinfo(self, job_manager=None):
         """
         Return dict containing information about the current process
         (used to report in the hub)
         """
-        pinfo = {"category" : "uploader",
+        pinfo = {"category" : UPLOADER_CATEGORY,
                 "source" : self.fullname,
                 "step" : "",
                 "description" : ""}

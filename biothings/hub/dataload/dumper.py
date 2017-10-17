@@ -7,6 +7,7 @@ from functools import partial
 from biothings.utils.hub_db import get_src_dump
 from biothings.utils.common import timesofar
 from biothings.utils.loggers import HipchatHandler
+from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
 from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER
 
 from biothings.utils.manager import BaseSourceManager
@@ -306,17 +307,27 @@ class BaseDumper(object):
     def get_predicates(self, running_jobs={}):
         if not running_jobs:
             return None
-        def no_same_dumper_running():
+        # TODO: can't use this one for parallized dumpers
+        #def no_same_dumper_running():
+        #    """
+        #    Avoid collision at file's level (and what's the point anyway?)
+        #    """
+        #    return len([j for j in running_jobs.values() if \
+        #            j["source"] == self.src_name and j["category"] == DUMPER_CATEGORY]) == 0
+        def no_corresponding_uploader_running():
+            """
+            Don't download data if the associated uploader is running
+            """
             return len([j for j in running_jobs.values() if \
-                    j["source"] == self.src_name and j["category"] == "dumper"]) == 0
-        return [no_same_dumper_running]
+                    j["source"].split(".")[0] == self.src_name and j["category"] == UPLOADER_CATEGORY]) == 0
+        return [no_corresponding_uploader_running]
 
     def get_pinfo(self, job_manager=None):
         """
         Return dict containing information about the current process
         (used to report in the hub)
         """
-        pinfo = {"category" : "dumper",
+        pinfo = {"category" : DUMPER_CATEGORY, 
                 "source" : self.src_name,
                 "step" : None,
                 "description" : None}
@@ -820,7 +831,7 @@ class DumperManager(BaseSourceManager):
 
     def call(self,src,method_name,*args,**kwargs):
         """
-        Create a dumper for datasource "src" and call method "method_name" on it, 
+        Create a dumper for datasource "src" and call method "method_name" on it,
         with given arguments. Used to create arbitrary calls on a dumper.
         "method_name" within dumper definition must a coroutine.
         """

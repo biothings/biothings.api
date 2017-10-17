@@ -20,6 +20,7 @@ from biothings.utils.manager import BaseManager, ManagerError
 from .backend import create_backend
 from ..dataload.storage import UpsertStorage
 import biothings.utils.jsonpatch as jsonpatch
+from biothings.hub import SYNCER_CATEGORY
 
 logging = btconfig.logger
 
@@ -37,11 +38,11 @@ class BaseSyncer(object):
     # must be set in sub-class
     target_backend = None
 
-    def __init__(self, job_manager, log_folder, predicates=[]):
+    def __init__(self, job_manager, log_folder):
         self.log_folder = log_folder
         self.job_manager = job_manager
-        self.predicates = predicates
         self.timestamp = datetime.now()
+        self.synced_cols = None # str representation of synced cols (internal usage)
         self.setup_log()
 
     def setup_log(self):
@@ -65,12 +66,22 @@ class BaseSyncer(object):
             self.logger.addHandler(nh)
         return self.logger
 
-    def get_pinfo(self):
-        pinfo = {"category" : "sync",
+    def get_predicates(self, running_jobs={}):
+        if not running_jobs:
+            return None
+        #def no_same_syncer_running():
+        #    """Avoid syncers collision"""
+        #    return len([j for j in running_jobs.values() if \
+        #            j["source"] == self.synced_cols and j["category"] == SYNCER_CATEGORY]) == 0
+        return []
+
+    def get_pinfo(self, job_manager=None):
+        pinfo = {"category" : SYNCER_CATEGORY,
                  "step" : "",
                  "description" : ""}
-        if self.predicates:
-            pinfo["__predicates__"] = self.predicates
+        preds = self.get_predicates(job_manager.jobs)
+        if preds:
+            pinfo["__predicates__"] = preds
         return pinfo
 
     @asyncio.coroutine
@@ -98,7 +109,8 @@ class BaseSyncer(object):
         new_db_col_names = meta["new"]["backend"]
         diff_mapping_file = meta["diff"]["mapping_file"]
         pinfo = self.get_pinfo()
-        pinfo["source"] = "%s -> %s" % (old_db_col_names,new_db_col_names),
+        self.synced_cols = "%s -> %s" % (old_db_col_names,new_db_col_names)
+        pinfo["source"] = self.synced_cols
         summary = {}
         if "mapping" in steps and self.target_backend == "es":
             if diff_mapping_file:
@@ -381,18 +393,17 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
 
 class SyncerManager(BaseManager):
 
-    def __init__(self, predicates=[], *args,**kwargs):
+    def __init__(self, *args,**kwargs):
         """
         SyncerManager deals with the different syncer objects used to synchronize
         different collections or indices using diff files
         """
         super(SyncerManager,self).__init__(*args,**kwargs)
-        self.predicates = predicates
         self.setup_log()
 
     def register_syncer(self,klass):
         self.register[(klass.diff_type,klass.target_backend)] = partial(klass, log_folder=btconfig.LOG_FOLDER,
-                                           job_manager=self.job_manager, predicates=self.predicates)
+                                           job_manager=self.job_manager)
 
     def configure(self,klasses=None):
         klasses = klasses or [MongoJsonDiffSyncer,ESJsonDiffSyncer,

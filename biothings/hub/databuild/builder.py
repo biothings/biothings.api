@@ -25,6 +25,7 @@ import biothings.utils.mongo as mongo
 from biothings.utils.hub_db import get_source_fullname, get_src_build_config, \
                                    get_src_build, get_src_dump, get_src_master
 from biothings import config as btconfig
+from biothings.hub import UPLOADER_CATEGORY, BUILDER_CATEGORY
 
 logging = btconfig.logger
 
@@ -147,15 +148,33 @@ class DataBuilder(object):
         self.prepared = False
         return state
 
-    def get_pinfo(self):
+    def get_predicates(self, running_jobs={}):
+        if not running_jobs:
+            return None
+        def no_uploader_running():
+            """Uploaders could change the data to be merged..."""
+            return len([j for j in running_jobs.values() if j["category"] == UPLOADER_CATEGORY]) == 0
+        #def no_merger_running():
+        #    """
+        #    Mergers use cache files, if more than one running and caches need to be built
+        #    both would try to write on the same cache file
+        #    """
+        #    return len([j for j in running_jobs.values() if j["category"] == BUILDER_CATEGORY]) == 0
+        return [no_uploader_running]
+
+    def get_pinfo(self, job_manager=None):
         """
         Return dict containing information about the current process
         (used to report in the hub)
         """
-        return {"category" : "builder",
+        pinfo = {"category" : BUILDER_CATEGORY,
                 "source" : "%s:%s" % (self.build_name,self.target_backend.target_name),
                 "step" : "",
                 "description" : ""}
+        preds = self.get_predicates(job_manager.jobs)
+        if preds:
+            pinfo["__predicates__"] = preds
+        return pinfo
 
     def setup_log(self):
         # TODO: use bt.utils.loggers.get_logger
@@ -184,7 +203,7 @@ class DataBuilder(object):
             return
         src_build_config = self.source_backend.build_config
         src_dump = self.source_backend.dump
-        _cfg = src_build_config.find_one({'_id': self.build_config['_id']})
+        _cfg = src_build_config.find_one({'_id': self.build_config['name']})
         # check if all resources are uploaded
         for src_name in _cfg["sources"]:
             fullname = get_source_fullname(src_name)
@@ -465,7 +484,7 @@ class DataBuilder(object):
                             job_manager=job_manager, *args, **kwargs)
                     res = yield from job
                 if "metadata" in steps:
-                    pinfo = self.get_pinfo()
+                    pinfo = self.get_pinfo(job_manager)
                     pinfo["step"] = "metadata"
                     postjob = yield from job_manager.defer_to_thread(pinfo,
                             partial(self.store_metadata,res,sources=sources,job_manager=job_manager))
@@ -617,7 +636,7 @@ class DataBuilder(object):
         if do_post_merge:
             self.logger.info("Running post-merge process")
             self.register_status("building",transient=True,init=True,job={"step":"post-merge"})
-            pinfo = self.get_pinfo()
+            pinfo = self.get_pinfo(job_manager)
             pinfo["step"] = "post-merge"
             job = yield from job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
             job = asyncio.ensure_future(job)
@@ -697,7 +716,7 @@ class DataBuilder(object):
                 # (but everybody knows it's a blocking call: doc_feeder)
                 yield from asyncio.sleep(0.1)
                 cnt += len(doc_ids)
-                pinfo = self.get_pinfo()
+                pinfo = self.get_pinfo(job_manager)
                 pinfo["step"] = src_name
                 pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,(cnt/total*100))
                 self.logger.info("Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)" % \
@@ -860,9 +879,17 @@ class BuilderManager(BaseManager):
         col = target_db[merge_name]
         col.drop()
 
-    def list_merge(self):
+    def list_merge(self,build_config=None):
         docs = get_src_build().find()
-        return sorted([d["_id"] for d in docs])
+        by_confs = {}
+        for d in docs:
+            by_confs.setdefault(d["build_config"]["name"],[]).append(d["_id"])
+        if build_config:
+            return sorted(by_confs.get(build_config,[]))
+        else:
+            for conf in by_confs:
+                by_confs[conf] = sorted(by_confs[conf])
+            return by_confs
 
     def setup_log(self):
         self.logger = btconfig.logger
