@@ -229,6 +229,28 @@ class BaseSyncer(object):
         return job
 
 
+class ThrottlerSyncer(BaseSyncer):
+
+    def __init__(self, max_sync_workers, *args, **kwargs):
+        super(ThrottlerSyncer,self).__init__(*args, **kwargs)
+        self.max_sync_workers = max_sync_workers
+
+    def get_predicates(self, running_jobs={}):
+        preds = super(ThrottlerSyncer,self).get_predicates(running_jobs)
+        if preds is None:
+            preds = []
+        def not_too_much_syncers():
+            """
+            Limit number of syncers accordingly (this is useful when live-updating
+            the prod,we usually need to reduce the number of sync workers as they
+            would kill the ES server otherwise... (or at least produces timeout errors)
+            """
+            return len([j for j in running_jobs.values() if \
+                    j["category"] == "sync"]) < self.max_sync_workers
+        preds.append(not_too_much_syncers)
+        return preds
+
+
 class MongoJsonDiffSyncer(BaseSyncer):
     diff_type = "jsondiff"
     target_backend = "mongo"
@@ -244,6 +266,9 @@ class ESJsonDiffSyncer(BaseSyncer):
 class ESJsonDiffSelfContainedSyncer(BaseSyncer):
     diff_type = "jsondiff-selfcontained"
     target_backend = "es"
+
+class ThrottledESJsonDiffSyncer(ThrottlerSyncer,ESJsonDiffSyncer): pass
+class ThrottledESJsonDiffSelfContainedSyncer(ThrottlerSyncer,ESJsonDiffSelfContainedSyncer): pass
 
 
 # TODO: refactor workers (see sync_es_...)
@@ -402,10 +427,20 @@ class SyncerManager(BaseManager):
         self.setup_log()
 
     def register_syncer(self,klass):
-        self.register[(klass.diff_type,klass.target_backend)] = partial(klass, log_folder=btconfig.LOG_FOLDER,
+        if type(klass) == partial:
+            assert type(klass.func) == type, "%s is not a class" % klass.func
+            diff_type,target_backend = klass.func.diff_type,klass.func.target_backend
+        else:
+            diff_type,target_backend = klass.diff_type,klass.target_backend
+
+        self.register[(diff_type,target_backend)] = partial(klass, log_folder=btconfig.LOG_FOLDER,
                                            job_manager=self.job_manager)
 
     def configure(self,klasses=None):
+        """
+        Register default syncers (if klasses is None) or given klasses.
+        klasses is a list of class, or a list of partial'ly initialized classes.
+        """
         klasses = klasses or [MongoJsonDiffSyncer,ESJsonDiffSyncer,
                 MongoJsonDiffSelfContainedSyncer,ESJsonDiffSelfContainedSyncer]
         for klass in klasses:
