@@ -323,9 +323,10 @@ class Indexer(object):
                 "source" : "%s:%s" % (self.build_name,self.index_name),
                 "step" : "",
                 "description" : ""}
-        preds = self.get_predicates(job_manager.jobs)
-        if preds:
-            pinfo["__predicates__"] = preds
+        if job_manager:
+            preds = self.get_predicates(job_manager.jobs)
+            if preds:
+                pinfo["__predicates__"] = preds
         return pinfo
 
     @asyncio.coroutine

@@ -212,9 +212,10 @@ class BaseSourceUploader(object):
                 "source" : self.fullname,
                 "step" : "",
                 "description" : ""}
-        preds = self.get_predicates(job_manager.jobs)
-        if preds:
-            pinfo["__predicates__"] = preds
+        if job_manager:
+            preds = self.get_predicates(job_manager.jobs)
+            if preds:
+                pinfo["__predicates__"] = preds
         return pinfo
 
     def check_ready(self,force=False):

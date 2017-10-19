@@ -331,9 +331,10 @@ class BaseDumper(object):
                 "source" : self.src_name,
                 "step" : None,
                 "description" : None}
-        preds = self.get_predicates(job_manager.jobs)
-        if preds:
-            pinfo["__predicates__"] = preds
+        if job_manager:
+            preds = self.get_predicates(job_manager.jobs)
+            if preds:
+                pinfo["__predicates__"] = preds
         return pinfo
 
     @property
