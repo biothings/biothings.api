@@ -198,16 +198,23 @@ class BaseDumper(object):
 
     def register_status(self,status,transient=False,**extra):
         try:
-            # is status is "failed" and depending on where it failed,
+            # if status is "failed" and depending on where it failed,
             # we may not be able to get the new_data_folder (if dumper didn't reach 
             # the release information for instance). Default to current if failing
             data_folder = self.new_data_folder
         except DumperException:
             data_folder = self.current_data_folder
+        release = getattr(self,self.__class__.SUFFIX_ATTR)
+        if not release:
+            # it has not been set by the dumper before while exploring
+            # remote site. maybe we're just running post step ?
+            release = self.src_doc["release"]
+            self.logger.error("No release set, assuming: data_folder: %s, release: %s" % (data_folder,release))
+
         self.src_doc.update({
                 '_id': self.src_name,
                'data_folder': data_folder,
-               'release': getattr(self,self.__class__.SUFFIX_ATTR),
+               'release': release,
                'download' : {
                    'logfile': self.logfile,
                    'started_at': datetime.now(),
