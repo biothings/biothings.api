@@ -1164,7 +1164,7 @@ class DifferManager(BaseManager):
             os.rename(synced,diff_file)
 
     def publish_diff(self, s3_folder, old_db_col_names=None, new_db_col_names=None,
-            diff_folder=None, release_folder=None, steps=["reset","upload","meta"]):
+            diff_folder=None, release_folder=None, steps=["reset","upload","meta"], s3_bucket=None):
         """
         Publish diff data diff files in config.S3_DIFF_BUCKET/s3_folder and metadata, release notes, etc...
         in config.S3_RELEASE_BUCKET/s3_folder, and then register that version so it's available to auto-updating hub.
@@ -1193,6 +1193,7 @@ class DifferManager(BaseManager):
         diff_version = meta["diff"]["version"]
         s3basedir = os.path.join(s3_folder,diff_version)
         release_note = "release_%s" % meta["new"]["version"]
+        s3_bucket = s3_bucket or btconfig.S3_DIFF_BUCKET
 
         @asyncio.coroutine
         def do():
@@ -1213,11 +1214,11 @@ class DifferManager(BaseManager):
             if "upload" in steps:
                 # then we upload all the folder content
                 pinfo["step"] = "upload"
-                self.logger.info("Uploading files from '%s' to s3" % diff_folder)
+                self.logger.info("Uploading files from '%s' to s3 (%s/%s)" % (diff_folder,s3_bucket,s3basedir))
                 job = yield from self.job_manager.defer_to_thread(pinfo,partial(aws.send_s3_folder,
                     diff_folder,s3basedir=s3basedir,
                     aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                    s3_bucket=btconfig.S3_DIFF_BUCKET,overwrite=True))
+                    s3_bucket=s3_bucket,overwrite=True))
                 yield from job
                 jobs.append(job)
 
@@ -1241,7 +1242,7 @@ class DifferManager(BaseManager):
                             "release_date" : datetime.now().isoformat(),
                             "app_version": None,
                             "metadata" : {"url" : aws.get_s3_url(os.path.join(s3basedir,"metadata.json"),
-                                aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_DIFF_BUCKET)},
+                                aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=s3_bucket)},
                             }
                     # upload release notes
                     notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
