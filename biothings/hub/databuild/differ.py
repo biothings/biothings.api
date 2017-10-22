@@ -88,7 +88,7 @@ class BaseDiffer(object):
     def diff_cols(self,old_db_col_names, new_db_col_names, batch_size, steps, mode=None, exclude=[]):
         """
         Compare new with old collections and produce diff files. Root keys can be excluded from
-        comparison with "exclude" parameter.
+        comparison with "exclude" parameter
         *_db_col_names can be:
          1. a colleciton name (as a string) asusming they are
             in the target database.
@@ -802,7 +802,8 @@ class DifferManager(BaseManager):
         pclass = BaseManager.__getitem__(self,diff_type)
         return pclass()
 
-    def diff(self, diff_type, old, new, batch_size=100000, steps=["content","mapping","post"], mode=None, exclude=[]):
+    def diff(self, diff_type, old, new, batch_size=100000, steps=["content","mapping","post"],
+            mode=None, exclude=["_timestamp"]):
         """
         Run a diff to compare old vs. new collections. using differ algorithm diff_type. Results are stored in
         a diff folder.
@@ -810,6 +811,9 @@ class DifferManager(BaseManager):
         - count: will count root keys in new collections and stores them as statistics.
         - content: will diff the content between old and new. Results (diff files) format depends on diff_type
         """
+        # Note: _timestamp is excluded by default since it's an internal field (and exists in mongo doc,
+        #       but not in ES "_source" document (there's a root timestamp under control of 
+        #       _timestamp : {enable:true} in mapping
         try:
             differ = self[diff_type]
             old = old or self.select_old_collection(new)

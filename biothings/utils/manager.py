@@ -169,8 +169,9 @@ class BaseManager(object):
         @asyncio.coroutine
         def check_pending(state):
             sources = [src for src in col.find({'pending': state}) if type(src['_id']) == str]
-            logger.info("Found %d resources with pending flag %s (%s)" % \
-                    (len(sources),state,repr([src["_id"] for src in sources])))
+            if sources:
+                logger.info("Found %d resources with pending flag %s (%s)" % \
+                        (len(sources),state,repr([src["_id"] for src in sources])))
             for src in sources:
                 logger.info("Run %s for pending flag %s on source '%s'" % (func,state,src["_id"]))
                 try:

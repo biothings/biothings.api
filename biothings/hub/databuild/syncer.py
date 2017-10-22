@@ -363,6 +363,9 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
         assert new.target_collection.name == diff["source"], "Source is different in diff file '%s': %s" % (diff_file,diff["source"])
         cur = doc_feeder(new.target_collection, step=batch_size, inbatch=False, query={'_id': {'$in': diff["add"]}})
     for docs in iter_n(cur,batch_size):
+        # remove potenial existing _timestamp from document
+        # (not allowed within an ES document (_source))
+        [d.pop("_timestamp",None) for d in docs]
         try:
             res["added"] += indexer.index_bulk(docs,batch_size,action="create")[0]
         except BulkIndexError:
@@ -374,6 +377,7 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
                      res["added"] += 1
                 except ConflictError:
                     # already added
+                    logging.warning("_id '%s' already added" % _id)
                     res["skipped"] += 1
                     continue
                 except Exception as e:
@@ -392,11 +396,13 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
             newdoc = jsonpatch.apply_patch(doc,patch_info["patch"])
             if newdoc == doc:
                 # already applied
+                logging.warning("_id '%s' already synced" % doc["_id"])
                 res["skipped"] += 1
                 continue
             batch.append(newdoc)
-        except jsonpatch.JsonPatchConflict:
+        except jsonpatch.JsonPatchConflict as e:
             # assuming already applieda
+            logging.warning("_id '%s' already synced ? JsonPatchError: %s" % (doc["_id"],e))
             res["skipped"] += 1
             continue
         if len(batch) >= batch_size:
