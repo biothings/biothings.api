@@ -17,23 +17,41 @@ csv.field_size_limit(10000000)   # default is 131072, too small for some big fil
 
 # remove keys whos values are ".", "-", "", "NA", "none", " "
 # and remove empty dictionaries
-def dict_sweep(d, vals=[".", "-", "", "NA", "none", " ", "Not Available", "unknown"]):
+def dict_sweep(d, vals=[".", "-", "", "NA", "none", " ", "Not Available", "unknown"],
+               remove_invalid_list=False):
     """
     @param d: a dictionary
     @param vals: a string or list of strings to sweep
+    @param remove_invalid_list: when true, will remove key for which
+           list has only one value, which is part of "vals".
+           Ex:
+               - test_dict = {'gene': [None, None], 'site': ["Intron", None], 'snp_build' : 136}
+           with remove_invalid_list == False:
+               - {'gene': [None], 'site': ['Intron'], 'snp_build': 136}
+           with remove_invalid_list == True:
+               - {'site': ['Intron'], 'snp_build': 136}
     """
     for key, val in list(d.items()):
         if val in vals:
             del d[key]
         elif isinstance(val, list):
-            val = [v for v in val if v not in vals]
-            for item in val:
-                if isinstance(item, dict):
-                    dict_sweep(item, vals)
-            if len(val) == 0:
-                del d[key]
+            if remove_invalid_list:
+                val = [v for v in val if v not in vals]
+                for item in val:
+                    if isinstance(item, dict):
+                        dict_sweep(item, vals)
+                if len(val) == 0:
+                    del d[key]
+                else:
+                    d[key] = val
             else:
-                d[key] = val
+                for item in val:
+                    if item in vals:
+                        val.remove(item)
+                    elif isinstance(item, dict):
+                        dict_sweep(item, vals)
+                if len(val) == 0:
+                    del d[key]
         elif isinstance(val, dict):
             dict_sweep(val, vals)
             if len(val) == 0:
@@ -104,7 +122,7 @@ def merge_duplicate_rows(rows, db):
             except KeyError:
                 try:
                     first_row[db][i] = row[db][i]
-                except:
+                except KeyError:
                     pass
                 continue
             if i in row[db]:
