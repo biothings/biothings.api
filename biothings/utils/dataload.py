@@ -26,13 +26,14 @@ def dict_sweep(d, vals=[".", "-", "", "NA", "none", " ", "Not Available", "unkno
         if val in vals:
             del d[key]
         elif isinstance(val, list):
+            val = [v for v in val if v not in vals]
             for item in val:
-                if item in vals:
-                    val.remove(item)
-                elif isinstance(item, dict):
+                if isinstance(item, dict):
                     dict_sweep(item, vals)
             if len(val) == 0:
                 del d[key]
+            else:
+                d[key] = val
         elif isinstance(val, dict):
             dict_sweep(val, vals)
             if len(val) == 0:
@@ -88,13 +89,26 @@ def merge_duplicate_rows(rows, db):
     @param db: database name, string
     """
     rows = list(rows)
+
+    keys = set()
+    for row in rows:
+        for k in row[db]:
+            keys.add(k)
+
     first_row = rows[0]
     other_rows = rows[1:]
     for row in other_rows:
-        for i in first_row[db]:
+        for i in keys:
+            try:
+                aa = first_row[db][i]
+            except KeyError:
+                try:
+                    first_row[db][i] = row[db][i]
+                except:
+                    pass
+                continue
             if i in row[db]:
                 if row[db][i] != first_row[db][i]:
-                    aa = first_row[db][i]
                     if not isinstance(aa, list):
                         aa = [aa]
                     aa.append(row[db][i])
