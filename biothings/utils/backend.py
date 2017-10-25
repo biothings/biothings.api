@@ -15,27 +15,27 @@ class DocBackendBase(object):
 
     @property
     def target_name(self):
-        raise NotImplemented
+        raise NotImplementedError()
 
     @property
     def version(self):
-        raise NotImplemented
+        raise NotImplementedError()
 
     def insert(self, doc_li):
-        raise NotImplemented
+        raise NotImplementedError()
 
     def update(self, id, extra_doc):
         '''update only, no upsert.'''
-        raise NotImplemented
+        raise NotImplementedError()
 
     def drop(self):
-        raise NotImplemented
+        raise NotImplementedError()
 
     def get_id_list(self):
-        raise NotImplemented
+        raise NotImplementedError()
 
     def get_from_id(self, id):
-        raise NotImplemented
+        raise NotImplementedError()
 
     def finalize(self):
         '''if needed, for example for bulk updates, perform flush
