@@ -53,13 +53,14 @@ def track(func):
                      "step" : None,
                      "description" : "%s %s" % (fname,firstarg)}
 
+        pinfo["started_at"] = time.time()
         worker = {'func_name' : fname,
                  'args': innerargs, 'kwargs' : kwargs,
-                 'started_at': time.time(),
-                 'info' : pinfo}
+                 'job' : pinfo}
         results = None
         exc = None
         trace = None
+        pidfile = None
         try:
             _id = None
             if ptype == "thread":
@@ -69,8 +70,8 @@ def track(func):
             # add random chars: 2 jobs handled by the same slot (pid or thread) 
             # would override filename otherwise
             fn = "%s_%s" % (_id,job_id)
-            worker["info"]["id"] = _id
-            worker["info"].pop("__predicates__",None)
+            worker["job"]["id"] = _id
+            worker["job"].pop("__predicates__",None)
             pidfile = os.path.join(config.RUN_DIR,"%s.pickle" % fn)
             pickle.dump(worker, open(pidfile,"wb"))
             results = func(*args,**kwargs)
@@ -81,13 +82,13 @@ def track(func):
             # we want to store exception so for now, just make a reference
             exc = e
         finally:
-            if os.path.exists(pidfile):
+            if pidfile and os.path.exists(pidfile):
                 pass
                 # move to "done" dir and register end of execution time 
                 os.rename(pidfile,os.path.join(config.RUN_DIR,"done",os.path.basename(pidfile)))
                 pidfile = os.path.join(config.RUN_DIR,"done",os.path.basename(pidfile))
                 worker = pickle.load(open(pidfile,"rb"))
-                worker["duration"] = timesofar(worker["started_at"])
+                worker["duration"] = timesofar(worker["job"]["started_at"])
                 worker["err"] = exc
                 worker["trace"] = trace
                 # try to keep original exception, but this may fail depending on
@@ -575,7 +576,12 @@ class JobManager(object):
                 pid = int(pat.findall(fn)[0].split("_")[0])
                 if not child or child.pid == pid:
                     worker = pickle.load(open(fn,"rb"))
-                    worker["process"] = pchildren[children_pids.index(pid)]
+                    proc = pchildren[children_pids.index(pid)]
+
+                    worker["process"] = {
+                            "mem" : proc.memory_info().rss,
+                            "cpu" : proc.cpu_percent()
+                            }
                     pids[pid] = worker
             except IndexError:
                 # weird though... should have only pid files there...
@@ -600,38 +606,38 @@ class JobManager(object):
         return tids
 
     def extract_pending_info(self, pending):
-        info = pending.fn.args[1]
+        info = pending.fn.args[2]
         assert type(info) == dict
         return info
 
     def extract_worker_info(self, worker):
         info = OrderedDict()
-        proc = worker.get("process")
+        proc = worker.get("process",{})
         err = worker.get("err") and " !" or ""
-        info["pid"] = str(worker["info"]["id"]) + err
-        info["source"] = norm(worker["info"].get("source") or "",25)
-        info["category"] = norm(worker["info"].get("category") or "",10)
-        info["step"] = norm(worker["info"].get("step") or "",20)
-        info["description"] = norm(worker["info"].get("description") or "",30)
-        info["mem"] = proc and sizeof_fmt(proc.memory_info().rss)
-        info["cpu"] = proc and "%.1f%%" % proc.cpu_percent()
-        info["started_at"] = worker.get("started_at") or ""
+        info["pid"] = str(worker["job"]["id"]) + err
+        info["source"] = norm(worker["job"].get("source") or "",25)
+        info["category"] = norm(worker["job"].get("category") or "",10)
+        info["step"] = norm(worker["job"].get("step") or "",20)
+        info["description"] = norm(worker["job"].get("description") or "",30)
+        info["mem"] = proc.get("mem","")
+        info["cpu"] = "%.1f%%" % proc.get("cpu",0.0)
+        info["started_at"] = worker["job"]["started_at"]
         if worker.get("duration"):
             info["duration"] = worker["duration"]
         else:
-            info["duration"] = timesofar(worker.get("started_at",0))
+            info["duration"] = timesofar(worker["job"]["started_at"])
         # for now, don't display files used by the process
-        #info["files"] = []
-        if proc:
-            for pfile in proc.open_files():
-                # skip 'a' (logger)
-                if pfile.mode == 'r':
-                    finfo = OrderedDict()
-                    finfo["path"] = pfile.path
-                    finfo["read"] = sizeof_fmt(pfile.position)
-                    size = os.path.getsize(pfile.path)
-                    finfo["size"] = sizeof_fmt(size)
-                    #info["files"].append(finfo)
+        info["files"] = []
+        #if proc:
+        #    for pfile in proc.open_files():
+        #        # skip 'a' (logger)
+        #        if pfile.mode == 'r':
+        #            finfo = OrderedDict()
+        #            finfo["path"] = pfile.path
+        #            finfo["read"] = sizeof_fmt(pfile.position)
+        #            size = os.path.getsize(pfile.path)
+        #            finfo["size"] = sizeof_fmt(size)
+        #            #info["files"].append(finfo)
         return info
 
     def print_workers(self,workers):
@@ -665,33 +671,116 @@ class JobManager(object):
             print(e)
             pprint(info)
 
+    def get_process_summary(self):
+        running_pids = self.get_pid_files()
+        pchildren = self.hub_process.children()
+        res = {}
+        for child in pchildren:
+            mem = child.memory_info().rss
+            pio = child.io_counters()
+            res[child.pid] = {
+                    "memory" : {
+                        "size" : child.memory_info().rss,
+                        "percent": child.memory_percent(),
+                        },
+                    "cpu" : {
+                        "status" : child.status(),
+                        "percent" : child.cpu_percent()
+                        },
+                    "io" : {
+                        "read_count" : pio.read_count,
+                        "write_count" : pio.write_count,
+                        "read_bytes" : pio.read_bytes,
+                        "write_bytes" : pio.write_bytes
+                        }
+                    }
+
+            if child.pid in running_pids:
+                # something is running on that child process
+                worker = running_pids[child.pid]
+                res[child.pid]["job"] = {
+                        "started_at": worker["job"]["started_at"],
+                        "duration" : timesofar(worker["job"]["started_at"],0),
+                        "func_name" : worker["func_name"],
+                        "category" : worker["job"]["category"],
+                        "description" : worker["job"]["description"],
+                        "source" : worker["job"]["source"],
+                        "step" : worker["job"]["step"],
+                        "id" : worker["job"]["id"],
+                        }
+
+        return res
+
+    def get_thread_summary(self):
+        running_tids = self.get_thread_files()
+        tchildren = self.thread_queue._threads
+        res = {}
+        for child in tchildren:
+            res[child.name] = {
+                    "is_alive" : child.isAlive(),
+                    "is_daemon" : child.isDaemon(),
+                    }
+
+            if child.name in running_tids:
+                # something is running on that child process
+                worker = running_tids[child.name]
+                res[child.name]["job"] = {
+                        "started_at": worker["job"]["started_at"],
+                        "duration" : timesofar(worker["job"]["started_at"],0),
+                        "func_name" : worker["func_name"],
+                        "category" : worker["job"]["category"],
+                        "description" : worker["job"]["description"],
+                        "source" : worker["job"]["source"],
+                        "step" : worker["job"]["step"],
+                        "id" : worker["job"]["id"],
+                        }
+
+        return res
+
     def get_summary(self,child=None):
         pworkers = self.get_pid_files(child)
         tworkers = self.get_thread_files()
-        self.print_workers(pworkers)
-        self.print_workers(tworkers)
-        print("%d running job(s)" % (len(pworkers) + len(tworkers)))
-        print("%s, type 'top(pending)' for more" % self.get_pending_summary())
-        done_jobs = glob.glob(os.path.join(config.RUN_DIR,"done","*.pickle"))
-        if done_jobs:
-            print("%s finished job(s), type 'top(done)' for more" % len(done_jobs))
+        ppendings = self.get_pending_processes()
+        tpendings = {} # TODO:
+        return {
+                "process" : {
+                    "running" : list(pworkers.keys()),
+                    "pending" : list(ppendings.keys()),
+                    "all" : self.get_process_summary(),
+                    "max" : self.process_queue._max_workers
+                    },
+                "thread" : {
+                    "running" : list(tworkers.keys()),
+                    "pending" : list(tpendings.keys()),
+                    "all" : self.get_thread_summary(),
+                    "max" : self.thread_queue._max_workers,
+                    },
+                "memory" : self.hub_memory,
+                "available_system_memory" :  self.avail_memory,
+                "max_memory_usage" : self.max_memory_usage,
+                "hub_pid" : self.hub_process.pid
+                }
 
     def get_pending_summary(self,getstr=False):
         running = len(self.get_pid_files())
         return "%d pending job(s)" % (len(self.process_queue._pending_work_items) - running)
 
-    def get_pendings(self, running=None):
+    def get_pending_processes(self):
         # pendings are kept in queue while running, until result is there so we need
         # to adjust the actual real pending jobs. also, pending job are get() from the
         # queue following FIFO order. finally, worker ID is incremental. So...
         pendings = sorted(self.process_queue._pending_work_items.items())
-        if not running:
-            running = len(self.get_pid_files())
-        actual_pendings = pendings[running:]
+        running = len(self.get_pid_files())
+        import logging
+        actual_pendings = dict(pendings[running:])
+        return actual_pendings
+
+    def show_pendings(self, running=None):
         print(self.get_pending_summary())
+        actual_pendings = self.get_pending_processes()
         if actual_pendings:
             print(self.__class__.HEADERLINE.format(**self.__class__.HEADER))
-            for num,pending in actual_pendings:
+            for num,pending in actual_pendings.items():
                 info = self.extract_pending_info(pending)
                 try:
                     self.print_pending_info(num,info)
@@ -706,7 +795,7 @@ class JobManager(object):
         if jobs:
             jfiles_workers = [(jfile,pickle.load(open(jfile,"rb"))) for jfile in jobs]
             # sort by start time
-            jfiles_workers = sorted(jfiles_workers,key=lambda e: e[1]["started_at"])
+            jfiles_workers = sorted(jfiles_workers,key=lambda e: e[1]["job"]["started_at"])
             for jfile,worker in jfiles_workers:
                 info = self.extract_worker_info(worker)
                 # format start time
@@ -742,11 +831,19 @@ class JobManager(object):
         if child:
             return pworkers[child.pid]
         elif action == "pending":
-            return self.get_pendings(running=len(pworkers))
+            return self.show_pendings(running=len(pworkers))
         elif action == "done":
             return self.get_dones(done_jobs)
         elif action == "summary":
-            return self.get_summary()
+            res = self.get_summary()
+            pworkers = dict([(pid,proc) for pid,proc in res["process"]["all"].items() if pid in res["process"]["running"]])
+            tworkers = dict([(tid,thread) for tid,thread in res["thread"]["all"].items() if tid in res["thread"]["running"]])
+            self.print_workers(pworkers)
+            self.print_workers(tworkers)
+            print("%d running job(s)" % (len(pworkers) + len(tworkers)))
+            print("%s, type 'top(pending)' for more" % self.get_pending_summary())
+            if done_jobs:
+                print("%s finished job(s), type 'top(done)' for more" % len(done_jobs))
         else:
             raise ValueError("Unknown action '%s'" % action)
 
