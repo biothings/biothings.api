@@ -3,7 +3,7 @@ import time, hashlib
 import pickle, json
 from datetime import datetime
 from dateutil.parser import parse as dtparse
-from pprint import pformat
+from pprint import pformat, pprint
 import asyncio
 from functools import partial
 import glob, random
@@ -968,7 +968,7 @@ class DifferManager(BaseManager):
         def get_versions(doc):
             try:
                 versions = dict((k,{"_version" :v["version"]}) for k,v in \
-                        doc.get("_meta",{}).get("src",{}).items() if v.get("version"))
+                        doc.get("_meta",{}).get("src",{}).items() if "version" in v)
             except KeyError:
                 # previous version format
                 versions = dict((k,{"_version" : v}) for k,v in doc.get("_meta",{}).get("src_version",{}).items())
