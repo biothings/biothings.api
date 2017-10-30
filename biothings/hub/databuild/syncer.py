@@ -109,7 +109,7 @@ class BaseSyncer(object):
             meta["old"]["backend"]
         new_db_col_names = meta["new"]["backend"]
         diff_mapping_file = meta["diff"]["mapping_file"]
-        pinfo = self.get_pinfo()
+        pinfo = self.get_pinfo(self.job_manager)
         self.synced_cols = "%s -> %s" % (old_db_col_names,new_db_col_names)
         pinfo["source"] = self.synced_cols
         summary = {}
@@ -247,7 +247,7 @@ class ThrottlerSyncer(BaseSyncer):
             would kill the ES server otherwise... (or at least produces timeout errors)
             """
             return len([j for j in running_jobs.values() if \
-                    j["category"] == "sync"]) < self.max_sync_workers
+                    j["category"] == SYNCER_CATEGORY]) < self.max_sync_workers
         preds.append(not_too_much_syncers)
         return preds
 

@@ -36,8 +36,8 @@ def track(func):
             innerargs = args[4:]
             pinfo = args[2]
 
-        # make sure we can pickle the whole thing (and it's
         # just informative, so stringify is just ok there)
+        # make sure we can pickle the whole thing (and it's
         innerargs = [str(arg) for arg in innerargs]
         if type(innerfunc) == partial:
             fname = innerfunc.func.__name__
@@ -71,7 +71,6 @@ def track(func):
             # would override filename otherwise
             fn = "%s_%s" % (_id,job_id)
             worker["job"]["id"] = _id
-            worker["job"].pop("__predicates__",None)
             pidfile = os.path.join(config.RUN_DIR,"%s.pickle" % fn)
             pickle.dump(worker, open(pidfile,"wb"))
             results = func(*args,**kwargs)
@@ -437,7 +436,7 @@ class JobManager(object):
             pendings = len(self.process_queue._pending_work_items.keys()) - config.HUB_MAX_WORKERS
             waited = True
         # finally check custom predicates
-        predicates =  pinfo and pinfo.get("__predicates__",[])
+        predicates =  pinfo and pinfo.pop("__predicates__",[])
         failed_predicate = None
         while True:
             for predicate in predicates:
