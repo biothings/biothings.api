@@ -37,7 +37,7 @@ class ESQuery(object):
     def _annotation_POST_query(self, query_kwargs):
         return self.client.msearch(**query_kwargs)
     
-    def _query_GET_query(self, query_kwargs):
+    def _query_GET_query(self, query_kwargs, *args, **kwargs):
         from elasticsearch import RequestError
         try:
             return self.client.search(**query_kwargs)
@@ -48,7 +48,7 @@ class ESQuery(object):
             else:
                 raise Exception('{0}'.format(e))
     
-    def _query_POST_query(self, query_kwargs):
+    def _query_POST_query(self, query_kwargs, *args, **kwargs):
         from elasticsearch import RequestError
         try:
             return self.client.msearch(**query_kwargs)
@@ -78,11 +78,11 @@ class ESQuery(object):
         ''' Given ``query_kwargs`` from ESQueryBuilder, return results of annotation lookup POST query on ES client.'''
         return self._annotation_POST_query(query_kwargs)
 
-    def query_GET_query(self, query_kwargs):
+    def query_GET_query(self, query_kwargs, *args, **kwargs):
         ''' Given ``query_kwargs`` from ESQueryBuilder, return results of query GET on ES client.'''
         return self._query_GET_query(query_kwargs)
 
-    def query_POST_query(self, query_kwargs):
+    def query_POST_query(self, query_kwargs, *args, **kwargs):
         ''' Given ``query_kwargs`` from ESQueryBuilder, return results of query POST on ES client.'''
         return self._query_POST_query(query_kwargs)
 
