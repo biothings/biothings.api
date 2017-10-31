@@ -137,7 +137,8 @@ QUERY_GET_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool},
 QUERY_POST_CONTROL_KWARGS = {'q': {'default': None, 'type': list},
                              'raw': {'default': False, 'type': bool},
                              'rawquery': {'default': False, 'type': bool}}
-QUERY_POST_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 100, 'alias': ['fields', 'filter']}}
+QUERY_POST_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 100, 'alias': ['fields', 'filter']},
+                        'size': {'default': None, 'type': int}}
 QUERY_POST_ESQB_KWARGS = {'scopes': {'default': None, 'type': list, 'max': 100, 
                             'translations': [
 
