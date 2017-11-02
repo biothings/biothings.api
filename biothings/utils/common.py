@@ -162,10 +162,13 @@ def anyfile(infile, mode='r'):
     filetype = os.path.splitext(infile)[1].lower()
     if filetype == '.gz':
         import gzip
-        in_f = io.TextIOWrapper(gzip.GzipFile(infile, 'r'))
+        in_f = io.TextIOWrapper(gzip.GzipFile(infile, mode))
     elif filetype == '.zip':
         import zipfile
-        in_f = io.TextIOWrapper(zipfile.ZipFile(infile, 'r').open(rawfile, 'r'))
+        in_f = io.TextIOWrapper(zipfile.ZipFile(infile, mode).open(rawfile, mode))
+    elif filetype == '.xz':
+        import lzma
+        in_f = io.TextIOWrapper(lzma.LZMAFile(infile,mode))
     else:
         in_f = open(infile, mode)
     return in_f

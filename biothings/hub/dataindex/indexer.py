@@ -19,7 +19,8 @@ from biothings import config as btconfig
 from biothings.utils.mongo import doc_feeder, id_feeder
 from config import LOG_FOLDER, logger as logging
 from biothings.utils.hub import publish_data_version
-from biothings.hub.databuild.backend import generate_folder
+from biothings.hub.databuild.backend import generate_folder, create_backend
+from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
 
 
 class IndexerException(Exception):
@@ -28,9 +29,8 @@ class IndexerException(Exception):
 
 class IndexerManager(BaseManager):
 
-    def __init__(self, pindexer, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(IndexerManager,self).__init__(*args, **kwargs)
-        self.pindexer = pindexer
         self.src_build = get_src_build()
         self.t0 = time.time()
         self.prepared = False
@@ -93,16 +93,18 @@ class IndexerManager(BaseManager):
         pclass = BaseManager.__getitem__(self,build_name)
         return pclass()
 
-    def configure(self):
-        self.register_indexer("default")
+    def configure(self,partial_indexers):
+        """
+        Register indexers with a list of dict as:
+            {"indexer_type_name": partial}
+        Partial is used to instantiate an indexer, without args
+        """
+        for dindex in partial_indexers:
+            assert len(dindex) == 1, "Invalid indexer registration data: %s" % dindex
+            _type,pindexer = list(dindex.items())[0]
+            self.register[_type] = pindexer
 
-    def register_indexer(self, conf):
-        def create():
-            idxer = self.pindexer()
-            return idxer
-        self.register[conf] = partial(create)
-
-    def index(self, target_name=None, index_name=None, ids=None, **kwargs):
+    def index(self, indexer_type, target_name=None, index_name=None, ids=None, **kwargs):
         """
         Trigger an index creation to index the collection target_name and create an 
         index named index_name (or target_name if None). Optional list of IDs can be
@@ -117,7 +119,7 @@ class IndexerManager(BaseManager):
                 import traceback
                 self.logger.error("Error while running merge job, %s:\n%s" % (e,traceback.format_exc()))
                 raise
-        idx = self["default"]
+        idx = self[indexer_type]
         idx.target_name = target_name
         index_name = index_name or target_name
         job = idx.index(target_name, index_name, ids=ids, job_manager=self.job_manager, **kwargs)
@@ -209,92 +211,87 @@ class IndexerManager(BaseManager):
         index = index or snapshot
         snapshot = snapshot or index
 
-        def do():
-            idxr = ESIndexer(index=index,doc_type=btconfig.ES_DOC_TYPE,es_host=es_snapshot_host)
-            esb = DocESBackend(idxr)
-            assert esb.version, "Can't retrieve a version from index '%s'" % index
-            self.logger.info("Generating JSON metadata for full release '%s'" % esb.version)
-            repo = idxr._es.snapshot.get_repository(btconfig.READONLY_SNAPSHOT_REPOSITORY)
-            release_note = "release_%s" % esb.version
-            # generate json metadata about this diff release
-            assert snapshot, "Missing snapshot name information"
-            full_meta = {
-                    "type": "full",
-                    "build_version": esb.version,
-                    "target_version": esb.version,
-                    "release_date" : datetime.now().isoformat(),
-                    "app_version": None,
-                    "metadata" : {"repository" : repo,
-                                  "snapshot_name" : snapshot}
-                    }
-            # TODO: merged collection name can be != index name which can be != snapshot name...
-            if prev and index and not release_folder:
-                release_folder = generate_folder(btconfig.RELEASE_PATH,prev,index)
-            if release_folder and os.path.exists(release_folder):
-                # ok, we have something in that folder, just pick the release note files
-                # (we can generate diff + snaphost at the same time, so there could be diff files in that folder
-                # from a diff process done before. release notes will be the same though)
-                s3basedir = os.path.join(s3_folder,esb.version)
-                notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
-                self.logger.info("Uploading release notes from '%s' to s3 folder '%s'" % (notes,s3basedir))
-                for note in notes:
-                    if os.path.exists(note):
-                        s3key = os.path.join(s3basedir,os.path.basename(note))
-                        aws.send_s3_file(note,s3key,
-                                aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                                s3_bucket=btconfig.S3_RELEASE_BUCKET,overwrite=True)
-                # specify release note URLs in metadata
-                rel_txt_url = aws.get_s3_url(os.path.join(s3basedir,"%s.txt" % release_note),
-                                aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
-                rel_json_url = aws.get_s3_url(os.path.join(s3basedir,"%s.json" % release_note),
-                                aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
-                if rel_txt_url:
-                    full_meta.setdefault("changes",{})
-                    full_meta["changes"]["txt"] = {"url" : rel_txt_url}
-                if rel_json_url:
-                    full_meta.setdefault("changes",{})
-                    full_meta["changes"]["json"] = {"url" : rel_json_url}
-            else:
-                self.logger.info("No release_folder found, no release notes will be part of the publishing")
+        idxr = ESIndexer(index=index,doc_type=btconfig.ES_DOC_TYPE,es_host=es_snapshot_host)
+        esb = DocESBackend(idxr)
+        assert esb.version, "Can't retrieve a version from index '%s'" % index
+        self.logger.info("Generating JSON metadata for full release '%s'" % esb.version)
+        repo = idxr._es.snapshot.get_repository(btconfig.READONLY_SNAPSHOT_REPOSITORY)
+        release_note = "release_%s" % esb.version
+        # generate json metadata about this diff release
+        assert snapshot, "Missing snapshot name information"
+        full_meta = {
+                "type": "full",
+                "build_version": esb.version,
+                "target_version": esb.version,
+                "release_date" : datetime.now().isoformat(),
+                "app_version": None,
+                "metadata" : {"repository" : repo,
+                              "snapshot_name" : snapshot}
+                }
+        # TODO: merged collection name can be != index name which can be != snapshot name...
+        if prev and index and not release_folder:
+            release_folder = generate_folder(btconfig.RELEASE_PATH,prev,index)
+        if release_folder and os.path.exists(release_folder):
+            # ok, we have something in that folder, just pick the release note files
+            # (we can generate diff + snaphost at the same time, so there could be diff files in that folder
+            # from a diff process done before. release notes will be the same though)
+            s3basedir = os.path.join(s3_folder,esb.version)
+            notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
+            self.logger.info("Uploading release notes from '%s' to s3 folder '%s'" % (notes,s3basedir))
+            for note in notes:
+                if os.path.exists(note):
+                    s3key = os.path.join(s3basedir,os.path.basename(note))
+                    aws.send_s3_file(note,s3key,
+                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                            s3_bucket=btconfig.S3_RELEASE_BUCKET,overwrite=True)
+            # specify release note URLs in metadata
+            rel_txt_url = aws.get_s3_url(os.path.join(s3basedir,"%s.txt" % release_note),
+                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
+            rel_json_url = aws.get_s3_url(os.path.join(s3basedir,"%s.json" % release_note),
+                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
+            if rel_txt_url:
+                full_meta.setdefault("changes",{})
+                full_meta["changes"]["txt"] = {"url" : rel_txt_url}
+            if rel_json_url:
+                full_meta.setdefault("changes",{})
+                full_meta["changes"]["json"] = {"url" : rel_json_url}
+        else:
+            self.logger.info("No release_folder found, no release notes will be part of the publishing")
 
-            # now dump that metadata
-            build_info = "%s.json" % esb.version
-            build_info_path = os.path.join(btconfig.DIFF_PATH,build_info)
-            json.dump(full_meta,open(build_info_path,"w"))
-            # override lastmodified header with our own timestamp
-            local_ts = dtparse(idxr.get_mapping_meta()["_meta"]["build_date"])
-            utc_epoch = int(time.mktime(local_ts.timetuple()))
-            utc_ts = datetime.fromtimestamp(time.mktime(time.gmtime(utc_epoch)))
-            str_utc_epoch = str(utc_epoch)
-            # it's a full release, but all build info metadata (full, incremental) all go
-            # to the diff bucket (this is the main entry)
-            s3key = os.path.join(s3_folder,build_info)
-            aws.send_s3_file(build_info_path,s3key,
-                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                    s3_bucket=btconfig.S3_RELEASE_BUCKET,metadata={"lastmodified":str_utc_epoch},
-                     overwrite=True)
-            url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                    s3_bucket=btconfig.S3_RELEASE_BUCKET)
-            self.logger.info("Full release metadata published for version: '%s'" % url)
-            full_info = {"build_version":full_meta["build_version"],
-                    "require_version":None,
-                    "target_version":full_meta["target_version"],
-                    "type":full_meta["type"],
-                    "release_date":full_meta["release_date"],
-                    "url":url}
-            publish_data_version(s3_folder,full_info)
-            self.logger.info("Registered version '%s'" % (esb.version))
-
-        pinfo = self.get_pinfo(self.job_manager)
-        pinfo["source"] = index
-        pinfo["step"] = "publish"
-        pinfo["description"] = s3folder
-        job = yield from self.job_manager.defer_to_thread(pinfo,do)
-
-        return asyncio.ensure_future(do())
+        # now dump that metadata
+        build_info = "%s.json" % esb.version
+        build_info_path = os.path.join(btconfig.DIFF_PATH,build_info)
+        json.dump(full_meta,open(build_info_path,"w"))
+        # override lastmodified header with our own timestamp
+        local_ts = dtparse(idxr.get_mapping_meta()["_meta"]["build_date"])
+        utc_epoch = int(time.mktime(local_ts.timetuple()))
+        utc_ts = datetime.fromtimestamp(time.mktime(time.gmtime(utc_epoch)))
+        str_utc_epoch = str(utc_epoch)
+        # it's a full release, but all build info metadata (full, incremental) all go
+        # to the diff bucket (this is the main entry)
+        s3key = os.path.join(s3_folder,build_info)
+        aws.send_s3_file(build_info_path,s3key,
+                aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                s3_bucket=btconfig.S3_RELEASE_BUCKET,metadata={"lastmodified":str_utc_epoch},
+                 overwrite=True)
+        url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                s3_bucket=btconfig.S3_RELEASE_BUCKET)
+        self.logger.info("Full release metadata published for version: '%s'" % url)
+        full_info = {"build_version":full_meta["build_version"],
+                "require_version":None,
+                "target_version":full_meta["target_version"],
+                "type":full_meta["type"],
+                "release_date":full_meta["release_date"],
+                "url":url}
+        publish_data_version(s3_folder,full_info)
+        self.logger.info("Registered version '%s'" % (esb.version))
 
 
 class Indexer(object):
+    """
+    Basic indexer, reading documents from a mongo collection (target_name)
+    and sending documents to ES.
+    """
 
     def __init__(self, es_host, target_name=None, **kwargs):
         self.host = es_host
@@ -524,7 +521,7 @@ class Indexer(object):
 
     def get_timestamp(self):
         build = self.get_build()
-        return build["started_at"]
+        return build["build_date"]
 
     def get_build_version(self):
         build = self.get_build()
@@ -581,4 +578,116 @@ def indexer_worker(col_name,ids,pindexer,batch_num,mode="index"):
         pickle.dump({"exc":e,"ids":ids},open(exc_fn,"wb"))
         logger.info("Exception and IDs were dumped in pickle file '%s'" % exc_fn)
         raise
-    
+
+
+
+class ColdHotIndexer(Indexer):
+    """
+    This indexer works with 2 mongo collections to create a single index.
+    - one premerge collection contains "cold" data, which never changes (not updated)
+    - another collection contains "hot" data, regularly updated
+    Index is created fetching the premerge documents, update them with the hot collection
+    (so hot data has precedence over premerge/cold) and the resulting fully merged
+    documents are then sent to ES for indexing.
+    """
+
+    def __init__(self, pidcacher, *args, **kwargs):
+        super(ColdHotIndexer,self).__init__(*args, **kwargs)
+        self.pidcacher = pidcacher
+        self.hot_target_name = None
+        self.cold_target_name = None
+        self.cold_build_doc = None
+        self.hot_build_doc = None
+        self.cold_cfg = None
+        self.hot_cfg = None
+
+    @asyncio.coroutine
+    def index(self, cold_hot_names, index_name, job_manager, steps=["index","post"], batch_size=10000, ids=None, mode="index"):
+        """
+        cold_hot_names is a list of [cold,hot] mongodb collection names.
+        """
+        assert job_manager
+        # check what to do
+        if type(steps) == str:
+            steps = [steps]
+        self.cold_target_name, self.hot_target_name = cold_hot_names
+        self.index_name = index_name
+        self.setup_log()
+        self.load_build()
+        if not mode != "resume":
+            self.cache_hot_ids(self.hot_target_name,batch_size)
+
+    def get_mapping(self, enable_timestamp=True):
+        cold_mapping = self.cold_build_doc.get("mapping",{})
+        hot_mapping = self.hot_build_doc.get("mapping",{})
+        hot_mapping.update(cold_mapping) # mix cold&hot
+        mapping = {"properties": hot_mapping,
+                   "dynamic": "false",
+                   "include_in_all": "false"}
+        if enable_timestamp:
+            mapping['_timestamp'] = {
+                "enabled": True,
+            }
+        mapping["_meta"] = self.get_metadata()
+        return mapping
+
+    def get_metadata(self):
+        cold_meta = self.cold_build_doc.get("_meta",{})
+        hot_meta = self.hot_build_doc.get("_meta",{})
+        # selectively merge metadata (hot > cold for some)
+        hot_meta["src_version"].update(cold_meta["src_version"])
+        hot_meta["src"].update(cold_meta["src"])
+        hot_meta["stats"].update(cold_meta["stats"])
+        if "total" in hot_meta["stats"]:
+            hot_meta["stats"].pop("total")
+            self.logger.warning("Removed 'total' field from 'stats' (as it's probably incorrect anyway)")
+        return hot_meta
+
+    def get_src_versions(self):
+        _meta = self.get_metadata()
+        return _meta["src_version"]
+
+    def get_stats(self):
+        _meta = self.get_metadata()
+        return _meta["stats"]
+
+    def get_timestamp(self):
+        _meta = self.get_metadata()
+        return _meta["build_date"]
+
+    def get_build_version(self):
+        _meta = self.get_metadata()
+        return _meta["build_version"]
+
+    def load_build(self):
+        """
+        Load cold and hot build documents.
+        Index settings are the one declared in the hot build doc.
+        """
+        src_build = get_src_build()
+        self.cold_build_doc = src_build.find_one({'_id': self.cold_target_name})
+        self.hot_build_doc = src_build.find_one({'_id': self.hot_target_name})
+        assert self.cold_build_doc, "Can't find build document associated to '%s'" % self.cold_target_name
+        assert self.hot_build_doc, "Can't find build document associated to '%s'" % self.hot_target_name
+        self.cold_cfg = self.cold_build_doc.get("build_config")
+        self.hot_cfg = self.hot_build_doc.get("build_config")
+        if self.hot_cfg or not self.cold_cfg:
+            self.build_config = self.hot_cfg
+            if not "doc_type" in self.hot_cfg:
+                raise ValueError("Missing 'doc_type' in build config")
+            self.doc_type = self.hot_cfg["doc_type"]
+            self.num_shards = self.hot_cfg.get("num_shards",10) # optional
+            self.num_shards = self.num_shards and int(self.num_shards) or self.num_shards
+            self.num_replicas = self.hot_cfg.get("num_replicas",0) # optional
+            self.num_replicas = self.num_replicas and int(self.num_replicas) or self.num_replicas
+            self.build_name = self.hot_cfg["name"]
+        else:
+            raise ValueError("Cannot find build config associated to '%s' or '%s'" % (self.hot_target_name,self.cold_target_name))
+        return (self.cold_cfg,self.hot_cfg)
+
+    def cache_hot_ids(self,hot_colname, batch_size=10000):
+        self.logger.info("Loading and caching _id from '%s'" % hot_colname)
+        hotcol = create_backend(hot_colname)
+        id_provider = id_feeder(hotcol, batch_size=batch_size,logger=self.logger)
+        id_cacher = self.pidcacher(name=hot_colname)
+        id_cacher.load(id_provider,batch_size)

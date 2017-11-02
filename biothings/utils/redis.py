@@ -1,6 +1,9 @@
 import redis
 import random
+import logging
 
+
+class RedisClientError(Exception): pass
 
 class RedisClient(object):
 
@@ -43,7 +46,7 @@ class RedisClient(object):
         Return a database number, preferably not used (db doesn't exist).
         If no database available (all are used), will be one and flush it...
         """
-        db_max_num = int(self.mapdb.config_get("databases") or 16)
+        db_max_num = int(self.mapdb.config_get("databases")["databases"] or 16)
         # -1: we always keep db=0 (meta db)
         avail = dict(zip(range(1,db_max_num),[True]*(db_max_num-1)))
         for info in self.mapdb.info("keyspace"):
@@ -61,7 +64,8 @@ class RedisClient(object):
         return db_num
 
     def check(self):
-        assert self.mapdb.get("__META__") == b'0', "Can't find database metadata, you may want to use initialize()"
+        if not self.mapdb.get("__META__") == b'0':
+            raise RedisClientError("Can't find database metadata, you may want to use initialize()")
 
     def initialize(self,deep=False):
         """
