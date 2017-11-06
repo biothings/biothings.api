@@ -236,3 +236,31 @@ def generate_folder(root_folder, old_db_col_names, new_db_col_names):
     diff_folder = os.path.join(root_folder, "%s-%s" % (old, new))
     return diff_folder
 
+def merge_src_build_metadata(build_docs):
+    """
+    Merge metadata from src_build documents. A list of docs
+    should be passed, the order is important: the 1st element
+    has the less precedence, the last the most. It means that,
+    when needed, some values from documents on the "left" of the
+    list may be overridden by one on the right.
+    Ex: build_version field
+    Ideally, build docs shouldn't have any sources in common to
+    prevent any unexpected conflicts...
+    """
+    assert type(build_docs) == list and len(build_docs) >= 2, \
+        "More than one build document must be passed in order metadata"
+    first = build_docs[0]
+    others = build_docs[1:]
+    meta = first.get("_meta",{})
+    for new_doc in others:
+        new_meta = new_doc.get("_meta",{})
+        for k,v in new_meta.items():
+            # src_version, src, stats: merge
+            if type(v) == dict:
+                meta.setdefault(k,{})
+                meta[k].update(v)
+            # build_version, build_date: override
+            else:
+                meta[k] = v
+    # TODO: some fields in stats don't make when merged: total, observed/vcf in mv
+    return meta
