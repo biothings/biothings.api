@@ -63,7 +63,10 @@ class BaseESRequestHandler(BaseHandler):
 
     def _sanitize_aggs_param(self, kwargs):
         if self._should_sanitize('aggs', kwargs):
-            kwargs['aggs'] = dict([(field, {"terms": {"field": field}}) for field in kwargs['aggs']])
+            kwargs['facet_size'] = kwargs.get('facet_size', self.kwarg_settings['facet_size']['default']) 
+            if (kwargs['facet_size'] > self.kwarg_settings['facet_size'].get('max', 1000)):
+                 kwargs['facet_size'] = self.kwarg_settings['facet_size'].get('max', 1000)
+            kwargs['aggs'] = dict([(field, {"terms": {"field": field, "size": kwargs['facet_size']}}) for field in kwargs['aggs']])
         return kwargs
 
     def _sanitize_from_param(self, kwargs):

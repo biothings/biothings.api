@@ -128,7 +128,8 @@ QUERY_GET_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 100, 'a
                        'aggs': {'default': None, 'type': list, 'max': 10, 'alias': 'facets'},
                        'sort': {'default': None, 'type': list, 'max': 100}}
 QUERY_GET_ESQB_KWARGS = {'fetch_all': {'default': False, 'type': bool},
-                         'userquery': {'default': None, 'type': str, 'alias': ['userfilter']}}
+                         'userquery': {'default': None, 'type': str, 'alias': ['userfilter']},
+                         'facet_size': {'default': 10, 'type': int, 'max': 1000}}
 QUERY_GET_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool},
                               'jsonld': {'default': False, 'type': bool},
                               '_sorted': {'default': True, 'type': bool}}
