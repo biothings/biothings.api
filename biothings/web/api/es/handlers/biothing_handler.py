@@ -34,8 +34,10 @@ class BiothingHandler(BaseESRequestHandler):
         logging.debug("Kwarg settings: {}".format(self.kwarg_settings))
 
     def _regex_redirect(self, bid):
-        ''' subclass to redirect based on a regex pattern (or whatever)...'''
-        pass
+        ''' subclass to redirect based on a regex pattern (or whatever)... if this returns something falsy,
+            the handler execution will continue past the redirect, otherwise if this returns something truthy
+            the execution will return after the redirect (not sure about this) '''
+        return False
 
     def get(self, bid=None):
         ''' Handle a GET to the annotation lookup endpoint.'''
@@ -44,7 +46,8 @@ class BiothingHandler(BaseESRequestHandler):
             return
             
         # redirect this id
-        self._regex_redirect(bid)
+        if self._regex_redirect(bid):
+            return
 
         ###################################################
         #              Get query parameters    
