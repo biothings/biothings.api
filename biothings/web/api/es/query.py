@@ -51,13 +51,25 @@ class ESQuery(object):
     def _query_POST_query(self, query_kwargs, *args, **kwargs):
         from elasticsearch import RequestError
         try:
-            return self.client.msearch(**query_kwargs)
+            res = self.client.msearch(**query_kwargs)
         except RequestError as e:
             if e.args[1] == 'search_phase_execution_exception' and "error" in e.args[2] and "root_cause" in e.args[2]["error"]:
                 _root_causes = ['{} {}'.format(c['type'], c['reason']) for c in e.args[2]['error']['root_cause'] if 'reason' in c and 'type' in c]
                 raise BiothingSearchError('Could not execute query due to the following exception(s): {}'.format(_root_causes))
             else:
                 raise Exception('{0}'.format(e))
+        
+        _root_causes = []
+        for i in res['responses']:
+            if 'error' in i:
+                _root_causes.extend(['{} {}'.format(c['type'], c['reason']) for c in i['error']['root_cause']])
+
+        if _root_causes:
+            raise BiothingSearchError('Could not execute query due to the following exception(s): {}'.format(_root_causes))
+
+        return res
+                
+
 
     def _metadata_query(self, query_kwargs):
         return self.client.indices.get_mapping(**query_kwargs)
