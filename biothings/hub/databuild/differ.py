@@ -18,7 +18,7 @@ from biothings.utils.diff import diff_docs_jsonpatch
 from biothings.hub.databuild.backend import generate_folder
 from biothings import config as btconfig
 from biothings.utils.manager import BaseManager, ManagerError
-from .backend import create_backend
+from .backend import create_backend, merge_src_build_metadata
 from .syncer import SyncerManager
 from biothings.utils.backend import DocMongoBackend
 import biothings.utils.aws as aws
@@ -41,6 +41,8 @@ class BaseDiffer(object):
     diff_type = None
 
     def __init__(self, diff_func, job_manager, log_folder):
+        self.old = None
+        self.new = None
         self.log_folder = log_folder
         self.job_manager = job_manager
         self.diff_func = diff_func
@@ -105,8 +107,8 @@ class BaseDiffer(object):
                - 'post' will merge diff files, trying to avoid having many small files
         mode: 'purge' will remove any existing files for this comparison.
         """
-        new = create_backend(new_db_col_names)
-        old = create_backend(old_db_col_names)
+        self.new = create_backend(new_db_col_names)
+        self.old = create_backend(old_db_col_names)
         # check what to do
         if type(steps) == str:
             steps = [steps]
@@ -128,7 +130,7 @@ class BaseDiffer(object):
                 "diff" : {
                     "type" : self.diff_type,
                     "func" : self.diff_func.__name__,
-                    "version" : "%s.%s" % (old.version,new.version),
+                    "version" : "%s.%s" % (self.old.version,self.new.version),
                     "stats": diff_stats, # ref to diff_stats
                     "files": [],
                     # when "new" is a target collection:
@@ -143,22 +145,22 @@ class BaseDiffer(object):
                     },
                 "old": {
                     "backend" : old_db_col_names,
-                    "version" : old.version
+                    "version" : self.old.version
                     },
                 "new": {
                     "backend" : new_db_col_names,
-                    "version": new.version
+                    "version": self.new.version
                     },
                 # when "new" is a mongodb target collection:
                 "_meta" : {},
                 "build_config": {},
                 }
-        if isinstance(new,DocMongoBackend) and new.target_collection.database.name == btconfig.DATA_TARGET_DATABASE:
-            new_doc = get_src_build().find_one({"_id":new.target_collection.name})
+        if isinstance(self.new,DocMongoBackend) and self.new.target_collection.database.name == btconfig.DATA_TARGET_DATABASE:
+            new_doc = get_src_build().find_one({"_id":self.new.target_collection.name})
             if not new_doc:
                 raise DifferException("Collection '%s' has no corresponding build document" % \
-                        new.target_collection.name)
-            metadata["_meta"] = new_doc.get("_meta",{})
+                        self.new.target_collection.name)
+            metadata["_meta"] = self.get_metadata()
             metadata["build_config"] = new_doc.get("build_config")
 
         # dump it here for minimum information, in case we don't go further
@@ -207,10 +209,10 @@ class BaseDiffer(object):
                 self.logger.info("Diff file containing mapping differences generated: %s" % res.get("mapping_file"))
 
             pinfo = self.get_pinfo(self.job_manager)
-            pinfo["source"] = "%s vs %s" % (new.target_name,old.target_name)
+            pinfo["source"] = "%s vs %s" % (self.new.target_name,self.old.target_name)
             pinfo["step"] = "mapping: old vs new"
             job = yield from self.job_manager.defer_to_thread(pinfo,
-                    partial(diff_mapping, old, new, diff_folder))
+                    partial(diff_mapping, self.old, self.new, diff_folder))
             job.add_done_callback(mapping_diffed)
             yield from job
             if got_error:
@@ -219,12 +221,12 @@ class BaseDiffer(object):
         if "count" in steps:
             cnt = 0
             pinfo = self.get_pinfo(self.job_manager)
-            pinfo["source"] = "%s vs %s" % (new.target_name,old.target_name)
+            pinfo["source"] = "%s vs %s" % (self.new.target_name,self.old.target_name)
             pinfo["step"] = "count"
-            self.logger.info("Counting root keys in '%s'"  % new.target_name)
+            self.logger.info("Counting root keys in '%s'"  % self.new.target_name)
             diff_stats["root_keys"] = {}
             jobs = []
-            data_new = id_feeder(new, batch_size=batch_size)
+            data_new = id_feeder(self.new, batch_size=batch_size)
             for id_list in data_new:
                 cnt += 1
                 pinfo["description"] = "batch #%s" % cnt
@@ -251,9 +253,9 @@ class BaseDiffer(object):
             cnt = 0
             jobs = []
             pinfo = self.get_pinfo(self.job_manager)
-            pinfo["source"] = "%s vs %s" % (new.target_name,old.target_name)
+            pinfo["source"] = "%s vs %s" % (self.new.target_name,self.old.target_name)
             pinfo["step"] = "content: new vs old"
-            data_new = id_feeder(new, batch_size=batch_size)
+            data_new = id_feeder(self.new, batch_size=batch_size)
             selfcontained = "selfcontained" in self.diff_type
             for id_list_new in data_new:
                 cnt += 1
@@ -274,10 +276,10 @@ class BaseDiffer(object):
             yield from asyncio.gather(*jobs)
             self.logger.info("Finished calculating diff for the new collection. Total number of docs updated: {}, added: {}".format(diff_stats["update"], diff_stats["add"]))
 
-            data_old = id_feeder(old, batch_size=batch_size)
+            data_old = id_feeder(self.old, batch_size=batch_size)
             jobs = []
             pinfo = self.get_pinfo(self.job_manager)
-            pinfo["source"] = "%s vs %s" % (new.target_name,old.target_name)
+            pinfo["source"] = "%s vs %s" % (self.new.target_name,self.old.target_name)
             pinfo["step"] = "content: old vs new"
             for id_list_old in data_old:
                 cnt += 1
@@ -380,17 +382,51 @@ class BaseDiffer(object):
         job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, steps, mode, exclude))
         return job
 
+    def get_metadata(self):
+        new_doc = get_src_build().find_one({"_id":self.new.target_collection.name})
+        if not new_doc:
+            raise DifferException("Collection '%s' has no corresponding build document" % \
+                    self.new.target_collection.name)
+        return new_doc.get("_meta",{})
+
+
+class ColdHotDiffer(BaseDiffer):
+
+    @asyncio.coroutine
+    def diff_cols(self,old_db_col_names, new_db_col_names, *args,**kwargs):
+        self.new = create_backend(new_db_col_names)
+        new_doc = get_src_build().find_one({"_id":self.new.target_collection.name})
+        assert "cold_collection" in new_doc.get("build_config",{}), "%s document doesn't have " % self.new.target_collection.name + \
+                                    "a premerge collection declared. Is it really a hot merges collection ?"
+        self.cold = create_backend(new_doc["build_config"]["cold_collection"])
+        return super(ColdHotDiffer,self).diff_cols(old_db_col_names, new_db_col_names, *args, **kwargs)
+
+    def get_metadata(self):
+        new_doc = get_src_build().find_one({"_id":self.new.target_collection.name})
+        cold_doc = get_src_build().find_one({"_id":self.cold.target_collection.name})
+        if not new_doc:
+            raise DifferException("Collection '%s' has no corresponding build document" % \
+                    self.new.target_collection.name)
+        if not cold_doc:
+            raise DifferException("Collection '%s' has no corresponding build document" % \
+                    self.cold.target_collection.name)
+        return merge_src_build_metadata([cold_doc,new_doc])
 
 class JsonDiffer(BaseDiffer):
-
     diff_type = "jsondiff"
 
     def __init__(self, diff_func=diff_docs_jsonpatch, *args, **kwargs):
         super(JsonDiffer,self).__init__(diff_func=diff_func,*args,**kwargs)
 
 class SelfContainedJsonDiffer(JsonDiffer):
-
     diff_type = "jsondiff-selfcontained"
+
+
+class ColdHotJsonDiffer(ColdHotDiffer, JsonDiffer):
+    diff_type = "coldhot-jsondiff"
+    
+class ColdHotSelfContainedJsonDiffer(ColdHotDiffer, SelfContainedJsonDiffer):
+    diff_type = "coldhot-jsondiff-selfcontained"
 
 
 def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names,
@@ -742,9 +778,9 @@ class DifferManager(BaseManager):
         self.register[klass.diff_type] = partial(klass,log_folder=btconfig.LOG_FOLDER,
                                            job_manager=self.job_manager)
 
-    def configure(self):
-        for klass in [JsonDiffer,SelfContainedJsonDiffer]: # TODO: make it dynamic...
-            self.register_differ(klass)
+    def configure(self, partial_differs=[JsonDiffer,SelfContainedJsonDiffer]):
+        for pdiffer in partial_differs:
+            self.register_differ(pdiffer)
 
     def setup_log(self):
         import logging as logging_mod

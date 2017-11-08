@@ -19,7 +19,8 @@ from biothings import config as btconfig
 from biothings.utils.mongo import doc_feeder, id_feeder
 from config import LOG_FOLDER, logger as logging
 from biothings.utils.hub import publish_data_version
-from biothings.hub.databuild.backend import generate_folder, create_backend
+from biothings.hub.databuild.backend import generate_folder, create_backend, \
+                                            merge_src_build_metadata
 from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
 
 
@@ -632,16 +633,8 @@ class ColdHotIndexer(Indexer):
         return mapping
 
     def get_metadata(self):
-        cold_meta = self.cold_build_doc.get("_meta",{})
-        hot_meta = self.hot_build_doc.get("_meta",{})
-        # selectively merge metadata (hot > cold for some)
-        hot_meta["src_version"].update(cold_meta["src_version"])
-        hot_meta["src"].update(cold_meta["src"])
-        hot_meta["stats"].update(cold_meta["stats"])
-        if "total" in hot_meta["stats"]:
-            hot_meta["stats"].pop("total")
-            self.logger.warning("Removed 'total' field from 'stats' (as it's probably incorrect anyway)")
-        return hot_meta
+        meta = merge_src_build_metadata([self.cold_build_doc,self.hot_build_doc])
+        return meta
 
     def get_src_versions(self):
         _meta = self.get_metadata()
