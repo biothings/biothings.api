@@ -153,7 +153,7 @@ class BaseSyncer(object):
         if "content" in steps:
             if selfcontained:
                 # selfconained is a worker param, isolate diff format
-                diff_type = diff_type.replace("-selfcontained","")
+                diff_type = diff_type.replace("-selfcontained","").replace("-","_")
             diff_files = [os.path.join(diff_folder,e["name"]) for e in meta["diff"]["files"]]
             total = len(diff_files)
             self.logger.info("Syncing %s to %s using diff files in '%s'" % (old_db_col_names,new_db_col_names,diff_folder))
@@ -268,8 +268,18 @@ class ESJsonDiffSelfContainedSyncer(BaseSyncer):
     diff_type = "jsondiff-selfcontained"
     target_backend = "es"
 
+class ESColdHotJsonDiffSyncer(BaseSyncer):
+    diff_type = "coldhot-jsondiff"
+    target_backend = "es"
+
+class ESColdHotJsonDiffSelfContainedSyncer(BaseSyncer):
+    diff_type = "coldhot-jsondiff-selfcontained"
+    target_backend = "es"
+
 class ThrottledESJsonDiffSyncer(ThrottlerSyncer,ESJsonDiffSyncer): pass
 class ThrottledESJsonDiffSelfContainedSyncer(ThrottlerSyncer,ESJsonDiffSelfContainedSyncer): pass
+class ThrottledESColdHotJsonDiffSyncer(ThrottlerSyncer,ESColdHotJsonDiffSyncer): pass
+class ThrottledESColdHotJsonDiffSelfContainedSyncer(ThrottlerSyncer,ESColdHotJsonDiffSelfContainedSyncer): pass
 
 
 # TODO: refactor workers (see sync_es_...)
@@ -422,6 +432,121 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
     os.rename(diff_file,synced_file)
     return res
 
+
+def sync_es_coldhot_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, cnt,
+        force=False, selfcontained=False, metadata={}):
+    res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
+    # check if diff files was already synced
+    synced_file = "%s.synced" % diff_file
+    if os.path.exists(synced_file):
+        logging.info("Diff file '%s' already synced, skip it" % os.path.basename(diff_file))
+        diff = loadobj(synced_file)
+        res["skipped"] += len(diff["add"]) + len(diff["delete"]) + len(diff["update"])
+        return res
+    eskwargs = {}
+    # pass optional ES Indexer args
+    if hasattr(btconfig,"ES_TIMEOUT"):
+        eskwargs["timeout"] = btconfig.ES_TIMEOUT
+    if hasattr(btconfig,"ES_MAX_RETRY"):
+        eskwargs["max_retries"] = btconfig.ES_MAX_RETRY
+    if hasattr(btconfig,"ES_RETRY"):
+        eskwargs["retry_on_timeout"] = btconfig.ES_RETRY
+    logging.debug("Create ES backend with args: (%s,%s)" % (es_config,eskwargs))
+    bckend = create_backend(es_config,**eskwargs)
+    indexer = bckend.target_esidxer
+    diff = loadobj(diff_file)
+    errors = []
+
+    # add: diff between hot collections showed we have new documents but it's
+    # possible some of those docs already exist in premerge/cold collection.
+    # if so, they should be treated as dict.update() where the hot document content
+    # has precedence over the cold content for fields in common
+    if selfcontained:
+        # diff["add"] contains all documents, no mongo needed
+        cur = diff["add"]
+    else:
+        new = create_backend(new_db_col_names) # mongo collection to sync from
+        assert new.target_collection.name == diff["source"], "Source is different in diff file '%s': %s" % (diff_file,diff["source"])
+        cur = doc_feeder(new.target_collection, step=batch_size, inbatch=False, query={'_id': {'$in': diff["add"]}})
+    for docs in iter_n(cur,batch_size):
+        # remove potenial existing _timestamp from document
+        # (not allowed within an ES document (_source))
+        [d.pop("_timestamp",None) for d in docs]
+        # check which docs already exist in existing index (meaning they exist in cold collection)
+        dids = dict([(d["_id"],d) for d in docs])
+        dexistings = dict([(d["_id"],d) for d in indexer.get_docs([k for k in dids.keys()])])
+        logging.debug("From current batch, %d already exist" % len(dexistings))
+        # remove existing docs from "add" so the rest of the dict will be treated
+        # as "real" added documents while update existing ones with new content
+        toremove = []
+        for _id,d in dexistings.items():
+            # update in-place
+            if d == dids[d["_id"]]:
+                logging.debug("%s was already added, skip it" % d["_id"])
+                toremove.append(d["_id"])
+                res["skipped"] += 1
+            else:
+                newd = copy.deepcopy(d)
+                d.update(dids[d["_id"]])
+                if d == newd:
+                    logging.debug("%s was already updated, skip it" % d["_id"])
+                    toremove.append(d["_id"])
+                    res["skipped"] += 1
+            dids.pop(d["_id"])
+        for _id in toremove:
+            dexistings.pop(_id)
+        logging.info("Syncing 'add' documents (%s in total) from cold/hot merge: " % len(docs) +  \
+                     "%d documents will be updated as they already exist in the index, " % len(dexistings) + \
+                     "%d documents will be added (%d skipped as already processed)" % (len(dids),len(toremove)))
+        # treat real "added" documents
+        # Note: no need to check for "already exists" errors, as we already checked that before 
+        # in order to know what to do
+        try:
+            res["added"] += indexer.index_bulk(dids.values(),batch_size,action="create")[0]
+        except BulkIndexError as e:
+            logging.error("Error while adding documents %s" % [k for k in dids.keys()])
+        # update already existing docs in cold collection
+        # treat real "added" documents
+        try:
+            res["updated"] += indexer.index_bulk(dexistings.values(),batch_size)[0]
+        except BulkIndexError as e:
+            logging.error("Error while updating (via new hot detected docs) documents: %s" % e)
+
+    # update: get doc from indexer and apply diff
+    batch = []
+    ids = [p["_id"] for p in diff["update"]]
+    for i,doc in enumerate(indexer.get_docs(ids)):
+        try:
+            patch_info = diff["update"][i] # same order as what's return by get_doc()...
+            assert patch_info["_id"] == doc["_id"],"%s != %s" % (patch_info["_id"],doc["_id"]) # ... but just make sure
+            newdoc = jsonpatch.apply_patch(doc,patch_info["patch"])
+            if newdoc == doc:
+                # already applied
+                logging.warning("_id '%s' already synced" % doc["_id"])
+                res["skipped"] += 1
+                continue
+            batch.append(newdoc)
+        except jsonpatch.JsonPatchConflict as e:
+            # assuming already applieda
+            logging.warning("_id '%s' already synced ? JsonPatchError: %s" % (doc["_id"],e))
+            res["skipped"] += 1
+            continue
+        if len(batch) >= batch_size:
+            res["updated"] += indexer.index_bulk(batch,batch_size)[0]
+            batch = []
+    if batch:
+        res["updated"] += indexer.index_bulk(batch,batch_size)[0]
+
+    # delete: remove from "old"
+    for ids in iter_n(diff["delete"],batch_size):
+        del_skip = indexer.delete_docs(ids)
+        res["deleted"] += del_skip[0]
+        res["skipped"] += del_skip[1]
+
+    logging.info("Done applying diff from file '%s': %s" % (diff_file,res))
+    # mark as synced
+    os.rename(diff_file,synced_file)
+    return res
 
 class SyncerManager(BaseManager):
 

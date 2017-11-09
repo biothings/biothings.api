@@ -104,8 +104,10 @@ class BaseDiffer(object):
                  (to check number of docs from datasources).
                - 'content' will perform diff on actual content.
                - 'mapping' will perform diff on ES mappings (if target collection involved)
-               - 'post' will merge diff files, trying to avoid having many small files
-        mode: 'purge' will remove any existing files for this comparison.
+               - 'reduce' will merge diff files, trying to avoid having many small files
+               - 'post' is a hook to do stuff once everything is merged (override method post_diff_cols)
+        mode: 'purge' will remove any existing files for this comparison while 'resume' will happily ignore
+              existing data and to whatever it's requested (like running steps="post" on existing diff folder...)
         """
         self.new = create_backend(new_db_col_names)
         self.old = create_backend(old_db_col_names)
@@ -118,7 +120,7 @@ class BaseDiffer(object):
         if mode != "force" and os.path.exists(diff_folder) and "content" in steps:
             if mode == "purge" and os.path.exists(diff_folder):
                 rmdashfr(diff_folder)
-            else:
+            elif mode != "resume":
                 raise FileExistsError("Found existing files in '%s', use mode='purge'" % diff_folder)
         if not os.path.exists(diff_folder):
             os.makedirs(diff_folder)
@@ -163,8 +165,8 @@ class BaseDiffer(object):
             metadata["_meta"] = self.get_metadata()
             metadata["build_config"] = new_doc.get("build_config")
 
-        # dump it here for minimum information, in case we don't go further
-        json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
+        ## dump it here for minimum information, in case we don't go further
+        #json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
 
         got_error = False
         if "mapping" in steps:
@@ -301,7 +303,7 @@ class BaseDiffer(object):
         self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {}, Mapping changed: {})".format(
             diff_stats["update"], diff_stats["add"], diff_stats["delete"], diff_stats["mapping_changed"]))
 
-        if "post" in steps:
+        if "reduce" in steps:
             def merge_diff():
                 self.logger.info("Reduce/merge diff files")
                 max_diff_size = getattr(btconfig,"MAX_DIFF_SIZE",10*1024**2)
@@ -371,13 +373,35 @@ class BaseDiffer(object):
                 self.logger.exception("Failed to reduce diff files: %s" % got_error,extra={"notify":True})
                 raise got_error
 
-        # pickl again with potentially more information (diff_stats)
-        json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
+        if "post" in steps:
+            pinfo = self.get_pinfo(self.job_manager)
+            pinfo["source"] = "diff_folder"
+            pinfo["step"] = "post"
+            job = yield from self.job_manager.defer_to_thread(pinfo,
+                             partial(self.post_diff_cols, old_db_col_names, new_db_col_names,
+                                                          batch_size, steps, mode=mode, exclude=exclude))
+            def posted(f):
+                nonlocal got_error
+                try:
+                    res = f.result()
+                    self.logger.info("Post diff process successfully run: %s" % res)
+                except Exception as e:
+                    got_error = e
+            job.add_done_callback(posted)
+            yield from job
+            if got_error:
+                self.logger.exception("Failed to run post diff process: %s" % got_error,extra={"notify":True})
+                raise got_error
+
+        # pickle again with potentially more information (diff_stats)
+        # "post" doesn't update metadata so don't dump metadata if it hasn't changed
+        if steps != ["post"]:
+            json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
         strargs = "[old=%s,new=%s,steps=%s,diff_stats=%s]" % (old_db_col_names,new_db_col_names,steps,diff_stats)
         self.logger.info("success %s" % strargs,extra={"notify":True})
         return diff_stats
 
-    def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["content","mapping","post"], mode=None, exclude=[]):
+    def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["content","mapping","reduce","post"], mode=None, exclude=[]):
         """wrapper over diff_cols() coroutine, return a task"""
         job = asyncio.ensure_future(self.diff_cols(old_db_col_names, new_db_col_names, batch_size, steps, mode, exclude))
         return job
@@ -389,11 +413,15 @@ class BaseDiffer(object):
                     self.new.target_collection.name)
         return new_doc.get("_meta",{})
 
+    def post_diff_cols(self, old_db_col_names, new_db_col_names, batch_size, steps, mode=None, exclude=[]):
+        """Post diff process hook. This coroutine will in a dedicated thread"""
+        return
+
 
 class ColdHotDiffer(BaseDiffer):
 
     @asyncio.coroutine
-    def diff_cols(self,old_db_col_names, new_db_col_names, *args,**kwargs):
+    def diff_cols(self, old_db_col_names, new_db_col_names, *args,**kwargs):
         self.new = create_backend(new_db_col_names)
         new_doc = get_src_build().find_one({"_id":self.new.target_collection.name})
         assert "cold_collection" in new_doc.get("build_config",{}), "%s document doesn't have " % self.new.target_collection.name + \
@@ -412,6 +440,136 @@ class ColdHotDiffer(BaseDiffer):
                     self.cold.target_collection.name)
         return merge_src_build_metadata([cold_doc,new_doc])
 
+
+class ColdHotJsonDifferBase(ColdHotDiffer):
+
+    def post_diff_cols(self, old_db_col_names, new_db_col_names, batch_size, steps, mode=None, exclude=[]):
+        """
+        Post-process the diff files by adjusting some jsondiff operation. Here's the process.
+        For updated documents, some operations might illegal in the context of cold/hot merged collections. 
+        Case #1: "remove" op in an update
+            from a cold/premerge collection, we have that doc:
+                coldd = {"_id":1, "A":"123", "B":"456", "C":True}
+
+            from the previous hot merge we have this doc:
+                prevd = {"_id":1, "D":"789", "C":True, "E":"abc"}
+
+            At that point, the final document, fully merged and indexed is:
+                finald = {"_id":1, "A":"123", "B":"456", "C":True, "D":"789", "E":"abc"}
+            We can notice field "C" is common to coldd and prevd.
+
+            from the new hot merge, we have:
+                newd = {"_id":1, "E","abc"} # C and D don't exist anymore
+
+            Diffing prevd vs. newd will give jssondiff operations:
+                [{'op': 'remove', 'path': '/C'}, {'op': 'remove', 'path': '/D'}]
+
+            The problem here is 'C' is removed while it was already in cold merge, it should stay because it has come
+            with some resource involved in the premerge (dependent keys, eg. myvariant, "observed" key comes with certain sources)
+            => the jsondiff opetation on "C" must be discarded.
+            
+            Note: If operation involved a root key (not '/a/c' for instance) and if that key is found in the premerge, then 
+               then remove the operation. (note we just consider root keys, if the deletion occurs deeper in the document,
+               it's just a legal operation updating innder content)
+
+        For deleted documents, the same kind of logic applies
+        Case #2: "delete"
+            from a cold/premerge collection, we have that doc:
+                coldd = {"_id":1, "A":"123", "B":"456", "C":True}
+            from the previous hot merge we have this doc:
+                prevd = {"_id":1, "D":"789", "C":True}
+            fully merged doc:
+                finald = {"_id":1, "A":"123", "B":"456", "C":True, "D":"789"}
+            from the new hot merge, we have:
+                newd = {} # document doesn't exist anymore
+
+            Diffing prevd vs. newd will mark document with _id == 1 to be deleted
+            The problem is we have data for _id=1 on the premerge collection, if we delete the whole document we'd loose too much
+            information.
+            => the deletion must converted into specific "remove" jsondiff operations, for the root keys found in prevd on not in coldd
+               (in that case: [{'op':'remove', 'path':'/D'}], and not "C" as C is in premerge)
+        """
+        # we should be able to find a cold_collection definition in the src_build doc
+        # and it should be the same for both old and new
+        old_doc = get_src_build().find_one({"_id":old_db_col_names})
+        new_doc = get_src_build().find_one({"_id":new_db_col_names})
+        assert "build_config" in old_doc and "cold_collection" in old_doc["build_config"], \
+            "No cold collection defined in src_build for %s" % old_db_col_names
+        assert "build_config" in new_doc and "cold_collection" in new_doc["build_config"], \
+            "No cold collection defined in src_build for %s" % new_db_col_names
+        assert old_doc["build_config"]["cold_collection"] == new_doc["build_config"]["cold_collection"], \
+            "Cold collections are different in src_build docs %s and %s" % (old_db_col_names,new_db_col_names)
+        coldcol = get_target_db()[new_doc["build_config"]["cold_collection"]]
+        assert coldcol.count() > 0, "Cold collection is empty..."
+        diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
+        diff_files = glob.glob(os.path.join(diff_folder,"*.pyobj"))
+        metadata = json.load(open(os.path.join(diff_folder,"metadata.json")))
+        dirty = False
+        fixed = 0
+        for diff_file in diff_files:
+            self.logger.info("Post-processing diff file %s" % diff_file)
+            data = loadobj(diff_file)
+            # update/remove case #1
+            for updt in data["update"]:
+                toremove = []
+                for patch in updt["patch"]:
+                    pathk = patch["path"].split("/")[1:] # remove / at the beginning of the path
+                    if patch["op"] == "remove" and \
+                            len(pathk) == 1:
+                        # let's query the premerge
+                        coldd = coldcol.find_one({"_id" : updt["_id"]})
+                        if coldd and pathk[0] in coldd:
+                            self.logger.info("Fixed a root key in cold collection that should be preserved: '%s' (for doc _id '%s')" % (pathk[0],updt["_id"]))
+                            toremove.append(patch)
+                            fixed += 1
+                            dirty = True
+                for p in toremove:
+                    updt["patch"].remove(p)
+            # delete case #2
+            toremove = []
+            prevcol = get_target_db()[old_doc["target_name"]]
+            for delid in data["delete"]:
+                coldd = coldcol.find_one({"_id":delid})
+                if not coldd:
+                    # true deletion is required
+                    continue
+                else:
+                    prevd = prevcol.find_one({"_id":delid})
+                    prevs = set(prevd.keys())
+                    colds = set(coldd.keys())
+                    keys = prevs.difference(colds) # keys exclusively in prevd that should be removed
+                    patches = []
+                    for k in keys:
+                        patches.append({"op":"remove","path":"/%s" % k})
+                    data["update"].append({"_id":delid,"patch":patches})
+                    self.logger.info("Fixed a delete document by converting to update/remove jsondiff operations for keys: %s (_id: '%s')" % (keys,delid))
+                    fixed += 1
+                    dirty = True
+                    toremove.append(delid)
+            for i in toremove:
+                data["delete"].remove(i)
+
+            if dirty:
+                dump(data,diff_file,compress="lzma")
+                name = os.path.basename(diff_file)
+                md5 = md5sum(diff_file)
+                # find info to adjust md5sum
+                found = False
+                for i,df in enumerate(metadata["diff"]["files"]):
+                    if df["name"] == name:
+                        found = True
+                        break
+                assert found, "Couldn't find file information in metadata (with md5 value), try to rebuild_diff_file_list() ?"
+                metadata["diff"]["files"][i] = {"name":name,"md5sum":md5}
+                self.logger.info(metadata["diff"]["files"])
+
+        if dirty:
+            json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
+
+        self.logger.info("Post-diff process fixing jsondiff operations done: %s fixed" % fixed)
+        return {"fixed":fixed}
+
+
 class JsonDiffer(BaseDiffer):
     diff_type = "jsondiff"
 
@@ -422,10 +580,10 @@ class SelfContainedJsonDiffer(JsonDiffer):
     diff_type = "jsondiff-selfcontained"
 
 
-class ColdHotJsonDiffer(ColdHotDiffer, JsonDiffer):
+class ColdHotJsonDiffer(ColdHotJsonDifferBase, JsonDiffer):
     diff_type = "coldhot-jsondiff"
     
-class ColdHotSelfContainedJsonDiffer(ColdHotDiffer, SelfContainedJsonDiffer):
+class ColdHotSelfContainedJsonDiffer(ColdHotJsonDifferBase, SelfContainedJsonDiffer):
     diff_type = "coldhot-jsondiff-selfcontained"
 
 
@@ -838,7 +996,7 @@ class DifferManager(BaseManager):
         pclass = BaseManager.__getitem__(self,diff_type)
         return pclass()
 
-    def diff(self, diff_type, old, new, batch_size=100000, steps=["content","mapping","post"],
+    def diff(self, diff_type, old, new, batch_size=100000, steps=["content","mapping","reduce","post"],
             mode=None, exclude=["_timestamp"]):
         """
         Run a diff to compare old vs. new collections. using differ algorithm diff_type. Results are stored in
@@ -1403,6 +1561,27 @@ class DifferManager(BaseManager):
         new_db_col_names = doc["_id"]
         old_db_col_names = self.select_old_collection(doc)
         self.release_note(old_db_col_names, new_db_col_names, **kwargs)
+
+    def rebuild_diff_file_list(self,diff_folder):
+        diff_files = glob.glob(os.path.join(diff_folder,"*.pyobj"))
+        metadata = json.load(open(os.path.join(diff_folder,"metadata.json")))
+        try:
+            metadata["diff"]["files"] = []
+            if not "mapping_file" in metadata["diff"]:
+                metadata["diff"]["mapping_file"] = None
+            for diff_file in diff_files:
+                name = os.path.basename(diff_file)
+                md5 = md5sum(diff_file)
+                info = {"md5sum" : md5, "name" : name}
+                if "mapping" in diff_file: # dirty...
+                    metadata["diff"]["mapping"] = info
+                else:
+                    metadata["diff"]["files"].append(info)
+            json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
+            self.logger.info("Successfully rebuild diff_files list with all files found in %s" % diff_folder)
+        except KeyError as e:
+            self.logging.error("Metadata is too much damaged, can't rebuild diff_files list: %s" % e)
+
 
 
 def set_pending_to_diff(col_name):
