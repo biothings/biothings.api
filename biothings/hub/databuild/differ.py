@@ -979,10 +979,9 @@ class DifferManager(BaseManager):
                 "source" : "",
                 "step" : "",
                 "description" : ""}
-        if job_manager:
-            preds = self.get_predicates()
-            if preds:
-                pinfo["__predicates__"] = preds
+        preds = self.get_predicates()
+        if preds:
+            pinfo["__predicates__"] = preds
         return pinfo
 
     def __getitem__(self,diff_type):
