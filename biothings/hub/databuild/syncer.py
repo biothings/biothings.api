@@ -66,23 +66,20 @@ class BaseSyncer(object):
             self.logger.addHandler(nh)
         return self.logger
 
-    def get_predicates(self, running_jobs={}):
-        if not running_jobs:
-            return None
-        #def no_same_syncer_running():
+    def get_predicates(self):
+        #def no_same_syncer_running(job_manager):
         #    """Avoid syncers collision"""
-        #    return len([j for j in running_jobs.values() if \
+        #    return len([j for j in job_manager.jobs.values() if \
         #            j["source"] == self.synced_cols and j["category"] == SYNCER_CATEGORY]) == 0
         return []
 
-    def get_pinfo(self, job_manager=None):
+    def get_pinfo(self):
         pinfo = {"category" : SYNCER_CATEGORY,
                  "step" : "",
                  "description" : ""}
-        if job_manager:
-            preds = self.get_predicates(job_manager.jobs)
-            if preds:
-                pinfo["__predicates__"] = preds
+        preds = self.get_predicates()
+        if preds:
+            pinfo["__predicates__"] = preds
         return pinfo
 
     @asyncio.coroutine
@@ -109,7 +106,7 @@ class BaseSyncer(object):
             meta["old"]["backend"]
         new_db_col_names = meta["new"]["backend"]
         diff_mapping_file = meta["diff"]["mapping_file"]
-        pinfo = self.get_pinfo(self.job_manager)
+        pinfo = self.get_pinfo()
         self.synced_cols = "%s -> %s" % (old_db_col_names,new_db_col_names)
         pinfo["source"] = self.synced_cols
         summary = {}
@@ -236,17 +233,17 @@ class ThrottlerSyncer(BaseSyncer):
         super(ThrottlerSyncer,self).__init__(*args, **kwargs)
         self.max_sync_workers = max_sync_workers
 
-    def get_predicates(self, running_jobs={}):
-        preds = super(ThrottlerSyncer,self).get_predicates(running_jobs)
+    def get_predicates(self):
+        preds = super(ThrottlerSyncer,self).get_predicates()
         if preds is None:
             preds = []
-        def not_too_much_syncers():
+        def not_too_much_syncers(job_manager):
             """
             Limit number of syncers accordingly (this is useful when live-updating
             the prod,we usually need to reduce the number of sync workers as they
             would kill the ES server otherwise... (or at least produces timeout errors)
             """
-            return len([j for j in running_jobs.values() if \
+            return len([j for j in job_manager.jobs.values() if \
                     j["category"] == SYNCER_CATEGORY]) < self.max_sync_workers
         preds.append(not_too_much_syncers)
         return preds
@@ -527,7 +524,7 @@ def sync_es_coldhot_jsondiff_worker(diff_file, es_config, new_db_col_names, batc
                 continue
             batch.append(newdoc)
         except jsonpatch.JsonPatchConflict as e:
-            # assuming already applieda
+            # assuming already applied
             logging.warning("_id '%s' already synced ? JsonPatchError: %s" % (doc["_id"],e))
             res["skipped"] += 1
             continue

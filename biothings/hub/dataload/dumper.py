@@ -249,7 +249,7 @@ class BaseDumper(object):
         strargs = "[steps=%s]" % ",".join(self.steps)
         try:
             if "dump" in self.steps:
-                pinfo = self.get_pinfo(job_manager)
+                pinfo = self.get_pinfo()
                 pinfo["step"] = "check"
                 # if last download failed (or was interrupted), we want to force the dump again
                 try:
@@ -282,7 +282,7 @@ class BaseDumper(object):
                     return "Nothing to dump"
             if "post" in self.steps:
                 got_error = False
-                pinfo = self.get_pinfo(job_manager)
+                pinfo = self.get_pinfo()
                 pinfo["step"] = "post_dump"
                 # for some reason (like maintaining object's state between pickling).
                 # we can't use process there. Need to use thread to maintain that state without
@@ -312,25 +312,23 @@ class BaseDumper(object):
             if self.client:
                 self.release_client()
 
-    def get_predicates(self, running_jobs={}):
-        if not running_jobs:
-            return None
+    def get_predicates(self):
         # TODO: can't use this one for parallized dumpers
-        #def no_same_dumper_running():
+        #def no_same_dumper_running(job_manager):
         #    """
         #    Avoid collision at file's level (and what's the point anyway?)
         #    """
-        #    return len([j for j in running_jobs.values() if \
+        #    return len([j for j in job_manager.jobs.values() if \
         #            j["source"] == self.src_name and j["category"] == DUMPER_CATEGORY]) == 0
-        def no_corresponding_uploader_running():
+        def no_corresponding_uploader_running(job_manager):
             """
             Don't download data if the associated uploader is running
             """
-            return len([j for j in running_jobs.values() if \
+            return len([j for j in job_manager.jobs.values() if \
                     j["source"].split(".")[0] == self.src_name and j["category"] == UPLOADER_CATEGORY]) == 0
         return [no_corresponding_uploader_running]
 
-    def get_pinfo(self, job_manager=None):
+    def get_pinfo(self):
         """
         Return dict containing information about the current process
         (used to report in the hub)
@@ -339,10 +337,9 @@ class BaseDumper(object):
                 "source" : self.src_name,
                 "step" : None,
                 "description" : None}
-        if job_manager:
-            preds = self.get_predicates(job_manager.jobs)
-            if preds:
-                pinfo["__predicates__"] = preds
+        preds = self.get_predicates()
+        if preds:
+            pinfo["__predicates__"] = preds
         return pinfo
 
     @property
@@ -395,7 +392,7 @@ class BaseDumper(object):
                     #self.logger.debug("Releasing download semaphore: %s" % max_dump)
                     max_dump.release()
                 self.post_download(remote,local)
-            pinfo = self.get_pinfo(job_manager)
+            pinfo = self.get_pinfo()
             pinfo["step"] = "dump"
             pinfo["description"] = remote
             if max_dump:
@@ -649,7 +646,7 @@ class DummyDumper(BaseDumper):
         self.logger.debug("Dummy dumper, nothing to download...")
         self.prepare_local_folders(os.path.join(self.new_data_folder,"dummy_file"))
         # this is the only interesting thing happening here
-        pinfo = self.get_pinfo(job_manager)
+        pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
         job = yield from job_manager.defer_to_thread(pinfo,
                 partial(self.post_dump,job_manager=job_manager))
@@ -715,7 +712,7 @@ class ManualDumper(BaseDumper):
         if not os.listdir(self.new_data_folder):
             raise DumperException("Directory '%s' is empty (did you download data first ?)" % self.new_data_folder)
 
-        pinfo = self.get_pinfo(job_manager)
+        pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
         strargs = "[path=%s,release=%s]" % (self.new_data_folder,self.release)
         job = yield from job_manager.defer_to_thread(pinfo,

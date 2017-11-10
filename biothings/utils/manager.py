@@ -1,4 +1,4 @@
-import importlib, threading, re
+import importlib, threading, re, copy
 import asyncio, aiocron
 import os, inspect, types, glob, psutil
 import dill as pickle
@@ -34,8 +34,12 @@ def track(func):
         else:
             innerfunc = args[3]
             innerargs = args[4:]
-            pinfo = args[2]
+            # we want to let the original as-is, as it can still contain 
+            # usefull information like predicates
+            pinfo = copy.deepcopy(args[2])
 
+        # predicates can't be pickles/dilled
+        pinfo.pop("__predicates__",None)
         # just informative, so stringify is just ok there)
         # make sure we can pickle the whole thing (and it's
         innerargs = [str(arg) for arg in innerargs]
@@ -436,11 +440,11 @@ class JobManager(object):
             pendings = len(self.process_queue._pending_work_items.keys()) - config.HUB_MAX_WORKERS
             waited = True
         # finally check custom predicates
-        predicates =  pinfo and pinfo.pop("__predicates__",[])
+        predicates =  pinfo and pinfo.get("__predicates__",[])
         failed_predicate = None
         while True:
             for predicate in predicates:
-                if not predicate():
+                if not predicate(self):
                     failed_predicate = predicate
                     break # for loop (most inner one)
                 else:
@@ -469,9 +473,14 @@ class JobManager(object):
         def run(future, job_id):
             yield from self.check_constraints(pinfo)
             self.ok_to_run.release()
-            self.jobs[job_id] = pinfo
+            # pinfo can contain predicates hardly pickleable during run_in_executor
+            # but we also need not to touch the original one
+            nonlocal pinfo
+            copy_pinfo = copy.deepcopy(pinfo)
+            copy_pinfo.pop("__predicates__",None)
+            self.jobs[job_id] = copy_pinfo
             res = self.loop.run_in_executor(self.process_queue,
-                    partial(do_work,job_id,"process",pinfo,func,*args))
+                    partial(do_work,job_id,"process",copy_pinfo,func,*args))
             def ran(f):
                 try:
                     # consume future, just to trigger potential exceptions

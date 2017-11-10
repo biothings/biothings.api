@@ -1,4 +1,3 @@
-
 import sys, re, os, time, math, glob
 from datetime import datetime
 from dateutil.parser import parse as dtparse
@@ -62,16 +61,14 @@ class IndexerManager(BaseManager):
             self.logger.addHandler(nh)
         return self.logger
 
-    def get_predicates(self, running_jobs={}):
-        if not running_jobs:
-            return None
-        def no_other_indexmanager_step_running():
+    def get_predicates(self):
+        def no_other_indexmanager_step_running(job_manager):
             """IndexManager deals with snapshot, publishing,
             none of them should run more than one at a time"""
-            return len([j for j in running_jobs.values() if j["category"] == INDEXMANAGER_CATEGORY]) == 0
+            return len([j for j in job_manager.jobs.values() if j["category"] == INDEXMANAGER_CATEGORY]) == 0
         return [no_other_indexmanager_step_running]
 
-    def get_pinfo(self, job_manager=None):
+    def get_pinfo(self):
         """
         Return dict containing information about the current process
         (used to report in the hub)
@@ -80,7 +77,7 @@ class IndexerManager(BaseManager):
                 "source" : "",
                 "step" : "",
                 "description" : ""}
-        preds = self.get_predicates(job_manager.jobs)
+        preds = self.get_predicates()
         if preds:
             pinfo["__predicates__"] = preds
         return pinfo
@@ -160,7 +157,7 @@ class IndexerManager(BaseManager):
                     self.logger.error("Error while lauching snapshot: %s" % e)
                     fut.set_exception(e)
             if "snapshot" in steps:
-                pinfo = self.get_pinfo(self.job_manager)
+                pinfo = self.get_pinfo()
                 pinfo["source"] = index
                 pinfo["step"] = "snapshot"
                 pinfo["description"] = es_snapshot_host
@@ -307,12 +304,10 @@ class Indexer(object):
         self.num_replicas = None
         self.kwargs = kwargs
 
-    def get_predicates(self, running_jobs={}):
-        if not running_jobs:
-            return None
+    def get_predicates(self):
         return []
 
-    def get_pinfo(self, job_manager=None):
+    def get_pinfo(self):
         """
         Return dict containing information about the current process
         (used to report in the hub)
@@ -321,10 +316,9 @@ class Indexer(object):
                 "source" : "%s:%s" % (self.build_name,self.index_name),
                 "step" : "",
                 "description" : ""}
-        if job_manager:
-            preds = self.get_predicates(job_manager.jobs)
-            if preds:
-                pinfo["__predicates__"] = preds
+        preds = self.get_predicates()
+        if preds:
+            pinfo["__predicates__"] = preds
         return pinfo
 
     @asyncio.coroutine

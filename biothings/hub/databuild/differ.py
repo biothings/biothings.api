@@ -69,10 +69,10 @@ class BaseDiffer(object):
             self.logger.addHandler(nh)
         return self.logger
 
-    def get_predicates(self, running_jobs={}):
+    def get_predicates(self):
         return []
 
-    def get_pinfo(self, job_manager=None):
+    def get_pinfo(self):
         """
         Return dict containing information about the current process
         (used to report in the hub)
@@ -81,7 +81,7 @@ class BaseDiffer(object):
                 "source" : "",
                 "step" : "",
                 "description" : ""}
-        preds = self.get_predicates(job_manager.jobs)
+        preds = self.get_predicates()
         if preds:
             pinfo["__predicates__"] = preds
         return pinfo
@@ -210,7 +210,7 @@ class BaseDiffer(object):
 
                 self.logger.info("Diff file containing mapping differences generated: %s" % res.get("mapping_file"))
 
-            pinfo = self.get_pinfo(self.job_manager)
+            pinfo = self.get_pinfo()
             pinfo["source"] = "%s vs %s" % (self.new.target_name,self.old.target_name)
             pinfo["step"] = "mapping: old vs new"
             job = yield from self.job_manager.defer_to_thread(pinfo,
@@ -222,7 +222,7 @@ class BaseDiffer(object):
 
         if "count" in steps:
             cnt = 0
-            pinfo = self.get_pinfo(self.job_manager)
+            pinfo = self.get_pinfo()
             pinfo["source"] = "%s vs %s" % (self.new.target_name,self.old.target_name)
             pinfo["step"] = "count"
             self.logger.info("Counting root keys in '%s'"  % self.new.target_name)
@@ -254,7 +254,7 @@ class BaseDiffer(object):
             skip = 0
             cnt = 0
             jobs = []
-            pinfo = self.get_pinfo(self.job_manager)
+            pinfo = self.get_pinfo()
             pinfo["source"] = "%s vs %s" % (self.new.target_name,self.old.target_name)
             pinfo["step"] = "content: new vs old"
             data_new = id_feeder(self.new, batch_size=batch_size)
@@ -280,7 +280,7 @@ class BaseDiffer(object):
 
             data_old = id_feeder(self.old, batch_size=batch_size)
             jobs = []
-            pinfo = self.get_pinfo(self.job_manager)
+            pinfo = self.get_pinfo()
             pinfo["source"] = "%s vs %s" % (self.new.target_name,self.old.target_name)
             pinfo["step"] = "content: old vs new"
             for id_list_old in data_old:
@@ -355,7 +355,7 @@ class BaseDiffer(object):
 
                 return res
 
-            pinfo = self.get_pinfo(self.job_manager)
+            pinfo = self.get_pinfo()
             pinfo["source"] = "diff_folder"
             pinfo["step"] = "reduce"
             job = yield from self.job_manager.defer_to_thread(pinfo,merge_diff)
@@ -374,7 +374,7 @@ class BaseDiffer(object):
                 raise got_error
 
         if "post" in steps:
-            pinfo = self.get_pinfo(self.job_manager)
+            pinfo = self.get_pinfo()
             pinfo["source"] = "diff_folder"
             pinfo["step"] = "post"
             job = yield from self.job_manager.defer_to_thread(pinfo,
@@ -960,19 +960,17 @@ class DifferManager(BaseManager):
             self.logger.addHandler(nh)
         return self.logger
 
-    def get_predicates(self, running_jobs={}):
-        if not running_jobs:
-            return None
-        def no_other_diffmanager_step_running():
+    def get_predicates(self):
+        def no_other_diffmanager_step_running(job_manager):
             """DiffManager deals with diff report, release note, publishing,
             none of them should run more than one at a time"""
             # Note: report output is part a publish_diff, release_note is impacted by diff content,
             # overall we keep things simple and don't allow more than one diff manager job to run
             # at the same time
-            return len([j for j in running_jobs.values() if j["category"] == DIFFMANAGER_CATEGORY]) == 0
+            return len([j for j in job_manager.jobs.values() if j["category"] == DIFFMANAGER_CATEGORY]) == 0
         return [no_other_diffmanager_step_running]
 
-    def get_pinfo(self, job_manager=None):
+    def get_pinfo(self):
         """
         Return dict containing information about the current process
         (used to report in the hub)
@@ -982,7 +980,7 @@ class DifferManager(BaseManager):
                 "step" : "",
                 "description" : ""}
         if job_manager:
-            preds = self.get_predicates(job_manager.jobs)
+            preds = self.get_predicates()
             if preds:
                 pinfo["__predicates__"] = preds
         return pinfo
@@ -1051,7 +1049,7 @@ class DifferManager(BaseManager):
         @asyncio.coroutine
         def main(diff_folder):
             got_error = False
-            pinfo = self.get_pinfo(self.job_manager)
+            pinfo = self.get_pinfo()
             pinfo["step"] = "report"
             pinfo["source"] = diff_folder
             pinfo["description"] = report_filename
@@ -1110,7 +1108,7 @@ class DifferManager(BaseManager):
         @asyncio.coroutine
         def main(release_folder):
             got_error = False
-            pinfo = self.get_pinfo(self.job_manager)
+            pinfo = self.get_pinfo()
             pinfo["step"] = "release_note"
             pinfo["source"] = release_folder
             pinfo["description"] = filename
@@ -1396,7 +1394,7 @@ class DifferManager(BaseManager):
         @asyncio.coroutine
         def do():
             jobs = []
-            pinfo = self.get_pinfo(self.job_manager)
+            pinfo = self.get_pinfo()
             pinfo["step"] = "upload_diff"
             pinfo["source"] = diff_folder
             pinfo["description"] = diff_version

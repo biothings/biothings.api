@@ -148,21 +148,19 @@ class DataBuilder(object):
         self.prepared = False
         return state
 
-    def get_predicates(self, running_jobs={}):
-        if not running_jobs:
-            return None
-        def no_uploader_running():
+    def get_predicates(self):
+        def no_uploader_running(job_manager):
             """Uploaders could change the data to be merged..."""
-            return len([j for j in running_jobs.values() if j["category"] == UPLOADER_CATEGORY]) == 0
+            return len([j for j in job_manager.jobs.values() if j["category"] == UPLOADER_CATEGORY]) == 0
         #def no_merger_running():
         #    """
         #    Mergers use cache files, if more than one running and caches need to be built
         #    both would try to write on the same cache file
         #    """
-        #    return len([j for j in running_jobs.values() if j["category"] == BUILDER_CATEGORY]) == 0
+        #    return len([j for j in job_manager.jobs.values() if j["category"] == BUILDER_CATEGORY]) == 0
         return [no_uploader_running]
 
-    def get_pinfo(self, job_manager=None):
+    def get_pinfo(self):
         """
         Return dict containing information about the current process
         (used to report in the hub)
@@ -171,10 +169,9 @@ class DataBuilder(object):
                 "source" : "%s:%s" % (self.build_name,self.target_backend.target_name),
                 "step" : "",
                 "description" : ""}
-        if job_manager:
-            preds = self.get_predicates(job_manager.jobs)
-            if preds:
-                pinfo["__predicates__"] = preds
+        preds = self.get_predicates()
+        if preds:
+            pinfo["__predicates__"] = preds
         return pinfo
 
     def setup_log(self):
@@ -485,7 +482,7 @@ class DataBuilder(object):
                             job_manager=job_manager, *args, **kwargs)
                     res = yield from job
                 if "metadata" in steps:
-                    pinfo = self.get_pinfo(job_manager)
+                    pinfo = self.get_pinfo()
                     pinfo["step"] = "metadata"
                     postjob = yield from job_manager.defer_to_thread(pinfo,
                             partial(self.store_metadata,res,sources=sources,job_manager=job_manager))
@@ -637,7 +634,7 @@ class DataBuilder(object):
         if do_post_merge:
             self.logger.info("Running post-merge process")
             self.register_status("building",transient=True,init=True,job={"step":"post-merge"})
-            pinfo = self.get_pinfo(job_manager)
+            pinfo = self.get_pinfo()
             pinfo["step"] = "post-merge"
             job = yield from job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
             job = asyncio.ensure_future(job)
@@ -717,7 +714,7 @@ class DataBuilder(object):
                 # (but everybody knows it's a blocking call: doc_feeder)
                 yield from asyncio.sleep(0.1)
                 cnt += len(doc_ids)
-                pinfo = self.get_pinfo(job_manager)
+                pinfo = self.get_pinfo()
                 pinfo["step"] = src_name
                 pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,(cnt/total*100))
                 self.logger.info("Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)" % \

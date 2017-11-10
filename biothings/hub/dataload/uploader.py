@@ -180,31 +180,29 @@ class BaseSourceUploader(object):
         self.prepared = False
         return state
 
-    def get_predicates(self, running_jobs={}):
-        if not running_jobs:
-            return None
-        def no_dumper_running():
+    def get_predicates(self):
+        def no_dumper_running(job_manager):
             """
             Dumpers could change the files uploader is currently using
             """
-            return len([j for j in running_jobs.values() if \
+            return len([j for j in job_manager.jobs.values() if \
                     j["source"] == self.fullname.split(".")[0] and j["category"] == DUMPER_CATEGORY]) == 0
-        def no_builder_running():
+        def no_builder_running(job_manager):
             """
             Builders (mergers) read data from single datasource under control of uploader
             don't change the data while it's being used
             """
-            return len([j for j in running_jobs.values() if j["category"] == BUILDER_CATEGORY]) == 0
+            return len([j for j in job_manager.jobs.values() if j["category"] == BUILDER_CATEGORY]) == 0
         # TODO: can't use this one below for parallized uploader
-        #def no_same_uploader_running():
+        #def no_same_uploader_running(job_manager):
         #    """
         #    Avoid collision at mongo's level (and what's the point anyway?)
         #    """
-        #    return len([j for j in running_jobs.values() if \
+        #    return len([j for j in job_manager.jobs.values() if \
         #            j["source"] == self.fullname and j["category"] == UPLOADER_CATEGORY]) == 0
         return [no_dumper_running,no_builder_running]
 
-    def get_pinfo(self, job_manager=None):
+    def get_pinfo(self):
         """
         Return dict containing information about the current process
         (used to report in the hub)
@@ -213,10 +211,9 @@ class BaseSourceUploader(object):
                 "source" : self.fullname,
                 "step" : "",
                 "description" : ""}
-        if job_manager:
-            preds = self.get_predicates(job_manager.jobs)
-            if preds:
-                pinfo["__predicates__"] = preds
+        preds = self.get_predicates()
+        if preds:
+            pinfo["__predicates__"] = preds
         return pinfo
 
     def check_ready(self,force=False):
@@ -287,7 +284,7 @@ class BaseSourceUploader(object):
         """
         Iterate over load_data() to pull data and store it
         """
-        pinfo = self.get_pinfo(job_manager)
+        pinfo = self.get_pinfo()
         pinfo["step"] = "update_data"
         got_error = False
         self.unprepare()
@@ -402,7 +399,7 @@ class BaseSourceUploader(object):
             if post_update_data:
                 got_error = False
                 self.unprepare()
-                pinfo = self.get_pinfo(job_manager)
+                pinfo = self.get_pinfo()
                 pinfo["step"] = "post_update_data"
                 f2 = yield from job_manager.defer_to_thread(pinfo,
                         partial(self.post_update_data, steps, force, batch_size, job_manager, **kwargs))
@@ -550,7 +547,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
         # in other words: once unprepared, self should never be changed until all 
         # jobs are submitted
         for bnum,args in enumerate(job_params):
-            pinfo = self.get_pinfo(job_manager)
+            pinfo = self.get_pinfo()
             pinfo["step"] = "update_data"
             pinfo["description"] = "%s" % str(args)
             job = yield from job_manager.defer_to_process(
