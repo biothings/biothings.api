@@ -87,7 +87,7 @@ class BaseDiffer(object):
         return pinfo
 
     @asyncio.coroutine
-    def diff_cols(self,old_db_col_names, new_db_col_names, batch_size, steps, mode=None, exclude=[]):
+    def diff_cols(self, old_db_col_names, new_db_col_names, batch_size, steps, mode=None, exclude=[]):
         """
         Compare new with old collections and produce diff files. Root keys can be excluded from
         comparison with "exclude" parameter
