@@ -15,9 +15,6 @@ from collections import OrderedDict
 import config, biothings
 biothings.config_for_app(config)
 
-if not hasattr(config,"ES_BACKEND") or len(config.ES_BACKEND) != 3:
-    raise Exception("Config file must declare ES_BACKEND as tuple(es_host,es_index,es_doctype)")
-
 import logging
 # shut some mouths...
 logging.getLogger("elasticsearch").setLevel(logging.ERROR)
@@ -137,7 +134,8 @@ for s3_folder in s3_folders:
 
     # uploader
     # syncer will work on index used in web part
-    partial_syncer = partial(syncer_manager.sync,"es",target_backend=config.ES_BACKEND)
+    esb = (config.ES_HOST, config.ES_INDEX_NAME + suffix, config.ES_DOC_TYPE)
+    partial_syncer = partial(syncer_manager.sync,"es",target_backend=esb)
     # manually register biothings source uploader
     # this uploader will use dumped data to update an ES index
     class uploader_klass(BiothingsUploader):
