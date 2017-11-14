@@ -44,10 +44,6 @@ import biothings.hub.dataindex.indexer as indexer
 
 syncer_manager = syncer.SyncerManager(job_manager=jmanager)
 syncer_manager.configure()
-import biothings.hub.dataindex.indexer as indexer
-pindexer = partial(indexer.Indexer,es_host=config.ES_HOST)
-index_manager = indexer.IndexerManager(pindexer=pindexer,job_manager=jmanager)
-index_manager.configure()
 
 dmanager = dumper.DumperManager(job_manager=jmanager)
 dmanager.schedule_all()
