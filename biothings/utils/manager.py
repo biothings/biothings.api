@@ -471,11 +471,11 @@ class JobManager(object):
 
         @asyncio.coroutine
         def run(future, job_id):
+            nonlocal pinfo
             yield from self.check_constraints(pinfo)
             self.ok_to_run.release()
             # pinfo can contain predicates hardly pickleable during run_in_executor
             # but we also need not to touch the original one
-            nonlocal pinfo
             copy_pinfo = copy.deepcopy(pinfo)
             copy_pinfo.pop("__predicates__",None)
             self.jobs[job_id] = copy_pinfo
