@@ -32,7 +32,7 @@ export default {
   methods: {
     getSourcesStatus: function() {
       console.log("getSourcesStatus");
-      axios.get('http://localhost:7042/source')
+      axios.get(axios.defaults.baseURL + '/source')
       .then(response => {
         this.sources = response.data.result;
       })
