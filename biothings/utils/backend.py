@@ -257,7 +257,7 @@ class DocESBackend(DocBackendBase):
         self.target_esidxer.verify_mapping(update_mapping=update_mapping)
 
     def count(self):
-        return self.target_esidxer.count()['count']
+        return self.target_esidxer.count()
 
     def insert(self, doc_li):
         self.target_esidxer.add_docs(doc_li)

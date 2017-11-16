@@ -36,7 +36,7 @@ class SourceHandler(BaseHandler):
                             "count" : info.get("count"),
                             "started_at" : info.get("started_at")
                             }
-                    count += info.get("count",0)
+                    count += info.get("count") or 0
                     all_status.add(info["status"])
                 if len(all_status) == 1:
                     mini["upload"]["status"] = all_status.pop()
@@ -51,7 +51,7 @@ class SourceHandler(BaseHandler):
                         "count" : info.get("count"),
                         "started_at" : info.get("started_at")
                         }
-                count += info.get("count",0)
+                count += info.get("count") or 0
                 mini["upload"]["status"] = info.get("status")
             if src["upload"].get("err"):
                 mini["upload"]["error"] = src["upload"]["err"]
