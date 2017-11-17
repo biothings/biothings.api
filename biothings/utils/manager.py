@@ -292,12 +292,13 @@ class JobManager(object):
     DATALINE = HEADERLINE.replace("^","<")
 
     def __init__(self, loop, process_queue=None, thread_queue=None, max_memory_usage=None,
-            num_workers=None,default_executor="thread",auto_recycle=True):
+            num_workers=None,num_threads=None,default_executor="thread",auto_recycle=True):
         self.loop = loop
         self.num_workers = num_workers
+        self.num_threads = num_threads or num_workers
         self.process_queue = process_queue or concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
         # TODO: limit the number of threads (as argument) ?
-        self.thread_queue = thread_queue or concurrent.futures.ThreadPoolExecutor()
+        self.thread_queue = thread_queue or concurrent.futures.ThreadPoolExecutor(max_workers=self.num_threads)
         if default_executor == "thread":
             self.loop.set_default_executor(self.thread_queue)
         else:
