@@ -126,7 +126,7 @@ class IndexerManager(BaseManager):
 
         return job
 
-    def snapshot(self, index, snapshot=None, mode=None, steps=["snapshot"]):
+    def snapshot(self, index, snapshot=None, mode=None, steps=["snapshot"], repository=btconfig.SNAPSHOT_REPOSITORY):
         # check what to do
         if type(steps) == str:
             steps = [steps]
@@ -138,8 +138,8 @@ class IndexerManager(BaseManager):
 
         def get_status():
             try:
-                res = idxr.get_snapshot_status(btconfig.SNAPSHOT_REPOSITORY, snapshot)
-                assert "snapshots" in res, "Can't find snapshot '%s' in repository '%s'" % (snapshot,btconfig.SNAPSHOT_REPOSITORY)
+                res = idxr.get_snapshot_status(repository, snapshot)
+                assert "snapshots" in res, "Can't find snapshot '%s' in repository '%s'" % (snapshot,repository)
                 # assuming only one index in the snapshot, so only check first elem
                 state = res["snapshots"][0].get("state")
                 assert state, "Can't find state in snapshot '%s'" % snapshot
@@ -161,9 +161,9 @@ class IndexerManager(BaseManager):
                 pinfo["source"] = index
                 pinfo["step"] = "snapshot"
                 pinfo["description"] = es_snapshot_host
-                self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY))
+                self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,es_snapshot_host,repository))
                 job = yield from self.job_manager.defer_to_thread(pinfo,
-                        partial(idxr.snapshot,btconfig.SNAPSHOT_REPOSITORY,snapshot, mode=mode))
+                        partial(idxr.snapshot,repository,snapshot, mode=mode))
                 job.add_done_callback(snapshot_launched)
                 yield from job
                 while True:
@@ -174,19 +174,20 @@ class IndexerManager(BaseManager):
                         if state == "SUCCESS":
                             fut.set_result(state)
                             self.logger.info("Snapshot '%s' successfully created (host: '%s', repository: '%s')" % \
-                                    (snapshot,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY),extra={"notify":True})
+                                    (snapshot,es_snapshot_host,repository),extra={"notify":True})
                         else:
                             e = IndexerException("Snapshot '%s' failed: %s" % (snapshot,state))
                             fut.set_exception(e)
                             self.logger.error("Failed creating snapshot '%s' (host: %s, repository: %s), state: %s" % \
-                                    (snapshot,es_snapshot_host,btconfig.SNAPSHOT_REPOSITORY,state),extra={"notify":True})
+                                    (snapshot,es_snapshot_host,repository,state),extra={"notify":True})
                             raise e
                         break
 
         task = asyncio.ensure_future(do(index))
         return fut
 
-    def publish_snapshot(self, s3_folder, prev=None, snapshot=None, release_folder=None, index=None):
+    def publish_snapshot(self, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
+                         ro_repository=btconfig.READONLY_SNAPSHOT_REPOSITORY):
         """
         Publish snapshot metadata (not the actal snapshot, but the metadata, release notes, etc... associated to it) to S3,
         and then register that version to it's available to auto-updating hub.
@@ -203,7 +204,6 @@ class IndexerManager(BaseManager):
         information. It means in order to publish a snaphost, both the snapshot *and* the index must exist.
         """
         assert getattr(btconfig,"BIOTHINGS_ROLE",None) == "master","Hub needs to be master to publish metadata about snapshots"
-        assert hasattr(btconfig,"READONLY_SNAPSHOT_REPOSITORY"), "READONLY_SNAPSHOT_REPOSITORY must be defined to publish metadata about snapshots"
         es_snapshot_host = getattr(btconfig,"ES_SNAPSHOT_HOST",btconfig.ES_HOST)
         # keep passed values if any, otherwise derive them
         index = index or snapshot
@@ -213,7 +213,7 @@ class IndexerManager(BaseManager):
         esb = DocESBackend(idxr)
         assert esb.version, "Can't retrieve a version from index '%s'" % index
         self.logger.info("Generating JSON metadata for full release '%s'" % esb.version)
-        repo = idxr._es.snapshot.get_repository(btconfig.READONLY_SNAPSHOT_REPOSITORY)
+        repo = idxr._es.snapshot.get_repository(ro_repository)
         release_note = "release_%s" % esb.version
         # generate json metadata about this diff release
         assert snapshot, "Missing snapshot name information"
