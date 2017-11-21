@@ -162,14 +162,13 @@ for s3_folder in s3_folders:
     COMMANDS["step_update%s" % cmdsuffix] = HubCommand("download%s() && apply%s()" % (cmdsuffix,cmdsuffix))
     COMMANDS["update%s" % cmdsuffix] = partial(cycle_update,"biothings%s" % suffix)
 
-    # Expose cycle_update function as a service
-    class CycleUpdateHandler(HubHandler):
-        source = "biothings%s" % suffix
-        @asyncio.coroutine
-        def post(self):
-            cycle_update(self.source)
-            self.write({"updating":self.source})
-    app.add_handlers(r".*",[(r"/update%s" % suffix, CycleUpdateHandler, {"managers":managers})])
+# Expose cycle_update function as a service
+class CycleUpdateHandler(HubHandler):
+    @asyncio.coroutine
+    def post(self, name):
+        cycle_update(name)
+        self.write({"updating":name})
+app.add_handlers(r".*",[(r"/update/(\w+)", CycleUpdateHandler, {"managers":managers})])
 
 # admin/advanced
 EXTRA_NS = {

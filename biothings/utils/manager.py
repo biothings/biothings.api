@@ -4,7 +4,7 @@ import os, inspect, types, glob, psutil
 import dill as pickle
 from functools import wraps, partial
 import time, datetime
-from pprint import pprint
+from pprint import pprint, pformat
 from collections import OrderedDict
 import concurrent.futures
 
@@ -651,17 +651,20 @@ class JobManager(object):
 
     def print_workers(self,workers):
         if workers:
-            print(self.__class__.HEADERLINE.format(**self.__class__.HEADER))
+            out = []
+            out.append(self.__class__.HEADERLINE.format(**self.__class__.HEADER))
             for pid in workers:
                 worker = workers[pid]
                 info = self.extract_worker_info(worker)
                 tt = datetime.datetime.fromtimestamp(info["started_at"]).timetuple()
                 info["started_at"] = time.strftime("%Y/%m/%d %H:%M:%S",tt)
                 try:
-                    print(self.__class__.DATALINE.format(**info))
+                    out.append(self.__class__.DATALINE.format(**info))
                 except (TypeError, KeyError) as e:
-                    print(e)
-                    pprint(info)
+                    out.append(e)
+                    out.append(pformat(info))
+
+            return "\n".join(out)
 
     def print_pending_info(self,num,info):
         assert type(info) == dict
@@ -674,11 +677,14 @@ class JobManager(object):
         info["step"] = norm(info["step"],20)
         info["description"] = norm(info["description"],30)
         info["started_at"] = ""
+        out = []
         try:
-            print(self.__class__.DATALINE.format(**info))
+            out.append(self.__class__.DATALINE.format(**info))
         except (TypeError, KeyError) as e:
-            print(e)
-            pprint(info)
+            out.append(e)
+            out.append(pformat(info))
+
+        return out
 
     def get_process_summary(self):
         running_pids = self.get_pid_files()
@@ -785,18 +791,21 @@ class JobManager(object):
         return actual_pendings
 
     def show_pendings(self, running=None):
-        print(self.get_pending_summary())
+        out = []
+        out.append(self.get_pending_summary())
         actual_pendings = self.get_pending_processes()
         if actual_pendings:
-            print(self.__class__.HEADERLINE.format(**self.__class__.HEADER))
+            out.append(self.__class__.HEADERLINE.format(**self.__class__.HEADER))
             for num,pending in actual_pendings.items():
                 info = self.extract_pending_info(pending)
                 try:
                     self.print_pending_info(num,info)
                 except Exception as e:
-                    print(e)
-                    pprint(pending)
-            print()
+                    out.append(e)
+                    out.append(pformat(pending))
+
+        return "\n".join(out)
+
 
     def get_dones(self, jobs=None, purge=True):
         if jobs is None:
@@ -805,6 +814,7 @@ class JobManager(object):
             jfiles_workers = [(jfile,pickle.load(open(jfile,"rb"))) for jfile in jobs]
             # sort by start time
             jfiles_workers = sorted(jfiles_workers,key=lambda e: e[1]["job"]["started_at"])
+            out = []
             for jfile,worker in jfiles_workers:
                 info = self.extract_worker_info(worker)
                 # format start time
@@ -814,12 +824,14 @@ class JobManager(object):
                 info["mem"] = ""
                 info["cpu"] = ""
                 try:
-                    print(self.__class__.DATALINE.format(**info))
+                    out.append(self.__class__.DATALINE.format(**info))
                 except (TypeError, KeyError) as e:
-                    print(e)
-                    pprint(info)
+                    out.append(e)
+                    out.append(pformat(info))
                 if purge:
                     os.unlink(jfile)
+
+            return "\n".join(out)
 
     def top(self, action="summary"):
         pending = False
@@ -837,6 +849,7 @@ class JobManager(object):
         pworkers = self.get_pid_files(child)
         tworkers = self.get_thread_files()
         done_jobs = glob.glob(os.path.join(config.RUN_DIR,"done","*.pickle"))
+        out = []
         if child:
             return pworkers[child.pid]
         elif action == "pending":
@@ -849,12 +862,14 @@ class JobManager(object):
             tworkers = dict([(tid,thread) for tid,thread in res["thread"]["all"].items() if tid in res["thread"]["running"]])
             self.print_workers(pworkers)
             self.print_workers(tworkers)
-            print("%d running job(s)" % (len(pworkers) + len(tworkers)))
-            print("%s, type 'top(pending)' for more" % self.get_pending_summary())
+            out.append("%d running job(s)" % (len(pworkers) + len(tworkers)))
+            out.append("%s, type 'top(pending)' for more" % self.get_pending_summary())
             if done_jobs:
-                print("%s finished job(s), type 'top(done)' for more" % len(done_jobs))
+                out.append("%s finished job(s), type 'top(done)' for more" % len(done_jobs))
         else:
             raise ValueError("Unknown action '%s'" % action)
+
+        return "\n".join(out)
 
 # just a helper to clean/prepare job's values printing
 def norm(value,maxlen):

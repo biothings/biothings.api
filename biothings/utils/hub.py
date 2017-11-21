@@ -30,16 +30,19 @@ LATEST = HUB_ENV and "%s-latest" % HUB_ENV or "latest"
 # HUB SERVER #
 ##############
 
-class HubSSHServerSession(asyncssh.SSHServerSession):
+class AlreadyRunningException(Exception):pass
+class CommandError(Exception):pass
 
-    running_jobs = {}
+class HubShell(InteractiveShell):
+
+    running_commands = {}
     job_cnt = 1
 
-    def __init__(self, name, commands, extra_ns):
+    def __init__(self, commands, extra_ns):
         # update with ssh server default commands
         self.commands = commands
         self.extra_ns = extra_ns
-        self.extra_ns["cancel"] = self.__class__.cancel
+        #self.extra_ns["cancel"] = self.__class__.cancel
         # for boolean calls
         self.extra_ns["_and"] = _and
         self.extra_ns["partial"] = partial
@@ -48,9 +51,10 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         # merge official/public commands with hidden/private to
         # make the whole available in shell's namespace
         self.extra_ns.update(self.commands)
-        self.shell = InteractiveShell(user_ns=self.extra_ns)
-        self.name = name
-        self._input = ''
+        self.origout = sys.stdout
+        self.buf = io.StringIO()
+        #sys.stdout = self.buf
+        super(HubShell,self).__init__(user_ns=self.extra_ns)
 
     def help(self, func=None):
         """
@@ -75,17 +79,104 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
             except ImportError:
                 return "\nHelp not available for this command\n"
 
+    def eval(self,line):
+        line = line.strip()
+        # poor man's singleton...
+        if line in [j["cmd"] for j in self.__class__.running_commands.values()]:
+            raise AlreadyRunningException("Command '%s' is already running\n" % repr(line))
+        # is it a hub command, in which case, intercept and run the actual declared cmd
+        m = re.match("(.*)\(.*\)",line)
+        if m:
+            cmd = m.groups()[0].strip()
+            if cmd in self.commands and \
+                    isinstance(self.commands[cmd],HubCommand):
+                line = self.commands[cmd]
+        # cmdline is the actual command sent to shell, line is the one displayed
+        # they can be different if there's a preprocessing
+        cmdline = line
+        # && jobs ? ie. chained jobs
+        if "&&" in line:
+            chained_jobs = [cmd for cmd in map(str.strip,line.split("&&")) if cmd]
+            if len(chained_jobs) > 1:
+                # need to build a command with _and and using partial, meaning passing original func param
+                # to the partials
+                strjobs = []
+                for job in chained_jobs:
+                    func,args = re.match("(.*)\((.*)\)",job).groups()
+                    if args:
+                        strjobs.append("partial(%s,%s)" % (func,args))
+                    else:
+                        strjobs.append("partial(%s)" % func)
+                cmdline = "_and(%s)" % ",".join(strjobs)
+            else:
+                raise CommandError("Using '&&' operator required two operands\n")
+        logging.info("Run: %s " % repr(cmdline))
+        r = self.run_cell(cmdline,store_history=True)
+        outputs = []
+        if not r.success:
+            raise CommandError("%s\n" % repr(r.error_in_exec))
+        else:
+            if r.result is None:
+                self.buf.seek(0)
+                # from print stdout ?
+                b = self.buf.read()
+                outputs.append(b)
+                # clear buffer
+                self.buf.seek(0)
+                self.buf.truncate()
+            else:
+                if type(r.result) == asyncio.tasks.Task or type(r.result) == asyncio.tasks._GatheringFuture or \
+                        type(r.result) == asyncio.Future or \
+                        type(r.result) == list and len(r.result) > 0 and type(r.result[0]) == asyncio.tasks.Task:
+                    r.result = type(r.result) != list and [r.result] or r.result
+                    self.__class__.running_commands[self.__class__.job_cnt] = {"started_at" : time.time(),
+                                                       "jobs" : r.result,
+                                                       "cmd" : line}
+                    self.__class__.job_cnt += 1
+                else:
+                    outputs.append(str(r.result))
+        if self.__class__.running_commands:
+            finished = []
+            for num,info in sorted(self.__class__.running_commands.items()):
+                is_done = set([j.done() for j in info["jobs"]]) == set([True])
+                has_err = is_done and  [True for j in info["jobs"] if j.exception()] or None
+                localoutputs = is_done and ([str(j.exception()) for j in info["jobs"] if j.exception()] or \
+                            [j.result() for j in info["jobs"]]) or None
+                if not has_err and localoutputs and set(map(type,localoutputs)) == {str}:
+                    localoutputs = "\n" + "".join(localoutputs)
+                if is_done:
+                    finished.append(num)
+                    outputs.append("[%s] %s %s: finished %s" % (num,has_err and "ERR" or "OK ",info["cmd"], localoutputs))
+                else:
+                    outputs.append("[%s] RUN {%s} %s" % (num,timesofar(info["started_at"]),info["cmd"]))
+            if finished:
+                for num in finished:
+                    self.__class__.running_commands.pop(num)
+
+        #self.origout.write("outs %s\n" % outputs)
+        return outputs
+
+    #@classmethod
+    #def cancel(klass,jobnum):
+    #    return klass.running_commands.get(jobnum)
+
+
+
+class HubSSHServerSession(asyncssh.SSHServerSession):
+
+    def __init__(self, name, shell):
+        self.name = name
+        self.shell = shell
+        self._input = ''
+
     def connection_made(self, chan):
         self._chan = chan
-        self.origout = sys.stdout
-        self.buf = io.StringIO()
-        sys.stdout = self.buf
 
     def shell_requested(self):
         return True
 
     def exec_requested(self,command):
-        self.data_received("%s\n" % command,None)
+        self.eval_lines(["%s" % command,"\n"])
         return True
 
     def session_started(self):
@@ -94,90 +185,22 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
 
     def data_received(self, data, datatype):
         self._input += data
+        return self.eval_lines(self._input.split('\n'))
 
-        lines = self._input.split('\n')
+    def eval_lines(self, lines):
         for line in lines[:-1]:
-            if not line:
-                continue
-            line = line.strip()
-            if line in [j["cmd"] for j in self.__class__.running_jobs.values()]:
-                self._chan.write("Command '%s' is already running\n" % repr(line))
-                continue
-            self.origout.write("line %s\n" % line)
-            # is it a hub command, in which case, intercept and run the actual declared cmd
-            m = re.match("(.*)\(.*\)",line)
-            if m:
-                cmd = m.groups()[0].strip()
-                if cmd in self.commands and \
-                        isinstance(self.commands[cmd],HubCommand):
-                    self.origout.write("%s -> %s\n" % (line,self.commands[cmd]))
-                    line = self.commands[cmd]
-            # cmdline is the actual command sent to shell, line is the one displayed
-            # they can be different if there's a preprocessing
-            cmdline = line
-            # && jobs ? ie. chained jobs
-            if "&&" in line:
-                chained_jobs = [cmd for cmd in map(str.strip,line.split("&&")) if cmd]
-                if len(chained_jobs) > 1:
-                    # need to build a command with _and and using partial, meaning passing original func param
-                    # to the partials
-                    strjobs = []
-                    for job in chained_jobs:
-                        func,args = re.match("(.*)\((.*)\)",job).groups()
-                        if args:
-                            strjobs.append("partial(%s,%s)" % (func,args))
-                        else:
-                            strjobs.append("partial(%s)" % func)
-                    cmdline = "_and(%s)" % ",".join(strjobs)
-                else:
-                    self._chan.write("Error: using '&&' operator required two operands\n")
-                    continue
-            logging.info("Run: %s " % repr(cmdline))
-            r = self.shell.run_cell(cmdline,store_history=True)
-            if not r.success:
-                self.origout.write("Error\n")
-                self._chan.write("Error: %s\n" % repr(r.error_in_exec))
-            else:
-                if r.result is None:
-                    self.origout.write("OK: %s\n" % repr(r.result))
-                    self.buf.seek(0)
-                    self._chan.write(self.buf.read())
-                    # clear buffer
-                    self.buf.seek(0)
-                    self.buf.truncate()
-                else:
-                    if type(r.result) == asyncio.tasks.Task or type(r.result) == asyncio.tasks._GatheringFuture or \
-                            type(r.result) == asyncio.Future or \
-                            type(r.result) == list and len(r.result) > 0 and type(r.result[0]) == asyncio.tasks.Task:
-                        r.result = type(r.result) != list and [r.result] or r.result
-                        self.__class__.running_jobs[self.__class__.job_cnt] = {"started_at" : time.time(),
-                                                           "jobs" : r.result,
-                                                           "cmd" : line}
-                        self.__class__.job_cnt += 1
-                    else:
-                        if type(r.result) == str:
-                            self._chan.write(r.result + '\n')
-                        else:
-                            self._chan.write(pformat(r.result) + '\n')
-        if self.__class__.running_jobs:
-            finished = []
-            for num,info in sorted(self.__class__.running_jobs.items()):
-                is_done = set([j.done() for j in info["jobs"]]) == set([True])
-                has_err = is_done and  [True for j in info["jobs"] if j.exception()] or None
-                outputs = is_done and ([str(j.exception()) for j in info["jobs"] if j.exception()] or \
-                            [j.result() for j in info["jobs"]]) or None
-                if not has_err and outputs and set(map(type,outputs)) == {str}:
-                    outputs = "\n" + "".join(outputs)
-                if is_done:
-                    finished.append(num)
-                    self._chan.write("[%s] %s %s: finished %s\n" % (num,has_err and "ERR" or "OK ",info["cmd"], outputs))
-                else:
-                    self._chan.write("[%s] RUN {%s} %s\n" % (num,timesofar(info["started_at"]),info["cmd"]))
-            if finished:
-                for num in finished:
-                    self.__class__.running_jobs.pop(num)
-
+            try:
+                outs = [out for out in self.shell.eval(line) if out]
+                # trailing \n if not already there
+                if outs:
+                    self._chan.write("\n".join(outs).strip() + "\n")
+            except AlreadyRunningException as e:
+                self._chan.write("AlreadyRunningException: %s" % e)
+            except CommandError as e:
+                self._chan.write("CommandError: %s" % e)
+            
         self._chan.write('hub> ')
+        # consume passed commands
         self._input = lines[-1]
 
     def eof_received(self):
@@ -189,26 +212,16 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         self._chan.write('\n')
         self.data_received("\n",None)
 
-    @classmethod
-    def cancel(klass,jobnum):
-        return klass.running_jobs.get(jobnum)
-
 
 class HubSSHServer(asyncssh.SSHServer):
 
     COMMANDS = OrderedDict() # public hub commands
     EXTRA_NS = {} # extra commands, kind-of of hidden/private
     PASSWORDS = {}
+    SHELL = None
 
     def session_requested(self):
-        return HubSSHServerSession(self.__class__.NAME,
-                                   self.__class__.COMMANDS,
-                                   self.__class__.EXTRA_NS)
-
-    def connection_made(self, conn):
-        self._conn = conn
-        print('SSH connection received from %s.' %
-                  conn.get_extra_info('peername')[0])
+        return HubSSHServerSession(self.__class__.NAME,self.__class__.SHELL)
 
     def connection_lost(self, exc):
         if exc:
@@ -235,12 +248,13 @@ class HubSSHServer(asyncssh.SSHServer):
 
 
 @asyncio.coroutine
-def start_server(loop,name,passwords,keys=['bin/ssh_host_key'],
+def start_server(loop,name,passwords,keys=['bin/ssh_host_key'],shell=None,
                         host='',port=8022,commands={},extra_ns={}):
     for key in keys:
         assert os.path.exists(key),"Missing key '%s' (use: 'ssh-keygen -f %s' to generate it" % (key,key)
     HubSSHServer.PASSWORDS = passwords
     HubSSHServer.NAME = name
+    HubSSHServer.SHELL = shell or HubShell(commands,extra_ns)
     if commands:
         HubSSHServer.COMMANDS.update(commands)
     if extra_ns:
@@ -307,6 +321,7 @@ renderer = JobRenderer()
 def schedule(loop):
     jobs = {}
     # try to render job in a human-readable way...
+    out = []
     for sch in loop._scheduled:
         if type(sch) != asyncio.events.TimerHandle:
             continue
@@ -314,13 +329,14 @@ def schedule(loop):
             continue
         try:
             info = renderer.render(sch)
-            print(info)
+            out.append(info)
         except Exception as e:
             import traceback
             traceback.print_exc()
-            print(sch)
-    if len(loop._scheduled):
-        print()
+            out.append(sch)
+
+    return "\n".join(out)
+        
 
 def find_process(pid):
     g = psutil.process_iter()
