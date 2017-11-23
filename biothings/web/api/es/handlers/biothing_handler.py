@@ -1,5 +1,6 @@
 from tornado.web import HTTPError
 from biothings.web.api.es.handlers.base_handler import BaseESRequestHandler
+from biothings.web.api.es.query import BiothingSearchError
 from biothings.utils.web import sum_arg_dicts
 from biothings.web.api.helper import BiothingParameterTypeError
 import logging
@@ -216,6 +217,9 @@ class BiothingHandler(BaseESRequestHandler):
             self.log_exceptions("Error executing annotation POST query")
             self._return_data_and_track({'success': False, 'error': 'Error executing query'},
                             ga_event_data={'qsize': len(options.control_kwargs.ids)}, status_code=400)
+            return
+        except BiothingSearchError as e:
+            self._return_data_and_track({'success': False, 'error': '{0}'.format(e)}, ga_event_data={'qsize': len(options.control_kwargs.ids)}, status_code=400)
             return
 
         #logging.debug("Raw query result: {}".format(res))

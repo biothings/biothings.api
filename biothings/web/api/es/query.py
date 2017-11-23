@@ -35,7 +35,7 @@ class ESQuery(object):
             return self.client.search(**query_kwargs)
 
     def _annotation_POST_query(self, query_kwargs):
-        return self.client.msearch(**query_kwargs)
+        return self._common_POST_query(query_kwargs)
     
     def _query_GET_query(self, query_kwargs, *args, **kwargs):
         from elasticsearch import RequestError
@@ -47,8 +47,11 @@ class ESQuery(object):
                 raise BiothingSearchError('Could not execute query due to the following exception(s): {}'.format(_root_causes))
             else:
                 raise Exception('{0}'.format(e))
+
+    def _query_POST_query(self, query_kwargs):
+        return self._common_POST_query(query_kwargs) 
     
-    def _query_POST_query(self, query_kwargs, *args, **kwargs):
+    def _common_POST_query(self, query_kwargs):
         from elasticsearch import RequestError
         try:
             res = self.client.msearch(**query_kwargs)
@@ -69,8 +72,6 @@ class ESQuery(object):
 
         return res
                 
-
-
     def _metadata_query(self, query_kwargs):
         return self.client.indices.get_mapping(**query_kwargs)
 
