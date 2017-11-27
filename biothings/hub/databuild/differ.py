@@ -7,7 +7,6 @@ from pprint import pformat, pprint
 import asyncio
 from functools import partial
 import glob, random
-from pympler.asizeof import asizeof
 
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj, md5sum
