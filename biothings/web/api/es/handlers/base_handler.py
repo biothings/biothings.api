@@ -17,24 +17,24 @@ class BaseESRequestHandler(BaseHandler):
         Elasticsearch-specific request handlers go here.'''
         super(BaseESRequestHandler, self).initialize(web_settings)
 
-    def _return_data_and_track(self, data, ga_event_data={}, rawquery=False, status_code=200):
+    def _return_data_and_track(self, data, ga_event_data={}, rawquery=False, status_code=200, _format='json'):
         ''' Small function to return a chunk of data and send a google analytics tracking request.'''
         if rawquery:
-            self.return_raw_query_json(data, status_code=status_code)
+            self.return_raw_query_json(data, status_code=status_code, _format=_format)
         else:
-            self.return_json(data, status_code=status_code)
+            self.return_json(data, status_code=status_code, _format=_format)
         self.ga_track(event=self.ga_event_object(ga_event_data))
         self.self_track(data=self.ga_event_object_ret)
         return
 
-    def return_raw_query_json(self, query, status_code=200):
+    def return_raw_query_json(self, query, status_code=200, _format='json'):
         '''Return valid JSON if `rawquery` option is selected.
         This is necessary as queries can span multiple lines (POST)'''
         _ret = query.get('body', {'GET': query.get('bid')})
         if is_str(_ret) and len(_ret.split('\n')) > 1:
-            self.return_json({'body': _ret}, status_code=status_code)
+            self.return_json({'body': _ret}, status_code=status_code, _format=_format)
         else:
-            self.return_json(_ret, status_code=status_code)
+            self.return_json(_ret, status_code=status_code, _format=_format)
 
     def _should_sanitize(self, param, kwargs):
         return ((param in kwargs) and (param in self.kwarg_settings))
