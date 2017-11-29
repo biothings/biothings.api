@@ -22,6 +22,8 @@ avaiable Docker images from the following tables.
 .. note:: Images don't contain data but are ready to download and maintain data up-to-date
           running simple commands through the hub.
 
+.. _`contact us`: help@biothings.io
+
 |mygenelogo| mygene.info
 ^^^^^^^^^^^^^^^^^^^^^^^^
 .. |mygenelogo| image:: http://biothings.io/assets/img/icons/mygene.png
@@ -29,11 +31,11 @@ avaiable Docker images from the following tables.
 
 Production and old data require at least 30GiB disk space.
 
-+------------+------------+------------+
-| Production | Demo       | Old        |
-+============+============+============+
-| contact us | Download__ | Soon !     |
-+------------+------------+------------+
++---------------+------------+------------+
+| Production    | Demo       | Old        |
++===============+============+============+
+| `contact us`_ | Download__ | Soon !     |
++---------------+------------+------------+
 
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_mygene/demo_mygene.docker
 
@@ -44,11 +46,11 @@ Production and old data require at least 30GiB disk space.
 
 Production and old data require at least 2TiB disk space.
 
-+------------+------------+------------+
-| Production | Demo       | Old        |
-+============+============+============+
-| contact us | Download__ | Soon !     |
-+------------+------------+------------+
++---------------+------------+------------+
+| Production    | Demo       | Old        |
++===============+============+============+
+| `contact us`_ | Download__ | Soon !     |
++---------------+------------+------------+
 
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_myvariant/demo_myvariant.docker
 
@@ -59,11 +61,11 @@ Production and old data require at least 2TiB disk space.
 
 Production and old data require at least 150Gib disk space.
 
-+------------+------------+------------+
-| Production | Demo       | Old        |
-+============+============+============+
-| contact us | Download__ | Soon !     |
-+------------+------------+------------+
++---------------+------------+------------+
+| Production    | Demo       | Old        |
++===============+============+============+
+| `contact us`_ | Download__ | Soon !     |
++---------------+------------+------------+
 
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_mychem/demo_mychem.docker
 
