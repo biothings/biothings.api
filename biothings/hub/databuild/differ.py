@@ -1,4 +1,4 @@
-import os, re
+import os, re, shutil, copy
 import time, hashlib
 import pickle, json
 from datetime import datetime
@@ -7,7 +7,6 @@ from pprint import pformat, pprint
 import asyncio
 from functools import partial
 import glob, random
-from pympler.asizeof import asizeof
 
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj, md5sum
@@ -87,7 +86,7 @@ class BaseDiffer(object):
         return pinfo
 
     @asyncio.coroutine
-    def diff_cols(self,old_db_col_names, new_db_col_names, batch_size, steps, mode=None, exclude=[]):
+    def diff_cols(self, old_db_col_names, new_db_col_names, batch_size, steps, mode=None, exclude=[]):
         """
         Compare new with old collections and produce diff files. Root keys can be excluded from
         comparison with "exclude" parameter
@@ -304,71 +303,71 @@ class BaseDiffer(object):
             diff_stats["update"], diff_stats["add"], diff_stats["delete"], diff_stats["mapping_changed"]))
 
         if "reduce" in steps:
+            @asyncio.coroutine
             def merge_diff():
                 self.logger.info("Reduce/merge diff files")
                 max_diff_size = getattr(btconfig,"MAX_DIFF_SIZE",10*1024**2)
                 current_size = 0
-                diff_data = None
                 cnt = 0
-                res = []
+                final_res = []
+                tomerge = []
                 # .done contains original diff files
                 done_folder = os.path.join(diff_folder,".done")
                 try:
                     os.mkdir(done_folder)
                 except FileExistsError:
                     pass
+
+                def merged(f,cnt):
+                    nonlocal got_error
+                    nonlocal final_res
+                    try:
+                        res = f.result()
+                        final_res.extend(res)
+                        self.logger.info("Diff file #%s created" % cnt)
+                    except Exception as e:
+                        got_error = e
+
                 diff_files = [f for f in glob.glob(os.path.join(diff_folder,"*.pyobj")) \
                         if not os.path.basename(f).startswith("mapping")]
                 self.logger.info("%d diff files to process in total" % len(diff_files))
+                jobs = []
+                total = len(diff_files)
                 while diff_files:
                     if len(diff_files) % 100 == 0:
                         self.logger.info("%d diff files to process" % len(diff_files))
                     if current_size > max_diff_size:
-                        fn = "diff_%s.pyobj" % cnt
-                        dump(diff_data,os.path.join(diff_folder,fn),compress="lzma")
-                        res.append({"name":fn,"md5sum":md5sum(os.path.join(diff_folder,fn))})
-                        diff_data = None
+                        job = yield from self.job_manager.defer_to_process(pinfo,
+                                partial(reduce_diffs,tomerge,cnt,diff_folder,done_folder))
+                        job.add_done_callback(partial(merged,cnt=cnt))
+                        jobs.append(job)
                         current_size = 0
                         cnt += 1
-                    if diff_data is None:
+                        tomerge = []
+                    else:
                         diff_file = diff_files.pop()
-                        diff_data = loadobj(diff_file)
-                        os.rename(diff_file,os.path.join(done_folder,os.path.basename(diff_file)))
-                        current_size += asizeof(diff_data)
+                        current_size += os.stat(diff_file).st_size
+                        tomerge.append(diff_file)
 
-                    # still something to merge ? It could not be, if diff files are even, 
-                    # the last one will be processed just above with the diff_files.pop()
-                    # leaving that diff_files empty
-                    if diff_files:
-                        diff_file = diff_files.pop()
-                        tomerge = loadobj(diff_file)
-                        os.rename(diff_file,os.path.join(done_folder,os.path.basename(diff_file)))
-                        current_size += asizeof(tomerge)
-                        assert diff_data["source"] == tomerge["source"]
-                        for k in ["add","delete","update"]:
-                            diff_data[k].extend(tomerge[k])
+                assert not diff_files
 
-                if diff_data:
-                    fn = "diff_%s.pyobj" % cnt
-                    dump(diff_data,os.path.join(diff_folder,fn),compress="lzma")
-                    res.append({"name":fn,"md5sum":md5sum(os.path.join(diff_folder,fn))})
+                if tomerge:
+                    job = yield from self.job_manager.defer_to_process(pinfo,
+                                partial(reduce_diffs,tomerge,cnt,diff_folder,done_folder))
+                    job.add_done_callback(partial(merged,cnt=cnt))
+                    jobs.append(job)
+                    yield from job
 
-                return res
+                yield from asyncio.gather(*jobs)
+
+                return final_res
 
             pinfo = self.get_pinfo()
             pinfo["source"] = "diff_folder"
             pinfo["step"] = "reduce"
-            job = yield from self.job_manager.defer_to_thread(pinfo,merge_diff)
-            def reduced(f):
-                nonlocal got_error
-                try:
-                    res = f.result()
-                    metadata["diff"]["files"] = res
-                    self.logger.info("Diff files reduced")
-                except Exception as e:
-                    got_error = e
-            job.add_done_callback(reduced)
-            yield from job
+            #job = yield from self.job_manager.defer_to_thread(pinfo,merge_diff)
+            res = yield from merge_diff()
+            metadata["diff"]["files"] = res
             if got_error:
                 self.logger.exception("Failed to reduce diff files: %s" % got_error,extra={"notify":True})
                 raise got_error
@@ -1580,6 +1579,31 @@ class DifferManager(BaseManager):
             self.logging.error("Metadata is too much damaged, can't rebuild diff_files list: %s" % e)
 
 
+def reduce_diffs(diffs, num, diff_folder, done_folder):
+    assert diffs
+    res = []
+    fn = "diff_%s.pyobj" % num
+    logging.info("Merging %s => %s" % ([os.path.basename(f) for f in diffs],fn))
+
+    if len(diffs) == 1:
+        # just rename
+        outf = os.path.join(diff_folder,fn)
+        shutil.copyfile(diffs[0],outf)
+        res.append({"name":fn,"md5sum":md5sum(outf)})
+        os.rename(diffs[0],os.path.join(done_folder,os.path.basename(diffs[0])))
+        return res
+
+    merged = loadobj(diffs[0])
+    os.rename(diffs[0],os.path.join(done_folder,os.path.basename(diffs[0])))
+    for diff_fn in diffs[1:]:
+        diff = loadobj(diff_fn)
+        assert merged["source"] == diff["source"]
+        for k in ["add","delete","update"]:
+            merged[k].extend(diff[k])
+        os.rename(diff_fn,os.path.join(done_folder,os.path.basename(diff_fn)))
+    dump(merged,os.path.join(diff_folder,fn),compress="lzma")
+    res.append({"name":fn,"md5sum":md5sum(os.path.join(diff_folder,fn))})
+    return res
 
 def set_pending_to_diff(col_name):
     src_build = get_src_build()

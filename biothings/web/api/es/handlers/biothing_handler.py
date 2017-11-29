@@ -1,5 +1,6 @@
 from tornado.web import HTTPError
 from biothings.web.api.es.handlers.base_handler import BaseESRequestHandler
+from biothings.web.api.es.query import BiothingSearchError
 from biothings.utils.web import sum_arg_dicts
 from biothings.web.api.helper import BiothingParameterTypeError
 import logging
@@ -93,7 +94,7 @@ class BiothingHandler(BaseESRequestHandler):
 
         # return raw query, if requested
         if options.control_kwargs.rawquery:
-            self._return_data_and_track(_query.get('body', {'GET': bid}), rawquery=True)
+            self._return_data_and_track(_query.get('body', {'GET': bid}), rawquery=True, _format=options.control_kwargs.out_format)
             return
 
         _query = self._pre_query_GET_hook(options, _query)
@@ -106,7 +107,7 @@ class BiothingHandler(BaseESRequestHandler):
             res = _backend.annotation_GET_query(_query)
         except Exception:
             self.log_exceptions("Error executing query")
-            self.return_json({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404)
+            self.return_json({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404, _format=options.control_kwargs.out_format)
             #raise HTTPError(404)
             return
         
@@ -114,7 +115,7 @@ class BiothingHandler(BaseESRequestHandler):
 
         # return raw result if requested
         if options.control_kwargs.raw:
-            self._return_data_and_track(res)
+            self._return_data_and_track(res, _format=options.control_kwargs.out_format)
             return
 
         res = self._pre_transform_GET_hook(options, res)
@@ -128,19 +129,19 @@ class BiothingHandler(BaseESRequestHandler):
             res = _result_transformer.clean_annotation_GET_response(res)
         except Exception:
             self.log_exceptions("Error transforming result")
-            self.return_json({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404)
+            self.return_json({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404, _format=options.control_kwargs.out_format)
             #raise HTTPError(404)
             return
 
         # return result
         if not res:
-            self.return_json({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404)
+            self.return_json({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404, _format=options.control_kwargs.out_format)
             #raise HTTPError(404)
             return
 
         res = self._pre_finish_GET_hook(options, res)
 
-        self._return_data_and_track(res)
+        self._return_data_and_track(res, _format=options.control_kwargs.out_format)
 
     ###########################################################################
 
@@ -169,7 +170,7 @@ class BiothingHandler(BaseESRequestHandler):
         
         if not options.control_kwargs.ids:
             self._return_data_and_track({'success': False, 'error': "Missing required parameters."}, 
-                                        ga_event_data={'qsize': 0}, status_code=400)
+                                        ga_event_data={'qsize': 0}, status_code=400, _format=options.control_kwargs.out_format)
             return
         
         options = self._pre_query_builder_POST_hook(options)
@@ -201,7 +202,7 @@ class BiothingHandler(BaseESRequestHandler):
         logging.debug("Request query: {}".format(_query))
 
         if options.control_kwargs.rawquery:
-            self._return_data_and_track(_query, ga_event_data={'qsize': len(options.control_kwargs.ids)}, rawquery=True)
+            self._return_data_and_track(_query, ga_event_data={'qsize': len(options.control_kwargs.ids)}, rawquery=True, _format=options.control_kwargs.out_format)
             return
 
         _query = self._pre_query_POST_hook(options, _query)
@@ -215,14 +216,17 @@ class BiothingHandler(BaseESRequestHandler):
         except TypeError as e:
             self.log_exceptions("Error executing annotation POST query")
             self._return_data_and_track({'success': False, 'error': 'Error executing query'},
-                            ga_event_data={'qsize': len(options.control_kwargs.ids)}, status_code=400)
+                            ga_event_data={'qsize': len(options.control_kwargs.ids)}, status_code=400, _format=options.control_kwargs.out_format)
+            return
+        except BiothingSearchError as e:
+            self._return_data_and_track({'success': False, 'error': '{0}'.format(e)}, ga_event_data={'qsize': len(options.control_kwargs.ids)}, status_code=400, _format=options.control_kwargs.out_format)
             return
 
         #logging.debug("Raw query result: {}".format(res))
 
         # return raw result if requested
         if options.control_kwargs.raw:
-            self._return_data_and_track(res, ga_event_data={'qsize': len(options.control_kwargs.ids)})
+            self._return_data_and_track(res, ga_event_data={'qsize': len(options.control_kwargs.ids)}, _format=options.control_kwargs.out_format)
             return
 
         res = self._pre_transform_POST_hook(options, res)
@@ -243,4 +247,4 @@ class BiothingHandler(BaseESRequestHandler):
         res = self._pre_finish_POST_hook(options, res)
 
         # return and track
-        self._return_data_and_track(res, ga_event_data={'qsize': len(options.control_kwargs.ids)})
+        self._return_data_and_track(res, ga_event_data={'qsize': len(options.control_kwargs.ids)}, _format=options.control_kwargs.out_format)

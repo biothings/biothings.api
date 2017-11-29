@@ -52,7 +52,7 @@ class MetadataHandler(BaseESRequestHandler):
 
         # return raw query, if requested
         if options.control_kwargs.rawquery:
-            self.return_json({}, rawquery=True)
+            self.return_json({}, rawquery=True, _format=options.control_kwargs.out_format)
             return
 
         _query = self._pre_query_GET_hook(options, _query)
@@ -68,7 +68,7 @@ class MetadataHandler(BaseESRequestHandler):
 
         # return raw result if requested
         if options.control_kwargs.raw:
-            self.return_json(res)
+            self.return_json(res, _format=options.control_kwargs.out_format)
             return
 
         res = self._pre_transform_GET_hook(options, res)
@@ -83,4 +83,4 @@ class MetadataHandler(BaseESRequestHandler):
 
         res = self._pre_finish_GET_hook(options, res)
 
-        self.return_json(res)
+        self.return_json(res, _format=options.control_kwargs.out_format)

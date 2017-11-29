@@ -48,6 +48,7 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
             * set CORS and caching headers
             * typify the URL keyword arguments
             * optionally send tracking data to google analytics and integrate with sentry monitor'''
+
     def initialize(self, web_settings):
         """ Tornado handler `initialize() <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler.initialize>`_, 
         Override to add settings for *this* biothing API.  Assumes that the ``web_settings`` kwarg exists in APP_LIST """
@@ -154,7 +155,18 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         _args = self._sanitize_params(_args)
         return _args
 
-    def return_json(self, data, encode=True, indent=None, status_code=200):
+    def return_html(self, data, status_code=200):
+        self.set_status(status_code)
+        if not self.web_settings.DISABLE_CACHING:
+            #get etag if data is a dictionary and has "etag" attribute.
+            etag = data.get('etag', None) if isinstance(data, dict) else None
+            self.set_cacheable(etag=etag)
+        self.support_cors()
+        self.set_header("Content-Type", "text/html; charset=utf-8")
+        self.write(self.web_settings.HTML_OUT_TEMPLATE.format(data=json.dumps(data), img_src=self.web_settings.HTML_OUT_HEADER_IMG, link=self.request.full_url()))
+        return
+        
+    def return_json(self, data, encode=True, indent=None, status_code=200, _format='json'):
         '''Return passed data object as JSON response.
         If **jsonp** parameter is set in the  request, return a valid 
         `JSONP <https://en.wikipedia.org/wiki/JSONP>`_ response.
@@ -163,8 +175,11 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         :param encode: if encode is False, assumes input data is already a JSON encoded string.
         :param indent: number of indents per level in JSON string
         :param status_code: HTTP status code for response
+        :param _format: output format - currently either "html" or "json"
         '''    
-        # call the recursive function to sort the data by keys and add the json-ld information
+        if _format == 'html':
+            self.return_html(data, status_code)
+            return
         indent = indent or 2   # tmp settings
         self.set_status(status_code)
         if SUPPORT_MSGPACK and self.web_settings.ENABLE_MSGPACK and getattr(self, 'use_msgpack', False):

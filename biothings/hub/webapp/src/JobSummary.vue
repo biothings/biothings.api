@@ -63,7 +63,7 @@ export default {
   },
   methods: {
     getJobSummary: function() {
-      axios.get('http://localhost:7042/manager/job_manager')
+      axios.get(axios.defaults.baseURL + '/manager/job_manager')
       .then(response => {
         this.job_manager = response.data.result.job_manager;
       })
@@ -72,7 +72,7 @@ export default {
       })
     },
     jobDetails: function() {
-      axios.get('http://localhost:7042/manager/job_manager?detailed=1')
+      axios.get(axios.defaults.baseURL + '/manager/job_manager?detailed=1')
       .then(response => {
         this.job_manager = response.data.result.job_manager;
       })

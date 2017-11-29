@@ -65,7 +65,7 @@ class QueryHandler(BaseESRequestHandler):
 
         if not options.control_kwargs.q and not options.control_kwargs.scroll_id:
             self._return_data_and_track({'success': False, 'error': "Missing required parameters."},
-                            ga_event_data={'total': 0}, status_code=400)
+                            ga_event_data={'total': 0}, status_code=400, _format=options.control_kwargs.out_format)
             return
 
         options = self._pre_query_builder_GET_hook(options)
@@ -109,7 +109,7 @@ class QueryHandler(BaseESRequestHandler):
             try:
                 res = _backend.scroll(_query)
             except BiothingScrollError as e:
-                self._return_data_and_track({'success': False, 'error': '{}'.format(e)}, ga_event_data={'total': 0}, status_code=400)
+                self._return_data_and_track({'success': False, 'error': '{}'.format(e)}, ga_event_data={'total': 0}, status_code=400, _format=options.control_kwargs.out_format)
                 return
             #except Exception as e:
             #    self.log_exceptions("Error getting scroll batch")
@@ -119,7 +119,7 @@ class QueryHandler(BaseESRequestHandler):
             #logging.debug("Raw scroll query result: {}".format(res))
             
             if options.control_kwargs.raw:
-                self._return_data_and_track(res, ga_event_data={'total': res.get('total', 0)})
+                self._return_data_and_track(res, ga_event_data={'total': res.get('total', 0)}, _format=options.control_kwargs.out_format)
                 return
             
             res = self._pre_scroll_transform_GET_hook(options, res)
@@ -131,7 +131,7 @@ class QueryHandler(BaseESRequestHandler):
             try:
                 res = _result_transformer.clean_scroll_response(res)
             except ScrollIterationDone as e:
-                self._return_data_and_track({'success': False, 'error': '{}'.format(e)}, ga_event_data={'total': res.get('total', 0)}, status_code=200)
+                self._return_data_and_track({'success': False, 'error': '{}'.format(e)}, ga_event_data={'total': res.get('total', 0)}, status_code=200, _format=options.control_kwargs.out_format)
                 return
             #except Exception as e:
             #    self.log_exceptions("Error transforming scroll batch")
@@ -152,7 +152,7 @@ class QueryHandler(BaseESRequestHandler):
             #    return
 
             if options.control_kwargs.rawquery:
-                self._return_data_and_track(_query, ga_event_data={'total': 0}, rawquery=True)
+                self._return_data_and_track(_query, ga_event_data={'total': 0}, rawquery=True, _format=options.control_kwargs.out_format)
                 return
 
             _query = self._pre_query_GET_hook(options, _query)
@@ -164,7 +164,7 @@ class QueryHandler(BaseESRequestHandler):
             try:
                 res = _backend.query_GET_query(_query)
             except BiothingSearchError as e:
-                self._return_data_and_track({'success': False, 'error': '{0}'.format(e)}, ga_event_data={'total': 0}, status_code=400)
+                self._return_data_and_track({'success': False, 'error': '{0}'.format(e)}, ga_event_data={'total': 0}, status_code=400, _format=options.control_kwargs.out_format)
                 return
             #except Exception as e:
             #    self.log_exceptions("Error executing query")
@@ -177,7 +177,7 @@ class QueryHandler(BaseESRequestHandler):
 
             # return raw result if requested
             if options.control_kwargs.raw:
-                self._return_data_and_track(res, ga_event_data={'total': res.get('total', 0)})
+                self._return_data_and_track(res, ga_event_data={'total': res.get('total', 0)}, _format=options.control_kwargs.out_format)
                 return
 
             res = self._pre_transform_GET_hook(options, res)
@@ -199,7 +199,7 @@ class QueryHandler(BaseESRequestHandler):
         res = self._pre_finish_GET_hook(options, res)
 
         # return and track
-        self.return_json(res)
+        self.return_json(res, _format=options.control_kwargs.out_format)
         if options.control_kwargs.fetch_all:
             self.ga_event_object_ret['action'] = 'fetch_all'
         self.ga_track(event=self.ga_event_object({'total': res.get('total', 0)}))
@@ -231,7 +231,7 @@ class QueryHandler(BaseESRequestHandler):
 
         if not options.control_kwargs.q:
             self._return_data_and_track({'success': False, 'error': "Missing required parameters."},
-                ga_event_data={'qsize': 0}, status_code=400)
+                ga_event_data={'qsize': 0}, status_code=400, _format=options.control_kwargs.out_format)
             return
 
         options = self._pre_query_builder_POST_hook(options)
@@ -264,7 +264,7 @@ class QueryHandler(BaseESRequestHandler):
         #    return
 
         if options.control_kwargs.rawquery:
-            self._return_data_and_track(_query, ga_event_data={'qsize': len(options.control_kwargs.q)}, rawquery=True)
+            self._return_data_and_track(_query, ga_event_data={'qsize': len(options.control_kwargs.q)}, rawquery=True, _format=options.control_kwargs.out_format)
             return
 
         _query = self._pre_query_POST_hook(options, _query)
@@ -276,7 +276,7 @@ class QueryHandler(BaseESRequestHandler):
         try:
             res = _backend.query_POST_query(_query)
         except BiothingSearchError as e:
-            self._return_data_and_track({'success': False, 'error': '{0}'.format(e)}, ga_event_data={'qsize': len(options.control_kwargs.q)}, status_code=400)
+            self._return_data_and_track({'success': False, 'error': '{0}'.format(e)}, ga_event_data={'qsize': len(options.control_kwargs.q)}, status_code=400, _format=options.control_kwargs.out_format)
             return
         #except Exception as e:
         #    self.log_exceptions("Error executing POST query")
@@ -287,7 +287,7 @@ class QueryHandler(BaseESRequestHandler):
 
         # return raw result if requested
         if options.control_kwargs.raw:
-            self._return_data_and_track(res, ga_event_data={'qsize': len(options.control_kwargs.q)})
+            self._return_data_and_track(res, ga_event_data={'qsize': len(options.control_kwargs.q)}, _format=options.control_kwargs.out_format)
             return
 
         res = self._pre_transform_POST_hook(options, res)
@@ -309,4 +309,4 @@ class QueryHandler(BaseESRequestHandler):
         res = self._pre_finish_POST_hook(options, res)
 
         # return and track
-        self._return_data_and_track(res, ga_event_data={'qsize': len(options.control_kwargs.q)})
+        self._return_data_and_track(res, ga_event_data={'qsize': len(options.control_kwargs.q)}, _format=options.control_kwargs.out_format)

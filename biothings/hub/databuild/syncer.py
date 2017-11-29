@@ -17,7 +17,7 @@ from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings import config as btconfig
 from biothings.utils.manager import BaseManager, ManagerError
-from .backend import create_backend
+from .backend import create_backend, generate_folder
 from ..dataload.storage import UpsertStorage
 import biothings.utils.jsonpatch as jsonpatch
 from biothings.hub import SYNCER_CATEGORY
@@ -587,8 +587,13 @@ class SyncerManager(BaseManager):
         pclass = BaseManager.__getitem__(self,diff_target)
         return pclass()
 
-    def sync(self, backend_type, diff_folder, batch_size=100000, mode=None, target_backend=None,
-            steps=["mapping","content","meta"]):
+    def sync(self, backend_type, old_db_col_names=None, new_db_col_names=None, diff_folder=None, 
+                   batch_size=100000, mode=None, target_backend=None, steps=["mapping","content","meta"]):
+        if old_db_col_names is None and new_db_col_names is None:
+            assert  diff_folder, "When old/new_db_col_names aren't specified, diff_folder " + \
+                    "must be specified"
+        else:
+            diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
         if not os.path.exists(diff_folder):
             raise FileNotFoundError("Directory '%s' does not exist, run a diff first" % diff_folder)
         # load metadata to know collections that have been diffed in diff_func protocol

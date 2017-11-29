@@ -15,9 +15,6 @@ from collections import OrderedDict
 import config, biothings
 biothings.config_for_app(config)
 
-if not hasattr(config,"ES_BACKEND") or len(config.ES_BACKEND) != 3:
-    raise Exception("Config file must declare ES_BACKEND as tuple(es_host,es_index,es_doctype)")
-
 import logging
 # shut some mouths...
 logging.getLogger("elasticsearch").setLevel(logging.ERROR)
@@ -44,10 +41,6 @@ import biothings.hub.dataindex.indexer as indexer
 
 syncer_manager = syncer.SyncerManager(job_manager=jmanager)
 syncer_manager.configure()
-import biothings.hub.dataindex.indexer as indexer
-pindexer = partial(indexer.Indexer,es_host=config.ES_HOST)
-index_manager = indexer.IndexerManager(pindexer=pindexer,job_manager=jmanager)
-index_manager.configure()
 
 dmanager = dumper.DumperManager(job_manager=jmanager)
 dmanager.schedule_all()
@@ -97,6 +90,18 @@ def cycle_update(src_name, version=LATEST, max_cycles=10):
 
     return asyncio.ensure_future(do(version))
 
+# assemble resources that need to be propagated to REST API
+# so API can query those objects (which are shared between the 
+# hub console and the REST API).
+from biothings.hub.api import get_api_app
+managers = {
+        "job_manager" : jmanager,
+        "dump_manager" : dmanager,
+        "upload_manager" : umanager,
+        "syncer_manager" : syncer_manager,
+        }
+settings = {'debug': True}
+app = get_api_app(managers=managers,settings=settings)
 
 
 from biothings.hub.autoupdate import BiothingsDumper
@@ -104,6 +109,7 @@ from biothings.hub.autoupdate import BiothingsUploader
 from biothings.utils.es import ESIndexer
 from biothings.utils.backend import DocESBackend
 from biothings.utils.hub import schedule, pending, done, HubCommand
+from biothings.hub.api.handlers.hub import HubHandler
 
 # Generate dumper, uploader classes dynamically according
 # to the number of "BIOTHINGS_S3_FOLDER" we need to deal with.
@@ -141,7 +147,8 @@ for s3_folder in s3_folders:
 
     # uploader
     # syncer will work on index used in web part
-    partial_syncer = partial(syncer_manager.sync,"es",target_backend=config.ES_BACKEND)
+    esb = (config.ES_HOST, config.ES_INDEX_NAME + suffix, config.ES_DOC_TYPE)
+    partial_syncer = partial(syncer_manager.sync,"es",target_backend=esb)
     # manually register biothings source uploader
     # this uploader will use dumped data to update an ES index
     class uploader_klass(BiothingsUploader):
@@ -155,6 +162,14 @@ for s3_folder in s3_folders:
     COMMANDS["step_update%s" % cmdsuffix] = HubCommand("download%s() && apply%s()" % (cmdsuffix,cmdsuffix))
     COMMANDS["update%s" % cmdsuffix] = partial(cycle_update,"biothings%s" % suffix)
 
+    # Expose cycle_update function as a service
+    class CycleUpdateHandler(HubHandler):
+        source = "biothings%s" % suffix
+        @asyncio.coroutine
+        def post(self):
+            cycle_update(self.source)
+            self.write({"updating":self.source})
+    app.add_handlers(r".*",[(r"/update%s" % suffix, CycleUpdateHandler, {"managers":managers})])
 
 # admin/advanced
 EXTRA_NS = {
@@ -174,6 +189,15 @@ EXTRA_NS = {
 passwords = hasattr(config,"HUB_ACCOUNTS") and config.HUB_ACCOUNTS or {
         'guest': '', # guest account with no password
         }
+
+EXTRA_NS["app"] = app
+
+# register app into current event loop
+import tornado.platform.asyncio
+tornado.platform.asyncio.AsyncIOMainLoop().install()
+app_server = tornado.httpserver.HTTPServer(app)
+app_server.listen(config.HUB_API_PORT)
+app_server.start()
 
 from biothings.utils.hub import start_server
 

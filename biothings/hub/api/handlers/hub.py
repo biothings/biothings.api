@@ -2,7 +2,7 @@ import asyncio
 import datetime
 
 from .base import BaseHandler
-from biothings.utils.mongo import get_src_dump
+from biothings.utils.hub_db import get_src_dump
 
 
 class HubHandler(BaseHandler):

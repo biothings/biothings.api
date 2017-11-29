@@ -422,10 +422,11 @@ class FTPDumper(BaseDumper):
     CWD_DIR = ''
     FTP_USER = ''
     FTP_PASSWD = ''
+    FTP_TIMEOUT = 10*60.0 # we want dumper to timout if necessary
 
     def prepare_client(self):
         # FTP side
-        self.client = FTP(self.FTP_HOST)
+        self.client = FTP(self.FTP_HOST,timeout=self.FTP_TIMEOUT)
         self.client.login(self.FTP_USER,self.FTP_PASSWD)
         if self.CWD_DIR:
             self.client.cwd(self.CWD_DIR)

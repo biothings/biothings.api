@@ -1,6 +1,7 @@
 from biothings.web.api.es.query import ESQuery as DefaultESQuery
 from biothings.web.api.es.query_builder import ESQueryBuilder as DefaultESQueryBuilder
 from biothings.web.api.es.transform import ESResultTransformer as DefaultESResultTransformer
+from biothings.web.templates import HTML_OUT_TEMPLATE
 import re
 
 # *****************************************************************************
@@ -94,7 +95,8 @@ STATUS_CHECK = {
 
 # For annotation GET endpoint
 ANNOTATION_GET_CONTROL_KWARGS = {'raw': {'default': False, 'type': bool}, 
-                                 'rawquery': {'default': False, 'type': bool}}
+                                 'rawquery': {'default': False, 'type': bool},
+                                 'out_format': {'default': 'json', 'type': str, 'alias':'format'}}
 ANNOTATION_GET_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 100, 'alias': ['fields', 'filter']}}
 ANNOTATION_GET_ESQB_KWARGS = {}
 ANNOTATION_GET_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool}, 
@@ -104,7 +106,8 @@ ANNOTATION_GET_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool},
 # For annotation POST endpoint
 ANNOTATION_POST_CONTROL_KWARGS = {'raw': {'default': False, 'type': bool},
                                   'rawquery': {'default': False, 'type': bool},
-                                  'ids': {'default': None, 'type': list, 'max': 1000}}
+                                  'ids': {'default': None, 'type': list, 'max': 1000},
+                                  'out_format': {'default': 'json', 'type': str, 'alias': 'format'}}
 ANNOTATION_POST_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 100, 'alias': ['fields', 'filter']}}
 ANNOTATION_POST_ESQB_KWARGS = {}
 ANNOTATION_POST_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool},
@@ -120,7 +123,8 @@ QUERY_GET_CONTROL_KWARGS = {'raw': {'default': False, 'type': bool},
                                 ]
                             },
                             'scroll_id': {'default': None, 'type': str},
-                            'fetch_all': {'default': False, 'type': bool}}
+                            'fetch_all': {'default': False, 'type': bool},
+                            'out_format': {'default': 'json', 'type': str, 'alias': 'format'}}
 QUERY_GET_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 100, 'alias': ['fields', 'filter']},
                        'from': {'default': None, 'type': int, 'alias': 'skip'},
                        'size': {'default': None, 'type': int, 'alias': 'limit'},
@@ -137,7 +141,8 @@ QUERY_GET_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool},
 # For query POST endpoint
 QUERY_POST_CONTROL_KWARGS = {'q': {'default': None, 'type': list},
                              'raw': {'default': False, 'type': bool},
-                             'rawquery': {'default': False, 'type': bool}}
+                             'rawquery': {'default': False, 'type': bool},
+                             'out_format': {'default': 'json', 'type': str, 'alias': 'format'}}
 QUERY_POST_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 100, 'alias': ['fields', 'filter']},
                         'size': {'default': None, 'type': int}}
 QUERY_POST_ESQB_KWARGS = {'scopes': {'default': None, 'type': list, 'max': 100, 
@@ -149,7 +154,7 @@ QUERY_POST_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool},
                                '_sorted': {'default': True, 'type': bool}}
 
 # For metadata GET endpoint
-METADATA_GET_CONTROL_KWARGS = {}
+METADATA_GET_CONTROL_KWARGS = {'out_format': {'default': 'json', 'type': str, 'alias': 'format'}}
 METADATA_GET_ES_KWARGS = {}
 METADATA_GET_ESQB_KWARGS = {}
 METADATA_GET_TRANSFORM_KWARGS = {'dev': {'default': False, 'type': bool}, 
@@ -216,3 +221,6 @@ HIPCHAT_AUTH_TOKEN=''
 HIPCHAT_MESSAGE_COLOR='yellow'
 HIPCHAT_AUTO_FROM_SOCKET_CONNECTION=('8.8.8.8', 53) # google DNS server
 HIPCHAT_MESSAGE_FORMAT=None
+
+# For format=html
+HTML_OUT_HEADER_IMG = "//:0"

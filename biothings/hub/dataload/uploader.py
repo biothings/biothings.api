@@ -48,20 +48,6 @@ def upload_worker(name, storage_class, loaddata_func, col_name,
         raise
 
 
-class DocSourceMaster(dict):
-    '''A class to manage various doc data sources.'''
-    # TODO: fix this delayed import
-    from biothings import config
-    __collection__ = config.DATA_SRC_MASTER_COLLECTION
-    __database__ = config.DATA_SRC_DATABASE
-    use_dot_notation = True
-    use_schemaless = True
-    structure = {
-        'name': str,
-        'timestamp': datetime.datetime,
-    }
-
-
 class BaseSourceUploader(object):
     '''
     Default datasource uploader. Database storage can be done
@@ -392,7 +378,7 @@ class BaseSourceUploader(object):
             if update_data:
                 # unsync to make it pickable
                 state = self.unprepare()
-                yield from self.update_data(batch_size, job_manager, **kwargs)
+                cnt = yield from self.update_data(batch_size, job_manager, **kwargs)
                 self.prepare(state)
             if update_master:
                 self.update_master()
@@ -410,7 +396,8 @@ class BaseSourceUploader(object):
                 yield from f2
                 if got_error:
                     raise got_error
-            cnt = self.db[self.collection_name].count()
+            # take the total from update call or directly from collection
+            cnt = cnt or self.db[self.collection_name].count()
             if clean_archives:
                 self.clean_archived_collections()
             self.register_status("success",count=cnt)
