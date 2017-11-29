@@ -7,8 +7,10 @@ are based on Docker containers and provide and fully pre-configured, ready-to-us
 that can easily be maintained and kept up-to-date. The idea is, for any user, to be able to run
 her own APIs locally, fulfulling differents needs:
 
-* keep all APIs requests private and on local to your own server
+* keep all APIs requests private and local to your own server
 * enriching existing and publicly available data found on our APIs with some private data
+* run API on your own architecture to perform heavy queries that would sometimes be throttled out from 
+  online services
 
 ***********
 Quick Links
@@ -20,54 +22,74 @@ avaiable Docker images from the following tables.
 .. note:: images don't contain data but are ready to download and maintain data up-to-date
           running simple commands through the hub.
 
-
 |mygenelogo| mygene.info
 ^^^^^^^^^^^^^^^^^^^^^^^^
 .. |mygenelogo| image:: http://biothings.io/assets/img/icons/mygene.png
    :width: 30 px
 
+Production and old data require at least 30GiB disk space.
+
 +------------+------------+------------+
 | Production | Demo       | Old        |
 +============+============+============+
-| contact us | Download   | Soon !     |
+| contact us | Download__ | Soon !     |
 +------------+------------+------------+
+
+.. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_mygene/demo_mygene.docker
 
 |myvariantlogo| myvariant.info
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. |myvariantlogo| image:: http://biothings.io/assets/img/icons/myvariant.png
    :width: 30 px
 
+Production and old data require at least 2TiB disk space.
 
 +------------+------------+------------+
 | Production | Demo       | Old        |
 +============+============+============+
-| contact us | Download   | Soon !     |
+| contact us | Download__ | Soon !     |
 +------------+------------+------------+
+
+.. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_myvariant/demo_myvariant.docker
 
 |mychemlogo| mychem.info
 ^^^^^^^^^^^^^^^^^^^^^^^^
 .. |mychemlogo| image:: http://biothings.io/assets/img/icons/mychem.png
    :width: 30 px
 
+Production and old data require at least 150Gib disk space.
+
 +------------+------------+------------+
 | Production | Demo       | Old        |
 +============+============+============+
-| contact us | Download   | Soon !     |
+| contact us | Download__ | Soon !     |
 +------------+------------+------------+
+
+.. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_mychem/demo_mychem.docker
 
 *************
 Prerequisites
 *************
 
 Using standalone instances requires to have a Docker server up and running, some basic knowledge
-about commands to run and use containers. Images have been tested on Docker >=17. Depending on
-the type of data you want to use, you may need a large amount of disk space (particularly for
-production data and old data). Refer to the **Quick Links** section for more information.
+about commands to run and use containers. Images have been tested on Docker >=17. Using AWS cloud,
+you can use AMI ``ami-6e1a0117`` and install Docker with ``sudo apt-get install docker.io``. You may
+need to point Docker images directory to a specific hard drive to get enough space, using ``-g`` option:
 
-Demo instances, on the other hand, use very little disk space. myvariant demo, one of the biggest, only
-requires ~10GiB to run with demo data up-to-date, including the whole Linux system and all other dependencies.
-Demo instances provide a quick and easy way to setup a running APIs, without having to deal with some advanced
-system configurations.
+.. code:: bash
+
+  # /mnt/docker points to a hard drive with enough disk space
+  sudo echo 'DOCKER_OPTS="-g /mnt/docker"' >> /etc/default/docker
+  # restart to make this change active
+  sudo service docker restart
+
+Depending on the type of data you want to use, you may need a large amount of disk space (particularly for
+production data and old data). Refer to the `Quick Links`_ section for more information.
+
+Demo instances, on the other hand, use very little disk space, as only a small subset of data is available.
+For instance, myvariant demo only requires ~10GiB to run with demo data up-to-date, including the whole Linux
+system and all other dependencies. Demo instances provide a quick and easy way to setup a running APIs,
+without having to deal with some advanced system configurations.
 
 *****************
 What you'll learn
@@ -86,7 +108,7 @@ Data found in standalone instances
 
 All BioThings APIs (mygene.info, myvariant.info, ...) provide data release in different flavors:
 
-* **Production data**, the actual data found on live APIs we are running and keeping up-to-date on a regular basis.
+* **Production data**, the actual data found on live APIs we, the BioThings team at `SuLab <http://sulab.org>`_, are running and keeping up-to-date on a regular basis.
   Please contact us if you're interested in obtaining this type of data.
 * **Demo data**, a small subset of production data, publicly available
 * **Old production data**, an at least one year old production dataset (full), publicly available (coming soon)
@@ -98,10 +120,10 @@ The following guide applies to demo data only, though the process would be very 
 Downloading and running a standalone instance
 *********************************************
 
-Standalone instances are available as Docker images. For the purpose of this guide, we'll setup an instance for mygene.info,
-containing demo data. Links to standalone demo Docker images, can be found in **Quick links** at the beginning of this guide.
-Use one of these links, or use this `direct link` to mygene's demo instance, and download the Docker image file, using your
-favorite browser or ``wget``:
+Standalone instances are available as Docker images. For the purpose of this guide, we'll setup an instance running mygene API,
+containing demo data. Links to standalone demo Docker images, can be found in `Quick links`_ at the beginning of this guide.
+Use one of these links, or use this `direct link <http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_mygene/demo_mygene.docker>`_
+to mygene's demo instance, and download the Docker image file, using your favorite browser or ``wget``:
 
 .. code:: bash
 
@@ -130,21 +152,28 @@ create a BioThings standalone instance, ready to be used.
 
 A standalone instance is a pre-configured system containing several parts. BioThings hub is the system used to interact
 with BioThings backend and perform operations such as downloading data and create/update ElasticSearch indices. Those
-indices are used by BioThings web system to serve data to end-users. The hub can be accessed through a standard
+indices are used by the actual BioThings web API system to serve data to end-users. The hub can be accessed through a standard
 SSH connection or through REST API calls. In this guide, we'll use the SSH server.
 
 A BioThings instance expose several services on different ports:
-* 80: BioThings web API port
-* 7022: BioThings hub SSH port
-* 7080: BioThings hub REST API port
-* 9200: ElasticSearch port
 
-We will map and expose those ports to the host server using option ``-p`` so we can access BioThings services without 
-having to enter the container (eg. hub ssh port here will accessible using port 19022). Also, instance will store
+* **80**: BioThings web API port
+* **7022**: BioThings hub SSH port
+* **7080**: BioThings hub REST API port
+* **9200**: ElasticSearch port
+
+We will map and expose those ports to the host server using option ``-p`` so we can access BioThings services without
+having to enter the container (eg. hub ssh port here will accessible using port 19022).
 
 .. code:: bash
 
   $ docker run --name demo_mygene -p 19080:80 -p 19200:9200 -p 19022:7022 -p 19090:7080 -d demo_mygene
+
+.. note:: Instance will store ElasticSearch data in `/var/lib/elasticsearch/` directory, and downloaded data and logs
+          in ``/data/`` directory. Those two locations could require extra disk space, if needed Docker option ``-v``
+          can be used to mount a directory from the host, inside the container. Please refer to Docker documnentation.
+
+.. _services:
 
 Let's enter the container to check everything is running fine. Services may take a while, up to 1 min, before fully started.
 If some services are missing, the troubleshooting section may help.
@@ -183,7 +212,7 @@ populate the BioThings API using the hub.
 Updating data using Biothings hub
 *********************************
 
-If the standalone instane has been freshly started, there's no data to be queried by the API. If we make a API call,
+If the standalone instance has been freshly started, there's no data to be queried by the API. If we make a API call,
 such as fetching metadata, we'll get an error:
 
 .. code:: bash
@@ -234,6 +263,8 @@ For the purpose of the guide, we'll use SSH. Let's connect to the hub (type ``ye
 
 We're now connected to the hub, inside a python shell where the application is actually running. Let's see what commands are available:
 
+.. warning:: the hub console, though accessed through SSH, is **not** a Linux shell (such as `bash`), it's a python interpreter shell.
+
 .. code:: bash
 
   hub> help()
@@ -253,18 +284,18 @@ We're now connected to the hub, inside a python shell where the application is a
 
 * ``versions()`` will display all available data build versions we can download to populate the API
 * ``check()`` will return whether a more recent version is available online
-* ``info()`` will display current local API version, and information about the latest avaiable online
+* ``info()`` will display current local API version, and information about the latest available online
 * ``download()`` will download the data compatible with current local version (but without populating the ElasticSearch index)
 * ``apply()`` will use local data previously downloaded to populate the index
-* ``step_update()`` will bring data the next one (one step in versions) compatible with current local version
-* ``update()`` will bring data to the latest available online (using a combination of download and apply calls)
+* ``step_update()`` will bring data release to the next one (one step in versions), compatible with current local version
+* ``update()`` will bring data to the latest available online (using a combination of ``download`` and ``apply`` calls)
 
-.. note:: ``update()`` is the fastest, easiest and preferred way to update the API. download/apply/step_update are available
+.. note:: ``update()`` is the fastest, easiest and preferred way to update the API. ``download``, ``apply``, ``step_update`` are available
           when it's necessary to bring the API data to a specific version (not the latest one), are considered more advanced,
           and won't be covered in this guide.
 
 .. note:: because the hub console is actually a python interpreter, we call the commands using parenthesis, just like functions
-          or method. We can also pass arguments when necessary, just like standard python (it **is** python...)
+          or methods. We can also pass arguments when necessary, just like standard python (remember: it **is** python...)
 
 .. note:: after each command is typed, we need to press "enter" to get either its status (still running) or the result
 
@@ -301,7 +332,7 @@ Let's explore some more.
   0 document(s) added, 0 document(s) deleted, 130 document(s) updated
 
 We can see here we don't have any local data release (``Current local version: 'None'``), whereas the latest online (at that time) is from
-November 26th 2017. We can also see the release note with the different chanages involved in the release (whether it's new version, or the number
+November 26th 2017. We can also see the release note with the different changes involved in the release (whether it's a new version, or the number
 of documents that changed).
 
 .. code:: bash
@@ -320,15 +351,15 @@ of documents that changed).
   version=20171112.20171119    date=2017-11-20T07:44:47.399302 type=incremental
   version=20171119.20171126    date=2017-11-27T10:38:03.593699 type=incremental
 
-Data comes in two distinct types
+Data comes in two distinct types:
 
 * **full**: this is a full data release, corresponding to an ElasticSearch snapshot, containing all the data
 * **incremental** : this is a differential/incremental release, produced by computing the differences between two consecutives versions.
-  the diff data is then used to patch an exiting, compatible data release to bring it to the next version.
+  The diff data is then used to patch an existing, compatible data release to bring it to the next version.
 
 So, in order to obtain the latest version, the hub will first find a compatible version. Since it's currently empty (no data), it will
-use the **full** release from 20171009, and then apply incremental updates sequentially (20171009.20171015, then 20171015.20171022,
-then 20171022.20171029, etc... up to 20171119.20171126).
+use the first **full** release from 20171009, and then apply **incremental** updates sequentially (``20171009.20171015``, then ``20171015.20171022``,
+then ``20171022.20171029``, etc... up to ``20171119.20171126``).
 
 Let's update the API:
 
@@ -384,7 +415,7 @@ Local version is 20171126, remote is 20171126, we're up-to-date. We can also use
   [5] OK  check(): finished 
   Nothing to dump
 
-*Nothing to dump* means there's no available remove version that can be downloaded. It would otherwise return a version number, meaning
+``Nothing to dump`` means there's no available remote version that can be downloaded. It would otherwise return a version number, meaning
 we would be able to update the API again using command ``update()``.
 
 Press Control-D to exit from the hub console.
@@ -466,7 +497,7 @@ BioThings API with multiple indices
 ***********************************
 
 Some APIs use more than one ElasticSearch index to run. For instance, myvariant.info uses one index for hg19 assembly, and one index
-for hg38 assembly. With such APIs, the available commands contain a suffix showing which index (thus, which data release) they relate.
+for hg38 assembly. With such APIs, the available commands contain a suffix showing which index (thus, which data release) they relate to.
 Here's the output of ``help()`` from myvariant's standalone instance:
 
 .. code:: bash
@@ -492,7 +523,7 @@ Here's the output of ``help()`` from myvariant's standalone instance:
   	help
 
 
-For instance, update commands is now avaiable as ``update_hg19()`` and ``update_hg38()`` depending on the assemlby.
+For instance, ``update()`` command is now avaiable as ``update_hg19()`` and ``update_hg38()`` depending on the assemlby.
 
 
 ***************
@@ -503,12 +534,13 @@ We test and make sure, as much as we can, that standalone images are up-to-date 
 data release. But things can still go wrong...
 
 First make sure all services are running. Enter the container and type ``netstat -tnlp``, you should see
-services running on ports (at least) 80, 7080, 7022, 9200. If services running on ports 7080 or 7022 aren't running,
-it means the hub has started. If you just started the instance, wait a little more as services may take a while before
+services running on ports (see usual running `services`_). If services running on ports 7080 or 7022 aren't running,
+it means the hub has not started. If you just started the instance, wait a little more as services may take a while before
 they're fully started and ready.
 
-If after ~1min, you still don't see the hub running, log to user ``biothings`` and check the starting sequence. Note: hub is running
-in a tmux session:
+If after ~1 min, you still don't see the hub running, log to user ``biothings`` and check the starting sequence.
+
+.. note:: hub is running in a tmux session, under user ``biothings``
 
 .. code:: bash
 
@@ -523,16 +555,17 @@ in a tmux session:
   start
 
 You should see something looking like this above. If not, you should see the actual error, and depending on the error, you may be able to
-fix it (not enough disk space, etc...).
+fix it (not enough disk space, etc...). The hub can be started again using ``python -m biothings.bin.autohub`` from within the application
+directory (in our case, ``/home/biothings/mygene.info/src/``)
 
-.. note:: press Control-B then D to dettach tmux session and let the hub running in background.
+.. note:: press Control-B then D to dettach the tmux session and let the hub running in background.
 
-Logs are available in ``/data/data/mygene.info/logs/``. You can have a look at:
+Logs are available in ``/data/mygene.info/logs/``. You can have a look at:
 
 * ``dump_*.log`` files for logs about data download
 * ``upload_*.log`` files for logs about index update in general (full/incremental)
 * ``sync_*.log`` files for logs about incremental update only
 * and ``hub_*.log`` files for general logs about the hub process
 
-Finally, you can report and request for help, by reaching us as help@biothings.io.
+Finally, you can report issues and request for help, by reaching us as help@biothings.io.
 
