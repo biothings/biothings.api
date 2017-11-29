@@ -48,6 +48,7 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
             * set CORS and caching headers
             * typify the URL keyword arguments
             * optionally send tracking data to google analytics and integrate with sentry monitor'''
+
     def initialize(self, web_settings):
         """ Tornado handler `initialize() <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler.initialize>`_, 
         Override to add settings for *this* biothing API.  Assumes that the ``web_settings`` kwarg exists in APP_LIST """
@@ -162,7 +163,7 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
             self.set_cacheable(etag=etag)
         self.support_cors()
         self.set_header("Content-Type", "text/html; charset=utf-8")
-        self.write(self.web_settings.HTML_OUT_TEMPLATE.format(json.dumps(data)))
+        self.write(self.web_settings.HTML_OUT_TEMPLATE.format(data=json.dumps(data), img_src=self.web_settings.HTML_OUT_HEADER_IMG, link=self.request.full_url()))
         return
         
     def return_json(self, data, encode=True, indent=None, status_code=200, _format='json'):

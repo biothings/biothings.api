@@ -13,12 +13,13 @@ HTML_OUT_TEMPLATE = '''
                         mode: 'view'
                     }};
                     var editor = new JSONEditor(container, options);
-                    var data = {};
+                    var data = {data};
                     editor.set(data);
                 }});
             </script>
         </head>
         <body>
+            <p><table><tr><td><img src="{img_src}"></img></td><td><a href="{link}" target="_blank">{link}</a></td></tr></table></p>
             <div id="jsonview"></div>
         </body>
     </html>'''
