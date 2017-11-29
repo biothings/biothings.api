@@ -19,7 +19,7 @@ Quick Links
 If you already know how to run a BioThings standalone instance, you can download the latest
 avaiable Docker images from the following tables.
 
-.. note:: images don't contain data but are ready to download and maintain data up-to-date
+.. note:: Images don't contain data but are ready to download and maintain data up-to-date
           running simple commands through the hub.
 
 |mygenelogo| mygene.info
@@ -73,8 +73,14 @@ Prerequisites
 
 Using standalone instances requires to have a Docker server up and running, some basic knowledge
 about commands to run and use containers. Images have been tested on Docker >=17. Using AWS cloud,
-you can use AMI ``ami-6e1a0117`` and install Docker with ``sudo apt-get install docker.io``. You may
-need to point Docker images directory to a specific hard drive to get enough space, using ``-g`` option:
+you can use our public AMI **biothings_demo_docker** (``ami-40e03938``) with Docker pre-configured
+and ready for standalone demo instances deployment. We recommend using instance type with at least
+8GiB RAM, such as ``t2.large``. AMI comes with an extra 30GiB EBS volume, which should be enough to
+deploy any demo instances.
+
+Alternately, you can install your own Docker server (on recent Ubuntu systems, ``sudo apt-get install docker.io``
+is usually enough). You may need to point Docker images directory to a specific hard drive to get enough space,
+using ``-g`` option:
 
 .. code:: bash
 
@@ -83,13 +89,16 @@ need to point Docker images directory to a specific hard drive to get enough spa
   # restart to make this change active
   sudo service docker restart
 
-Depending on the type of data you want to use, you may need a large amount of disk space (particularly for
-production data and old data). Refer to the `Quick Links`_ section for more information.
-
-Demo instances, on the other hand, use very little disk space, as only a small subset of data is available.
+Demo instances use very little disk space, as only a small subset of data is available.
 For instance, myvariant demo only requires ~10GiB to run with demo data up-to-date, including the whole Linux
 system and all other dependencies. Demo instances provide a quick and easy way to setup a running APIs,
 without having to deal with some advanced system configurations.
+
+For deployment with production or old data, you may need a large amount of disk space.
+Refer to the `Quick Links`_ section for more information. Bigger instance types will also be
+required, and even a full cluster architecture deployment. We'll soon provide guidelines and
+deployment scripts for this purpose.
+
 
 *****************
 What you'll learn
@@ -294,10 +303,10 @@ We're now connected to the hub, inside a python shell where the application is a
           when it's necessary to bring the API data to a specific version (not the latest one), are considered more advanced,
           and won't be covered in this guide.
 
-.. note:: because the hub console is actually a python interpreter, we call the commands using parenthesis, just like functions
+.. note:: Because the hub console is actually a python interpreter, we call the commands using parenthesis, just like functions
           or methods. We can also pass arguments when necessary, just like standard python (remember: it **is** python...)
 
-.. note:: after each command is typed, we need to press "enter" to get either its status (still running) or the result
+.. note:: After each command is typed, we need to press "enter" to get either its status (still running) or the result
 
 Let's explore some more.
 
@@ -405,7 +414,7 @@ After a while, the API is up-to-date, we can run command ``info()`` again (it al
   0 document(s) added, 0 document(s) deleted, 130 document(s) updated
 
 
-Local version is 20171126, remote is 20171126, we're up-to-date. We can also use ``check()``:
+Local version is ``20171126``, remote is ``20171126``, we're up-to-date. We can also use ``check()``:
 
 .. code:: bash
 
@@ -540,7 +549,7 @@ they're fully started and ready.
 
 If after ~1 min, you still don't see the hub running, log to user ``biothings`` and check the starting sequence.
 
-.. note:: hub is running in a tmux session, under user ``biothings``
+.. note:: Hub is running in a tmux session, under user ``biothings``
 
 .. code:: bash
 
@@ -558,7 +567,7 @@ You should see something looking like this above. If not, you should see the act
 fix it (not enough disk space, etc...). The hub can be started again using ``python -m biothings.bin.autohub`` from within the application
 directory (in our case, ``/home/biothings/mygene.info/src/``)
 
-.. note:: press Control-B then D to dettach the tmux session and let the hub running in background.
+.. note:: Press Control-B then D to dettach the tmux session and let the hub running in background.
 
 Logs are available in ``/data/mygene.info/logs/``. You can have a look at:
 
