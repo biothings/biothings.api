@@ -34,10 +34,11 @@ Production and old data require at least 30GiB disk space.
 +---------------+------------+------------+
 | Production    | Demo       | Old        |
 +===============+============+============+
-| `contact us`_ | Download__ | Soon !     |
+| `contact us`_ | Download__ | Download__ |
 +---------------+------------+------------+
 
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_mygene/demo_mygene.docker
+.. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/old_mygene/old_mygene.docker
 
 |myvariantlogo| myvariant.info
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
