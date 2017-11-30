@@ -76,7 +76,7 @@ Prerequisites
 
 Using standalone instances requires to have a Docker server up and running, some basic knowledge
 about commands to run and use containers. Images have been tested on Docker >=17. Using AWS cloud,
-you can use our public AMI **biothings_demo_docker** (``ami-40e03938``) with Docker pre-configured
+you can use our public AMI **biothings_demo_docker** (``ami-44865e3c``) with Docker pre-configured
 and ready for standalone demo instances deployment. We recommend using instance type with at least
 8GiB RAM, such as ``t2.large``. AMI comes with an extra 30GiB EBS volume, which should be enough to
 deploy any demo instances.
