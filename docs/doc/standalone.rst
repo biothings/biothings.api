@@ -50,10 +50,11 @@ Production and old data require at least 2TiB disk space.
 +---------------+------------+------------+
 | Production    | Demo       | Old        |
 +===============+============+============+
-| `contact us`_ | Download__ | Soon !     |
+| `contact us`_ | Download__ | Download__ |
 +---------------+------------+------------+
 
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_myvariant/demo_myvariant.docker
+.. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/old_myvariant/old_myvariant.docker
 
 |mychemlogo| mychem.info
 ^^^^^^^^^^^^^^^^^^^^^^^^
