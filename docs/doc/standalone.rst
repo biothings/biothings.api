@@ -124,7 +124,7 @@ All BioThings APIs (mygene.info, myvariant.info, ...) provide data release in di
 * **Production data**, the actual data found on live APIs we, the BioThings team at `SuLab <http://sulab.org>`_, are running and keeping up-to-date on a regular basis.
   Please contact us if you're interested in obtaining this type of data.
 * **Demo data**, a small subset of production data, publicly available
-* **Old production data**, an at least one year old production dataset (full), publicly available (coming soon)
+* **Old production data**, an at least one year old production dataset (full), publicly available
 
 The following guide applies to demo data only, though the process would be very similar for other types of data flavors.
 
@@ -536,7 +536,7 @@ Here's the output of ``help()`` from myvariant's standalone instance:
   	help
 
 
-For instance, ``update()`` command is now avaiable as ``update_hg19()`` and ``update_hg38()`` depending on the assemlby.
+For instance, ``update()`` command is now available as ``update_hg19()`` and ``update_hg38()`` depending on the assemlby.
 
 
 ***************
