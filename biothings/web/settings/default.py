@@ -224,3 +224,4 @@ HIPCHAT_MESSAGE_FORMAT=None
 
 # For format=html
 HTML_OUT_HEADER_IMG = "//:0"
+HTML_OUT_TITLE = "<p>MyBioThing.info</p>"
