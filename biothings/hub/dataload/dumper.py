@@ -813,6 +813,9 @@ class GitDumper(BaseDumper):
                 self.logger.info("git checkout to commit %s" % commit)
                 cmd = ["git","checkout",commit]
                 subprocess.check_call(cmd)
+            else:
+                out = subprocess.check_output(["git","rev-parse","HEAD"])
+                self.release = "HEAD (%s)" % out.decode().strip()
         finally:
             os.chdir(old)
         pass
