@@ -4,9 +4,10 @@ from datetime import datetime
 import asyncio
 from functools import partial
 import inspect
+import subprocess
 
 from biothings.utils.hub_db import get_src_dump
-from biothings.utils.common import timesofar
+from biothings.utils.common import timesofar, rmdashfr
 from biothings.utils.loggers import HipchatHandler
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
 from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER
@@ -782,6 +783,106 @@ class GoogleDriveDumper(HTTPDumper):
         href = link.get("href")
         # now build the final GET request, using cookies to simulate browser
         return super(GoogleDriveDumper,self).download("https://docs.google.com" + href, localfile, headers={"cookie": res.headers["set-cookie"]})
+
+
+class GitDumper(BaseDumper):
+    """
+    Git dumper gets data from a git repo. Repo is stored in SRC_ROOT_FOLDER
+    (without versioning) and then versions/releases are fetched in 
+    SRC_ROOT_FOLDER/<release>
+    """
+
+    GIT_REPO_URL = None
+    BRANCH = "master"
+
+    def _clone(self,repourl,localdir):
+        self.logger.info("git clone '%s' into '%s'" % (repourl,localdir))
+        subprocess.check_call(["git","clone",repourl,localdir])
+
+    def _pull(self,localdir,commit):
+        # fetch+merge
+        self.logger.info("git pull latest data into '%s'" % localdir)
+        old = os.path.abspath(os.curdir)
+        try:
+            os.chdir(localdir)
+            # --ff-only: we don't want to activate a conflit resolution session...
+            # TODO: origin could be named differently ?
+            cmd = ["git","pull","--ff-only","origin",self.__class__.BRANCH]
+            subprocess.check_call(cmd)
+            if commit != "HEAD":
+                self.logger.info("git checkout to commit %s" % commit)
+                cmd = ["git","checkout",commit]
+                subprocess.check_call(cmd)
+            else:
+                out = subprocess.check_output(["git","rev-parse","HEAD"])
+                self.release = "HEAD (%s)" % out.decode().strip()
+        finally:
+            os.chdir(old)
+        pass
+
+    @property
+    def new_data_folder(self):
+        # we don't keep release in data folder path
+        # as it's a git repo
+        return self.src_root_folder
+
+    @asyncio.coroutine
+    def dump(self, release="HEAD", force=False, job_manager=None, **kwargs):
+        assert self.__class__.GIT_REPO_URL, "GIT_REPO_URL is not defined"
+        #assert self.__class__.ARCHIVE == False, "Git dumper can't keep multiple versions (but can move to a specific commit hash)"
+        got_error = None
+        self.release = release
+        def do():
+            do_clone = False
+            if force:
+                # force is also a way to clean and start from scratch
+                rmdashfr(self.src_root_folder)
+            if not os.path.exists(self.src_root_folder):
+                # data folder doesn't even exist, no git files yet, we need to clone
+                os.makedirs(self.src_root_folder)
+                do_clone = True
+            self.register_status("downloading",transient=True)
+            if do_clone:
+                self._clone(self.__class__.GIT_REPO_URL,self.src_root_folder)
+            self._pull(self.src_root_folder,release)
+        pinfo = self.get_pinfo()
+        job = yield from job_manager.defer_to_thread(pinfo,do)
+        def done(f):
+            try:
+                res = f.result()
+                self.register_status("success")
+            except Exception as e:
+                self.logger.exception("failed: %s" % e,extra={"notify":True})
+                got_error = e
+        job.add_done_callback(done)
+        yield from job
+        if got_error:
+            self.register_status("failed",download={"err" : str(e)})
+            raise got_error
+
+    def prepare_client(self):
+        """Check if 'git' executable exists"""
+        ret = os.system("type git 2>&1 > /dev/null")
+        if not ret == 0:
+            raise DumperException("Can't find 'git' executable")
+
+    def need_prepare(self):
+        return True
+
+    def release_client(self):
+        pass
+
+    def remote_is_better(self,remotefile,localfile):
+        return True
+
+    def download(self,remotefile,localfile):
+        self.prepare_local_folders(localfile)
+        cmdline = "wget %s -O %s" % (remoteurl, localfile)
+        return_code = os.system(cmdline)
+        if return_code == 0:
+            self.logger.info("Success.")
+        else:
+            self.logger.error("Failed with return code (%s)." % return_code)
 
 ####################
 

@@ -22,6 +22,8 @@ avaiable Docker images from the following tables.
 .. note:: Images don't contain data but are ready to download and maintain data up-to-date
           running simple commands through the hub.
 
+.. _`contact us`: help@biothings.io
+
 |mygenelogo| mygene.info
 ^^^^^^^^^^^^^^^^^^^^^^^^
 .. |mygenelogo| image:: http://biothings.io/assets/img/icons/mygene.png
@@ -29,13 +31,14 @@ avaiable Docker images from the following tables.
 
 Production and old data require at least 30GiB disk space.
 
-+------------+------------+------------+
-| Production | Demo       | Old        |
-+============+============+============+
-| contact us | Download__ | Soon !     |
-+------------+------------+------------+
++---------------+------------+------------+
+| Production    | Demo       | Old        |
++===============+============+============+
+| `contact us`_ | Download__ | Download__ |
++---------------+------------+------------+
 
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_mygene/demo_mygene.docker
+.. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/old_mygene/old_mygene.docker
 
 |myvariantlogo| myvariant.info
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -44,13 +47,14 @@ Production and old data require at least 30GiB disk space.
 
 Production and old data require at least 2TiB disk space.
 
-+------------+------------+------------+
-| Production | Demo       | Old        |
-+============+============+============+
-| contact us | Download__ | Soon !     |
-+------------+------------+------------+
++---------------+------------+------------+
+| Production    | Demo       | Old        |
++===============+============+============+
+| `contact us`_ | Download__ | Download__ |
++---------------+------------+------------+
 
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_myvariant/demo_myvariant.docker
+.. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/old_myvariant/old_myvariant.docker
 
 |mychemlogo| mychem.info
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -59,11 +63,11 @@ Production and old data require at least 2TiB disk space.
 
 Production and old data require at least 150Gib disk space.
 
-+------------+------------+------------+
-| Production | Demo       | Old        |
-+============+============+============+
-| contact us | Download__ | Soon !     |
-+------------+------------+------------+
++---------------+------------+------------+
+| Production    | Demo       | Old        |
++===============+============+============+
+| `contact us`_ | Download__ | Soon !     |
++---------------+------------+------------+
 
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_mychem/demo_mychem.docker
 
@@ -73,7 +77,7 @@ Prerequisites
 
 Using standalone instances requires to have a Docker server up and running, some basic knowledge
 about commands to run and use containers. Images have been tested on Docker >=17. Using AWS cloud,
-you can use our public AMI **biothings_demo_docker** (``ami-40e03938``) with Docker pre-configured
+you can use our public AMI **biothings_demo_docker** (``ami-44865e3c``) with Docker pre-configured
 and ready for standalone demo instances deployment. We recommend using instance type with at least
 8GiB RAM, such as ``t2.large``. AMI comes with an extra 30GiB EBS volume, which should be enough to
 deploy any demo instances.
@@ -120,7 +124,7 @@ All BioThings APIs (mygene.info, myvariant.info, ...) provide data release in di
 * **Production data**, the actual data found on live APIs we, the BioThings team at `SuLab <http://sulab.org>`_, are running and keeping up-to-date on a regular basis.
   Please contact us if you're interested in obtaining this type of data.
 * **Demo data**, a small subset of production data, publicly available
-* **Old production data**, an at least one year old production dataset (full), publicly available (coming soon)
+* **Old production data**, an at least one year old production dataset (full), publicly available
 
 The following guide applies to demo data only, though the process would be very similar for other types of data flavors.
 
@@ -532,7 +536,7 @@ Here's the output of ``help()`` from myvariant's standalone instance:
   	help
 
 
-For instance, ``update()`` command is now avaiable as ``update_hg19()`` and ``update_hg38()`` depending on the assemlby.
+For instance, ``update()`` command is now available as ``update_hg19()`` and ``update_hg38()`` depending on the assemlby.
 
 
 ***************

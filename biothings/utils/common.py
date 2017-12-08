@@ -562,6 +562,7 @@ def json_encode(obj):
 
 def rmdashfr(top):
     '''Recursively delete dirs and files from "top" directory, then delete "top" dir'''
+    assert top # prevent rm -fr * ... (let's be explicit there)
     for root, dirs, files in os.walk(top, topdown=False):
         for name in files:
             os.remove(os.path.join(root,name))

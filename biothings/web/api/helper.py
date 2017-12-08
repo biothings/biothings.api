@@ -5,6 +5,7 @@ import re
 from biothings.utils.web.analytics import GAMixIn
 from biothings.utils.web.tracking import StandaloneTrackingMixin
 from biothings.utils.common import is_str, is_seq
+from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 try:
     from raven.contrib.tornado import SentryMixin
 except ImportError:
@@ -163,7 +164,13 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
             self.set_cacheable(etag=etag)
         self.support_cors()
         self.set_header("Content-Type", "text/html; charset=utf-8")
-        self.write(self.web_settings.HTML_OUT_TEMPLATE.format(data=json.dumps(data), img_src=self.web_settings.HTML_OUT_HEADER_IMG, link=self.request.full_url()))
+        _link = self.request.full_url()
+        d = urlparse(_link)
+        q = parse_qs(d.query)
+        q.pop('format', None)
+        d = d._replace(query=urlencode(q, True))
+        self.write(self.web_settings.HTML_OUT_TEMPLATE.format(data=json.dumps(data), 
+            img_src=self.web_settings.HTML_OUT_HEADER_IMG, link=urlunparse(d), title_html=self.web_settings.HTML_OUT_TITLE))
         return
         
     def return_json(self, data, encode=True, indent=None, status_code=200, _format='json'):

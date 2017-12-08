@@ -19,7 +19,17 @@ HTML_OUT_TEMPLATE = '''
             </script>
         </head>
         <body>
-            <p><table><tr><td><img src="{img_src}"></img></td><td><a href="{link}" target="_blank">{link}</a></td></tr></table></p>
-            <div id="jsonview"></div>
+            <table style="width:100%; height:100%">
+                <tbody>
+                    <tr style="height:35px;">
+                        <td style="width: 35px"><img src="{img_src}" alt="logo" height="35" width="35"></img></td>
+                        <td style="vertical-align:center; padding-left:5px;">{title_html}</td>
+                    </tr>
+                    <tr style="height:15px;">
+                        <td colspan="2"><a href="{link}" target="_blank">{link}</a></td>
+                    </tr>
+                    <tr><td colspan="2"><div id="jsonview" style="overflow:auto; height: 100%"></div></td></tr>
+                </tbody>
+            </table>
         </body>
     </html>'''
