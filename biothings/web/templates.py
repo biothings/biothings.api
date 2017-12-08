@@ -26,7 +26,7 @@ HTML_OUT_TEMPLATE = '''
                         <td style="vertical-align:center; padding-left:5px;">{title_html}</td>
                     </tr>
                     <tr style="height:15px;">
-                        <td colspan="2"><a href="{link}" target="_blank">{link}</a></td>
+                        <td colspan="2"><p><a href="{link}" target="_blank">{link_decode}</a>&nbsp;&nbsp;[<a href="{docs_link}" target="_blank">Learn more about this API endpoint</a>]</p></td>
                     </tr>
                     <tr><td colspan="2"><div id="jsonview" style="overflow:auto; height: 100%"></div></td></tr>
                 </tbody>
