@@ -203,6 +203,7 @@ class HubSSHServer(asyncssh.SSHServer):
                                    self.__class__.EXTRA_NS)
 
     def connection_made(self, conn):
+        self._conn = conn
         print('SSH connection received from %s.' %
                   conn.get_extra_info('peername')[0])
 
@@ -213,11 +214,14 @@ class HubSSHServer(asyncssh.SSHServer):
             print('SSH connection closed.')
 
     def begin_auth(self, username):
-        # If the user's password is the empty string, no auth is required
-        return self.__class__.PASSWORDS.get(username) != ''
+        try:
+            self._conn.set_authorized_keys('bin/authorized_keys/%s.pub' % username)
+        except IOError:
+            pass
+        return True
 
     def password_auth_supported(self):
-        return True
+        return False
 
     def validate_password(self, username, password):
         pw = self.__class__.PASSWORDS.get(username, '*')
