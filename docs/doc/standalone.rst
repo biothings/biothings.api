@@ -9,7 +9,7 @@ her own APIs locally, fulfulling differents needs:
 
 * keep all APIs requests private and local to your own server
 * enriching existing and publicly available data found on our APIs with some private data
-* run API on your own architecture to perform heavy queries that would sometimes be throttled out from 
+* run API on your own architecture to perform heavy queries that would sometimes be throttled out from
   online services
 
 ***********
@@ -22,7 +22,7 @@ avaiable Docker images from the following tables.
 .. note:: Images don't contain data but are ready to download and maintain data up-to-date
           running simple commands through the hub.
 
-.. _`contact us`: help@biothings.io
+.. _`contact us`: biothings@googlegroups.com
 
 |mygenelogo| mygene.info
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -31,12 +31,13 @@ avaiable Docker images from the following tables.
 
 Production and old data require at least 30GiB disk space.
 
-+---------------+------------+------------+
-| Production    | Demo       | Old        |
-+===============+============+============+
-| `contact us`_ | Download__ | Download__ |
-+---------------+------------+------------+
++----------------+------------+------------+
+| Production     | Demo       | Old        |
++================+============+============+
+| `Contact us`__ | Download__ | Download__ |
++----------------+------------+------------+
 
+.. __: mailto:help@mygene.info
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_mygene/demo_mygene.docker
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/old_mygene/old_mygene.docker
 
@@ -47,12 +48,13 @@ Production and old data require at least 30GiB disk space.
 
 Production and old data require at least 2TiB disk space.
 
-+---------------+------------+------------+
-| Production    | Demo       | Old        |
-+===============+============+============+
-| `contact us`_ | Download__ | Download__ |
-+---------------+------------+------------+
++----------------+------------+------------+
+| Production     | Demo       | Old        |
++================+============+============+
+| `Contact us`__ | Download__ | Download__ |
++----------------+------------+------------+
 
+.. __: mailto:help@myvariant.info
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_myvariant/demo_myvariant.docker
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/old_myvariant/old_myvariant.docker
 
@@ -63,12 +65,13 @@ Production and old data require at least 2TiB disk space.
 
 Production and old data require at least 150Gib disk space.
 
-+---------------+------------+------------+
-| Production    | Demo       | Old        |
-+===============+============+============+
-| `contact us`_ | Download__ | Soon !     |
-+---------------+------------+------------+
++----------------+------------+------------+
+| Production     | Demo       | Old        |
++================+============+============+
+| `Contact us`__ | Download__ | Soon !     |
++----------------+------------+------------+
 
+.. __: mailto:help@mygene.info
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_mychem/demo_mychem.docker
 
 *************
@@ -580,5 +583,5 @@ Logs are available in ``/data/mygene.info/logs/``. You can have a look at:
 * ``sync_*.log`` files for logs about incremental update only
 * and ``hub_*.log`` files for general logs about the hub process
 
-Finally, you can report issues and request for help, by reaching us as help@biothings.io.
+Finally, you can report issues and request for help, by joining Biothings Google Groups (https://groups.google.com/forum/#!forum/biothings)
 
