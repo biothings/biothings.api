@@ -23,7 +23,6 @@ def get_src_dump():
     """Return a Collection instance for src_dump collection/table"""
     raise NotImplementedError()
 
-
 def get_src_master():
     """Return a Collection instance for src_master collection/table"""
     raise NotImplementedError()
@@ -36,6 +35,11 @@ def get_src_build():
 
 def get_src_build_config():
     """Return a Collection instance for src_build_config collection/table"""
+    raise NotImplementedError()
+
+
+def get_data_plugin():
+    """Return a Collection instance for data_plugin collection/table"""
     raise NotImplementedError()
 
 
@@ -169,12 +173,14 @@ def setup(config):
     global get_src_master
     global get_src_build
     global get_src_build_config
+    global get_data_plugin
     global get_source_fullname
     get_hub_db_conn = config.hub_db.get_hub_db_conn
     get_src_dump = config.hub_db.get_src_dump
     get_src_master = config.hub_db.get_src_master
     get_src_build = config.hub_db.get_src_build
     get_src_build_config = config.hub_db.get_src_build_config
+    get_data_plugin = config.hub_db.get_data_plugin
     get_source_fullname = config.hub_db.get_source_fullname
     # propagate config module to classes
     config.hub_db.Database.CONFIG = config

@@ -485,8 +485,11 @@ import requests
 class HTTPDumper(BaseDumper):
     """Dumper using HTTP protocol and "requests" library"""
 
+    VERIFY_CERT = True
+
     def prepare_client(self):
         self.client = requests.Session()
+        self.client.verify = self.__class__.VERIFY_CERT
 
     def need_prepare(self):
         return not self.client
@@ -530,7 +533,7 @@ class LastModifiedHTTPDumper(HTTPDumper):
         try:
             res = os.stat(localfile)
             local_lastmodified = int(res.st_mtime)
-        except FileNotFoundError:
+        except (FileNotFoundError,TypeError):
             return True # doesn't even exist, need to dump
         if remote_lastmodified > local_lastmodified:
             self.logger.debug("Remote file '%s' is newer (remote: %s, local: %s)" %

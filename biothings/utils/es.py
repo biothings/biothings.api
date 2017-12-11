@@ -660,6 +660,10 @@ def get_src_build_config():
     db = Database()
     return db[db.CONFIG.DATA_SRC_BUILD_CONFIG_COLLECTION]
 
+def get_data_plugin():
+    db = Database()
+    return db[db.CONFIG.DATA_PLUGIN_COLLECTION]
+
 def get_source_fullname(col_name):
     pass
 

@@ -104,6 +104,11 @@ def get_src_build_config(conn=None):
     return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_BUILD_COLLECTION + "_config"]
 
 @requires_config
+def get_data_plugin(conn=None):
+    conn = conn or get_hub_db_conn()
+    return conn[config.DATA_HUB_DB_DATABASE][config.DATA_PLUGIN_COLLECTION]
+
+@requires_config
 def get_target_conn():
     if config.DATA_TARGET_SERVER_USERNAME and config.DATA_TARGET_SERVER_PASSWORD:
         uri = "mongodb://{}:{}@{}:{}".format(config.DATA_TARGET_SERVER_USERNAME,
