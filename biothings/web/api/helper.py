@@ -5,7 +5,8 @@ import re
 from biothings.utils.web.analytics import GAMixIn
 from biothings.utils.web.tracking import StandaloneTrackingMixin
 from biothings.utils.common import is_str, is_seq
-from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
+from urllib.parse import urlencode, urlparse, urlunparse, parse_qs, unquote_plus
+
 try:
     from raven.contrib.tornado import SentryMixin
 except ImportError:
@@ -166,11 +167,19 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         self.set_header("Content-Type", "text/html; charset=utf-8")
         _link = self.request.full_url()
         d = urlparse(_link)
+        if 'metadata' in d.path:
+            _docs = self.web_settings.METADATA_DOCS_URL
+        elif 'query' in d.path:
+            _docs = self.web_settings.QUERY_DOCS_URL
+        else:
+            _docs = self.web_settings.ANNOTATION_DOCS_URL
         q = parse_qs(d.query)
         q.pop('format', None)
         d = d._replace(query=urlencode(q, True))
+        _link = urlunparse(d)
         self.write(self.web_settings.HTML_OUT_TEMPLATE.format(data=json.dumps(data), 
-            img_src=self.web_settings.HTML_OUT_HEADER_IMG, link=urlunparse(d), title_html=self.web_settings.HTML_OUT_TITLE))
+            img_src=self.web_settings.HTML_OUT_HEADER_IMG, link=_link, link_decode=unquote_plus(_link),
+            title_html=self.web_settings.HTML_OUT_TITLE, docs_link=_docs))
         return
         
     def return_json(self, data, encode=True, indent=None, status_code=200, _format='json'):

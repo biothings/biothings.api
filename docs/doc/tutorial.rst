@@ -13,3 +13,8 @@ Multiple data sources, with automated source updating
 -----------------------------------------------------
 
 A tutorial describing the creation of a taxonomy API that integrates multiple data sources, and automatically keeps them up-to-date can be found `here <multiple_sources_tutorial.html>`_.
+
+Standalone instances
+--------------------
+
+A guide explaining how to use our Docker images to run a Biothings API on your own hardware, as a standalone instance, can be found `here <standalone.html>`_.

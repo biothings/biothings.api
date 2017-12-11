@@ -225,3 +225,6 @@ HIPCHAT_MESSAGE_FORMAT=None
 # For format=html
 HTML_OUT_HEADER_IMG = "//:0"
 HTML_OUT_TITLE = "<p>MyBioThing.info</p>"
+METADATA_DOCS_URL = "javascript:;"
+QUERY_DOCS_URL = "javascript:;"
+ANNOTATION_DOCS_URL = "javascript:;"
