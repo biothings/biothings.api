@@ -164,8 +164,11 @@ class BaseDiffer(object):
             metadata["_meta"] = self.get_metadata()
             metadata["build_config"] = new_doc.get("build_config")
 
-        ## dump it here for minimum information, in case we don't go further
-        #json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
+        # dump it here for minimum information, in case we don't go further
+        # "post" doesn't update metadata so don't dump metadata if it hasn't changed
+        # avoiding loosing information in this case
+        if steps != ["post"]:
+            json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
 
         got_error = False
         if "mapping" in steps:
