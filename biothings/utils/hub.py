@@ -221,11 +221,14 @@ class HubSSHServer(asyncssh.SSHServer):
         return True
 
     def password_auth_supported(self):
-        return False
+        return True
 
     def validate_password(self, username, password):
-        pw = self.__class__.PASSWORDS.get(username, '*')
-        return crypt.crypt(password, pw) == pw
+        if self.password_auth_supported():
+            pw = self.__class__.PASSWORDS.get(username, '*')
+            return crypt.crypt(password, pw) == pw
+        else:
+            return False
 
 
 @asyncio.coroutine
