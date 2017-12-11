@@ -7,7 +7,7 @@ from functools import partial
 import inspect
 
 from biothings.utils.hub_db import get_data_plugin
-from biothings.utils.common import timesofar, rmdashfr
+from biothings.utils.common import timesofar, rmdashfr, uncompressall
 from biothings.utils.loggers import HipchatHandler
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
 from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER, \
@@ -94,12 +94,18 @@ class BaseAssistant(object):
                 raise AssistantException("No dumper class registered to handle scheme '%s'" % split.scheme)
             confdict = getattr(self,"_dict_for_%s" % split.scheme)(durl)
             k = type("AssistedDumper_%s" % self.plugin_name,(AssistedDumper,dumper_class,),confdict)
+            if manifest["dumper"].get("uncompress"):
+                k.UNCOMPRESS = True
             self.__class__.dumper_manager.register_classes([k])
             # register class in module so it can be pickled easily
             sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedDumper_%s" % self.plugin_name] = k
 
 class AssistedDumper(object):
-    pass
+    UNCOMPRESS = False
+    def post_dump(self, *args, **kwargs):
+        if self.__class__.UNCOMPRESS:
+            self.logger.info("Uncompress all archive files in '%s'" % self.new_data_folder)
+            uncompressall(self.new_data_folder)
 
 
 class GithubAssistant(BaseAssistant):

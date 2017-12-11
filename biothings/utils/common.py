@@ -627,6 +627,12 @@ def gunzipall(folder,pattern="*.gz"):
             logging.info("Done gunzip '%s'" % gz.name)
         fout.close()
 
+def uncompressall(folder):
+    """Try to uncompress any known archive files in folder"""
+    unzipall(folder)
+    untargzall(folder)
+    gunzipall(folder)
+
 def md5sum(fname):
     hash_md5 = hashlib.md5()
     with open(fname, "rb") as f:
