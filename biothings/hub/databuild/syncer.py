@@ -151,18 +151,19 @@ class BaseSyncer(object):
             if selfcontained:
                 # selfconained is a worker param, isolate diff format
                 diff_type = diff_type.replace("-selfcontained","").replace("-","_")
-            diff_files = [os.path.join(diff_folder,e["name"]) for e in meta["diff"]["files"]]
+            diff_files = [(os.path.join(diff_folder,e["name"]),e.get("worker_args",{})) for e in meta["diff"]["files"]]
             total = len(diff_files)
             self.logger.info("Syncing %s to %s using diff files in '%s'" % (old_db_col_names,new_db_col_names,diff_folder))
             pinfo["step"] = "content"
-            for diff_file in diff_files:
+            for diff_file,worker_args in diff_files:
                 cnt += 1
                 pinfo["description"] = "file %s (%s/%s)" % (diff_file,cnt,total)
                 worker = getattr(sys.modules[self.__class__.__module__],"sync_%s_%s_worker" % \
                         (self.target_backend,diff_type))
-                self.logger.info("Creating sync worker %s for file %s (%s/%s)" % (worker.__name__,diff_file,cnt,total))
+                strwargs = worker_args and " using specific worker args %s" % repr(worker_args) or ""
+                self.logger.info("Creating sync worker %s for file %s (%s/%s)%s" % (worker.__name__,diff_file,cnt,total,strwargs))
                 job = yield from self.job_manager.defer_to_process(pinfo,
-                        partial(worker, diff_file, old_db_col_names, new_db_col_names, batch_size, cnt,
+                        partial(worker, diff_file, old_db_col_names, new_db_col_names, worker_args.get("batch_size") or batch_size, cnt,
                             force, selfcontained, meta))
                 jobs.append(job)
             def synced(f):
