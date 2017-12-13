@@ -4,7 +4,7 @@ import urllib.parse, requests
 from datetime import datetime
 import asyncio
 from functools import partial
-import inspect
+import inspect, importlib
 
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.common import timesofar, rmdashfr, uncompressall
@@ -16,7 +16,13 @@ from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER, \
 from biothings.utils.manager import BaseSourceManager
 from biothings.hub.dataload.uploader import set_pending_to_upload
 from biothings.hub.dataload.dumper import LastModifiedHTTPDumper
+from biothings.hub.dataload.uploader import BaseSourceUploader
+from biothings.hub.dataload.storage import IgnoreDuplicatedStorage, BasicStorage
 from biothings.hub.dataplugin.manager import GitDataPlugin
+
+# register data plugin folder in python path so we can import
+# plugins (sub-folders) as packages
+sys.path.insert(0,DATA_PLUGIN_FOLDER)
 
 class AssistantException(Exception):
     pass
@@ -27,6 +33,7 @@ class BaseAssistant(object):
     plugin_type = None # to be defined in subblass
     data_plugin_manager = None # set by assistant manager
     dumper_manager = None # set by assistant manager
+    uploader_manager = None # set by assistant manager
     # should match a _dict_for_***
     dumper_registry = {"http"  : LastModifiedHTTPDumper,
                        "https" : LastModifiedHTTPDumper}
@@ -86,19 +93,49 @@ class BaseAssistant(object):
                     (p["plugin"]["url"],df))
 
     def interpret_manifest(self, manifest):
-        if manifest.get("dumper") and manifest["dumper"].get("data_url"):
-            durl = manifest["dumper"]["data_url"]
-            split = urllib.parse.urlsplit(self.url)
-            dumper_class = self.dumper_registry.get(split.scheme)
-            if not dumper_class:
-                raise AssistantException("No dumper class registered to handle scheme '%s'" % split.scheme)
-            confdict = getattr(self,"_dict_for_%s" % split.scheme)(durl)
-            k = type("AssistedDumper_%s" % self.plugin_name,(AssistedDumper,dumper_class,),confdict)
-            if manifest["dumper"].get("uncompress"):
-                k.UNCOMPRESS = True
-            self.__class__.dumper_manager.register_classes([k])
-            # register class in module so it can be pickled easily
-            sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedDumper_%s" % self.plugin_name] = k
+        # dumper section: generate 
+        if manifest.get("dumper"):
+            if manifest["dumper"].get("data_url"):
+                durl = manifest["dumper"]["data_url"]
+                split = urllib.parse.urlsplit(self.url)
+                dumper_class = self.dumper_registry.get(split.scheme)
+                if not dumper_class:
+                    raise AssistantException("No dumper class registered to handle scheme '%s'" % split.scheme)
+                confdict = getattr(self,"_dict_for_%s" % split.scheme)(durl)
+                k = type("AssistedDumper_%s" % self.plugin_name,(AssistedDumper,dumper_class,),confdict)
+                if manifest["dumper"].get("uncompress"):
+                    k.UNCOMPRESS = True
+                self.__class__.dumper_manager.register_classes([k])
+                # register class in module so it can be pickled easily
+                sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedDumper_%s" % self.plugin_name] = k
+            else:
+                raise AssistantException("Invalid manifest, expecting 'data_url' key in 'dumper' section")
+        if manifest.get("uploader"):
+            if manifest["uploader"].get("parser"):
+                try:
+                    mod,func = manifest["uploader"].get("parser").split(":")
+                except ValueError as e:
+                    raise AssistantException("'parser' must be defined as 'module:parser_func' but got: '%s'" % \
+                            manifest["uploader"]["parser"])
+                try:
+                    modpath = self.plugin_name + "." + mod
+                    pymod = importlib.import_module(modpath)
+                    # reload in case we need to refresh plugin's code
+                    importlib.reload(pymod)
+                    assert func in dir(pymod)
+                    parser_func = getattr(pymod,func)
+                    storage_class = manifest["uploader"].get("ignore_duplicates") \
+                            and IgnoreDuplicatedStorage or BasicStorage
+                    confdict = {"name":self.plugin_name,"storage_class":storage_class, "parser_func":parser_func}
+                    k = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,),confdict)
+                    self.__class__.uploader_manager.register_classes([k])
+                    # register class in module so it can be pickled easily
+                    sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedUploader_%s" % self.plugin_name] = k
+                except Exception as e:
+                    logging.exception("Error loading plugin: %s" % e)
+                    raise AssistantException("Can't interpret manifest: %s" % e)
+            else:
+                raise AssistantException("Invalid manifest, expecting 'parser' key in 'uploader' section")
 
 class AssistedDumper(object):
     UNCOMPRESS = False
@@ -107,6 +144,12 @@ class AssistedDumper(object):
             self.logger.info("Uncompress all archive files in '%s'" % self.new_data_folder)
             uncompressall(self.new_data_folder)
 
+class AssistedUploader(BaseSourceUploader):
+    storage_class = None
+    parser_func = None
+    def load_data(self,data_folder):
+        self.logger.info("Load data from directory: '%s'" % data_folder)
+        return self.__class__.parser_func(data_folder)
 
 class GithubAssistant(BaseAssistant):
 
@@ -132,10 +175,12 @@ class AssistantManager(BaseSourceManager):
 
     ASSISTANT_CLASS = BaseAssistant
 
-    def __init__(self, data_plugin_manager, dumper_manager, *args, **kwargs):
+    def __init__(self, data_plugin_manager, dumper_manager, uploader_manager,
+                 *args, **kwargs):
         super(AssistantManager,self).__init__(*args,**kwargs)
         self.data_plugin_manager = data_plugin_manager
         self.dumper_manager = dumper_manager
+        self.uploader_manager = uploader_manager
 
     def create_instance(self, klass, url):
         logging.debug("Creating new %s instance" % klass.__name__)
@@ -148,6 +193,7 @@ class AssistantManager(BaseSourceManager):
         for klass in klasses:
             klass.data_plugin_manager = self.data_plugin_manager
             klass.dumper_manager = self.dumper_manager
+            klass.uploader_manager = self.uploader_manager
             self.register[klass.plugin_type] = klass
 
     def submit(self,url):
