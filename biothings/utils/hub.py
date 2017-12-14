@@ -155,7 +155,10 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
                                                            "cmd" : line}
                         self.__class__.job_cnt += 1
                     else:
-                        self._chan.write(pformat(r.result) + '\n')
+                        if type(r.result) == str:
+                            self._chan.write(r.result + '\n')
+                        else:
+                            self._chan.write(pformat(r.result) + '\n')
         if self.__class__.running_jobs:
             finished = []
             for num,info in sorted(self.__class__.running_jobs.items()):
