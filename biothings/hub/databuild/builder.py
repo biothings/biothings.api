@@ -926,21 +926,26 @@ class BuilderManager(BaseManager):
         info = self.src_build_config.find_one({"_id":build_name})
         return info and info["sources"] or []
 
-    def whatsnew(self,old=None):
+    def whatsnew(self, build_name=None, old=None):
         """
         Return datasources which have changed since last time
         (last time is datasource information from metadata, either from
         given old src_build doc name, or the latest found if old=None)
         """
+        if build_name is None and old is None:
+            raise ValueError("Either a build document ID to compare with (old=...), or at least a " + \
+                             "build name to look for the latest one (build_name=...)")
         dbbuild = get_src_build()
         dbdump = get_src_dump()
         if old is None:
             # TODO: this will get big... but needs to be generic 
             # because we handle different hub db backends (or it needs to be a 
             # specific helper func to be defined all backends
-            builds = dbbuild.find()
+            builds = dbbuild.find({"build_config.name": build_name})
             builds = sorted(builds,key=lambda e: e["started_at"])
             old = builds[-1]
+        else:
+            old = dbbuild.find_one({"_id":old})
         meta_srcs = old.get("_meta",{}).get("src",{})
         new = {"old_build" : old["_id"],"src_version":{}}
         for src_name,data in meta_srcs.items():
