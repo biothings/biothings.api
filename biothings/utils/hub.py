@@ -9,7 +9,7 @@ import types, aiocron, time
 from functools import partial
 from IPython import InteractiveShell
 import psutil
-from pprint import pprint
+from pprint import pprint, pformat
 from collections import OrderedDict
 
 from biothings import config
@@ -141,7 +141,7 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
                 if r.result is None:
                     self.origout.write("OK: %s\n" % repr(r.result))
                     self.buf.seek(0)
-                    self._chan.write(self.buf.read())
+                    self._chan.write(pformat(self.buf.read()))
                     # clear buffer
                     self.buf.seek(0)
                     self.buf.truncate()
@@ -155,7 +155,7 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
                                                            "cmd" : line}
                         self.__class__.job_cnt += 1
                     else:
-                        self._chan.write(str(r.result) + '\n')
+                        self._chan.write(pformat(r.result) + '\n')
         if self.__class__.running_jobs:
             finished = []
             for num,info in sorted(self.__class__.running_jobs.items()):

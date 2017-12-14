@@ -926,6 +926,29 @@ class BuilderManager(BaseManager):
         info = self.src_build_config.find_one({"_id":build_name})
         return info and info["sources"] or []
 
+    def whatsnew(self,old=None):
+        """
+        Return datasources which have changed since last time
+        (last time is datasource information from metadata, either from
+        given old src_build doc name, or the latest found if old=None)
+        """
+        dbbuild = get_src_build()
+        dbdump = get_src_dump()
+        if old is None:
+            # TODO: this will get big... but needs to be generic 
+            # because we handle different hub db backends (or it needs to be a 
+            # specific helper func to be defined all backends
+            builds = dbbuild.find()
+            builds = sorted(builds,key=lambda e: e["started_at"])
+            old = builds[-1]
+        meta_srcs = old.get("_meta",{}).get("src",{})
+        new = {"old_build" : old["_id"],"src_version":{}}
+        for src_name,data in meta_srcs.items():
+            srcd = dbdump.find_one({"_id":src_name})
+            if srcd and srcd.get("release") and srcd["release"] != data["version"]:
+                new["src_version"][src_name] = {"old":data["version"],"new":srcd["release"]}
+        return new
+
     def clean_temp_collections(self,build_name,date=None,prefix=''):
         """
         Delete all target collections created from builder named
