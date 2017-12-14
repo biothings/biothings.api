@@ -141,7 +141,7 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
                 if r.result is None:
                     self.origout.write("OK: %s\n" % repr(r.result))
                     self.buf.seek(0)
-                    self._chan.write(pformat(self.buf.read()))
+                    self._chan.write(self.buf.read())
                     # clear buffer
                     self.buf.seek(0)
                     self.buf.truncate()
