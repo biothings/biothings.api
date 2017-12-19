@@ -718,8 +718,9 @@ class UploaderManager(BaseSourceManager):
             else:
                 return None
         res = []
-        for _id in src_ids:
-            src = src_dump.find_one({"_id":_id}) or {}
+        cur = src_dump.find({"_id":{"$in":src_ids}})
+        for src in cur:
+            _id = src["_id"]
             uploaders = self.register[_id]
             src.setdefault("upload",{})
             for uploader in uploaders:
@@ -733,7 +734,12 @@ class UploaderManager(BaseSourceManager):
             src["name"] = _id
             res.append(src)
         if source:
-            return res.pop()
+            if res:
+                return res.pop()
+            else:
+                # no information, just return what was passed to honor return type
+                # + minimal information
+                return {"name":source}
         else:
             return res
 

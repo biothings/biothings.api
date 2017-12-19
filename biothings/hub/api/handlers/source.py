@@ -75,16 +75,18 @@ class SourceHandler(BaseHandler):
                     sources[src["name"]] = self.sumup_source(src)
         # complete with uploader info
         if um:
+            srcs = um.source_info()
+            dsrcs = dict([(src["name"],src) for src in srcs])
             for src_name in um.register.keys():
                 # collection-only source don't have dumpers and only exist in
                 # the uploader manager
-                up_info = um.source_info(src_name)
+                up_info = dsrcs.get(src_name,{"name":src_name})
                 if not src_name in dm.register:
                     sources[src_name] = self.sumup_source(up_info)
-                for subname in up_info["upload"]["jobs"]:
-                    sources[up_info["name"]].setdefault("upload",{}).setdefault(subname,{})
-                    sources[up_info["name"]]["upload"][subname]["uploader"] = up_info["upload"]["jobs"][subname]["uploader"]
-
+                if up_info.get("upload"):
+                    for subname in up_info["upload"].get("jobs",{}):
+                        sources[up_info["name"]].setdefault("upload",{}).setdefault(subname,{})
+                        sources[up_info["name"]]["upload"][subname]["uploader"] = up_info["upload"]["jobs"][subname]["uploader"]
 
         return list(sources.values())
 
