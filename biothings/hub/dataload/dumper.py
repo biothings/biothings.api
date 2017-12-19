@@ -382,17 +382,24 @@ class BaseDumper(object):
         self.logger.info("%d file(s) to download" % len(self.to_dump))
         # should downloads be throttled ?
         max_dump = self.__class__.MAX_PARALLEL_DUMP and asyncio.Semaphore(self.__class__.MAX_PARALLEL_DUMP)
+        got_error = None
         jobs = []
         state = self.unprepare()
         for todo in self.to_dump:
             remote = todo["remote"]
             local = todo["local"]
-            def done(job):
-                nonlocal max_dump
-                if max_dump:
-                    #self.logger.debug("Releasing download semaphore: %s" % max_dump)
-                    max_dump.release()
-                self.post_download(remote,local)
+            def done(f):
+                try:
+                    res = f.result()
+                    nonlocal max_dump
+                    nonlocal got_error
+                    if max_dump:
+                        #self.logger.debug("Releasing download semaphore: %s" % max_dump)
+                        max_dump.release()
+                    self.post_download(remote,local)
+                except Exception as e:
+                    self.logger.exception("Error downloading '%s': %s" % (remote,e))
+                    got_error = e
             pinfo = self.get_pinfo()
             pinfo["step"] = "dump"
             pinfo["description"] = remote
@@ -403,6 +410,8 @@ class BaseDumper(object):
             job.add_done_callback(done)
             jobs.append(job)
         yield from asyncio.gather(*jobs)
+        if got_error:
+            raise got_error
         self.logger.info("%s successfully downloaded" % self.SRC_NAME)
         self.to_dump = []
 
