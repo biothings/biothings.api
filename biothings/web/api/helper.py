@@ -4,7 +4,7 @@ import tornado.web
 import re
 from biothings.utils.web.analytics import GAMixIn
 from biothings.utils.web.tracking import StandaloneTrackingMixin
-from biothings.utils.common import is_str, is_seq
+from biothings.utils.common import is_str, is_seq, split_ids
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qs, unquote_plus
 
 try:
@@ -102,7 +102,8 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
                     ret = []
                     #raise BiothingParameterTypeError('Could not listify "{}" in parameter "{}" with "jsoninput" True'.format(argval, arg))
             if not ret:
-                ret = [x for x in re.split(getattr(self.web_settings, 'LIST_SPLIT_REGEX', '[\s\r\n+|,]+'), argval) if x]
+                ret = split_ids(argval)
+                #ret = [x for x in re.split(getattr(self.web_settings, 'LIST_SPLIT_REGEX', '[\s\r\n+|,]+'), argval) if x]
             ret = ret[:self.kwarg_settings[arg].get('max', getattr(self.web_settings, 'LIST_SIZE_CAP', 1000))]
         elif self.kwarg_settings[arg]['type'] == int:
             try:
