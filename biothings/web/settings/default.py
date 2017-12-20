@@ -97,7 +97,7 @@ STATUS_CHECK = {
 ANNOTATION_GET_CONTROL_KWARGS = {'raw': {'default': False, 'type': bool}, 
                                  'rawquery': {'default': False, 'type': bool},
                                  'out_format': {'default': 'json', 'type': str, 'alias':'format'}}
-ANNOTATION_GET_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 100, 'alias': ['fields', 'filter']}}
+ANNOTATION_GET_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 500, 'alias': ['fields', 'filter']}}
 ANNOTATION_GET_ESQB_KWARGS = {}
 ANNOTATION_GET_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool}, 
                                    'jsonld': {'default': False, 'type': bool},
@@ -108,7 +108,7 @@ ANNOTATION_POST_CONTROL_KWARGS = {'raw': {'default': False, 'type': bool},
                                   'rawquery': {'default': False, 'type': bool},
                                   'ids': {'default': None, 'type': list, 'max': 1000},
                                   'out_format': {'default': 'json', 'type': str, 'alias': 'format'}}
-ANNOTATION_POST_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 100, 'alias': ['fields', 'filter']}}
+ANNOTATION_POST_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 500, 'alias': ['fields', 'filter']}}
 ANNOTATION_POST_ESQB_KWARGS = {}
 ANNOTATION_POST_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool},
                                     'jsonld': {'default': False, 'type': bool},
@@ -125,7 +125,7 @@ QUERY_GET_CONTROL_KWARGS = {'raw': {'default': False, 'type': bool},
                             'scroll_id': {'default': None, 'type': str},
                             'fetch_all': {'default': False, 'type': bool},
                             'out_format': {'default': 'json', 'type': str, 'alias': 'format'}}
-QUERY_GET_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 100, 'alias': ['fields', 'filter']},
+QUERY_GET_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 500, 'alias': ['fields', 'filter']},
                        'from': {'default': None, 'type': int, 'alias': 'skip'},
                        'size': {'default': None, 'type': int, 'alias': 'limit'},
                        'explain': {'default': None, 'type': bool},
@@ -143,7 +143,7 @@ QUERY_POST_CONTROL_KWARGS = {'q': {'default': None, 'type': list},
                              'raw': {'default': False, 'type': bool},
                              'rawquery': {'default': False, 'type': bool},
                              'out_format': {'default': 'json', 'type': str, 'alias': 'format'}}
-QUERY_POST_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 100, 'alias': ['fields', 'filter']},
+QUERY_POST_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 500, 'alias': ['fields', 'filter']},
                         'size': {'default': None, 'type': int}}
 QUERY_POST_ESQB_KWARGS = {'scopes': {'default': None, 'type': list, 'max': 100, 
                             'translations': [
