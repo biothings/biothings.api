@@ -228,12 +228,11 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
                 outs = [out for out in self.shell.eval(line) if out]
                 # trailing \n if not already there
                 if outs:
-                    self._chan.write("\n".join(outs).strip() + "\n")
+                    self._chan.write("\n".join(outs).strip("\n") + "\n")
             except AlreadyRunningException as e:
                 self._chan.write("AlreadyRunningException: %s" % e)
             except CommandError as e:
                 self._chan.write("CommandError: %s" % e)
-            
         self._chan.write('hub> ')
         # consume passed commands
         self._input = lines[-1]

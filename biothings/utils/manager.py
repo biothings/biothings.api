@@ -621,15 +621,15 @@ class JobManager(object):
 
     def extract_worker_info(self, worker):
         info = OrderedDict()
-        proc = worker.get("process",{})
+        proc = worker.get("process",worker)
         err = worker.get("err") and " !" or ""
         info["pid"] = str(worker["job"]["id"]) + err
         info["source"] = norm(worker["job"].get("source") or "",25)
         info["category"] = norm(worker["job"].get("category") or "",10)
         info["step"] = norm(worker["job"].get("step") or "",20)
         info["description"] = norm(worker["job"].get("description") or "",30)
-        info["mem"] = proc.get("mem","")
-        info["cpu"] = "%.1f%%" % proc.get("cpu",0.0)
+        info["mem"] = sizeof_fmt(proc.get("memory",{}).get("size",0.0))
+        info["cpu"] = "%.1f%%" % proc.get("cpu",{}).get("percent",0.0)
         info["started_at"] = worker["job"]["started_at"]
         if worker.get("duration"):
             info["duration"] = worker["duration"]
@@ -665,6 +665,8 @@ class JobManager(object):
                     out.append(pformat(info))
 
             return "\n".join(out)
+        else:
+            return ""
 
     def print_pending_info(self,num,info):
         assert type(info) == dict
@@ -839,13 +841,13 @@ class JobManager(object):
         run = False
         pid = None
         child = None
-        if action:
-            try:
-                # want to see details for a specific process ?
-                pid = int(action)
-                child = [p for p in pchildren if p.pid == pid][0]
-            except ValueError:
-                pass
+        #if action:
+        #    try:
+        #        # want to see details for a specific process ?
+        #        pid = int(action)
+        #        child = [p for p in pchildren if p.pid == pid][0]
+        #    except ValueError:
+        #        pass
         pworkers = self.get_pid_files(child)
         tworkers = self.get_thread_files()
         done_jobs = glob.glob(os.path.join(config.RUN_DIR,"done","*.pickle"))
@@ -860,8 +862,8 @@ class JobManager(object):
             res = self.get_summary()
             pworkers = dict([(pid,proc) for pid,proc in res["process"]["all"].items() if pid in res["process"]["running"]])
             tworkers = dict([(tid,thread) for tid,thread in res["thread"]["all"].items() if tid in res["thread"]["running"]])
-            self.print_workers(pworkers)
-            self.print_workers(tworkers)
+            out.append(self.print_workers(pworkers))
+            out.append(self.print_workers(tworkers))
             out.append("%d running job(s)" % (len(pworkers) + len(tworkers)))
             out.append("%s, type 'top(pending)' for more" % self.get_pending_summary())
             if done_jobs:
