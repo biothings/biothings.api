@@ -1,4 +1,4 @@
-import inspect, types
+import inspect, types, logging
 import asyncio
 
 import tornado.web
@@ -7,9 +7,10 @@ from biothings.hub.api.handlers.hub import HubHandler, StatsHandler
 from biothings.hub.api.handlers.manager import ManagerHandler
 from biothings.hub.api.handlers.source import SourceHandler, DumpSourceHandler, \
                                               UploadSourceHandler
+from biothings.utils.hub import CompositeCommand, CommandInformation
 
-def generate_handler(name, command, method):
-    method = method.lower()
+
+def generate_endpoint_for_callable(name, command, method):
     try:
         specs = inspect.getfullargspec(command)
     except TypeError as e:
@@ -29,46 +30,84 @@ def generate_handler(name, command, method):
     # generate a wrapper over the passed command
     strcode = """
 @asyncio.coroutine
-def %s(self):
+def %(method)s(self):
     cmdargs = {}
-    for arg in %s:
+    for arg in %(args)s:
         try:
-            defarg = %s[arg]
+            defarg = %(defaultargs)s[arg]
             cmdargs[arg] = self.get_argument(arg,defarg)
         except KeyError:
             cmdargs[arg] = self.get_argument(arg)
-    #print(cmdargs)
+    # we don't pass though shell evaluation there
+    # to prevent security issue (injection)...
     res = command(**cmdargs)
-    self.write(res)
-""" % (method,args,defaultargs)
-    print(strcode)
+    # ... but we register the command in the shell to track it
+    cmdres = shell.register_command('''%(name)s''',res)
+    if type(cmdres) == CommandInformation:
+        # asyncio tasks unserializable
+        # but keep original one
+        cmdres = CommandInformation([(k,v) for k,v in cmdres.items() if k != 'jobs'])
+    self.write(cmdres)
+""" % {"method":method,"args":args,"defaultargs":defaultargs,"name":name}
+    return strcode
+
+def generate_endpoint_for_composite_command(name, command, method):
+    strcode = """
+@asyncio.coroutine
+def %(method)s(self):
+    # composite commands never take arguments
+    cmdres = shell.eval('''%(name)s()''',return_cmdinfo=True)
+    if type(cmdres) == CommandInformation:
+        # asyncio tasks unserializable
+        # but keep original one
+        cmdres = CommandInformation([(k,v) for k,v in cmdres.items() if k != 'jobs'])
+    self.write(cmdres)
+""" % {"method":method,"name":name}
+    return strcode
+
+def generate_endpoint_for_display(name, command, method):
+    strcode = """
+@asyncio.coroutine
+def %(method)s(self):
+    self.write(command)
+""" % {"method":method}
+    return strcode
+
+def generate_handler(shell, name, command, method):
+    method = method.lower()
+    if callable(command):
+        strcode = generate_endpoint_for_callable(name,command,method)
+    elif type(command) == CompositeCommand:
+        strcode = generate_endpoint_for_composite_command(name,command,method)
+    else:
+        strcode = generate_endpoint_for_display(name,command,method)
     # compile the code string and eval (link) to a globals() dict
     code = compile(strcode,"<string>","exec")
     command_globals = {}
-    eval(code,{"command":command,"asyncio":asyncio},command_globals)
+    endpoint_ns = {"command":command,"asyncio":asyncio,"shell":shell,"CommandInformation":CommandInformation}
+    eval(code,endpoint_ns,command_globals)
     methodfunc = command_globals[method]
     confdict = {method:methodfunc}
     klass = type("%s_handler" % name,(GenericHandler,),confdict)
     return klass
 
-def create_handlers(commands,command_methods,prefixes={}):
+def create_handlers(shell, commands, command_methods, command_prefixes={}):
     routes = []
     for cmdname, command in commands.items():
         method = command_methods.get(cmdname,"GET")
-        prefix = prefixes.get(cmdname,"")
+        prefix = command_prefixes.get(cmdname,"")
         try:
-            handler_class = generate_handler(cmdname,command,method)
-        except TypeError:
+            handler_class = generate_handler(shell,cmdname,command,method)
+        except TypeError as e:
+            logging.warning("Can't generate handler for '%s': %s" % (cmdname,e))
             continue
-        routes.append((r"%s/%s" % (prefix,cmdname),handler_class,{"managers":{}}))
+        routes.append((r"%s/%s" % (prefix,cmdname),handler_class,{"shell":shell}))
 
     return routes
 
-def generate_api_app(commands,command_methods,command_prefixes={},settings={}):
-    routes = create_handlers(commands,command_methods,command_prefixes)
-    app = tornado.web.Application(routes,settings=settings)
-    print(routes)
-    return app
+def generate_api_routes(shell, commands, command_methods, command_prefixes={},settings={}):
+    routes = create_handlers(shell,commands,command_methods,command_prefixes)
+    return routes
 
 #def get_api_app(managers, settings={}):
 #

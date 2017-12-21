@@ -111,7 +111,7 @@ app = get_api_app(managers=managers,shell=shell,settings=settings)
 from biothings.hub.autoupdate import BiothingsDumper, BiothingsUploader
 from biothings.utils.es import ESIndexer
 from biothings.utils.backend import DocESBackend
-from biothings.utils.hub import schedule, pending, done, HubCommand
+from biothings.utils.hub import schedule, pending, done, CompositeCommand
 from biothings.hub.api.handlers.hub import HubHandler
 
 
@@ -163,7 +163,7 @@ for s3_folder in s3_folders:
     umanager.register_classes([uploader_klass])
     # upload commands
     COMMANDS["apply%s" % cmdsuffix] = partial(umanager.upload_src,"biothings%s" % suffix)
-    COMMANDS["step_update%s" % cmdsuffix] = HubCommand("download%s() && apply%s()" % (cmdsuffix,cmdsuffix))
+    COMMANDS["step_update%s" % cmdsuffix] = CompositeCommand("download%s() && apply%s()" % (cmdsuffix,cmdsuffix))
     COMMANDS["update%s" % cmdsuffix] = partial(cycle_update,"biothings%s" % suffix)
 
 # Expose cycle_update function as a service

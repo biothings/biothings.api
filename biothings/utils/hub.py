@@ -33,10 +33,12 @@ LATEST = HUB_ENV and "%s-latest" % HUB_ENV or "latest"
 class AlreadyRunningException(Exception):pass
 class CommandError(Exception):pass
 
+class CommandInformation(dict): pass
+
 class HubShell(InteractiveShell):
 
     running_commands = {}
-    job_cnt = 1
+    cmd_cnt = 1
 
     def __init__(self):
         self.commands = {}
@@ -78,7 +80,7 @@ class HubShell(InteractiveShell):
             docstr = "\n" + pydoc.render_doc(func.func,title="Hub documentation: %s")
             docstr += "\nDefined et as a partial, with:\nargs:%s\nkwargs:%s\n" % (repr(func.args),repr(func.keywords))
             return docstr
-        elif isinstance(func,HubCommand):
+        elif isinstance(func,CompositeCommand):
             docstr = "\nComposite command:\n\n%s\n" % func
             return docstr
         else:
@@ -87,8 +89,33 @@ class HubShell(InteractiveShell):
             except ImportError:
                 return "\nHelp not available for this command\n"
 
-    def eval(self,line):
+    def register_command(self, cmd, result):
+        """
+        Register a command 'cmd' inside the shell (so we can keep track of it).
+        'result' is the original value that was returned when cmd was submitted.
+        Depending on the type, returns a cmd number (ie. result was an asyncio task
+        and we need to wait before getting the result) or directly the result of
+        'cmd' execution, returning, in that case, the output.
+        """
+
+        if type(result) == asyncio.tasks.Task or type(result) == asyncio.tasks._GatheringFuture or \
+                type(result) == asyncio.Future or \
+                type(result) == list and len(result) > 0 and type(result[0]) == asyncio.tasks.Task:
+            # it's asyncio related
+            result = type(result) != list and [result] or result
+            cmdnum = self.__class__.cmd_cnt
+            cmdinfo = CommandInformation(cmd=cmd,jobs=result,started_at=time.time(),id=cmdnum)
+            assert not cmdnum in self.__class__.running_commands
+            self.__class__.running_commands[cmdnum] = cmdinfo
+            self.__class__.cmd_cnt += 1
+            return cmdinfo
+        else:
+            # ... and it's not asyncio related, we can display it directly
+            return result
+
+    def eval(self, line, return_cmdinfo=False):
         line = line.strip()
+        origline = line # keep what's been originally entered
         # poor man's singleton...
         if line in [j["cmd"] for j in self.__class__.running_commands.values()]:
             raise AlreadyRunningException("Command '%s' is already running\n" % repr(line))
@@ -97,25 +124,25 @@ class HubShell(InteractiveShell):
         if m:
             cmd = m.groups()[0].strip()
             if cmd in self.commands and \
-                    isinstance(self.commands[cmd],HubCommand):
+                    isinstance(self.commands[cmd],CompositeCommand):
                 line = self.commands[cmd]
         # cmdline is the actual command sent to shell, line is the one displayed
         # they can be different if there's a preprocessing
         cmdline = line
-        # && jobs ? ie. chained jobs
+        # && cmds ? ie. chained cmds
         if "&&" in line:
-            chained_jobs = [cmd for cmd in map(str.strip,line.split("&&")) if cmd]
-            if len(chained_jobs) > 1:
+            chained_cmds = [cmd for cmd in map(str.strip,line.split("&&")) if cmd]
+            if len(chained_cmds) > 1:
                 # need to build a command with _and and using partial, meaning passing original func param
                 # to the partials
-                strjobs = []
-                for job in chained_jobs:
-                    func,args = re.match("(.*)\((.*)\)",job).groups()
+                strcmds = []
+                for one_cmd in chained_cmds:
+                    func,args = re.match("(.*)\((.*)\)",one_cmd).groups()
                     if args:
-                        strjobs.append("partial(%s,%s)" % (func,args))
+                        strcmds.append("partial(%s,%s)" % (func,args))
                     else:
-                        strjobs.append("partial(%s)" % func)
-                cmdline = "_and(%s)" % ",".join(strjobs)
+                        strcmds.append("partial(%s)" % func)
+                cmdline = "_and(%s)" % ",".join(strcmds)
             else:
                 raise CommandError("Using '&&' operator required two operands\n")
         logging.info("Run: %s " % repr(cmdline))
@@ -124,7 +151,9 @@ class HubShell(InteractiveShell):
         if not r.success:
             raise CommandError("%s\n" % repr(r.error_in_exec))
         else:
+            # command was a success, now get the results:
             if r.result is None:
+                # -> nothing special was returned, grab the stdout
                 self.buf.seek(0)
                 # from print stdout ?
                 b = self.buf.read()
@@ -133,16 +162,14 @@ class HubShell(InteractiveShell):
                 self.buf.seek(0)
                 self.buf.truncate()
             else:
-                if type(r.result) == asyncio.tasks.Task or type(r.result) == asyncio.tasks._GatheringFuture or \
-                        type(r.result) == asyncio.Future or \
-                        type(r.result) == list and len(r.result) > 0 and type(r.result[0]) == asyncio.tasks.Task:
-                    r.result = type(r.result) != list and [r.result] or r.result
-                    self.__class__.running_commands[self.__class__.job_cnt] = {"started_at" : time.time(),
-                                                       "jobs" : r.result,
-                                                       "cmd" : line}
-                    self.__class__.job_cnt += 1
+                # -> we have something returned...
+                res = self.register_command(cmd=origline,result=r.result)
+                if type(res) != CommandInformation:
+                    outputs.append(str(res))
                 else:
-                    outputs.append(str(r.result))
+                    if return_cmdinfo:
+                        return res
+
         if self.__class__.running_commands:
             finished = []
             for num,info in sorted(self.__class__.running_commands.items()):
@@ -451,7 +478,7 @@ def _and(*funcs):
     return all_res
 
 
-class HubCommand(str):
+class CompositeCommand(str):
     """
     Defines a composite hub commands, that is,
     a new command made of other commands. Useful to define
@@ -460,5 +487,5 @@ class HubCommand(str):
     def __init__(self,cmd):
         self.cmd = cmd
     def __str__(self):
-        return "<HubCommand: '%s'>" % self.cmd
+        return "<CompositeCommand: '%s'>" % self.cmd
 
