@@ -89,7 +89,6 @@ class SourceHandler(BaseHandler):
         return list(sources.values())
 
     def get_source(self,name,debug=False):
-        raise NotImplementedError()
         dm = self.managers.get("dump_manager")
         um = self.managers.get("upload_manager")
         m = dm or um # whatever available

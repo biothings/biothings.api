@@ -90,6 +90,10 @@ def cycle_update(src_name, version=LATEST, max_cycles=10):
 
     return asyncio.ensure_future(do(version))
 
+# shell shared between SSH console and web API
+from biothings.utils.hub import start_server, HubShell
+shell = HubShell()
+
 # assemble resources that need to be propagated to REST API
 # so API can query those objects (which are shared between the 
 # hub console and the REST API).
@@ -101,15 +105,15 @@ managers = {
         "syncer_manager" : syncer_manager,
         }
 settings = {'debug': True}
-app = get_api_app(managers=managers,settings=settings)
+app = get_api_app(managers=managers,shell=shell,settings=settings)
 
 
-from biothings.hub.autoupdate import BiothingsDumper
-from biothings.hub.autoupdate import BiothingsUploader
+from biothings.hub.autoupdate import BiothingsDumper, BiothingsUploader
 from biothings.utils.es import ESIndexer
 from biothings.utils.backend import DocESBackend
 from biothings.utils.hub import schedule, pending, done, HubCommand
 from biothings.hub.api.handlers.hub import HubHandler
+
 
 # Generate dumper, uploader classes dynamically according
 # to the number of "BIOTHINGS_S3_FOLDER" we need to deal with.
@@ -168,7 +172,7 @@ class CycleUpdateHandler(HubHandler):
     def post(self, name):
         cycle_update(name)
         self.write({"updating":name})
-app.add_handlers(r".*",[(r"/update/(\w+)", CycleUpdateHandler, {"managers":managers})])
+app.add_handlers(r".*",[(r"/update/(\w+)", CycleUpdateHandler, {"managers":managers, "shell":shell})])
 
 # admin/advanced
 EXTRA_NS = {
@@ -198,10 +202,9 @@ app_server = tornado.httpserver.HTTPServer(app)
 app_server.listen(config.HUB_API_PORT)
 app_server.start()
 
-from biothings.utils.hub import start_server
-
+shell.set_commands(COMMANDS,EXTRA_NS)
 server = start_server(loop, "Auto-hub",passwords=passwords,
-        port=config.HUB_SSH_PORT,commands=COMMANDS,extra_ns=EXTRA_NS)
+                      shell=shell, port=config.HUB_SSH_PORT)
 
 try:
     loop.run_until_complete(server)

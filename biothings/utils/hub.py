@@ -38,10 +38,18 @@ class HubShell(InteractiveShell):
     running_commands = {}
     job_cnt = 1
 
-    def __init__(self, commands, extra_ns):
+    def __init__(self):
+        self.commands = {}
+        self.extra_ns = {}
+        self.origout = sys.stdout
+        self.buf = io.StringIO()
+        #sys.stdout = self.buf
+        super(HubShell,self).__init__(user_ns=self.extra_ns)
+
+    def set_commands(self, commands, extra_ns={}):
         # update with ssh server default commands
-        self.commands = commands
-        self.extra_ns = extra_ns
+        self.commands.update(commands)
+        self.extra_ns.update(extra_ns)
         #self.extra_ns["cancel"] = self.__class__.cancel
         # for boolean calls
         self.extra_ns["_and"] = _and
@@ -51,10 +59,10 @@ class HubShell(InteractiveShell):
         # merge official/public commands with hidden/private to
         # make the whole available in shell's namespace
         self.extra_ns.update(self.commands)
-        self.origout = sys.stdout
-        self.buf = io.StringIO()
-        #sys.stdout = self.buf
-        super(HubShell,self).__init__(user_ns=self.extra_ns)
+        # Note: there's no need to update shell namespace as self.extra_ns
+        # has been passed by ref in __init__() so things get updated automagically
+        # (self.user_ns.update(...) can be used otherwise, self.user_ns is IPython
+        # internal namespace dict
 
     def help(self, func=None):
         """

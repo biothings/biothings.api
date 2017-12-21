@@ -5,16 +5,16 @@ from biothings.hub.api.handlers.source import SourceHandler, DumpSourceHandler, 
                                               UploadSourceHandler
 
 
-def get_api_app(managers, settings={}):
+def get_api_app(managers, shell, settings={}):
 
     routes = [
-            (r"/", HubHandler, {"managers":managers}),
-            (r"/stats", StatsHandler, {"managers":managers}),
+            (r"/", HubHandler, {"managers":managers,"shell":shell}),
+            (r"/stats", StatsHandler, {"managers":managers,"shell":shell}),
             # source
-            (r"/source/?", SourceHandler, {"managers":managers}),
-            (r"/source/(\w+)", SourceHandler, {"managers":managers}),
-            (r"/source/(\w+)/dump", DumpSourceHandler, {"managers":managers}),
-            (r"/source/(\w+)/upload", UploadSourceHandler, {"managers":managers}),
+            (r"/source/?", SourceHandler, {"managers":managers,"shell":shell}),
+            (r"/source/(?P<src>\w+)", SourceHandler, {"managers":managers,"shell":shell}),
+            (r"/source/(\w+)/dump", DumpSourceHandler, {"managers":managers,"shell":shell}),
+            (r"/source/(\w+)/upload", UploadSourceHandler, {"managers":managers,"shell":shell}),
             # manager
             (r"/manager/?", ManagerHandler, {"managers":managers}),
             (r"/manager/(\w+)", ManagerHandler, {"managers":managers}),
