@@ -161,15 +161,18 @@ class GithubAssistant(BaseAssistant):
         if headers.get("server").lower() == "github.com":
             return True
 
-    def handle(self):
-        assert self.__class__.data_plugin_manager, "Please set data_plugin_manager attribute"
+    def get_classdef(self):
         # generate class dynamically and register
         src_folder = os.path.join(DATA_PLUGIN_FOLDER, self.plugin_name)
         confdict = {"SRC_NAME":self.plugin_name,"GIT_REPO_URL":self.url,"SRC_ROOT_FOLDER":src_folder}
         # TODO: store confdict in hubconf collection
         k = type("AssistedGitDataPlugin_%s" % self.plugin_name,(GitDataPlugin,),confdict)
-        self.__class__.data_plugin_manager.register_classes([k])
+        return k
 
+    def handle(self):
+        assert self.__class__.data_plugin_manager, "Please set data_plugin_manager attribute"
+        klass = self.get_classdef()
+        self.__class__.data_plugin_manager.register_classes([klass])
 
 class AssistantManager(BaseSourceManager):
 
@@ -206,17 +209,33 @@ class AssistantManager(BaseSourceManager):
                 return inst
         return None
 
-    def register_url(self, url, force=False, **kwargs):
+    def unregister_url(self, url):
+        url = url.strip()
+        dp = get_data_plugin()
+        # should be only one but just in case
+        dp.delete_many({"plugin.url":url})
+        assistant = self.submit(url)
+        try:
+            self.data_plugin_manager.register.pop(assistant.plugin_name)
+        except KeyError:
+            raise AssistantException("Plugin '%s' is not registered" % url)
+        self.dumper_manager.register.pop(assistant.plugin_name,None)
+        self.uploader_manager.register.pop(assistant.plugin_name,None)
+
+    def register_url(self, url, **kwargs):
+        url = url.strip()
+        dp = get_data_plugin()
+        if dp.find_one({"plugin.url":url}):
+            raise AssistantException("Plugin '%s' already registered" % url)
         assistant = self.submit(url)
         if assistant:
             # register plugin info
-            dp = get_data_plugin()
             dp.update({"_id":assistant.plugin_name},
                     {"$set":{"plugin":{"url":url,"type":assistant.plugin_type,"active":True}}},
                     upsert=True)
             assistant.handle()
             job = self.data_plugin_manager.load(assistant.plugin_name)
-            assert len(job) == 1
+            assert len(job) == 1, "Expecting one job, got: %s" % job
             job = job.pop()
             def loaded(f):
                 try:
@@ -226,6 +245,7 @@ class AssistantManager(BaseSourceManager):
                 except Exception as e:
                     logging.exception("Unable to load plugin '%s': %s" % (assistant.plugin_name,e))
             job.add_done_callback(loaded)
+            return job
         else:
             raise AssistantException("Could not find any assistant able to handle URL '%s'" % url)
 
