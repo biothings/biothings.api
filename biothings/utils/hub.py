@@ -231,6 +231,11 @@ class HubSSHServer(asyncssh.SSHServer):
     def session_requested(self):
         return HubSSHServerSession(self.__class__.NAME,self.__class__.SHELL)
 
+    def connection_made(self, conn):
+         self._conn = conn
+         print('SSH connection received from %s.' %
+         conn.get_extra_info('peername')[0])
+
     def connection_lost(self, exc):
         if exc:
             print('SSH connection error: ' + str(exc), file=sys.stderr)
