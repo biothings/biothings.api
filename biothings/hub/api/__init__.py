@@ -32,12 +32,31 @@ def generate_endpoint_for_callable(name, command, method):
 @asyncio.coroutine
 def %(method)s(self):
     cmdargs = {}
+    if "%(method)s" != "get":
+        bodyargs = tornado.escape.json_decode(self.request.body)
     for arg in %(args)s:
+        mandatory = False
         try:
             defarg = %(defaultargs)s[arg]
-            cmdargs[arg] = self.get_argument(arg,defarg)
         except KeyError:
-            cmdargs[arg] = self.get_argument(arg)
+            mandatory = True
+            defarg = None
+        if "%(method)s" != "get":
+            try:
+                if mandatory:
+                    val = bodyargs[arg]
+                else:
+                    val = bodyargs.get(arg,defarg)
+                cmdargs[arg] = val
+            except KeyError:
+                raise tornado.web.HTTPError(400,reason="Bad Request (Missing argument " + arg + ")")
+        else:
+            # if not default arg and arg not passed, this will raise a 400 (by tornado)
+            if mandatory:
+                val = self.get_argument(arg)
+            else:
+                val = self.get_argument(arg,defarg)
+            cmdargs[arg] = val
     # we don't pass though shell evaluation there
     # to prevent security issue (injection)...
     res = command(**cmdargs)
@@ -80,11 +99,14 @@ def generate_handler(shell, name, command, method):
     elif type(command) == CompositeCommand:
         strcode = generate_endpoint_for_composite_command(name,command,method)
     else:
+        assert method == "get", "display endpoint needs a GET method for command '%s'" % name
         strcode = generate_endpoint_for_display(name,command,method)
     # compile the code string and eval (link) to a globals() dict
     code = compile(strcode,"<string>","exec")
     command_globals = {}
-    endpoint_ns = {"command":command,"asyncio":asyncio,"shell":shell,"CommandInformation":CommandInformation}
+    endpoint_ns = {"command":command,"asyncio":asyncio,
+                   "shell":shell,"CommandInformation":CommandInformation,
+                   "tornado":tornado}
     eval(code,endpoint_ns,command_globals)
     methodfunc = command_globals[method]
     confdict = {method:methodfunc}
