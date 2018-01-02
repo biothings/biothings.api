@@ -370,6 +370,7 @@ class BaseSourceUploader(object):
         post_update_data = "post" in steps
         clean_archives = "clean" in steps
         strargs = "[steps=%s]" % ",".join(steps)
+        cnt = None
         try:
             if not self.temp_collection_name:
                 self.make_temp_collection()
