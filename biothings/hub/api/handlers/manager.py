@@ -51,29 +51,9 @@ def diff_info(differ_manager):
     return {"tdb":True}
 
 
-def job_info(job_manager):
-    summary = job_manager.get_summary()
-    prunning = summary["process"]["running"]
-    trunning = summary["thread"]["running"]
-    ppending = summary["process"]["pending"]
-    tpending = summary["thread"]["pending"]
-    return {
-            "queue" : {
-                "process" : summary["process"],
-                "thread" : summary["thread"],
-                },
-            "memory" : summary["memory"],
-            "available_system_memory" : summary["available_system_memory"],
-            "max_memory_usage" : summary["max_memory_usage"],
-            "hub_pid" : summary["hub_pid"],
-            }
-
-
-
 class ManagerHandler(BaseHandler):
 
     info_map = {
-            JobManager : job_info,
             DumperManager : dump_info,
             UploaderManager : upload_info,
             BuilderManager : build_info,

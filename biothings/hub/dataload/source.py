@@ -1,18 +1,24 @@
 import asyncio
 import logging
 
+from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.dataload import to_boolean
+from biothings.utils.manager import BaseSourceManager
 
 
-class SourceManager(object):
+class SourceManager(BaseSourceManager):
     """
     Helper class to get information about a datasource,
     whether it has a dumper and/or uploaders associated.
     """
 
-    def __init__(self, dump_manager, upload_manager):
+    def __init__(self, source_list, dump_manager, upload_manager):
+        self.source_list = source_list
         self.dump_manager = dump_manager
         self.upload_manager = upload_manager
+        self.dump_manager.register_sources(self.source_list)
+        self.upload_manager.register_sources(self.source_list)
+        #self.register_sources(self.source_list)
 
     def sumup_source(self,src):
         """Return minimal info about src"""
@@ -70,42 +76,58 @@ class SourceManager(object):
     def get_sources(self,debug=False):
         dm = self.dump_manager
         um = self.upload_manager
+        ids = set(dm.register)
+        ids.update(um.register)
         sources = {}
-        if dm:
-            srcs = dm.source_info()
-            if debug:
-                for src in srcs:
-                    sources[src["name"]] = src
-            else:
-                for src in srcs:
-                    sources[src["name"]] = self.sumup_source(src)
-        # complete with uploader info
-        if um:
-            srcs = um.source_info()
-            dsrcs = dict([(src["name"],src) for src in srcs])
-            for src_name in um.register.keys():
-                # collection-only source don't have dumpers and only exist in
-                # the uploader manager
-                up_info = dsrcs.get(src_name,{"name":src_name})
-                if not src_name in dm.register:
-                    sources[src_name] = self.sumup_source(up_info)
-                if up_info.get("upload"):
-                    for subname in up_info["upload"].get("jobs",{}):
-                        sources[up_info["name"]].setdefault("upload",{}).setdefault(subname,{})
-                        sources[up_info["name"]]["upload"][subname]["uploader"] = up_info["upload"]["jobs"][subname]["uploader"]
+        bydsrcs = {}
+        byusrcs = {}
+        bydpsrcs = {}
+        plugins = get_data_plugin().find()
+        [bydsrcs.setdefault(src["_id"],src) for src in dm.source_info() if dm]
+        [byusrcs.setdefault(src["_id"],src) for src in um.source_info() if um]
+        [bydpsrcs.setdefault(src["_id"],src) for src in plugins]
+        for _id in ids:
+            # start with dumper info
+            if dm:
+                src = bydsrcs.get(_id)
+                if src:
+                    if debug:
+                        sources[src["name"]] = src
+                    else:
+                        sources[src["name"]] = self.sumup_source(src)
+            # complete with uploader info
+            if um:
+                src = byusrcs.get(_id)
+                if src:
+                    # collection-only source don't have dumpers and only exist in
+                    # the uploader manager
+                    if not src["_id"] in sources:
+                        sources[src["_id"]] = self.sumup_source(src)
+                    if src.get("upload"):
+                        for subname in src["upload"].get("jobs",{}):
+                            sources[src["name"]].setdefault("upload",{}).setdefault(subname,{})
+                            sources[src["name"]]["upload"][subname]["uploader"] = src["upload"]["jobs"][subname]["uploader"]
+            # deal with plugin info if any
+            dp = bydpsrcs.get(_id)
+            if dp:
+                dp.pop("_id")
+                sources.setdefault(_id,{"data_plugin": {}})
+                sources[_id]["data_plugin"] = dp 
 
         return list(sources.values())
 
     def get_source(self,name,debug=False):
         dm = self.dump_manager
         um = self.upload_manager
-        m = dm or um # whatever available
-        if m:
-            src = m.source_info(name)
-            if not src:
-                raise ValueError("No such datasource")
-            else:
-                return src
-        else:
-            raise ValueError("No manager available to fetch information")
+        dp = get_data_plugin().find_one({"_id":name})
+        src = {}
+        for m in [dm,um]:
+            if m:
+                dsrc = m.source_info(name)
+                if dsrc:
+                    src.update(dsrc)
+        if dp:
+            dp.pop("_id")
+            src["data_plugin"] = dp
 
+        return src

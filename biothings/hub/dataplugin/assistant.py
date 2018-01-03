@@ -222,7 +222,7 @@ class AssistantManager(BaseSourceManager):
         self.dumper_manager.register.pop(assistant.plugin_name,None)
         self.uploader_manager.register.pop(assistant.plugin_name,None)
 
-    def register_url(self, url, **kwargs):
+    def register_url(self, url):
         url = url.strip()
         dp = get_data_plugin()
         if dp.find_one({"plugin.url":url}):

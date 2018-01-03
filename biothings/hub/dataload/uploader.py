@@ -720,8 +720,10 @@ class UploaderManager(BaseSourceManager):
                 return None
         res = []
         cur = src_dump.find({"_id":{"$in":src_ids}})
-        for src in cur:
-            _id = src["_id"]
+        bysrcs = {}
+        [bysrcs.setdefault(src["_id"],src) for src in cur]
+        for _id in src_ids:
+            src = bysrcs.get(_id,{})
             uploaders = self.register[_id]
             src.setdefault("upload",{})
             for uploader in uploaders:

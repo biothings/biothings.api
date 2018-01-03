@@ -6,7 +6,7 @@ from functools import partial
 import inspect
 import subprocess
 
-from biothings.utils.hub_db import get_src_dump
+from biothings.utils.hub_db import get_src_dump, get_data_plugin
 from biothings.utils.common import timesofar, rmdashfr
 from biothings.utils.loggers import HipchatHandler
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
@@ -1025,5 +1025,13 @@ class DumperManager(BaseSourceManager):
             return res.pop()
         else:
             return res
+
+    def dump_info(self):
+        res = {}
+        for name,klasses in self.register.items():
+            res[name] = [klass.__name__ for klass in klasses]
+        return res
+
+
 
 
