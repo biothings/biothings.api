@@ -49,10 +49,6 @@ export default {
   mounted () {
     console.log("mounted");
     this.getJobSummary();
-    /*setInterval(function () {
-      console.log("on set interval" + this);
-      this.getJobSummary();
-    }.bind(this), 10000);*/
     setInterval(this.getJobSummary,10000);
   },
   data () {
@@ -63,18 +59,18 @@ export default {
   },
   methods: {
     getJobSummary: function() {
-      axios.get(axios.defaults.baseURL + '/manager/job_manager')
+      axios.get(axios.defaults.baseURL + '/job_manager')
       .then(response => {
-        this.job_manager = response.data.result.job_manager;
+        this.job_manager = response.data.result;
       })
       .catch(err => {
         console.log("Error getting job manager information: " + err);
       })
     },
     jobDetails: function() {
-      axios.get(axios.defaults.baseURL + '/manager/job_manager?detailed=1')
+      axios.get(axios.defaults.baseURL + '/job_manager?detailed=1')
       .then(response => {
-        this.job_manager = response.data.result.job_manager;
+        this.job_manager = response.data.result;
       })
       .catch(err => {
         console.log("Error getting job manager information: " + err);

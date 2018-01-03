@@ -46,14 +46,44 @@
         </button>
       </div>
       <div class="ui icon buttons right floated mini">
+        <button class="ui button"
+          v-on:click="unregister" v-if="source.data_plugin">
+          <i class="remove icon"></i>
+        </button>
+      </div>
+      <div class="ui icon buttons right floated mini">
         <button class="ui disabled button"><i class="configure icon"></i></button>
       </div>
     </div>
+
+    <div class="ui basic unregister modal" v-if="source.data_plugin">
+      <input class="plugin_url" type="hidden" :value="source.data_plugin.plugin.url">
+      <div class="ui icon header">
+        <i class="remove icon"></i>
+        Unregister data plugin
+      </div>
+      <div class="content">
+        <p>Are you sure you want to unregister and delete data plugin <b>{{source.name}}</b> ?</p>
+      </div>
+      <div class="actions">
+        <div class="ui red basic cancel inverted button">
+          <i class="remove icon"></i>
+          No
+        </div>
+        <div class="ui green ok inverted button">
+          <i class="checkmark icon"></i>
+          Yes
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <script>
-import axios from 'axios';
+import axios from 'axios'
+import bus from './bus.js'
+
 export default {
   name: 'data-source',
   props: ['source'],
@@ -67,7 +97,7 @@ export default {
       return errs.join("<br>");
     },
     dump: function() {
-      axios.post(axios.defaults.baseURL + '/source/' + this.source.name + "/dump")
+      axios.post(axios.defaults.baseURL + '/dump',{'src': this.source.name})
       .then(response => {
         console.log(response.data.result)
         this.$parent.getSourcesStatus();
@@ -77,7 +107,7 @@ export default {
       })
     },
     upload: function() {
-      axios.post(axios.defaults.baseURL + '/source/' + this.source.name + "/upload")
+      axios.post(axios.defaults.baseURL + '/upload',{'src': this.source.name})
       .then(response => {
         console.log(response.data.result)
         this.$parent.getSourcesStatus();
@@ -85,6 +115,25 @@ export default {
       .catch(err => {
         console.log("Error getting job manager information: " + err);
       })
+    },
+    unregister: function() {
+      $('.ui.basic.unregister.modal')
+        .modal("setting", {
+          onApprove: function () {
+            var url = $(this).find("input.plugin_url").val();
+            axios.post(axios.defaults.baseURL + '/unregister_url',{"url":url})
+            .then(response => {
+              console.log(response.data.result)
+              bus.$emit("refresh_sources");
+              return true;
+            })
+            .catch(err => {
+              console.log(err);
+              console.log("Error registering repository URL: " + err.data.error);
+            })
+          }
+        })
+        .modal("show");
     }
   },
 }
