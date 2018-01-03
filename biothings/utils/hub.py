@@ -165,7 +165,10 @@ class HubShell(InteractiveShell):
                 # -> we have something returned...
                 res = self.register_command(cmd=origline,result=r.result)
                 if type(res) != CommandInformation:
-                    outputs.append(pformat(res))
+                    if type(res) != str:
+                        outputs.append(pformat(res))
+                    else:
+                        outputs.append(res)
                 else:
                     if return_cmdinfo:
                         return res
