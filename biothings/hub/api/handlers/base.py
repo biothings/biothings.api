@@ -10,6 +10,9 @@ class DefaultHandler(RequestHandler):
     def set_default_headers(self):
         self.set_header('Access-Control-Allow-Origin','*')
         self.set_header('Content-Type', 'application/json')
+        # part of pre-flight requests
+        self.set_header('Access-Control-Allow-Methods','PUT, DELETE, POST, GET, OPTIONS')
+        self.set_header('Access-Control-Allow-Headers','Content-Type')
 
     def write(self,result):
         super(DefaultHandler,self).write(
@@ -17,10 +20,15 @@ class DefaultHandler(RequestHandler):
                  "status" : "ok"})
 
     def write_error(self,status_code, **kwargs):
+        self.set_status(status_code)
         super(DefaultHandler,self).write(
                 {"error":str(kwargs.get("exc_info",[None,None,None])[1]),
                  "status" : "error",
                  "code" : status_code})
+
+    # defined by default so we accept OPTIONS pre-flight requests
+    def options(self):
+        pass
 
 
 class BaseHandler(DefaultHandler):
@@ -42,8 +50,6 @@ class GenericHandler(DefaultHandler):
         self.write_error(405,exc_info=(None,"Method PUT not allowed",None))
     def delete(self):
         self.write_error(405,exc_info=(None,"Method DELETE not allowed",None))
-    def options(self):
-        self.write_error(405,exc_info=(None,"Method OPTIONS not allowed",None))
     def head(self):
         self.write_error(405,exc_info=(None,"Method HEAD not allowed",None))
 

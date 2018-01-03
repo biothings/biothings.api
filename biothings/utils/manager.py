@@ -873,6 +873,23 @@ class JobManager(object):
 
         return "\n".join(out)
 
+    def job_info(self):
+        summary = self.get_summary()
+        prunning = summary["process"]["running"]
+        trunning = summary["thread"]["running"]
+        ppending = summary["process"]["pending"]
+        tpending = summary["thread"]["pending"]
+        return {
+                "queue" : {
+                    "process" : summary["process"],
+                    "thread" : summary["thread"],
+                    },
+                "memory" : summary["memory"],
+                "available_system_memory" : summary["available_system_memory"],
+                "max_memory_usage" : summary["max_memory_usage"],
+                "hub_pid" : summary["hub_pid"],
+                }
+
 # just a helper to clean/prepare job's values printing
 def norm(value,maxlen):
     if len(value) > maxlen:

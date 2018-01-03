@@ -1019,6 +1019,7 @@ class DumperManager(BaseSourceManager):
                     "manual" : issubclass(dumper,ManualDumper),
                     }
             src["name"] = _id
+            src["_id"] = _id
             res.append(src)
         if source:
             return res.pop()

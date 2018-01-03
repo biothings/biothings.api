@@ -733,6 +733,7 @@ class UploaderManager(BaseSourceManager):
                 src["upload"].setdefault("jobs",{}).setdefault(uploader.name,{})
                 src["upload"]["jobs"][uploader.name]["uploader"] = upl
             src["name"] = _id
+            src["_id"] = _id
             res.append(src)
         if source:
             if res:
@@ -740,7 +741,7 @@ class UploaderManager(BaseSourceManager):
             else:
                 # no information, just return what was passed to honor return type
                 # + minimal information
-                return {"name":source}
+                return {"name":source,"_id":source}
         else:
             return res
 
