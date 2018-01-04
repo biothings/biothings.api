@@ -32,7 +32,7 @@
             </select>
           </div>
           <div class="required ten wide field">
-            <input type="text" id="repo_url" placeholder="Repository URL">
+            <input type="text" id="repo_url" placeholder="Repository URL" autofocus>
           </div>
         </div>
       </div>
@@ -121,7 +121,7 @@ export default {
       this.getSourcesStatus();
     }
   }
-}  
+}
 </script>
 
 <style>

@@ -1,5 +1,14 @@
 <template>
   <div class="ui center aligned tiny">
+    <!-- commands -->
+    <div class="ui small grey label"
+      data-tooltip="Number of running commands"
+      data-position="bottom center"
+      v-if="commands">
+      <i class="settings icon"></i>
+      <div class="detail">{{Object.keys(commands).length}}
+      </div>
+    </div>
     <!-- jobs (processes) -->
     <div class="ui small grey label"
       data-tooltip="Number of running processes"
@@ -49,11 +58,14 @@ export default {
   mounted () {
     console.log("mounted");
     this.getJobSummary();
+    this.getRunningCommands();
     setInterval(this.getJobSummary,10000);
+    setInterval(this.getRunningCommands,10000);
   },
   data () {
     return  {
-      job_manager : {},//"queue" : {"process":{},"thread":{}}},
+      job_manager : {},
+      commands : {},
       errors: [],
     }
   },
@@ -74,6 +86,15 @@ export default {
       })
       .catch(err => {
         console.log("Error getting job manager information: " + err);
+      })
+    },
+    getRunningCommands: function() {
+      axios.get(axios.defaults.baseURL + '/commands?running=1')
+      .then(response => {
+        this.commands = response.data.result;
+      })
+      .catch(err => {
+        console.log("Error getting runnings commands: " + err);
       })
     },
   }
