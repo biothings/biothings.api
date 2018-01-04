@@ -13,6 +13,7 @@ from pprint import pprint, pformat
 from collections import OrderedDict
 
 from biothings import config
+from biothings.utils.dataload import to_boolean
 logging = config.logger
 from biothings.utils.common import timesofar, sizeof_fmt
 import biothings.utils.aws as aws
@@ -213,7 +214,7 @@ class HubShell(InteractiveShell):
                     klass.pending_outputs.append("[%s] RUN {%s} %s" % (num,timesofar(info["started_at"]),info["cmd"]))
 
     @classmethod
-    def command_info(klass, id=None, is_done=None, failed=None):
+    def command_info(klass, id=None, running=None, failed=None):
         cmds = {}
         def jsonreadify(cmd):
             newcmd = copy.copy(cmd)
@@ -227,12 +228,39 @@ class HubShell(InteractiveShell):
                 raise CommandError("No such command with ID %s" % repr(id))
             except ValueError:
                 raise CommandError("Invalid ID %s" % repr(id))
+        if not running is None:
+            is_done = not to_boolean(running)
+        else:
+            is_done = None
+        if not failed is None:
+            failed = to_boolean(failed)
         for _id,cmd in klass.running_commands.items():
-            if (not is_done is None and cmd.get("is_done") == is_done) or \
-               (not failed is None and cmd.get("failed") == failed):
-                cmds[_id] = jsonreadify(cmd)
+            if not is_done is None:
+                # running or done commands (not both)
+                if cmd.get("is_done") == is_done:
+                    # done + failed (a failed command is always done btw)
+                    if not failed is None and cmd.get("is_done") == True:
+                        if cmd.get("failed") == failed:
+                            cmds[_id] = jsonreadify(cmd)
+                    else:
+                        # don't care if failed or not
+                        cmds[_id] = jsonreadify(cmd)
+                else:
+                    # If asked is_done=true, it means command _id has is_done=false
+                    # if we get there. So the command is sill running, so we don't
+                    # know if it failed or not, so no need to check failed there,
+                    # it's been handled above.
+                    # If asksed is_done=false, we don't need to check failed, 
+                    # same logic applies
+                    continue
             else:
-                cmds[_id] = jsonreadify(cmd)
+                # either running or done commands (both)
+                if not failed is None and cmd.get("is_done") == True:
+                    if cmd.get("failed") == failed:
+                        cmds[_id] = jsonreadify(cmd)
+                else:
+                    # don't care if failed or not
+                    cmds[_id] = jsonreadify(cmd)
 
         return cmds
 
