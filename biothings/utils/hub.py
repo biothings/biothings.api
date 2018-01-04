@@ -3,7 +3,7 @@
 # To run this program, the file ``ssh_host_key`` must exist with an SSH
 # private key in it to use as a server host key.
 
-import os, glob, re, pickle, datetime, json, pydoc
+import os, glob, re, pickle, datetime, json, pydoc, copy
 import asyncio, asyncssh, crypt, sys, io
 import types, aiocron, time
 from functools import partial
@@ -24,6 +24,7 @@ done = "done"
 HUB_ENV = hasattr(config,"HUB_ENV") and config.HUB_ENV or "" # default: prod (or "normal")
 VERSIONS = HUB_ENV and "%s-versions" % HUB_ENV or "versions"
 LATEST = HUB_ENV and "%s-latest" % HUB_ENV or "latest"
+HUB_REFRESH_COMMANDS = hasattr(config,"HUB_REFRESH_COMMANDS") and config.HUB_REFRESH_COMMANDS or "* * * * * *" # every sec
 
 
 ##############
@@ -38,6 +39,7 @@ class CommandInformation(dict): pass
 class HubShell(InteractiveShell):
 
     running_commands = {}
+    pending_outputs = []
     cmd_cnt = 1
 
     def __init__(self):
@@ -104,7 +106,8 @@ class HubShell(InteractiveShell):
             # it's asyncio related
             result = type(result) != list and [result] or result
             cmdnum = self.__class__.cmd_cnt
-            cmdinfo = CommandInformation(cmd=cmd,jobs=result,started_at=time.time(),id=cmdnum)
+            cmdinfo = CommandInformation(cmd=cmd,jobs=result,started_at=time.time(),
+                                         id=cmdnum,is_done=False)
             assert not cmdnum in self.__class__.running_commands
             self.__class__.running_commands[cmdnum] = cmdinfo
             self.__class__.cmd_cnt += 1
@@ -117,7 +120,7 @@ class HubShell(InteractiveShell):
         line = line.strip()
         origline = line # keep what's been originally entered
         # poor man's singleton...
-        if line in [j["cmd"] for j in self.__class__.running_commands.values()]:
+        if line in [j["cmd"] for j in self.__class__.running_commands.values() if not j.get("is_done")]:
             raise AlreadyRunningException("Command '%s' is already running\n" % repr(line))
         # is it a hub command, in which case, intercept and run the actual declared cmd
         m = re.match("(.*)\(.*\)",line)
@@ -173,31 +176,65 @@ class HubShell(InteractiveShell):
                     if return_cmdinfo:
                         return res
 
-        if self.__class__.running_commands:
-            finished = []
-            for num,info in sorted(self.__class__.running_commands.items()):
-                is_done = set([j.done() for j in info["jobs"]]) == set([True])
-                has_err = is_done and  [True for j in info["jobs"] if j.exception()] or None
-                localoutputs = is_done and ([str(j.exception()) for j in info["jobs"] if j.exception()] or \
-                            [j.result() for j in info["jobs"]]) or None
-                if not has_err and localoutputs and set(map(type,localoutputs)) == {str}:
-                    localoutputs = "\n" + "".join(localoutputs)
-                if is_done:
-                    finished.append(num)
-                    outputs.append("[%s] %s %s: finished %s" % (num,has_err and "ERR" or "OK ",info["cmd"], localoutputs))
-                else:
-                    outputs.append("[%s] RUN {%s} %s" % (num,timesofar(info["started_at"]),info["cmd"]))
-            if finished:
-                for num in finished:
-                    self.__class__.running_commands.pop(num)
+        # Note: this will cause all outputs to go to one SSH session, ie. if multiple users
+        # are logged, only one will the results
+        if self.__class__.pending_outputs:
+            outputs.extend(self.__class__.pending_outputs)
+            self.__class__.pending_outputs = []
 
-        #self.origout.write("outs %s\n" % outputs)
         return outputs
 
     #@classmethod
     #def cancel(klass,jobnum):
     #    return klass.running_commands.get(jobnum)
 
+    @classmethod
+    def refresh_commands(klass):
+
+        if klass.running_commands:
+            for num,info in sorted(klass.running_commands.items()):
+                # already process, this current command is now history
+                # Note: if we have millions of commands there, it could last quite a while,
+                # but IRL we only have a few
+                if info.get("is_done") == True:
+                    continue
+                is_done = set([j.done() for j in info["jobs"]]) == set([True])
+                has_err = is_done and  [True for j in info["jobs"] if j.exception()] or None
+                localoutputs = is_done and ([str(j.exception()) for j in info["jobs"] if j.exception()] or \
+                            [j.result() for j in info["jobs"]]) or None
+                if is_done:
+                    klass.running_commands[num]["is_done"] = True
+                    klass.running_commands[num]["failed"] = has_err or False
+                    klass.running_commands[num]["results"] = localoutputs
+                    if not has_err and localoutputs and set(map(type,localoutputs)) == {str}:
+                        localoutputs = "\n" + "".join(localoutputs)
+                    klass.pending_outputs.append("[%s] %s %s: finished %s" % (num,has_err and "ERR" or "OK ",info["cmd"], localoutputs))
+                else:
+                    klass.pending_outputs.append("[%s] RUN {%s} %s" % (num,timesofar(info["started_at"]),info["cmd"]))
+
+    @classmethod
+    def command_info(klass, id=None, is_done=None, failed=None):
+        cmds = {}
+        def jsonreadify(cmd):
+            newcmd = copy.copy(cmd)
+            newcmd.pop("jobs")
+            return newcmd
+        if not id is None:
+            try:
+                id = int(id)
+                return jsonreadify(klass.running_commands[id])
+            except KeyError:
+                raise CommandError("No such command with ID %s" % repr(id))
+            except ValueError:
+                raise CommandError("Invalid ID %s" % repr(id))
+        for _id,cmd in klass.running_commands.items():
+            if (not is_done is None and cmd.get("is_done") == is_done) or \
+               (not failed is None and cmd.get("failed") == failed):
+                cmds[_id] = jsonreadify(cmd)
+            else:
+                cmds[_id] = jsonreadify(cmd)
+
+        return cmds
 
 
 class HubSSHServerSession(asyncssh.SSHServerSession):
@@ -297,6 +334,8 @@ def start_server(loop,name,passwords,keys=['bin/ssh_host_key'],shell=None,
     HubSSHServer.PASSWORDS = passwords
     HubSSHServer.NAME = name
     HubSSHServer.SHELL = shell or HubShell(commands,extra_ns)
+    cron = aiocron.crontab(HUB_REFRESH_COMMANDS,func=shell.__class__.refresh_commands,
+                           start=True, loop=loop)
     if commands:
         HubSSHServer.COMMANDS.update(commands)
     if extra_ns:
