@@ -1,12 +1,10 @@
 import inspect, types, logging
 import asyncio
+from functools import partial
 
 import tornado.web
 from biothings.hub.api.handlers.base import GenericHandler
 from biothings.hub.api.handlers.hub import HubHandler, StatsHandler
-from biothings.hub.api.handlers.manager import ManagerHandler
-from biothings.hub.api.handlers.source import SourceHandler, DumpSourceHandler, \
-                                              UploadSourceHandler
 from biothings.utils.hub import CompositeCommand, CommandInformation
 
 
@@ -18,7 +16,8 @@ def generate_endpoint_for_callable(name, command, method):
         raise TypeError("Can't determine arguments for command '%s': %s" % (command,e))
 
     argfrom = 0
-    if type(command) == types.MethodType:
+    if type(command) == types.MethodType or \
+            type(command) == partial and type(command.func) == types.MethodType:
         # skip "self" arg
         argfrom = 1
     defaultargs = {}
@@ -27,13 +26,27 @@ def generate_endpoint_for_callable(name, command, method):
     if specs.defaults:
         for i in range(-len(specs.defaults),0):
             defaultargs[args[i]] = specs.defaults[i]
+    # ignore "self" args, assuming it's the one used when dealing with method
+    #mandatargs = set(args).difference({"self"}).difference(defaultargs) or ""
+    mandatargs = set(args).difference(defaultargs) or ""
+    cmdargs = "{}"
+    if mandatargs:
+        # this is for cmd args building before submitting to the shell 
+        cmdargs = "{" + ",".join(["'''%s''':%s" % (v,v) for v in mandatargs]) + "}"
+        # this is for signature
+        mandatargs = "," + ",".join(["%s" % v for v in mandatargs])
     # generate a wrapper over the passed command
     strcode = """
 @asyncio.coroutine
-def %(method)s(self):
-    cmdargs = {}
+def %(method)s(self%(mandatargs)s):
+    cmdargs = %(cmdargs)s
+    for k in cmdargs:
+        if cmdargs[k] is None:
+            raise tornado.web.HTTPError(400,reason="Bad Request (Missing argument " + k + ")")
+
     if "%(method)s" != "get":
-        bodyargs = tornado.escape.json_decode(self.request.body)
+        # allow to have no body at all, defaulting to empty dict (no args)
+        bodyargs = tornado.escape.json_decode(self.request.body or '{}')
     for arg in %(args)s:
         mandatory = False
         try:
@@ -44,19 +57,19 @@ def %(method)s(self):
         if "%(method)s" != "get":
             try:
                 if mandatory:
-                    val = bodyargs[arg]
+                    cmdargs[arg] # just check the key
                 else:
                     val = bodyargs.get(arg,defarg)
-                cmdargs[arg] = val
+                    cmdargs[arg] = val
             except KeyError:
                 raise tornado.web.HTTPError(400,reason="Bad Request (Missing argument " + arg + ")")
         else:
             # if not default arg and arg not passed, this will raise a 400 (by tornado)
             if mandatory:
-                val = self.get_argument(arg)
+                    cmdargs[arg] # check key
             else:
                 val = self.get_argument(arg,defarg)
-            cmdargs[arg] = val
+                cmdargs[arg] = val
     # we don't pass though shell evaluation there
     # to prevent security issue (injection)...
     res = command(**cmdargs)
@@ -67,8 +80,10 @@ def %(method)s(self):
         # but keep original one
         cmdres = CommandInformation([(k,v) for k,v in cmdres.items() if k != 'jobs'])
     self.write(cmdres)
-""" % {"method":method,"args":args,"defaultargs":defaultargs,"name":name}
-    return strcode
+""" % {"method":method,"args":args,"defaultargs":defaultargs,"name":name,
+        "mandatargs":mandatargs,"cmdargs":cmdargs}
+    #print(strcode)
+    return strcode, mandatargs != ""
 
 def generate_endpoint_for_composite_command(name, command, method):
     strcode = """
@@ -94,8 +109,9 @@ def %(method)s(self):
 
 def generate_handler(shell, name, command, method):
     method = method.lower()
+    num_mandatory = 0
     if callable(command):
-        strcode = generate_endpoint_for_callable(name,command,method)
+        strcode,num_mandatory = generate_endpoint_for_callable(name,command,method)
     elif type(command) == CompositeCommand:
         strcode = generate_endpoint_for_composite_command(name,command,method)
     else:
@@ -111,7 +127,7 @@ def generate_handler(shell, name, command, method):
     methodfunc = command_globals[method]
     confdict = {method:methodfunc}
     klass = type("%s_handler" % name,(GenericHandler,),confdict)
-    return klass
+    return klass,num_mandatory
 
 def create_handlers(shell, commands, command_methods, command_prefixes={}):
     routes = []
@@ -119,11 +135,15 @@ def create_handlers(shell, commands, command_methods, command_prefixes={}):
         method = command_methods.get(cmdname,"GET")
         prefix = command_prefixes.get(cmdname,"")
         try:
-            handler_class = generate_handler(shell,cmdname,command,method)
+            handler_class,num_mandatory= generate_handler(shell,cmdname,command,method)
         except TypeError as e:
             logging.warning("Can't generate handler for '%s': %s" % (cmdname,e))
             continue
-        routes.append((r"%s/%s" % (prefix,cmdname),handler_class,{"shell":shell}))
+        if num_mandatory:
+            # this is for more REST alike URLs (eg. /info/clinvar == /info?src=clinvar
+            routes.append((r"%s/%s%s" % (prefix,cmdname,"/(\w+)?"*num_mandatory),handler_class,{"shell":shell}))
+        else:
+            routes.append((r"%s/%s" % (prefix,cmdname),handler_class,{"shell":shell}))
 
     return routes
 
@@ -136,18 +156,9 @@ def generate_api_routes(shell, commands, command_methods, command_prefixes={},se
 #    routes = [
 #            (r"/", HubHandler, {"managers":managers}),
 #            (r"/stats", StatsHandler, {"managers":managers}),
-#            # source
-#            (r"/source/?", SourceHandler, {"managers":managers}),
-#            (r"/source/(\w+)", SourceHandler, {"managers":managers}),
-#            (r"/source/(\w+)/dump", DumpSourceHandler, {"managers":managers}),
-#            (r"/source/(\w+)/upload", UploadSourceHandler, {"managers":managers}),
-#            # manager
-#            (r"/manager/?", ManagerHandler, {"managers":managers}),
-#            (r"/manager/(\w+)", ManagerHandler, {"managers":managers}),
 #            # misc/static
 #            (r"/static/(.*)", tornado.web.StaticFileHandler,{"path":"biothings/hub/app/static"}),
 #            (r"/home()",tornado.web.StaticFileHandler,{"path":"biothings/hub/app/html/index.html"}),
-#            (r"/whatsnew",generate_handler("whatnew",managers["build_manager"].whatsnew,"GET"),{"managers":managers}),
 #            ]
 #
 #    app = tornado.web.Application(routes,settings=settings)

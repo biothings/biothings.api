@@ -747,6 +747,12 @@ class UploaderManager(BaseSourceManager):
         else:
             return res
 
+    def upload_info(self):
+        res = {}
+        for name,klasses in self.register.items():
+            res[name] = [klass.__name__ for klass in klasses]
+        return res
+
 
 def set_pending_to_upload(src_name):
     src_dump = get_src_dump()

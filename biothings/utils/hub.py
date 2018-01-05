@@ -51,10 +51,11 @@ class HubShell(InteractiveShell):
         #sys.stdout = self.buf
         super(HubShell,self).__init__(user_ns=self.extra_ns)
 
-    def set_commands(self, commands, extra_ns={}):
+    def set_commands(self, basic_commands, *extra_ns):
         # update with ssh server default commands
-        self.commands.update(commands)
-        self.extra_ns.update(extra_ns)
+        self.commands.update(basic_commands)
+        for extra in extra_ns:
+            self.extra_ns.update(extra)
         #self.extra_ns["cancel"] = self.__class__.cancel
         # for boolean calls
         self.extra_ns["_and"] = _and

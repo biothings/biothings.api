@@ -976,3 +976,25 @@ class BuilderManager(BaseManager):
 
     def trigger_merge(self,doc):
         return self.merge(doc["_id"])
+
+    def build_info(self):
+        res = {}
+        for name in self.register:
+            builder = self[name]
+            res[name] = {
+                    "class" : builder.__class__.__name__,
+                    "build_config" : builder.build_config,
+                    "source_backend" : {
+                        "type" : builder.source_backend.__class__.__name__,
+                        "source_db" : builder.source_backend.sources.client.address,
+                    },
+                    "target_backend" : {
+                        "type" : builder.source_backend.__class__.__name__,
+                        "target_db" : builder.target_backend.target_db.client.address
+                    }
+                    }
+            res[name]["mapper"] = {}
+            for mappername,mapper in builder.mappers.items():
+                res[name]["mapper"][mappername] = mapper.__class__.__name__
+        return res
+
