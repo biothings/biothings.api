@@ -3,8 +3,7 @@
     <!-- commands -->
     <button
         class="ui compact labeled icon commands button tiny"
-        v-if="commands"
-        >
+        v-if="commands">
         <i class="settings icon"></i>
         {{Object.keys(commands).length}}
     </button>
@@ -13,34 +12,31 @@
     </div>
     <!-- jobs (processes) -->
     <button
-        class="ui compact labeled icon button tiny"
-      data-tooltip="Number of running processes"
-      data-position="bottom center"
-      v-if="job_manager.queue"
-      v-on:click="processDetails">
-      <i class="rocket icon"></i>
-      {{job_manager.queue.process.running.length}}/{{job_manager.queue.process.max}}
+        class="ui compact labeled icon processes button tiny"
+        >
+        <i class="rocket icon"></i>
+        {{job_manager.queue ? job_manager.queue.process.running.length : '?'}}/{{job_manager.queue ? job_manager.queue.process.max : '?'}}
     </button>
+    <div class="ui processes popup top left transition hidden">
+        <processes-list v-bind:processes="processes"></processes-list>
+    </div>
     <!-- jobs (threads) -->
     <button
-        class="ui compact labeled icon button tiny"
-      data-tooltip="Number of running threads"
-      data-position="bottom center"
-      v-if="job_manager.queue"
-      v-on:click="threadDetails">
+        class="ui compact labeled icon threads button tiny">
       <i class="lightning icon"></i>
-      {{job_manager.queue.thread.running.length}}/{{job_manager.queue.thread.max}}
+      {{job_manager.queue ? job_manager.queue.thread.running.length : '?'}}/{{job_manager.queue ? job_manager.queue.thread.max : '?' }}
     </button>
+    <div class="ui threads popup top left transition hidden">
+        <threads-list v-bind:threads="threads"></threads-list>
+    </div>
     <!-- jobs (pendings) -->
-    <button
-        class="ui compact labeled icon button tiny"
+    <div class="ui small grey label"
       data-tooltip="Number of queued jobs"
       data-position="bottom center"
-      v-if="job_manager.queue"
-      v-on:click="pendingDetails">
+      v-if="job_manager.queue">
       <i class="hourglass start icon"></i>
       {{job_manager.queue.thread.pending.length + job_manager.queue.process.pending.length }}
-    </button>
+    </div>
     <!-- memory -->
     <div class="ui small grey label"
       data-tooltip="Amount of memory hub is currently using"
@@ -55,6 +51,8 @@
 <script>
 import axios from 'axios';
 import CommandsList from './CommandsList.vue';
+import ProcessesList from './ProcessesList.vue';
+import ThreadsList from './ThreadsList.vue';
 import bus from './bus.js';
 
 export default {
@@ -67,24 +65,31 @@ export default {
     setInterval(this.refreshCommands,10000);
     // setup menu
     $('.commands.button').popup({popup: $('.commands.popup'), on: 'click' });
+    $('.processes.button').popup({popup: $('.processes.popup'), on: 'click' , lastResort: 'bottom right',});
+    $('.threads.button').popup({popup: $('.threads.popup'), on: 'click' , lastResort: 'bottom right',});
   },
   created() {
       bus.$on('refresh_commands',this.refreshCommands);
+      bus.$on('refresh_jobs',this.getJobSummary);
   },
   data () {
     return  {
       job_manager : {},
       commands : {},
+      processes : {},
+      threads : {},
       show_allcmds : false,
       errors: [],
     }
   },
-  components: { CommandsList, },
+  components: { CommandsList, ProcessesList, ThreadsList, },
   methods: {
     getJobSummary: function() {
       axios.get(axios.defaults.baseURL + '/job_manager')
       .then(response => {
         this.job_manager = response.data.result;
+        this.processes = this.job_manager.queue.process;
+        this.threads = this.job_manager.queue.thread;
       })
       .catch(err => {
         console.log("Error getting job manager information: " + err);
@@ -100,20 +105,11 @@ export default {
       axios.get(url)
       .then(response => {
         this.commands = response.data.result;
-        console.log(this.commands);
+        //console.log(this.commands);
       })
       .catch(err => {
         console.log("Error getting runnings commands: " + err);
       })
-    },
-    processDetails: function() {
-        console.log(this.processes);
-    },
-    threadDetails: function() {
-        console.log(this.threads);
-    },
-    pendingDetails: function() {
-        console.log(this.threads);
     },
   }
 }

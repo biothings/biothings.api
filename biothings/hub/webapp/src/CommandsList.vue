@@ -8,16 +8,16 @@
         </div>
         <table class="ui compact celled table" v-if="Object.keys(commands).length">
             <tr v-for="command in orderBy(Object.values(commands),'id',-1)"
-                v-bind:class="[ command.is_done & command.failed ? 'negative' : '', command.is_done & !command.failed ? 'positive': '' ]"
+                v-bind:class="[ command.is_done & command.failed ? 'negative' : '', command.is_done & !command.failed ? 'positive': '' ,'nowrap']"
                 >
                 <td>
                     <i v-if="command.is_done" v-bind:class="[ command.is_done & command.failed ? 'attention icon' : '', command.is_done & !command.failed ? 'icon checkmark': '' ]"></i>
                     <div v-else class="ui active tiny inline loader"></div>
                 </td>
-                <td class="right aligned" v-bind:data-tooltip="'kllklk'">{{command.id}}</td>
-                <td>{{command.cmd}}</td>
-                <td class="nowrap" v-if="command.is_done">{{command.duration}}</td>
-                <td class="nowrap" v-else>{{new Date(0).setUTCSeconds(command.started_at) | moment("from", "now")}}</td>
+                <td class="right aligned">{{command.id}}</td>
+                <td>{{command.cmd}} {{command.duration}}</td>
+                <td v-if="command.is_done">{{command.duration}}</td>
+                <td v-else>{{new Date(0).setUTCSeconds(command.started_at) | moment("from", "now")}}</td>
             </tr>
         </table>
         <div v-else>No command to show</div>
@@ -38,7 +38,7 @@ export default {
       }
   },
   mounted () {
-    console.log("command item mounted");
+    console.log("commands list mounted");
     console.log(this.command);
     $('.ui.toggle.checkbox')
     .checkbox()
