@@ -9,8 +9,9 @@
     "build": "cross-env NODE_ENV=production webpack --progress --hide-modules"
   },
   "dependencies": {
-    "vue": "^2.3.3",
-    "axios": "^0.6.0"
+    "axios": "^0.6.0",
+    "nativescript": "^3.4.0",
+    "vue": "^2.3.3"
   },
   "devDependencies": {
     "babel-core": "^6.0.0",

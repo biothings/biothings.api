@@ -78,7 +78,7 @@ export default {
     $('select.dropdown').dropdown();
   },
   created() {
-    bus.$on('refresh_sources',this.refresh);
+    bus.$on('refresh_sources',this.refreshSources);
   },
   data () {
     return  {
@@ -116,7 +116,7 @@ export default {
         })
         .modal("show");
     },
-    refresh: function() {
+    refreshSources: function() {
       console.log("Refreshing datasources");
       this.getSourcesStatus();
     }
