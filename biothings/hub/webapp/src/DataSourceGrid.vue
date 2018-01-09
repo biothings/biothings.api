@@ -1,11 +1,9 @@
 <template>
   <div class="ui main container" id="list_sources">
     <div class="ui segment">
-      <h2 class="ui left floated header">Data sources</h2>
       <div class="ui icon buttons right floated ">
         <button class="ui button" v-on:click="register">
-          <i class="plug icon">
-          </i>
+          <i class="plug icon"></i>
         </button>
       </div>
       <div class="ui clearing divider"></div>

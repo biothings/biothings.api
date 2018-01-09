@@ -2,17 +2,17 @@
     <div>
         <div class="ui grid">
             <div class="four wide column">
-                <div class="ui tiny label">
+                <div class="ui tiny label" v-if="threads.running">
                     Running<div class="detail">{{threads.running.length}}</div>
                 </div>
             </div>
             <div class="four wide column">
-                <div class="ui tiny label">
+                <div class="ui tiny label" v-if="threads.pending">
                     Pending<div class="detail">{{threads.pending.length}}</div>
                 </div>
             </div>
             <div class="four wide column">
-                <div class="ui tiny label">
+                <div class="ui tiny label" v-if="threads.all">
                     Ready<div class="detail">{{Object.keys(threads.all).length}}</div>
                 </div>
             </div>

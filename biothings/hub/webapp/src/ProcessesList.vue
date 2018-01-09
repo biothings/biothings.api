@@ -1,24 +1,23 @@
 <template>
     <div>
-        <div class="ui grid">
-            <div class="four wide column"></div>
-            <div class="four wide column">
-                <div class="ui tiny label">
+        <div class="ui three columns centered grid">
+            <div class="three wide column">
+                <div class="ui tiny label" v-if="processes.running">
                     Running<div class="detail">{{processes.running.length}}</div>
                 </div>
             </div>
-            <div class="four wide column">
-                <div class="ui tiny label">
+            <div class="three wide column">
+                <div class="ui tiny label" v-if="processes.pending">
                     Pending<div class="detail">{{processes.pending.length}}</div>
                 </div>
             </div>
-            <div class="four wide column">
+            <div class="three wide column">
                 <div class="ui tiny label">
-                    Max<div class="detail">{{processes.max}}</div>
+                    Max<div class="detail" v-if="processes">{{processes.max}}</div>
                 </div>
             </div>
         </div>
-        <table class="ui nowrap compact celled table" v-if="Object.keys(processes.all).length">
+        <table class="ui nowrap compact celled table" v-if="processes.all">
             <tr v-for="(process, pid) in processes.all"
                 v-bind:class="[process.cpu.status == 'running'? 'positive' : '', 'nowrap']">
                 <td>

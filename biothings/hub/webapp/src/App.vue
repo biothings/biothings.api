@@ -6,26 +6,6 @@
           <img class="logo" src="./assets/biothings_logo.png">
           Biothings Hub
         </a>
-        <a href="#" class="item">Home</a>
-
-        <!--div class="ui simple dropdown item right">
-        Dropdown <i class="dropdown icon"></i>
-        <div class="menu">
-          <a class="item" href="#">Link Item</a>
-          <a class="item" href="#">Link Item</a>
-          <div class="divider"></div>
-          <div class="header">Header Item</div>
-          <div class="item">
-            <i class="dropdown icon"></i>
-            Sub Menu
-            <div class="menu">
-              <a class="item" href="#">Link Item</a>
-              <a class="item" href="#">Link Item</a>
-            </div>
-          </div>
-          <a class="item" href="#">Link Item</a>
-        </div>
-        </div-->
 
         <div class="ui item right">
           <job-summary></job-summary>
@@ -34,7 +14,26 @@
       </div>
     </div>
 
-    <data-source-grid></data-source-grid>
+    <div class="ui styled fluid accordion">
+        <div class="title active">
+            Statistics
+        </div>
+        <div class="content active">
+            <stats></stats>
+        </div>
+        <div class="title">
+            Datasources
+        </div>
+        <div class="content">
+            <data-source-grid></data-source-grid>
+        </div>
+        <div class="title">
+            Builds
+        </div>
+        <div class="content">
+            Build
+        </div>
+    </div>
 
   </div>
 </template>
@@ -83,11 +82,17 @@ function split_and_join(str,sep="_",glue=" ") {
 Vue.filter('splitjoin',split_and_join);
 
 import DataSourceGrid from './DataSourceGrid.vue';
+import Stats from './Stats.vue';
 import JobSummary from './JobSummary.vue';
 
 export default {
   name: 'app',
-  components: { DataSourceGrid, JobSummary},
+  components: { DataSourceGrid, JobSummary, Stats},
+  mounted () {
+      $('.ui.accordion')
+        .accordion()
+        ;
+  },
 }
 </script>
 
