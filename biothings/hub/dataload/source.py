@@ -18,7 +18,8 @@ class SourceManager(BaseSourceManager):
         self.upload_manager = upload_manager
         self.dump_manager.register_sources(self.source_list)
         self.upload_manager.register_sources(self.source_list)
-        #self.register_sources(self.source_list)
+        # honoring BaseSourceManager interface (gloups...-
+        self.register = {}
 
     def sumup_source(self,src):
         """Return minimal info about src"""
@@ -55,7 +56,7 @@ class SourceManager(BaseSourceManager):
                 elif "uploading" in all_status:
                     mini["upload"]["status"] = "uploading"
 
-            else:
+            elif len(src["upload"]["jobs"]) == 1:
                 job,info = list(src["upload"]["jobs"].items())[0]
                 mini["upload"][job] = {
                         "time" : info.get("time"),

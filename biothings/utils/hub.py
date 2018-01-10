@@ -4,7 +4,7 @@
 # private key in it to use as a server host key.
 
 import os, glob, re, pickle, datetime, json, pydoc, copy
-import asyncio, asyncssh, crypt, sys, io
+import asyncio, asyncssh, crypt, sys, io, inspect
 import types, aiocron, time
 from functools import partial
 from IPython import InteractiveShell
@@ -36,26 +36,38 @@ class AlreadyRunningException(Exception):pass
 class CommandError(Exception):pass
 
 class CommandInformation(dict): pass
+class CommandDefinition(dict): pass
 
 class HubShell(InteractiveShell):
 
-    running_commands = {}
-    pending_outputs = []
+    launched_commands = {}
+    pending_outputs = {}
     cmd_cnt = 1
 
     def __init__(self):
         self.commands = {}
         self.extra_ns = {}
+        self.tracked = {}
         self.origout = sys.stdout
         self.buf = io.StringIO()
         #sys.stdout = self.buf
         super(HubShell,self).__init__(user_ns=self.extra_ns)
 
     def set_commands(self, basic_commands, *extra_ns):
+        def register(commands):
+            for name,cmd in commands.items():
+                if type(cmd) == CommandDefinition:
+                    try:
+                        self.commands[name] = cmd["command"]
+                        self.tracked[name] = cmd.get("tracked",True)
+                    except KeyError as e:
+                        raise CommandError("Could not register command because missing '%s' in definition: %s" % (cmd,e))
+                else:
+                    self.commands[name] = cmd
         # update with ssh server default commands
-        self.commands.update(basic_commands)
+        register(basic_commands)
         for extra in extra_ns:
-            self.extra_ns.update(extra)
+            register(extra)
         #self.extra_ns["cancel"] = self.__class__.cancel
         # for boolean calls
         self.extra_ns["_and"] = _and
@@ -93,7 +105,36 @@ class HubShell(InteractiveShell):
             except ImportError:
                 return "\nHelp not available for this command\n"
 
-    def register_command(self, cmd, result):
+    def launch(self,pfunc):
+        """
+        Helper to run a command and register it
+        pfunc is partial taking no argument. Command name
+        is generated from partial's func and arguments
+        """
+        res = pfunc()
+        # rebuild a command as string
+        strcmd = pfunc.func.__name__
+        strcmd += "("
+        strargs = []
+        if pfunc.args:
+            strargs.append(",".join([repr(a) for a in pfunc.args]))
+        if pfunc.keywords:
+            strargs.append(",".join(["%s=%s" % (k,repr(v)) for (k,v) in pfunc.keywords.items()]))
+        strcmd += ",".join(strargs)
+        strcmd += ")"
+        # we use force here because, very likely, the command from strcmd we generated
+        # isn't part of shell's known commands (and there's a check about that when force=False)
+        self.register_command(strcmd,res,force=True)
+
+    def extract_command_name(self,cmd):
+        try:
+            # extract before (), or just the the whole cmd if not callable
+            grps = re.fullmatch("([\w\.]+)(\(.*\))?",cmd.strip()).groups()
+            return grps[0]
+        except AttributeError:
+            raise CommandError("Can't extract command name from %s" % repr(cmd))
+
+    def register_command(self, cmd, result, force=False):
         """
         Register a command 'cmd' inside the shell (so we can keep track of it).
         'result' is the original value that was returned when cmd was submitted.
@@ -101,28 +142,48 @@ class HubShell(InteractiveShell):
         and we need to wait before getting the result) or directly the result of
         'cmd' execution, returning, in that case, the output.
         """
+        # see if command should actually be registered
+        try:
+            cmdname = self.extract_command_name(cmd)
+        except CommandError:
+            # if can't extract command name, then don't even try to register
+            # (could be, for instance, "pure" python code typed from the console)
+            logging.debug("Can't extract command from %s, can't register" % cmd)
+            return result
+        # also, never register non-callable command
+        if not force and (not callable(self.extra_ns.get(cmdname)) or \
+                self.tracked.get(cmdname,True) == False):
+            return result
+
+        cmdnum = self.__class__.cmd_cnt
+        cmdinfo = CommandInformation(cmd=cmd,jobs=result,started_at=time.time(),
+                                     id=cmdnum,is_done=False)
+        assert not cmdnum in self.__class__.launched_commands
+        # register
+        self.__class__.launched_commands[cmdnum] = cmdinfo
+        self.__class__.cmd_cnt += 1
 
         if type(result) == asyncio.tasks.Task or type(result) == asyncio.tasks._GatheringFuture or \
                 type(result) == asyncio.Future or \
                 type(result) == list and len(result) > 0 and type(result[0]) == asyncio.tasks.Task:
             # it's asyncio related
             result = type(result) != list and [result] or result
-            cmdnum = self.__class__.cmd_cnt
-            cmdinfo = CommandInformation(cmd=cmd,jobs=result,started_at=time.time(),
-                                         id=cmdnum,is_done=False)
-            assert not cmdnum in self.__class__.running_commands
-            self.__class__.running_commands[cmdnum] = cmdinfo
-            self.__class__.cmd_cnt += 1
+            cmdinfo["jobs"] = result
             return cmdinfo
         else:
             # ... and it's not asyncio related, we can display it directly
+            cmdinfo["is_done"] = True
+            cmdinfo["failed"] = False
+            cmdinfo["started_at"] = time.time()
+            cmdinfo["finished_at"] = time.time()
+            cmdinfo["duration"] = "0s"
             return result
 
     def eval(self, line, return_cmdinfo=False):
         line = line.strip()
         origline = line # keep what's been originally entered
         # poor man's singleton...
-        if line in [j["cmd"] for j in self.__class__.running_commands.values() if not j.get("is_done")]:
+        if line in [j["cmd"] for j in self.__class__.launched_commands.values() if not j.get("is_done")]:
             raise AlreadyRunningException("Command '%s' is already running\n" % repr(line))
         # is it a hub command, in which case, intercept and run the actual declared cmd
         m = re.match("(.*)\(.*\)",line)
@@ -181,20 +242,20 @@ class HubShell(InteractiveShell):
         # Note: this will cause all outputs to go to one SSH session, ie. if multiple users
         # are logged, only one will the results
         if self.__class__.pending_outputs:
-            outputs.extend(self.__class__.pending_outputs)
-            self.__class__.pending_outputs = []
+            outputs.extend(self.__class__.pending_outputs.values())
+            self.__class__.pending_outputs = {}
 
         return outputs
 
     #@classmethod
     #def cancel(klass,jobnum):
-    #    return klass.running_commands.get(jobnum)
+    #    return klass.launched_commands.get(jobnum)
 
     @classmethod
     def refresh_commands(klass):
 
-        if klass.running_commands:
-            for num,info in sorted(klass.running_commands.items()):
+        if klass.launched_commands:
+            for num,info in sorted(klass.launched_commands.items()):
                 # already process, this current command is now history
                 # Note: if we have millions of commands there, it could last quite a while,
                 # but IRL we only have a few
@@ -205,14 +266,17 @@ class HubShell(InteractiveShell):
                 localoutputs = is_done and ([str(j.exception()) for j in info["jobs"] if j.exception()] or \
                             [j.result() for j in info["jobs"]]) or None
                 if is_done:
-                    klass.running_commands[num]["is_done"] = True
-                    klass.running_commands[num]["failed"] = has_err or False
-                    klass.running_commands[num]["results"] = localoutputs
+                    klass.launched_commands[num]["is_done"] = True
+                    klass.launched_commands[num]["failed"] = has_err and has_err[0] or False
+                    klass.launched_commands[num]["results"] = localoutputs
+                    klass.launched_commands[num]["finished_at"] = time.time()
+                    klass.launched_commands[num]["duration"] = timesofar(t0=klass.launched_commands[num]["started_at"],
+                                                                        t1=klass.launched_commands[num]["finished_at"])
                     if not has_err and localoutputs and set(map(type,localoutputs)) == {str}:
                         localoutputs = "\n" + "".join(localoutputs)
-                    klass.pending_outputs.append("[%s] %s %s: finished %s" % (num,has_err and "ERR" or "OK ",info["cmd"], localoutputs))
+                    klass.pending_outputs[num] = "[%s] %s %s: finished %s" % (num,has_err and "ERR" or "OK ",info["cmd"], localoutputs)
                 else:
-                    klass.pending_outputs.append("[%s] RUN {%s} %s" % (num,timesofar(info["started_at"]),info["cmd"]))
+                    klass.pending_outputs[num] = "[%s] RUN {%s} %s" % (num,timesofar(info["started_at"]),info["cmd"])
 
     @classmethod
     def command_info(klass, id=None, running=None, failed=None):
@@ -224,7 +288,7 @@ class HubShell(InteractiveShell):
         if not id is None:
             try:
                 id = int(id)
-                return jsonreadify(klass.running_commands[id])
+                return jsonreadify(klass.launched_commands[id])
             except KeyError:
                 raise CommandError("No such command with ID %s" % repr(id))
             except ValueError:
@@ -235,7 +299,7 @@ class HubShell(InteractiveShell):
             is_done = None
         if not failed is None:
             failed = to_boolean(failed)
-        for _id,cmd in klass.running_commands.items():
+        for _id,cmd in klass.launched_commands.items():
             if not is_done is None:
                 # running or done commands (not both)
                 if cmd.get("is_done") == is_done:

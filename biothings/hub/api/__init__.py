@@ -8,7 +8,10 @@ from biothings.hub.api.handlers.hub import HubHandler, StatsHandler
 from biothings.utils.hub import CompositeCommand, CommandInformation
 
 
-def generate_endpoint_for_callable(name, command, method):
+def generate_endpoint_for_callable(name, command, method, force_bodyargs):
+    if force_bodyargs is True:
+        assert method != "get", \
+            "Can't have force_bodyargs=True with method '%s' for command '%s'" % (method,command)
     try:
         specs = inspect.getfullargspec(command)
     except TypeError as e:
@@ -28,7 +31,7 @@ def generate_endpoint_for_callable(name, command, method):
             defaultargs[args[i]] = specs.defaults[i]
     # ignore "self" args, assuming it's the one used when dealing with method
     #mandatargs = set(args).difference({"self"}).difference(defaultargs) or ""
-    mandatargs = set(args).difference(defaultargs) or ""
+    mandatargs = force_bodyargs is False and set(args).difference(defaultargs) or ""
     cmdargs = "{}"
     if mandatargs:
         # this is for cmd args building before submitting to the shell 
@@ -36,6 +39,8 @@ def generate_endpoint_for_callable(name, command, method):
         # this is for signature
         mandatargs = "," + ",".join(["%s" % v for v in mandatargs])
     # generate a wrapper over the passed command
+    #print({"method":method,"args":args,"defaultargs":defaultargs,"name":name,
+    #    "mandatargs":mandatargs,"cmdargs":cmdargs})
     strcode = """
 @asyncio.coroutine
 def %(method)s(self%(mandatargs)s):
@@ -57,10 +62,20 @@ def %(method)s(self%(mandatargs)s):
         if "%(method)s" != "get":
             try:
                 if mandatory:
-                    cmdargs[arg] # just check the key
+                    # part of signature (in URL) or body args ?
+                    try:
+                        cmdargs[arg] # just check key exists
+                    except KeyError:
+                        cmdargs[arg] = bodyargs[arg]
                 else:
-                    val = bodyargs.get(arg,defarg)
-                    cmdargs[arg] = val
+                    # check if optional has been passed or if value is taken from default
+                    # (used to display/build command line with minimal info,
+                    # ie. what's been passed by user)
+                    try:
+                        val = bodyargs[arg]
+                        cmdargs[arg] = val
+                    except KeyError:
+                        pass
             except KeyError:
                 raise tornado.web.HTTPError(400,reason="Bad Request (Missing argument " + arg + ")")
         else:
@@ -68,13 +83,19 @@ def %(method)s(self%(mandatargs)s):
             if mandatory:
                     cmdargs[arg] # check key
             else:
-                val = self.get_argument(arg,defarg)
-                cmdargs[arg] = val
+                try:
+                    val = self.get_argument(arg)
+                    cmdargs[arg] = val
+                except tornado.web.MissingArgumentError:
+                    pass
     # we don't pass though shell evaluation there
     # to prevent security issue (injection)...
+    strcmd = '''%(name)s''' + "("
+    strcmd += ",".join([str(k) + "=" + repr(v) for k,v in cmdargs.items()])
+    strcmd += ")"
     res = command(**cmdargs)
     # ... but we register the command in the shell to track it
-    cmdres = shell.register_command('''%(name)s''',res)
+    cmdres = shell.register_command(strcmd,res)
     if type(cmdres) == CommandInformation:
         # asyncio tasks unserializable
         # but keep original one
@@ -107,11 +128,11 @@ def %(method)s(self):
 """ % {"method":method}
     return strcode
 
-def generate_handler(shell, name, command, method):
+def generate_handler(shell, name, command, method, force_bodyargs):
     method = method.lower()
     num_mandatory = 0
     if callable(command):
-        strcode,num_mandatory = generate_endpoint_for_callable(name,command,method)
+        strcode,num_mandatory = generate_endpoint_for_callable(name,command,method,force_bodyargs)
     elif type(command) == CompositeCommand:
         strcode = generate_endpoint_for_composite_command(name,command,method)
     else:
@@ -129,13 +150,15 @@ def generate_handler(shell, name, command, method):
     klass = type("%s_handler" % name,(GenericHandler,),confdict)
     return klass,num_mandatory
 
-def create_handlers(shell, commands, command_methods, command_prefixes={}):
+def create_handlers(shell, commands, command_prefixes={}):
     routes = []
-    for cmdname, command in commands.items():
-        method = command_methods.get(cmdname,"GET")
-        prefix = command_prefixes.get(cmdname,"")
+    for cmdname, config in commands.items():
+        command = config["command"]
+        method = config.get("method","GET")
+        prefix = config.get("prefix","")
+        force_bodyargs = config.get("force_bodyargs",False)
         try:
-            handler_class,num_mandatory= generate_handler(shell,cmdname,command,method)
+            handler_class,num_mandatory= generate_handler(shell,cmdname,command,method,force_bodyargs)
         except TypeError as e:
             logging.warning("Can't generate handler for '%s': %s" % (cmdname,e))
             continue
@@ -147,8 +170,8 @@ def create_handlers(shell, commands, command_methods, command_prefixes={}):
 
     return routes
 
-def generate_api_routes(shell, commands, command_methods, command_prefixes={},settings={}):
-    routes = create_handlers(shell,commands,command_methods,command_prefixes)
+def generate_api_routes(shell, commands, command_prefixes={},settings={}):
+    routes = create_handlers(shell,commands,command_prefixes)
     return routes
 
 #def get_api_app(managers, settings={}):
