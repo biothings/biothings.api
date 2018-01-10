@@ -2,12 +2,12 @@
   <div id="app">
     <div class="ui fixed inverted menu">
       <div class="ui container">
-        <a href="#" class="header item">
+        <a href="/" class="header item">
           <img class="logo" src="./assets/biothings_logo.png">
           Biothings Hub
         </a>
 
-        <a class="active item" @click="home" data-tab="home">
+        <a class="active item" data-tab="home">
             Home
         </a>
         <a class="item" data-tab="datasources">
@@ -43,6 +43,9 @@
 
 <script>
 import axios from 'axios';
+
+import VueLocalStorage from 'vue-localstorage';
+Vue.use(VueLocalStorage);
 
 import Vue2Filters from 'vue2-filters';
 import Vue from 'vue';
@@ -92,12 +95,12 @@ export default {
   name: 'app',
   components: { DataSourceGrid, JobSummary, Stats},
   mounted () {
-        $('.menu .item').tab();
+      $('.menu .item').tab({
+          history: true,
+          historyType: 'hash'
+      });
   },
   methods: {
-      home : function() {
-          console.log("load home");
-      }
   }
 }
 </script>
