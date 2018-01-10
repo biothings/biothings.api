@@ -97,7 +97,7 @@ export default {
       return errs.join("<br>");
     },
     dump: function() {
-      axios.post(axios.defaults.baseURL + '/dump',{'src': this.source.name})
+        axios.post(axios.defaults.baseURL + `/dump/${this.source.name}`)
       .then(response => {
         console.log(response.data.result)
         this.$parent.getSourcesStatus();
@@ -107,7 +107,7 @@ export default {
       })
     },
     upload: function() {
-      axios.post(axios.defaults.baseURL + '/upload',{'src': this.source.name})
+        axios.post(axios.defaults.baseURL + `/upload/${this.source.name}`)
       .then(response => {
         console.log(response.data.result)
         this.$parent.getSourcesStatus();

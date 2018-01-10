@@ -7,6 +7,16 @@
           Biothings Hub
         </a>
 
+        <a class="active item" @click="home" data-tab="home">
+            Home
+        </a>
+        <a class="item" data-tab="datasources">
+            Datasources
+        </a>
+        <a class="item" data-tab="builds">
+            Builds
+        </a>
+
         <div class="ui item right">
           <job-summary></job-summary>
         </div>
@@ -14,25 +24,18 @@
       </div>
     </div>
 
-    <div class="ui styled fluid accordion">
-        <div class="title active">
-            Statistics
-        </div>
-        <div class="content active">
-            <stats></stats>
-        </div>
-        <div class="title">
-            Datasources
-        </div>
-        <div class="content">
-            <data-source-grid></data-source-grid>
-        </div>
-        <div class="title">
-            Builds
-        </div>
-        <div class="content">
-            Build
-        </div>
+    <div class="ui active tab segment" data-tab="home">
+        <h2 class="ui header">Home</h2>
+        <stats></stats>
+    </div>
+
+    <div class="ui tab segment" data-tab="datasources">
+        <h2 class="ui header">Datasources</h2>
+        <data-source-grid></data-source-grid>
+    </div>
+
+    <div class="ui tab segment" data-tab="builds">
+        <h2 class="ui header">Builds</h2>
     </div>
 
   </div>
@@ -89,10 +92,13 @@ export default {
   name: 'app',
   components: { DataSourceGrid, JobSummary, Stats},
   mounted () {
-      $('.ui.accordion')
-        .accordion()
-        ;
+        $('.menu .item').tab();
   },
+  methods: {
+      home : function() {
+          console.log("load home");
+      }
+  }
 }
 </script>
 
