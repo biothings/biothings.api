@@ -1,63 +1,62 @@
 <template>
-  <div class="ui main container" id="list_sources">
-    <div class="ui segment">
-      <div class="ui icon buttons right floated ">
-        <button class="ui button" v-on:click="register">
-          <i class="plug icon"></i>
-        </button>
-      </div>
-      <div class="ui clearing divider"></div>
-      <div id="data-source-grid" class="ui grid">
-        <div class="four wide column" v-for="source in orderBy(sources, 'name')">
-          <data-source v-bind:source="source"></data-source>
+    <div class="ui main container" id="list_sources">
+        <div class="ui segment mini right aligned">
+            <div class="ui icon buttons">
+                <button class="ui button" v-on:click="register">
+                    <i class="plug icon"></i>
+                </button>
+            </div>
         </div>
-      </div>
+        <div id="data-source-grid" class="ui grid">
+            <div class="four wide column" v-for="source in orderBy(sources, 'name')">
+                <data-source v-bind:source="source"></data-source>
+            </div>
+        </div>
+
+        <div class="ui basic newdatasource modal">
+            <div class="ui icon">
+                <i class="plug icon"></i>
+                Register a new datasource
+            </div>
+            <div class="content">
+                <p>Specify a repository type and URL</p>
+            </div>
+            <div class="ui form">
+                <div class="fields">
+                    <div class="required four wide field">
+                        <select class="ui search dropdown">
+                            <option data-value="github" selected>Github</option>
+                        </select>
+                    </div>
+                    <div class="required ten wide field">
+                        <input type="text" id="repo_url" placeholder="Repository URL" autofocus>
+                    </div>
+                </div>
+            </div>
+            <div class="actions">
+                <div class="ui red basic cancel inverted button">
+                    <i class="remove icon"></i>
+                    Cancel
+                </div>
+                <div class="ui green ok inverted button">
+                    <i class="checkmark icon"></i>
+                    OK
+                </div>
+            </div>
+
+        </div>
+
+        <div class="ui basic registering modal">
+            <div class="ui segment">
+                <div class="ui active dimmer">
+                    <div class="ui indeterminate text loader">Registering...</div>
+                </div>
+                <p></p>
+            </div>
+        </div>
+
+
     </div>
-
-    <div class="ui basic newdatasource modal">
-      <div class="ui icon header">
-        <i class="plug icon"></i>
-        Register a new datasource
-      </div>
-      <div class="content">
-        <p>Specify a repository type and URL</p>
-      </div>
-      <div class="ui form">
-        <div class="fields">
-          <div class="required four wide field">
-            <select class="ui search dropdown">
-              <option data-value="github" selected>Github</option>
-            </select>
-          </div>
-          <div class="required ten wide field">
-            <input type="text" id="repo_url" placeholder="Repository URL" autofocus>
-          </div>
-        </div>
-      </div>
-      <div class="actions">
-        <div class="ui red basic cancel inverted button">
-          <i class="remove icon"></i>
-          Cancel
-        </div>
-        <div class="ui green ok inverted button">
-          <i class="checkmark icon"></i>
-          OK
-        </div>
-      </div>
-
-    </div>
-
-    <div class="ui basic registering modal">
-      <div class="ui segment">
-        <div class="ui active dimmer">
-          <div class="ui indeterminate text loader">Registering...</div>
-        </div>
-        <p></p>
-      </div>
-    </div>
-
-
-  </div>
 
 </template>
 

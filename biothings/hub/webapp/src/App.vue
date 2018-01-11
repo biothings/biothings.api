@@ -8,12 +8,15 @@
         </a>
 
         <a class="active item" data-tab="home">
+            <i class="ui home icon"></i>
             Home
         </a>
         <a class="item" data-tab="datasources">
+            <i class="ui database icon"></i>
             Datasources
         </a>
         <a class="item" data-tab="builds">
+            <i class="ui cubes icon"></i>
             Builds
         </a>
 
@@ -25,17 +28,15 @@
     </div>
 
     <div class="ui active tab segment" data-tab="home">
-        <h2 class="ui header">Home</h2>
         <stats></stats>
     </div>
 
     <div class="ui tab segment" data-tab="datasources">
-        <h2 class="ui header">Datasources</h2>
         <data-source-grid></data-source-grid>
     </div>
 
     <div class="ui tab segment" data-tab="builds">
-        <h2 class="ui header">Builds</h2>
+        <build-grid></build-grid>
     </div>
 
   </div>
@@ -88,12 +89,13 @@ function split_and_join(str,sep="_",glue=" ") {
 Vue.filter('splitjoin',split_and_join);
 
 import DataSourceGrid from './DataSourceGrid.vue';
-import Stats from './Stats.vue';
+import BuildGrid from './BuildGrid.vue';
 import JobSummary from './JobSummary.vue';
+import Stats from './Stats.vue';
 
 export default {
   name: 'app',
-  components: { DataSourceGrid, JobSummary, Stats},
+  components: { DataSourceGrid, BuildGrid, JobSummary, Stats},
   mounted () {
       $('.menu .item').tab({
           history: true,
