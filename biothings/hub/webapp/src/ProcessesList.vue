@@ -22,7 +22,7 @@
                 v-bind:class="[process.cpu.status == 'running'? 'positive' : '', 'nowrap']">
                 <td>
                     <div v-bind:data-tooltip="process.cpu.status">
-                        <i v-if="process.cpu.status == 'running'" v-bind:class="process.cpu.status == 'running'? 'running ui spinner icon' : 'ui spinner icon'"></i>
+                        <i v-if="process.cpu.status == 'running'" class="ui pulsing rocket icon"></i>
                         <i v-else-if="process.cpu.status == 'sleeping'" class="ui hotel icon"></i>
                         <i v-else class="ui wait icon"></i>
                     </div>
@@ -32,7 +32,7 @@
                 <td v-if="process.job">{{process.job.step}}</td>
                 <td v-if="process.job">{{process.job.source}}</td>
                 <td v-if="process.job">{{process.job.duration}}</td>
-                <td class="center aligned" v-else colspan="4"></td>
+                <td class="center aligned" v-else colspan="4"><i>ready</i></td>
                 <td class="right aligned">{{process.cpu.percent}}%</td>
                 <td class="right aligned">{{process.memory.size | pretty_size }}</td>
             </tr>
@@ -66,11 +66,4 @@ export default {
 </script>
 
 <style>
-table .nowrap {
-        white-space:  nowrap;
-    }
-@keyframes rotate360 {
-    to { transform: rotate(360deg); }
-}
-.running { animation: 2s rotate360 infinite linear; }
 </style>

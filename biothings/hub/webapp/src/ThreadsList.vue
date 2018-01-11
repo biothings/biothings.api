@@ -26,7 +26,7 @@
             <tr v-for="(thread, pid) in threads.all" v-bind:class="[thread.job ? 'positive' : '', 'nowrap']">
                 <td class="nowrap">
                     <div>
-                        <i v-if="thread.job" class="running ui spinner icon"></i>
+                        <i v-if="thread.job" class="pulsing ui lightning icon"></i>
                         <i v-else class="ui hotel icon"></i>
                     </div>
                 </td>
@@ -67,11 +67,4 @@ export default {
 </script>
 
 <style>
-table .nowrap {
-        white-space:  nowrap;
-    }
-@keyframes rotate360 {
-    to { transform: rotate(360deg); }
-}
-.running { animation: 2s rotate360 infinite linear; }
 </style>

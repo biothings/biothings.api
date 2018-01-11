@@ -2,10 +2,6 @@
 
     <div class="ui two column centered grid">
         <div class="four column centered row">
-        <div class="column">
-            number of datasources, number of builds, total number of docs,
-            whatsnew, errors (datasources, builds, ,etc...), 
-        </div>
         </div>
         <div class="fourteen wide column centered row">
         <div class="column">

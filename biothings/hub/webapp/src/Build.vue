@@ -1,5 +1,5 @@
 <template>
-    <div class="ui card">
+    <div class="ui fluid card">
         <div class="content">
             <!-- in progress -->
             <i class="right floated database icon pulsing"
@@ -13,17 +13,16 @@
             </div>
 
             <div class="left aligned header" v-model="build">{{ build.target_name }}</div>
-            <div class="meta">
-                <span class="right floated time" v-model="build">Built {{ build.started_at | moment("from","now") }}</span>
-                <span class="left floated category" v-model="build">{{ build._meta.build_version }}</span>
-            </div>
             <div class="left aligned description">
-                <p>
                     <div>
                         <i class="file outline icon"></i>
                         {{ build.count | currency('',0) }} document{{ build.count &gt; 1 ? "s" : "" }}
+                        <span class="right floated category" v-model="build" v-if="build._meta">{{ build._meta.build_version }}</span>
                     </div>
-                </p>
+            </div>
+            <div class="meta">
+                <span class="left floated category" v-model="build" v-if="build.jobs">Build time: {{ build.jobs | build_time | timesofar }}</span>
+                <span class="right floated time" v-model="build">Built {{ build.started_at | moment("from","now") }}</span>
             </div>
 
             <div class="ui clearing divider"></div>
@@ -44,7 +43,7 @@
                                     <th>Version</th>
                                 </tr>
                             </thead>
-                            <tbody v-if="build._meta.src">
+                            <tbody v-if="build._meta">
                                 <tr v-for="(info,src) in build._meta.src">
                                     <td v-if="info.url"><a :href="info.url">{{src}}</a></td>
                                     <td v-else>{{src}}</td>
@@ -68,7 +67,7 @@
                                     <th>Count</th>
                                 </tr>
                             </thead>
-                            <tbody v-if="build._meta.stats">
+                            <tbody v-if="build._meta">
                                 <tr v-for="(count,stat) in build._meta.stats">
                                     <td >{{stat}}</td>
                                     <td>{{count}}</td>
@@ -143,6 +142,15 @@
 <script>
 import axios from 'axios'
 import bus from './bus.js'
+import Vue from 'vue';
+
+function build_time(jobs) {
+    return jobs.map((q)=>q.time_in_s).reduce(
+            function(total, q) {
+                return total + q
+            }, 0);
+};
+Vue.filter('build_time',build_time);
 
 export default {
   name: 'build',

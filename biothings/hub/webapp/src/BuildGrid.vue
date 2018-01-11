@@ -13,8 +13,8 @@
                 </button>
             </div>
         </div>
-        <div class="ui grid">
-            <div class="four wide column" v-for="build in builds">
+        <div class="ui three column grid">
+            <div class="column" v-for="build in builds">
                 <build v-bind:build="build"></build>
             </div>
         </div>

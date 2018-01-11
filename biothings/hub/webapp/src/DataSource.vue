@@ -22,8 +22,8 @@
 
       <div class="left aligned header" v-if="source.name">{{ source.name | splitjoin | capitalize }}</div>
       <div class="meta">
-        <span class="right floated time" v-if="source.download && source.download.started_at">{{ source.download.started_at | moment("from", "now") }}</span>
-        <span class="right floated time" v-else>Never</span>
+        <span class="right floated time" v-if="source.download && source.download.started_at">Updated {{ source.download.started_at | moment("from", "now") }}</span>
+        <span class="right floated time" v-else>Never updated</span>
         <span class="left floated category">{{ source.release }}</span>
       </div>
       <div class="left aligned description">
@@ -140,13 +140,4 @@ export default {
 </script>
 
 <style>
-  @keyframes pulse {
-    0% {transform: scale(1, 1);}
-    50% {transform: scale(1.2, 1.2);}
-    100% {transform: scale(1, 1);}
-  }
-
-  .pulsing {
-    animation: pulse 1s linear infinite;
-  }
 </style>

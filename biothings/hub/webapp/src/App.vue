@@ -53,10 +53,27 @@ import Vue from 'vue';
 Vue.use(Vue2Filters);
 Vue.use(require('vue-moment'));
 
+function timesofar(value) {
+    let hours =  parseInt(Math.floor(value / 3600));
+    let minutes = parseInt(Math.floor((value - (hours * 3600)) / 60));
+    let seconds= parseInt((value - ((hours * 3600) + (minutes * 60))) % 60);
+
+    let dHours = (hours > 9 ? hours : '0' + hours);
+    let dMins = (minutes > 9 ? minutes : '0' + minutes);
+    let dSecs = (seconds > 9 ? seconds : '0' + seconds);
+
+    var res = "";
+    if(hours) res += dHours + "h";
+    if(minutes) res += dMins + "m";
+    if(seconds) res += dSecs + "s";
+
+    return res;
+};
+Vue.filter('timesofar',timesofar);
+
 
 var UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
 var STEP = 1024;
-
 
 function pretty_size(bytes,precision=2) {
 	var units = [
@@ -134,4 +151,30 @@ li {
 a {
   color: #42b983;
 }
+
+table .nowrap {
+  white-space:  nowrap;
+}
+
+@keyframes pulse {
+  0% {transform: scale(1, 1);}
+  50% {transform: scale(1.2, 1.2);}
+  100% {transform: scale(1, 1);}
+}
+
+.pulsing {
+  animation: pulse 1s linear infinite;
+}
+
+.running { animation: 1s rotate360 infinite linear; }
+
+@keyframes pulse {
+  0% {transform: scale(1, 1);}
+  50% {transform: scale(1.2, 1.2);}
+  100% {transform: scale(1, 1);}
+}
+.pulsing {
+  animation: pulse 1s linear infinite;
+}
+
 </style>
