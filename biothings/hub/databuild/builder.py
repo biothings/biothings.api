@@ -977,7 +977,7 @@ class BuilderManager(BaseManager):
     def trigger_merge(self,doc):
         return self.merge(doc["_id"])
 
-    def build_info(self):
+    def build_config_info(self):
         res = {}
         for name in self.register:
             builder = self[name]
@@ -998,3 +998,44 @@ class BuilderManager(BaseManager):
                 res[name]["mapper"][mappername] = mapper.__class__.__name__
         return res
 
+    def build_info(self,id=None,build_config=None,fields=None):
+        """
+        Return build information given an build _id, or all builds
+        if _id is None. "fields" can be passed to select which fields
+        to return or not (mongo notation for projections), if None
+        return everything except:
+         - "mapping" (too long)
+        If id is None, more are filtered:
+         - "sources" and "build_config"
+        """
+        res = {}
+        q = {}
+        if fields is None:
+            fields = {"mapping": 0}
+        if not id is None:
+            q = {"_id": id}
+        else:
+            fields["sources"] = 0
+            fields["build_config"] = 0
+        if not build_config is None:
+            q["build_config._id"] = build_config
+        builds = get_src_build().find(q,fields)
+        db = mongo.get_target_db()
+        res = [b for b in sorted(builds,
+            key=lambda e: e.get("_meta",{}).get("build_version") or e["started_at"],reverse=True)]
+        # set a global status (ie. latest job's status)
+        # + get total #docs
+        for b in res:
+            jobs = b.get("jobs",[])
+            b["status"] = "unknown"
+            if jobs:
+                b["status"] = jobs[-1]["status"]
+            b["count"] = db[b["_id"]].count()
+
+        if id:
+            if res:
+                return res.pop()
+            else:
+                raise ValueError("No such build named '%s'" % id)
+        else:
+            return res
