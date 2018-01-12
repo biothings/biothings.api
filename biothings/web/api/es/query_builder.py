@@ -159,8 +159,8 @@ class ESQueryBuilder(object):
         #add filters as filtered query
         #this will apply to facet counts
         _query = {
-            'filtered': {
-                'query': _query,
+            'bool': {
+                'must': _query,
                 'filter': filters
             }
         }
