@@ -142,9 +142,16 @@ class ESQueryBuilder(object):
             _filter.append(self._user_query_filter())
         return _filter
 
+    def _get_missing_filters(self):
+        return []
+
     def get_query_filters(self):
         ''' Override me to add more query filters '''
         return self._get_query_filters()
+
+    def get_missing_filters(self):
+        ''' Override me to add more must_not filters '''
+        return self._get_missing_filters()
 
     def add_extra_filters(self, q):
         ''' Override me to add more filters '''
@@ -153,17 +160,21 @@ class ESQueryBuilder(object):
     def add_query_filters(self, _query):
         ''' Given a query, add any other filters '''
         filters = self.get_query_filters()
-        if not filters:
+        missing = self.get_missing_filters()
+        if not filters and not missing:
             return _query
 
         #add filters as filtered query
         #this will apply to facet counts
         _query = {
             'bool': {
-                'must': _query,
-                'filter': filters
+                'must': _query
             }
         }
+        if filters:
+            _query['bool']['filter'] = filters
+        if missing:
+            _query['bool']['must_not'] = missing
 
         return _query
     
