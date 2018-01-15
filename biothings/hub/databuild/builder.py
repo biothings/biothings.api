@@ -65,7 +65,10 @@ class DataBuilder(object):
         # root document datasource.
         # Usefull to express; "all resources except source1"
         self.doc_root_key = doc_root_key
+        # overall merge start time
         self.t0 = time.time()
+        # step merge start time
+        self.ti = time.time()
         self.logfile = None
         self.log_folder = log_folder
         self.mappers = {}
@@ -253,8 +256,8 @@ class DataBuilder(object):
             job_info['pid'] = os.getpid()
         else:
             # only register time when it's a final state
-            job_info["time"] = timesofar(self.t0)
-            t1 = round(time.time() - self.t0, 0)
+            job_info["time"] = timesofar(self.ti)
+            t1 = round(time.time() - self.ti, 0)
             job_info["time_in_s"] = t1
         if "build" in extra:
             build_info.update(extra["build"])
@@ -268,6 +271,8 @@ class DataBuilder(object):
             build_info["jobs"] = []
             src_build.insert_one(build_info)
         if init:
+            # init timer for this step
+            self.ti = time.time()
             src_build.update({'_id': target_name}, {"$push": {'jobs': job_info}})
             # now refresh/sync
             build = src_build.find_one({'_id': target_name})
@@ -477,13 +482,14 @@ class DataBuilder(object):
             @asyncio.coroutine
             def do():
                 res = None
-                if "merge" in steps:
+                if "merge" in steps or "post" in steps:
                     job = self.merge_sources(source_names=sources, ids=ids, steps=steps,
                             job_manager=job_manager, *args, **kwargs)
                     res = yield from job
                 if "metadata" in steps:
                     pinfo = self.get_pinfo()
                     pinfo["step"] = "metadata"
+                    self.register_status("building",transient=True,init=True,job={"step":"metadata"})
                     postjob = yield from job_manager.defer_to_thread(pinfo,
                             partial(self.store_metadata,res,sources=sources,job_manager=job_manager))
                     def stored(f):
@@ -1021,8 +1027,7 @@ class BuilderManager(BaseManager):
             q["build_config._id"] = build_config
         builds = get_src_build().find(q,fields)
         db = mongo.get_target_db()
-        res = [b for b in sorted(builds,
-            key=lambda e: e.get("_meta",{}).get("build_version") or e["started_at"],reverse=True)]
+        res = [b for b in sorted(builds, key=lambda e: str(e["started_at"]),reverse=True)]
         # set a global status (ie. latest job's status)
         # + get total #docs
         for b in res:
