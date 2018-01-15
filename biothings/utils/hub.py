@@ -125,14 +125,15 @@ class HubShell(InteractiveShell):
         # we use force here because, very likely, the command from strcmd we generated
         # isn't part of shell's known commands (and there's a check about that when force=False)
         self.register_command(strcmd,res,force=True)
+        return pfunc
 
     def extract_command_name(self,cmd):
         try:
-            # extract before (), or just the the whole cmd if not callable
-            grps = re.fullmatch("([\w\.]+)(\(.*\))?",cmd.strip()).groups()
+            # extract before () (non-callable are never tracked)
+            grps = re.fullmatch("([\w\.]+)(\(.*\))",cmd.strip()).groups()
             return grps[0]
         except AttributeError:
-            raise CommandError("Can't extract command name from %s" % repr(cmd))
+            raise CommandError("Can't extract command name from '%s'" % repr(cmd))
 
     def register_command(self, cmd, result, force=False):
         """
