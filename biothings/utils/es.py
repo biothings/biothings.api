@@ -1,4 +1,4 @@
-import time, copy
+import time, copy, re
 import json
 from elasticsearch import Elasticsearch, NotFoundError, RequestError, TransportError
 from elasticsearch import helpers
@@ -6,6 +6,7 @@ import logging
 import itertools
 
 from biothings.utils.common import iter_n, timesofar, ask
+from biothings.utils.dataload import dict_walk
 
 # setup ES logging
 import logging
@@ -570,6 +571,21 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             str: {"type": "string","analyzer":"string_lowercase"}, # not splittable (like an ID for instance)
             "split_str": {"type": "string"}
             }
+    # inspect_doc, if it's been jsonified, contains keys with type as string,
+    # such as "<class 'str'>". This is not a real type and we need to convert them
+    # back to actual types. This is transparent if inspect_doc isalready in proper format
+    pat = re.compile("<class '(\w+)'>")
+    def str2type(k):
+        if type(k) == str:
+            mat = pat.findall(k)
+            if mat:
+                return eval(mat[0]) # actual type
+            else:
+                return k
+        else:
+            return k
+    inspect_doc = dict_walk(inspect_doc,str2type)
+
     if init and not "_id" in inspect_doc:
         raise ValueError("Not _id key found, documents won't be indexed")
     mapping = {}

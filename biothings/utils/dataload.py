@@ -9,6 +9,7 @@ import csv
 import os, os.path
 import json
 import collections
+import copy
 
 from .common import open_anyfile, is_str, ask, safewfile, anyfile
 
@@ -760,3 +761,10 @@ def merge_struct(v1, v2,aslistofdict=None):
     #print("return %s" % v1)
     return v1
 
+
+def dict_walk(dictionary, key_func):
+    """Recursively apply key_func to dict's keys"""
+    if not isinstance(dictionary, dict):
+        return dictionary
+    return dict((key_func(k), dict_walk(v, key_func))
+            for k, v in dictionary.items())

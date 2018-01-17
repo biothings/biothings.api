@@ -838,6 +838,25 @@ class BuilderManager(BaseManager):
                     "sources" : []}
             self.src_build_config.insert_one(conf)
 
+    @property
+    def source_backend(self):
+        source_backend =  self.source_backend_factory and self.source_backend_factory() or \
+                partial(SourceDocMongoBackend,
+                    build_config=partial(get_src_build_config),
+                    build=partial(get_src_build),
+                    master=partial(get_src_master),
+                    dump=partial(get_src_dump),
+                    sources=partial(mongo.get_src_db))
+        return source_backend
+
+    @property
+    def target_backend(self):
+        target_backend = self.target_backend_factory and self.target_backend_factory() or \
+                partial(TargetDocMongoBackend,
+                        target_db=partial(mongo.get_target_db))
+        return target_backend
+
+
     def register_builder(self,build_name):
         # will use partial to postponse object creations and their db connection
         # as we don't want to keep connection alive for undetermined amount of time
@@ -846,30 +865,34 @@ class BuilderManager(BaseManager):
             # postpone config import so app had time to set it up
             # before actual call time
             from biothings import config
-            source_backend =  self.source_backend_factory and self.source_backend_factory() or \
-                                    partial(SourceDocMongoBackend,
-                                            build_config=partial(get_src_build_config),
-                                            build=partial(get_src_build),
-                                            master=partial(get_src_master),
-                                            dump=partial(get_src_dump),
-                                            sources=partial(mongo.get_src_db))
-
-            # declare target backend
-            target_backend = self.target_backend_factory and self.target_backend_factory() or \
-                                    partial(TargetDocMongoBackend,
-                                            target_db=partial(mongo.get_target_db))
-
             # assemble the whole
             klass = self.builder_class and self.builder_class or DataBuilder
             bdr = klass(
                     build_name,
-                    source_backend=source_backend,
-                    target_backend=target_backend,
+                    source_backend=self.source_backend,
+                    target_backend=self.target_backend,
                     log_folder=config.LOG_FOLDER)
 
             return bdr
 
         self.register[build_name] = partial(create,build_name)
+
+    def get_builder(self,col_name):
+        doc = get_src_build().find_one({"_id":col_name})
+        if not doc:
+            raise BuilderException("No such build named '%s'" % repr(col_name))
+        assert "build_config" in doc, "Expecting build_config information"
+        klass = self.builder_class and self.builder_class or DataBuilder
+        bdr = klass(
+                doc["build_config"]["name"],
+                source_backend=self.source_backend,
+                target_backend=self.target_backend,
+                log_folder=btconfig.LOG_FOLDER)
+        # overwrite with existing values
+        bdr.build_config = doc["build_config"]
+        bdr.target_backend.set_target_name(col_name)
+
+        return bdr
 
     def delete_merge(self,merge_name):
         """Delete merged collections and associated metadata"""

@@ -244,11 +244,13 @@ def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging):
     """Inspect docs and return a summary of its structure:
     - mode:
         + "type": explore documents and report strict data structure
-        + "mapping": same as type but also perform test on data so guess best mapping 
+        + "mapping": same as type but also perform test on data so guess best mapping
           (eg. check if a string is splitable, etc...). Implies merge=True
         + "stats": explore documents and compute basic stats (count,min,max,sum)
         + "deepstats": same as stats but record values and also compute mean,stdev,median
           (memory intensive...)
+      (mode can also be a list of modes, eg. ["type","mapping"]. There's little
+       overhead computing multiple types as most time is spent on actually getting the data)
     - clean: don't delete recorded vqlues or temporary results
     - merge: merge scalar into list when both exist (eg. {"val":..} and [{"val":...}]
     """
@@ -270,24 +272,33 @@ def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging):
             for e in mapt:
                 post(e,mode,clean)
 
-    merge = mode == "mapping" and True or merge
-    mapt = {}
+    if type(mode) == str:
+        modes = [mode]
+    else:
+        modes = mode
+    _map = {}
+    for m in modes:
+        _map[m] = {}
     cnt = 0
     t0 = time.time()
     innert0 = time.time()
     for doc in docs:
-        inspect(doc,mapt=mapt,mode=mode)
+        for m in modes:
+            inspect(doc,mapt=_map[m],mode=m)
         cnt += 1
         if cnt % 10000 == 0:
             logger.info("%d documents processed [%s]" % (cnt,timesofar(innert0)))
             innert0 = time.time()
     logger.info("Done [%s]" % timesofar(t0))
     logger.info("Post-processing (stats)")
-    post(mapt,mode,clean)
-    if merge:
-        merge_scalar_list(mapt,mode)
+    for m in modes:
+        post(_map[m],m,clean)
 
-    return mapt
+    merge = "mapping" in modes and True or merge
+    if merge:
+        merge_scalar_list(_map["mapping"],mode)
+
+    return _map
 
 
 if __name__ == "__main__":

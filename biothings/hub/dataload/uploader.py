@@ -328,7 +328,9 @@ class BaseSourceUploader(object):
         upload_info.update(extra)
         job_key = "upload.jobs.%s" % self.name
 
-        if status == "uploading":
+        # TODO: should use the same approach as Builder.register_status
+        # with arguments like 'init' and 'transient'...
+        if status.endswith("ing"):
             # record some "in-progress" information
             upload_info['step'] = self.name # this is the actual collection name
             upload_info['temp_collection'] = self.temp_collection_name

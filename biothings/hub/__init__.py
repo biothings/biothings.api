@@ -8,4 +8,4 @@ INDEXMANAGER_CATEGORY = "indexmanager"
 DIFFER_CATEGORY = "differ"
 DIFFMANAGER_CATEGORY = "diffmanager"
 SYNCER_CATEGORY = "syncer"
-
+INSPECTOR_CATEGORY = "inspector"
