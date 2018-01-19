@@ -56,12 +56,14 @@ class HubShell(InteractiveShell):
     def set_commands(self, basic_commands, *extra_ns):
         def register(commands):
             for name,cmd in commands.items():
+                if name in self.commands:
+                    raise CommandError("Command defined multiple time: %s" % name)
                 if type(cmd) == CommandDefinition:
                     try:
                         self.commands[name] = cmd["command"]
                         self.tracked[name] = cmd.get("tracked",True)
                     except KeyError as e:
-                        raise CommandError("Could not register command because missing '%s' in definition: %s" % (cmd,e))
+                        raise CommandError("Could not register command because missing '%s' in definition: %s" % (e,cmd))
                 else:
                     self.commands[name] = cmd
         # update with ssh server default commands

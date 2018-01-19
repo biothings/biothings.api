@@ -27,8 +27,8 @@ class DefaultHandler(RequestHandler):
                  "code" : status_code})
 
     # defined by default so we accept OPTIONS pre-flight requests
-    def options(self):
-        pass
+    def options(self, *args, **kwargs):
+        logging.debug("OPTIONS args: %s, kwargs: %s" % (args,kwargs))
 
 
 class BaseHandler(DefaultHandler):
@@ -42,14 +42,19 @@ class GenericHandler(DefaultHandler):
     def initialize(self,shell,**kwargs):
         self.shell = shell
 
-    def get(self):
+    def get(self, *args, **kwargs):
+        logging.debug("GET args: %s, kwargs: %s" % (args,kwargs))
         self.write_error(405,exc_info=(None,"Method GET not allowed",None))
-    def post(self):
+    def post(self, *args, **kwargs):
+        logging.debug("POST args: %s, kwargs: %s" % (args,kwargs))
         self.write_error(405,exc_info=(None,"Method POST not allowed",None))
-    def put(self):
+    def put(self, *args, **kwargs):
+        logging.debug("PUT args: %s, kwargs: %s" % (args,kwargs))
         self.write_error(405,exc_info=(None,"Method PUT not allowed",None))
-    def delete(self):
+    def delete(self, *args, **kwargs):
+        logging.debug("DELETE args: %s, kwargs: %s" % (args,kwargs))
         self.write_error(405,exc_info=(None,"Method DELETE not allowed",None))
-    def head(self):
+    def head(self, *args, **kwargs):
+        logging.debug("HEAD args: %s, kwargs: %s" % (args,kwargs))
         self.write_error(405,exc_info=(None,"Method HEAD not allowed",None))
 
