@@ -4,6 +4,8 @@
             <!-- in progress -->
             <i class="right floated database icon pulsing"
                 v-if="build.status == 'building'"></i>
+            <i class="right floated unhide icon pulsing"
+                v-if="build.status == 'inspecting'"></i>
 
             <!-- error -->
             <div class="ui"
@@ -14,11 +16,11 @@
 
             <div class="left aligned header" v-model="build">{{ build.target_name }}</div>
             <div class="left aligned description">
-                    <div>
-                        <i class="file outline icon"></i>
-                        {{ build.count | currency('',0) }} document{{ build.count &gt; 1 ? "s" : "" }}
-                        <span class="right floated category" v-model="build" v-if="build._meta">{{ build._meta.build_version }}</span>
-                    </div>
+                <div>
+                    <i class="file outline icon"></i>
+                    {{ build.count | currency('',0) }} document{{ build.count &gt; 1 ? "s" : "" }}
+                    <span class="right floated category" v-model="build" v-if="build._meta">{{ build._meta.build_version }}</span>
+                </div>
             </div>
             <div class="meta">
                 <span class="left floated category" v-model="build" v-if="build.jobs">Build time: {{ build.jobs | build_time | timesofar }}</span>
@@ -90,16 +92,16 @@
                                     <div class="summary">
                                         Build starts
                                         <div class="date">
-                                        {{build.started_at | moment('MMM Do YYYY, h:mm:ss a')}}
+                                            {{build.started_at | moment('MMM Do YYYY, h:mm:ss a')}}
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="event" v-for="job in build.jobs">
-                                    <i class="ui green checkmark icon" v-if="job.status == 'success'"></i>
-                                    <i class="ui red warning sign icon" v-else-if="job.status == 'failed'"></i>
-                                    <i class="ui pulsing cube icon" v-else></i>
+                                <i class="ui green checkmark icon" v-if="job.status == 'success'"></i>
+                                <i class="ui red warning sign icon" v-else-if="job.status == 'failed'"></i>
+                                <i class="ui pulsing cube icon" v-else></i>
                                 <div class="content">
                                     <div class="summary">
                                         {{job.step}}
@@ -125,15 +127,37 @@
 
         <div class="extra content">
             <div class="ui icon buttons left floated mini">
-                <button class="ui disabled button">
-                    <i class="download cloud icon"></i>
+                <button class="ui button">
+                    <i class="unhide icon"></i>
                 </button>
-                <button class="ui disabled button">
-                    <i class="database icon"></i>
+            </div>
+            <div class="ui icon buttons left floated mini">
+                <button class="ui button">
+                    <i class="trash icon" @click="deleteBuild()"></i>
                 </button>
             </div>
             <div class="ui icon buttons right floated mini">
                 <button class="ui button"><i class="angle double right icon"></i></button>
+            </div>
+        </div>
+
+        <div class="ui basic deletebuild modal" :id="build._id">
+            <div class="ui icon header">
+                <i class="remove icon"></i>
+                Delete build
+            </div>
+            <div class="content">
+                <p>Are you sure you want to delete build <b>{{build.target_name}}</b> ?</p>
+            </div>
+            <div class="actions">
+                <div class="ui red basic cancel inverted button">
+                    <i class="remove icon"></i>
+                    No
+                </div>
+                <div class="ui green ok inverted button">
+                    <i class="checkmark icon"></i>
+                    Yes
+                </div>
             </div>
         </div>
     </div>
@@ -165,10 +189,29 @@ export default {
       var errs = [];
       if (this.build.jobs) {
           var last = this.build.jobs[this.build.jobs.length-1];
-          if(last.err)
+          if(last && last.err)
               errs.push(`Step '${last.step}' failed: ${last.err}`);
       }
       return errs.join("<br>");
+    },
+    deleteBuild : function() {
+        var self = this;
+        $(`#${self.build._id}.ui.basic.deletebuild.modal`)
+        .modal("setting", {
+          onApprove: function () {
+              axios.delete(axios.defaults.baseURL + `/build/${self.build._id}`)
+            .then(response => {
+              console.log(response.data.result)
+              bus.$emit("refresh_builds");
+              return true;
+            })
+            .catch(err => {
+              console.log(err);
+              console.log("Error deleting build: " + err.data.error);
+            })
+          }
+        })
+        .modal("show");
     },
   },
 }

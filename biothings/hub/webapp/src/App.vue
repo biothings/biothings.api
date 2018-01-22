@@ -29,6 +29,8 @@
 
     <div class="ui active tab segment" data-tab="home">
         <stats></stats>
+        what's new etc...
+        remote status, metadata
     </div>
 
     <div class="ui tab segment" data-tab="datasources">

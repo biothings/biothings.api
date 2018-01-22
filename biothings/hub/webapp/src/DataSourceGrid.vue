@@ -1,18 +1,32 @@
 <template>
-    <div class="ui main container" id="list_sources">
-        <div class="ui segment mini right aligned">
-            <div class="ui icon buttons">
-                <button class="ui button" v-on:click="register">
-                    <i class="plug icon"></i>
-                </button>
+    <div id="sources">
+        <div class="ui left vertical labeled icon small inverted sidebar menu">
+            <a class="item" v-on:click="register">
+                <i class="plug icon"></i>
+                New data plugin
+            </a>
+            <a class="item">
+                <i class="unhide icon"></i>
+                Inspect
+            </a>
+        </div>
+        <div class="pusher">
+            <div class="ui main container" id="list_build">
+                <div class="ui segment left aligned">
+                    <div class="ui secondary small menu">
+                        <a class="item">
+                            <i class="sidebar icon"></i>
+                            Menu
+                        </a>
+                    </div>
+                </div>
+                <div id="data-source-grid" class="ui grid">
+                    <div class="four wide column" v-for="source in orderBy(sources, 'name')">
+                        <data-source v-bind:source="source"></data-source>
+                    </div>
+                </div>
             </div>
         </div>
-        <div id="data-source-grid" class="ui grid">
-            <div class="four wide column" v-for="source in orderBy(sources, 'name')">
-                <data-source v-bind:source="source"></data-source>
-            </div>
-        </div>
-
         <div class="ui basic newdatasource modal">
             <div class="ui icon">
                 <i class="plug icon"></i>
@@ -24,7 +38,7 @@
             <div class="ui form">
                 <div class="fields">
                     <div class="required four wide field">
-                        <select class="ui search dropdown">
+                        <select class="ui dropdown">
                             <option data-value="github" selected>Github</option>
                         </select>
                     </div>
@@ -58,6 +72,8 @@
 
     </div>
 
+
+
 </template>
 
 <script>
@@ -73,6 +89,10 @@ export default {
     this.getSourcesStatus();
     setInterval(this.getSourcesStatus,15000);
     $('select.dropdown').dropdown();
+    $('#sources .ui.sidebar')
+    .sidebar({context:$('#sources')})
+    .sidebar('setting', 'transition', 'overlay')
+    .sidebar('attach events', '#sources .menu .item');
   },
   created() {
     bus.$on('refresh_sources',this.refreshSources);
@@ -99,7 +119,7 @@ export default {
         .modal("setting", {
           onApprove: function () {
             var url = $(".ui.form").form('get field', "repo_url").val();
-            axios.post(axios.defaults.baseURL + '/register_url',{"url":url})
+            axios.post(axios.defaults.baseURL + '/dataplugin/register_url',{"url":url})
             .then(response => {
               console.log(response.data.result)
               bus.$emit("refresh_sources");

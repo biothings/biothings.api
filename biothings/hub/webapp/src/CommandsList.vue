@@ -12,7 +12,7 @@
                 >
                 <td>
                     <i v-if="command.is_done" v-bind:class="[ command.is_done & command.failed ? 'attention icon' : '', command.is_done & !command.failed ? 'icon checkmark': '' ]"></i>
-                    <div v-else class="ui active tiny inline loader"></div>
+                    <i v-else class="notched circle loading icon"></i>
                 </td>
                 <td class="right aligned">{{command.id}}</td>
                 <td>{{command.cmd}}</td>

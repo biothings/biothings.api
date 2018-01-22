@@ -1,5 +1,5 @@
 <template>
-    <div>
+    <div v-if="processes.all">
         <div class="ui three columns centered grid">
             <div class="three wide column">
                 <div class="ui tiny label" v-if="processes.running">
@@ -17,12 +17,12 @@
                 </div>
             </div>
         </div>
-        <table class="ui nowrap compact celled table" v-if="processes.all">
+        <table class="ui nowrap compact celled table" v-if="Object.keys(processes.all).length">
             <tr v-for="(process, pid) in processes.all"
                 v-bind:class="[process.cpu.status == 'running'? 'positive' : '', 'nowrap']">
                 <td>
                     <div v-bind:data-tooltip="process.cpu.status">
-                        <i v-if="process.cpu.status == 'running'" class="ui pulsing rocket icon"></i>
+                        <i v-if="process.cpu.status == 'running'" class="ui notched circle loading icon"></i>
                         <i v-else-if="process.cpu.status == 'sleeping'" class="ui hotel icon"></i>
                         <i v-else class="ui wait icon"></i>
                     </div>

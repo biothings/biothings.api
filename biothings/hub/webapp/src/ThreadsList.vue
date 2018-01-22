@@ -26,7 +26,7 @@
             <tr v-for="(thread, pid) in threads.all" v-bind:class="[thread.job ? 'positive' : '', 'nowrap']">
                 <td class="nowrap">
                     <div>
-                        <i v-if="thread.job" class="pulsing ui lightning icon"></i>
+                        <i v-if="thread.job" class="ui notched circle loading icon"></i>
                         <i v-else class="ui hotel icon"></i>
                     </div>
                 </td>
