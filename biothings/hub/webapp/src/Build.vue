@@ -127,7 +127,7 @@
 
         <div class="extra content">
             <div class="ui icon buttons left floated mini">
-                <button class="ui button">
+                <button class="ui button" v-on:click="inspect">
                     <i class="unhide icon"></i>
                 </button>
             </div>
@@ -160,6 +160,10 @@
                 </div>
             </div>
         </div>
+
+        <inspect-form v-bind:toinspect="build" v-bind:select_data_provider="false">
+        </inspect-form>
+
     </div>
 </template>
 
@@ -167,6 +171,7 @@
 import axios from 'axios'
 import bus from './bus.js'
 import Vue from 'vue';
+import InspectForm from './InspectForm.vue'
 
 function build_time(jobs) {
     return jobs.map((q)=>q.time_in_s).reduce(
@@ -177,43 +182,64 @@ function build_time(jobs) {
 Vue.filter('build_time',build_time);
 
 export default {
-  name: 'build',
-  props: ['build'],
-  mounted() {
-      $('.menu .item')
+    name: 'build',
+    props: ['build'],
+    mounted() {
+        $('.menu .item')
         .tab()
         ;
-  },
-  methods: {
-    displayError : function() {
-      var errs = [];
-      if (this.build.jobs) {
-          var last = this.build.jobs[this.build.jobs.length-1];
-          if(last && last.err)
-              errs.push(`Step '${last.step}' failed: ${last.err}`);
-      }
-      return errs.join("<br>");
     },
-    deleteBuild : function() {
-        var self = this;
-        $(`#${self.build._id}.ui.basic.deletebuild.modal`)
-        .modal("setting", {
-          onApprove: function () {
-              axios.delete(axios.defaults.baseURL + `/build/${self.build._id}`)
-            .then(response => {
-              console.log(response.data.result)
-              bus.$emit("refresh_builds");
-              return true;
+    components: { InspectForm, },
+    methods: {
+        displayError : function() {
+            var errs = [];
+            if (this.build.jobs) {
+                var last = this.build.jobs[this.build.jobs.length-1];
+                if(last && last.err)
+                    errs.push(`Step '${last.step}' failed: ${last.err}`);
+            }
+            return errs.join("<br>");
+        },
+        deleteBuild : function() {
+            var self = this;
+            $(`#${self.build._id}.ui.basic.deletebuild.modal`)
+            .modal("setting", {
+                onApprove: function () {
+                    axios.delete(axios.defaults.baseURL + `/build/${self.build._id}`)
+                    .then(response => {
+                        console.log(response.data.result)
+                        bus.$emit("refresh_builds");
+                        return true;
+                    })
+                    .catch(err => {
+                        console.log(err);
+                        console.log("Error deleting build: " + err.data.error);
+                    })
+                }
             })
-            .catch(err => {
-              console.log(err);
-              console.log("Error deleting build: " + err.data.error);
+            .modal("show");
+        },
+        inspect: function() {
+            var self = this;
+            $(`#inspect-${this.build._id}.ui.basic.inspect.modal`)
+            .modal("setting", {
+                onApprove: function () {
+                    var modes = $(`#inspect-${self.build._id}`).find("#select-mode").val();
+                    console.log(modes);
+                    axios.put(axios.defaults.baseURL + '/inspect',
+                              {"data_provider" : self.build._id,"mode":modes})
+                    .then(response => {
+                        console.log(response.data.result)
+                        bus.$emit("refresh_builds");
+                    })
+                    .catch(err => {
+                        console.log("Error getting job manager information: " + err);
+                    })
+                }
             })
-          }
-        })
-        .modal("show");
+            .modal("show");
+        },
     },
-  },
 }
 </script>
 

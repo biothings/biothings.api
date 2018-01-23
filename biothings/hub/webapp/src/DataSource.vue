@@ -61,6 +61,9 @@
             </div>
         </div>
 
+        <inspect-form v-bind:toinspect="source" v-bind:select_data_provider="true">
+        </inspect-form>
+
         <!-- Register new data plugin -->
         <div class="ui basic unregister modal" v-if="source.data_plugin">
             <input class="plugin_url" type="hidden" :value="source.data_plugin.plugin.url">
@@ -83,86 +86,6 @@
             </div>
         </div>
 
-        <!-- Inspect -->
-        <div class="ui basic inspect modal" v-bind:id="'inspect-' + source._id">
-            <div class="ui icon">
-                <i class="large unhide icon"></i>
-                <h3>Inspect datasource</h3>
-            </div>
-            <div class="ui fluid grid">
-                <div class="four wide column">
-                    <select id="select-mode" class="ui dropdown" multiple="">
-                        <option selected>type</option>
-                        <option>mapping</option>
-                        <option>stats</option>
-                    </select>
-                </div>
-                <div class="ten wide column">
-                    <div class="ui inverted list">
-                        <a class="item">
-                            <i class="right triangle icon"></i>
-                            <div class="content">
-                                <div class="header">type</div>
-                                <div class="description">Builds a map of all types involved in the data, providing a summary of its structure</div>
-                            </div>
-                        </a>
-                        <a class="item">
-                            <i class="right triangle icon"></i>
-                            <div class="content">
-                                <div class="header">mapping</div>
-                                <div class="description">Analyzes data so the inspection results can be converted into an ElasticSearch mapping (used during indexing step)</div>
-                            </div>
-                        </a>
-                        <a class="item">
-                            <i class="right triangle icon"></i>
-                            <div class="content">
-                                <div class="header">stats</div>
-                                <div class="description">Performs in-depth analysis about the data, including type map and basic statistics, showing how volumetry fits over data structure</div>
-                            </div>
-                        </a>
-                    </div>
-                </div>
-                <div class="two wide column">
-                </div>
-                <div class="four wide column">
-                    <select id="select-data_provider" class="ui dropdown">
-                        <option value="src">Data Collection</option>
-                        <option value="uploader">Uploader</option>
-                    </select>
-                </div>
-                <div class="ten wide column">
-                    <div class="ui inverted list">
-                        <a class="item">
-                            <i class="right triangle icon"></i>
-                            <div class="content">
-                                <div class="header">Data Collection</div>
-                                <div class="description">Data is fetched from collection (stored data)</div>
-                            </div>
-                        </a>
-                        <a class="item">
-                            <i class="right triangle icon"></i>
-                            <div class="content">
-                                <div class="header">Uploader</div>
-                                <div class="description">Data is fetched directly from the parser, before storage into a collection</div>
-                            </div>
-                        </a>
-                    </div>
-                </div>
-                <div class="two wide column">
-                </div>
-            </div>
-            <div class="actions">
-                <div class="ui red basic cancel inverted button">
-                    <i class="remove icon"></i>
-                    Cancel
-                </div>
-                <div class="ui green ok inverted button">
-                    <i class="checkmark icon"></i>
-                    OK
-                </div>
-            </div>
-
-        </div>
 
     </div>
 </template>
@@ -170,6 +93,7 @@
 <script>
 import axios from 'axios'
 import bus from './bus.js'
+import InspectForm from './InspectForm.vue'
 
 export default {
     name: 'data-source',
@@ -177,6 +101,7 @@ export default {
     mounted () {
         $('select.dropdown').dropdown();
     },
+    components: { InspectForm, },
     methods: {
         displayError : function() {
             var errs = [];
