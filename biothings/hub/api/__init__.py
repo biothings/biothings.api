@@ -1,4 +1,4 @@
-import inspect, types, logging
+import inspect, types, logging, copy
 import asyncio
 from functools import partial
 import pprint
@@ -48,6 +48,7 @@ def generate_endpoint_for_callable(name, command, method, force_bodyargs):
     strcode = """
 @asyncio.coroutine
 def %(method)s(self%(mandatargs)s):
+    '''%(name)s => %(command)s'''
     cmdargs = %(cmdargs)s
     for k in cmdargs:
         if cmdargs[k] is None:
@@ -106,7 +107,7 @@ def %(method)s(self%(mandatargs)s):
         cmdres = CommandInformation([(k,v) for k,v in cmdres.items() if k != 'jobs'])
     self.write(cmdres)
 """ % {"method":method,"args":args,"defaultargs":defaultargs,"name":name,
-        "mandatargs":mandatargs,"cmdargs":cmdargs}
+        "mandatargs":mandatargs,"cmdargs":cmdargs,"command":repr(command)}
     #print(strcode)
     return strcode, mandatargs != ""
 
@@ -170,6 +171,7 @@ def generate_handler(shell, name, command_defs):
         eval(code,endpoint_ns,command_globals)
         methodfunc = command_globals[method]
         confdict[method] = methodfunc
+        confdict[cmdname] = command_globals[cmdname]
 
         by_suffix.setdefault(suffix,{})
         by_suffix[suffix].setdefault(method,{})["confdict"] = confdict
@@ -179,8 +181,8 @@ def generate_handler(shell, name, command_defs):
     routes = []
     # when suffix present, it gives a new handler
     # so method don't get mixed (actually overwritten) together with non-suffixed
-    for suffix,by_method in by_suffix.items():
-        confict = {}
+    for i,(suffix,by_method) in enumerate(by_suffix.items()):
+        confdict = {}
         methods = []
         # merge all method into same handler
         for method,dat in by_method.items():
@@ -192,7 +194,7 @@ def generate_handler(shell, name, command_defs):
             suffix = "/" + suffix
         if num_mandatory:
             # this is for more REST alike URLs (eg. /info/clinvar == /info?src=clinvar
-            url = r"/%s%s%s" % (name,"/(\w+)?"*num_mandatory,suffix)
+            url = r"/%s%s%s" % (name,"/([\w\.]+)?"*num_mandatory,suffix)
         else:
             url = r"/%s%s" % (name,suffix)
         routes.append((url,handler_class,{"shell":shell}))
@@ -226,16 +228,3 @@ def generate_api_routes(shell, commands, settings={}):
     routes = create_handlers(shell,commands)
     return routes
 
-#def get_api_app(managers, settings={}):
-#
-#    routes = [
-#            (r"/", HubHandler, {"managers":managers}),
-#            (r"/stats", StatsHandler, {"managers":managers}),
-#            # misc/static
-#            (r"/static/(.*)", tornado.web.StaticFileHandler,{"path":"biothings/hub/app/static"}),
-#            (r"/home()",tornado.web.StaticFileHandler,{"path":"biothings/hub/app/html/index.html"}),
-#            ]
-#
-#    app = tornado.web.Application(routes,settings=settings)
-#
-#    return app
