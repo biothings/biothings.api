@@ -1087,6 +1087,7 @@ class DifferManager(BaseManager):
         txt 'format' is the only one supported for now.
         """
         old = old or self.select_old_collection(new)
+        
         release_folder = generate_folder(btconfig.RELEASE_PATH,old,new)
         if not os.path.exists(release_folder):
             os.makedirs(release_folder)
@@ -1147,7 +1148,12 @@ class DifferManager(BaseManager):
         def get_counts(doc):
             stats = {}
             for subsrc,count in doc.get("merge_stats",{}).items():
-                src_sub = get_source_fullname(subsrc).split(".")
+                try:
+                    src_sub = get_source_fullname(subsrc).split(".")
+                except AttributeError:
+                    # not a merge stats coming from a source 
+                    # (could be custom field stats, eg. total_* in mygene)
+                    src_sub = [subsrc]
                 if len(src_sub) > 1:
                     # we have sub-sources we need to split the count
                     src,sub = src_sub
@@ -1558,7 +1564,7 @@ class DifferManager(BaseManager):
         parameters.
         """
         new_db_col_names = doc["_id"]
-        old_db_col_names = self.select_old_collection(doc)
+        old_db_col_names = self.select_old_collection(new_db_col_names)
         self.release_note(old_db_col_names, new_db_col_names, **kwargs)
 
     def rebuild_diff_file_list(self,diff_folder):

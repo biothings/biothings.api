@@ -469,10 +469,11 @@ class DataBuilder(object):
             raise BuilderException("No source found, got %s while available sources are: %s" % \
                     (repr(orig_sources),repr(avail_sources)))
         if target_name:
-            self.target_name = target_name
-            self.target_backend.set_target_name(self.target_name)
+            self.target_backend.set_target_name(target_name)
         else:
             target_name = self.target_backend.target_collection.name
+        self.target_name = target_name
+
         self.clean_old_collections()
 
         self.logger.info("Merging into target collection '%s'" % self.target_backend.target_collection.name)
