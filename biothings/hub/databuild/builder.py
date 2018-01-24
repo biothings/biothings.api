@@ -73,9 +73,10 @@ class DataBuilder(object):
         self.log_folder = log_folder
         self.mappers = {}
         self.timestamp = datetime.now()
-        self.stats = {} # keep track of cnt per source, etc...
-        self.src_versions = {} # versions involved in this build
-        self.metadata = {} # custom metadata
+        self.merge_stats = {} # keep track of cnt per source, etc...
+        self.src_versions = {} # versions involved in this build (soon to be remove)
+        self.src_meta = {} # sources involved in this build (includes versions)
+        self.stats = {} # can be customized
         self.mapping = {} # ES mapping (merged from src_master's docs)
 
         for mapper in mappers + [default_mapper_class()]:
@@ -352,24 +353,32 @@ class DataBuilder(object):
         if self.doc_root_key and not self.doc_root_key in self.build_config:
             raise BuilderException("Root document key '%s' can't be found in build configuration" % self.doc_root_key)
 
-    def get_metadata(self,sources,job_manager):
+    def get_stats(self,sources,job_manager):
         """
         Return a dictionnary of metadata for this build. It's usually app-specific 
-        and this method may be overridden as needed. Default: return "merge_stats"
-        (#docs involved in each single collections used in that build)
+        and this method may be overridden as needed.
 
-        Return dictionary will potentially be merged with existing metadata in
+        Return dictionary will be merged with any existing metadata in
         src_build collection. This behavior can be changed by setting a special
         key within metadata dict: {"__REPLACE__" : True} will... replace existing 
         metadata with the one returned here.
 
         "job_manager" is passed in case parallelization is needed. Be aware
         that this method is already running in a dedicated thread, in order to
-        use job_manager, the following code must be used at the very beginning 
+        use job_manager, the following code must be used at the very beginning
         of its implementation:
         asyncio.set_event_loop(job_manager.loop)
         """
-        return self.stats
+        return {}
+
+    def get_custom_metadata(self, sources, job_manager):
+        """
+        If more metadata is required, this method can be overridden and should
+        return a dict. Existing metadata dict will be update with that one
+        before storage.
+        """
+        return {}
+
 
     def get_mapping(self,sources):
         """
@@ -391,8 +400,18 @@ class DataBuilder(object):
         # TODO: backward compatible src_version key, should be removed
         # eventually as all informations are avail in src_meta
         self.src_versions = self.src_meta.pop("src_version")
+        # now that we have merge stats (count/srcs) + all src involved
+        # we can propagate stats
+        self.update_src_meta_stats()
         self.mapping = self.get_mapping(sources)
-        self.metadata = self.get_metadata(sources,job_manager)
+        self.stats = self.get_stats(sources,job_manager)
+        self.custom_metadata = self.get_custom_metadata(sources,job_manager)
+
+    def update_src_meta_stats(self):
+        for src,count in self.merge_stats.items():
+            mainsrc = get_source_fullname(src).split(".")[0]
+            self.src_meta.setdefault(mainsrc,{}).setdefault("stats",{})
+            self.src_meta[mainsrc]["stats"].update({src:count})
 
     def resolve_sources(self,sources):
         """
@@ -499,22 +518,25 @@ class DataBuilder(object):
                             if res:
                                 res = f.result() # consume to trigger exceptions if any
                             strargs = "[sources=%s,stats=%s,versions=%s]" % \
-                                    (sources,self.stats,self.src_versions)
+                                    (sources,self.merge_stats,self.src_versions)
                             build_version = self.get_build_version()
                             if "." in build_version:
                                 raise BuilderException("Can't use '.' in build version '%s', it's reserved for minor versions" % build_version)
                             # get original start dt
                             src_build = self.source_backend.build
                             build = src_build.find_one({'_id': target_name})
-                            self.register_status('success',build={
-                                "merge_stats" : self.stats,
-                                "mapping" : self.mapping,
-                                "_meta" : {
+                            _meta = {
                                     "src_version" : self.src_versions,
                                     "src" : self.src_meta,
-                                    "stats" : self.metadata,
+                                    "stats" : self.stats,
                                     "build_version" : build_version,
                                     "build_date" : datetime.fromtimestamp(self.t0).isoformat()}
+                            # custom
+                            _meta.update(self.custom_metadata)
+                            self.register_status('success',build={
+                                "merge_stats" : self.merge_stats,
+                                "mapping" : self.mapping,
+                                "_meta" : _meta,
                                 })
                             self.logger.info("success %s" % strargs,extra={"notify":True})
                             set_pending_to_diff(target_name)
@@ -567,10 +589,11 @@ class DataBuilder(object):
         do_merge = "merge" in steps
         do_post_merge = "post" in steps
         total_docs = 0
-        self.stats = {}
+        self.merge_stats = {}
         self.src_versions = {}
-        self.metadata = {}
+        self.stats = {}
         self.mapping = {}
+        self.custom_metadata = {}
         # try to identify root document sources amongst the list to first
         # process them (if any)
         defined_root_sources = self.get_root_document_sources()
@@ -606,7 +629,7 @@ class DataBuilder(object):
                         self.logger.exception("Failed merging source '%s': %s" % (name, e))
                         nonlocal got_error
                         got_error = e
-                job.add_done_callback(partial(merged,name=src_name,stats=self.stats))
+                job.add_done_callback(partial(merged,name=src_name,stats=self.merge_stats))
                 jobs.append(job)
                 yield from asyncio.wait([job])
                 # raise error as soon as we know something went wrong
@@ -661,7 +684,7 @@ class DataBuilder(object):
             self.logger.info("Skip post-merge process")
 
         yield from asyncio.sleep(0.0)
-        return self.stats
+        return self.merge_stats
 
     def document_cleaner(self,src_name,*args,**kwargs):
         """
