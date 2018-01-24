@@ -160,6 +160,10 @@ class InspectorManager(BaseManager):
                     except Exception as e:
                         logging.exception("Error while inspecting data: %s" % e)
                         got_error = e
+                        if data_provider_type == "source":
+                            registerer_obj.register_status("failed",err=repr(e))
+                        elif data_provider_type == "build":
+                            registerer_obj.register_status("failed",job={"err":repr(e)})
                 job.add_done_callback(inspected)
                 yield from job
                 if got_error:

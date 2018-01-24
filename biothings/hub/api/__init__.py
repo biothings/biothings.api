@@ -171,7 +171,6 @@ def generate_handler(shell, name, command_defs):
         eval(code,endpoint_ns,command_globals)
         methodfunc = command_globals[method]
         confdict[method] = methodfunc
-        confdict[cmdname] = command_globals[cmdname]
 
         by_suffix.setdefault(suffix,{})
         by_suffix[suffix].setdefault(method,{})["confdict"] = confdict
