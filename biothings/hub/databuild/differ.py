@@ -775,6 +775,29 @@ class ReleaseNoteTxt(object):
         if self.changes["sources"]:
             txt += "\n"
 
+        table = prettytable.PrettyTable(["Statistics","previous","new"])
+        table.align["Statistics"] = "l"
+        table.align["previous"] = "r"
+        table.align["new"] = "r"
+        for stat_name,stat in sorted(self.changes["stats"]["added"].items(),key=lambda e: e[0]):
+            table.add_row([stat_name,"-",stat["_count"]])
+        for stat_name,stat in sorted(self.changes["stats"]["deleted"].items(),key=lambda e: e[0]):
+            table.add_row([stat_name,stat["_count"],"-"])
+        for stat_name,stat in sorted(self.changes["stats"]["updated"].items(),key=lambda e: e[0]):
+            table.add_row([stat_name,stat["old"]["_count"],stat["new"]["_count"]])
+        #for old_stat in sorted(self.changes["stats"]["old"].keys()):
+        #    old_count = self.changes["stats"]["old"][old_stat]["_count"]
+        #    new_count = self.changes["stats"]["new"].get(old_stat,{}).get("_count","-")
+        #    table.add_row([old_stat,old_count,new_count])
+        #new_only = set(self.changes["stats"]["new"]).difference(set(self.changes["stats"]["old"]))
+        #for new_stat in new_only:
+        #    new_count = self.changes["stats"]["new"][new_stat]["_count"]
+        #    new_count = not new_count is None and new_count or "-"
+        #    table.add_row([old_stat,"-",new_count])
+        if table._rows:
+            txt += table.get_string()
+            txt += "\n\n"
+
         if self.changes["new"]["_fields"]:
             new_fields = sorted(self.changes["new"]["_fields"].get("add",[]))
             deleted_fields = self.changes["new"]["_fields"].get("remove",[])
@@ -787,7 +810,7 @@ class ReleaseNoteTxt(object):
                 txt += "Updated field(s): %s\n" % ", ".join(updated_fields)
             txt += "\n"
 
-        if total_count:
+        if not total_count is None:
             txt += "Overall, %s documents in this release\n" % (format_number(total_count))
         if self.changes["new"]["_summary"]:
             sumups = []
@@ -1145,13 +1168,13 @@ class DifferManager(BaseManager):
 
         Return a dictionnary containing significant changes.
         """
-        def get_counts(doc):
+        def get_counts(dstats):
             stats = {}
-            for subsrc,count in doc.get("merge_stats",{}).items():
+            for subsrc,count in dstats.items():
                 try:
                     src_sub = get_source_fullname(subsrc).split(".")
                 except AttributeError:
-                    # not a merge stats coming from a source 
+                    # not a merge stats coming from a source
                     # (could be custom field stats, eg. total_* in mygene)
                     src_sub = [subsrc]
                 if len(src_sub) > 1:
@@ -1216,6 +1239,11 @@ class DifferManager(BaseManager):
                     "_fields" : {},
                     "_summary" : diff_stats,
                     },
+                "stats" : {
+                    "added" : {},
+                    "deleted" : {},
+                    "updated" : {},
+                    },
                 "note" : note,
                 "generated_on": str(datetime.now()),
                 "sources" : {
@@ -1224,35 +1252,44 @@ class DifferManager(BaseManager):
                     "updated" : {},
                     }
                 }
-        op_map = {"replace" : "updated",
-                  "add" : "added",
-                  "delete" : "deleted"}
         # for later use
         new_versions = get_versions(new_doc)
         old_versions = get_versions(old_doc)
         # now deal with stats/counts. Counts are related to uploader, ie. sub-sources
-        new_stats = get_counts(new_doc)
-        old_stats = get_counts(old_doc)
-        new_info = update_dict_recur(new_versions,new_stats)
-        old_info = update_dict_recur(old_versions,old_stats)
-        #print("new_info = %s" % new_info)
-        #print("old_info = %s" % old_info)
+        new_merge_stats = get_counts(new_doc.get("merge_stats",{}))
+        old_merge_stats = get_counts(old_doc.get("merge_stats",{}))
+        new_stats = get_counts(new_doc.get("_meta",{}).get("stats",{}))
+        old_stats = get_counts(old_doc.get("_meta",{}).get("stats",{}))
+        new_info = update_dict_recur(new_versions,new_merge_stats)
+        old_info = update_dict_recur(old_versions,old_merge_stats)
+        #print("old_info")
+        #pprint(old_info)
+        #print("new_info")
+        #pprint(new_info)
 
+        def analyze_diff(ops,destdict,old,new):
+            for op in ops:
+                # get main source
+                key = op["path"].strip("/").split("/")[0]
+                if op["op"] == "add":
+                    destdict["added"][key] = new[key]
+                elif op["op"] == "remove":
+                    destdict["deleted"][key] = old[key]
+                elif op["op"] == "replace":
+                    destdict["updated"][key] = {
+                            "new" : new[key],
+                            "old" : old[key]}
+                else:
+                    raise ValueError("Unknown operation '%s' while computing changes" % op["op"])
+
+        # diff source info
+        # this only works on main source information: if there's a difference in a
+        # sub-source, it won't be shown but considered as if it was the main-source
         ops = jsondiff(old_info,new_info)
-        for op in ops:
-            # get main source
-            main_src = op["path"].strip("/").split("/")[0]
-            if op["op"] == "add":
-                changes["sources"]["added"][main_src] = new_info[main_src]
-            elif op["op"] == "remove":
-                changes["sources"]["deleted"][main_src] = old_info[main_src]
-            elif op["op"] == "replace":
-                remains = op["path"].strip("/").split("/")[1:]
-                changes["sources"]["updated"][main_src] = {
-                        "new" : new_info[main_src],
-                        "old" : old_info[main_src]}
-            else:
-                raise ValueError("Unknown operation '%s' while computing changes" % op["op"])
+        analyze_diff(ops,changes["sources"],old_info,new_info)
+
+        ops = jsondiff(old_stats,new_stats)
+        analyze_diff(ops,changes["stats"],old_stats,new_stats)
 
         # mapping diff: we re-compute them and don't use any mapping.pyobj because that file
         # only allows "add" operation as a safety rule (can't delete fields in ES mapping once indexed)
