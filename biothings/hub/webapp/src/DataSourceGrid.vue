@@ -106,7 +106,7 @@ export default {
   components: { DataSource, },
   methods: {
     getSourcesStatus: function() {
-      axios.get(axios.defaults.baseURL + '/source')
+      axios.get(axios.defaults.baseURL + '/sources')
       .then(response => {
         this.sources = response.data.result;
       })

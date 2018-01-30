@@ -71,7 +71,7 @@ export default {
   components: {},
   methods: {
     refreshStats: function() {
-      axios.get(axios.defaults.baseURL + '/source')
+      axios.get(axios.defaults.baseURL + '/sources')
       .then(response => {
         this.sources = response.data.result;
       })

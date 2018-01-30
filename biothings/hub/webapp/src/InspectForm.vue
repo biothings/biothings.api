@@ -3,7 +3,7 @@
     <div class="ui basic inspect modal" v-bind:id="'inspect-' + toinspect._id">
         <div class="ui icon">
             <i class="large unhide icon"></i>
-            <h3>Inspect data</h3>
+            <h3>Inspect data: {{toinspect._id}}</h3>
         </div>
         <div class="ui fluid grid">
 

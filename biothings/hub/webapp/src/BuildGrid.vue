@@ -121,7 +121,6 @@ export default {
     getBuildConfigs: function() {
       axios.get(axios.defaults.baseURL + '/build_manager')
       .then(response => {
-        console.log("showBuildConfig");
         this.build_configs = response.data.result;
         console.log(this.build_configs);
       })

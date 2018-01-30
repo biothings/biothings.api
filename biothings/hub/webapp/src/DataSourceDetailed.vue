@@ -1,24 +1,6 @@
 <template>
-    <div id="data-source" class="ui card">
+    <div id="data-source" class="ui fluid card" style="height: 100%;overflow: scroll;">
         <div class="content">
-
-            <!-- locked -->
-            <i class="right floated lock icon blue"
-                v-if="source.locked"></i>
-
-            <!-- in progress -->
-            <i class="right floated database icon pulsing"
-                v-if="source.upload && source.upload.status == 'uploading'"></i>
-            <i class="right floated cloud download icon pulsing"
-                v-if="source.download && source.download.status == 'downloading'"></i>
-
-            <!-- error -->
-            <div class="ui"
-                v-bind:data-tooltip="displayError()">
-                <i class="right floated red alarm icon pulsing"
-                    v-if="(source.upload && source.upload.status == 'failed')
-                    || (source.download && source.download.status == 'failed')">
-            </i></div>
 
             <div class="left aligned header" v-if="source.name">{{ source.name | splitjoin | capitalize }}</div>
             <div class="meta">
@@ -33,7 +15,31 @@
                         <i class="file outline icon"></i>
                         {{ source.count | currency('',0) }} document{{ source.count &gt; 1 ? "s" : "" }}
                     </div>
+                    <br>
+                    <div>
+                        <i class="folder icon"></i>
+                        Data folder: {{source.data_folder}}
+                    </div>
                 </p>
+
+                <p>
+                    <div class="ui top attached pointing  menu">
+                        <a class="item active" data-tab="dump" v-if="source.download">Dumper</a>
+                        <a class="item" data-tab="upload">Uploader(s)</a>
+                        <a class="item" data-tab="inspect">Data inspection</a>
+                    </div>
+                    <div class="ui bottom attached tab segment active" data-tab="dump" v-if="source.download">
+                        <data-source-dump v-bind:source="source"></data-source-dump>
+                    </div>
+                    <div class="ui bottom attached tab segment" data-tab="upload">
+                        upload TODO
+                    </div>
+                    <div class="ui bottom attached tab segment" data-tab="inspect">
+                        <!--data-source-inspect v-bind:source="source" v-if="source.upload"></data-source-inspect>
+                        <span v-else>No data available</span-->
+                    </div>
+                </p>
+
             </div>
         </div>
         <div class="extra content">
@@ -57,7 +63,7 @@
                 </button>
             </div>
             <div class="ui icon buttons right floated mini">
-                <button class="ui button" @click="detailed"><i class="angle double right icon"></i></button>
+                <button class="ui button"><i class="angle double right icon"></i></button>
             </div>
         </div>
 
@@ -86,10 +92,6 @@
             </div>
         </div>
 
-        <!-- Detailed -->
-        <div class="ui basic datasourcedetailed modal" :id="'detailed-' + source._id">
-            <data-source-detailed v-bind:source="source"></data-source-detailed>
-        </div>
 
     </div>
 </template>
@@ -98,15 +100,19 @@
 import axios from 'axios'
 import bus from './bus.js'
 import InspectForm from './InspectForm.vue'
-import DataSourceDetailed from './DataSourceDetailed.vue'
+import DataSourceDump from './DataSourceDump.vue'
+import DataSourceInspect from './DataSourceInspect.vue'
 
 export default {
-    name: 'data-source',
+    name: 'data-source-detailed',
     props: ['source'],
     mounted () {
         $('select.dropdown').dropdown();
+        $('.menu .item')
+        .tab()
+        ;
     },
-    components: { InspectForm, DataSourceDetailed },
+    components: { InspectForm, DataSourceDump, DataSourceInspect },
     methods: {
         displayError : function() {
             var errs = [];
@@ -157,7 +163,7 @@ export default {
         },
         inspect: function() {
             var self = this;
-            $(`#inspect-${this.source._id}`)
+            $(`#inspect-${this.source._id}.ui.basic.inspect.modal`)
             .modal("setting", {
                 onApprove: function () {
                     var modes = $(`#inspect-${self.source._id}`).find("#select-mode").val();
@@ -175,10 +181,6 @@ export default {
                     })
                 }
             })
-            .modal("show");
-        },
-        detailed: function() {
-            $(`#detailed-${this.source._id}`)
             .modal("show");
         },
     },
