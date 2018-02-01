@@ -10,7 +10,6 @@ import copy
 
 from .common import timesofar, is_scalar, is_float, is_str, is_int
 
-
 def sumiflist(val):
     if type(val) == list:
         return sum(val)
@@ -240,7 +239,7 @@ def merge_scalar_list(mapt,mode):
             merge_scalar_list(e,mode)
 
 
-def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging):
+def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging,pre_mapping=False):
     """Inspect docs and return a summary of its structure:
     - mode:
         + "type": explore documents and report strict data structure
@@ -297,6 +296,11 @@ def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging):
     merge = "mapping" in modes and True or merge
     if merge:
         merge_scalar_list(_map["mapping"],mode)
+    if "mapping" in modes and pre_mapping is False:
+        # directly generate ES mapping
+        import biothings.utils.es as es
+        _map["mapping"] = es.generate_es_mapping(_map["mapping"])
+
 
     return _map
 
@@ -307,23 +311,23 @@ if __name__ == "__main__":
     d3 = {"id" : "890",'lofd': [{"val":34}],"d":{"start":134,"end":5543}}
 
     # merge either ways in the same
-    m12 = inspect_docs([d1,d2])
-    m21 = inspect_docs([d2,d1])
+    m12 = inspect_docs([d1,d2])["type"]
+    m21 = inspect_docs([d2,d1])["type"]
     #if undordered list, then:
     assert m21 == m12, "\nm21=%s\n!=\nm12=%s" % (pformat(m21),pformat(m12))
     # val can be an int and a float
-    m1 = inspect_docs([{"val":34},{"val":1.2}]) 
+    m1 = inspect_docs([{"val":34},{"val":1.2}])["type"]
     # set: types can be in any order
     assert set(m1["val"]) ==  {int,float}
     # even if val is in a list
-    m2 = inspect_docs([{"val":34},[{"val":1.2}]])
+    m2 = inspect_docs([{"val":34},[{"val":1.2}]])["type"]
     # list and val not merged
     assert set(m2.keys()) == {'val',list}
     # another example with a mix a dict and list (see "p")
     od1 = {"id" : "124","d":[{"p":123},{"p":456}]}
     od2 = {"id" : "124","d":[{"p":123},{"p":[456,789]}]}
-    m12 = inspect_docs([od1,od2],mode="type")
-    m21 = inspect_docs([od2,od1],mode="type")
+    m12 = inspect_docs([od1,od2],mode="type")["type"]
+    m21 = inspect_docs([od2,od1],mode="type")["type"]
     assert m12 == m21
     # "p" is a integer or a list of integer
     assert m12["d"][list]["p"].keys() == {list,int}
@@ -419,7 +423,7 @@ if __name__ == "__main__":
     assert m["lofd"]["val"][int]["_stats"]["_sum"] == 68
 
     # all counts should be 10
-    m = inspect_docs([d1] * 10,mode="stats") 
+    m = inspect_docs([d1] * 10,mode="stats")["stats"]
     assert m["d"]["end"][int]["_stats"]["_count"] == 10
     assert m["d"]["start"][int]["_stats"]["_count"] == 10
     assert m["id"][str]["_stats"]["_count"] == 10
@@ -443,9 +447,9 @@ if __name__ == "__main__":
     # mapping mode (splittable strings)
     # "bla" is splitable in one case, not in the other
     # "oula" is splitable, "arf" is not
-    sd1 = {"id" : "124",'vals': [{"oula":"this is great"},{"bla":"I am splitable","arf":"ENS355432"}]}
-    sd2 = {"id" : "5678",'vals': {"bla":"rs45653","void":654}}
-    sd3 = {"id" : "124",'vals': [{"bla":"thisisanid"}]}
+    sd1 = {"_id" : "124",'vals': [{"oula":"this is great"},{"bla":"I am splitable","arf":"ENS355432"}]}
+    sd2 = {"_id" : "5678",'vals': {"bla":"rs45653","void":654}}
+    sd3 = {"_id" : "124",'vals': [{"bla":"thisisanid"}]}
     m = {}
     inspect(sd3,mapt=m,mode="mapping")
     # bla not splitable here
@@ -458,24 +462,22 @@ if __name__ == "__main__":
     assert m["vals"]["bla"][str] == {}
     # mapping with type of type
     sd1 = {"_id" : "123","homologene" : {"id":"bla","gene" : [[123,456],[789,102]]}}
-    m = inspect_docs([sd1],mode="mapping")
-    import biothings.utils.es as es
-    mapping = es.generate_es_mapping(m)
-    assert mapping == {'homologene': {'properties': {'gene': {'type': 'integer'},
-        'id': {'analyzer': 'string_lowercase', 'type': 'string'}}}}, "mapping %s" % mapping
+    m = inspect_docs([sd1],mode="mapping")["mapping"]
+    assert m == {'homologene': {'properties': {'gene': {'type': 'integer'},
+        'id': {'analyzer': 'string_lowercase', 'type': 'text'}}}}, "mapping %s" % m
 
     # ok, "bla" is either a scalar or in a list, test merge
-    md1 = {"id" : "124",'vals': [{"oula":"this is great"},{"bla":"rs24543","arf":"ENS355432"}]}
-    md2 = {"id" : "5678",'vals': {"bla":"I am splitable in a scalar","void":654}}
+    md1 = {"_id" : "124",'vals': [{"oula":"this is great"},{"bla":"rs24543","arf":"ENS355432"}]}
+    md2 = {"_id" : "5678",'vals': {"bla":"I am splitable in a scalar","void":654}}
     # bla is a different type here
-    md3 = {"id" : "5678",'vals': {"bla":1234}}
-    m = inspect_docs([md1,md2],mode="mapping") # "mapping" implies merge=True
+    md3 = {"_id" : "5678",'vals': {"bla":1234}}
+    m = inspect_docs([md1,md2],mode="mapping",pre_mapping=True)["mapping"] # "mapping" implies merge=True
     assert not "bla" in m["vals"]
     assert m["vals"][list]["bla"] == {str: {'split': {}}} # splittable str from md2 merge to list
-    m = inspect_docs([md1,md3],mode="mapping")
+    m = inspect_docs([md1,md3],mode="mapping",pre_mapping=True)["mapping"]
     assert not "bla" in m["vals"]
     assert m["vals"][list]["bla"] == {int: {}, str: {}} # keep as both types
-    m = inspect_docs([md1,md2,md3],mode="mapping")
+    m = inspect_docs([md1,md2,md3],mode="mapping",pre_mapping=True)["mapping"]
     assert not "bla" in m["vals"]
     assert m["vals"][list]["bla"] == {int: {}, str: {'split': {}}} # splittable kept + merge int to keep both types
 
@@ -520,7 +522,7 @@ if __name__ == "__main__":
         'evidence': 'IEA'}, {'term': 'protein deubiquitination', 'pubmed': [2222, 3333], 'id': 'GO:0016579', 'evidence': \
             'IEA'}]}, '_id': '101241878'}
 
-    m = inspect_docs([d1,d1,d2,d2],mode="stats")
+    m = inspect_docs([d1,d1,d2,d2],mode="stats")["stats"]
     #pprint(m)
 
     # more merge tests involving real case, deeply nested
