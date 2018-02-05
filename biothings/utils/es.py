@@ -568,8 +568,8 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             int: {"type": "integer"},
             bool: {"type": "boolean"},
             float: {"type": "float"},
-            str: {"type": "string","analyzer":"string_lowercase"}, # not splittable (like an ID for instance)
-            "split_str": {"type": "string"}
+            str: {"type": "text","analyzer":"string_lowercase"}, # not splittable (like an ID for instance)
+            "split_str": {"type": "text"}
             }
     # inspect_doc, if it's been jsonified, contains keys with type as string,
     # such as "<class 'str'>". This is not a real type and we need to convert them

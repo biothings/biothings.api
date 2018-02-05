@@ -46,7 +46,7 @@ class InspectorManager(BaseManager):
         """
         # /!\ attention: this piece of code is critical and not easy to understand...
         # Depending on the source of data to inspect, this method will create an
-        # uploader or a builder. These objects don't be behave the same with they
+        # uploader or a builder. These objects don't be behave the same while they
         # pass through pickle: uploader needs to be "unprepare()"ed so it can be
         # pickled (remove some db connection, socket), while builder must *not* be
         # unprepare() because it would reset the underlying target_name (the actual
@@ -56,6 +56,8 @@ class InspectorManager(BaseManager):
 
         data_provider_type = None # where to register results (if possible to do so)
         registerer_obj = None # who should register result
+        t0 = time.time()
+        started_at = datetime.now()
         if callable(data_provider):
             raise NotImplementedError("data_provider as callable untested...")
             yielder_provider = data_provider
@@ -85,7 +87,13 @@ class InspectorManager(BaseManager):
                 def provider_uploader(uploader,data_folder):
                     return uploader.load_data(data_folder)
                 def provider_source():
-                    col = create_backend(data_provider).target_collection
+                    # need to ge the actual collection...
+                    main_sub = data_provider[1].split(".")
+                    if len(main_sub) == 2:
+                        # get the sub-source collection
+                        col = create_backend((data_provider[0],main_sub[1])).target_collection
+                    else:
+                        col = create_backend(data_provider).target_collection
                     return col.find() # cursor
 
                 # data providers are different
@@ -149,8 +157,10 @@ class InspectorManager(BaseManager):
                     try:
                         # keys can be types, we need to convert keys to strings
                         res = f.result()
-                        _map = dict_walk(res,lambda k: str(k))
+                        _map = {"results" : dict_walk(res,lambda k: str(k))}
                         _map["data_provider"] = repr(data_provider)
+                        _map["started_at"] = started_at
+                        _map["duration"] = timesofar(t0)
                         # register begin of inspection (differ slightly depending on type)
                         if data_provider_type == "source":
                             registerer_obj.register_status("success",inspect=_map)

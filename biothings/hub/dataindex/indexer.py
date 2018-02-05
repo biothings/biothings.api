@@ -114,8 +114,7 @@ class IndexerManager(BaseManager):
             try:
                 self.logger.info("Done indexing target '%s' to index '%s': %s" % (target_name,index_name,res))
             except Exception as e:
-                import traceback
-                self.logger.error("Error while running merge job, %s:\n%s" % (e,traceback.format_exc()))
+                self.logger.exception("Error while running merge job, %s" % e)
                 raise
         idx = self[indexer_type]
         idx.target_name = target_name
@@ -400,7 +399,8 @@ class Indexer(object):
                     nonlocal got_error
                     res = f.result()
                     if type(res) != tuple or type(res[0]) != int:
-                        got_error = Exception("Batch #%s failed while indexing collection '%s' [result:%s]" % (batch_num,self.target_name,repr(f.result())))
+                        got_error = Exception("Batch #%s failed while indexing collection '%s' [result:%s]" % \
+                                (batch_num,self.target_name,repr(res)))
                 job.add_done_callback(partial(batch_indexed,batch_num=bnum))
                 jobs.append(job)
                 bnum += 1
@@ -476,25 +476,38 @@ class Indexer(object):
     def get_index_creation_settings(self):
         """
         Override to return a dict containing some extra settings
-        for index creation. Dict will be merged with mandatory settings, 
+        for index creation. Dict will be merged with mandatory settings,
         see biothings.utils.es.ESIndexer.create_index for more.
         """
-        return {}
+        return {
+                # as of ES6, include_in_all was removed, we need to create our own "all" field
+                "query": {"default_field": "all"},
+                # as of ES6, analysers/tokenizers must be defined in index settings, during creation
+                "analysis": {
+                    "analyzer": {
+                        "string_lowercase": {
+                            "tokenizer": "keyword",
+                            "filter": "lowercase"
+                            },
+                        "whitespace_lowercase": {
+                            "tokenizer": "whitespace",
+                            "filter": "lowercase"
+                            },
+                        }
+                    },
+                }
 
-    def get_mapping(self, enable_timestamp=True):
+    def get_mapping(self):
         '''collect mapping data from data sources.
            This is for GeneDocESBackend only.
         '''
         mapping = self.build_doc.get("mapping",{})
-        mapping = {"properties": mapping,
-                   "dynamic": "false",
-                   "include_in_all": "false"}
-        if enable_timestamp:
-            mapping['_timestamp'] = {
-                "enabled": True,
-            }
-        mapping["_meta"] = self.get_metadata()
-        return mapping
+        # default "all" field to replace include_in_all field in older versions of ES
+        mapping["all"] = {'type': 'text'}
+        fina_mapping = {"properties": mapping, "dynamic": "false"}
+        final_mapping["_meta"] = self.get_metadata()
+
+        return final_mapping
 
     def get_metadata(self):
         return self.build_doc.get("_meta",{})
@@ -612,17 +625,13 @@ class ColdHotIndexer(Indexer):
         if not mode != "resume":
             self.cache_hot_ids(self.hot_target_name,batch_size)
 
-    def get_mapping(self, enable_timestamp=True):
+    def get_mapping(self):
         cold_mapping = self.cold_build_doc.get("mapping",{})
         hot_mapping = self.hot_build_doc.get("mapping",{})
         hot_mapping.update(cold_mapping) # mix cold&hot
         mapping = {"properties": hot_mapping,
                    "dynamic": "false",
                    "include_in_all": "false"}
-        if enable_timestamp:
-            mapping['_timestamp'] = {
-                "enabled": True,
-            }
         mapping["_meta"] = self.get_metadata()
         return mapping
 
