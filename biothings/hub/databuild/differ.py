@@ -680,6 +680,7 @@ class ReleaseNoteTxt(object):
 
     def __init__(self, changes):
         self.changes = changes
+        #pprint(self.changes)
 
     def save(self, filepath):
         try:
@@ -775,16 +776,16 @@ class ReleaseNoteTxt(object):
         if self.changes["sources"]:
             txt += "\n"
 
-        table = prettytable.PrettyTable(["Statistics","previous","new"])
-        table.align["Statistics"] = "l"
+        table = prettytable.PrettyTable(["Updated stats.","previous","new"])
+        table.align["Updated stats."] = "l"
         table.align["previous"] = "r"
         table.align["new"] = "r"
         for stat_name,stat in sorted(self.changes["stats"]["added"].items(),key=lambda e: e[0]):
-            table.add_row([stat_name,"-",stat["_count"]])
+            table.add_row([stat_name,"-",format_number(stat["_count"])])
         for stat_name,stat in sorted(self.changes["stats"]["deleted"].items(),key=lambda e: e[0]):
-            table.add_row([stat_name,stat["_count"],"-"])
+            table.add_row([stat_name,format_number(stat["_count"]),"-"])
         for stat_name,stat in sorted(self.changes["stats"]["updated"].items(),key=lambda e: e[0]):
-            table.add_row([stat_name,stat["old"]["_count"],stat["new"]["_count"]])
+            table.add_row([stat_name,format_number(stat["old"]["_count"]),format_number(stat["new"]["_count"])])
         #for old_stat in sorted(self.changes["stats"]["old"].keys()):
         #    old_count = self.changes["stats"]["old"][old_stat]["_count"]
         #    new_count = self.changes["stats"]["new"].get(old_stat,{}).get("_count","-")
@@ -1262,14 +1263,14 @@ class DifferManager(BaseManager):
         old_stats = get_counts(old_doc.get("_meta",{}).get("stats",{}))
         new_info = update_dict_recur(new_versions,new_merge_stats)
         old_info = update_dict_recur(old_versions,old_merge_stats)
-        #print("old_info")
-        #pprint(old_info)
-        #print("new_info")
-        #pprint(new_info)
+        #print("old_stats")
+        #pprint(old_stats)
+        #print("new_stats")
+        #pprint(new_stats)
 
         def analyze_diff(ops,destdict,old,new):
             for op in ops:
-                # get main source
+                # get main source / main field
                 key = op["path"].strip("/").split("/")[0]
                 if op["op"] == "add":
                     destdict["added"][key] = new[key]
