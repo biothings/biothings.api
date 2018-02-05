@@ -21,13 +21,14 @@ class SourceManager(BaseSourceManager):
         # honoring BaseSourceManager interface (gloups...-
         self.register = {}
 
-    def sumup_source(self,src):
+    def sumup_source(self,src,detailed=False):
         """Return minimal info about src"""
 
         mini = {}
         mini["_id"] = src.get("_id",src["name"])
         mini["name"] = src["name"]
         mini["release"] = src.get("release")
+        mini["data_folder"] = src.get("data_folder")
         if src.get("download"):
             mini["download"] = {
                     "status" : src["download"].get("status"),
@@ -39,16 +40,18 @@ class SourceManager(BaseSourceManager):
                 mini["download"]["error"] = src["download"]["err"]
         count = 0
         if src.get("upload"):
-            mini["upload"] = {}
+            mini["upload"] = {"sources" : {}}
             all_status = set()
             if len(src["upload"]["jobs"]) > 1:
                 for job,info in src["upload"]["jobs"].items():
-                    mini["upload"][job] = {
+                    mini["upload"]["sources"][job] = {
                             "time" : info.get("time"),
                             "status" : info.get("status"),
                             "count" : info.get("count"),
                             "started_at" : info.get("started_at")
                             }
+                    if detailed and info.get("inspect"):
+                        mini["upload"]["sources"][job]["inspect"] = info["inspect"]
                     count += info.get("count") or 0
                     all_status.add(info["status"])
                 if len(all_status) == 1:
@@ -58,12 +61,14 @@ class SourceManager(BaseSourceManager):
 
             elif len(src["upload"]["jobs"]) == 1:
                 job,info = list(src["upload"]["jobs"].items())[0]
-                mini["upload"][job] = {
+                mini["upload"]["sources"][job] = {
                         "time" : info.get("time"),
                         "status" : info.get("status"),
                         "count" : info.get("count"),
                         "started_at" : info.get("started_at")
                         }
+                if detailed and info.get("inspect"):
+                    mini["upload"]["sources"][job]["inspect"] = info["inspect"]
                 count += info.get("count") or 0
                 mini["upload"]["status"] = info.get("status")
             if src["upload"].get("err"):
@@ -74,11 +79,17 @@ class SourceManager(BaseSourceManager):
 
         return mini
 
-    def get_sources(self,debug=False):
+    def get_sources(self,id=None,debug=False,detailed=False):
         dm = self.dump_manager
         um = self.upload_manager
-        ids = set(dm.register)
-        ids.update(um.register)
+        ids = set()
+        if id and id in dm.register:
+            ids.add(id)
+        elif id and id in um.register:
+            ids.add(id)
+        else:
+            ids = set(dm.register)
+            ids.update(um.register)
         sources = {}
         bydsrcs = {}
         byusrcs = {}
@@ -95,7 +106,7 @@ class SourceManager(BaseSourceManager):
                     if debug:
                         sources[src["name"]] = src
                     else:
-                        sources[src["name"]] = self.sumup_source(src)
+                        sources[src["name"]] = self.sumup_source(src,detailed)
             # complete with uploader info
             if um:
                 src = byusrcs.get(_id)
@@ -106,8 +117,8 @@ class SourceManager(BaseSourceManager):
                         sources[src["_id"]] = self.sumup_source(src)
                     if src.get("upload"):
                         for subname in src["upload"].get("jobs",{}):
-                            sources[src["name"]].setdefault("upload",{}).setdefault(subname,{})
-                            sources[src["name"]]["upload"][subname]["uploader"] = src["upload"]["jobs"][subname]["uploader"]
+                            sources[src["name"]].setdefault("upload",{"sources" : {}})["sources"].setdefault(subname,{})
+                            sources[src["name"]]["upload"]["sources"][subname]["uploader"] = src["upload"]["jobs"][subname]["uploader"]
             # deal with plugin info if any
             dp = bydpsrcs.get(_id)
             if dp:
@@ -115,20 +126,10 @@ class SourceManager(BaseSourceManager):
                 sources.setdefault(_id,{"data_plugin": {}})
                 sources[_id]["data_plugin"] = dp 
 
-        return list(sources.values())
+        if id:
+            return list(sources.values()).pop()
+        else:
+            return list(sources.values())
 
     def get_source(self,name,debug=False):
-        dm = self.dump_manager
-        um = self.upload_manager
-        dp = get_data_plugin().find_one({"_id":name})
-        src = {}
-        for m in [dm,um]:
-            if m:
-                dsrc = m.source_info(name)
-                if dsrc:
-                    src.update(dsrc)
-        if dp:
-            dp.pop("_id")
-            src["data_plugin"] = dp
-
-        return src
+        return self.get_sources(id=name,debug=debug,detailed=True)
