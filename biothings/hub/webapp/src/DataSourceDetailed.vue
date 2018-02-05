@@ -26,7 +26,7 @@
                     <div class="ui top attached pointing  menu">
                         <a class="item active" data-tab="dump" v-if="source.download">Dumper</a>
                         <a class="item" data-tab="upload">Uploader(s)</a>
-                        <a class="item" data-tab="inspect">Data inspection</a>
+                        <a class="item" data-tab="inspect" @click="loadInspect()">Data inspection</a>
                     </div>
                     <div class="ui bottom attached tab segment active" data-tab="dump" v-if="source.download">
                         <data-source-dump v-bind:source="source"></data-source-dump>
@@ -35,8 +35,9 @@
                         upload TODO
                     </div>
                     <div class="ui bottom attached tab segment" data-tab="inspect">
-                        <!--data-source-inspect v-bind:source="source" v-if="source.upload"></data-source-inspect>
-                        <span v-else>No data available</span-->
+                        <data-source-inspect v-bind:maps="maps" v-bind:source="source" v-if="source"></data-source-inspect>
+                        <span v-else>No data available</span>
+
                     </div>
                 </p>
 
@@ -112,6 +113,11 @@ export default {
         .tab()
         ;
     },
+    data () {
+        return {
+            maps : {},
+        }
+    },
     components: { InspectForm, DataSourceDump, DataSourceInspect },
     methods: {
         displayError : function() {
@@ -182,6 +188,34 @@ export default {
                 }
             })
             .modal("show");
+        },
+        loadInspect () {
+            var self = this;
+            axios.get(axios.defaults.baseURL + `/source/${self.source._id}`)
+            .then(response => {
+                if(response.data.result.upload && response.data.result.upload.sources) {
+                    /*&& response.data.result.upload.sources[subsrc]
+                      && response.data.result.upload.sources[subsrc].inspect
+                      && response.data.result.upload.sources[subsrc].inspect.results[mode]) {*/
+                    for(var subsrc in response.data.result.upload.sources) {
+                        if(response.data.result.upload.sources[subsrc].inspect) {
+                            self.maps[subsrc] = {};
+                            for(var mode in response.data.result.upload.sources[subsrc].inspect.results) {
+                                console.log(`mode ${mode}`);
+                                self.maps[subsrc][mode] = response.data.result.upload.sources[subsrc].inspect.results[mode];
+                                //var map = response.data.result.upload.sources[subsrc].inspect.results[mode];
+                                //console.log(`on emit ${mode}_map`);
+                                //bus.$emit(`${mode}_map`, self.source._id, subsrc , self.maps[subsrc][mode]);
+                            }
+                        }
+                    }
+                } else {
+                    throw 'No inspection data';
+                }
+            })
+            .catch(err => {
+                console.log("Error getting inspection data: " + err);
+            })
         },
     },
 }

@@ -226,7 +226,6 @@ export default {
             .modal("setting", {
                 onApprove: function () {
                     var modes = $(`#inspect-${self.build._id}`).find("#select-mode").val();
-                    console.log(modes);
                     axios.put(axios.defaults.baseURL + '/inspect',
                               {"data_provider" : self.build._id,"mode":modes})
                     .then(response => {

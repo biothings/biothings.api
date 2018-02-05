@@ -7,17 +7,17 @@
           Biothings Hub
         </a>
 
-        <a class="active item" data-tab="home">
+        <a class="item">
             <i class="ui home icon"></i>
-            Home
+            <router-link to="/">Home</router-link>
         </a>
-        <a class="item" data-tab="datasources">
+        <a class="item">
             <i class="ui database icon"></i>
-            Datasources
+            <router-link to="/sources">Sources</router-link>
         </a>
-        <a class="item" data-tab="builds">
+        <a class="item">
             <i class="ui cubes icon"></i>
-            Builds
+            <router-link to="/builds">Builds</router-link>
         </a>
 
         <div class="ui item right">
@@ -27,18 +27,22 @@
       </div>
     </div>
 
-    <div class="ui active tab segment" data-tab="home">
+    <!--
         <stats></stats>
         what's new etc...
         remote status, metadata
     </div>
 
     <div class="ui tab segment" data-tab="datasources">
-        <data-source-grid></data-source-grid>
     </div>
 
     <div class="ui tab segment" data-tab="builds">
         <build-grid></build-grid>
+    </div>
+    -->
+
+    <div class="ui active tab segment">
+    <router-view></router-view>
     </div>
 
   </div>
@@ -51,9 +55,11 @@ import VueLocalStorage from 'vue-localstorage';
 Vue.use(VueLocalStorage);
 
 import Vue2Filters from 'vue2-filters';
+import VueRouter from 'vue-router';
 import Vue from 'vue';
 Vue.use(Vue2Filters);
 Vue.use(require('vue-moment'));
+Vue.use(VueRouter)
 
 function timesofar(value) {
     let hours =  parseInt(Math.floor(value / 3600));
@@ -107,23 +113,32 @@ function split_and_join(str,sep="_",glue=" ") {
 }
 Vue.filter('splitjoin',split_and_join);
 
-import DataSourceGrid from './DataSourceGrid.vue';
-import BuildGrid from './BuildGrid.vue';
 import JobSummary from './JobSummary.vue';
 import Stats from './Stats.vue';
+import DataSourceGrid from './DataSourceGrid.vue';
+import BuildGrid from './BuildGrid.vue';
+
+const routes = [
+    { path: '/', component: Stats },
+    { path: '/sources', component: DataSourceGrid },
+    { path: '/builds', component: BuildGrid },
+]
+
+const router = new VueRouter({
+    routes // short for `routes: routes`
+})
 
 export default {
   name: 'app',
-  components: { DataSourceGrid, BuildGrid, JobSummary, Stats},
+  router: router,
+  components: { JobSummary },
   mounted () {
-      $('.menu .item').tab({
-          history: true,
-          historyType: 'hash'
-      });
+      $('.menu .item').tab();
   },
   methods: {
   }
 }
+
 </script>
 
 <style>

@@ -162,8 +162,6 @@ export default {
                 onApprove: function () {
                     var modes = $(`#inspect-${self.source._id}`).find("#select-mode").val();
                     var dp = $(`#inspect-${self.source._id}`).find("#select-data_provider").val();
-                    console.log(modes);
-                    console.log(dp);
                     axios.put(axios.defaults.baseURL + '/inspect',
                               {"data_provider" : [dp,self.source._id],"mode":modes})
                     .then(response => {
