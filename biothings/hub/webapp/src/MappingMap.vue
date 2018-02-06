@@ -3,7 +3,7 @@
         <pre v-if="map">
 {{map}}
         </pre>
-        <div class="description">No mapping data inspection</div>
+        <div class="description" v-else>No mapping data inspection</div>
     </span>
 </template>
 

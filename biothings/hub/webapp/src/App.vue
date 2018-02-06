@@ -27,20 +27,6 @@
       </div>
     </div>
 
-    <!--
-        <stats></stats>
-        what's new etc...
-        remote status, metadata
-    </div>
-
-    <div class="ui tab segment" data-tab="datasources">
-    </div>
-
-    <div class="ui tab segment" data-tab="builds">
-        <build-grid></build-grid>
-    </div>
-    -->
-
     <div class="ui active tab segment">
     <router-view></router-view>
     </div>
@@ -116,11 +102,13 @@ Vue.filter('splitjoin',split_and_join);
 import JobSummary from './JobSummary.vue';
 import Stats from './Stats.vue';
 import DataSourceGrid from './DataSourceGrid.vue';
+import DataSourceDetailed from './DataSourceDetailed.vue';
 import BuildGrid from './BuildGrid.vue';
 
 const routes = [
     { path: '/', component: Stats },
     { path: '/sources', component: DataSourceGrid },
+    { path: '/source/:_id', component: DataSourceDetailed, props: true },
     { path: '/builds', component: BuildGrid },
 ]
 

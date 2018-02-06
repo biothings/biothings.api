@@ -1,7 +1,10 @@
 <template>
-    <pre>
-        {{map}}
-    </pre>
+    <span>
+        <pre v-if="map">
+{{map}}
+        </pre>
+        <div class="description" v-else>No type data inspection</div>
+    </span>
 </template>
 
 <script>

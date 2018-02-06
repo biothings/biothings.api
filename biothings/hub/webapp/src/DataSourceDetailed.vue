@@ -1,5 +1,6 @@
 <template>
-    <div id="data-source" class="ui fluid card" style="height: 100%;overflow: scroll;">
+    <div class="ui container">
+    <div id="data-source" class="ui centered fluid card" v-if="source">
         <div class="content">
 
             <div class="left aligned header" v-if="source.name">{{ source.name | splitjoin | capitalize }}</div>
@@ -26,7 +27,7 @@
                     <div class="ui top attached pointing  menu">
                         <a class="item active" data-tab="dump" v-if="source.download">Dumper</a>
                         <a class="item" data-tab="upload">Uploader(s)</a>
-                        <a class="item" data-tab="inspect" @click="loadInspect()">Data inspection</a>
+                        <a class="item" data-tab="inspect">Data inspection</a>
                     </div>
                     <div class="ui bottom attached tab segment active" data-tab="dump" v-if="source.download">
                         <data-source-dump v-bind:source="source"></data-source-dump>
@@ -35,9 +36,7 @@
                         upload TODO
                     </div>
                     <div class="ui bottom attached tab segment" data-tab="inspect">
-                        <data-source-inspect v-bind:maps="maps" v-bind:source="source" v-if="source"></data-source-inspect>
-                        <span v-else>No data available</span>
-
+                        <data-source-inspect v-bind:maps="maps" v-bind:_id="_id"></data-source-inspect>
                     </div>
                 </p>
 
@@ -62,9 +61,6 @@
                     v-on:click="unregister" v-if="source.data_plugin">
                     <i class="remove icon"></i>
                 </button>
-            </div>
-            <div class="ui icon buttons right floated mini">
-                <button class="ui button"><i class="angle double right icon"></i></button>
             </div>
         </div>
 
@@ -95,6 +91,7 @@
 
 
     </div>
+    </div>
 </template>
 
 <script>
@@ -106,24 +103,49 @@ import DataSourceInspect from './DataSourceInspect.vue'
 
 export default {
     name: 'data-source-detailed',
-    props: ['source'],
+    props: ['_id'],
     mounted () {
+        console.log("DataSourceDetailed mounted");
+        this.loadData();
         $('select.dropdown').dropdown();
-        $('.menu .item')
-        .tab()
-        ;
+        $('.menu .item').tab();
     },
     data () {
         return {
-            maps : {},
+            source : null,
+        }
+    },
+    computed: {
+        // a computed getter
+        maps: function () {
+            if(this.source.upload && this.source.upload.sources) {
+                var _maps = {};
+                /*&& this.source.upload.sources[subsrc]
+                  && this.source.upload.sources[subsrc].inspect
+                  && this.source.upload.sources[subsrc].inspect.results[mode]) {*/
+                for(var subsrc in this.source.upload.sources) {
+                    if(this.source.upload.sources[subsrc].inspect) {
+                        _maps[subsrc] = {};
+                        for(var mode in this.source.upload.sources[subsrc].inspect.results) {
+                            console.log(`mode ${mode}`);
+                            _maps[subsrc][mode] = this.source.upload.sources[subsrc].inspect.results[mode];
+                        }
+                    }
+                }
+                console.log("on maps computed " + _maps);
+                if(Object.keys(_maps).length)
+                    return _maps;
+            }
+            console.log("bou on maps computed null");
+            return null;
         }
     },
     components: { InspectForm, DataSourceDump, DataSourceInspect },
     methods: {
-        displayError : function() {
-            var errs = [];
-            if (this.source.download && this.source.download.status == "failed")
-                errs.push("Download failed: " + this.source.download.error);
+            displayError : function() {
+                var errs = [];
+                if (this.source.download && this.source.download.status == "failed")
+                    errs.push("Download failed: " + this.source.download.error);
             if (this.source.upload && this.source.upload.status == "failed")
                 errs.push("Upload failed: " + this.source.upload.error);
             return errs.join("<br>");
@@ -169,15 +191,15 @@ export default {
         },
         inspect: function() {
             var self = this;
-            $(`#inspect-${this.source._id}.ui.basic.inspect.modal`)
+            $(`#inspect-${this._id}.ui.basic.inspect.modal`)
             .modal("setting", {
                 onApprove: function () {
-                    var modes = $(`#inspect-${self.source._id}`).find("#select-mode").val();
-                    var dp = $(`#inspect-${self.source._id}`).find("#select-data_provider").val();
+                    var modes = $(`#inspect-${self._id}`).find("#select-mode").val();
+                    var dp = $(`#inspect-${self._id}`).find("#select-data_provider").val();
                     console.log(modes);
                     console.log(dp);
                     axios.put(axios.defaults.baseURL + '/inspect',
-                              {"data_provider" : [dp,self.source._id],"mode":modes})
+                              {"data_provider" : [dp,self._id],"mode":modes})
                     .then(response => {
                         console.log(response.data.result)
                         bus.$emit("refresh_sources");
@@ -189,32 +211,15 @@ export default {
             })
             .modal("show");
         },
-        loadInspect () {
+        loadData () {
             var self = this;
-            axios.get(axios.defaults.baseURL + `/source/${self.source._id}`)
+            axios.get(axios.defaults.baseURL + `/source/${this._id}`)
             .then(response => {
-                if(response.data.result.upload && response.data.result.upload.sources) {
-                    /*&& response.data.result.upload.sources[subsrc]
-                      && response.data.result.upload.sources[subsrc].inspect
-                      && response.data.result.upload.sources[subsrc].inspect.results[mode]) {*/
-                    for(var subsrc in response.data.result.upload.sources) {
-                        if(response.data.result.upload.sources[subsrc].inspect) {
-                            self.maps[subsrc] = {};
-                            for(var mode in response.data.result.upload.sources[subsrc].inspect.results) {
-                                console.log(`mode ${mode}`);
-                                self.maps[subsrc][mode] = response.data.result.upload.sources[subsrc].inspect.results[mode];
-                                //var map = response.data.result.upload.sources[subsrc].inspect.results[mode];
-                                //console.log(`on emit ${mode}_map`);
-                                //bus.$emit(`${mode}_map`, self.source._id, subsrc , self.maps[subsrc][mode]);
-                            }
-                        }
-                    }
-                } else {
-                    throw 'No inspection data';
-                }
+                console.log(response.data.result)
+                self.source = response.data.result;
             })
             .catch(err => {
-                console.log("Error getting inspection data: " + err);
+                console.log("Error getting source information: " + err);
             })
         },
     },

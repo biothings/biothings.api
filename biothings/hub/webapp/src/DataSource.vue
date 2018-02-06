@@ -56,8 +56,8 @@
                     <i class="remove icon"></i>
                 </button>
             </div>
-            <div class="ui icon buttons right floated mini">
-                <button class="ui button" @click="detailed"><i class="angle double right icon"></i></button>
+            <div class="ui right floated">
+                <router-link :to="'/source/' + source._id"><a>More</a></router-link>
             </div>
         </div>
 
@@ -86,11 +86,6 @@
             </div>
         </div>
 
-        <!-- Detailed -->
-        <div class="ui basic datasourcedetailed modal" :id="'detailed-' + source._id">
-            <data-source-detailed v-bind:source="source"></data-source-detailed>
-        </div>
-
     </div>
 </template>
 
@@ -98,7 +93,6 @@
 import axios from 'axios'
 import bus from './bus.js'
 import InspectForm from './InspectForm.vue'
-import DataSourceDetailed from './DataSourceDetailed.vue'
 
 export default {
     name: 'data-source',
@@ -106,7 +100,7 @@ export default {
     mounted () {
         $('select.dropdown').dropdown();
     },
-    components: { InspectForm, DataSourceDetailed },
+    components: { InspectForm },
     methods: {
         displayError : function() {
             var errs = [];
@@ -173,10 +167,6 @@ export default {
                     })
                 }
             })
-            .modal("show");
-        },
-        detailed: function() {
-            $(`#detailed-${this.source._id}`)
             .modal("show");
         },
     },
