@@ -15,7 +15,7 @@
                     <i v-else class="notched circle loading icon"></i>
                 </td>
                 <td class="right aligned">{{command.id}}</td>
-                <td>{{command.cmd}}</td>
+                <td>{{command.cmd | truncate(60)}}</td>
                 <td v-if="command.is_done">{{command.duration}}</td>
                 <td v-else>{{new Date(0).setUTCSeconds(command.started_at) | moment("from", "now")}}</td>
             </tr>

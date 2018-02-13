@@ -32,7 +32,7 @@
                         <th class="eight wide top aligned">
                             Mode <i>mapping</i>
                             <div>
-                            <button class="ui labeled mini icon button" v-if="maps[subsrc]['mapping']">
+                            <button class="ui labeled mini icon button" v-if="maps[subsrc]['mapping']" @click="saveMapping">
                                 <i class="save icon"></i>
                                 Save
                             </button>
@@ -46,7 +46,7 @@
                             <type-map v-bind:map="maps[subsrc]['type']" v-if="maps[subsrc]"></type-map>
                         </td>
                         <td>
-                            <mapping-map v-bind:map="maps[subsrc]['mapping']" v-if="maps[subsrc]"></mapping-map>
+                            <mapping-map v-bind:map="maps[subsrc]['mapping']" :name="subsrc" v-if="maps[subsrc]"></mapping-map>
                         </td>
                     </tr>
                 </tbody>
@@ -96,6 +96,9 @@ export default {
             })
             .modal("show");
         },
+        saveMapping: function() {
+            bus.$emit("save_mapping");
+        }
     },
 }
 </script>
