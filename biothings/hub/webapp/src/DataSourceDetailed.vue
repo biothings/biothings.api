@@ -24,10 +24,10 @@
                 </p>
 
                 <p>
-                    <div class="ui top attached pointing  menu">
-                        <a class="item active" data-tab="dump" v-if="source.download">Dumper</a>
-                        <a class="item" data-tab="upload">Uploader(s)</a>
-                        <a class="item" data-tab="inspect">Data inspection</a>
+                    <div class="ui top attached pointing menu">
+                        <a class="red item active" data-tab="dump" v-if="source.download">Dumper</a>
+                        <a class="red item" data-tab="upload">Uploader(s)</a>
+                        <a class="red item" data-tab="inspect">Data inspection</a>
                     </div>
                     <div class="ui bottom attached tab segment active" data-tab="dump" v-if="source.download">
                         <data-source-dump v-bind:source="source"></data-source-dump>
@@ -118,17 +118,13 @@ export default {
     computed: {
         // a computed getter
         maps: function () {
-            if(this.source.upload && this.source.upload.sources) {
+            if(this.source.inspect && this.source.inspect.sources) {
                 var _maps = {};
-                /*&& this.source.upload.sources[subsrc]
-                  && this.source.upload.sources[subsrc].inspect
-                  && this.source.upload.sources[subsrc].inspect.results[mode]) {*/
-                for(var subsrc in this.source.upload.sources) {
-                    if(this.source.upload.sources[subsrc].inspect) {
+                for(var subsrc in this.source.inspect.sources) {
+                    if(this.source.inspect.sources[subsrc]) {
                         _maps[subsrc] = {};
-                        for(var mode in this.source.upload.sources[subsrc].inspect.results) {
-                            console.log(`mode ${mode}`);
-                            _maps[subsrc][mode] = this.source.upload.sources[subsrc].inspect.results[mode];
+                        for(var mode in this.source.inspect.sources[subsrc].results) {
+                            _maps[subsrc][mode] = this.source.inspect.sources[subsrc].results[mode];
                         }
                     }
                 }
@@ -136,7 +132,6 @@ export default {
                 if(Object.keys(_maps).length)
                     return _maps;
             }
-            console.log("bou on maps computed null");
             return null;
         }
     },
