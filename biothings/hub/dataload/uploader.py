@@ -320,13 +320,13 @@ class BaseSourceUploader(object):
         else:
             self.src_master.insert_one(_doc)
 
-    def register_status(self,status,**extra):
+    def register_status(self,status,subkey="upload",**extra):
         """
         Register step status, ie. status for a sub-resource
         """
         upload_info = {"status" : status}
         upload_info.update(extra)
-        job_key = "upload.jobs.%s" % self.name
+        job_key = "%s.jobs.%s" % (subkey,self.name)
 
         # TODO: should use the same approach as Builder.register_status
         # with arguments like 'init' and 'transient'...

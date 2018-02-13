@@ -163,7 +163,7 @@ class InspectorManager(BaseManager):
                         _map["duration"] = timesofar(t0)
                         # register begin of inspection (differ slightly depending on type)
                         if data_provider_type == "source":
-                            registerer_obj.register_status("success",inspect=_map)
+                            registerer_obj.register_status("success",subkey="inspect",inspect=_map)
                         elif data_provider_type == "build":
                             registerer_obj.register_status("success",job={"step":"inspect"},
                                                                         build={"inspect":_map})
