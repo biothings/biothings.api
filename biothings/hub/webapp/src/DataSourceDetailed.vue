@@ -26,7 +26,8 @@
                 <p>
                     <div class="ui top attached pointing menu">
                         <a class="red item active" data-tab="dump" v-if="source.download">Dumper</a>
-                        <a class="red item" data-tab="upload">Uploader(s)</a>
+                        <a class="red item" data-tab="upload">Uploader</a>
+                        <a class="red item" data-tab="mapping">Mapping</a>
                         <a class="red item" data-tab="inspect">Data inspection</a>
                     </div>
                     <div class="ui bottom attached tab segment active" data-tab="dump" v-if="source.download">
@@ -34,6 +35,9 @@
                     </div>
                     <div class="ui bottom attached tab segment" data-tab="upload">
                         upload TODO
+                    </div>
+                    <div class="ui bottom attached tab segment" data-tab="mapping">
+                        <data-source-mapping v-bind:maps="maps" v-bind:_id="_id"></data-source-mapping>
                     </div>
                     <div class="ui bottom attached tab segment" data-tab="inspect">
                         <data-source-inspect v-bind:maps="maps" v-bind:_id="_id"></data-source-inspect>
@@ -100,6 +104,7 @@ import bus from './bus.js'
 import InspectForm from './InspectForm.vue'
 import DataSourceDump from './DataSourceDump.vue'
 import DataSourceInspect from './DataSourceInspect.vue'
+import DataSourceMapping from './DataSourceMapping.vue'
 
 export default {
     name: 'data-source-detailed',
@@ -110,6 +115,12 @@ export default {
         $('select.dropdown').dropdown();
         $('.menu .item').tab();
     },
+    created() {
+        bus.$on("save_mapping",this.saveMapping);
+    },
+    beforeDestroy() {
+        bus.$off("save_mapping",this.saveMapping);
+    },
     data () {
         return {
             source : null,
@@ -118,6 +129,7 @@ export default {
     computed: {
         // a computed getter
         maps: function () {
+            // organize mappings in a simple object, if mappings exist
             if(this.source.inspect && this.source.inspect.sources) {
                 var _maps = {};
                 for(var subsrc in this.source.inspect.sources) {
@@ -128,14 +140,13 @@ export default {
                         }
                     }
                 }
-                console.log("on maps computed " + _maps);
                 if(Object.keys(_maps).length)
                     return _maps;
             }
             return null;
         }
     },
-    components: { InspectForm, DataSourceDump, DataSourceInspect },
+    components: { InspectForm, DataSourceDump, DataSourceInspect, DataSourceMapping },
     methods: {
             displayError : function() {
                 var errs = [];
@@ -217,6 +228,17 @@ export default {
                 console.log("Error getting source information: " + err);
             })
         },
+        saveMapping: function(subsrc,map,dest) {
+            console.log(`Saving mapping for ${subsrc} dest:${dest}`);
+            axios.put(axios.defaults.baseURL + `/source/${subsrc}/mapping`,
+                        {"mapping" : map, "dest" : dest})
+            .then(response => {
+                console.log(response.data.result)
+            })
+            .catch(err => {
+                console.log("Error : " + err);
+            })
+        }
     },
 }
 </script>

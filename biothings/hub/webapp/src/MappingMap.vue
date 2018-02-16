@@ -55,12 +55,6 @@ export default {
         this.htmlmap();
         $('.ui.checkbox').checkbox();
     },
-    created() {
-        bus.$on(`save_mapping_${this.name}`,this.saveMapping);
-    },
-    beforeDestroy() {
-        bus.$off(`save_mapping_${this.name}`,this.saveMapping);
-    },
     data () {
         return {
             path : [],
@@ -214,29 +208,6 @@ export default {
             $("#htmlmap").html(JSON.stringify(html,null,4));
             $(".mapkey").bind('click',this.modifyMapKey);
         },
-        html2json: function(html) {
-            // remove html tags to get a clean json doc
-            html = html.replace(/<.*?>/g,""); // non-greedy to keep content between tags
-            try {
-                return JSON.parse(html);
-            } catch(err) {
-                console.log(`Error parsing mapping: ${err}`);
-                console.log(html);
-                throw err;
-            }
-        },
-        saveMapping: function() {
-            var html = $("#htmlmap").html();
-            var json = this.html2json(html);
-            axios.put(axios.defaults.baseURL + `/source/${this.name}/mapping`,
-                        {"mapping" : json})
-            .then(response => {
-                console.log(response.data.result)
-            })
-            .catch(err => {
-                console.log("Error : " + err);
-            })
-        }
     },
 }
 </script>
