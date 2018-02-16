@@ -9,11 +9,17 @@
             </div>
         </span>
         <div :class="['ui bottom attached tab segment', i === 0 ? 'active' : '']" v-for="(data,subsrc,i) in maps" :data-tab="subsrc" v-if="maps">
-            <p>These are the mappings for source <b>{{subsrc}}</b>.</p>
-            <p><i>Mapping from inspection</i> has been generated during data inspection, while <i>Registered mapping</i> is the actual active mapping, used during indexation.</p>
-            <p>Mappings can be manually edited and mapping from inspection can be saved as the new registered, active mapping.</p>
+            <p>
+                These are the mappings for source <b>{{subsrc}}</b>.
+            </p>
+            <p>
+                <i>Mapping from inspection</i> has been generated during data inspection, while <i>Registered mapping</i> is the actual active mapping, used during indexation.
+            </p>
+            <p>
+                Mappings can be manually edited and mapping from inspection can be saved as the new registered, active mapping.
+            </p>
             <div class="ui warning message">
-                If a mapping is hard-coded in source code, there won't be any "Save" or "Commit" actions on the registered mapping.
+                If a mapping is hard-coded in source code, "Save" or "Commit" actions won't be available.
             </div>
             <table class="ui celled table">
                 <thead>
@@ -21,7 +27,9 @@
                         <th class="eight wide top aligned">
                             <div>Mapping from inspection</div>
                             <div>
-                            <button class="ui labeled mini icon button" v-if="maps[subsrc]['mapping']" v-on:click="saveMapping(subsrc,'inspect')">
+                                <button class="ui labeled mini icon button" 
+                                        v-if="maps[subsrc]['mapping']" 
+                                        v-on:click="saveMapping('tab_mapping_inspected',subsrc,'inspect')">
                                 <i class="save icon"></i>
                                 Save
                             </button>
@@ -30,7 +38,9 @@
                         <th class="eight wide top aligned">
                             Registered mapping
                             <div>
-                            <button class="ui labeled mini icon button" v-if="maps[subsrc]['mapping']" v-on:click="saveMapping(subsrc,'master')">
+                                <button class="ui labeled mini icon button"
+                                        v-if="maps[subsrc]['mapping']"
+                                        v-on:click="saveMapping('tab_mapping_registered',subsrc,'master')">
                                 <i class="save icon"></i>
                                 Save
                             </button>
@@ -41,10 +51,10 @@
                 <tbody>
                     <tr class="top aligned">
                         <td>
-                            <mapping-map v-bind:map="maps[subsrc]['mapping']" v-bind:name="subsrc" v-if="maps[subsrc]"></mapping-map>
+                            <mapping-map v-bind:map="maps[subsrc]['mapping']" v-bind:name="subsrc" v-bind:map_id="'tab_mapping_inspected'" v-if="maps[subsrc]"></mapping-map>
                         </td>
                         <td>
-                            TODO
+                            <mapping-map v-bind:map="{'to':'do'}" v-bind:name="subsrc" v-bind:map_id="'tab_mapping_registered'" v-if="maps[subsrc]"></mapping-map>
                         </td>
                     </tr>
                 </tbody>
@@ -75,8 +85,8 @@ export default {
     },
     components: { MappingMap },
     methods: {
-        saveMapping: function(subsrc, dest) {
-            var html = $("#htmlmap").html();
+        saveMapping: function(map_elem_id,subsrc, dest) {
+            var html = $(`#${map_elem_id}`).html();
             var json = this.html2json(html);
             bus.$emit("save_mapping",subsrc,json,dest);
         }

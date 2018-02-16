@@ -1,10 +1,10 @@
 <template>
     <span>
-        <pre v-if="map" id="htmlmap">
+        <pre v-if="map" :id="map_id">
         </pre>
         <div class="description" v-else>No mapping data inspection</div>
 
-        <div v-bind:id="'modal_' + name" class="ui modal">
+        <div v-bind:id="'modal_' + map_id" class="ui modal">
             <div class="header">Modify index rules</div>
             <input class="path" type="hidden">
             <div class="content">
@@ -46,10 +46,11 @@
 <script>
 import axios from 'axios'
 import bus from './bus.js'
+import Vue from 'vue';
 
 export default {
     name: 'mapping-map',
-    props: ['map','name'],
+    props: ['map_id','map','name'],
     mounted () {
         console.log("MappingMap mounted");
         this.htmlmap();
@@ -65,33 +66,35 @@ export default {
         strmap: function () {
             return JSON.stringify(this.map);
         },
-        indexed: { 
+        indexed: {
+            cache : false,
             get : function() {
-                console.log(this.submap);
                 if("index" in this.submap && this.submap["index"] === false) {
-                    console.log("indexed: false");
+                    //console.log("indexed: false");
                     return false;
                 } else {
-                    console.log("indexed: true");
+                    //console.log("indexed: true");
                     return true;
                 }
             },
             set : function(val) {
-                console.log(`dummy indexed setter ${val}`);
+                //console.log(`dummy indexed setter ${val}`);
                 if(val)
-                    $(`#modal_${this.name} .copy_to_all`).removeClass("disabled");
+                    $(`#modal_${this.map_id} .copy_to_all`).removeClass("disabled");
                 else
-                    $(`#modal_${this.name} .copy_to_all`).addClass("disabled");
+                    $(`#modal_${this.map_id} .copy_to_all`).addClass("disabled");
             }
         },
         copied_to_all: {
+            cache : false,
             get : function() {
-                console.log(this.submap);
-                if("copy_to" in this.submap && this.submap["copy_to"] === ["all"]) {
+                if("copy_to" in this.submap 
+                    //&& typeof this.submap["copy_to"] == "array"
+                    &&  this.submap["copy_to"].indexOf("all") != -1) {
                     //console.log("copied_to_all: true");
                     return true;
                 } else {
-                    console.log("copied_to_all: false");
+                    //console.log("copied_to_all: false");
                     return false;
                 }
             },
@@ -103,7 +106,6 @@ export default {
     watch: {
         submap : function(newv,oldv) {
             if(newv != oldv) {
-                //console.log("watched go refresh");
                 // we need to refresh component when submap is modified
                 // so computed data related to explored key can be updated
                 // propagate status
@@ -139,40 +141,39 @@ export default {
         modifyMapKey: function(event) {
             var key = event.currentTarget.innerText;
             var path = event.currentTarget.id;
-            $(`#modal_${this.name} b.key`).html(key);
-            $(`#modal_${this.name} input.path`).val(path);
+            $(`#modal_${this.map_id} b.key`).html(key);
+            $(`#modal_${this.map_id} input.path`).val(path);
             // retrieve actual mapping rules
             var keys = path.split("/").slice(1)
             // position submap to explored key
             this.walkSubMap(this.map,keys);
-            console.log(this.submap);
             var self = this;
-            $(`#modal_${this.name}`)
+            $(`#modal_${this.map_id}`)
             .modal("setting", {
                 onApprove: function () {
-                    console.log(`#modal_${self.name} input.index:checked`);
-                    var index = $(`#modal_${self.name} #index_checkbox`).is(":checked");
-                    var copy_to_all = $(`#modal_${self.name} #copy_to_all_checkbox`).is(":checked");
-                    var path = $(`#modal_${self.name} input.path`).val()
-                    console.log(`index form ${index}`);
-                    console.log(`copy_to_all form ${copy_to_all}`);
-                    console.log(`path form ${path}`);
-                    console.log(self.submap);
+                    var index = $(`#modal_${self.map_id} #index_checkbox`).is(":checked");
+                    var copy_to_all = $(`#modal_${self.map_id} #copy_to_all_checkbox`).is(":checked");
+                    var path = $(`#modal_${self.map_id} input.path`).val()
+                    //console.log(`index form ${index}`);
+                    //console.log(`copy_to_all form ${copy_to_all}`);
+                    //console.log(`path form ${path}`);
                     // TODO: for now we only support outter keys to be modified
                     if("properties" in self.submap)
                         throw new Error("Only 'leaf' keys can be modified");
-                    // index or not
-                    if(index)
-                        delete self.submap["index"];
-                    else
-                        self.submap["index"] = false;
                     // copy to all ?
                     if(copy_to_all)
-                        self.submap["copy_to"] = ["all"];
+                        Vue.set(self.submap,"copy_to",["all"]);
                     else
-                        delete self.submap["copy_to"];
+                        Vue.delete(self.submap,"copy_to");
+                    // index or not
+                    if(index)
+                        Vue.delete(self.submap,"index");
+                    else {
+                        Vue.set(self.submap,"index",false);
+                        // make sure to delete this one even if selected, makes no senses when index is false
+                        Vue.delete(self.submap,"copy_to");
+                    }
                     self.walkSubMap(self.map,path.split("/").slice(1),self.submap)
-                    console.log(self.map);
                     self.$forceUpdate();
                 }
             })
@@ -205,7 +206,7 @@ export default {
                 }
                 return false;
             });
-            $("#htmlmap").html(JSON.stringify(html,null,4));
+            $(`#${this.map_id}`).html(JSON.stringify(html,null,4));
             $(".mapkey").bind('click',this.modifyMapKey);
         },
     },

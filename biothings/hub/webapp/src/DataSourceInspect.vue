@@ -28,10 +28,10 @@
                 <tbody>
                     <tr class="top aligned">
                         <td>
-                            <type-map v-bind:map="maps[subsrc]['type']" v-if="maps[subsrc]"></type-map>
+                            <type-map v-bind:map="maps[subsrc]['type']" v-bind:map_id="'tab_inspect_type'" v-if="maps[subsrc]"></type-map>
                         </td>
                         <td>
-                            <mapping-map v-bind:map="maps[subsrc]['mapping']" v-bind:name="subsrc" v-if="maps[subsrc]"></mapping-map>
+                            <mapping-map v-bind:map="maps[subsrc]['mapping']" v-bind:name="subsrc" v-bind:map_id="'tab_inspect_mapping'" v-if="maps[subsrc]"></mapping-map>
                         </td>
                     </tr>
                 </tbody>
@@ -83,8 +83,8 @@ export default {
             })
             .modal("show");
         },
-        saveMapping: function(subsrc, dest) {
-            var html = $("#htmlmap").html();
+        saveMapping: function(map_elem_id,subsrc, dest) {
+            var html = $(`#${map_elem_id}`).html();
             var json = this.html2json(html);
             bus.$emit("save_mapping",subsrc,json,'inspect');
         }
