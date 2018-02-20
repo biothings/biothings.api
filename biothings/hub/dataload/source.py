@@ -1,10 +1,12 @@
 import asyncio
 import logging
+from pprint import pformat
 
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.dataload import to_boolean
 from biothings.utils.manager import BaseSourceManager
-from biothings.utils.hub_db import get_src_master
+from biothings.utils.hub_db import get_src_master, get_source_fullname, \
+                                   get_src_dump
 
 
 class SourceManager(BaseSourceManager):
@@ -20,8 +22,37 @@ class SourceManager(BaseSourceManager):
         self.dump_manager.register_sources(self.source_list)
         self.upload_manager.register_sources(self.source_list)
         self.src_master = get_src_master()
+        self.src_dump = get_src_dump()
         # honoring BaseSourceManager interface (gloups...-
         self.register = {}
+
+    def set_mapping_src_meta(self, subsrc, mini):
+        # get mapping from uploader klass first (hard-coded), then src_master (generated/manual)
+        src_meta = {}
+        mapping = {}
+        origin = None
+        try:
+            upk = self.upload_manager["%s.%s" % (mini["_id"],subsrc)]
+            assert len(upk) == 1, "More than 1 uploader found, can't handle that..."
+            upk = upk.pop()
+            src_meta = getattr(upk,"__metadata__",{})
+            mapping = upk.get_mapping()
+            origin = "uploader"
+            if not mapping:
+                raise AttributeError("Not hard-coded mapping")
+        except (IndexError, KeyError, AttributeError) as e:
+            logging.debug("Can't find hard-coded mapping, now searching src_master: %s" % e)
+            m = self.src_master.find_one({"_id":subsrc})
+            mapping = m and m.get("mapping")
+            origin = "master"
+            # use metadata from upload or reconstitute(-ish)
+            src_meta = src_meta or \
+                    m and dict([(k,v) for (k,v) in m.items() if not k in ["_id","name","timestamp","mapping"]])
+        if mapping:
+            mini.setdefault("mapping",{}).setdefault(subsrc,{}).setdefault("mapping",mapping)
+            mini.setdefault("mapping",{}).setdefault(subsrc,{}).setdefault("origin",origin)
+        if src_meta:
+            mini.setdefault("src_meta",{}).setdefault(subsrc,src_meta)
 
     def sumup_source(self,src,detailed=False):
         """Return minimal info about src"""
@@ -56,6 +87,10 @@ class SourceManager(BaseSourceManager):
                             }
                     count += info.get("count") or 0
                     all_status.add(info["status"])
+
+                    if detailed:
+                        self.set_mapping_src_meta(job,mini)
+
                 if len(all_status) == 1:
                     mini["upload"]["status"] = all_status.pop()
                 elif "uploading" in all_status:
@@ -69,6 +104,8 @@ class SourceManager(BaseSourceManager):
                         "count" : info.get("count"),
                         "started_at" : info.get("started_at")
                         }
+                if detailed:
+                    self.set_mapping_src_meta(job,mini)
                 count += info.get("count") or 0
                 mini["upload"]["status"] = info.get("status")
             if src["upload"].get("err"):
@@ -80,12 +117,6 @@ class SourceManager(BaseSourceManager):
             for job,info in src["inspect"]["jobs"].items():
                 mini["inspect"]["sources"][job] = info["inspect"]
 
-        if detailed:
-            m = self.src_master.find_one({"_id":src["_id"]})
-            if m:
-                # some keys are already present, don't override (even if they should be the same)
-                for k in [k for k in m.keys() if not k in ["_id","name","timestamp"]]:
-                    mini[k] = m.get(k)
 
         if src.get("locked"):
             mini["locked"] = src["locked"]
@@ -102,6 +133,9 @@ class SourceManager(BaseSourceManager):
         elif id and id in um.register:
             ids.add(id)
         else:
+            # either no id passed, or doesn't exist
+            if id and not len(ids):
+                raise ValueError("Source %s doesn't exist" % repr(id))
             ids = set(dm.register)
             ids.update(um.register)
         sources = {}
@@ -147,7 +181,24 @@ class SourceManager(BaseSourceManager):
     def get_source(self,name,debug=False):
         return self.get_sources(id=name,debug=debug,detailed=True)
 
-    def save_mapping(self,name,mapping=None):
-        m = self.src_master.find_one({"_id":name}) or {"_id":name}
-        m["mapping"] = mapping
-        self.src_master.save(m)
+    def save_mapping(self, name, mapping=None, dest="master", mode="mapping"):
+        logging.debug("Saving mapping for source '%s' destination='%s':\n%s" % (name,dest,pformat(mapping)))
+        # either given a fully qualified source or just sub-source
+        try:
+            subsrc = name.split(".")[1]
+        except IndexError:
+            subsrc = name
+        if dest == "master":
+            m = self.src_master.find_one({"_id":subsrc}) or {"_id":subsrc}
+            m["mapping"] = mapping
+            self.src_master.save(m)
+        elif dest == "inspect":
+            m = self.src_dump.find_one({"_id":name})
+            try:
+                m["inspect"]["jobs"][subsrc]["inspect"]["results"][mode] = mapping
+                self.src_dump.save(m)
+            except KeyError as e:
+                raise ValueError("Can't save mapping, document doesn't contain expected inspection data" % e)
+        else:
+            raise ValueError("Unknow saving destination: %s" % repr(dest))
+

@@ -302,7 +302,9 @@ class BaseSourceUploader(object):
                 "name": self.regex_name and self.regex_name or str(self.name),
                 "timestamp": datetime.datetime.now()}
         # store mapping
-        _doc['mapping'] = self.__class__.get_mapping()
+        _map = self.__class__.get_mapping()
+        if _map:
+            _doc['mapping'] = _map
         # type of id being stored in these docs
         if hasattr(self.__class__, '__metadata__'):
             _doc.update(self.__class__.__metadata__)
@@ -315,8 +317,9 @@ class BaseSourceUploader(object):
     def save_doc_src_master(self,_doc):
         dkey = {"_id": _doc["_id"]}
         prev = self.src_master.find_one(dkey)
+        self.logger.error("_doc:  %s" % _doc)
         if prev:
-            self.src_master.replace_one(dkey, _doc)
+            self.src_master.update(dkey, {"$set" : _doc})
         else:
             self.src_master.insert_one(_doc)
 

@@ -504,7 +504,7 @@ class Indexer(object):
         mapping = self.build_doc.get("mapping",{})
         # default "all" field to replace include_in_all field in older versions of ES
         mapping["all"] = {'type': 'text'}
-        fina_mapping = {"properties": mapping, "dynamic": "false"}
+        final_mapping = {"properties": mapping, "dynamic": "false"}
         final_mapping["_meta"] = self.get_metadata()
 
         return final_mapping
