@@ -19,7 +19,7 @@
                 Mappings can be manually edited and mapping from inspection can be saved as the new registered, active mapping.
             </p>
             <div class="ui warning message">
-                If a mapping is hard-coded in source code, "Save" or "Commit" actions won't be available.
+                If a mapping is hard-coded in source code, it can't be edited, saved or replaced.
             </div>
             <table class="ui celled table">
                 <thead>
@@ -28,7 +28,7 @@
                             <div>Mapping from inspection</div>
                             <div>
                                 <button class="ui labeled mini icon button" 
-                                        v-if="maps[subsrc]['mapping']" 
+                                        v-if="maps[subsrc]['inspect_mapping']" 
                                         v-on:click="saveMapping('tab_mapping_inspected',subsrc,'inspect')">
                                 <i class="save icon"></i>
                                 Save
@@ -36,33 +36,76 @@
                             </div>
                         </th>
                         <th class="eight wide top aligned">
-                            Registered mapping
+                            <div>Registered mapping</div>
+                            <div> <i>{{ maps[subsrc]['registered_mapping']['origin'] == 'uploader' ? '(from python uploader code)':'' }}</i></div>
                             <div>
                                 <button class="ui labeled mini icon button"
-                                        v-if="maps[subsrc]['mapping']"
+                                        v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'"
                                         v-on:click="saveMapping('tab_mapping_registered',subsrc,'master')">
-                                <i class="save icon"></i>
-                                Save
-                            </button>
+                                        <i class="save icon"></i>
+                                        Save
+                                </button>
                             </div>
+                        </th>
+                    </tr>
+                    <tr v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'">
+                        <th colspan="2" class="sixteen wide top center aligned">
+                                <button class="ui labeled mini icon button"
+                                        v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'"
+                                        v-on:click="diffMapping('tab_mapping_inspected','tab_mapping_registered',subsrc)">
+                                        <i class="exchange icon"></i>
+                                        Diff
+                                </button>
+                                <button class="ui labeled mini icon button"
+                                        v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'"
+                                        v-on:click="commitMapping('tab_mapping_inspected',subsrc)">
+                                        <i class="angle double right icon"></i>
+                                        Commit
+                                </button>
                         </th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr class="top aligned">
                         <td>
-                            <mapping-map v-bind:map="maps[subsrc]['mapping']" v-bind:name="subsrc" v-bind:map_id="'tab_mapping_inspected'" v-if="maps[subsrc]"></mapping-map>
+                            <mapping-map v-bind:map="maps[subsrc]['inspect_mapping']" v-bind:name="subsrc" v-bind:map_id="'tab_mapping_inspected'" v-if="maps[subsrc]"></mapping-map>
                         </td>
                         <td>
-                            <mapping-map v-bind:map="{'to':'do'}" v-bind:name="subsrc" v-bind:map_id="'tab_mapping_registered'" v-if="maps[subsrc]"></mapping-map>
+                            <mapping-map v-bind:map="maps[subsrc]['registered_mapping']['mapping']" 
+                                v-bind:name="subsrc"
+                                v-bind:map_id="'tab_mapping_registered'"
+                                v-bind:read_only="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] == 'uploader'"
+                                v-if="maps[subsrc]['registered_mapping']">
+                            </mapping-map>
                         </td>
                     </tr>
                 </tbody>
             </table>
+            <div v-bind:id="'modal_commit_' + subsrc" class="ui modal">
+                <div class="ui icon header">
+                    <i class="angle double right icon"></i>
+                    Commit new mapping
+                </div>
+                <div class="content">
+                    <p>Are you sure you want to commit mapping from insection?</p>
+                    <p>This will be replace current registered one.</p>
+                </div>
+                <div class="actions">
+                    <div class="ui red basic cancel button">
+                        <i class="remove icon"></i>
+                        No
+                    </div>
+                    <div class="ui green ok button">
+                        <i class="checkmark icon"></i>
+                        Yes
+                    </div>
+                </div>
+
+            </div>
         </div>
     </span>
     <div v-else>
-        No inspection data found for this source
+        No mapping data found for this source
     </div>
     </span>
 
@@ -82,13 +125,38 @@ export default {
         $('.menu .item').tab();
         $('#maps .item:first').addClass('active');
         $('.tab:first').addClass('active');
+        console.log(this.maps);
     },
     components: { MappingMap },
     methods: {
         saveMapping: function(map_elem_id,subsrc, dest) {
-            var html = $(`#${map_elem_id}`).html();
+            var html = $(`#${subsrc}-${map_elem_id}`).html();
             var json = this.html2json(html);
             bus.$emit("save_mapping",subsrc,json,dest);
+        },
+        commitMapping: function(map_elem_id,subsrc) {
+            var self = this;
+            $(`#modal_commit_${subsrc}`)
+            .modal("setting", {
+                onApprove: function () {
+                    self.saveMapping(map_elem_id,subsrc,'master');
+                    bus.$emit("reload_datasource_detailed");
+                }
+            })
+            .modal(`show`);
+        },
+        diffMapping: function(map_elem_id_left, map_elem_id_right,subsrc) {
+            var lefthtml = $(`#${subsrc}-${map_elem_id_left}`).html();
+            var leftjson = this.html2json(lefthtml);
+            var righthtml = $(`#${subsrc}-${map_elem_id_right}`).html();
+            var rightjson = this.html2json(righthtml);
+            axios.post(axios.defaults.baseURL + `/jsondiff`,{"src" : leftjson, "dst" : rightjson})
+            .then(response => {
+                console.log(response.data.result)
+            })
+            .catch(err => {
+                console.log("Error diffing mappings: " + err);
+            })
         }
     },
 }

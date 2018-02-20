@@ -28,7 +28,7 @@
                         <a class="red item active" data-tab="dump" v-if="source.download">Dumper</a>
                         <a class="red item" data-tab="upload">Uploader</a>
                         <a class="red item" data-tab="mapping">Mapping</a>
-                        <a class="red item" data-tab="inspect">Data inspection</a>
+                        <a class="red item" data-tab="inspect">Statistics</a>
                     </div>
                     <div class="ui bottom attached tab segment active" data-tab="dump" v-if="source.download">
                         <data-source-dump v-bind:source="source"></data-source-dump>
@@ -117,9 +117,11 @@ export default {
     },
     created() {
         bus.$on("save_mapping",this.saveMapping);
+        bus.$on("reload_datasource_detailed",this.loadData);
     },
     beforeDestroy() {
         bus.$off("save_mapping",this.saveMapping);
+        bus.$off("reload_datasource_detailed",this.loadData);
     },
     data () {
         return {
@@ -136,9 +138,15 @@ export default {
                     if(this.source.inspect.sources[subsrc]) {
                         _maps[subsrc] = {};
                         for(var mode in this.source.inspect.sources[subsrc].results) {
-                            _maps[subsrc][mode] = this.source.inspect.sources[subsrc].results[mode];
+                            _maps[subsrc][`inspect_${mode}`] = this.source.inspect.sources[subsrc].results[mode];
                         }
                     }
+                }
+                for(var subsrc in this.source.mapping) {
+                    if(!subsrc in _maps)
+                        _maps[subsrc] = {};
+                    // registered is the registered/active mapping found in src_master
+                    _maps[subsrc]["registered_mapping"] = this.source.mapping[subsrc];
                 }
                 if(Object.keys(_maps).length)
                     return _maps;
@@ -234,6 +242,7 @@ export default {
                         {"mapping" : map, "dest" : dest})
             .then(response => {
                 console.log(response.data.result)
+                this.loadData();
             })
             .catch(err => {
                 console.log("Error : " + err);

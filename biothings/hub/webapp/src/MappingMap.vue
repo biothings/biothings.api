@@ -1,10 +1,10 @@
 <template>
     <span>
-        <pre v-if="map" :id="map_id">
+        <pre v-if="map" :id="name + '-' + map_id">
         </pre>
-        <div class="description" v-else>No mapping data inspection</div>
+        <div class="description" v-else>No mapping data</div>
 
-        <div v-bind:id="'modal_' + map_id" class="ui modal">
+        <div v-bind:id="'modal_' + name + '-' + map_id" class="ui modal">
             <div class="header">Modify index rules</div>
             <input class="path" type="hidden">
             <div class="content">
@@ -25,6 +25,7 @@
                         </p>
                     </div>
                     <div class="six wide column">
+                        TODO explanation
                     </div>
                 </div>
             </div>
@@ -50,11 +51,18 @@ import Vue from 'vue';
 
 export default {
     name: 'mapping-map',
-    props: ['map_id','map','name'],
+    props: ['map_id','map','name','read_only'],
     mounted () {
         console.log("MappingMap mounted");
         this.htmlmap();
         $('.ui.checkbox').checkbox();
+                this.$forceUpdate();
+    },
+    created() {
+        bus.$on("reload_mapping_map",this.$forceUpdate);
+    },
+    beforeDestroy() {
+        bus.$off("reload_mapping_map",this.$forceUpdate);
     },
     data () {
         return {
@@ -80,9 +88,9 @@ export default {
             set : function(val) {
                 //console.log(`dummy indexed setter ${val}`);
                 if(val)
-                    $(`#modal_${this.map_id} .copy_to_all`).removeClass("disabled");
+                    $(`#modal_${this.name}-${this.map_id} .copy_to_all`).removeClass("disabled");
                 else
-                    $(`#modal_${this.map_id} .copy_to_all`).addClass("disabled");
+                    $(`#modal_${this.name}-${this.map_id} .copy_to_all`).addClass("disabled");
             }
         },
         copied_to_all: {
@@ -111,12 +119,17 @@ export default {
                 // propagate status
                 this.$forceUpdate();
             }
+        },
+        map : function(newv,oldv) {
+            if(newv != oldv) {
+                this.htmlmap();
+            }
         }
     },
     components: { },
     methods: {
-        generateField: function(name,path) {
-            return `<a class='mapkey' id='${path}/${name}'>${name}</a>`;
+        generateField: function(map_id,name,path) {
+            return `<a class='mapkey' id='${path}/${name}' map_id='${map_id}'>${name}</a>`;
         },
         walkSubMap: function(map,path,replace) {
             if(path.length) {
@@ -141,22 +154,28 @@ export default {
         modifyMapKey: function(event) {
             var key = event.currentTarget.innerText;
             var path = event.currentTarget.id;
-            $(`#modal_${this.map_id} b.key`).html(key);
-            $(`#modal_${this.map_id} input.path`).val(path);
+            var map_id = event.currentTarget.getAttribute("map_id");
+            if(`${this.name}-${this.map_id}` != map_id)
+                return;
+            console.log(`in modifyMapKey ${this.name}-${this.map_id}`);
+            console.log(map_id);
+            $(`#modal_${this.name}-${this.map_id} b.key`).html(key);
+            $(`#modal_${this.name}-${this.map_id} input.path`).val(path);
             // retrieve actual mapping rules
             var keys = path.split("/").slice(1)
             // position submap to explored key
             this.walkSubMap(this.map,keys);
             var self = this;
-            $(`#modal_${this.map_id}`)
+            $(`#modal_${this.name}-${this.map_id}`)
             .modal("setting", {
                 onApprove: function () {
-                    var index = $(`#modal_${self.map_id} #index_checkbox`).is(":checked");
-                    var copy_to_all = $(`#modal_${self.map_id} #copy_to_all_checkbox`).is(":checked");
-                    var path = $(`#modal_${self.map_id} input.path`).val()
-                    //console.log(`index form ${index}`);
-                    //console.log(`copy_to_all form ${copy_to_all}`);
-                    //console.log(`path form ${path}`);
+                    var index = $(`#modal_${self.name}-${self.map_id} #index_checkbox`).is(":checked");
+                    var copy_to_all = $(`#modal_${self.name}-${self.map_id} #copy_to_all_checkbox`).is(":checked");
+                    var path = $(`#modal_${self.name}-${self.map_id} input.path`).val()
+                    console.log(`#modal_${self.name}-${self.map_id} input.path`);
+                    console.log(`index form ${index}`);
+                    console.log(`copy_to_all form ${copy_to_all}`);
+                    console.log(`path form ${path}`);
                     // TODO: for now we only support outter keys to be modified
                     if("properties" in self.submap)
                         throw new Error("Only 'leaf' keys can be modified");
@@ -182,31 +201,37 @@ export default {
         htmlmap: function() {
             // deep copy
             var html = JSON.parse(JSON.stringify(this.map));
-            var self = this;
-            var traverse = function(obj, fn, path = '') {
-                for (var i in obj) {
-                    var to_delete = fn.apply(this,[i,obj[i],obj, path]);
-                    if (obj[i] !== null && typeof(obj[i])=="object") {
-                        traverse(obj[i], fn, `${path}/${i}`);
-                        // now we can delete the fully explored key
-                        if(to_delete) {
-                            delete obj[i];
+            console.log(`for ${this.map_id}`);
+            console.log(this.map);
+            if(!this.read_only) {
+                var self = this;
+                var traverse = function(obj, fn, path = '') {
+                    for (var i in obj) {
+                        var to_delete = fn.apply(this,[i,obj[i],obj, path]);
+                        if (obj[i] !== null && typeof(obj[i])=="object") {
+                            traverse(obj[i], fn, `${path}/${i}`);
+                            // now we can delete the fully explored key
+                            if(to_delete) {
+                                delete obj[i];
+                            }
                         }
                     }
                 }
+                // usage
+                var self = this;
+                traverse(html, function(key,val,obj,path){
+                    if(typeof val == "object" && ["properties","copy_to"].indexOf(key) == -1) {
+                        var field = self.generateField(`${self.name}-${self.map_id}`,key,path);
+                        obj[field] = val;
+                        // this key should later be deleted as it's been replaced.
+                        // we can't do it there though as traversal would stop
+                        return true;
+                    }
+                    return false;
+                });
             }
-            // usage
-            traverse(html, function(key,val,obj,path){
-                if(typeof val == "object" && ["properties","copy_to"].indexOf(key) == -1) {
-                    var field = self.generateField(key,path);
-                    obj[field] = val;
-                    // this key should later be deleted as it's been replaced.
-                    // we can't do it there though as traversal would stop
-                    return true;
-                }
-                return false;
-            });
-            $(`#${this.map_id}`).html(JSON.stringify(html,null,4));
+            console.log(`#${this.name}-${this.map_id}`);
+            $(`#${this.name}-${this.map_id}`).html(JSON.stringify(html,null,4));
             $(".mapkey").bind('click',this.modifyMapKey);
         },
     },

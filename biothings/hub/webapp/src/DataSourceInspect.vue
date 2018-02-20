@@ -28,10 +28,17 @@
                 <tbody>
                     <tr class="top aligned">
                         <td>
-                            <type-map v-bind:map="maps[subsrc]['type']" v-bind:map_id="'tab_inspect_type'" v-if="maps[subsrc]"></type-map>
+                            <type-map v-bind:map="maps[subsrc]['inspect_type']" 
+                                v-bind:map_id="'tab_inspect_type'"
+                                v-if="maps[subsrc]">
+                            </type-map>
                         </td>
                         <td>
-                            <mapping-map v-bind:map="maps[subsrc]['mapping']" v-bind:name="subsrc" v-bind:map_id="'tab_inspect_mapping'" v-if="maps[subsrc]"></mapping-map>
+                            <mapping-map v-bind:map="maps[subsrc]['inspect_mapping']"
+                                v-bind:name="subsrc"
+                                v-bind:map_id="'tab_inspect_mapping'"
+                                v-if="maps[subsrc]['inspect_mapping']">
+                            </mapping-map>
                         </td>
                     </tr>
                 </tbody>
