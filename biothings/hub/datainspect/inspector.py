@@ -121,6 +121,7 @@ class InspectorManager(BaseManager):
                 data = yielder()
             else:
                 data = yielder
+            logging.info("Inspecting data with mode %s" % repr(mode))
             return btinspect.inspect_docs(data,mode=mode)
 
         inspected = None
@@ -135,7 +136,7 @@ class InspectorManager(BaseManager):
                         "description" : ""}
                 # register begin of inspection (differ slightly depending on type)
                 if data_provider_type == "source":
-                    registerer_obj.register_status("inspecting")
+                    registerer_obj.register_status("inspecting",subkey="inspect")
                 elif data_provider_type == "build":
                     registerer_obj.register_status("inspecting",transient=True,init=True,job={"step":"inspect"})
 
@@ -171,7 +172,7 @@ class InspectorManager(BaseManager):
                         logging.exception("Error while inspecting data: %s" % e)
                         got_error = e
                         if data_provider_type == "source":
-                            registerer_obj.register_status("failed",err=repr(e))
+                            registerer_obj.register_status("failed",subkey="inspect",err=repr(e))
                         elif data_provider_type == "build":
                             registerer_obj.register_status("failed",job={"err":repr(e)})
                 job.add_done_callback(inspected)

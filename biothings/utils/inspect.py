@@ -295,12 +295,11 @@ def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging,pre_mapp
 
     merge = "mapping" in modes and True or merge
     if merge:
-        merge_scalar_list(_map["mapping"],mode)
+        merge_scalar_list(_map["mapping"],"mapping")
     if "mapping" in modes and pre_mapping is False:
         # directly generate ES mapping
         import biothings.utils.es as es
         _map["mapping"] = es.generate_es_mapping(_map["mapping"])
-
 
     return _map
 
