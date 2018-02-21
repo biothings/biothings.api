@@ -1,5 +1,6 @@
 <template>
     <span>
+        <div class="ui red basic label" v-if="dirty">Edited</div>
         <pre v-if="map" :id="name + '-' + map_id">
         </pre>
         <div class="description" v-else>No mapping data</div>
@@ -60,14 +61,17 @@ export default {
     },
     created() {
         bus.$on("reload_mapping_map",this.$forceUpdate);
+        bus.$on(`${this.name}-${this.map_id}-mapping_saved`,this.cleaned);
     },
     beforeDestroy() {
         bus.$off("reload_mapping_map",this.$forceUpdate);
+        bus.$off(`${this.name}-${this.map_id}-mapping_saved`,this.cleaned);
     },
     data () {
         return {
             path : [],
             submap : {},
+            dirty : false,
         }
     },
     computed: {
@@ -193,6 +197,7 @@ export default {
                         Vue.delete(self.submap,"copy_to");
                     }
                     self.walkSubMap(self.map,path.split("/").slice(1),self.submap)
+                    self.dirty = true;
                     self.$forceUpdate();
                 }
             })
@@ -234,6 +239,9 @@ export default {
             $(`#${this.name}-${this.map_id}`).html(JSON.stringify(html,null,4));
             $(".mapkey").bind('click',this.modifyMapKey);
         },
+        cleaned : function() {
+            this.dirty = false;
+        }
     },
 }
 </script>

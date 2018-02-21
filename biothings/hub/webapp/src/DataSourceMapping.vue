@@ -51,7 +51,6 @@
                     <tr v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'">
                         <th colspan="2" class="sixteen wide top center aligned">
                                 <button class="ui labeled mini icon button"
-                                        v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'"
                                         v-on:click="diffMapping('tab_mapping_inspected','tab_mapping_registered',subsrc)">
                                         <i class="exchange icon"></i>
                                         Diff
@@ -128,11 +127,15 @@ export default {
         console.log(this.maps);
     },
     components: { MappingMap },
+    data () {
+        return {
+        }
+    },
     methods: {
         saveMapping: function(map_elem_id,subsrc, dest) {
             var html = $(`#${subsrc}-${map_elem_id}`).html();
             var json = this.html2json(html);
-            bus.$emit("save_mapping",subsrc,json,dest);
+            bus.$emit("save_mapping",subsrc,json,dest,map_elem_id);
         },
         commitMapping: function(map_elem_id,subsrc) {
             var self = this;
@@ -153,11 +156,13 @@ export default {
             axios.post(axios.defaults.baseURL + `/jsondiff`,{"src" : leftjson, "dst" : rightjson})
             .then(response => {
                 console.log(response.data.result)
+                bus.$emit("diffed",response.data.result);
+                bus.$emit("show_diffed");
             })
             .catch(err => {
                 console.log("Error diffing mappings: " + err);
             })
-        }
+        },
     },
 }
 </script>

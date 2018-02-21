@@ -93,6 +93,23 @@
             </div>
         </div>
 
+        <!-- Diff-->
+        <div class="ui basic diff modal" v-if="source.data_plugin">
+            <div class="ui icon header">
+                <i class="exchange icon"></i>
+                JSON diff results
+            </div>
+            <div class="content">
+                <p>Operations describe what is required to get from the data on the left, to the data on the right</p>
+                <json-diff-results></json-diff-results>
+            </div>
+            <div class="actions">
+                <div class="ui green ok inverted button">
+                    <i class="checkmark icon"></i>
+                    OK
+                </div>
+            </div>
+        </div>
 
     </div>
     </div>
@@ -105,6 +122,7 @@ import InspectForm from './InspectForm.vue'
 import DataSourceDump from './DataSourceDump.vue'
 import DataSourceInspect from './DataSourceInspect.vue'
 import DataSourceMapping from './DataSourceMapping.vue'
+import JsonDiffResults from './JsonDiffResults.vue'
 
 export default {
     name: 'data-source-detailed',
@@ -118,10 +136,12 @@ export default {
     created() {
         bus.$on("save_mapping",this.saveMapping);
         bus.$on("reload_datasource_detailed",this.loadData);
+        bus.$on("show_diffed",this.showDiffed);
     },
     beforeDestroy() {
         bus.$off("save_mapping",this.saveMapping);
         bus.$off("reload_datasource_detailed",this.loadData);
+        bus.$off("show_diffed",this.showDiffed);
     },
     data () {
         return {
@@ -154,12 +174,12 @@ export default {
             return null;
         }
     },
-    components: { InspectForm, DataSourceDump, DataSourceInspect, DataSourceMapping },
+    components: { InspectForm, DataSourceDump, DataSourceInspect, DataSourceMapping, JsonDiffResults },
     methods: {
-            displayError : function() {
-                var errs = [];
-                if (this.source.download && this.source.download.status == "failed")
-                    errs.push("Download failed: " + this.source.download.error);
+        displayError : function() {
+            var errs = [];
+            if (this.source.download && this.source.download.status == "failed")
+                errs.push("Download failed: " + this.source.download.error);
             if (this.source.upload && this.source.upload.status == "failed")
                 errs.push("Upload failed: " + this.source.upload.error);
             return errs.join("<br>");
@@ -236,18 +256,22 @@ export default {
                 console.log("Error getting source information: " + err);
             })
         },
-        saveMapping: function(subsrc,map,dest) {
+        saveMapping: function(subsrc,map,dest, map_id) {
             console.log(`Saving mapping for ${subsrc} dest:${dest}`);
             axios.put(axios.defaults.baseURL + `/source/${subsrc}/mapping`,
                         {"mapping" : map, "dest" : dest})
             .then(response => {
                 console.log(response.data.result)
                 this.loadData();
+                bus.$emit(`${subsrc}-${map_id}-mapping_saved`);
             })
             .catch(err => {
                 console.log("Error : " + err);
             })
-        }
+        },
+        showDiffed : function() {
+            $('.ui.basic.diff.modal').modal("show");
+        },
     },
 }
 </script>
