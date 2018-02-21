@@ -111,11 +111,14 @@ class SourceManager(BaseSourceManager):
             if src["upload"].get("err"):
                 mini["upload"]["error"] = src["upload"]["err"]
 
-        if detailed and src.get("inspect"):
+        if src.get("inspect"):
             mini["inspect"] = {"sources" : {}}
             all_status = set()
             for job,info in src["inspect"]["jobs"].items():
-                mini["inspect"]["sources"][job] = info["inspect"]
+                if not detailed:
+                    # remove big inspect data but preserve inspect status/info
+                    info.get("inspect",{}).pop("results",None)
+                mini["inspect"]["sources"][job] = info
 
 
         if src.get("locked"):

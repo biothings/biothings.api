@@ -58,6 +58,7 @@ class InspectorManager(BaseManager):
         registerer_obj = None # who should register result
         t0 = time.time()
         started_at = datetime.now()
+        logging.info("Inspecting data with mode %s and data_provider %s" % (repr(mode),repr(data_provider)))
         if callable(data_provider):
             raise NotImplementedError("data_provider as callable untested...")
             yielder_provider = data_provider
@@ -69,7 +70,7 @@ class InspectorManager(BaseManager):
                 doc = get_src_dump().find_one({"_id":src_name})
                 if not doc:
                     raise InspectorError("Can't find document associated to '%s'" % src_name)
-                if not doc.get("data_folder"):
+                if data_provider[0] == "uploader" and not doc.get("data_folder"):
                     raise InspectorError("Can't find data folder for '%s'" % src_name)
 
                 # get an uploader instance (used to get the data if type is "uploader"
@@ -121,7 +122,6 @@ class InspectorManager(BaseManager):
                 data = yielder()
             else:
                 data = yielder
-            logging.info("Inspecting data with mode %s" % repr(mode))
             return btinspect.inspect_docs(data,mode=mode)
 
         inspected = None
@@ -163,10 +163,15 @@ class InspectorManager(BaseManager):
                         _map["started_at"] = started_at
                         _map["duration"] = timesofar(t0)
                         # register begin of inspection (differ slightly depending on type)
-                        if data_provider_type == "source":
-                            registerer_obj.register_status("success",subkey="inspect",inspect=_map)
-                        elif data_provider_type == "build":
-                            registerer_obj.register_status("success",job={"step":"inspect"},
+                        logging.error(res)
+                        if "mapping" in mode and "errors" in res["mapping"] and "pre-mapping" in res["mapping"]:
+                            registerer_obj.register_status("failed",subkey="inspect",inspect=_map)
+                            got_error = res["mapping"]["errors"]
+                        else:
+                            if data_provider_type == "source":
+                                registerer_obj.register_status("success",subkey="inspect",inspect=_map)
+                            elif data_provider_type == "build":
+                                registerer_obj.register_status("success",job={"step":"inspect"},
                                                                         build={"inspect":_map})
                     except Exception as e:
                         logging.exception("Error while inspecting data: %s" % e)

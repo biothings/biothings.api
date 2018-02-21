@@ -299,7 +299,7 @@ class ESIndexer():
             es_cnt = self.count()
             if src_cnt != es_cnt:
                 raise IndexerException("Total count of documents does not match [{}, should be {}]".format(es_cnt, src_cnt))
-            
+
             return es_cnt
 
     def _build_index_sequential(self, collection, verbose=False, query=None, bulk=True, update=False, allow_upsert=True):
@@ -561,6 +561,8 @@ class ESIndexer():
             return {"status" : "IN_PROGRESS", "progress": "%.2f%%" % (done/len(shards_status)*100)}
 
 
+class MappingError(Exception): pass
+
 def generate_es_mapping(inspect_doc,init=True,level=0):
     """Generate an ES mapping according to "inspect_doc", which is 
     produced by biothings.utils.inspect module"""
@@ -589,6 +591,7 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
     if init and not "_id" in inspect_doc:
         raise ValueError("Not _id key found, documents won't be indexed")
     mapping = {}
+    errors = []
     for rootk in inspect_doc:
         if rootk == "_id":
             continue
@@ -631,7 +634,7 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             # it's a type declaration, no explore
             typs = list(map(type,keys))
             if len(typs) > 1:
-                raise Exception("More than one type (key:%s,types:%s)" % (repr(rootk),repr(keys)))
+                errors.append("More than one type (key:%s,types:%s)" % (repr(rootk),repr(keys)))
             try:
                 typ = list(inspect_doc[rootk].keys())[0]
                 if "split" in inspect_doc[rootk][typ]:
@@ -647,6 +650,8 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
         else:
             mapping[rootk] = {"properties" : {}}
             mapping[rootk]["properties"] = generate_es_mapping(inspect_doc[rootk],init=False,level=level+1)
+    if errors:
+        raise MappingError("Error while generating mapping",errors)
     return mapping
 
 ######################@#
