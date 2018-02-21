@@ -94,7 +94,7 @@
         </div>
 
         <!-- Diff-->
-        <div class="ui basic diff modal" v-if="source.data_plugin">
+        <div class="ui basic diff modal">
             <div class="ui icon header">
                 <i class="exchange icon"></i>
                 JSON diff results
@@ -155,16 +155,19 @@ export default {
             if(this.source.inspect && this.source.inspect.sources) {
                 var _maps = {};
                 for(var subsrc in this.source.inspect.sources) {
-                    if(this.source.inspect.sources[subsrc]) {
+                    if(this.source.inspect.sources[subsrc]["inspect"]) {
                         _maps[subsrc] = {};
-                        for(var mode in this.source.inspect.sources[subsrc].results) {
-                            _maps[subsrc][`inspect_${mode}`] = this.source.inspect.sources[subsrc].results[mode];
+                        for(var mode in this.source.inspect.sources[subsrc]["inspect"].results) {
+                            _maps[subsrc][`inspect_${mode}`] = this.source.inspect.sources[subsrc]["inspect"].results[mode];
                         }
                     }
                 }
                 for(var subsrc in this.source.mapping) {
                     if(!subsrc in _maps)
                         _maps[subsrc] = {};
+                    if(!_maps[subsrc]) {
+                        _maps[subsrc] = {};
+                    }
                     // registered is the registered/active mapping found in src_master
                     _maps[subsrc]["registered_mapping"] = this.source.mapping[subsrc];
                 }

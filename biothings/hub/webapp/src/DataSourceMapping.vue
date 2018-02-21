@@ -28,7 +28,9 @@
                             <div>Mapping from inspection</div>
                             <div>
                                 <button class="ui labeled mini icon button" 
-                                        v-if="maps[subsrc]['inspect_mapping']" 
+                                    v-if="maps[subsrc]['inspect_mapping']
+                                          && !maps[subsrc]['inspect_mapping']['errors']
+                                          && !maps[subsrc]['inspect_mapping']['pre-mapping']"
                                         v-on:click="saveMapping('tab_mapping_inspected',subsrc,'inspect')">
                                 <i class="save icon"></i>
                                 Save
@@ -48,15 +50,15 @@
                             </div>
                         </th>
                     </tr>
-                    <tr v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'">
+                    <tr v-if="maps[subsrc]['inspect_mapping'] && !maps[subsrc]['inspect_mapping']['errors'] && !maps[subsrc]['inspect_mapping']['pre-mapping']">
                         <th colspan="2" class="sixteen wide top center aligned">
                                 <button class="ui labeled mini icon button"
-                                        v-on:click="diffMapping('tab_mapping_inspected','tab_mapping_registered',subsrc)">
+                                    v-on:click="diffMapping('tab_mapping_inspected','tab_mapping_registered',subsrc)">
                                         <i class="exchange icon"></i>
                                         Diff
                                 </button>
                                 <button class="ui labeled mini icon button"
-                                        v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'"
+                                    v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'">
                                         v-on:click="commitMapping('tab_mapping_inspected',subsrc)">
                                         <i class="angle double right icon"></i>
                                         Commit
@@ -67,7 +69,12 @@
                 <tbody>
                     <tr class="top aligned">
                         <td>
-                            <mapping-map v-bind:map="maps[subsrc]['inspect_mapping']" v-bind:name="subsrc" v-bind:map_id="'tab_mapping_inspected'" v-if="maps[subsrc]"></mapping-map>
+                            <mapping-map v-bind:map="maps[subsrc]['inspect_mapping']"
+                                v-bind:name="subsrc"
+                                v-bind:map_id="'tab_mapping_inspected'"
+                                v-if="maps[subsrc]"
+                                v-bind:read_only="maps[subsrc]['inspect_mapping'] && maps[subsrc]['inspect_mapping']['pre-mapping']"
+                                ></mapping-map>
                         </td>
                         <td>
                             <mapping-map v-bind:map="maps[subsrc]['registered_mapping']['mapping']" 

@@ -1,8 +1,18 @@
 <template>
     <span>
         <div class="ui red basic label" v-if="dirty">Edited</div>
-        <pre v-if="map" :id="name + '-' + map_id">
-        </pre>
+        <span v-if="map">
+            <div v-if="has_errors">
+                <a class="ui orange label"><i class="exclamation triangle icon"></i>Found errors while generating the mapping:</a>
+                <div class="ui bulleted list">
+                    <div class="item" v-for="err in map['errors']"><b>{{err}}</b></div>
+                </div>
+                <p>Mapping can't be generated until those errors are fixed. Please fix the parser or the data and try again.</p>
+                <a class="ui grey label">For debugging purposes, below is a pre-mapping structure, where errors can be spot.</a>
+            </div>
+            <pre :id="name + '-' + map_id">
+            </pre>
+        </span>
         <div class="description" v-else>No mapping data</div>
 
         <div v-bind:id="'modal_' + name + '-' + map_id" class="ui modal">
@@ -13,16 +23,16 @@
                     <div class="six wide column">
                         <h5>Key: <b class="key"></b></h5>
                         <p>
-                        <div class="index ui checkbox">
-                            <input type="checkbox" name="index" id="index_checkbox" v-model="indexed">
-                            <label>Index this field (searchable)</label>
-                        </div>
+                            <div class="index ui checkbox">
+                                <input type="checkbox" name="index" id="index_checkbox" v-model="indexed">
+                                <label>Index this field (searchable)</label>
+                            </div>
                         </p>
                         <p>
                             <div :class="['copy_to_all ui checkbox', indexed ? '' : 'disabled']">
-                            <input type="checkbox" name="copy_to_all" id="copy_to_all_checkbox" v-model="copied_to_all">
-                            <label>Search this field by default</label>
-                        </div>
+                                <input type="checkbox" name="copy_to_all" id="copy_to_all_checkbox" v-model="copied_to_all">
+                                <label>Search this field by default</label>
+                            </div>
                         </p>
                     </div>
                     <div class="six wide column">
@@ -113,6 +123,9 @@ export default {
             set : function(val) {
                 //console.log(`dummy copied_to_all setter ${val}`);
             }
+        },
+        has_errors : function() {
+            return "pre-mapping" in this.map && "errors" in this.map;
         }
     },
     watch: {
@@ -236,8 +249,13 @@ export default {
                 });
             }
             console.log(`#${this.name}-${this.map_id}`);
-            $(`#${this.name}-${this.map_id}`).html(JSON.stringify(html,null,4));
-            $(".mapkey").bind('click',this.modifyMapKey);
+            if(this.read_only && this.has_errors && "pre-mapping" in this.map)
+                // text() to escape any <class ...>
+                $(`#${this.name}-${this.map_id}`).text(JSON.stringify(this.map["pre-mapping"],null,4));
+            else {
+                $(`#${this.name}-${this.map_id}`).html(JSON.stringify(html,null,4));
+                $(".mapkey").bind('click',this.modifyMapKey);
+            }
         },
         cleaned : function() {
             this.dirty = false;

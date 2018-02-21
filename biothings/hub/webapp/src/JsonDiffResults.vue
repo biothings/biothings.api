@@ -7,8 +7,8 @@
                     <th>Value</th>
                 </tr>
             </thead>
-            <tbody v-if="ops.length">
-                <tr v-for="op in ops" v-if="ops.length">
+            <tbody v-if="ops && ops.length">
+                <tr v-for="op in ops" v-if="ops.length" class="top aligned">
                     <td>{{op.op}}</td>
                     <td>{{op.path}}</td>
                     <td>{{op.value}}</td>

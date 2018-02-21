@@ -8,16 +8,17 @@
 
             <!-- in progress -->
             <i class="right floated database icon pulsing"
-                v-if="source.upload && source.upload.status == 'uploading'"></i>
+                v-if="upload_status == 'uploading'"></i>
             <i class="right floated cloud download icon pulsing"
-                v-if="source.download && source.download.status == 'downloading'"></i>
+                v-if="download_status == 'downloading'"></i>
+            <i class="right floated unhide icon pulsing"
+                v-if="inspect_status == 'inspecting'"></i>
 
             <!-- error -->
             <div class="ui"
                 v-bind:data-tooltip="displayError()">
                 <i class="right floated red alarm icon pulsing"
-                    v-if="(source.upload && source.upload.status == 'failed')
-                    || (source.download && source.download.status == 'failed')">
+                  v-if="[download_status,upload_status,inspect_status].indexOf('failed') != -1">
             </i></div>
 
             <div class="left aligned header" v-if="source.name">{{ source.name | splitjoin | capitalize }}</div>
@@ -101,13 +102,67 @@ export default {
         $('select.dropdown').dropdown();
     },
     components: { InspectForm },
+    computed: {
+        inspect_status: function() {
+            return this.getStatus("inspect");
+        },
+        upload_status: function() {
+            return this.getStatus("upload");
+        },
+        download_status: function() {
+            if(this.source.download && this.source.download.status)
+                return this.source.download.status;
+            else
+                return "unknown";
+        },
+        inspect_error: function() {
+          return this.getError("inspect");
+        },
+        upload_error: function() {
+          return this.getError("upload");
+        },
+        download_error: function() {
+          if(this.source.download && this.source.download.error)
+            return this.source.download.error;
+            else
+                return "unknown";
+        },
+    },
     methods: {
+        getStatus: function(subkey) {
+            var status = "unknown";
+            if(this.source.hasOwnProperty(subkey)) {
+                for(var subsrc in this.source[subkey].sources) {
+                    if(["failed","inspecting","uploading"].indexOf(this.source[subkey].sources[subsrc]["status"]) != -1) {
+                        status = this.source[subkey].sources[subsrc]["status"];
+                        // precedence to these statuses
+                        break;
+                    }
+                    else
+                        status = this.source[subkey].sources[subsrc]["status"];
+                }
+            }
+            return status;
+        },
+        getError: function(subkey) {
+          var errors = [];
+          if(this.source.hasOwnProperty(subkey)) {
+            for(var subsrc in this.source[subkey].sources) {
+              if(this.source[subkey].sources[subsrc]["err"])
+                errors.push(this.source[subkey].sources[subsrc]["err"]);
+            }
+          }
+          return errors;
+        },
         displayError : function() {
             var errs = [];
-            if (this.source.download && this.source.download.status == "failed")
+            if (this.download_status == "failed")
                 errs.push("Download failed: " + this.source.download.error);
-            if (this.source.upload && this.source.upload.status == "failed")
+            if (this.upload_status == "failed")
                 errs.push("Upload failed: " + this.source.upload.error);
+            if (this.inspect_status == "failed") {
+                errs.push("Inspect failed: " + this.inspect_error);
+            }
             return errs.join("<br>");
         },
         dump: function() {
@@ -173,5 +228,3 @@ export default {
 }
 </script>
 
-<style>
-</style>
