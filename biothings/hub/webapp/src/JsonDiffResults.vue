@@ -1,5 +1,5 @@
 <template>
-        <table class="ui small compact table">
+        <table class="ui small compact sortable celled table">
             <thead>
                 <tr>
                     <th>Operation</th>
@@ -23,17 +23,19 @@
 <script>
 import axios from 'axios'
 import bus from './bus.js'
+import tablesort from 'jquery-tablesort'
 
 export default {
     name: 'json-diff-results',
     mounted () {
         console.log("JsonDiffResults mounted");
+        $('table').tablesort();
     },
     created() {
-        bus.$on("diffed",this.displayOps);
+        bus.$on("diffed",this.setOps);
     },
     beforeDestroy() {
-        bus.$off("diffed",this.displayOps);
+        bus.$off("diffed",this.setOps);
     },
     data () {
         return {
@@ -42,10 +44,8 @@ export default {
     },
     components: { },
     methods: {
-        displayOps : function(ops) {
+        setOps : function(ops) {
             this.ops = ops;
-            console.log("in displayOps");
-            console.log(ops);
         },
     },
 }

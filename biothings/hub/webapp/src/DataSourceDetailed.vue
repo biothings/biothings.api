@@ -73,8 +73,8 @@
         </div>
 
         <!-- Diff-->
-        <div class="ui basic diff modal">
-            <div class="ui icon header">
+        <div class="ui diff modal">
+            <div class="ui header">
                 <i class="exchange icon"></i>
                 JSON diff results
             </div>
@@ -83,7 +83,7 @@
                 <json-diff-results></json-diff-results>
             </div>
             <div class="actions">
-                <div class="ui green ok inverted button">
+                <div class="ui green ok button">
                     <i class="checkmark icon"></i>
                     OK
                 </div>
@@ -252,7 +252,11 @@ export default {
             })
         },
         showDiffed : function() {
-            $('.ui.basic.diff.modal').modal("show");
+            $('.ui.diff.modal').modal({
+                observeChanges: true,
+                detachable: false,
+            })
+            .modal("show")
         },
     },
 }

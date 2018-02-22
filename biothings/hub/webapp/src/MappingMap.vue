@@ -16,16 +16,18 @@
         <div class="description" v-else>No mapping data</div>
 
         <div v-bind:id="'modal_' + name + '-' + map_id" class="ui modal">
-            <div class="header">Modify index rules</div>
+            <div class="header">Modify indexing rules</div>
             <input class="path" type="hidden">
             <div class="content">
                 <div class="ui centered grid">
                     <div class="six wide column">
-                        <h5>Key: <b class="key"></b></h5>
-                        <p>
+                        <h5>
+                            Field: <span class="key"></span><br>
+                            Path: <span class="path"></span>
+                        </h5>
                             <div class="index ui checkbox">
                                 <input type="checkbox" name="index" id="index_checkbox" v-model="indexed">
-                                <label>Index this field (searchable)</label>
+                                <label>Index this field</label>
                             </div>
                         </p>
                         <p>
@@ -35,8 +37,38 @@
                             </div>
                         </p>
                     </div>
-                    <div class="six wide column">
-                        TODO explanation
+                    <div class="ten wide column">
+                        <div class="ui list">
+                            <a class="item">
+                                <i class="right triangle icon"></i>
+                                <div class="content">
+                                    <div class="description">
+                                        <b>Enable index</b> allows a field to be searchable.
+                                        If indexing is disabled, values are still stored and returned in results,
+                                        but they can't be directly queried. Indexing takes disk space and can also
+                                        impact performances, only index fields which make sense to query.
+                                    </div>
+                                </div>
+                            </a>
+                            <a class="item">
+                                <i class="right triangle icon"></i>
+                                <div class="content">
+                                    <div class="description">
+                                        When <b>Search by default</b> is enabled, field can be searched without specifying the full path.
+                                        <i>Note: _id field is an exception, path is not required.</i><br>
+                                        Ex:
+                                        <ul class="ui list">
+                                            <li>When searching by default is disabled, searching <b><span class="key"></span></b> field requires to specify the full path:<br>
+                                                <code>/query?q=<b><span class="path"></span>:value_to_search</b></code></li>
+                                            <li>When searching by default is enabled, path can be omitted, <i>value_to_search</i> will be searched
+                                                in all fields declared as searchable by default.<br>
+                                                <code>/query?q=<b>value_to_search</b></code>.
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -176,8 +208,9 @@ export default {
                 return;
             console.log(`in modifyMapKey ${this.name}-${this.map_id}`);
             console.log(map_id);
-            $(`#modal_${this.name}-${this.map_id} b.key`).html(key);
+            $(`#modal_${this.name}-${this.map_id} span.key`).html(key);
             $(`#modal_${this.name}-${this.map_id} input.path`).val(path);
+            $(`#modal_${this.name}-${this.map_id} span.path`).html(path.slice(1).replace(/\//g,'.'));
             // retrieve actual mapping rules
             var keys = path.split("/").slice(1)
             // position submap to explored key
