@@ -62,6 +62,9 @@ export default {
   created() {
     bus.$on('refresh_stats',this.refreshStats);
   },
+  beforeDestroy() {
+    bus.$off('refresh_stats',this.refreshStats);
+  },
   data () {
       return  {
           stats: {},

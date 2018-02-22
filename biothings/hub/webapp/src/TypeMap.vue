@@ -29,6 +29,9 @@ export default {
     created() {
         bus.$on('type_map',this.update);
     },
+    beforeDestroy() {
+        bus.$off('type_map',this.update);
+    },
     data () {
         return {
         }

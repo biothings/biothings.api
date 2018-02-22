@@ -1,5 +1,5 @@
 <template>
-    <div class="ui container">
+    <div class="ui fluid container">
     <div id="data-source" class="ui centered fluid card" v-if="source">
         <div class="content">
 
@@ -44,27 +44,6 @@
                     </div>
                 </p>
 
-            </div>
-        </div>
-        <div class="extra content">
-            <div class="ui icon buttons left floated mini">
-                <button class="ui button" v-on:click="dump" v-if="source.download">
-                    <i class="download cloud icon"></i>
-                </button>
-                <button class="ui button" v-on:click="upload" v-if="source.upload">
-                    <i class="database icon"></i>
-                </button>
-            </div>
-            <div class="ui icon buttons left floated mini">
-                <button class="ui button" v-on:click="inspect">
-                    <i class="unhide icon"></i>
-                </button>
-            </div>
-            <div class="ui icon buttons right floated mini">
-                <button class="ui button"
-                    v-on:click="unregister" v-if="source.data_plugin">
-                    <i class="remove icon"></i>
-                </button>
             </div>
         </div>
 

@@ -39,7 +39,7 @@
                         </th>
                         <th class="eight wide top aligned">
                             <div>Registered mapping</div>
-                            <div> <i>{{ maps[subsrc]['registered_mapping']['origin'] == 'uploader' ? '(from python uploader code)':'' }}</i></div>
+                            <div> <i>{{ maps[subsrc]['registered_mapping'] ? maps[subsrc]['registered_mapping']['origin'] == 'uploader' ? '(from python uploader code)':'' : ''}}</i></div>
                             <div>
                                 <button class="ui labeled mini icon button"
                                         v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'"
@@ -58,7 +58,7 @@
                                         Diff
                                 </button>
                                 <button class="ui labeled mini icon button"
-                                    v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'">
+                                    v-if="maps[subsrc]['registered_mapping'] ? maps[subsrc]['registered_mapping']['origin'] != 'uploader' : true"
                                         v-on:click="commitMapping('tab_mapping_inspected',subsrc)">
                                         <i class="angle double right icon"></i>
                                         Commit
@@ -93,7 +93,7 @@
                     Commit new mapping
                 </div>
                 <div class="content">
-                    <p>Are you sure you want to commit mapping from insection?</p>
+                    <p>Are you sure you want to commit mapping from inspection?</p>
                     <p>This will be replace current registered one.</p>
                 </div>
                 <div class="actions">

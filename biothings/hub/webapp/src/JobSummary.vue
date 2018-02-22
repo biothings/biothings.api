@@ -72,6 +72,10 @@ export default {
       bus.$on('refresh_commands',this.refreshCommands);
       bus.$on('refresh_jobs',this.getJobSummary);
   },
+  beforeDestroy() {
+      bus.$off('refresh_commands',this.refreshCommands);
+      bus.$off('refresh_jobs',this.getJobSummary);
+  },
   data () {
     return  {
       job_manager : {},

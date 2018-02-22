@@ -190,7 +190,8 @@ export default {
             .modal("setting", {
                 onApprove: function () {
                     var url = $(this).find("input.plugin_url").val();
-                    axios.delete(axios.defaults.baseURL + '/dataplugin/unregister_url',{"url":url})
+                    console.log(url);
+                    axios.delete(axios.defaults.baseURL + '/dataplugin/unregister_url',{"data" : {"url":url}})
                     .then(response => {
                         console.log(response.data.result)
                         bus.$emit("refresh_sources");
@@ -198,7 +199,7 @@ export default {
                     })
                     .catch(err => {
                         console.log(err);
-                        console.log("Error registering repository URL: " + err.data.error);
+                        console.log("Error unregistering repository URL: " + err.data.error);
                     })
                 }
             })
