@@ -1,6 +1,16 @@
 <template>
     <span>
-        <div class="ui red basic label" v-if="dirty">Edited</div>
+        <div class="ui orange basic label" v-if="dirty">Edited</div>
+        <div :class="['ui',mapping_error ? 'red' : 'green', 'label']" v-if="mapping_msg != null">
+            <span v-if="mapping_error">
+                An error occured while validating this mapping:<br>
+                <code>{{mapping_msg}}</code>
+            </span>
+            <span v-else>
+                Mapping has successfully been validated.
+                <code>{{mapping_msg}}</code>
+            </span>
+        </div>
         <span v-if="map">
             <div v-if="has_errors">
                 <a class="ui orange label"><i class="exclamation triangle icon"></i>Found errors while generating the mapping:</a>
@@ -101,19 +111,25 @@ export default {
         $('.ui.checkbox').checkbox();
                 this.$forceUpdate();
     },
+    // TODO: those events are mostly due because of bad page design, with actions on a mapping separated from
+    // the actual component (see DataSourceMapping.vue and the relation)
     created() {
         bus.$on("reload_mapping_map",this.$forceUpdate);
         bus.$on(`${this.name}-${this.map_id}-mapping_saved`,this.cleaned);
+        bus.$on(`mapping_test_${this.map_id}-${this.name}`,this.displayMappingTestResult);
     },
     beforeDestroy() {
         bus.$off("reload_mapping_map",this.$forceUpdate);
         bus.$off(`${this.name}-${this.map_id}-mapping_saved`,this.cleaned);
+        bus.$off(`mapping_test_${this.map_id}-${this.name}`,this.displayMappingTestResult);
     },
     data () {
         return {
             path : [],
             submap : {},
             dirty : false,
+            mapping_error : false,
+            mapping_msg: null,
         }
     },
     computed: {
@@ -292,6 +308,13 @@ export default {
         },
         cleaned : function() {
             this.dirty = false;
+        },
+        displayMappingTestResult: function(msg,type) {
+            if(type == "error")
+                this.mapping_error = true;
+            else
+                this.mapping_error = false;
+            this.mapping_msg = msg;
         }
     },
 }

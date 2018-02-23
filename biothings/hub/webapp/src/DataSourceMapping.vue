@@ -19,7 +19,10 @@
                 Mappings can be manually edited and mapping from inspection can be saved as the new registered, active mapping.
             </p>
             <div class="ui warning message">
-                If a mapping is hard-coded in source code, it can't be edited, saved or replaced.
+                <ul class="ui list">
+                    <li>If a mapping is hard-coded in source code, it can't be edited, saved or replaced.</li>
+                    <li>When testing a mapping, an temporary index is created on the selection ElasticSearch environment. That index is then deleted.</li>
+                </ul>
             </div>
             <table class="ui celled table">
                 <thead>
@@ -32,9 +35,22 @@
                                           && !maps[subsrc]['inspect_mapping']['errors']
                                           && !maps[subsrc]['inspect_mapping']['pre-mapping']"
                                         v-on:click="saveMapping('tab_mapping_inspected',subsrc,'inspect')">
-                                <i class="save icon"></i>
-                                Save
-                            </button>
+                                    <i class="save icon"></i>
+                                    Save
+                                </button>
+                                <!-- TODO: duplicaation !!! -->
+                                <div class="ui mini buttons"
+                                    v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'">
+                                    <div class="ui labeled icon button"
+                                        v-on:click="testMapping('tab_mapping_inspected',subsrc)">
+                                        <i class="check square outline icon"></i>Validate on <span class="tab_mapping_inspected test-on">...</span>
+                                    </div>
+                                    <div class="ui floating tab_mapping_inspected dropdown icon button">
+                                        <i class="dropdown icon"></i>
+                                        <div class="menu">
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </th>
                         <th class="eight wide top aligned">
@@ -47,6 +63,18 @@
                                         <i class="save icon"></i>
                                         Save
                                 </button>
+                                <div class="ui mini buttons"
+                                    v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'">
+                                    <div class="ui labeled icon button"
+                                        v-on:click="testMapping('tab_mapping_registered',subsrc)">
+                                        <i class="check square outline icon"></i>Validate on <span class="tab_mapping_registered test-on">...</span>
+                                    </div>
+                                    <div class="ui floating tab_mapping_registered dropdown icon button">
+                                        <i class="dropdown icon"></i>
+                                        <div class="menu">
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </th>
                     </tr>
@@ -131,11 +159,13 @@ export default {
         $('.menu .item').tab();
         $('#maps .item:first').addClass('active');
         $('.tab:first').addClass('active');
-        console.log(this.maps);
+        this.buildIndexDropdown("tab_mapping_registered");
+        this.buildIndexDropdown("tab_mapping_inspected");
     },
     components: { MappingMap },
     data () {
         return {
+            environments : {},
         }
     },
     methods: {
@@ -168,6 +198,49 @@ export default {
             })
             .catch(err => {
                 console.log("Error diffing mappings: " + err);
+            })
+        },
+        buildIndexDropdown : function(map_id) {
+            axios.get(axios.defaults.baseURL + `/index_manager`)
+            .then(response => {
+                console.log(response.data.result)
+                this.environments = response.data.result["env"];
+                var envs = [];
+                var cnt = 0;
+                for(var e in this.environments) {
+                    var d = {"name" : this.environments[e], "value" : this.environments[e]}
+                    if(cnt == 0)
+                        d["selected"] = true;
+                    envs.push(d);
+                    cnt++;
+                }
+                console.log("envs");
+                console.log(envs);
+                $(`.ui.${map_id}.dropdown`).dropdown({
+                    values: envs,
+                    onChange: function(value, text, $selectedItem) {
+                        console.log(`value ${value} text ${text}`);
+                        $(`.${map_id}.test-on`).text(`${value}`);
+                    }
+                });
+            })
+            .catch(err => {
+                console.log("Error getting index environments: " + err);
+            })
+        },
+        testMapping: function(map_elem_id,subsrc, dest) {
+            var html = $(`#${subsrc}-${map_elem_id}`).html();
+            var json = this.html2json(html);
+            var env = $(`.${map_elem_id}.test-on`).text();
+            axios.post(axios.defaults.baseURL + `/mapping/validate`,{"mapping" : json, "env" : env})
+            .then(response => {
+                console.log(response.data.result)
+                bus.$emit(`mapping_test_${map_elem_id}-${subsrc}`,"","info");
+            })
+            .catch(err => {
+                console.log("Error validating mapping: ");
+                console.log(err);
+                bus.$emit(`mapping_test_${map_elem_id}-${subsrc}`,err.data.error,"error");
             })
         },
     },
