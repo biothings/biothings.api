@@ -1091,3 +1091,14 @@ class BuilderManager(BaseManager):
                 raise ValueError("No such build named '%s'" % id)
         else:
             return res
+
+    def create_build_configuration(self,name,sources,roots=[],**kwargs):
+        col = get_src_build_config()
+        # check conf doesn't exist yet
+        if [d for d in col.find({"_id":name})]:
+            raise ValueError("Configuration named '%s' already exists" % name)
+        doc = {"_id" : name, "name" : name, "sources" : sources, "root" : roots}
+        doc.update(**kwargs)
+        col.save(doc)
+
+

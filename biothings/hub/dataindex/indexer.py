@@ -9,7 +9,7 @@ from functools import partial
 import biothings.utils.mongo as mongo
 from biothings.utils.hub_db import get_src_build
 import biothings.utils.aws as aws
-from biothings.utils.common import timesofar
+from biothings.utils.common import timesofar, get_random_string
 from biothings.utils.loggers import HipchatHandler, get_logger
 from biothings.utils.manager import BaseManager
 from biothings.utils.es import ESIndexer
@@ -99,10 +99,10 @@ class IndexerManager(BaseManager):
         """
         for dindex in partial_indexers:
             assert len(dindex) == 1, "Invalid indexer registration data: %s" % dindex
-            _type,pindexer = list(dindex.items())[0]
-            self.register[_type] = pindexer
+            env,pindexer = list(dindex.items())[0]
+            self.register[env] = pindexer
 
-    def index(self, indexer_type, target_name=None, index_name=None, ids=None, **kwargs):
+    def index(self, indexer_env, target_name=None, index_name=None, ids=None, **kwargs):
         """
         Trigger an index creation to index the collection target_name and create an 
         index named index_name (or target_name if None). Optional list of IDs can be
@@ -116,7 +116,7 @@ class IndexerManager(BaseManager):
             except Exception as e:
                 self.logger.exception("Error while running merge job, %s" % e)
                 raise
-        idx = self[indexer_type]
+        idx = self[indexer_env]
         idx.target_name = target_name
         index_name = index_name or target_name
         job = idx.index(target_name, index_name, ids=ids, job_manager=self.job_manager, **kwargs)
@@ -282,6 +282,30 @@ class IndexerManager(BaseManager):
                 "url":url}
         publish_data_version(s3_folder,full_info)
         self.logger.info("Registered version '%s'" % (esb.version))
+
+    def index_info(self):
+        return {"env" : sorted(self.register.keys())}
+
+    def validate_mapping(self, mapping, env):
+        idxr_obj = self[env]
+        host = idxr_obj.host
+        settings = idxr_obj.get_index_creation_settings()
+        # generate a random index, it'll be deleted at the end
+        index_name = ("hub_tmp_%s" % get_random_string()).lower()
+        idxr = ESIndexer(index=index_name,es_host=host,doc_type=None)
+        self.logger.info("Testing mapping by creating index '%s' on host '%s' (settings: %s)" % \
+                (index_name,host,settings))
+        try:
+            res = idxr.create_index(mapping,settings)
+            return res
+        except Exception as e:
+            self.logger.exception(e)
+            raise e
+        finally:
+            try:
+                idxr.delete_index()
+            except Exception as e:
+                pass
 
 
 class Indexer(object):
