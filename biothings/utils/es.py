@@ -101,7 +101,7 @@ class ESIndexer():
     def exists(self, bid):
         """return True/False if a biothing id exists or not."""
         try:
-            doc = self.get_biothing(bid, fields=None)
+            doc = self.get_biothing(bid, stored_fields=None)
             return doc['found']
         except NotFoundError:
             return False
@@ -115,7 +115,7 @@ class ESIndexer():
                 }
             }
         }
-        res = self._es.search(index=self._index, doc_type=self._doc_type, body=q, fields=None, size=len(bid_list))
+        res = self._es.search(index=self._index, doc_type=self._doc_type, body=q, stored_fields=None, size=len(bid_list))
         id_set = set([doc['_id'] for doc in res['hits']['hits']])
         return [(bid, bid in id_set) for bid in bid_list]
 
