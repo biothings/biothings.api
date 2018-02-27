@@ -2,15 +2,14 @@
     <div id="builds">
 
         <div class="ui left vertical labeled icon small inverted sidebar menu">
-            <a class="ui dropdown item" v-model="build_configs">
-                <i class="big icons">
-                    <i class="filter icon"></i>
-                </i>
-                Filter
+            <div class="item"><i>Existing configurations</i></div>
+            <a class="ui buildconfigs dropdown item" v-for="(conf,conf_name) in build_configs">
+                {{conf_name}}
                 <i class="dropdown icon"></i>
                 <div class="ui inverted menu">
-                    <div class="item"><i>No filter</i></div>
-                    <div class="item" v-for="(conf,name) in build_configs">{{name}}</div>
+                    <div class="item":conf-name="conf_name" @click="newBuild($event)">Create new build</div>
+                    <div class="disabled item":conf-name="conf_name">Edit configuration</div>
+                    <div class="item" :conf-name="conf_name" @click="deleteConfiguration($event)">Delete configuration</div>
                     <!--
                     <div class="divider"></div>
                     <div class="ui icon search input">
@@ -25,15 +24,7 @@
                     -->
                 </div>
             </a>
-            <a class="item">
-                <i class="big icons">
-                    <i class="cube icon"></i>
-                    <i class="huge corner add icon"></i>
-                </i>
-                <br>
-                <br>
-                <div>New build</div>
-            </a>
+            <div class="item"><i>Other actions</i></div>
             <a class="item"  v-on:click="createNewConfiguration">
                 <i class="big icons">
                     <i class="configure icon"></i>
@@ -43,13 +34,9 @@
                 <br>
                 <div>New configuration</div>
             </a>
-            <a class="item">
-                <i class="unhide icon"></i>
-                Inspect
-            </a>
         </div>
         <div class="pusher">
-            <div class="ui main container" id="list_builds">
+            <div class="ui main container">
                 <div class="ui segment">
                     <div class="ui secondary small menu">
                         <a class="item" id="side_menu">
@@ -138,6 +125,46 @@
             </div>
         </div>
 
+        <div class="ui basic deleteconf modal">
+            <div class="ui icon header">
+                <i class="trash alternate icon"></i>
+                Delete configuration
+            </div>
+            <div class="content">
+                <p>Are you sure you want to delete this build configuration ?</p>
+            </div>
+            <div class="actions">
+                <div class="ui red basic cancel inverted button">
+                    <i class="remove icon"></i>
+                    No
+                </div>
+                <div class="ui green ok inverted button">
+                    <i class="checkmark icon"></i>
+                    Yes
+                </div>
+            </div>
+        </div>
+
+        <div class="ui basic newbuild modal">
+            <div class="ui icon header">
+                <i class="cube icon"></i>
+                Create new build
+            </div>
+            <div class="content">
+                <p>Enter a name for the merged data collection or leave it empty to generate a random one</p>
+            </div>
+            <div class="actions">
+                <div class="ui red basic cancel inverted button">
+                    <i class="remove icon"></i>
+                    Cancel
+                </div>
+                <div class="ui green ok inverted button">
+                    <i class="checkmark icon"></i>
+                    OK
+                </div>
+            </div>
+        </div>
+
     </div>
 
 
@@ -153,11 +180,7 @@ export default {
     name: 'build-grid',
     mounted () {
         console.log("BuildGrid mounted");
-        this.getBuilds();
-        this.getSourceList();
-        this.getBuildConfigs();
-        this.interval = setInterval(this.getBuilds,15000);
-        $('.ui .dropdown').dropdown();
+        $('.ui.dropdown').dropdown();
         $('.ui.sources.dropdown').dropdown({
             onChange: function(addedValue, addedText, $addedChoice) {
                 console.log(addedValue);console.log(addedText);
@@ -172,29 +195,34 @@ export default {
             },
         });
         $('#builds .ui.sidebar')
-        .sidebar({context:$('#list_builds')})
+        .sidebar({context:$('#builds')})
         .sidebar('setting', 'transition', 'overlay')
         .sidebar('attach events', '#side_menu');
-        $('.ui.form').form({
-            fields : {
-                conf_name : {
-                    identifier: 'conf_name',
-                    rules: [
-                        {
-                            type   : 'empty',
-                            prompt : 'Please enter your name'
-                        }
-                    ]
-                }
-            }
-        });
+        $('.ui.form').form();
+    },
+    updated() {
+        // there's some kind of race-condition regarding dropdown init, if
+        // in mounted() they won't get init, prob. because data changed and needs to
+        // be re-rendered
+        $('.ui.buildconfigs.dropdown').dropdown();
     },
     created() {
+        this.getBuilds();
+        this.getSourceList();
+        this.getBuildConfigs();
+        this.interval = setInterval(this.getBuilds,15000);
         bus.$on('refresh_builds',this.refreshBuilds);
     },
     beforeDestroy() {
         bus.$off('refresh_builds',this.refreshBuilds);
         clearInterval(this.interval);
+        // hacky to remove modal from div outside of app, preventing having more than one
+        // modal displayed when getting back to that page. https://github.com/Semantic-Org/Semantic-UI/issues/4049
+        $('.ui.basic.deleteconf.modal').remove();
+        $('.ui.basic.newbuild.modal').remove();
+        $('.ui.basic.newconfiguration.modal').remove();
+    },
+    watch: {
     },
     data () {
         return  {
@@ -225,9 +253,17 @@ export default {
             })
         },
         getSourceList: function() {
+            var self = this;
             axios.get(axios.defaults.baseURL + '/sources')
             .then(response => {
-                this.sources = response.data.result.map(x => x["_id"]).sort();
+                $(response.data.result).each(function(i,e) {
+                    console.log(e);
+                    for(var k in e["upload"]["sources"]) {
+                        console.log(k);
+                        self.sources.push(k);
+                    }
+                });
+                self.sources.sort();
             })
             .catch(err => {
                 console.log("Error listing sources: " + err);
@@ -260,14 +296,15 @@ export default {
                     // semantic won't populate select.option when dynamically set values, but rather add "q" elements, 
                     // despite the use of refresh. How ugly...
                     $(".ui.rootsources.dropdown a").each(function(i,e) {root_sources.push($(e).text())});
-                    //console.log(`conf_name ${conf_name} selected_sources ${selected_sources} root_sources ${root_sources}`);
                     var params = {};
                     $(optionals.split("\n")).each(function(i,line) {
-                        var kv = line.split("=").map(x => x.trim());
-                        if(kv.length == 2) {
-                            params[kv[0]] = kv[1];
-                        } else {
-                            this.errors.push("Invalid parameter: " + line);
+                        if(line) {
+                            var kv = line.split("=").map(x => x.trim());
+                            if(kv.length == 2) {
+                                params[kv[0]] = kv[1];
+                            } else {
+                                self.errors.push("Invalid parameter: " + line);
+                            }
                         }
                     });
                     if(self.errors.length)
@@ -276,7 +313,7 @@ export default {
                                {"name":conf_name, "sources":selected_sources, "roots":root_sources, "params":params})
                     .then(response => {
                         console.log(response.data.result)
-                        bus.$emit("refresh_sources");
+                        self.getBuildConfigs();
                         return true;
                     })
                     .catch(err => {
@@ -287,6 +324,50 @@ export default {
             })
             .modal("show");
         },
+        deleteConfiguration : function(event) {
+            var conf_name = $(event.currentTarget).attr("conf-name");
+            var self = this;
+            $('.ui.basic.deleteconf.modal')
+            .modal("setting", {
+                detachable : false,
+                onApprove: function () {
+                    axios.delete(axios.defaults.baseURL + '/build/configuration',{"data":{"name":conf_name}})
+                    .then(response => {
+                        console.log(response.data.result)
+                        self.getBuildConfigs();
+                        return true;
+                    })
+                    .catch(err => {
+                        console.log(err);
+                        console.log("Error deleting configuration: " + err ? err.data.error : 'unknown error');
+                    })
+                },
+            })
+            .modal("show");
+        },
+        newBuild : function(event) {
+            var conf_name = $(event.currentTarget).attr("conf-name");
+            var target_name = null; // todo: take it from form
+            var self = this;
+            $('.ui.basic.newbuild.modal')
+            .modal("setting", {
+                detachable : false,
+                onApprove: function () {
+                    axios.put(axios.defaults.baseURL + `/build/${conf_name}/new`,{"target_name":target_name})
+                    .then(response => {
+                        console.log(response.data.result)
+                        self.getBuilds();
+                        return true;
+                    })
+                    .catch(err => {
+                        console.log(err);
+                        console.log("Error lauching new build: " + err ? err.data.error : 'unknown error');
+                    })
+                },
+            })
+            .modal("show");
+        },
+
     }
 }
 </script>

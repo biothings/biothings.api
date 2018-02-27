@@ -2,7 +2,7 @@
     <div class="ui fluid card">
         <div class="content">
             <!-- in progress -->
-            <i class="right floated database icon pulsing"
+            <i class="right floated cube icon pulsing"
                 v-if="build.status == 'building'"></i>
             <i class="right floated unhide icon pulsing"
                 v-if="build.status == 'inspecting'"></i>

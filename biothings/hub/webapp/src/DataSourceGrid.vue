@@ -5,13 +5,9 @@
                 <i class="plug icon"></i>
                 New data plugin
             </a>
-            <a class="item">
-                <i class="unhide icon"></i>
-                Inspect
-            </a>
         </div>
         <div class="pusher">
-            <div class="ui main container" id="list_build">
+            <div class="ui main container">
                 <div class="ui segment left aligned">
                     <div class="ui secondary small menu">
                         <a class="item">
