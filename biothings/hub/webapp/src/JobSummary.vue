@@ -83,7 +83,7 @@ export default {
       processes : {},
       threads : {},
       show_allcmds : false,
-      errors: [],
+      //errors: [],
     }
   },
   components: { CommandsList, ProcessesList, ThreadsList, },

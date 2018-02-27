@@ -28,10 +28,10 @@
             </div>
         </div>
         <div class="ui basic newdatasource modal">
-            <div class="ui icon">
+            <h3 class="ui icon">
                 <i class="plug icon"></i>
                 Register a new datasource
-            </div>
+            </h3>
             <div class="content">
                 <p>Specify a repository type and URL</p>
             </div>
@@ -59,16 +59,6 @@
             </div>
 
         </div>
-
-        <div class="ui basic registering modal">
-            <div class="ui segment">
-                <div class="ui active dimmer">
-                    <div class="ui indeterminate text loader">Registering...</div>
-                </div>
-                <p></p>
-            </div>
-        </div>
-
 
     </div>
 
@@ -118,6 +108,7 @@ export default {
         register: function() {
             $('.ui.basic.newdatasource.modal')
             .modal("setting", {
+                detachable : false,
                 onApprove: function () {
                     var url = $(".ui.form").form('get field', "repo_url").val();
                     axios.post(axios.defaults.baseURL + '/dataplugin/register_url',{"url":url})
