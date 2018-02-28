@@ -131,8 +131,10 @@ export default {
         // a computed getter
         maps: function () {
             // organize mappings in a simple object, if mappings exist
+            var _maps = {};
+            console.log("$mapping");
+            console.log(this.source.mapping);
             if(this.source.inspect && this.source.inspect.sources) {
-                var _maps = {};
                 for(var subsrc in this.source.inspect.sources) {
                     if(this.source.inspect.sources[subsrc]["inspect"]) {
                         _maps[subsrc] = {};
@@ -141,18 +143,20 @@ export default {
                         }
                     }
                 }
-                for(var subsrc in this.source.mapping) {
-                    if(!subsrc in _maps)
-                        _maps[subsrc] = {};
-                    if(!_maps[subsrc]) {
-                        _maps[subsrc] = {};
-                    }
-                    // registered is the registered/active mapping found in src_master
-                    _maps[subsrc]["registered_mapping"] = this.source.mapping[subsrc];
-                }
-                if(Object.keys(_maps).length)
-                    return _maps;
             }
+            for(var subsrc in this.source.mapping) {
+              console.log(`subsrc: ${subsrc}`);
+                if(!subsrc in _maps)
+                    _maps[subsrc] = {};
+                if(!_maps[subsrc]) {
+                    _maps[subsrc] = {};
+                }
+                // registered is the registered/active mapping found in src_master
+                _maps[subsrc]["registered_mapping"] = this.source.mapping[subsrc];
+            }
+            if(Object.keys(_maps).length)
+                return _maps;
+
             return null;
         }
     },
