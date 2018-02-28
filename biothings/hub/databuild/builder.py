@@ -956,6 +956,7 @@ class BuilderManager(BaseManager):
 
     def configure(self):
         """Sync with src_build_config and register all build config"""
+        self.register = {}
         for conf in self.src_build_config.find():
             self.register_builder(conf["_id"])
 
@@ -1051,7 +1052,7 @@ class BuilderManager(BaseManager):
                 res[name]["mapper"][mappername] = mapper.__class__.__name__
         return res
 
-    def build_info(self,id=None,build_config=None,fields=None):
+    def build_info(self,id=None,build_config=None,fields={}):
         """
         Return build information given an build _id, or all builds
         if _id is None. "fields" can be passed to select which fields
@@ -1059,20 +1060,23 @@ class BuilderManager(BaseManager):
         return everything except:
          - "mapping" (too long)
         If id is None, more are filtered:
-         - "sources" and "build_config"
+         - "sources" and some of "build_config"
         """
         res = {}
         q = {}
-        if fields is None:
-            fields = {"mapping": 0}
         if not id is None:
             q = {"_id": id}
         else:
+            fields["mapping"] = 0
             fields["sources"] = 0
-            fields["build_config"] = 0
+            fields["build_config.sources"] = 0
+            fields["build_config.root"] = 0
         if not build_config is None:
             q["build_config._id"] = build_config
-        builds = get_src_build().find(q,fields)
+        # no fields passed = gimme all
+        if not fields:
+            fields=None
+        builds = [b for b in get_src_build().find(q,fields)]
         db = mongo.get_target_db()
         res = [b for b in sorted(builds, key=lambda e: str(e["started_at"]),reverse=True)]
         # set a global status (ie. latest job's status)
@@ -1092,13 +1096,18 @@ class BuilderManager(BaseManager):
         else:
             return res
 
-    def create_build_configuration(self,name,sources,roots=[],**kwargs):
+    def create_build_configuration(self,name,sources,roots=[],params={}):
         col = get_src_build_config()
         # check conf doesn't exist yet
         if [d for d in col.find({"_id":name})]:
             raise ValueError("Configuration named '%s' already exists" % name)
         doc = {"_id" : name, "name" : name, "sources" : sources, "root" : roots}
-        doc.update(**kwargs)
+        doc.update(params)
         col.save(doc)
+        self.configure()
 
+    def delete_build_configuration(self,name):
+        col = get_src_build_config()
+        col.remove({"_id":name})
+        self.configure()
 
