@@ -4,24 +4,13 @@
         <div class="ui left vertical labeled icon small inverted sidebar menu">
             <div class="item"><i>Existing configurations</i></div>
             <a class="ui buildconfigs dropdown item" v-for="(conf,conf_name) in build_configs">
-                {{conf_name}}
                 <i class="dropdown icon"></i>
+                <div :class="['ui', build_colors[conf_name], 'empty circular label']"></div>
+                {{conf_name}}
                 <div class="ui inverted menu">
-                    <div class="item":conf-name="conf_name" @click="newBuild($event)">Create new build</div>
-                    <div class="disabled item":conf-name="conf_name">Edit configuration</div>
-                    <div class="item" :conf-name="conf_name" @click="deleteConfiguration($event)">Delete configuration</div>
-                    <!--
-                    <div class="divider"></div>
-                    <div class="ui icon search input">
-                        <i class="search icon"></i>
-                        <input type="text" name="search" placeholder="Search builds...">
-                    </div>
-                    <div class="scrolling menu" v-if="builds">
-                        <div class="item" v-for="build in builds">
-                            {{build.target_name}}
-                        </div>
-                    </div>
-                    -->
+                    <div class="item":conf-name="conf_name" @click="newBuild($event)"><i class="cube icon"></i> Create new build</div>
+                    <div class="item":conf-name="conf_name"><i class="edit outline icon"></i> Edit configuration</div>
+                    <div class="item" :conf-name="conf_name" @click="deleteConfiguration($event)"><i class="trash alternate outline icon"></i> Delete configuration</div>
                 </div>
             </a>
             <div class="item"><i>Other actions</i></div>
@@ -43,17 +32,23 @@
                             <i class="sidebar icon"></i>
                             Menu
                         </a>
-                    <!--
-                        <select name="filter_config" multiple="" class="ui dropdown right aligned item">
-                              <option value="">Filter</option>
-                              <option :value="name" v-for="(conf,name) in build_configs">{{name}}</option>
-                          </select>
-                    -->
-                    </div>
+                        <a class="right aligned item">
+                            <button class="ui clearconffilter button" v-if="conf_filter" style="margin-right:1em;" @click="clearFilter">
+                                Clear 
+                            </button>
+                            <select class="ui filterbuilds dropdown" v-model="conf_filter">
+                                <option value="">Filter</option>
+                                <option :value="name" v-for="(conf,name) in build_configs">
+                                    <div :class="['ui', build_colors[name], 'empty circular label']"></div>
+                                    {{name}}
+                                </option>
+                            </select>
+                          </a>
+                      </div>
                 </div>
                 <div class="ui centered grid">
                     <div class="ui five wide column" v-for="build in builds">
-                        <build v-bind:build="build"></build>
+                        <build v-bind:build="build" v-bind:color="build_colors[build.build_config.name]"></build>
                     </div>
                 </div>
             </div>
@@ -63,7 +58,7 @@
         <div class="ui basic newconfiguration modal">
             <h3 class="ui icon">
                 <i class="configure icon"></i>
-                Create a new build configuration
+                Create/edit build configuration
             </h3>
             <div class="content">
                 <div class="ui form">
@@ -223,6 +218,11 @@ export default {
         $('.ui.basic.newconfiguration.modal').remove();
     },
     watch: {
+        conf_filter: function(newv,oldv) {
+            if(newv != oldv) {
+                this.getBuilds();
+            }
+        },
     },
     data () {
         return  {
@@ -230,12 +230,18 @@ export default {
             sources : [],
             build_configs: {},
             errors: [],
+            build_colors : {},
+            // build colors for easy visual id
+            colors: ["orange","green","yellow","olive","teal","violet","blue","pink","purple"],
+            color_idx : 0,
+            conf_filter : "",
         }
     },
     components: { Build, },
     methods: {
         getBuilds: function() {
-            axios.get(axios.defaults.baseURL + '/builds')
+            var filter = this.conf_filter == "" ? '' : `?build_config=${this.conf_filter}`;
+            axios.get(axios.defaults.baseURL + '/builds' + filter)
             .then(response => {
                 this.builds = response.data.result;
             })
@@ -244,9 +250,22 @@ export default {
             })
         },
         getBuildConfigs: function() {
+            var self = this;
+            self.color_idx = 0;
             axios.get(axios.defaults.baseURL + '/build_manager')
             .then(response => {
-                this.build_configs = response.data.result;
+                self.build_configs = response.data.result;
+                // make sure we always give the same color for a given build config
+                var keys = Object.keys(self.build_configs);
+                console.log(keys);
+                keys.sort();
+                for(var k in keys) {
+                    console.log(keys[k]);
+                    self.build_colors[keys[k]] = self.colors[self.color_idx++];
+                    if(self.color_idx + 1 >= Object.keys(self.colors).length) {
+                        self.color_idx = 0;
+                    }
+                }
             })
             .catch(err => {
                 console.log("Error getting builds information: " + err);
@@ -257,9 +276,7 @@ export default {
             axios.get(axios.defaults.baseURL + '/sources')
             .then(response => {
                 $(response.data.result).each(function(i,e) {
-                    console.log(e);
                     for(var k in e["upload"]["sources"]) {
-                        console.log(k);
                         self.sources.push(k);
                     }
                 });
@@ -309,16 +326,17 @@ export default {
                     });
                     if(self.errors.length)
                         return false;
-                    axios.post(axios.defaults.baseURL + '/build/configuration',
+                    axios.post(axios.defaults.baseURL + '/buildconf',
                                {"name":conf_name, "sources":selected_sources, "roots":root_sources, "params":params})
                     .then(response => {
                         console.log(response.data.result)
                         self.getBuildConfigs();
+                        self.refreshBuilds();
                         return true;
                     })
                     .catch(err => {
                         console.log(err);
-                        console.log("Error registering repository URL: " + err.data.error);
+                        console.log("Error creating build configuration: " + err.data.error);
                     })
                 }
             })
@@ -331,10 +349,11 @@ export default {
             .modal("setting", {
                 detachable : false,
                 onApprove: function () {
-                    axios.delete(axios.defaults.baseURL + '/build/configuration',{"data":{"name":conf_name}})
+                    axios.delete(axios.defaults.baseURL + '/buildconf',{"data":{"name":conf_name}})
                     .then(response => {
                         console.log(response.data.result)
                         self.getBuildConfigs();
+                        self.refreshBuilds();
                         return true;
                     })
                     .catch(err => {
@@ -367,7 +386,13 @@ export default {
             })
             .modal("show");
         },
-
+        clearFilter : function() {
+            console.log("onela");
+            $('.ui.filterbuilds.dropdown')
+            .dropdown('clear');
+            this.conf_filter = "";
+            this.getBuilds();
+        },
     }
 }
 </script>

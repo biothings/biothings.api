@@ -27,7 +27,7 @@
       </div>
     </div>
 
-    <div class="ui active tab segment">
+    <div id="page_content" class="ui active tab segment">
     <router-view></router-view>
     </div>
 
@@ -180,6 +180,20 @@ table .nowrap {
 }
 .pulsing {
   animation: pulse 1s linear infinite;
+}
+
+html,
+body,
+#page_content {
+    min-height: 100%;
+    height: 100%;
+}
+
+html,
+body,
+#app {
+    min-height: 100%;
+    height: 100%;
 }
 
 </style>

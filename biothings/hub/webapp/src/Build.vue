@@ -1,6 +1,9 @@
 <template>
     <div class="ui fluid card">
         <div class="content">
+            <div :class="['ui',color ? color : 'grey', 'tiny', '', 'label']">{{build.build_config.name}}</div>
+            <div>&nbsp;</div>
+
             <!-- in progress -->
             <i class="right floated cube icon pulsing"
                 v-if="build.status == 'building'"></i>
@@ -149,6 +152,7 @@
             </div>
             <div class="content">
                 <p>Are you sure you want to delete build <b>{{build.target_name}}</b> ?</p>
+                <p>All merged data and associated metadata will be deleted.</p>
             </div>
             <div class="actions">
                 <div class="ui red basic cancel inverted button">
@@ -184,11 +188,14 @@ Vue.filter('build_time',build_time);
 
 export default {
     name: 'build',
-    props: ['build'],
+    props: ['build','color'],
     mounted() {
         $('.menu .item')
         .tab()
         ;
+    },
+    beforeDestroy() {
+        $(`#${this.build._id}.ui.basic.deletebuild.modal`).remove();
     },
     components: { InspectForm, },
     methods: {
