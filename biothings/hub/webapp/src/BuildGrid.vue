@@ -70,6 +70,11 @@
                             <br>
                             <br>
 
+                            <label>Enter a name for the type of stored documents ("gene", "variant", ...)</label>
+                            <input type="text" id="doc_type" placeholder="Document type" autofocus>
+                            <br>
+                            <br>
+
                             <label>Select the sources used to create merged data</label>
                             <select class="ui fluid sources dropdown" id="selected_sources" multiple="">
                                 <option value="">Available sources</option>
@@ -302,12 +307,15 @@ export default {
                 onApprove: function () {
                     self.errors = [];
                     var conf_name = $(".ui.form").form('get field', "conf_name").val();
+                    var doc_type = $(".ui.form").form('get field', "doc_type").val();
                     var selected_sources = $(".ui.form").form('get field', "selected_sources").val();
                     var optionals = $(".ui.form").form('get field','optionals').val();
                     var root_sources = [];
                     // form valid
                     if(!conf_name)
                         self.errors.push("Provide a configuration name");
+                    if(!doc_type)
+                        self.errors.push("Provide a document type");
                     if(selected_sources.length == 0)
                         self.errors.push("Select at least one source to build merged data");
                     // semantic won't populate select.option when dynamically set values, but rather add "q" elements, 
@@ -327,7 +335,11 @@ export default {
                     if(self.errors.length)
                         return false;
                     axios.post(axios.defaults.baseURL + '/buildconf',
-                               {"name":conf_name, "sources":selected_sources, "roots":root_sources, "params":params})
+                               {"name":conf_name,
+                                "doc_type": doc_type,
+                                "sources":selected_sources,
+                                "roots":root_sources,
+                                "params":params})
                     .then(response => {
                         console.log(response.data.result)
                         self.getBuildConfigs();

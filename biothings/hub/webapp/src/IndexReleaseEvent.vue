@@ -1,0 +1,72 @@
+<template>
+    <div class="event-container">
+        <div class="label">
+            <img class="logo" src="./assets/elasticsearch.png">
+        </div>
+        <div class="content">
+            <div class="summary">
+                <a class="user">
+                    {{release.index_name}}
+                </a> index was created on <b>{{release.environment}}</b> environment (<a>{{release.host}}</a>)
+                <div class="date">
+                    {{release.created_at | moment("from", "now")}}
+                    (<i>on {{moment(release.created_at).format('MMMM Do YYYY, h:mm:ss a') }}</i>)
+
+                </div>
+            </div>
+            <div class="meta">
+                <i class="file alternate icon"></i> {{release.count}} documents indexed
+                <button :class="[release.snapshot ? 'disabled' : '','ui mini labeled icon button']"
+                        @click="snapshot(release)">
+                    <i class="bookmark icon"></i>
+                    Snapshot
+                </button>
+                <button :class="[release.snapshot ? '' : 'disabled', 'ui mini labeled icon button']"
+                        @click="publish(release)">
+                    <i class="share alternate square icon"></i>
+                    Publish
+                </button>
+            </div>
+        </div>
+    </div>
+</template>
+
+<script>
+import axios from 'axios'
+import bus from './bus.js'
+import Vue from 'vue';
+
+export default {
+    name: 'index-release-event',
+    props: ['release'],
+    mounted() {
+    },
+    beforeDestroy() {
+    },
+    components: {  },
+    data () {
+        return {
+        }
+    },
+    computed: {
+    },
+    methods: {
+        displayError : function() {
+        },
+        snapshot(release) {
+            console.log("TODO snapshot");
+            console.log(release);
+        },
+        publish(release) {
+            console.log("TODO publish");
+            console.log(release);
+        },
+    }
+}
+</script>
+
+<style>
+.event-container {
+    margin-bottom: 1em;
+}
+</style>

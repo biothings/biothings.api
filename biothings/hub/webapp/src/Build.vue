@@ -1,8 +1,7 @@
 <template>
     <div class="ui fluid card">
         <div class="content">
-            <div :class="['ui',color ? color : 'grey', 'tiny', '', 'label']">{{build.build_config.name}}</div>
-            <div>&nbsp;</div>
+            <div :class="['ui',color ? color : 'grey', 'tiny', '', 'label','conftag']">{{build.build_config.name}}</div>
 
             <!-- in progress -->
             <i class="right floated cube icon pulsing"
@@ -140,8 +139,8 @@
                     <i class="trash icon" @click="deleteBuild()"></i>
                 </button>
             </div>
-            <div class="ui icon buttons right floated mini">
-                <button class="ui button"><i class="angle double right icon"></i></button>
+            <div class="ui right floated">
+                <router-link :to="{name:'build', params: {_id: build._id, color:color}}"><a>More</a></router-link>
             </div>
         </div>
 
@@ -259,6 +258,10 @@ export default {
 
   .pulsing {
     animation: pulse 1s linear infinite;
+  }
+
+  .conftag {
+      margin-bottom: 1em !important;
   }
 
 </style>

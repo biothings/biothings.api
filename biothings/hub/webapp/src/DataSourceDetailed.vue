@@ -106,6 +106,7 @@ import JsonDiffResults from './JsonDiffResults.vue'
 export default {
     name: 'data-source-detailed',
     props: ['_id'],
+    components: { InspectForm, DataSourceDump, DataSourceInspect, DataSourceMapping, JsonDiffResults },
     mounted () {
         console.log("DataSourceDetailed mounted");
         this.loadData();
@@ -160,7 +161,6 @@ export default {
             return null;
         }
     },
-    components: { InspectForm, DataSourceDump, DataSourceInspect, DataSourceMapping, JsonDiffResults },
     methods: {
         displayError : function() {
             var errs = [];

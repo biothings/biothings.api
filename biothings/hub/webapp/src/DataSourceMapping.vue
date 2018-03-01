@@ -203,7 +203,6 @@ export default {
         buildIndexDropdown : function(map_id) {
             axios.get(axios.defaults.baseURL + `/index_manager`)
             .then(response => {
-                console.log(response.data.result)
                 this.environments = response.data.result["env"];
                 var envs = [];
                 var cnt = 0;
@@ -214,8 +213,6 @@ export default {
                     envs.push(d);
                     cnt++;
                 }
-                console.log("envs");
-                console.log(envs);
                 $(`.ui.${map_id}.dropdown`).dropdown({
                     values: envs,
                     onChange: function(value, text, $selectedItem) {

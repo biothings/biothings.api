@@ -104,12 +104,14 @@ import Stats from './Stats.vue';
 import DataSourceGrid from './DataSourceGrid.vue';
 import DataSourceDetailed from './DataSourceDetailed.vue';
 import BuildGrid from './BuildGrid.vue';
+import BuildDetailed from './BuildDetailed.vue';
 
 const routes = [
     { path: '/', component: Stats },
     { path: '/sources', component: DataSourceGrid },
     { path: '/source/:_id', component: DataSourceDetailed, props: true },
     { path: '/builds', component: BuildGrid },
+    { path: '/build/:_id', component: BuildDetailed, props: true, name: "build"},
 ]
 
 const router = new VueRouter({
