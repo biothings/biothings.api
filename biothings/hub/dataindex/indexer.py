@@ -82,13 +82,13 @@ class IndexerManager(BaseManager):
             pinfo["__predicates__"] = preds
         return pinfo
 
-    def __getitem__(self,build_name):
+    def __getitem__(self,conf_name):
         """
-        Return an instance of an indexer for the build named 'build_name'
+        Return an instance of an indexer for the build configuration named 'conf_name'
         Note: each call returns a different instance (factory call behind the scene...)
         """
         # we'll get a partial class but will return an instance
-        pclass = BaseManager.__getitem__(self,build_name)
+        pclass = BaseManager.__getitem__(self,conf_name)
         return pclass()
 
     def configure(self,partial_indexers):
@@ -117,6 +117,7 @@ class IndexerManager(BaseManager):
                 self.logger.exception("Error while running merge job, %s" % e)
                 raise
         idx = self[indexer_env]
+        idx.env = indexer_env
         idx.target_name = target_name
         index_name = index_name or target_name
         job = idx.index(target_name, index_name, ids=ids, job_manager=self.job_manager, **kwargs)
@@ -316,9 +317,10 @@ class Indexer(object):
 
     def __init__(self, es_host, target_name=None, **kwargs):
         self.host = es_host
+        self.env = None
         self.log_folder = LOG_FOLDER
         self.timestamp = datetime.now()
-        self.build_name = None
+        self.conf_name = None
         self.build_doc = None
         self.target_name = None
         self.index_name = None
@@ -326,6 +328,7 @@ class Indexer(object):
         self.num_shards = None
         self.num_replicas = None
         self.kwargs = kwargs
+        self.ti = time.time()
 
     def get_predicates(self):
         return []
@@ -336,7 +339,7 @@ class Indexer(object):
         (used to report in the hub)
         """
         return {"category" : INDEXER_CATEGORY,
-                "source" : "%s:%s" % (self.build_name,self.index_name),
+                "source" : "%s:%s" % (self.conf_name,self.index_name),
                 "step" : "",
                 "description" : ""}
         preds = self.get_predicates()
@@ -369,6 +372,7 @@ class Indexer(object):
         cnt = 0
 
         if "index" in steps:
+            self.register_status("indexing",transient=True,init=True,job={"step":"index"})
             _db = mongo.get_target_db()
             target_collection = _db[target_name]
             _mapping = self.get_mapping()
@@ -430,6 +434,7 @@ class Indexer(object):
                 bnum += 1
                 # raise error as soon as we know
                 if got_error:
+                    self.register_status("failed",job={"err": repr(got_error)})
                     raise got_error
             self.logger.info("%d jobs created for indexing step" % len(jobs))
             tasks = asyncio.gather(*jobs)
@@ -441,12 +446,14 @@ class Indexer(object):
                 # compute overall inserted/updated records
                 # returned values looks like [(num,[]),(num,[]),...]
                 cnt = sum([val[0] for val in f.result()])
+                self.register_status("success",job={"step":"index"},index={"count":cnt})
                 self.logger.info("Index '%s' successfully created" % index_name,extra={"notify":True})
             tasks.add_done_callback(done)
             yield from tasks
 
         if "post" in steps:
             self.logger.info("Running post-index process for index '%s'" % index_name)
+            self.register_status("indexing",transient=True,init=True,job={"step":"post-index"})
             pinfo = self.get_pinfo()
             pinfo["step"] = "post_index"
             # for some reason (like maintaining object's state between pickling).
@@ -455,20 +462,96 @@ class Indexer(object):
             job = yield from job_manager.defer_to_thread(pinfo, partial(self.post_index, target_name, index_name,
                     job_manager, steps=steps, batch_size=batch_size, ids=ids, mode=mode))
             def posted(f):
+                nonlocal got_error
                 try:
                     res = f.result()
                     self.logger.info("Post-index process done for index '%s': %s" % (index_name,res))
+                    self.register_status("indexing",job={"step":"post-index"})
                 except Exception as e:
                     got_error = e
                     self.logger.error("Post-index process failed for index '%s': %s" % (index_name,e),extra={"notify":True})
-                    raise
+                    return
             job.add_done_callback(posted)
             yield from asyncio.gather(job) # consume future
 
         if got_error:
+            self.register_status("failed",job={"err": repr(got_error)})
             raise got_error
         else:
+            self.register_status("success")
             return {"%s" % self.target_name : cnt}
+
+    def register_status(self,status,transient=False,init=False,**extra):
+        assert self.build_doc
+        src_build = get_src_build()
+        logging.error("in; %s" % extra)
+        job_info = {
+                'status': status,
+                'step_started_at': datetime.now(),
+                'logfile': self.logfile,
+                }
+        index_info = {
+                "index": {
+                    self.index_name : {
+                        'host' : self.host,
+                        'environment' : self.env,
+                        'conf_name' : self.conf_name,
+                        'target_name' : self.target_name,
+                        'index_name' : self.index_name,
+                        'doc_type' : self.doc_type,
+                        'num_shards' : self.num_shards,
+                        'num_replicas' : self.num_replicas
+                        }
+                    }
+                }
+        if transient:
+            # record some "in-progress" information
+            job_info['pid'] = os.getpid()
+        else:
+            # only register time when it's a final state
+            job_info["time"] = timesofar(self.ti)
+            t1 = round(time.time() - self.ti, 0)
+            job_info["time_in_s"] = t1
+            index_info["index"][self.index_name]["created_at"] = datetime.now()
+        if "index" in extra:
+            index_info["index"][self.index_name].update(extra["index"])
+        if "job" in extra:
+            job_info.update(extra["job"])
+        # since the base is the merged collection, we register info there
+        build = src_build.find_one({'_id': self.target_name})
+        assert build, "Can't find build document '%s'" % self.target_name
+        if init:
+            # init timer for this step
+            self.ti = time.time()
+            src_build.update({'_id': self.target_name}, {"$push": {'jobs': job_info}})
+            # now refresh/sync
+            build = src_build.find_one({'_id': self.target_name})
+        else:
+            # merge extra at root level
+            # (to keep building data...) and update the last one
+            # (it's been properly created before when init=True)
+            build["jobs"] and build["jobs"][-1].update(job_info)
+            def merge_index_info(target,d):
+                if "__REPLACE__" in d.keys():
+                    d.pop("__REPLACE__")
+                    target = d
+                else:
+                    for k,v in d.items():
+                        if type(v) == dict:
+                            if k in target:
+                                target[k] = merge_index_info(target[k],v) 
+                            else:
+                                v.pop("__REPLACE__",None)
+                                # merge v with "nothing" just to make sure to remove any "__REPLACE__"
+                                v = merge_index_info({},v)
+                                target[k] = v
+                        else:
+                            target[k] = v
+                return target
+            build = merge_index_info(build,index_info)
+            logging.error("before inst: %s" % build)
+            #src_build.update({'_id': build["_id"]}, {"$set": index_info})
+            src_build.replace_one({"_id" : build["_id"]}, build)
 
     def post_index(self, target_name, index_name, job_manager, steps=["index","post"], batch_size=10000, ids=None, mode=None):
         """
@@ -489,7 +572,7 @@ class Indexer(object):
         nh = HipchatHandler(btconfig.HIPCHAT_CONFIG)
         nh.setFormatter(fmt)
         nh.name = "hipchat"
-        self.logger = logging_mod.getLogger("%s_index" % self.build_name)
+        self.logger = logging_mod.getLogger("%s_index" % self.conf_name)
         self.logger.setLevel(logging_mod.DEBUG)
         if not fh.name in [h.name for h in self.logger.handlers]:
             self.logger.addHandler(fh)
@@ -540,7 +623,7 @@ class Indexer(object):
         target_name = target_name or self.target_name
         assert target_name, "target_name must be defined first before searching for builds"
         builds = [b for b in self.build_config["build"] if b == target_name]
-        assert len(builds) == 1, "Can't find build for config '%s' and target_name '%s'" % (self.build_name,self.target_name)
+        assert len(builds) == 1, "Can't find build for config '%s' and target_name '%s'" % (self.conf_name,self.target_name)
         return self.build_config["build"][builds[0]]
 
     def get_src_versions(self):
@@ -568,14 +651,14 @@ class Indexer(object):
         _cfg = self.build_doc.get("build_config")
         if _cfg:
             self.build_config = _cfg
-            if not "doc_type" in _cfg:
-                raise ValueError("Missing 'doc_type' in build config")
-            self.doc_type = _cfg["doc_type"]
+            #if not "doc_type" in _cfg:
+            #    raise ValueError("Missing 'doc_type' in build config")
+            self.doc_type = _cfg.get("doc_type")
             self.num_shards = _cfg.get("num_shards",10) # optional
             self.num_shards = self.num_shards and int(self.num_shards) or self.num_shards
             self.num_replicas = _cfg.get("num_replicas",0) # optional
             self.num_replicas = self.num_replicas and int(self.num_replicas) or self.num_replicas
-            self.build_name = _cfg["name"]
+            self.conf_name = _cfg["name"]
         else:
             raise ValueError("Cannot find build config associated to '%s'" % target_name)
         return _cfg
@@ -654,8 +737,7 @@ class ColdHotIndexer(Indexer):
         hot_mapping = self.hot_build_doc.get("mapping",{})
         hot_mapping.update(cold_mapping) # mix cold&hot
         mapping = {"properties": hot_mapping,
-                   "dynamic": "false",
-                   "include_in_all": "false"}
+                   "dynamic": "false"}
         mapping["_meta"] = self.get_metadata()
         return mapping
 
@@ -700,7 +782,7 @@ class ColdHotIndexer(Indexer):
             self.num_shards = self.num_shards and int(self.num_shards) or self.num_shards
             self.num_replicas = self.hot_cfg.get("num_replicas",0) # optional
             self.num_replicas = self.num_replicas and int(self.num_replicas) or self.num_replicas
-            self.build_name = self.hot_cfg["name"]
+            self.conf_name = self.hot_cfg["name"]
         else:
             raise ValueError("Cannot find build config associated to '%s' or '%s'" % (self.hot_target_name,self.cold_target_name))
         return (self.cold_cfg,self.hot_cfg)

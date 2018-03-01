@@ -1096,12 +1096,13 @@ class BuilderManager(BaseManager):
         else:
             return res
 
-    def create_build_configuration(self,name,sources,roots=[],params={}):
+    def create_build_configuration(self,name,doc_type,sources,roots=[],params={}):
         col = get_src_build_config()
         # check conf doesn't exist yet
         if [d for d in col.find({"_id":name})]:
             raise ValueError("Configuration named '%s' already exists" % name)
-        doc = {"_id" : name, "name" : name, "sources" : sources, "root" : roots}
+        doc = {"_id" : name, "name" : name, "doc_type" : doc_type,
+               "sources" : sources, "root" : roots}
         doc.update(params)
         col.save(doc)
         self.configure()
