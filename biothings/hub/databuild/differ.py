@@ -47,6 +47,7 @@ class BaseDiffer(object):
         self.diff_func = diff_func
         self.timestamp = datetime.now()
         self.setup_log()
+        self.ti = time.time()
 
     def setup_log(self):
         import logging as logging_mod
@@ -84,6 +85,72 @@ class BaseDiffer(object):
         if preds:
             pinfo["__predicates__"] = preds
         return pinfo
+
+    def register_status(self,status,transient=False,init=False,**extra):
+        src_build = get_src_build()
+        logging.error("in; %s" % extra)
+        job_info = {
+                'status': status,
+                'step_started_at': datetime.now(),
+                'logfile': self.logfile,
+                }
+        diff_key = "%s-%s" % (self.old.target_name,self.new.target_name)
+        diff_info = {
+                "diff": {
+                    diff_key : {
+                        }
+                    }
+                }
+        if transient:
+            # record some "in-progress" information
+            job_info['pid'] = os.getpid()
+        else:
+            # only register time when it's a final state
+            job_info["time"] = timesofar(self.ti)
+            t1 = round(time.time() - self.ti, 0)
+            job_info["time_in_s"] = t1
+            diff_info["diff"][diff_key]["created_at"] = datetime.now()
+        if "diff" in extra:
+            diff_info["diff"][diff_key].update(extra["diff"])
+        if "job" in extra:
+            job_info.update(extra["job"])
+        # since the base is the merged collection, we register info there
+        # as the new collection (diff results are associated to the most recent colleciton)
+        build = src_build.find_one({'_id': self.new.target_name})
+        if not build:
+            self.logger.info("Can't find build document '%s', no status to register" % self.new.target_name)
+            return
+        if init:
+            # init timer for this step
+            self.ti = time.time()
+            src_build.update({'_id': self.new.target_name}, {"$push": {'jobs': job_info}})
+            # now refresh/sync
+            build = src_build.find_one({'_id': self.new.target_name})
+        else:
+            # merge extra at root level
+            # (to keep building data...) and update the last one
+            # (it's been properly created before when init=True)
+            build["jobs"] and build["jobs"][-1].update(job_info)
+            def merge_info(target,d):
+                if "__REPLACE__" in d.keys():
+                    d.pop("__REPLACE__")
+                    target = d
+                else:
+                    for k,v in d.items():
+                        if type(v) == dict:
+                            if k in target:
+                                target[k] = merge_info(target[k],v) 
+                            else:
+                                v.pop("__REPLACE__",None)
+                                # merge v with "nothing" just to make sure to remove any "__REPLACE__"
+                                v = merge_info({},v)
+                                target[k] = v
+                        else:
+                            target[k] = v
+                return target
+            build = merge_info(build,diff_info)
+            #src_build.update({'_id': build["_id"]}, {"$set": index_info})
+            src_build.replace_one({"_id" : build["_id"]}, build)
 
     @asyncio.coroutine
     def diff_cols(self, old_db_col_names, new_db_col_names, batch_size, steps, mode=None, exclude=[]):
@@ -194,6 +261,7 @@ class BaseDiffer(object):
 
             def mapping_diffed(f):
                 res = f.result()
+                self.register_status("success",job={"step":"diff-mapping"})
                 if res.get("mapping_file"):
                     nonlocal got_error
                     # check mapping differences: only "add" ops are allowed, as any others actions would be
@@ -215,6 +283,7 @@ class BaseDiffer(object):
             pinfo = self.get_pinfo()
             pinfo["source"] = "%s vs %s" % (self.new.target_name,self.old.target_name)
             pinfo["step"] = "mapping: old vs new"
+            self.register_status("diffing",transient=True,init=True,job={"step":"diff-mapping"})
             job = yield from self.job_manager.defer_to_thread(pinfo,
                     partial(diff_mapping, self.old, self.new, diff_folder))
             job.add_done_callback(mapping_diffed)
@@ -231,6 +300,7 @@ class BaseDiffer(object):
             diff_stats["root_keys"] = {}
             jobs = []
             data_new = id_feeder(self.new, batch_size=batch_size)
+            self.register_status("diffing",transient=True,init=True,job={"step":"diff-count"})
             for id_list in data_new:
                 cnt += 1
                 pinfo["description"] = "batch #%s" % cnt
@@ -247,6 +317,7 @@ class BaseDiffer(object):
                         root_keys[k] +=  d[k]
                 self.logger.info("root keys count: %s" % root_keys)
                 diff_stats["root_keys"] = root_keys
+                self.register_status("success",job={"step":"diff-count"})
             tasks = asyncio.gather(*jobs)
             tasks.add_done_callback(counted)
             yield from tasks
@@ -261,6 +332,7 @@ class BaseDiffer(object):
             pinfo["step"] = "content: new vs old"
             data_new = id_feeder(self.new, batch_size=batch_size)
             selfcontained = "selfcontained" in self.diff_type
+            self.register_status("diffing",transient=True,init=True,job={"step":"diff-content"})
             for id_list_new in data_new:
                 cnt += 1
                 pinfo["description"] = "batch #%s" % cnt
@@ -301,6 +373,7 @@ class BaseDiffer(object):
                 jobs.append(job)
             yield from asyncio.gather(*jobs)
             self.logger.info("Finished calculating diff for the old collection. Total number of docs deleted: {}".format(diff_stats["delete"]))
+            self.register_status("success",job={"step":"diff-content"})
 
         self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {}, Mapping changed: {})".format(
             diff_stats["update"], diff_stats["add"], diff_stats["delete"], diff_stats["mapping_changed"]))
@@ -369,8 +442,10 @@ class BaseDiffer(object):
             pinfo["source"] = "diff_folder"
             pinfo["step"] = "reduce"
             #job = yield from self.job_manager.defer_to_thread(pinfo,merge_diff)
+            self.register_status("diffing",transient=True,init=True,job={"step":"diff-reduce"})
             res = yield from merge_diff()
             metadata["diff"]["files"] = res
+            self.register_status("success",job={"step":"diff-reduce"})
             if got_error:
                 self.logger.exception("Failed to reduce diff files: %s" % got_error,extra={"notify":True})
                 raise got_error
@@ -379,6 +454,7 @@ class BaseDiffer(object):
             pinfo = self.get_pinfo()
             pinfo["source"] = "diff_folder"
             pinfo["step"] = "post"
+            self.register_status("diffing",transient=True,init=True,job={"step":"diff-post"})
             job = yield from self.job_manager.defer_to_thread(pinfo,
                              partial(self.post_diff_cols, old_db_col_names, new_db_col_names,
                                                           batch_size, steps, mode=mode, exclude=exclude))
@@ -386,6 +462,7 @@ class BaseDiffer(object):
                 nonlocal got_error
                 try:
                     res = f.result()
+                    self.register_status("success",job={"step":"diff-post"},diff={"post": res})
                     self.logger.info("Post diff process successfully run: %s" % res)
                 except Exception as e:
                     got_error = e
@@ -401,6 +478,11 @@ class BaseDiffer(object):
             json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
         strargs = "[old=%s,new=%s,steps=%s,diff_stats=%s]" % (old_db_col_names,new_db_col_names,steps,diff_stats)
         self.logger.info("success %s" % strargs,extra={"notify":True})
+
+        # remove some metadata key for diff registering (some are already in build doc, it would be duplication)
+        metadata.pop("_meta",None)
+        metadata.pop("build_config",None)
+        self.register_status("success",diff=metadata)
         return diff_stats
 
     def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["content","mapping","reduce","post"], mode=None, exclude=[]):
