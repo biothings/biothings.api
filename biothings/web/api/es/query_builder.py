@@ -128,7 +128,8 @@ class ESQueryBuilder(object):
     
     def _user_query(self, q):
         _args = {'q': q}
-        _args.update(getattr(self.options, 'userquery_kwargs', {}))
+        if self.options.userquery_kwargs:
+            _args.update(self.options.userquery_kwargs)
         _ret = json.loads(get_userquery(os.path.abspath(self.userquery_dir), 
                             self.options.userquery).format(**_args))
         return ESQueries().raw_query(_ret)

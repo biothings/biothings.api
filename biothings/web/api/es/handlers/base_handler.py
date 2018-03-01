@@ -96,10 +96,12 @@ class BaseESRequestHandler(BaseHandler):
             for option, settings in getattr(self, kwarg_category, {}).items():
                 if option in kwargs or settings.get('default', None) is not None:
                     options.get(kwarg_category).setdefault(option, kwargs.get(option, settings['default']))
-                # check here for userquery kwargs
-                if re.match(self.web_settings.USERQUERY_KWARG_REGEX, option) and kwarg_category == "esqb_kwargs":
-                    options.esqb_kwargs.setdefault('userquery_kwargs', dotdict())
-                    options.esqb_kwargs.userquery_kwargs[self.web_settings.USERQUERY_KWARG_TRANSFORM(option)] = kwargs.get(option)
+        # do userquery kwargs
+        if options.esqb_kwargs.userquery:
+            for k in kwargs.keys():
+                if re.match(self.web_settings.USERQUERY_KWARG_REGEX, k):
+                    options['esqb_kwargs'].setdefault('userquery_kwargs', dotdict())
+                    options['esqb_kwargs']['userquery_kwargs'][self.web_settings.USERQUERY_KWARG_TRANSFORM(k)] = kwargs.get(k)
         return options
 
     def _sanitize_params(self, kwargs):
