@@ -5,7 +5,7 @@
         </div>
         <div class="content">
             <div class="summary">
-                A <a>diff</a> with <i>{{release.old.backend || '?'}}</i> has been computed.<br>
+                <a>diff</a> with <i>{{release.old.backend || '?'}}</i> has been computed.<br>
                 Old version: <b>{{release.old.version}}</b>, current version: <b>{{release.new.version}}</b>
                 <div class="date">
                     {{release.created_at | moment("from", "now")}}

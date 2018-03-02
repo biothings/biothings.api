@@ -5,9 +5,10 @@
         </div>
         <div class="content">
             <div class="summary">
+                Index
                 <a class="user">
                     {{release.index_name}}
-                </a> index was created on <b>{{release.environment}}</b> environment (<a>{{release.host}}</a>)
+                </a> was created on <b>{{release.environment}}</b> environment (<a>{{release.host}}</a>)
                 <div class="date">
                     {{release.created_at | moment("from", "now")}}
                     (<i>on {{moment(release.created_at).format('MMMM Do YYYY, h:mm:ss a') }}</i>)

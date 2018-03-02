@@ -1,11 +1,16 @@
 <template>
-    <div class="ui feed">
-        <div class="event" v-for="rel in releases">
-            <index-release-event :release="rel" v-if="rel.index_name"></index-release-event>
-            <diff-release-event :release="rel" v-if="rel.diff"></diff-release-event>
+    <span>
+        <div class="ui feed"  v-if="releases">
+            <div class="event" v-for="rel in releases">
+                <index-release-event :release="rel" v-if="rel.index_name"></index-release-event>
+                <diff-release-event :release="rel" v-if="rel.diff"></diff-release-event>
 
+            </div>
         </div>
-    </div>
+        <div>
+            No release found
+        </div>
+    </span>
 </template>
 
 <script>
