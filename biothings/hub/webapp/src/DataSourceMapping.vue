@@ -203,7 +203,7 @@ export default {
         buildIndexDropdown : function(map_id) {
             axios.get(axios.defaults.baseURL + `/index_manager`)
             .then(response => {
-                this.environments = response.data.result["env"];
+                this.environments = Object.keys(response.data.result);
                 var envs = [];
                 var cnt = 0;
                 for(var e in this.environments) {

@@ -33,7 +33,7 @@
                             Menu
                         </a>
                         <a class="right aligned item">
-                            <button class="ui clearconffilter button" v-if="conf_filter" style="margin-right:1em;" @click="clearFilter">
+                            <button class="ui clearconffilter button" v-if="conf_filter" @click="clearFilter">
                                 Clear 
                             </button>
                             <select class="ui filterbuilds dropdown" v-model="conf_filter">
@@ -252,7 +252,7 @@ export default {
     components: { Build, },
     methods: {
         getBuilds: function() {
-            var filter = this.conf_filter == "" ? '' : `?build_config=${this.conf_filter}`;
+            var filter = this.conf_filter == "" ? '' : `?conf_name=${this.conf_filter}`;
             axios.get(axios.defaults.baseURL + '/builds' + filter)
             .then(response => {
                 this.builds = response.data.result;
@@ -408,7 +408,6 @@ export default {
             .modal("show");
         },
         clearFilter : function() {
-            console.log("onela");
             $('.ui.filterbuilds.dropdown')
             .dropdown('clear');
             this.conf_filter = "";
@@ -421,5 +420,8 @@ export default {
 <style>
 .ui.sidebar {
     overflow: visible !important;
+}
+.clearconffilter {
+    margin-right:1em !important;
 }
 </style>
