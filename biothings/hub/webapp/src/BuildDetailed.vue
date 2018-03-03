@@ -154,5 +154,6 @@ export default {
 <style>
 .conftag {
     margin-top: 1em !important;
+    margin-bottom: 1em !important;
 }
 </style>
