@@ -36,7 +36,7 @@ class BaseSyncer(object):
 
     # backend used to sync data (mongo / es)
     # must be set in sub-class
-    target_backend = None
+    target_backend_type = None
 
     def __init__(self, job_manager, log_folder):
         self.log_folder = log_folder
@@ -44,6 +44,10 @@ class BaseSyncer(object):
         self.timestamp = datetime.now()
         self.synced_cols = None # str representation of synced cols (internal usage)
         self.setup_log()
+        # set by manager during instanciation
+        self.old = None
+        self.new = None
+        self.target_backend = None
 
     def setup_log(self):
         # TODO: use bt.utils.loggers.get_logger
@@ -82,6 +86,71 @@ class BaseSyncer(object):
             pinfo["__predicates__"] = preds
         return pinfo
 
+    def register_status(self,status,transient=False,init=False,**extra):
+        src_build = get_src_build()
+        job_info = {
+                'status': status,
+                'step_started_at': datetime.now(),
+                'logfile': self.logfile,
+                }
+        # to select correct diff sub-record (1 collection can be diffed with multiple others)
+        diff_key = "%s-%s" % (self.old.target_name,self.new.target_name)
+        # once in diff, select correct sync sub-record (1 diff can be applied to different backend)
+        sync_key = "-".join(self.target_backend)
+        sync_info = {sync_key : {}}
+        if transient:
+            # record some "in-progress" information
+            job_info['pid'] = os.getpid()
+        else:
+            # only register time when it's a final state
+            job_info["time"] = timesofar(self.ti)
+            t1 = round(time.time() - self.ti, 0)
+            job_info["time_in_s"] = t1
+            sync_info[sync_key]["created_at"] = datetime.now()
+        if "sync" in extra:
+            sync_info[sync_key].update(extra["sync"])
+        if "job" in extra:
+            job_info.update(extra["job"])
+        # since the base is the merged collection, we register info there
+        # as the new collection (diff results are associated to the most recent colleciton)
+        build = src_build.find_one({'_id': self.new.target_name})
+        if not build:
+            self.logger.info("Can't find build document '%s', no status to register" % self.new.target_name)
+            return
+        assert "diff" in build and diff_key in build["diff"], "Missing previous diff information in build document"
+        if init:
+            # init timer for this step
+            self.ti = time.time()
+            src_build.update({'_id': self.new.target_name}, {"$push": {'jobs': job_info}})
+            # now refresh/sync
+            build = src_build.find_one({'_id': self.new.target_name})
+        else:
+            # merge extra at root level
+            # (to keep building data...) and update the last one
+            # (it's been properly created before when init=True)
+            build["jobs"] and build["jobs"][-1].update(job_info)
+            def merge_info(target,d):
+                if "__REPLACE__" in d.keys():
+                    d.pop("__REPLACE__")
+                    target = d
+                else:
+                    for k,v in d.items():
+                        if type(v) == dict:
+                            if k in target:
+                                target[k] = merge_info(target[k],v) 
+                            else:
+                                v.pop("__REPLACE__",None)
+                                # merge v with "nothing" just to make sure to remove any "__REPLACE__"
+                                v = merge_info({},v)
+                                target[k] = v
+                        else:
+                            target[k] = v
+                return target
+            sync_info = {"sync" : merge_info(build["diff"][diff_key].get("sync",{}),sync_info)}
+            build["diff"][diff_key].update(sync_info)
+            #src_build.update({'_id': build["_id"]}, {"$set": index_info})
+            src_build.replace_one({"_id" : build["_id"]}, build)
+
     @asyncio.coroutine
     def sync_cols(self, diff_folder, batch_size=10000, mode=None, force=False,
             target_backend=None,steps=["mapping","content","meta"]):
@@ -92,6 +161,10 @@ class BaseSyncer(object):
         If target_backend (bt.databbuild.backend.create_backend() notation), then it will replace "old" (that is, the one
         being synced)
         """
+        if type(steps) == str:
+            steps = [steps]
+        assert self.old and self.new, "'self.old' and 'self.new' must be set to old/new collections"
+        self.target_backend = target_backend
         got_error = False
         cnt = 0
         jobs = []
@@ -101,7 +174,7 @@ class BaseSyncer(object):
         # first try to use what's been passed explicitely
         # then default to what's in config (tuple will be used for create_backend() call)
         # or use what we have in the diff metadata
-        old_db_col_names = target_backend or \
+        old_db_col_names = self.target_backend or \
             (btconfig.ES_HOST,btconfig.ES_INDEX_NAME,btconfig.ES_DOC_TYPE) or \
             meta["old"]["backend"]
         new_db_col_names = meta["new"]["backend"]
@@ -110,7 +183,7 @@ class BaseSyncer(object):
         self.synced_cols = "%s -> %s" % (old_db_col_names,new_db_col_names)
         pinfo["source"] = self.synced_cols
         summary = {}
-        if "mapping" in steps and self.target_backend == "es":
+        if "mapping" in steps and self.target_backend_type == "es":
             if diff_mapping_file:
                 # old_db_col_names is actually the index name in that case
                 index_name = old_db_col_names[1]
@@ -128,6 +201,7 @@ class BaseSyncer(object):
                     res = indexer.update_mapping(mapping)
                     return res
 
+                self.register_status("syncing",transient=True,init=True,job={"step":"sync-mapping"})
                 job = yield from self.job_manager.defer_to_thread(pinfo, partial(update_mapping))
 
                 def updated(f):
@@ -135,8 +209,10 @@ class BaseSyncer(object):
                         res = f.result()
                         self.logger.info("Mapping updated on index '%s'" % index_name)
                         summary["mapping_updated"] = True
+                        self.register_status("success",job={"step":"sync-mapping"},sync=summary)
                     except Exception as e:
                         self.logger.error("Failed to update mapping on index '%s': %s" % (index_name,e))
+                        self.register_status("failed",job={"err": repr(e)})
                         got_error = e
 
                 job.add_done_callback(updated)
@@ -155,11 +231,12 @@ class BaseSyncer(object):
             total = len(diff_files)
             self.logger.info("Syncing %s to %s using diff files in '%s'" % (old_db_col_names,new_db_col_names,diff_folder))
             pinfo["step"] = "content"
+            self.register_status("syncing",transient=True,init=True,job={"step":"sync-content"})
             for diff_file,worker_args in diff_files:
                 cnt += 1
                 pinfo["description"] = "file %s (%s/%s)" % (diff_file,cnt,total)
                 worker = getattr(sys.modules[self.__class__.__module__],"sync_%s_%s_worker" % \
-                        (self.target_backend,diff_type))
+                        (self.target_backend_type,diff_type))
                 strwargs = worker_args and " using specific worker args %s" % repr(worker_args) or ""
                 self.logger.info("Creating sync worker %s for file %s (%s/%s)%s" % (worker.__name__,diff_file,cnt,total,strwargs))
                 job = yield from self.job_manager.defer_to_process(pinfo,
@@ -168,12 +245,14 @@ class BaseSyncer(object):
                 jobs.append(job)
             def synced(f):
                 try:
-                    for d in f.result():
+                    res = f.result()
+                    for d in res:
                         for k in d:
                             summary.setdefault(k,0)
-                            summary[k] += d[k] 
+                            summary[k] += d[k]
                 except Exception as e:
                     got_error = e
+                    self.register_status("failed",job={"err": repr(e)})
                     raise
             tasks = asyncio.gather(*jobs)
             tasks.add_done_callback(synced)
@@ -182,8 +261,9 @@ class BaseSyncer(object):
                 self.logger.error("Failed to sync collection from %s to %s using diff files in '%s': %s" % \
                     (old_db_col_names, new_db_col_names, diff_folder, got_error),extra={"notify":True})
                 raise got_error
+            self.register_status("success",job={"step":"sync-content"},sync=summary)
 
-        if "meta" in steps and self.target_backend == "es":
+        if "meta" in steps and self.target_backend_type == "es":
             # old_db_col_names is actually the index name in that case
             index_name = old_db_col_names[1]
             doc_type = meta["build_config"]["doc_type"]
@@ -202,10 +282,13 @@ class BaseSyncer(object):
                     res = f.result()
                     self.logger.info("Metadata updated on index '%s': %s" % (index_name,res))
                     summary["metadata_updated"] = True
+                    self.register_status("success",job={"step":"sync-meta"},sync=summary)
                 except Exception as e:
                     self.logger.error("Failed to update metadata on index '%s': %s" % (index_name,e))
+                    self.register_status("failed",job={"err": repr(e)})
                     got_error = e
 
+            self.register_status("syncing",transient=True,init=True,job={"step":"sync-meta"})
             job.add_done_callback(updated)
             yield from job
 
@@ -220,7 +303,7 @@ class BaseSyncer(object):
         return summary
 
     def sync(self, diff_folder=None, batch_size=10000, mode=None, target_backend=None,
-            steps=["mapping","content","meta"]):
+             steps=["mapping","content","meta"]):
         """wrapper over sync_cols() coroutine, return a task"""
         job = asyncio.ensure_future(self.sync_cols(
                     diff_folder=diff_folder, batch_size=batch_size, mode=mode,
@@ -252,27 +335,27 @@ class ThrottlerSyncer(BaseSyncer):
 
 class MongoJsonDiffSyncer(BaseSyncer):
     diff_type = "jsondiff"
-    target_backend = "mongo"
+    target_backend_type = "mongo"
 
 class MongoJsonDiffSelfContainedSyncer(BaseSyncer):
     diff_type = "jsondiff-selfcontained"
-    target_backend = "mongo"
+    target_backend_type = "mongo"
 
 class ESJsonDiffSyncer(BaseSyncer):
     diff_type = "jsondiff"
-    target_backend = "es"
+    target_backend_type = "es"
 
 class ESJsonDiffSelfContainedSyncer(BaseSyncer):
     diff_type = "jsondiff-selfcontained"
-    target_backend = "es"
+    target_backend_type = "es"
 
 class ESColdHotJsonDiffSyncer(BaseSyncer):
     diff_type = "coldhot-jsondiff"
-    target_backend = "es"
+    target_backend_type = "es"
 
 class ESColdHotJsonDiffSelfContainedSyncer(BaseSyncer):
     diff_type = "coldhot-jsondiff-selfcontained"
-    target_backend = "es"
+    target_backend_type = "es"
 
 class ThrottledESJsonDiffSyncer(ThrottlerSyncer,ESJsonDiffSyncer): pass
 class ThrottledESJsonDiffSelfContainedSyncer(ThrottlerSyncer,ESJsonDiffSelfContainedSyncer): pass
@@ -559,11 +642,11 @@ class SyncerManager(BaseManager):
     def register_syncer(self,klass):
         if type(klass) == partial:
             assert type(klass.func) == type, "%s is not a class" % klass.func
-            diff_type,target_backend = klass.func.diff_type,klass.func.target_backend
+            diff_type,target_backend_type = klass.func.diff_type,klass.func.target_backend_type
         else:
-            diff_type,target_backend = klass.diff_type,klass.target_backend
+            diff_type,target_backend_type = klass.diff_type,klass.target_backend_type
 
-        self.register[(diff_type,target_backend)] = partial(klass, log_folder=btconfig.LOG_FOLDER,
+        self.register[(diff_type,target_backend_type)] = partial(klass, log_folder=btconfig.LOG_FOLDER,
                                            job_manager=self.job_manager)
 
     def configure(self,klasses=None):
@@ -613,6 +696,8 @@ class SyncerManager(BaseManager):
 
         try:
             syncer = self[(diff_type,backend_type)]
+            syncer.old = create_backend(old_db_col_names)
+            syncer.new = create_backend(new_db_col_names)
             job = syncer.sync(diff_folder,batch_size=batch_size,mode=mode,
                     target_backend=target_backend)
             return job
