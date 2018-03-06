@@ -100,6 +100,8 @@ class IndexerManager(BaseManager):
         for dindex in partial_indexers:
             assert len(dindex) == 1, "Invalid indexer registration data: %s" % dindex
             env,pindexer = list(dindex.items())[0]
+            assert type(pindexer.func) == type, "Registered indexer is not a partial class init: %s" % p.func
+            assert "es_host" in pindexer.keywords, "'es_host' must be passed as a keyword"
             self.register[env] = pindexer
 
     def index(self, indexer_env, target_name=None, index_name=None, ids=None, **kwargs):
@@ -126,13 +128,14 @@ class IndexerManager(BaseManager):
 
         return job
 
-    def snapshot(self, index, snapshot=None, mode=None, steps=["snapshot"], repository=btconfig.SNAPSHOT_REPOSITORY):
+    def snapshot(self, indexer_env, index, snapshot=None, mode=None, steps=["snapshot"], repository=btconfig.SNAPSHOT_REPOSITORY):
         # check what to do
         if type(steps) == str:
             steps = [steps]
         snapshot = snapshot or index
-        es_snapshot_host = getattr(btconfig,"ES_SNAPSHOT_HOST",btconfig.ES_HOST)
-        idxr = ESIndexer(index=index,doc_type=btconfig.ES_DOC_TYPE,es_host=es_snapshot_host)
+        #es_snapshot_host = getattr(btconfig,"ES_SNAPSHOT_HOST",btconfig.ES_HOST)
+        #idxr = ESIndexer(index=index,doc_type=btconfig.ES_DOC_TYPE,es_host=es_snapshot_host)
+        idxr = self[indexer_env]
         # will hold the overall result
         fut = asyncio.Future()
 
@@ -160,8 +163,8 @@ class IndexerManager(BaseManager):
                 pinfo = self.get_pinfo()
                 pinfo["source"] = index
                 pinfo["step"] = "snapshot"
-                pinfo["description"] = es_snapshot_host
-                self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,es_snapshot_host,repository))
+                pinfo["description"] = idxr.host
+                self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,idxr.host,repository))
                 job = yield from self.job_manager.defer_to_thread(pinfo,
                         partial(idxr.snapshot,repository,snapshot, mode=mode))
                 job.add_done_callback(snapshot_launched)
@@ -174,12 +177,12 @@ class IndexerManager(BaseManager):
                         if state == "SUCCESS":
                             fut.set_result(state)
                             self.logger.info("Snapshot '%s' successfully created (host: '%s', repository: '%s')" % \
-                                    (snapshot,es_snapshot_host,repository),extra={"notify":True})
+                                    (snapshot,idxr.host,repository),extra={"notify":True})
                         else:
                             e = IndexerException("Snapshot '%s' failed: %s" % (snapshot,state))
                             fut.set_exception(e)
                             self.logger.error("Failed creating snapshot '%s' (host: %s, repository: %s), state: %s" % \
-                                    (snapshot,es_snapshot_host,repository,state),extra={"notify":True})
+                                    (snapshot,idxr.host,repository,state),extra={"notify":True})
                             raise e
                         break
 
@@ -285,7 +288,12 @@ class IndexerManager(BaseManager):
         self.logger.info("Registered version '%s'" % (esb.version))
 
     def index_info(self):
-        return {"env" : sorted(self.register.keys())}
+        res = {}
+        res["config"] = btconfig.ES_CONFIG
+        for env in self.register:
+            p = self.register[env]
+            res["config"]["env"][env]["class"] = p.func.__name__
+        return res
 
     def validate_mapping(self, mapping, env):
         idxr_obj = self[env]

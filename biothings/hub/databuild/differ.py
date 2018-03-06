@@ -1193,7 +1193,6 @@ class DifferManager(BaseManager):
         txt 'format' is the only one supported for now.
         """
         old = old or self.select_old_collection(new)
-        
         release_folder = generate_folder(btconfig.RELEASE_PATH,old,new)
         if not os.path.exists(release_folder):
             os.makedirs(release_folder)
@@ -1706,6 +1705,13 @@ class DifferManager(BaseManager):
             self.logger.info("Successfully rebuild diff_files list with all files found in %s" % diff_folder)
         except KeyError as e:
             self.logging.error("Metadata is too much damaged, can't rebuild diff_files list: %s" % e)
+
+    def diff_info(self):
+        dtypes = self.register.keys()
+        res = {}
+        for typ in dtypes:
+            res[typ] = {}
+        return res
 
 
 def reduce_diffs(diffs, num, diff_folder, done_folder):

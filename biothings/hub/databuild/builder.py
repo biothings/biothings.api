@@ -1052,7 +1052,7 @@ class BuilderManager(BaseManager):
                 res[name]["mapper"][mappername] = mapper.__class__.__name__
         return res
 
-    def build_info(self,id=None,build_config=None,fields={}):
+    def build_info(self,id=None,conf_name=None,fields={}):
         """
         Return build information given an build _id, or all builds
         if _id is None. "fields" can be passed to select which fields
@@ -1071,8 +1071,8 @@ class BuilderManager(BaseManager):
             fields["sources"] = 0
             fields["build_config.sources"] = 0
             fields["build_config.root"] = 0
-        if not build_config is None:
-            q["build_config._id"] = build_config
+        if not conf_name is None:
+            q["build_config._id"] = conf_name
         # no fields passed = gimme all
         if not fields:
             fields=None
