@@ -26,6 +26,53 @@
                 </button>
             </div>
         </div>
+
+        <!-- apply diff -->
+        <div :class="['ui basic applydiff modal',release.old.backend]">
+            <h3 class="ui icon">
+                <i class="tag icon"></i>
+                Apply increment update (diff)
+            </h3>
+            <div class="content">
+                <div class="ui form">
+                    <div class="ui centered grid">
+                        <div class="eight wide column">
+
+                            <label>Select a backend to apply the diff to</label>
+                            <div>
+                                <select class="ui fluid backendenv dropdown" name="target_backend">
+                                        <option v-for="idx_info in compats"
+                                                :data-es_host="idx_info.host"
+                                                :data-index="idx_info.index">{{idx_info.env}} ({{idx_info.host}} | {{idx_info.index}})</option>
+                                </select>
+                                <br>
+                                <br>
+                            </div>
+                        </div>
+
+                        <div class="eight wide column">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ui error message" v-if="errors.length">
+                <ul class="ui list">
+                    <li v-for="err in errors">{{err}}</li>
+                </ul>
+            </div>
+
+            <div class="actions">
+                <div class="ui red basic cancel inverted button">
+                    <i class="remove icon"></i>
+                    Cancel
+                </div>
+                <div class="ui green ok inverted button">
+                    <i class="checkmark icon"></i>
+                    OK
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -36,14 +83,20 @@ import Vue from 'vue';
 
 export default {
     name: 'diff-release-event',
-    props: ['release'],
+    props: ['release','build_config'],
     mounted() {
+        $(".ui.dropdown").dropdown();
     },
     beforeDestroy() {
+        $('.ui.basic.applydiff.modal').remove();
+    },
+    created() {
     },
     components: {  },
     data () {
         return {
+            errors : [],
+            compats : {},
         }
     },
     computed: {
@@ -51,14 +104,89 @@ export default {
     methods: {
         displayError : function() {
         },
-        snapshot(release) {
-            console.log("TODO snapshot");
-            console.log(release);
+        applyDiff(release) {
+            axios.get(axios.defaults.baseURL + '/index_manager')
+            .then(response => {
+                // expecting a syncer exists with (diff_type,"es")
+                var envs = response.data.result;
+                this.compats = this.selectCompatibles(envs);
+                $(".ui.backendenv.dropdown").dropdown();
+            })
+            .catch(err => {
+                console.log("Error getting index environments: ");
+                console.log(err);
+                throw err;
+            })
+            var oldcol = release.old.backend;
+            var newcol = release.new.backend;
+            var diff_type = release.diff.type;
+            var backend_type = "es"; // TODO: should we support more ?
+            var doc_type = this.build_config.doc_type;
+            var self = this;
+            $(`.ui.basic.applydiff.modal.${this.release.old.backend}`)
+            .modal("setting", {
+                detachable : false,
+                onApprove: function () {
+                        //var es_host = :
+                        var backend = $(".ui.form select[name=target_backend] :selected");
+                        var host = $(backend).attr("data-es_host");
+                        var index = $(backend).attr("data-index");
+                        var target_backend = [host,index,doc_type];
+                        axios.post(axios.defaults.baseURL + `/sync`,
+                                {"backend_type" : backend_type,
+                                 "old_db_col_names" : oldcol,
+                                 "new_db_col_names" : newcol,
+                                 "target_backend" : target_backend})
+                        .then(response => {
+                            console.log(response.data.result)
+                            bus.$emit("reload_build_detailed");
+                            return response.data.result;
+                        })
+                        .catch(err => {
+                            console.log("Error applying diff: ");
+                            console.log(err);
+                        })
+                }
+            })
+            .modal("show");
+
         },
         publish(release) {
             console.log("TODO publish");
             console.log(release);
         },
+        selectCompatibles(envs) {
+            var _compat = [];
+            var selecting = null;
+            var self = this;
+            if(envs.config.build_config_key) {
+                selecting = this.build_config[envs.config.build_config_key];
+            }
+            $.each(envs.config.env, function( env, value ) {
+                // check whether we can use one of build_config keys
+                // to filter compatibles indices
+                if(selecting) {
+                    if(!value.index.hasOwnProperty(selecting))
+                        return true;// continue next iter
+                }
+                //if(!_compat.hasOwnProperty(env)) {
+                //    _compat[env] = {}
+                //    _compat[env]["index"] = [];
+                //}
+                //_compat[env]["host"] = value["host"];
+                for(var k in value.index) {
+                    // make sure doc_type is the same
+                    if(value.index[k]["doc_type"] != self.build_config.doc_type) {
+                        continue;
+                    }
+                    if(selecting && (selecting != k))
+                        continue;
+                    _compat.push({"env":env, "host":value["host"],"index":value.index[k]["index"]});
+                    //_compat[env]["index"].push(value.index[k]["index"]);
+                }
+            });
+            return _compat;
+        }
     }
 }
 </script>

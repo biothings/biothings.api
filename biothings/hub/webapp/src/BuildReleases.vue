@@ -6,11 +6,11 @@
         <div class="ui feed"  v-if="releases">
             <div class="event" v-for="rel in releases">
                 <index-release-event :release="rel" v-if="rel.index_name"></index-release-event>
-                <diff-release-event :release="rel" v-if="rel.diff"></diff-release-event>
+                <diff-release-event :release="rel" :index_envs="index_envs" :build_config="build.build_config" v-if="rel.diff"></diff-release-event>
 
             </div>
         </div>
-        <div>
+        <div v-else>
             No release found
         </div>
 
@@ -36,7 +36,7 @@
                             </div>
 
                             <span v-if="release_type == 'incremental'">
-                                <label>Select a build to compute incremental release</label>
+                                <label>Select a build to compute incremental release (compared to this one)</label>
                                 <div>
                                     <select class="ui fluid availbuilds dropdown" name="old_build" v-if="avail_builds.length">
                                         <option v-for="b in avail_builds">{{b}}</option>
@@ -64,7 +64,7 @@
                                 <div>
                                     <label>Select an indexer environment to create the index on</label>
                                     <select class="ui fluid indexenvs dropdown" name="index_env">
-                                        <option v-for="env in index_envs">{{env}}</option>
+                                        <option v-for="(info,env) in index_envs.config.env" :data-env="env">{{env}} <i>({{info.host}})</i></option>
                                     </select>
                                     <br>
                                 </div>
@@ -160,7 +160,7 @@ export default {
             var index_name = $(".ui.form input[name=index_name]").val();
             if(index_name == "")
                 index_name = null;
-            var index_env = $(".ui.form select[name=index_env]").val();
+            var index_env = $(".ui.form select[name=index_env] :selected").attr("data-env");
             axios.put(axios.defaults.baseURL + `/index`,{"indexer_env" : index_env, "target_name" : this.build._id, "index_name" : index_name})
             .then(response => {
                 console.log(response.data.result)
@@ -224,7 +224,7 @@ export default {
             // index env
             axios.get(axios.defaults.baseURL + '/index_manager')
             .then(response => {
-                this.index_envs = Object.keys(response.data.result).sort();
+                this.index_envs = response.data.result;
             })
             .catch(err => {
                 console.log(err);

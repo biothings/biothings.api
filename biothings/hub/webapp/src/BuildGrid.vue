@@ -61,7 +61,7 @@
                 Create/edit build configuration
             </h3>
             <div class="content">
-                <div class="ui form">
+                <div class="ui newconfiguration form">
                     <div class="ui centered grid">
                         <div class="eight wide column">
 
@@ -150,7 +150,7 @@
                 <i class="cube icon"></i>
                 Create new build
             </div>
-            <div class="ui form">
+            <div class="ui newbuild form">
                 <div class="ui centered grid">
                     <div class="ten wide column">
                         <p>Enter a name for the merged data collection or leave it empty to generate a random one</p>
@@ -313,10 +313,10 @@ export default {
                 detachable : false,
                 onApprove: function () {
                     self.errors = [];
-                    var conf_name = $(".ui.form").form('get field', "conf_name").val();
-                    var doc_type = $(".ui.form").form('get field', "doc_type").val();
-                    var selected_sources = $(".ui.form").form('get field', "selected_sources").val();
-                    var optionals = $(".ui.form").form('get field','optionals').val();
+                    var conf_name = $(".ui.newconfiguration.form").form('get field', "conf_name").val();
+                    var doc_type = $(".ui.newconfiguration.form").form('get field', "doc_type").val();
+                    var selected_sources = $(".ui.newconfiguration.form").form('get field', "selected_sources").val();
+                    var optionals = $(".ui.newconfiguration.form").form('get field','optionals').val();
                     var root_sources = [];
                     // form valid
                     if(!conf_name)
