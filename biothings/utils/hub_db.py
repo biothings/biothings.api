@@ -42,6 +42,10 @@ def get_data_plugin():
     """Return a Collection instance for data_plugin collection/table"""
     raise NotImplementedError()
 
+def get_api():
+    """Return a Collection instance for api collection/table"""
+    raise NotImplementedError()
+
 
 def get_source_fullname(col_name):
     """
@@ -174,6 +178,7 @@ def setup(config):
     global get_src_build
     global get_src_build_config
     global get_data_plugin
+    global get_api
     global get_source_fullname
     get_hub_db_conn = config.hub_db.get_hub_db_conn
     get_src_dump = config.hub_db.get_src_dump
@@ -181,6 +186,7 @@ def setup(config):
     get_src_build = config.hub_db.get_src_build
     get_src_build_config = config.hub_db.get_src_build_config
     get_data_plugin = config.hub_db.get_data_plugin
+    get_api = config.hub_db.get_api
     get_source_fullname = config.hub_db.get_source_fullname
     # propagate config module to classes
     config.hub_db.Database.CONFIG = config

@@ -685,6 +685,10 @@ def get_data_plugin():
     db = Database()
     return db[db.CONFIG.DATA_PLUGIN_COLLECTION]
 
+def get_api():
+    db = Database()
+    return db[db.CONFIG.API_COLLECTION]
+
 def get_source_fullname(col_name):
     pass
 
