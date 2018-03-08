@@ -20,11 +20,11 @@
 
                 <p>
                     <div class="ui top attached pointing menu">
-                        <a class="red item" data-tab="config">Configuration</a>
+                        <a class="red item active" data-tab="config">Configuration</a>
                         <a class="red item" data-tab="mapping">Mapping</a>
                         <a class="red item" data-tab="releases">Releases</a>
                     </div>
-                    <div class="ui bottom attached tab segment" data-tab="config">
+                    <div class="ui bottom attached tab segment active" data-tab="config">
                         TODO
                     </div>
                     <div class="ui bottom attached tab segment" data-tab="mapping">

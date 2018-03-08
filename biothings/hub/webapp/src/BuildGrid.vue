@@ -93,8 +93,8 @@
 
                         <div class="eight wide column">
 
-                            <p>Optional key=value pairs can be added to the configuration (usefull to customize builder behavior). Enter one per line.</p>
-                            <textarea id="optionals"></textarea>
+                            <p>Optional parameters can be added to the configuration (usefull to customize builder behavior). Enter a JSON object structure</p>
+                            <textarea id="optionals">{}</textarea>
 
                             <div class="ui teal message">
                                 <b>Note</b>: sources providing root documents, or <i>root sources</i>, are sources allowed to
@@ -316,7 +316,7 @@ export default {
                     var conf_name = $(".ui.newconfiguration.form").form('get field', "conf_name").val();
                     var doc_type = $(".ui.newconfiguration.form").form('get field', "doc_type").val();
                     var selected_sources = $(".ui.newconfiguration.form").form('get field', "selected_sources").val();
-                    var optionals = $(".ui.newconfiguration.form").form('get field','optionals').val();
+                    console.log(optionals);
                     var root_sources = [];
                     // form valid
                     if(!conf_name)
@@ -328,17 +328,23 @@ export default {
                     // semantic won't populate select.option when dynamically set values, but rather add "q" elements, 
                     // despite the use of refresh. How ugly...
                     $(".ui.rootsources.dropdown a").each(function(i,e) {root_sources.push($(e).text())});
-                    var params = {};
-                    $(optionals.split("\n")).each(function(i,line) {
-                        if(line) {
-                            var kv = line.split("=").map(x => x.trim());
-                            if(kv.length == 2) {
-                                params[kv[0]] = kv[1];
-                            } else {
-                                self.errors.push("Invalid parameter: " + line);
-                            }
-                        }
-                    });
+                    //var params = {};
+                    //$(optionals.split("\n")).each(function(i,line) {
+                    //    if(line) {
+                    //        var kv = line.split("=").map(x => x.trim());
+                    //        if(kv.length == 2) {
+                    //            params[kv[0]] = kv[1];
+                    //        } else {
+                    //            self.errors.push("Invalid parameter: " + line);
+                    //        }
+                    //    }
+                    //});
+                    var optionals = {};
+                    try {
+                        optionals = JSON.parse($(".ui.newconfiguration.form").form('get field','optionals').val());
+                    } catch(e) {
+                        self.errors.push("Invalid optional parameter: " + e);
+                    }
                     if(self.errors.length)
                         return false;
                     axios.post(axios.defaults.baseURL + '/buildconf',
@@ -346,7 +352,7 @@ export default {
                                 "doc_type": doc_type,
                                 "sources":selected_sources,
                                 "roots":root_sources,
-                                "params":params})
+                                "params":optionals})
                     .then(response => {
                         console.log(response.data.result)
                         self.getBuildConfigs();

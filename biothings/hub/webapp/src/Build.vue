@@ -16,7 +16,9 @@
                     v-if="build.status == 'failed'"></i>
             </div>
 
-            <div class="left aligned header" v-model="build">{{ build.target_name }}</div>
+            <div class="left aligned header" v-model="build">
+                <router-link :to="{name:'build', params: {_id: build._id, color:color}}"><a>{{ build.target_name }}</a></router-link>
+            </div>
             <div class="left aligned description">
                 <div>
                     <i class="file outline icon"></i>
@@ -139,9 +141,6 @@
                     <i class="trash icon" @click="deleteBuild()"></i>
                 </button>
             </div>
-            <div class="ui right floated">
-                <router-link :to="{name:'build', params: {_id: build._id, color:color}}"><a>More</a></router-link>
-            </div>
         </div>
 
         <div class="ui basic deletebuild modal" :id="build._id">
@@ -249,7 +248,7 @@ export default {
 }
 </script>
 
-<style>
+<style scoped>
   @keyframes pulse {
     0% {transform: scale(1, 1);}
     50% {transform: scale(1.2, 1.2);}
@@ -263,5 +262,9 @@ export default {
   .conftag {
       margin-bottom: 1em !important;
   }
+
+  a {
+        color: #256e08;
+    }
 
 </style>

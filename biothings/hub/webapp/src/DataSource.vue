@@ -21,7 +21,9 @@
                   v-if="[download_status,upload_status,inspect_status].indexOf('failed') != -1">
             </i></div>
 
-            <div class="left aligned header" v-if="source.name">{{ source.name | splitjoin | capitalize }}</div>
+            <div class="left aligned header" v-if="source.name">
+                <router-link :to="'/source/' + source._id"><a>{{ source.name }}</a></router-link>
+            </div>
             <div class="meta">
                 <span class="right floated time" v-if="source.download && source.download.started_at">Updated {{ source.download.started_at | moment("from", "now") }}</span>
                 <span class="right floated time" v-else>Never updated</span>
@@ -56,9 +58,6 @@
                     v-on:click="unregister" v-if="source.data_plugin">
                     <i class="remove icon"></i>
                 </button>
-            </div>
-            <div class="ui right floated">
-                <router-link :to="'/source/' + source._id"><a>More</a></router-link>
             </div>
         </div>
 
@@ -228,4 +227,11 @@ export default {
     },
 }
 </script>
+
+<style>
+  a {
+        color: #0b0089;
+    }
+
+</style>
 

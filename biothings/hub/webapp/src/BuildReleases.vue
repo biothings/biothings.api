@@ -1,6 +1,6 @@
 <template>
-    <span>
-        <button class="ui newrelease right floated button" @click="newRelease">
+    <div>
+        <button class="ui newrelease  button" @click="newRelease">
             New release
         </button>
         <div class="ui feed"  v-if="releases">
@@ -102,7 +102,7 @@
                 </div>
             </div>
         </div>
-    </span>
+    </div>
 </template>
 
 <script>

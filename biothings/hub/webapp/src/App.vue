@@ -19,6 +19,10 @@
             <i class="ui cubes icon"></i>
             <router-link to="/builds">Builds</router-link>
         </a>
+        <a class="item">
+            <i class="ui shield alternate icon"></i>
+            <router-link to="/apis">API</router-link>
+        </a>
 
         <div class="ui item right">
           <job-summary></job-summary>
@@ -105,6 +109,7 @@ import DataSourceGrid from './DataSourceGrid.vue';
 import DataSourceDetailed from './DataSourceDetailed.vue';
 import BuildGrid from './BuildGrid.vue';
 import BuildDetailed from './BuildDetailed.vue';
+import ApiGrid from './ApiGrid.vue';
 
 const routes = [
     { path: '/', component: Stats },
@@ -112,6 +117,7 @@ const routes = [
     { path: '/source/:_id', component: DataSourceDetailed, props: true },
     { path: '/builds', component: BuildGrid },
     { path: '/build/:_id', component: BuildDetailed, props: true, name: "build"},
+    { path: '/apis', component: ApiGrid },
 ]
 
 const router = new VueRouter({
