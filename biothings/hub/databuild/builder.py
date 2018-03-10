@@ -1052,7 +1052,7 @@ class BuilderManager(BaseManager):
                 res[name]["mapper"][mappername] = mapper.__class__.__name__
         return res
 
-    def build_info(self,id=None,conf_name=None,fields={}):
+    def build_info(self,id=None,conf_name=None,fields=None):
         """
         Return build information given an build _id, or all builds
         if _id is None. "fields" can be passed to select which fields
@@ -1067,15 +1067,13 @@ class BuilderManager(BaseManager):
         if not id is None:
             q = {"_id": id}
         else:
+            fields = {}
             fields["mapping"] = 0
             fields["sources"] = 0
             fields["build_config.sources"] = 0
             fields["build_config.root"] = 0
         if not conf_name is None:
             q["build_config._id"] = conf_name
-        # no fields passed = gimme all
-        if not fields:
-            fields=None
         builds = [b for b in get_src_build().find(q,fields)]
         db = mongo.get_target_db()
         res = [b for b in sorted(builds, key=lambda e: str(e["started_at"]),reverse=True)]
