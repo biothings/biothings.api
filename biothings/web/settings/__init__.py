@@ -6,7 +6,7 @@ a container for the `Config module`_, and any other settings that
 are the same across all handler types, e.g. the Elasticsearch client.'''
 
 import logging
-import os
+import os, types
 import socket
 from importlib import import_module
 from biothings.utils.web.log import get_hipchat_logger
@@ -22,7 +22,7 @@ class BiothingWebSettings(object):
     def __init__(self, config='biothings.web.settings.default'):
         ''' The ``config`` init parameter specifies a module that configures 
         this biothing.  For more information see `config module`_ documentation.''' 
-        self.config_mod = import_module(config)
+        self.config_mod = type(config) == types.ModuleType and config or import_module(config)
         try:
             with open(os.path.abspath(self.config_mod.JSONLD_CONTEXT_PATH), 'r') as json_file:
                 self._jsonld_context = json.load(json_file)

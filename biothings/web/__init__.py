@@ -11,7 +11,11 @@ from string import Template
 
 def _is_module(m):
     try:
-        _ret = import_module(m)
+        import types
+        if type(m) == types.ModuleType:
+            return True
+        import importlib
+        _ret = importlib.import_module(m)
     except ImportError:
         return False
 
@@ -36,13 +40,19 @@ class BiothingsAPIApp(object):
         else:
             self._configure_by_kwargs(**kwargs)
 
+    def get_server(self,config_mod, **app_settings):
+        settings = BiothingESWebSettings(config=config_mod) 
+        app = tornado.web.Application(settings.generate_app_list(), **app_settings)
+        server = tornado.httpserver.HTTPServer(app)
+        return server
+
     def start(self, debug=True, port=8000, address='127.0.0.1', app_settings={}):
         if debug:
             #import tornado.autoreload
             import logging
             logging.getLogger().setLevel(logging.DEBUG)
             address='0.0.0.0'
-            
+
         with NamedTemporaryFile(mode='w', suffix='.py', dir=os.path.abspath('.')) as _tempfile:
             if not getattr(self, 'settings_mod', False):
                 if not getattr(self, 'settings_str', False):
