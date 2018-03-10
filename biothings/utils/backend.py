@@ -208,7 +208,10 @@ class DocMongoBackend(DocBackendBase):
 
     def finalize(self):
         '''flush all pending writes.'''
-        self.target_collection.database.client.fsync(async=True)
+        # no need to flush, fsync is used for backups. also, this locks the whole
+        # database for reads...
+        #self.target_collection.database.client.fsync(async=True)
+        pass
 
     def remove_from_ids(self, ids, step=10000):
         deleted = 0
