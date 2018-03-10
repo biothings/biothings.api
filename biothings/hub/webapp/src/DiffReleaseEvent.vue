@@ -105,7 +105,7 @@ export default {
         displayError : function() {
         },
         applyDiff(release) {
-            axios.get(axios.defaults.baseURL + '/index_manager')
+            axios.get(axios.defaults.baseURL + '/index_manager?remote=1')
             .then(response => {
                 // expecting a syncer exists with (diff_type,"es")
                 var envs = response.data.result;

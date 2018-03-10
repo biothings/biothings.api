@@ -159,15 +159,20 @@ export default {
         },
         createAPI: function() {
             var self = this;
-            axios.get(axios.defaults.baseURL + '/index_manager')
+            axios.get(axios.defaults.baseURL + '/index_manager?remote=1')
             .then(response => {
                 self.backends = [];
                 var envs = response.data.result;
                 $.each(envs.config.env, function( env, value ) {
-                    for(var k in value.index) {
-                        self.backends.push({"env":env, "host":value["host"],
-                                            "index":value.index[k]["index"],
-                                            "doc_type":value.index[k]["doc_type"]});
+                    for(var cat in value.index) {
+                        for(var i in value.index[cat]) {
+                            var idx = value.index[cat][i];
+                            self.backends.push({
+                                "env":env, "host":value["host"],
+                                "index":idx["index"],
+                                "doc_type":idx["doc_type"]
+                            });
+                        }
                     }
                 });
                 $(".ui.apibackends.dropdown").dropdown();

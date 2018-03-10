@@ -9,7 +9,7 @@
                 {{conf_name}}
                 <div class="ui inverted menu">
                     <div class="item":conf-name="conf_name" @click="newBuild($event)"><i class="cube icon"></i> Create new build</div>
-                    <div class="item":conf-name="conf_name"><i class="edit outline icon"></i> Edit configuration</div>
+                    <!--div class="item":conf-name="conf_name"><i class="edit outline icon"></i> Edit configuration</div-->
                     <div class="item" :conf-name="conf_name" @click="deleteConfiguration($event)"><i class="trash alternate outline icon"></i> Delete configuration</div>
                 </div>
             </a>

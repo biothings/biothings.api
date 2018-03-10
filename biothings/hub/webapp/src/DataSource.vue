@@ -56,7 +56,7 @@
             <div class="ui icon buttons right floated mini">
                 <button class="ui button"
                     v-on:click="unregister" v-if="source.data_plugin">
-                    <i class="remove icon"></i>
+                    <i class="trash icon"></i>
                 </button>
             </div>
         </div>

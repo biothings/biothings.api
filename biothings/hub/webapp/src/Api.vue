@@ -68,7 +68,7 @@
             </div>
             <div class="ui icon buttons right floated mini">
                 <button class="ui button">
-                    <i class="trash icon" @click="deleteAPI()"></i>
+                    <i class="trash icon" :data-api_id="api._id" @click="deleteAPI($event)"></i>
                 </button>
             </div>
         </div>
@@ -134,9 +134,16 @@ export default {
                 errs.push(this.api.err);
             return errs.join("<br>");
         },
-        deleteAPI: function() {
+        deleteAPI: function(event) {
+            console.log("on delete");
+            console.log(event);
+            var api_id = $(event.target).attr("data-api_id");
+            // filter Api component to open correct modal
+            console.log(`${api_id} ${this.api._id}`);
+            if(!api_id || api_id != this.api._id)
+                return;
             var self = this;
-            $(`#${self.api._id}.ui.basic.deleteapi.modal`)
+            $(`#${this.api._id}.ui.basic.deleteapi.modal`)
             .modal("setting", {
                 onApprove: function () {
                     axios.delete(axios.defaults.baseURL + '/api',{"data":{"api_id":self.api._id}})

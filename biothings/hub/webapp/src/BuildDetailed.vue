@@ -21,11 +21,20 @@
                 <p>
                     <div class="ui top attached pointing menu">
                         <a class="red item active" data-tab="config">Configuration</a>
+                        <a class="red item" data-tab="sources">Sources</a>
+                        <a class="red item" data-tab="stats">Stats</a>
                         <a class="red item" data-tab="mapping">Mapping</a>
                         <a class="red item" data-tab="releases">Releases</a>
+                        <a class="red item" data-tab="logs">Logs</a>
                     </div>
                     <div class="ui bottom attached tab segment active" data-tab="config">
-                        TODO
+                        <build-config v-bind:build="build"></build-config>
+                    </div>
+                    <div class="ui bottom attached tab segment" data-tab="sources">
+                        <build-sources v-bind:build="build"></build-sources>
+                    </div>
+                    <div class="ui bottom attached tab segment" data-tab="stats">
+                        <build-stats v-bind:build="build"></build-stats>
                     </div>
                     <div class="ui bottom attached tab segment" data-tab="mapping">
                         TODO
@@ -33,6 +42,9 @@
                     </div>
                     <div class="ui bottom attached tab segment" data-tab="releases">
                         <build-releases v-bind:build="build"></build-releases>
+                    </div>
+                    <div class="ui bottom attached tab segment" data-tab="logs">
+                        <build-logs v-bind:build="build"></build-logs>
                     </div>
                 </p>
 
@@ -71,11 +83,16 @@ import InspectForm from './InspectForm.vue'
 import DataSourceMapping from './DataSourceMapping.vue'
 import JsonDiffResults from './JsonDiffResults.vue'
 import BuildReleases from './BuildReleases.vue'
+import BuildSources from './BuildSources.vue'
+import BuildStats from './BuildStats.vue'
+import BuildLogs from './BuildLogs.vue'
+import BuildConfig from './BuildConfig.vue'
 
 export default {
     name: 'build-detailed',
     props: ['_id','color'],
-    components: { InspectForm, DataSourceMapping, JsonDiffResults, BuildReleases },
+    components: { InspectForm, DataSourceMapping, JsonDiffResults, BuildReleases,
+                  BuildSources, BuildStats, BuildLogs, BuildConfig, },
     mounted () {
         console.log("BuildDetailed mounted");
         this.loadData();

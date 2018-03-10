@@ -41,90 +41,15 @@
                         <a class="item" data-tab="logs">Logs</a>
                     </div>
                     <div class="ui bottom attached tab segment active" data-tab="sources">
-                        <!-- TODO: as a component -->
-                        <table class="ui small very compact blue table">
-                            <thead>
-                                <tr>
-                                    <th>Datasource</th>
-                                    <th>Version</th>
-                                </tr>
-                            </thead>
-                            <tbody v-if="build._meta">
-                                <tr v-for="(info,src) in build._meta.src">
-                                    <td v-if="info.url"><a :href="info.url">{{src}}</a></td>
-                                    <td v-else>{{src}}</td>
-                                    <td>{{info.version}}</td>
-                                </tr>
-                            </tbody>
-                            <tfoot v-else>
-                                <tr><th>No data</th>
-                                    <th></th>
-                                </tr>
-                            </tfoot>
-                        </table>
+                        <build-sources v-bind:build="build"></build-sources>
                     </div>
 
                     <div class="ui bottom attached tab segment" data-tab="stats">
-                        <!-- TODO: as a component -->
-                        <table class="ui small very compact grey table">
-                            <thead>
-                                <tr>
-                                    <th>Stats</th>
-                                    <th>Count</th>
-                                </tr>
-                            </thead>
-                            <tbody v-if="build._meta">
-                                <tr v-for="(count,stat) in build._meta.stats">
-                                    <td >{{stat}}</td>
-                                    <td>{{count}}</td>
-                                </tr>
-                            </tbody>
-                            <tfoot v-else>
-                                <tr><th>No data</th>
-                                    <th></th>
-                                </tr>
-                            </tfoot>
-                        </table>
+                        <build-stats v-bind:build="build"></build-stats>
                     </div>
 
                     <div class="ui bottom attached tab segment" data-tab="logs">
-                        <!-- TODO: as a component -->
-                        <div class="ui small feed" v-if="build.jobs">
-                            <div class="event">
-                                <i class="ui hourglass start icon"></i>
-                                <div class="content">
-                                    <div class="summary">
-                                        Build starts
-                                        <div class="date">
-                                            {{build.started_at | moment('MMM Do YYYY, h:mm:ss a')}}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="event" v-for="job in build.jobs">
-                                <i class="ui green checkmark icon" v-if="job.status == 'success'"></i>
-                                <i class="ui red warning sign icon" v-else-if="job.status == 'failed'"></i>
-                                <i class="ui pulsing unhide icon" v-else-if="job.status == 'inspecting'"></i>
-                                <i class="ui pulsing cube icon" v-else></i>
-                                <div class="content">
-                                    <div class="summary">
-                                        {{job.step}}
-                                        <div class="date">
-                                            {{job.time}}
-                                        </div>
-                                    </div>
-                                    <div class="meta" v-if="job.sources">
-                                        <i class="database icon"></i>{{job.sources.join(", ")}}
-                                    </div>
-                                    <div class="meta" v-if="job.err">
-                                        <i class="warning icon"></i>{{job.err}}
-                                    </div>
-                                </div>
-
-                            </div>
-                        </div>
-
+                        <build-logs v-bind:build="build"></build-logs>
                     </div>
                 </p>
             </div>
@@ -136,7 +61,7 @@
                     <i class="unhide icon"></i>
                 </button>
             </div>
-            <div class="ui icon buttons left floated mini">
+            <div class="ui icon buttons right floated mini">
                 <button class="ui button">
                     <i class="trash icon" @click="deleteBuild()"></i>
                 </button>
@@ -175,6 +100,9 @@ import axios from 'axios'
 import bus from './bus.js'
 import Vue from 'vue';
 import InspectForm from './InspectForm.vue'
+import BuildLogs from './BuildLogs.vue'
+import BuildStats from './BuildStats.vue'
+import BuildSources from './BuildSources.vue'
 
 function build_time(jobs) {
     return jobs.map((q)=>q.time_in_s).reduce(
@@ -195,7 +123,7 @@ export default {
     beforeDestroy() {
         $(`#${this.build._id}.ui.basic.deletebuild.modal`).remove();
     },
-    components: { InspectForm, },
+    components: { InspectForm, BuildLogs, BuildStats, BuildSources, },
     methods: {
         displayError : function() {
             var errs = [];

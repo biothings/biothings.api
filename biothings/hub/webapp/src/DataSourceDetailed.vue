@@ -28,7 +28,7 @@
                         <a class="red item active" data-tab="dump" v-if="source.download">Dumper</a>
                         <a class="red item" data-tab="upload">Uploader</a>
                         <a class="red item" data-tab="mapping">Mapping</a>
-                        <a class="red item" data-tab="inspect">Statistics</a>
+                        <!--a class="red item" data-tab="inspect">Statistics</a-->
                     </div>
                     <div class="ui bottom attached tab segment active" data-tab="dump" v-if="source.download">
                         <data-source-dump v-bind:source="source"></data-source-dump>
@@ -39,9 +39,9 @@
                     <div class="ui bottom attached tab segment" data-tab="mapping">
                         <data-source-mapping v-bind:maps="maps" v-bind:_id="_id"></data-source-mapping>
                     </div>
-                    <div class="ui bottom attached tab segment" data-tab="inspect">
+                    <!--div class="ui bottom attached tab segment" data-tab="inspect">
                         <data-source-inspect v-bind:maps="maps" v-bind:_id="_id"></data-source-inspect>
-                    </div>
+                    </div-->
                 </p>
 
             </div>
