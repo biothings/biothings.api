@@ -1,10 +1,11 @@
-import sys, re, os, time, math, glob
+import sys, re, os, time, math, glob, copy
 from datetime import datetime
 from dateutil.parser import parse as dtparse
 import pickle, json
 from pprint import pformat
 import asyncio
 from functools import partial
+from elasticsearch import Elasticsearch
 
 import biothings.utils.mongo as mongo
 from biothings.utils.hub_db import get_src_build
@@ -287,12 +288,36 @@ class IndexerManager(BaseManager):
         publish_data_version(s3_folder,full_info)
         self.logger.info("Registered version '%s'" % (esb.version))
 
-    def index_info(self):
+    def index_info(self, env=None, remote=False):
         res = {}
-        res["config"] = btconfig.ES_CONFIG
-        for env in self.register:
-            p = self.register[env]
-            res["config"]["env"][env]["class"] = p.func.__name__
+        res["config"] = copy.deepcopy(btconfig.ES_CONFIG)
+        for kenv in self.register:
+            if env and env != kenv:
+                continue
+            p = self.register[kenv]
+            res["config"]["env"][kenv]["class"] = p.func.__name__
+            if remote:
+                # lost all indices, remotely
+                try:
+                    self.logger.error(res["config"]["env"][kenv]["host"])
+                    cl = Elasticsearch(res["config"]["env"][kenv]["host"])
+                    indices = [{"index":k,
+                        "doc_type":list(v["mappings"].keys())[0],
+                        "aliases":list(v["aliases"].keys())}
+                        for k,v in cl.indices.get("*").items()]
+                    # for now, we just consider
+                    if type(res["config"]["env"][kenv]["index"]) == dict:
+                        # we don't where to put those indices because we don't
+                        # have that information, so we just put those in a default category
+                        # TODO: put that info in metadata ?
+                        res["config"]["env"][kenv]["index"].setdefault(None,[]).extend(indices)
+                    else:
+                        assert type(res["config"]["env"][kenv]["index"]) == list
+                        res["config"]["env"][kenv]["index"].extend(indices)
+                except Exception as e:
+                    self.logger.warning("Can't load remote indices: %s" % e)
+                    continue
+
         return res
 
     def validate_mapping(self, mapping, env):
@@ -315,7 +340,6 @@ class IndexerManager(BaseManager):
                 idxr.delete_index()
             except Exception as e:
                 pass
-
 
 class Indexer(object):
     """
