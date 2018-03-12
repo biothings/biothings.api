@@ -191,7 +191,7 @@ class IndexerManager(BaseManager):
         return fut
 
     def publish_snapshot(self, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
-                         ro_repository=btconfig.READONLY_SNAPSHOT_REPOSITORY):
+                         repository=btconfig.SNAPSHOT_REPOSITORY):
         """
         Publish snapshot metadata (not the actal snapshot, but the metadata, release notes, etc... associated to it) to S3,
         and then register that version to it's available to auto-updating hub.
@@ -217,7 +217,7 @@ class IndexerManager(BaseManager):
         esb = DocESBackend(idxr)
         assert esb.version, "Can't retrieve a version from index '%s'" % index
         self.logger.info("Generating JSON metadata for full release '%s'" % esb.version)
-        repo = idxr._es.snapshot.get_repository(ro_repository)
+        repo = idxr._es.snapshot.get_repository(repository)
         release_note = "release_%s" % esb.version
         # generate json metadata about this diff release
         assert snapshot, "Missing snapshot name information"
