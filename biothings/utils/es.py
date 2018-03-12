@@ -252,7 +252,13 @@ class ESIndexer():
     def get_mapping_meta(self):
         """return the current _meta field."""
         m = self.get_mapping()
-        return {"_meta": m[self._doc_type]["_meta"]}
+        doc_type = self._doc_type
+        if doc_type is None:
+            # fetch doc_type from mapping
+            assert len(m) == 1, "More than one doc_type found, not supported when self._doc_type " + \
+                                "is not initialized"
+            doc_type = list(m.keys())[0]
+        return {"_meta": m[doc_type]["_meta"]}
 
     def update_mapping_meta(self, meta):
         allowed_keys = set(['_meta', '_timestamp'])
