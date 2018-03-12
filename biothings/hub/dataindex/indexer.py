@@ -134,15 +134,14 @@ class IndexerManager(BaseManager):
         if type(steps) == str:
             steps = [steps]
         snapshot = snapshot or index
-        #es_snapshot_host = getattr(btconfig,"ES_SNAPSHOT_HOST",btconfig.ES_HOST)
-        #idxr = ESIndexer(index=index,doc_type=btconfig.ES_DOC_TYPE,es_host=es_snapshot_host)
         idxr = self[indexer_env]
+        es_idxr = ESIndexer(index=index,doc_type=idxr.doc_type,es_host=idxr.host)
         # will hold the overall result
         fut = asyncio.Future()
 
         def get_status():
             try:
-                res = idxr.get_snapshot_status(repository, snapshot)
+                res = es_idxr.get_snapshot_status(repository, snapshot)
                 assert "snapshots" in res, "Can't find snapshot '%s' in repository '%s'" % (snapshot,repository)
                 # assuming only one index in the snapshot, so only check first elem
                 state = res["snapshots"][0].get("state")
@@ -167,7 +166,7 @@ class IndexerManager(BaseManager):
                 pinfo["description"] = idxr.host
                 self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,idxr.host,repository))
                 job = yield from self.job_manager.defer_to_thread(pinfo,
-                        partial(idxr.snapshot,repository,snapshot, mode=mode))
+                        partial(es_idxr.snapshot,repository,snapshot, mode=mode))
                 job.add_done_callback(snapshot_launched)
                 yield from job
                 while True:
@@ -190,7 +189,7 @@ class IndexerManager(BaseManager):
         task = asyncio.ensure_future(do(index))
         return fut
 
-    def publish_snapshot(self, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
+    def publish_snapshot(self, indexer_env, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
                          repository=btconfig.SNAPSHOT_REPOSITORY):
         """
         Publish snapshot metadata (not the actal snapshot, but the metadata, release notes, etc... associated to it) to S3,
@@ -208,16 +207,15 @@ class IndexerManager(BaseManager):
         information. It means in order to publish a snaphost, both the snapshot *and* the index must exist.
         """
         assert getattr(btconfig,"BIOTHINGS_ROLE",None) == "master","Hub needs to be master to publish metadata about snapshots"
-        es_snapshot_host = getattr(btconfig,"ES_SNAPSHOT_HOST",btconfig.ES_HOST)
         # keep passed values if any, otherwise derive them
         index = index or snapshot
         snapshot = snapshot or index
-
-        idxr = ESIndexer(index=index,doc_type=btconfig.ES_DOC_TYPE,es_host=es_snapshot_host)
-        esb = DocESBackend(idxr)
+        idxr = self[indexer_env]
+        es_idxr = ESIndexer(index=index,doc_type=idxr.doc_type,es_host=idxr.host)
+        esb = DocESBackend(es_idxr)
         assert esb.version, "Can't retrieve a version from index '%s'" % index
         self.logger.info("Generating JSON metadata for full release '%s'" % esb.version)
-        repo = idxr._es.snapshot.get_repository(repository)
+        repo = es_idxr._es.snapshot.get_repository(repository)
         release_note = "release_%s" % esb.version
         # generate json metadata about this diff release
         assert snapshot, "Missing snapshot name information"
@@ -265,7 +263,7 @@ class IndexerManager(BaseManager):
         build_info_path = os.path.join(btconfig.DIFF_PATH,build_info)
         json.dump(full_meta,open(build_info_path,"w"))
         # override lastmodified header with our own timestamp
-        local_ts = dtparse(idxr.get_mapping_meta()["_meta"]["build_date"])
+        local_ts = dtparse(es_idxr.get_mapping_meta()["_meta"]["build_date"])
         utc_epoch = int(time.mktime(local_ts.timetuple()))
         utc_ts = datetime.fromtimestamp(time.mktime(time.gmtime(utc_epoch)))
         str_utc_epoch = str(utc_epoch)
