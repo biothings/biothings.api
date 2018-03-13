@@ -38,12 +38,12 @@
                                     <i class="save icon"></i>
                                     Save
                                 </button>
-                                <!-- TODO: duplicaation !!! -->
+                                <!-- TODO: duplication !!! -->
                                 <div class="ui mini buttons"
-                                    v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'">
+                                    v-if="maps[subsrc]['registered_mapping']">
                                     <div class="ui labeled icon button"
                                         v-on:click="testMapping('tab_mapping_inspected',subsrc)">
-                                        <i class="check square outline icon"></i>Validate on <span class="tab_mapping_inspected test-on">...</span>
+                                        <i class="check square outline icon"></i>Validate on <span :class='[subsrc,"tab_mapping_inspected test-on"]'>...</span>
                                     </div>
                                     <div class="ui floating tab_mapping_inspected dropdown icon button">
                                         <i class="dropdown icon"></i>
@@ -64,10 +64,10 @@
                                         Save
                                 </button>
                                 <div class="ui mini buttons"
-                                    v-if="maps[subsrc]['registered_mapping'] && maps[subsrc]['registered_mapping']['origin'] != 'uploader'">
+                                    v-if="maps[subsrc]['registered_mapping']">
                                     <div class="ui labeled icon button"
                                         v-on:click="testMapping('tab_mapping_registered',subsrc)">
-                                        <i class="check square outline icon"></i>Validate on <span class="tab_mapping_registered test-on">...</span>
+                                        <i class="check square outline icon"></i>Validate on <span :class='[subsrc,"tab_mapping_registered test-on"]'>...</span>
                                     </div>
                                     <div class="ui floating tab_mapping_registered dropdown icon button">
                                         <i class="dropdown icon"></i>
@@ -228,7 +228,7 @@ export default {
         testMapping: function(map_elem_id,subsrc, dest) {
             var html = $(`#${subsrc}-${map_elem_id}`).html();
             var json = this.html2json(html);
-            var env = $(`.${map_elem_id}.test-on`).text();
+            var env = $(`.${subsrc}.${map_elem_id}.test-on`).text();
             axios.post(axios.defaults.baseURL + `/mapping/validate`,{"mapping" : json, "env" : env})
             .then(response => {
                 console.log(response.data.result)
