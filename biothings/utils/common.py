@@ -230,6 +230,18 @@ class dotdict(dict):
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 
+def get_dotfield_value(dotfield,d):
+    """
+    Explore dictionary d using dotfield notation and return value.
+    Ex: d = {"a":{"b":1}}.
+        get_dotfield_value("a.b",d) => 1
+    """
+    fields = dotfield.split(".")
+    if len(fields) == 1:
+        return d[fields[0]]
+    else:
+        first = fields[0]
+        return get_dotfield_value(".".join(fields[1:]),d[first])
 
 def split_ids(q):
     '''split input query string into list of ids.
