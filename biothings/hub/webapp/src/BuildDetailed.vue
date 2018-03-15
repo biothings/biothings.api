@@ -20,21 +20,27 @@
 
                 <p>
                     <div class="ui top attached pointing menu">
-                        <a class="red item active" data-tab="config">Configuration</a>
-                        <a class="red item" data-tab="sources">Sources</a>
-                        <a class="red item" data-tab="stats">Stats</a>
+                        <a class="red item active" data-tab="info">Information</a>
                         <a class="red item" data-tab="mapping">Mapping</a>
                         <a class="red item" data-tab="releases">Releases</a>
-                        <a class="red item" data-tab="logs">Logs</a>
                     </div>
-                    <div class="ui bottom attached tab segment active" data-tab="config">
-                        <build-config v-bind:build="build"></build-config>
-                    </div>
-                    <div class="ui bottom attached tab segment" data-tab="sources">
-                        <build-sources v-bind:build="build"></build-sources>
-                    </div>
-                    <div class="ui bottom attached tab segment" data-tab="stats">
-                        <build-stats v-bind:build="build"></build-stats>
+                    <div class="ui bottom attached tab segment active" data-tab="info">
+                        <div class="ui grid">
+                            <div class="six wide column">
+                                <h5>Configuration</h5>
+                                <build-config v-bind:build="build"></build-config>
+                            </div>
+                            <div class="five wide column">
+                                <h5>Sources</h5>
+                                <build-sources v-bind:build="build"></build-sources>
+                                <h5>Statistics</h5>
+                                <build-stats v-bind:build="build"></build-stats>
+                            </div>
+                            <div class="five wide column">
+                                <h5>Logs</h5>
+                                <build-logs v-bind:build="build"></build-logs>
+                            </div>
+                        </div>
                     </div>
                     <div class="ui bottom attached tab segment" data-tab="mapping">
                         TODO
@@ -42,9 +48,6 @@
                     </div>
                     <div class="ui bottom attached tab segment" data-tab="releases">
                         <build-releases v-bind:build="build"></build-releases>
-                    </div>
-                    <div class="ui bottom attached tab segment" data-tab="logs">
-                        <build-logs v-bind:build="build"></build-logs>
                     </div>
                 </p>
 

@@ -9,7 +9,7 @@
         <tbody v-if="build._meta">
             <tr v-for="(count,stat) in build._meta.stats">
                 <td >{{stat}}</td>
-                <td>{{count}}</td>
+                <td>{{count | currency("",0)}}</td>
             </tr>
         </tbody>
         <tfoot v-else>
