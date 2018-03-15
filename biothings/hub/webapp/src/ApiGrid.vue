@@ -163,7 +163,7 @@ export default {
             .then(response => {
                 self.backends = [];
                 var envs = response.data.result;
-                $.each(envs.config.env, function( env, value ) {
+                $.each(envs.env, function( env, value ) {
                     for(var cat in value.index) {
                         for(var i in value.index[cat]) {
                             var idx = value.index[cat][i];

@@ -162,7 +162,7 @@ export default {
             if(envs.config.build_config_key) {
                 selecting = this.build_config[envs.config.build_config_key];
             }
-            $.each(envs.config.env, function( env, value ) {
+            $.each(envs.env, function( env, value ) {
                 // check whether we can use one of build_config keys
                 // to filter compatibles indices
                 if(selecting) {

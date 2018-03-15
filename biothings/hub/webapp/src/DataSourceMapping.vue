@@ -139,7 +139,7 @@
         </div>
     </span>
     <div v-else>
-        No mapping data found for this source
+        No mapping data found for this source.
     </div>
     </span>
 
@@ -157,8 +157,8 @@ export default {
     mixins: [Utils],
     mounted () {
         $('.menu .item').tab();
-        $('#maps .item:first').addClass('active');
-        $('.tab:first').addClass('active');
+        //$('#maps .item:first').addClass('active');
+        //$('.tab:first').addClass('active');
         this.buildIndexDropdown("tab_mapping_registered");
         this.buildIndexDropdown("tab_mapping_inspected");
     },
@@ -203,7 +203,7 @@ export default {
         buildIndexDropdown : function(map_id) {
             axios.get(axios.defaults.baseURL + `/index_manager`)
             .then(response => {
-                this.environments = Object.keys(response.data.result.config.env);
+                this.environments = Object.keys(response.data.result.env);
                 var envs = [];
                 var cnt = 0;
                 for(var e in this.environments) {

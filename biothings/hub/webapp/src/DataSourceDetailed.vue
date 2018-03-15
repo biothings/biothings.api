@@ -34,7 +34,7 @@
                         <data-source-dump v-bind:source="source"></data-source-dump>
                     </div>
                     <div class="ui bottom attached tab segment" data-tab="upload">
-                        upload TODO
+                        <data-source-upload v-bind:source="source"></data-source-upload>
                     </div>
                     <div class="ui bottom attached tab segment" data-tab="mapping">
                         <data-source-mapping v-bind:maps="maps" v-bind:_id="_id"></data-source-mapping>
@@ -99,6 +99,7 @@ import axios from 'axios'
 import bus from './bus.js'
 import InspectForm from './InspectForm.vue'
 import DataSourceDump from './DataSourceDump.vue'
+import DataSourceUpload from './DataSourceUpload.vue'
 import DataSourceInspect from './DataSourceInspect.vue'
 import DataSourceMapping from './DataSourceMapping.vue'
 import JsonDiffResults from './JsonDiffResults.vue'
@@ -106,7 +107,8 @@ import JsonDiffResults from './JsonDiffResults.vue'
 export default {
     name: 'data-source-detailed',
     props: ['_id'],
-    components: { InspectForm, DataSourceDump, DataSourceInspect, DataSourceMapping, JsonDiffResults },
+    components: { InspectForm, DataSourceDump, DataSourceUpload, DataSourceInspect,
+                  DataSourceMapping, JsonDiffResults },
     mounted () {
         console.log("DataSourceDetailed mounted");
         this.loadData();

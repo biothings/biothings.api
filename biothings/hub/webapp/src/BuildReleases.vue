@@ -64,7 +64,7 @@
                                 <div>
                                     <label>Select an indexer environment to create the index on</label>
                                     <select class="ui fluid indexenvs dropdown" name="index_env">
-                                        <option v-for="(info,env) in index_envs.config.env" :data-env="env">{{env}} <i>({{info.host}})</i></option>
+                                        <option v-for="(info,env) in index_envs.env" :data-env="env">{{env}} <i>({{info.host}})</i></option>
                                     </select>
                                     <br>
                                 </div>
