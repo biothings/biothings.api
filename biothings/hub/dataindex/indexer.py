@@ -96,6 +96,7 @@ class IndexerManager(BaseManager):
         super(IndexerManager,self).__init__(*args, **kwargs)
         self.src_build = get_src_build()
         self.indexers = {}
+        self.es_config = {}
         self.t0 = time.time()
         self.prepared = False
         self.log_folder = LOG_FOLDER
@@ -166,6 +167,8 @@ class IndexerManager(BaseManager):
         indexers_kwargs = []
         for env,conf in confdict["env"].items():
             idxkwargs = dict(**conf["indexer"]["args"])
+            # propagate ES host to indexer's kwargs
+            idxkwargs["es_host"] = self.es_config["env"][env]["host"]
             indexers_kwargs.append({env:idxkwargs})
         self.configure_from_list(indexers_kwargs)
 
@@ -200,9 +203,9 @@ class IndexerManager(BaseManager):
         Rules depend on what's inside the corresponding src_build doc
         and the indexers definitions
         """
-        if not self.indexers:
-            return Indexer # default one
         doc = self.src_build.find_one({"_id":target_name})
+        if not self.indexers or not doc:
+            return Indexer # default one
         klass = None
         for path_in_doc in self.indexers:
             if klass is None and path_in_doc is None:
@@ -438,14 +441,16 @@ class IndexerManager(BaseManager):
         return res
 
     def validate_mapping(self, mapping, env):
-        idxr_obj = self[env]
-        host = idxr_obj.host
+        idxkwargs = self[env]
+        # just get the default indexer (target_name doesn't exist, return default one)
+        idxklass = self.find_indexer(target_name="__placeholder_name__%s" % get_random_string())
+        idxr_obj = idxklass(**idxkwargs)
         settings = idxr_obj.get_index_creation_settings()
         # generate a random index, it'll be deleted at the end
         index_name = ("hub_tmp_%s" % get_random_string()).lower()
-        idxr = ESIndexer(index=index_name,es_host=host,doc_type=None)
+        idxr = ESIndexer(index=index_name,es_host=idxr_obj.host,doc_type=None)
         self.logger.info("Testing mapping by creating index '%s' on host '%s' (settings: %s)" % \
-                (index_name,host,settings))
+                (index_name,idxr_obj.host,settings))
         try:
             res = idxr.create_index(mapping,settings)
             return res
