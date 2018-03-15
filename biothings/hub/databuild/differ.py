@@ -47,7 +47,8 @@ class BaseDiffer(object):
         self.diff_func = diff_func
         self.timestamp = datetime.now()
         self.setup_log()
-        self.ti = time.time()
+        self.metadata = {} # diff metadata
+        self.metadata_filename = None
 
     def setup_log(self):
         import logging as logging_mod
@@ -166,9 +167,7 @@ class BaseDiffer(object):
          3. tuple with 3 elements (URI,db,collection), looking like:
             ("mongodb://user:pass@host","dbname","collection"), allowing to specify
             any connection on any server
-        steps: - 'count' will count the root keys for every documents in new collection
-                 (to check number of docs from datasources).
-               - 'content' will perform diff on actual content.
+        steps: - 'content' will perform diff on actual content.
                - 'mapping' will perform diff on ES mappings (if target collection involved)
                - 'reduce' will merge diff files, trying to avoid having many small files
                - 'post' is a hook to do stuff once everything is merged (override method post_diff_cols)
@@ -194,48 +193,47 @@ class BaseDiffer(object):
         # create metadata file storing info about how we created the diff
         # and some summary data
         diff_stats = {"update":0, "add":0, "delete":0, "mapping_changed": False}
-        metadata = {
-                "diff" : {
-                    "type" : self.diff_type,
-                    "func" : self.diff_func.__name__,
-                    "version" : "%s.%s" % (self.old.version,self.new.version),
-                    "stats": diff_stats, # ref to diff_stats
-                    "files": [],
-                    # when "new" is a target collection:
-                    "mapping_file": None,
-                    "info" : {
-                        "generated_on": str(datetime.now()),
-                        "exclude": exclude,
-                        "steps": steps,
-                        "mode": mode,
-                        "batch_size": batch_size
-                        }
-                    },
-                "old": {
-                    "backend" : old_db_col_names,
-                    "version" : self.old.version
-                    },
-                "new": {
-                    "backend" : new_db_col_names,
-                    "version": self.new.version
-                    },
-                # when "new" is a mongodb target collection:
-                "_meta" : {},
-                "build_config": {},
-                }
+        self.metadata_filename = os.path.join(diff_folder,"metadata.json")
+        if os.path.exists(self.metadata_filename):
+            # load previous metadata in case we try to update/complete diff
+            self.metadata = json.load(open(self.metadata_filename))
+        else:
+            self.metadata = {
+                    "diff" : {
+                        "type" : self.diff_type,
+                        "func" : self.diff_func.__name__,
+                        "version" : "%s.%s" % (self.old.version,self.new.version),
+                        "stats": diff_stats, # ref to diff_stats
+                        "files": [],
+                        # when "new" is a target collection:
+                        "mapping_file": None,
+                        "info" : {
+                            "generated_on": str(datetime.now()),
+                            "exclude": exclude,
+                            "steps": steps,
+                            "mode": mode,
+                            "batch_size": batch_size
+                            }
+                        },
+                    "old": {
+                        "backend" : old_db_col_names,
+                        "version" : self.old.version
+                        },
+                    "new": {
+                        "backend" : new_db_col_names,
+                        "version": self.new.version
+                        },
+                    # when "new" is a mongodb target collection:
+                    "_meta" : {},
+                    "build_config": {},
+                    }
         if isinstance(self.new,DocMongoBackend) and self.new.target_collection.database.name == btconfig.DATA_TARGET_DATABASE:
             new_doc = get_src_build().find_one({"_id":self.new.target_collection.name})
             if not new_doc:
                 raise DifferException("Collection '%s' has no corresponding build document" % \
                         self.new.target_collection.name)
-            metadata["_meta"] = self.get_metadata()
-            metadata["build_config"] = new_doc.get("build_config")
-
-        # dump it here for minimum information, in case we don't go further
-        # "post" doesn't update metadata so don't dump metadata if it hasn't changed
-        # avoiding loosing information in this case
-        if steps != ["post"]:
-            json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
+            self.metadata["_meta"] = self.get_metadata()
+            self.metadata["build_config"] = new_doc.get("build_config")
 
         got_error = False
         if "mapping" in steps:
@@ -273,10 +271,11 @@ class BaseDiffer(object):
                             err = DifferException("Found diff operation '%s' in mapping file, " % op["op"] + \
                                 " only 'add' operations are allowed. You can still produce the " + \
                                 "diff by removing 'mapping' from 'steps' arguments. " + \
-                                "Ex: steps=['count','content']. Diff operation was: %s" % op)
+                                "Ex: steps=['content']. Diff operation was: %s" % op)
                             got_error = err
-                    metadata["diff"]["mapping_file"] = res["mapping_file"]
+                    self.metadata["diff"]["mapping_file"] = res["mapping_file"]
                     diff_stats["mapping_changed"] = True
+                    json.dump(self.metadata,open(self.metadata_filename,"w"),indent=True)
 
                 self.logger.info("Diff file containing mapping differences generated: %s" % res.get("mapping_file"))
 
@@ -290,38 +289,6 @@ class BaseDiffer(object):
             yield from job
             if got_error:
                 raise got_error
-
-        if "count" in steps:
-            cnt = 0
-            pinfo = self.get_pinfo()
-            pinfo["source"] = "%s vs %s" % (self.new.target_name,self.old.target_name)
-            pinfo["step"] = "count"
-            self.logger.info("Counting root keys in '%s'"  % self.new.target_name)
-            diff_stats["root_keys"] = {}
-            jobs = []
-            data_new = id_feeder(self.new, batch_size=batch_size)
-            self.register_status("diffing",transient=True,init=True,job={"step":"diff-count"})
-            for id_list in data_new:
-                cnt += 1
-                pinfo["description"] = "batch #%s" % cnt
-                self.logger.info("Creating diff worker for batch #%s" % cnt)
-                job = yield from self.job_manager.defer_to_process(pinfo,
-                        partial(diff_worker_count, id_list, new_db_col_names, cnt))
-                jobs.append(job)
-            def counted(f):
-                root_keys = {}
-                # merge the counts
-                for d in f.result():
-                    for k in d:
-                        root_keys.setdefault(k,0)
-                        root_keys[k] +=  d[k]
-                self.logger.info("root keys count: %s" % root_keys)
-                diff_stats["root_keys"] = root_keys
-                self.register_status("success",job={"step":"diff-count"})
-            tasks = asyncio.gather(*jobs)
-            tasks.add_done_callback(counted)
-            yield from tasks
-            self.logger.info("Finished counting keys in the new collection: %s" % diff_stats["root_keys"])
 
         if "content" in steps:
             skip = 0
@@ -341,7 +308,7 @@ class BaseDiffer(object):
                     diff_stats["update"] += res["update"]
                     diff_stats["add"] += res["add"]
                     if res.get("diff_file"):
-                        metadata["diff"]["files"].append(res["diff_file"])
+                        self.metadata["diff"]["files"].append(res["diff_file"])
                     self.logger.info("(Updated: {}, Added: {})".format(res["update"], res["add"]))
                 self.logger.info("Creating diff worker for batch #%s" % cnt)
                 job = yield from self.job_manager.defer_to_process(pinfo,
@@ -364,7 +331,7 @@ class BaseDiffer(object):
                     res = f.result()
                     diff_stats["delete"] += res["delete"]
                     if res.get("diff_file"):
-                        metadata["diff"]["files"].append(res["diff_file"])
+                        self.metadata["diff"]["files"].append(res["diff_file"])
                     self.logger.info("(Deleted: {})".format(res["delete"]))
                 self.logger.info("Creating diff worker for batch #%s" % cnt)
                 job = yield from self.job_manager.defer_to_process(pinfo,
@@ -373,7 +340,7 @@ class BaseDiffer(object):
                 jobs.append(job)
             yield from asyncio.gather(*jobs)
             self.logger.info("Finished calculating diff for the old collection. Total number of docs deleted: {}".format(diff_stats["delete"]))
-            self.register_status("success",job={"step":"diff-content"})
+            json.dump(self.metadata,open(self.metadata_filename,"w"),indent=True)
 
         self.logger.info("Summary: (Updated: {}, Added: {}, Deleted: {}, Mapping changed: {})".format(
             diff_stats["update"], diff_stats["add"], diff_stats["delete"], diff_stats["mapping_changed"]))
@@ -444,8 +411,8 @@ class BaseDiffer(object):
             #job = yield from self.job_manager.defer_to_thread(pinfo,merge_diff)
             self.register_status("diffing",transient=True,init=True,job={"step":"diff-reduce"})
             res = yield from merge_diff()
-            metadata["diff"]["files"] = res
-            self.register_status("success",job={"step":"diff-reduce"})
+            self.metadata["diff"]["files"] = res
+            json.dump(self.metadata,open(self.metadata_filename,"w"),indent=True)
             if got_error:
                 self.logger.exception("Failed to reduce diff files: %s" % got_error,extra={"notify":True})
                 raise got_error
@@ -468,14 +435,11 @@ class BaseDiffer(object):
                     got_error = e
             job.add_done_callback(posted)
             yield from job
+            json.dump(self.metadata,open(self.metadata_filename,"w"),indent=True)
             if got_error:
                 self.logger.exception("Failed to run post diff process: %s" % got_error,extra={"notify":True})
                 raise got_error
 
-        # pickle again with potentially more information (diff_stats)
-        # "post" doesn't update metadata so don't dump metadata if it hasn't changed
-        if steps != ["post"]:
-            json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
         strargs = "[old=%s,new=%s,steps=%s,diff_stats=%s]" % (old_db_col_names,new_db_col_names,steps,diff_stats)
         self.logger.info("success %s" % strargs,extra={"notify":True})
 
@@ -587,10 +551,9 @@ class ColdHotJsonDifferBase(ColdHotDiffer):
         assert coldcol.count() > 0, "Cold collection is empty..."
         diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
         diff_files = glob.glob(os.path.join(diff_folder,"*.pyobj"))
-        metadata = json.load(open(os.path.join(diff_folder,"metadata.json")))
-        dirty = False
         fixed = 0
         for diff_file in diff_files:
+            dirty = False
             self.logger.info("Post-processing diff file %s" % diff_file)
             data = loadobj(diff_file)
             # update/remove case #1
@@ -639,16 +602,13 @@ class ColdHotJsonDifferBase(ColdHotDiffer):
                 md5 = md5sum(diff_file)
                 # find info to adjust md5sum
                 found = False
-                for i,df in enumerate(metadata["diff"]["files"]):
+                for i,df in enumerate(self.metadata["diff"]["files"]):
                     if df["name"] == name:
                         found = True
                         break
                 assert found, "Couldn't find file information in metadata (with md5 value), try to rebuild_diff_file_list() ?"
-                metadata["diff"]["files"][i] = {"name":name,"md5sum":md5}
-                self.logger.info(metadata["diff"]["files"])
-
-        if dirty:
-            json.dump(metadata,open(os.path.join(diff_folder,"metadata.json"),"w"),indent=True)
+                self.metadata["diff"]["files"][i] = {"name":name,"md5sum":md5}
+                self.logger.info(self.metadata["diff"]["files"])
 
         self.logger.info("Post-diff process fixing jsondiff operations done: %s fixed" % fixed)
         return {"fixed":fixed}
