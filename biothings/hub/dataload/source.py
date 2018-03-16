@@ -85,6 +85,8 @@ class SourceManager(BaseSourceManager):
                             "count" : info.get("count"),
                             "started_at" : info.get("started_at")
                             }
+                    if info.get("err"):
+                         mini["upload"]["sources"][job]["error"] = info["err"]
                     count += info.get("count") or 0
                     all_status.add(info["status"])
 
@@ -96,6 +98,7 @@ class SourceManager(BaseSourceManager):
                 elif "uploading" in all_status:
                     mini["upload"]["status"] = "uploading"
 
+            # TODO: this is a duplication of above, dealing with different multiplicity
             elif len(src["upload"]["jobs"]) == 1:
                 job,info = list(src["upload"]["jobs"].items())[0]
                 mini["upload"]["sources"][job] = {
@@ -104,6 +107,8 @@ class SourceManager(BaseSourceManager):
                         "count" : info.get("count"),
                         "started_at" : info.get("started_at")
                         }
+                if info.get("err"):
+                     mini["upload"]["sources"][job]["error"] = info["err"]
                 if detailed:
                     self.set_mapping_src_meta(job,mini)
                 count += info.get("count") or 0
