@@ -204,4 +204,6 @@ body,
     height: 100%;
 }
 
+.red {color: #c31616;}
+
 </style>

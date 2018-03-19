@@ -14,7 +14,15 @@
                         </tr>
                         <tr>
                             <td >Status</td>
-                            <td><i>{{source.download.status}}</i></td>
+                            <td>
+                                <i :class="source.download.status == 'failed' ? 'red' : ''">{{source.download.status}}</i>
+                            </td>
+                        </tr>
+                        <tr v-if="source.download.error">
+                            <td >Error</td>
+                            <td>
+                                <div class="red">{{source.download.error}}</div>
+                            </td>
                         </tr>
                         <tr>
                             <td >Last download</td>

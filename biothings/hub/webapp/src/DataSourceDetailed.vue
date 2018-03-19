@@ -26,14 +26,15 @@
                 <p>
                     <div class="ui top attached pointing menu">
                         <a class="red item active" data-tab="dump" v-if="source.download">Dumper</a>
-                        <a class="red item" data-tab="upload">Uploader</a>
+                        <!-- in case no dumper, uploader should be active tab -->
+                        <a :class="['red item', source.download == undefined ? 'active' : '']" data-tab="upload">Uploader</a>
                         <a class="red item" data-tab="mapping">Mapping</a>
                         <!--a class="red item" data-tab="inspect">Statistics</a-->
                     </div>
                     <div class="ui bottom attached tab segment active" data-tab="dump" v-if="source.download">
                         <data-source-dump v-bind:source="source"></data-source-dump>
                     </div>
-                    <div class="ui bottom attached tab segment" data-tab="upload">
+                    <div :class="['ui bottom attached tab segment', source.download == undefined ? 'active' : '']" data-tab="upload">
                         <data-source-upload v-bind:source="source"></data-source-upload>
                     </div>
                     <div class="ui bottom attached tab segment" data-tab="mapping">

@@ -22,7 +22,13 @@
                                     </tr>
                                     <tr>
                                         <td >Status</td>
-                                        <td><i>{{info.status}}</i></td>
+                                        <td><i :class="info.status == 'failed' ? 'red' : ''">{{info.status}}</i></td>
+                                    </tr>
+                                    <tr v-if="info.error">
+                                        <td >Error</td>
+                                        <td>
+                                            <div class="red">{{info.error}}</div>
+                                        </td>
                                     </tr>
                                     <tr>
                                         <td >Last upload</td>
