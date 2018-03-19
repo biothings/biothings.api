@@ -96,7 +96,8 @@ class BaseSyncer(object):
         # to select correct diff sub-record (1 collection can be diffed with multiple others)
         diff_key = "%s-%s" % (self.old.target_name,self.new.target_name)
         # once in diff, select correct sync sub-record (1 diff can be applied to different backend)
-        sync_key = "-".join(self.target_backend)
+        # replace dots as hostname can have dots which could be interpreted as dotted field by mongo
+        sync_key = "-".join(self.target_backend).replace(".","-")
         sync_info = {sync_key : {}}
         if transient:
             # record some "in-progress" information
