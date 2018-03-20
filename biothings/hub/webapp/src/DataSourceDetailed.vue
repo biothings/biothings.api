@@ -1,97 +1,82 @@
 <template>
     <div class="ui fluid container">
-    <div id="data-source" class="ui centered fluid card" v-if="source">
-        <div class="content">
+        <div id="data-source" class="ui centered fluid card" v-if="source">
+            <div class="content">
 
-            <div class="left aligned header" v-if="source.name">{{ source.name | splitjoin | capitalize }}</div>
-            <div class="meta">
-                <span class="right floated time" v-if="source.download && source.download.started_at">Updated {{ source.download.started_at | moment("from", "now") }}</span>
-                <span class="right floated time" v-else>Never updated</span>
-                <span class="left floated category">{{ source.release }}</span>
-            </div>
-            <div class="left aligned description">
-                <p>
-                    <div class="ui clearing divider"></div>
-                    <div>
-                        <i class="file outline icon"></i>
-                        {{ source.count | currency('',0) }} document{{ source.count &gt; 1 ? "s" : "" }}
-                    </div>
-                    <br>
-                    <div>
-                        <i class="folder icon"></i>
-                        Data folder: {{source.data_folder}}
-                    </div>
-                </p>
+                <div class="left aligned header" v-if="source.name">{{ source.name | splitjoin | capitalize }}</div>
+                <div class="meta">
+                    <span class="right floated time" v-if="source.download && source.download.started_at">Updated {{ source.download.started_at | moment("from", "now") }}</span>
+                    <span class="right floated time" v-else>Never updated</span>
+                    <span class="left floated category">{{ source.release }}</span>
+                </div>
+                <div class="left aligned description">
+                    <p>
+                        <div class="ui clearing divider"></div>
+                        <div>
+                            <i class="file outline icon"></i>
+                            {{ source.count | currency('',0) }} document{{ source.count &gt; 1 ? "s" : "" }}
+                        </div>
+                        <br>
+                        <div>
+                            <i class="folder icon"></i>
+                            Data folder: {{source.data_folder}}
+                        </div>
+                    </p>
 
-                <p>
-                    <div class="ui top attached pointing menu">
-                        <a class="red item active" data-tab="dump" v-if="source.download">Dumper</a>
-                        <!-- in case no dumper, uploader should be active tab -->
-                        <a :class="['red item', source.download == undefined ? 'active' : '']" data-tab="upload">Uploader</a>
-                        <a class="red item" data-tab="mapping">Mapping</a>
-                        <!--a class="red item" data-tab="inspect">Statistics</a-->
-                    </div>
-                    <div class="ui bottom attached tab segment active" data-tab="dump" v-if="source.download">
-                        <data-source-dump v-bind:source="source"></data-source-dump>
-                    </div>
-                    <div :class="['ui bottom attached tab segment', source.download == undefined ? 'active' : '']" data-tab="upload">
-                        <data-source-upload v-bind:source="source"></data-source-upload>
-                    </div>
-                    <div class="ui bottom attached tab segment" data-tab="mapping">
-                        <data-source-mapping v-bind:maps="maps" v-bind:_id="_id"></data-source-mapping>
-                    </div>
-                    <!--div class="ui bottom attached tab segment" data-tab="inspect">
+                    <p>
+                        <div class="ui top attached pointing menu">
+                            <a class="red item active" data-tab="dump" v-if="source.download">Dumper</a>
+                            <!-- in case no dumper, uploader should be active tab -->
+                            <a :class="['red item', source.download == undefined ? 'active' : '']" data-tab="upload">Uploader</a>
+                            <a class="red item" data-tab="mapping">Mapping</a>
+                            <!--a class="red item" data-tab="inspect">Statistics</a-->
+                        </div>
+                        <div class="ui bottom attached tab segment active" data-tab="dump" v-if="source.download">
+                            <data-source-dump v-bind:source="source"></data-source-dump>
+                        </div>
+                        <div :class="['ui bottom attached tab segment', source.download == undefined ? 'active' : '']" data-tab="upload">
+                            <data-source-upload v-bind:source="source"></data-source-upload>
+                        </div>
+                        <div class="ui bottom attached tab segment" data-tab="mapping">
+                            <data-source-mapping v-bind:maps="maps" v-bind:_id="_id"></data-source-mapping>
+                        </div>
+                        <!--div class="ui bottom attached tab segment" data-tab="inspect">
                         <data-source-inspect v-bind:maps="maps" v-bind:_id="_id"></data-source-inspect>
-                    </div-->
-                </p>
+                        </div-->
+                    </p>
 
+                </div>
             </div>
-        </div>
 
-        <inspect-form v-bind:toinspect="source" v-bind:select_data_provider="true">
-        </inspect-form>
+            <inspect-form v-bind:toinspect="source" v-bind:select_data_provider="true">
+            </inspect-form>
 
-        <!-- Register new data plugin -->
-        <div class="ui basic unregister modal" v-if="source.data_plugin">
-            <input class="plugin_url" type="hidden" :value="source.data_plugin.plugin.url">
-            <div class="ui icon header">
-                <i class="remove icon"></i>
-                Unregister data plugin
-            </div>
-            <div class="content">
-                <p>Are you sure you want to unregister and delete data plugin <b>{{source.name}}</b> ?</p>
-            </div>
-            <div class="actions">
-                <div class="ui red basic cancel inverted button">
+            <!-- Register new data plugin -->
+            <div class="ui basic unregister modal" v-if="source.data_plugin">
+                <input class="plugin_url" type="hidden" :value="source.data_plugin.plugin.url">
+                <div class="ui icon header">
                     <i class="remove icon"></i>
-                    No
+                    Unregister data plugin
                 </div>
-                <div class="ui green ok inverted button">
-                    <i class="checkmark icon"></i>
-                    Yes
+                <div class="content">
+                    <p>Are you sure you want to unregister and delete data plugin <b>{{source.name}}</b> ?</p>
+                </div>
+                <div class="actions">
+                    <div class="ui red basic cancel inverted button">
+                        <i class="remove icon"></i>
+                        No
+                    </div>
+                    <div class="ui green ok inverted button">
+                        <i class="checkmark icon"></i>
+                        Yes
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Diff-->
-        <div class="ui diff modal">
-            <div class="ui header">
-                <i class="exchange icon"></i>
-                JSON diff results
-            </div>
-            <div class="content">
-                <p>Operations describe what is required to get from the data on the left, to the data on the right</p>
-                <json-diff-results></json-diff-results>
-            </div>
-            <div class="actions">
-                <div class="ui green ok button">
-                    <i class="checkmark icon"></i>
-                    OK
-                </div>
-            </div>
-        </div>
+            <!-- Diff-->
+            <diff-modal></diff-modal>
 
-    </div>
+        </div>
     </div>
 </template>
 
@@ -103,13 +88,13 @@ import DataSourceDump from './DataSourceDump.vue'
 import DataSourceUpload from './DataSourceUpload.vue'
 import DataSourceInspect from './DataSourceInspect.vue'
 import DataSourceMapping from './DataSourceMapping.vue'
-import JsonDiffResults from './JsonDiffResults.vue'
+import DiffModal from './DiffModal.vue'
 
 export default {
     name: 'data-source-detailed',
     props: ['_id'],
     components: { InspectForm, DataSourceDump, DataSourceUpload, DataSourceInspect,
-                  DataSourceMapping, JsonDiffResults },
+                  DataSourceMapping, DiffModal },
     mounted () {
         console.log("DataSourceDetailed mounted");
         this.loadData();
@@ -117,14 +102,10 @@ export default {
         $('.menu .item').tab();
     },
     created() {
-        bus.$on("save_mapping",this.saveMapping);
         bus.$on("reload_datasource_detailed",this.loadData);
-        bus.$on("show_diffed",this.showDiffed);
     },
     beforeDestroy() {
-        bus.$off("save_mapping",this.saveMapping);
         bus.$off("reload_datasource_detailed",this.loadData);
-        bus.$off("show_diffed",this.showDiffed);
     },
     data () {
         return {
@@ -244,26 +225,6 @@ export default {
             .catch(err => {
                 console.log("Error getting source information: " + err);
             })
-        },
-        saveMapping: function(subsrc,map,dest, map_id) {
-            console.log(`Saving mapping for ${subsrc} dest:${dest}`);
-            axios.put(axios.defaults.baseURL + `/source/${subsrc}/mapping`,
-                        {"mapping" : map, "dest" : dest})
-            .then(response => {
-                console.log(response.data.result)
-                this.loadData();
-                bus.$emit(`${subsrc}-${map_id}-mapping_saved`);
-            })
-            .catch(err => {
-                console.log("Error : " + err);
-            })
-        },
-        showDiffed : function() {
-            $('.ui.diff.modal').modal({
-                observeChanges: true,
-                detachable: false,
-            })
-            .modal("show")
         },
     },
 }

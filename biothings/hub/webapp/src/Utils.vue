@@ -16,8 +16,8 @@ export default {
                 console.log(html);
                 throw err;
             }
-        }
-    }
+        },
+    },
 }
 
 </script>

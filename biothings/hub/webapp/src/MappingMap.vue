@@ -1,6 +1,39 @@
 <template>
     <span>
+
+        <h3 class="center aligned" v-if="map_origin == 'inspect'">Mapping from inspection</h3>
+        <h3 class="center aligned" v-else-if="map_origin == 'master'">Registered mapping</h3>
+        <h3 class="center aligned" v-else-if="map_origin == 'build'">Merged mapping</h3>
+        <div class="center aligned">
+            <button class="ui labeled mini icon button" 
+                v-if="map && !read_only
+                && !map['errors']
+                && !map['pre-mapping']"
+                v-on:click="saveMapping()">
+                <i class="save icon"></i>
+                Save
+            </button>
+            <div class="ui mini buttons" v-if="map">
+                <div class="ui labeled icon button"
+                    v-on:click="testMapping()">
+                    <i class="check square outline icon"></i>Validate on <span :class='[name,map_id,"test-on"]'>...</span>
+                </div>
+                <div :class="['ui floating', map_id, 'dropdown icon button']">
+                    <i class="dropdown icon"></i>
+                    <div class="menu">
+                    </div>
+                </div>
+            </div>
+            <button class="ui labeled mini icon button"
+                v-if="can_commit != false && map_origin == 'inspect'"
+                v-on:click="commitMapping()">
+                <i class="angle double right icon"></i>
+                Commit
+            </button>
+        </div>
+
         <div class="ui orange basic label" v-if="dirty">Edited</div>
+        <br>
         <div :class="['ui',mapping_error ? 'red' : 'green', 'label']" v-if="mapping_msg != null">
             <span v-if="mapping_error">
                 An error occured while validating this mapping:<br>
@@ -94,6 +127,27 @@
             </div>
         </div>
 
+        <div v-bind:id="'modal_commit_' + name" class="ui modal">
+            <div class="ui icon header">
+                <i class="angle double right icon"></i>
+                Commit new mapping
+            </div>
+            <div class="content">
+                <p>Are you sure you want to commit mapping from inspection?</p>
+                <p>This will be replace current registered one.</p>
+            </div>
+            <div class="actions">
+                <div class="ui red basic cancel button">
+                    <i class="remove icon"></i>
+                    No
+                </div>
+                <div class="ui green ok button">
+                    <i class="checkmark icon"></i>
+                    Yes
+                </div>
+            </div>
+        </div>
+
     </span>
 </template>
 
@@ -101,26 +155,27 @@
 import axios from 'axios'
 import bus from './bus.js'
 import Vue from 'vue';
+import Utils from './Utils.vue'
 
 export default {
     name: 'mapping-map',
-    props: ['map_id','map','name','read_only'],
+    props: ['map_id','map','name','read_only','map_origin','can_commit','entity'],
+    mixins: [Utils],
     mounted () {
         console.log("MappingMap mounted");
         this.htmlmap();
         $('.ui.checkbox').checkbox();
-                this.$forceUpdate();
+        this.$forceUpdate();
+        this.buildIndexDropdown();
     },
     // TODO: those events are mostly due because of bad page design, with actions on a mapping separated from
     // the actual component (see DataSourceMapping.vue and the relation)
     created() {
         bus.$on("reload_mapping_map",this.$forceUpdate);
-        bus.$on(`${this.name}-${this.map_id}-mapping_saved`,this.cleaned);
         bus.$on(`mapping_test_${this.map_id}-${this.name}`,this.displayMappingTestResult);
     },
     beforeDestroy() {
         bus.$off("reload_mapping_map",this.$forceUpdate);
-        bus.$off(`${this.name}-${this.map_id}-mapping_saved`,this.cleaned);
         bus.$off(`mapping_test_${this.map_id}-${this.name}`,this.displayMappingTestResult);
     },
     data () {
@@ -130,6 +185,7 @@ export default {
             dirty : false,
             mapping_error : false,
             mapping_msg: null,
+            environments : {},
         }
     },
     computed: {
@@ -222,8 +278,6 @@ export default {
             var map_id = event.currentTarget.getAttribute("map_id");
             if(`${this.name}-${this.map_id}` != map_id)
                 return;
-            console.log(`in modifyMapKey ${this.name}-${this.map_id}`);
-            console.log(map_id);
             $(`#modal_${this.name}-${this.map_id} span.key`).html(key);
             $(`#modal_${this.name}-${this.map_id} input.path`).val(path);
             $(`#modal_${this.name}-${this.map_id} span.path`).html(path.slice(1).replace(/\//g,'.'));
@@ -267,9 +321,9 @@ export default {
         },
         htmlmap: function() {
             // deep copy
+            if(!this.map)
+                return;
             var html = JSON.parse(JSON.stringify(this.map));
-            console.log(`for ${this.map_id}`);
-            console.log(this.map);
             if(!this.read_only) {
                 var self = this;
                 var traverse = function(obj, fn, path = '') {
@@ -297,7 +351,6 @@ export default {
                     return false;
                 });
             }
-            console.log(`#${this.name}-${this.map_id}`);
             if(this.read_only && this.has_errors && "pre-mapping" in this.map)
                 // text() to escape any <class ...>
                 $(`#${this.name}-${this.map_id}`).text(JSON.stringify(this.map["pre-mapping"],null,4));
@@ -315,7 +368,79 @@ export default {
             else
                 this.mapping_error = false;
             this.mapping_msg = msg;
-        }
+        },
+        saveMapping: function(dest=null) {
+            var html = $(`#${this.name}-${this.map_id}`).html();
+            var json = this.html2json(html);
+            if(!dest)
+              dest = this.map_origin;
+            console.log(`Saving mapping for ${this.name} dest:${dest}`);
+            axios.put(axios.defaults.baseURL + `/${this.entity}/${this.name}/mapping`,
+                        {"mapping" : json, "dest" : dest})
+            .then(response => {
+                console.log(response.data.result)
+                bus.$emit("reload_datasource_detailed");
+                this.cleaned();
+            })
+            .catch(err => {
+                console.log("Error : " + err);
+            })
+        },
+        commitMapping: function() {
+            var self = this;
+            var dest = this.entity == 'source' ? 'master' : 'build';
+            $(`#modal_commit_${self.name}`)
+            .modal("setting", {
+                onApprove: function () {
+                    self.saveMapping(dest);
+                }
+            })
+            .modal(`show`);
+        },
+        testMapping: function() {
+            var html = $(`#${this.name}-${this.map_id}`).html();
+            // while a mapping on its own can have multiple root keys, if sent as is,
+            // ES will complain about more than one root key (doc_type) so embed the whole
+            // under a defined root key
+            var json = {"root_key" : {"properties" : this.html2json(html)}};
+            var env = $(`.${this.name}.${this.map_id}.test-on`).text();
+            axios.post(axios.defaults.baseURL + `/mapping/validate`,{"mapping" : json, "env" : env})
+            .then(response => {
+                console.log(response.data.result)
+                bus.$emit(`mapping_test_${this.map_id}-${this.name}`,"","info");
+            })
+            .catch(err => {
+                console.log("Error validating mapping: ");
+                console.log(err);
+                bus.$emit(`mapping_test_${this.map_id}-${this.name}`,err.data.error,"error");
+            })
+        },
+        buildIndexDropdown : function() {
+            var self = this;
+            axios.get(axios.defaults.baseURL + `/index_manager`)
+            .then(response => {
+                this.environments = Object.keys(response.data.result.env);
+                var envs = [];
+                var cnt = 0;
+                for(var e in this.environments) {
+                    var d = {"name" : this.environments[e], "value" : this.environments[e]}
+                    if(cnt == 0)
+                        d["selected"] = true;
+                    envs.push(d);
+                    cnt++;
+                }
+                $(`.ui.${self.map_id}.dropdown`).dropdown({
+                    values: envs,
+                    onChange: function(value, text, $selectedItem) {
+                        console.log(`value ${value} text ${text}`);
+                        $(`.${self.map_id}.test-on`).text(`${value}`);
+                    }
+                });
+            })
+            .catch(err => {
+                console.log("Error getting index environments: " + err);
+            })
+        },
     },
 }
 </script>
