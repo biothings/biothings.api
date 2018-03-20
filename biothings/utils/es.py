@@ -594,12 +594,16 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             return k
     inspect_doc = dict_walk(inspect_doc,str2type)
 
-    if init and not "_id" in inspect_doc:
-        raise ValueError("Not _id key found, documents won't be indexed")
     mapping = {}
     errors = []
+    if init and not "_id" in inspect_doc:
+        errors.append("Not _id key found, documents won't be indexed")
     for rootk in inspect_doc:
         if rootk == "_id":
+            keys = list(inspect_doc[rootk].keys())
+            if not len(keys) == 1 or keys[0] != str:
+                errors.append("_id fields should all be a string type (got: %s)" % keys)
+            # it was just a check, it's not part of the mapping
             continue
         if rootk == "_stats":
             continue
@@ -638,16 +642,24 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
                 mapping[rootk]["properties"] = res
         elif set(map(type,keys)) == {type}:
             # it's a type declaration, no explore
-            typs = list(map(type,keys))
+            typs = list(map(type,[k for k in keys if not k is type(None)]))
             if len(typs) > 1:
                 errors.append("More than one type (key:%s,types:%s)" % (repr(rootk),repr(keys)))
             try:
-                typ = list(inspect_doc[rootk].keys())[0]
+                typ = list(inspect_doc[rootk].keys())
+                # ther can still be more than one type, if we have a None combined with
+                # the "correct" one. We allow None as a combined type, but we want to ignore
+                # it when we want to find the mapping
+                if len(typ) == 1:
+                    typ = typ[0]
+                else:
+                    typ = [t for t in typ if not t is type(None)][0]
                 if "split" in inspect_doc[rootk][typ]:
                     typ = "split_str"
+                logging.error("now typ: %s" % typ)
                 mapping[rootk] = map_tpl[typ]
             except Exception as e:
-                raise ValueError("Can't find map type %s for key %s" % (rootk,inspect_doc[rootk]))
+                errors.append("Can't find map type %s for key %s" % (inspect_doc[rootk],rootk))
         elif inspect_doc[rootk] == {}:
             typ = rootk
             if typ == "split":
