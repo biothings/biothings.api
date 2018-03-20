@@ -45,16 +45,17 @@ class HubShell(InteractiveShell):
     cmd_cnt = 1
 
     def __init__(self):
-        self.commands = {}
-        self.extra_ns = {}
-        self.tracked = {}
+        self.commands = OrderedDict()
+        self.extra_ns = OrderedDict()
+        self.tracked = {} # command calls kept in history or not
+        self.hidden = {} # not returned by help()
         self.origout = sys.stdout
         self.buf = io.StringIO()
         #sys.stdout = self.buf
         super(HubShell,self).__init__(user_ns=self.extra_ns)
 
     def set_commands(self, basic_commands, *extra_ns):
-        def register(commands):
+        def register(commands,hidden=False):
             for name,cmd in commands.items():
                 if name in self.commands:
                     raise CommandError("Command defined multiple time: %s" % name)
@@ -62,20 +63,26 @@ class HubShell(InteractiveShell):
                     try:
                         self.commands[name] = cmd["command"]
                         self.tracked[name] = cmd.get("tracked",True)
+                        self.hidden[name] = cmd.get("hidden",False) or hidden
                     except KeyError as e:
                         raise CommandError("Could not register command because missing '%s' in definition: %s" % (e,cmd))
                 else:
                     self.commands[name] = cmd
+                    self.hidden[name] = hidden
         # update with ssh server default commands
         register(basic_commands)
+        # don't track help calls
+        register({"help":CommandDefinition(command=self.help,tracked=False)})
+
         for extra in extra_ns:
-            register(extra)
+            # don't expose extra commands, they're kind of private/advanced
+            register(extra,hidden=True)
+
         #self.extra_ns["cancel"] = self.__class__.cancel
         # for boolean calls
         self.extra_ns["_and"] = _and
         self.extra_ns["partial"] = partial
         self.extra_ns["hub"] = self
-        self.commands["help"] = self.help
         # merge official/public commands with hidden/private to
         # make the whole available in shell's namespace
         self.extra_ns.update(self.commands)
@@ -91,6 +98,8 @@ class HubShell(InteractiveShell):
         if not func:
             cmds = "\nAvailable commands:\n\n"
             for k in self.commands:
+                if self.hidden[k]:
+                    continue
                 cmds += "\t%s\n" % k
             cmds += "\nType: 'help(command)' for more\n"
             return cmds
