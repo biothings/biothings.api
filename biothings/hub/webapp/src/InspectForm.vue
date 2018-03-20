@@ -15,20 +15,20 @@
 
             <div class="four wide column">
                 <select id="select-mode" class="ui dropdown" multiple="">
-                    <option selected>type</option>
-                    <option>mapping</option>
+                    <!--option selected>type</option-->
+                    <option selected>mapping</option>
                     <!--option>stats</option-->
                 </select>
             </div>
             <div class="ten wide column">
                 <div class="ui inverted list">
-                    <a class="item">
+                    <!--a class="item">
                         <i class="right triangle icon"></i>
                         <div class="content">
                             <div class="header">type</div>
                             <div class="description">Builds a map of all types involved in the data, providing a summary of its structure</div>
                         </div>
-                    </a>
+                    </a-->
                     <a class="item">
                         <i class="right triangle icon"></i>
                         <div class="content">

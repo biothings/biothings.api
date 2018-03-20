@@ -165,14 +165,12 @@ export default {
                 var envs = response.data.result;
                 $.each(envs.env, function( env, value ) {
                     for(var cat in value.index) {
-                        for(var i in value.index[cat]) {
-                            var idx = value.index[cat][i];
-                            self.backends.push({
-                                "env":env, "host":value["host"],
-                                "index":idx["index"],
-                                "doc_type":idx["doc_type"]
-                            });
-                        }
+                        var idx = value.index[cat];
+                        self.backends.push({
+                            "env":env, "host":value["host"],
+                            "index":idx["index"],
+                            "doc_type":idx["doc_type"]
+                        });
                     }
                 });
                 $(".ui.apibackends.dropdown").dropdown();

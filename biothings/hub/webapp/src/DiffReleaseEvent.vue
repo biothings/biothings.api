@@ -159,8 +159,8 @@ export default {
             var _compat = [];
             var selecting = null;
             var self = this;
-            if(envs.config.build_config_key) {
-                selecting = this.build_config[envs.config.build_config_key];
+            if(envs.build_config_key) {
+                selecting = this.build_config[envs.build_config_key];
             }
             $.each(envs.env, function( env, value ) {
                 // check whether we can use one of build_config keys
