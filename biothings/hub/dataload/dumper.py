@@ -529,12 +529,17 @@ class LastModifiedHTTPDumper(HTTPDumper):
     """Given a list of URLs, check Last-Modified header to see
     whether the file should be downloaded. Sub-class should only have
     to declare SRC_URLS. Optionally, another field name can be used instead
-    of Last-Modified, but date format must follow RFC 2616"""
+    of Last-Modified, but date format must follow RFC 2616. If that header
+    doesn't exist, it will always download the data (bypass)"""
     LAST_MODIFIED = "Last-Modified"
     SRC_URLS = [] # must be overridden in subclass
 
     def remote_is_better(self,remotefile,localfile):
         res = self.client.head(remotefile,allow_redirects=True)
+        if not self.__class__.LAST_MODIFIED in res.headers:
+            self.logger.warning("Header '%s' doesn't exist, can determine " % self.__class__.LAST_MODIFIED + 
+                                "if remote is better, assuming it is...")
+            return True
         remote_dt =  datetime.strptime(res.headers[self.__class__.LAST_MODIFIED], '%a, %d %b %Y %H:%M:%S GMT')
         remote_lastmodified = time.mktime(remote_dt.timetuple())
         # also set release attr

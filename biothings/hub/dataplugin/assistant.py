@@ -7,7 +7,8 @@ from functools import partial
 import inspect, importlib
 
 from biothings.utils.hub_db import get_data_plugin
-from biothings.utils.common import timesofar, rmdashfr, uncompressall
+from biothings.utils.common import timesofar, rmdashfr, uncompressall, \
+                                   get_class_from_classpath
 from biothings.utils.loggers import HipchatHandler
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
 from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER, \
@@ -20,9 +21,6 @@ from biothings.hub.dataload.uploader import BaseSourceUploader
 from biothings.hub.dataload.storage import IgnoreDuplicatedStorage, BasicStorage
 from biothings.hub.dataplugin.manager import GitDataPlugin
 
-# register data plugin folder in python path so we can import
-# plugins (sub-folders) as packages
-sys.path.insert(0,DATA_PLUGIN_FOLDER)
 
 class AssistantException(Exception):
     pass
@@ -98,7 +96,11 @@ class BaseAssistant(object):
             if manifest["dumper"].get("data_url"):
                 durl = manifest["dumper"]["data_url"]
                 split = urllib.parse.urlsplit(self.url)
-                dumper_class = self.dumper_registry.get(split.scheme)
+                klass = manifest["dumper"].get("class")
+                if klass:
+                    dumper_class = get_class_from_classpath(klass)
+                else:
+                    dumper_class = self.dumper_registry.get(split.scheme)
                 if not dumper_class:
                     raise AssistantException("No dumper class registered to handle scheme '%s'" % split.scheme)
                 confdict = getattr(self,"_dict_for_%s" % split.scheme)(durl)
@@ -184,6 +186,11 @@ class AssistantManager(BaseSourceManager):
         self.data_plugin_manager = data_plugin_manager
         self.dumper_manager = dumper_manager
         self.uploader_manager = uploader_manager
+        if not os.path.exists(DATA_PLUGIN_FOLDER):
+            os.makedirs(DATA_PLUGIN_FOLDER)
+        # register data plugin folder in python path so we can import
+        # plugins (sub-folders) as packages
+        sys.path.insert(0,DATA_PLUGIN_FOLDER)
 
     def create_instance(self, klass, url):
         logging.debug("Creating new %s instance" % klass.__name__)
