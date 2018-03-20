@@ -1110,3 +1110,21 @@ class BuilderManager(BaseManager):
         col.remove({"_id":name})
         self.configure()
 
+    def save_mapping(self, name, mapping=None, dest="build", mode="mapping"):
+        logging.debug("Saving mapping for build '%s' destination='%s':\n%s" % (name,dest,pformat(mapping)))
+        src_build = get_src_build()
+        m = src_build.find_one({"_id":name})
+        assert m, "Can't find build document for '%s'" % name
+        # either given a fully qualified source or just sub-source
+        if dest == "build":
+            m["mapping"] = mapping
+            src_build.save(m)
+        elif dest == "inspect":
+            try:
+                m["inspect"]["results"][mode] = mapping
+                src_build.save(m)
+            except KeyError as e:
+                raise ValueError("Can't save mapping, document doesn't contain expected inspection data" % e)
+        else:
+            raise ValueError("Unknow saving destination: %s" % repr(dest))
+
