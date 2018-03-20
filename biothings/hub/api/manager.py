@@ -91,11 +91,10 @@ from biothings.web.api.es.handlers import StatusHandler
 
 # doc_type involved there:
 APP_LIST = [
-    (r"/status", StatusHandler),
     (r"/metadata/?", MetadataHandler),
     (r"/metadata/fields/?", MetadataHandler),
-    (r"/variant/(.+)/?", BiothingHandler),
-    (r"/variant/?$", BiothingHandler),
+    (r"/%(doc_type)s/(.+)/?", BiothingHandler),
+    (r"/%(doc_type)s/?$", BiothingHandler),
     (r"/query/?", QueryHandler),
 ]
 """ % apidoc["config"]
