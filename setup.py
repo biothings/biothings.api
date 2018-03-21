@@ -46,7 +46,8 @@ hub_requires = [
     'psutil',
     'jsonpointer',
     'IPython',
-    'boto'
+    'boto',
+    'multiprocessing_on_dill'
 ]
     
 setup(
