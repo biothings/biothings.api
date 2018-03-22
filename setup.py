@@ -34,7 +34,7 @@ if commit_hash or num_commits:
         git_file.write("{}.git\n{}\n{}".format(REPO_URL, commit_hash, num_commits))
 
 install_requires = [
-    'requests>=2.3.0',
+    'requests==2.8.1',
     'tornado',
     'elasticsearch>=6.1.1',
 ]
@@ -49,7 +49,7 @@ hub_requires = [
     'boto',
     'multiprocessing_on_dill'
 ]
-    
+
 setup(
     name="biothings",
     version=version,
@@ -71,7 +71,7 @@ setup(
         "Programming Language :: Python :: 3.6",
         "Development Status :: 4 - Beta",
         "License :: OSI Approved :: Apache Software License",
-        "Operating System :: OS Independent",        
+        "Operating System :: OS Independent",
         "Operating System :: POSIX",
         "Operating System :: MacOS :: MacOS X",
         "Operating System :: Microsoft :: Windows",

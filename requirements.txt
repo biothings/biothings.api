@@ -9,4 +9,3 @@ jsonpointer
 prettytable # diff report renderer
 multiprocessing_on_dill # to replace pickler in concurrent.futures
 dill # default pickler for job_manager (so we can pickle lambda)
-pyrestful==0.4.2 # hub rest api
