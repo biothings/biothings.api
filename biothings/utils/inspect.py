@@ -9,6 +9,7 @@ from pprint import pprint, pformat
 import copy
 
 from .common import timesofar, is_scalar, is_float, is_str, is_int
+from .web.es import flatten_doc
 
 def sumiflist(val):
     if type(val) == list:
@@ -301,6 +302,10 @@ def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging,pre_mapp
         import biothings.utils.es as es
         try:
             _map["mapping"] = es.generate_es_mapping(_map["mapping"])
+            # compute some extra metadata
+            flat = flatten_doc(_map["mapping"])
+            # total fields: ES6 requires to overcome the default 1000 limit if needed
+            _map["__metadata__"] = {"total_fields" : len(flat)}
         except es.MappingError as e:
             prem = {"pre-mapping" : _map["mapping"], "errors" : e.args[1]}
             _map["mapping"] = prem

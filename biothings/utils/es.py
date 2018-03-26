@@ -656,7 +656,6 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
                     typ = [t for t in typ if not t is type(None)][0]
                 if "split" in inspect_doc[rootk][typ]:
                     typ = "split_str"
-                logging.error("now typ: %s" % typ)
                 mapping[rootk] = map_tpl[typ]
             except Exception as e:
                 errors.append("Can't find map type %s for key %s" % (inspect_doc[rootk],rootk))
