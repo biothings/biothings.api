@@ -831,6 +831,11 @@ class GitDumper(BaseDumper):
                 cmd = ["git","checkout",commit]
                 subprocess.check_call(cmd)
             else:
+                # if we were on a detached branch (due to specific commit checkout)
+                # we need to make sure to go back to master (re-attach)
+                cmd = ["git","checkout",self.__class__.BRANCH]
+                subprocess.check_call(cmd)
+                # and then get the commit hash
                 out = subprocess.check_output(["git","rev-parse","HEAD"])
                 self.release = "HEAD (%s)" % out.decode().strip()
         finally:
