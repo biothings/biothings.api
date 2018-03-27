@@ -291,6 +291,7 @@ class BaseDumper(object):
                 job = yield from job_manager.defer_to_thread(pinfo,
                         partial(self.post_dump,job_manager=job_manager))
                 def postdumped(f):
+                    nonlocal got_error
                     if f.exception():
                         got_error = f.exception()
                 job.add_done_callback(postdumped)
@@ -868,19 +869,19 @@ class GitDumper(BaseDumper):
                 self._clone(self.__class__.GIT_REPO_URL,self.src_root_folder)
             self._pull(self.src_root_folder,release)
         pinfo = self.get_pinfo()
-        job = yield from job_manager.defer_to_thread(pinfo,do)
+        job = yield from job_manager.defer_to_thread(pinfo,partial(do))
         def done(f):
+            nonlocal got_error
             try:
                 res = f.result()
                 self.register_status("success")
             except Exception as e:
-                self.logger.exception("failed: %s" % e,extra={"notify":True})
                 got_error = e
+                self.logger.exception("failed: %s" % e,extra={"notify":True})
+                self.register_status("failed",download={"err" : str(e)})
+                raise
         job.add_done_callback(done)
         yield from job
-        if got_error:
-            self.register_status("failed",download={"err" : str(e)})
-            raise got_error
 
     def prepare_client(self):
         """Check if 'git' executable exists"""

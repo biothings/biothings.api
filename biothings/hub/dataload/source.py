@@ -180,6 +180,8 @@ class SourceManager(BaseSourceManager):
             if dp:
                 dp.pop("_id")
                 sources.setdefault(_id,{"data_plugin": {}})
+                if dp.get("download",{}).get("err"):
+                    dp["download"]["error"] = dp["download"].pop("err")
                 sources[_id]["data_plugin"] = dp
         if id:
             return list(sources.values()).pop()
