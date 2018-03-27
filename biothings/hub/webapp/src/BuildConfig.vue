@@ -1,5 +1,5 @@
 <template>
-    <table class="ui small very compact grey table">
+    <table class="ui small fixed padded compact grey table">
         <thead>
             <tr>
             </tr>
