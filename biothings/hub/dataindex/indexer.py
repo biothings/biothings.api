@@ -750,6 +750,7 @@ class Indexer(object):
         return {
                 # as of ES6, include_in_all was removed, we need to create our own "all" field
                 "query": {"default_field": "all"},
+                "codec" : "best_compression",
                 # as of ES6, analysers/tokenizers must be defined in index settings, during creation
                 "analysis": {
                     "analyzer": {
