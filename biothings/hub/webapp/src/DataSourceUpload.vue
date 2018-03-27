@@ -14,10 +14,18 @@
                             <table class="ui small very compact definition collapsing table">
                                 <tbody>
                                     <tr>
-                                        <td class="ui grey">Uploader</td>
+                                        <td >Release</td>
                                         <td>
-                                            {{info.uploader.name}}
-                                            <span v-if="info.uploader.dummy">(dummy)</span>
+                                            {{info.release}}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <!--i class="folder icon"></i-->
+                                            Data folder
+                                        </td>
+                                        <td>
+                                            {{info.data_folder}}
                                         </td>
                                     </tr>
                                     <tr>
@@ -41,6 +49,13 @@
                                     <tr>
                                         <td >Documents uploaded</td>
                                         <td>{{info.count | currency('',0)}}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="ui grey">Uploader</td>
+                                        <td>
+                                            {{info.uploader.name}}
+                                            <span v-if="info.uploader.dummy">(dummy)</span>
+                                        </td>
                                     </tr>
                                 </tbody>
                             </table>

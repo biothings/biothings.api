@@ -6,16 +6,24 @@
                 <table class="ui small very compact definition collapsing table">
                     <tbody>
                         <tr>
-                            <td class="ui grey">Dumper</td>
+                            <td >Release</td>
                             <td>
-                                {{source.download.dumper.name}}
-                                <span v-if="source.download.dumper.manual">(manual)</span>
+                                {{source.download.release}}
                             </td>
                         </tr>
                         <tr>
                             <td >Status</td>
                             <td>
                                 <i :class="source.download.status == 'failed' ? 'red' : ''">{{source.download.status}}</i>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <!--i class="folder icon"></i-->
+                                Data folder
+                            </td>
+                            <td>
+                                {{source.download.data_folder}}
                             </td>
                         </tr>
                         <tr v-if="source.download.error">
@@ -31,6 +39,13 @@
                         <tr>
                             <td >Duration</td>
                             <td>{{source.download.time}}</td>
+                        </tr>
+                        <tr>
+                            <td class="ui grey">Dumper</td>
+                            <td>
+                                {{source.download.dumper.name}}
+                                <span v-if="source.download.dumper.manual">(manual)</span>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
