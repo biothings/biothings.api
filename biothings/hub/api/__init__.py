@@ -50,6 +50,7 @@ def generate_endpoint_for_callable(name, command, method, force_bodyargs):
 def %(method)s(self%(mandatargs)s):
     '''%(name)s => %(command)s'''
     cmdargs = %(cmdargs)s
+    bodyargs = {}
     for k in cmdargs:
         if cmdargs[k] is None:
             raise tornado.web.HTTPError(400,reason="Bad Request (Missing argument " + k + ")")
@@ -57,7 +58,7 @@ def %(method)s(self%(mandatargs)s):
     if "%(method)s" != "get":
         # allow to have no body at all, defaulting to empty dict (no args)
         bodyargs = tornado.escape.json_decode(self.request.body or '{}')
-    for arg in %(args)s:
+    for arg in %(args)s + list(bodyargs.keys()):
         mandatory = False
         try:
             defarg = %(defaultargs)s[arg]
