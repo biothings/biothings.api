@@ -143,7 +143,8 @@ class BaseSourceUploader(object):
         self._state["src_dump"] = self.prepare_src_dump()
         self._state["src_master"] = get_src_master()
         self._state["logger"] = self.setup_log()
-        self.data_folder = self.src_doc.get("data_folder")
+        self.data_folder = self.src_doc.get("download",{}).get("data_folder") or \
+                           self.src_doc.get("data_folder")
         # flag ready
         self.prepared = True
 
@@ -205,7 +206,7 @@ class BaseSourceUploader(object):
     def check_ready(self,force=False):
         if not self.src_doc:
             raise ResourceNotReady("Missing information for source '%s' to start upload" % self.main_source)
-        if not self.src_doc.get("data_folder"):
+        if not self.src_doc.get("download",{}).get("data_folder"):
             raise ResourceNotReady("No data folder found for resource '%s'" % self.name)
         if not force and not self.src_doc.get("download",{}).get("status") == "success":
             raise ResourceNotReady("No successful download found for resource '%s'" % self.name)
@@ -317,7 +318,6 @@ class BaseSourceUploader(object):
     def save_doc_src_master(self,_doc):
         dkey = {"_id": _doc["_id"]}
         prev = self.src_master.find_one(dkey)
-        self.logger.error("_doc:  %s" % _doc)
         if prev:
             self.src_master.update(dkey, {"$set" : _doc})
         else:
@@ -342,6 +342,11 @@ class BaseSourceUploader(object):
             upload_info['started_at'] = datetime.datetime.now()
             self.src_dump.update_one({"_id":self.main_source},{"$set" : {job_key : upload_info}})
         else:
+            # get release that's been uploaded from download part
+            src_doc = self.src_dump.find_one({"_id":self.main_source})
+            # back-compatibility while searching for release
+            release = src_doc.get("download",{}).get("release") or src_doc["release"]
+            data_folder = src_doc.get("download",{}).get("data_folder") or src_doc["data_folder"]
             # only register time when it's a final state
             # also, keep previous uploading information
             upd = {}
@@ -352,6 +357,8 @@ class BaseSourceUploader(object):
             upd["%s.time" % job_key] = timesofar(self.t0)
             upd["%s.time_in_s" % job_key] = t1
             upd["%s.step" % job_key] = self.name # collection name
+            upd["%s.release" % job_key] = release
+            upd["%s.data_folder" % job_key] = data_folder
             self.src_dump.update_one({"_id" : self.main_source},{"$set" : upd})
 
     @asyncio.coroutine
@@ -638,26 +645,6 @@ class UploaderManager(BaseSourceManager):
             else:
                 self.register.setdefault(klass.name,[]).append(klass)
 
-    def register_status(self,src_name,status,**extra):
-        """
-        Register overall status for resource
-        """
-        src_dump = get_src_dump()
-        upload_info = {'status': status}
-        upload_info.update(extra)
-        if status == "uploading":
-            upload_info["jobs"] = {}
-            # unflag "need upload"
-            src_dump.update_one({"_id" : src_name},{"$unset" : {"pending_to_upload":None}})
-            src_dump.update_one({"_id" : src_name},{"$set" : {"upload" : upload_info}})
-        else:
-            # we want to keep information
-            upd = {}
-            for k,v in upload_info.items():
-                upd["upload.%s" % k] = v
-            src_dump.update_one({"_id" : src_name},{"$set" : upd})
-
-
     def upload_all(self,raise_on_error=False,**kwargs):
         """
         Trigger upload processes for all registered resources.
@@ -681,7 +668,6 @@ class UploaderManager(BaseSourceManager):
 
         jobs = []
         try:
-            self.register_status(src,"uploading")
             for i,klass in enumerate(klasses):
                 job = self.job_manager.submit(partial(
                         self.create_and_load,klass,job_manager=self.job_manager,*args,**kwargs))
@@ -692,15 +678,12 @@ class UploaderManager(BaseSourceManager):
                     # just consume the result to raise exception
                     # if there were an error... (what an api...)
                     f.result()
-                    self.register_status(src,"success")
                     logging.info("success",extra={"notify":True})
                 except Exception as e:
-                    self.register_status(src,"failed",err=str(e))
                     logging.exception("failed: %s" % e,extra={"notify":True})
             tasks.add_done_callback(done)
             return jobs
         except Exception as e:
-            self.register_status(src,"failed",err=str(e))
             logging.exception("Error while uploading '%s': %s" % (src,e),extra={"notify":True})
             raise
 

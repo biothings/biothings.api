@@ -141,7 +141,7 @@ class SourceDocMongoBackend(SourceDocBackendBase):
         if src_filter:
             srcs = list(set(srcs).intersection(set(src_filter)))
         for src in self.dump.find({"_id":{"$in":srcs}}):
-            version = src.get('release', src.get('timestamp', None))
+            version = src.get("download",{}).get('release', src.get('timestamp', None))
             if version:
                 src_version[src['_id']] = version
                 src_meta.setdefault(src["_id"],{}).setdefault("version",version)
@@ -150,12 +150,19 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             # in order to resolve/map main/sub source name
             if src and src.get("upload"):
                 meta = []
-                for job_name in src["upload"].get("jobs",[]):
+                for job_name in src["upload"].get("jobs",{}):
                     job = src["upload"]["jobs"][job_name]
                     # "step" is the actual sub-source name
                     docm  = self.master.find_one({"_id":job.get("step")})
                     if docm and docm.get("src_meta"):
                         meta.append(docm["src_meta"])
+                # when more than 1 sub-sources, we can have different version in sub-sources
+                # (not normal) if one sub-source uploaded, then dumper downloaded a new version,
+                # then the other sub-source uploaded that version. This should never happen, just make sure
+                subsrc_versions = [{"sub-source":job["step"],"version":job["release"]} \
+                                  for job in src["upload"].get("jobs",{}).values()]
+                assert len(set([s["version"] for s in subsrc_versions])) == 1, "Expecting one version " + \
+                        "in upload sub-sources for main source '%s' but got: %s" % (src["_id"],subsrc_versions)
                 # we'll make sure to have the same src_meta at main source level,
                 # whatever we have at sub-source level. In other words, if a main source
                 # has multiple sub-sources, there should be only src metadata anyway

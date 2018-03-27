@@ -210,14 +210,21 @@ class BaseDumper(object):
         if not release:
             # it has not been set by the dumper before while exploring
             # remote site. maybe we're just running post step ?
-            release = self.src_doc["release"]
+            # back-compatibility; use "release" at root level if not found under "download"
+            release = self.src_doc.get("download",{}).get("release") or self.src_doc["release"]
             self.logger.error("No release set, assuming: data_folder: %s, release: %s" % (data_folder,release))
+        # make sure to remove old "release" field to get back on track
+        for field in ["release","data_folder"]:
+            if self.src_doc.get(field):
+                self.logger.warning("Found '%s'='%s' at root level, " % (field,self.src_doc[field]) + \
+                        "convert to new format")
+                self.src_doc.pop(field)
 
         self.src_doc.update({
                 '_id': self.src_name,
-               'data_folder': data_folder,
-               'release': release,
                'download' : {
+                   'release': release,
+                   'data_folder': data_folder,
                    'logfile': self.logfile,
                    'started_at': datetime.now(),
                    'status': status}

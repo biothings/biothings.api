@@ -60,14 +60,14 @@ class SourceManager(BaseSourceManager):
         mini = {}
         mini["_id"] = src.get("_id",src["name"])
         mini["name"] = src["name"]
-        mini["release"] = src.get("release")
-        mini["data_folder"] = src.get("data_folder")
 
         if src.get("download"):
             mini["download"] = {
                     "status" : src["download"].get("status"),
                     "time" : src["download"].get("time"),
-                    "started_at" : src["download"].get("started_at")
+                    "started_at" : src["download"].get("started_at"),
+                    "release" : src["download"].get("release"),
+                    "data_folder" : src["download"].get("data_folder"),
                     }
             mini["download"]["dumper"] = src["download"].get("dumper",{})
             if src["download"].get("err"):
@@ -76,53 +76,29 @@ class SourceManager(BaseSourceManager):
         count = 0
         if src.get("upload"):
             mini["upload"] = {"sources" : {}}
-            all_status = set()
-            if len(src["upload"]["jobs"]) > 1:
-                for job,info in src["upload"]["jobs"].items():
-                    mini["upload"]["sources"][job] = {
-                            "time" : info.get("time"),
-                            "status" : info.get("status"),
-                            "count" : info.get("count"),
-                            "started_at" : info.get("started_at")
-                            }
-                    if info.get("err"):
-                         mini["upload"]["sources"][job]["error"] = info["err"]
-                    count += info.get("count") or 0
-                    all_status.add(info["status"])
-
-                    if detailed:
-                        self.set_mapping_src_meta(job,mini)
-
-                if len(all_status) == 1:
-                    mini["upload"]["status"] = all_status.pop()
-                elif "uploading" in all_status:
-                    mini["upload"]["status"] = "uploading"
-
-            # TODO: this is a duplication of above, dealing with different multiplicity
-            elif len(src["upload"]["jobs"]) == 1:
-                job,info = list(src["upload"]["jobs"].items())[0]
+            for job,info in src["upload"]["jobs"].items():
                 mini["upload"]["sources"][job] = {
                         "time" : info.get("time"),
                         "status" : info.get("status"),
                         "count" : info.get("count"),
-                        "started_at" : info.get("started_at")
+                        "started_at" : info.get("started_at"),
+                        "release" : info.get("release"),
+                        "data_folder" : info.get("data_folder"),
                         }
                 if info.get("err"):
                      mini["upload"]["sources"][job]["error"] = info["err"]
+                count += info.get("count") or 0
                 if detailed:
                     self.set_mapping_src_meta(job,mini)
-                count += info.get("count") or 0
-                mini["upload"]["status"] = info.get("status")
-            if src["upload"].get("err"):
-                mini["upload"]["error"] = src["upload"]["err"]
 
         if src.get("inspect"):
             mini["inspect"] = {"sources" : {}}
-            all_status = set()
             for job,info in src["inspect"]["jobs"].items():
                 if not detailed:
                     # remove big inspect data but preserve inspect status/info
                     info.get("inspect",{}).pop("results",None)
+                if info.get("err"):
+                    info["error"] = info.pop("err")
                 mini["inspect"]["sources"][job] = info
 
 

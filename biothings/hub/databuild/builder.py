@@ -1004,8 +1004,9 @@ class BuilderManager(BaseManager):
         new = {"old_build" : old["_id"],"src_version":{}}
         for src_name,data in meta_srcs.items():
             srcd = dbdump.find_one({"_id":src_name})
-            if srcd and srcd.get("release") and srcd["release"] != data["version"]:
-                new["src_version"][src_name] = {"old":data["version"],"new":srcd["release"]}
+            # TODO: should take release from upload, not download, but what about sources with more than 1 sub-sources ?
+            if srcd and srcd.get("download",{}).get("release") and srcd["download"]["release"] != data["version"]:
+                new["src_version"][src_name] = {"old":data["version"],"new":srcd["download"]["release"]}
         return new
 
     def clean_temp_collections(self,build_name,date=None,prefix=''):
