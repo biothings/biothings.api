@@ -28,6 +28,7 @@
                             <a class="red item active" data-tab="dump" v-if="source.download">Dumper</a>
                             <!-- in case no dumper, uploader should be active tab -->
                             <a :class="['red item', source.download == undefined ? 'active' : '']" data-tab="upload">Uploader</a>
+                            <a class="red item" data-tab="plugin" v-if="source.data_plugin">Plugin</a>
                             <a class="red item" data-tab="mapping">Mapping</a>
                             <!--a class="red item" data-tab="inspect">Statistics</a-->
                         </div>
@@ -36,6 +37,9 @@
                         </div>
                         <div :class="['ui bottom attached tab segment', source.download == undefined ? 'active' : '']" data-tab="upload">
                             <data-source-upload v-bind:source="source"></data-source-upload>
+                        </div>
+                        <div class="ui bottom attached tab segment" data-tab="plugin">
+                            <data-source-plugin v-bind:source="source"></data-source-plugin>
                         </div>
                         <div class="ui bottom attached tab segment" data-tab="mapping">
                             <data-source-mapping v-bind:maps="maps" v-bind:_id="_id"></data-source-mapping>
@@ -87,6 +91,7 @@ import InspectForm from './InspectForm.vue'
 import DataSourceDump from './DataSourceDump.vue'
 import DataSourceUpload from './DataSourceUpload.vue'
 import DataSourceInspect from './DataSourceInspect.vue'
+import DataSourcePlugin from './DataSourcePlugin.vue'
 import DataSourceMapping from './DataSourceMapping.vue'
 import DiffModal from './DiffModal.vue'
 
@@ -94,7 +99,7 @@ export default {
     name: 'data-source-detailed',
     props: ['_id'],
     components: { InspectForm, DataSourceDump, DataSourceUpload, DataSourceInspect,
-                  DataSourceMapping, DiffModal },
+                  DataSourcePlugin, DataSourceMapping, DiffModal },
     mounted () {
         console.log("DataSourceDetailed mounted");
         this.loadData();
