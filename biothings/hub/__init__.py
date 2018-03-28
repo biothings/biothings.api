@@ -9,3 +9,5 @@ DIFFER_CATEGORY = "differ"
 DIFFMANAGER_CATEGORY = "diffmanager"
 SYNCER_CATEGORY = "syncer"
 INSPECTOR_CATEGORY = "inspector"
+
+__version__ = "0.1"
