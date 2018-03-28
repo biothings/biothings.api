@@ -32,7 +32,7 @@ class Database(MongoClient,IDatabase):
 
     def __init__(self,dbname,*args,**kwargs):
         super(Database,self).__init__(dbname)
-        self.dbname = dbname
+        self.name = dbname
 
 def requires_config(func):
     @wraps(func)

@@ -13,11 +13,13 @@ classes below. See biothings.utils.mongo and biothings.utils.sqlit3 for
 some examples.
 """
 
+import os
+from biothings.utils.common import dump as dumpobj, loadobj, \
+                        get_random_string, get_timestamp
 
 def get_hub_db_conn():
     """Return a Database instance (connection to hub db)"""
     raise NotImplementedError()
-
 
 def get_src_dump():
     """Return a Collection instance for src_dump collection/table"""
@@ -54,7 +56,6 @@ def get_source_fullname(col_name):
     """
     raise NotImplementedError()
 
-
 class IDatabase(object):
     """
     This class declares an interface and partially implements some of it, 
@@ -64,7 +65,7 @@ class IDatabase(object):
 
     def __init__(self):
         super(IDatabase,self).__init__()
-        self.dbname = None # should be set from config module
+        self.name = None # should be set from config module
         # any other initialization can be done here, 
         # depending on the backend specifics
 
@@ -170,6 +171,35 @@ class Collection(object):
         """Shortcut to find_one({"_id":_id})"""
         raise NotImplementedError()
 
+def dump(db,folder=".",archive=None):
+    """
+    Dump the whole database in given folder. "archive" can be pass
+    to specify the target filename, otherwise, it's randomly generated
+    """
+    dump = {}
+    for getter in [get_src_dump,get_src_master,get_src_build,
+            get_src_build_config,get_data_plugin,get_api]:
+        col = getter()
+        dump[col.name] = []
+        for doc in col.find():
+            dump[col.name].append(doc)
+    if not archive:
+        archive = "%s_dump_%s_%s.pyobj" % (db.name,get_timestamp(),get_random_string())
+    path = os.path.join(folder,archive)
+    dumpobj(dump,path)
+    return path
+
+def restore(db,archive,drop=False):
+    """Restore database from given archive. If drop is True, then delete existing collections"""
+    data = loadobj(archive)
+    for colname in data:
+        docs = data[colname]
+        col = db[colname]
+        if drop:
+            # we don't have a drop command but we can remove all docs
+            col.remove({})
+        for doc in docs:
+            col.save(doc)
 
 def setup(config):
     global get_hub_db_conn

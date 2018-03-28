@@ -716,7 +716,7 @@ class Database(IDatabase):
 
     def __init__(self):
         super(Database,self).__init__()
-        self.dbname = self.CONFIG.DATA_HUB_DB_DATABASE
+        self.name = self.CONFIG.DATA_HUB_DB_DATABASE
         self.es_host = self.CONFIG.HUB_DB_BACKEND["host"]
         self.cols = {}
         self.setup()
@@ -728,8 +728,8 @@ class Database(IDatabase):
     def setup(self):
         # check if index exists
         conn = self.get_conn()
-        if not conn.indices.exists(self.dbname):
-            conn.indices.create(self.dbname)
+        if not conn.indices.exists(self.name):
+            conn.indices.create(self.name)
 
     def get_conn(self):
         return get_es(self.es_host)
@@ -739,8 +739,8 @@ class Database(IDatabase):
 
     def create_if_needed(self,table):
         conn = self.get_conn()
-        if not conn.indices.get_mapping(self.dbname,table):
-            conn.indices.put_mapping(table,{"dynamic":True},index=self.dbname)
+        if not conn.indices.get_mapping(self.name,table):
+            conn.indices.put_mapping(table,{"dynamic":True},index=self.name)
 
     def __getitem__(self, colname):
         if not colname in self.cols:

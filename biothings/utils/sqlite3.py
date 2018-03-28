@@ -49,10 +49,10 @@ class Database(IDatabase):
 
     def __init__(self):
         super(Database,self).__init__()
-        self.dbname = self.CONFIG.DATA_HUB_DB_DATABASE
+        self.name = self.CONFIG.DATA_HUB_DB_DATABASE
         if not os.path.exists(self.CONFIG.HUB_DB_BACKEND["sqlite_db_folder"]):
             os.makedirs(self.CONFIG.HUB_DB_BACKEND["sqlite_db_folder"])
-        self.dbfile = os.path.join(self.CONFIG.HUB_DB_BACKEND["sqlite_db_folder"],self.dbname)
+        self.dbfile = os.path.join(self.CONFIG.HUB_DB_BACKEND["sqlite_db_folder"],self.name)
         self.cols = {}
 
     @property

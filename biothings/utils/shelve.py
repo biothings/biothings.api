@@ -32,13 +32,13 @@ class Database(Connection):
         global _db_register
         if not dbname in _db_register:
             obj = Connection.__new__(cls)
-            obj.dbname = dbname
+            obj.name = dbname
             _db_register[dbname] = obj
         return _db_register[dbname]
 
     def __init__(self,dbname):
         super(Database,self).__init__()
-        self.dbname = dbname
+        self.name = dbname
         self.cols = {}
         self.dbfolder = os.path.join(config.SHELVE_DB_FOLDER,dbname)
 
@@ -51,11 +51,11 @@ class Database(Connection):
 
     def __getitem__(self, colname):
         if not colname in self.cols:
-            self.cols[colname] = Collection(self.dbname,colname,self.dbfolder)
+            self.cols[colname] = Collection(self.name,colname,self.dbfolder)
         return self.cols[colname]
 
     def __repr__(self):
-        return "<%s at %s, %s>" % (self.__class__.__name__,hex(id(self)),self.dbname)
+        return "<%s at %s, %s>" % (self.__class__.__name__,hex(id(self)),self.name)
 
 
 class Collection(object):
@@ -64,7 +64,7 @@ class Collection(object):
         if not os.path.exists(dbfolder):
             os.makedirs(dbfolder)
         self.colname = colname
-        self.dbname = dbname
+        self.name = dbname
         self.shelf = shelve.open(os.path.join(dbfolder,self.colname))
 
     @property
@@ -73,7 +73,7 @@ class Collection(object):
 
     @property
     def database(self):
-        return Database(self.dbname)
+        return Database(self.name)
 
     def find_one(self,*args,**kwargs):
         if args and len(args) == 1 and type(args[0]) == dict:
