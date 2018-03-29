@@ -1019,7 +1019,7 @@ class DiffReportTxt(DiffReportRendererBase):
             txt += "\n"
         txt += "\n"
 
-        with open(os.path.join(btconfig.DIFF_PATH,report["diff_folder"],filename),"w") as fout:
+        with open(os.path.join(report["diff_folder"],filename),"w") as fout:
             fout.write(txt)
 
         return txt
