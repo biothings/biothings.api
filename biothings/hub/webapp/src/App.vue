@@ -28,6 +28,19 @@
           <job-summary></job-summary>
         </div>
 
+        <div class="ui item">
+            <div v-if="connected" :data-tooltip="'Connected using ' + socket.protocol" data-position="bottom center">
+                <i class="green power off icon"></i>
+            </div>
+            <div v-else>
+                <button class="mini circular ui icon button" @click="setupSocket"
+                    data-tooltip="Click to reconnect"
+                    data-position="bottom center">
+                    <i class="red power off icon"></i>
+                </button>
+            </div>
+        </div>
+
       </div>
     </div>
 
@@ -131,7 +144,40 @@ export default {
   mounted () {
       $('.menu .item').tab();
   },
+  created () {
+      console.log("app created");
+      this.setupSocket();
+  },
+  data() {
+      return {
+          connected: false,
+          socket_msg: '',
+          socket : null,
+      }
+  },
   methods: {
+      setupSocket() {
+          var self = this;
+          var transports = null;//["websocket","xhr-polling"];
+          this.socket = new SockJS(axios.defaults.baseURL + '/ws', transports);
+          this.socket.onopen = function() {
+	          self.connected = true;
+          };
+          this.socket.onmessage = function (evt) {
+              self.socket_msg = evt.data;
+          };
+          this.socket.onclose = function() {
+              self.connected = false;
+              self.socket  =null;
+          };
+          console.log("socket");
+          console.log(this.socket);
+      },
+	  pingServer() {
+          console.log("pingServer");
+		  // Send the "pingServer" event to the server.
+          this.socket.send(JSON.stringify({'pingServer': 'PING!'}));
+	  }
   }
 }
 
