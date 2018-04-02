@@ -47,7 +47,8 @@ hub_requires = [
     'jsonpointer',
     'IPython',
     'boto',
-    'multiprocessing_on_dill'
+    'multiprocessing_on_dill',
+    'pyinotify'
 ]
 
 setup(

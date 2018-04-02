@@ -1,6 +1,8 @@
+import os,sys
 import asyncio
 import logging
 from pprint import pformat
+import importlib
 
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.dataload import to_boolean
@@ -16,15 +18,57 @@ class SourceManager(BaseSourceManager):
     """
 
     def __init__(self, source_list, dump_manager, upload_manager):
-        self.source_list = source_list
+        self._orig_source_list = source_list
+        self.source_list = None
         self.dump_manager = dump_manager
         self.upload_manager = upload_manager
-        self.dump_manager.register_sources(self.source_list)
-        self.upload_manager.register_sources(self.source_list)
+        self.reload()
         self.src_master = get_src_master()
         self.src_dump = get_src_dump()
         # honoring BaseSourceManager interface (gloups...-
         self.register = {}
+
+    def reload(self):
+        # clear registers
+        self.dump_manager.register.clear()
+        self.upload_manager.register.clear()
+        # re-eval source list (so if it's a string, it'll re-discover sources)
+        self.source_list = self.find_sources(self._orig_source_list)
+        self.dump_manager.register_sources(self.source_list)
+        self.upload_manager.register_sources(self.source_list)
+
+    def find_sources(self,paths):
+        sources = []
+        if type(paths) == str:
+            paths = [paths]
+        def eval_one(one_path):
+            if "/" in one_path:
+                # it's path to directory
+                # expecting 
+                if not one_path in sys.path:
+                    logging.info("Adding '%s' to python path" % one_path)
+                    sys.path.insert(0,one_path)
+                for d in os.listdir(one_path):
+                    if d.endswith("__pycache__"):
+                        continue
+                    sources.append(d)
+            else:
+                # assuming it's path to a python module (oath.to.module)
+                sources.append(one_path)
+        for path in paths:
+            eval_one(path)
+
+        # clean with only those which can be imported
+        sources = set(sources)
+        for s in [s for s in sources]:
+            try:
+                importlib.import_module(s)
+            except Exception as e:
+                logging.debug("Failed to discover source '%s': %s" % (s,e))
+                sources.remove(s)
+
+        logging.info("Found sources: %s" % sorted(sources))
+        return sources
 
     def set_mapping_src_meta(self, subsrc, mini):
         # get mapping from uploader klass first (hard-coded), then src_master (generated/manual)

@@ -12,6 +12,7 @@ import psutil
 from pprint import pprint, pformat
 from collections import OrderedDict
 import pymongo
+import pyinotify
 
 from biothings import config
 from biothings.utils.dataload import to_boolean
@@ -658,3 +659,85 @@ class CompositeCommand(str):
     def __str__(self):
         return "<CompositeCommand: '%s'>" % self.cmd
 
+
+class ReloadListener(pyinotify.ProcessEvent):
+    def my_init(self,managers,watcher_manager):
+        logging.debug("for managers %s" % managers)
+        self.managers = managers
+        self.watcher_manager = watcher_manager
+    def process_default(self, event):
+        if event.dir:
+            if event.mask & pyinotify.IN_CREATE:
+                # add to watcher. no need to check if already watched, manager knows
+                # how to deal with that
+                logging.info("Add '%s' to watcher" % event.pathname)
+                self.watcher_manager.add_watch(event.pathname,self.notifier.mask,rec=1)
+            elif event.mask & pyinotify.IN_DELETE:
+                logging.info("Remove '%s' from watcher" % event.pathname)
+                # watcher knows when directory is deleted (file descriptor become invalid),
+                # so no need to do it manually
+        logging.error("Need to reload manager because of %s" % event)
+        for m in self.managers:
+            try:
+                logging.debug("Reloading manager %s" % m)
+                m.reload()
+            except Exception as e:
+                logging.warning("Can't reload %s: %s" % (m,e))
+
+class HubReloader(object):
+    """
+    Monitor sources' code and reload managers accordingly to update running code
+    """
+
+    def __init__(self,paths,managers=[],wait=5,mask=None):
+        """
+        Monitor given paths for directory deletion/creation (which will update pyinotify watchers)
+        and for file deletion/creation. Reload given managers accordingly.
+        Poll for events every 'wait' seconds.
+        """
+        if type(paths) == str:
+            paths = [paths]
+        paths = set(paths) # get rid of duplicated, just in case
+        self.mask = mask or pyinotify.IN_CREATE|pyinotify.IN_DELETE|pyinotify.IN_CLOSE_WRITE
+        # only listen to these events. Note: directory detection is done via a flag so
+        # no need to use IS_DIR
+        self.watcher_manager = pyinotify.WatchManager(exclude_filter=lambda path: path.endswith("__pycache__"))
+        _paths = [] # cleaned
+        for path in paths:
+            if not os.path.isabs(path):
+                path = os.path.abspath(path)
+            _paths.append(path)
+            self.watcher_manager.add_watch(path,self.mask,rec=True) # recursive
+        self.listener = ReloadListener(managers=managers,watcher_manager=self.watcher_manager)
+        self.notifier = pyinotify.Notifier(
+                self.watcher_manager,
+                default_proc_fun=self.listener)
+        # propagate notifier so notifer itself can be reloaded (when new directory/source)
+        self.listener.notifier = self
+        self.paths = _paths
+        self.wait = wait
+        self.do_monitor = False
+
+    def monitor(self):
+
+        @asyncio.coroutine
+        def do():
+            logging.info("Monitoring source code in, %s:\n%s" % \
+                    (repr(self.paths),pformat([v.path for v in self.watcher_manager.watches.values()])))
+
+            while self.do_monitor:
+                try:
+                    yield from asyncio.sleep(self.wait)
+                    # this reads events from OS
+                    if self.notifier.check_events(0.1):
+                        self.notifier.read_events()
+                    # Listener gets called there if event avail
+                    self.notifier.process_events()
+                except KeyboardInterrupt:
+                    logging.warning("Stop monitoring code")
+                    break
+        self.do_monitor = True
+        return asyncio.ensure_future(do())
+
+    def watches(self):
+        return [v.path for v in self.watcher_manager.watches.values()]
