@@ -706,6 +706,10 @@ def get_api():
     db = Database()
     return db[db.CONFIG.API_COLLECTION]
 
+def get_cmd():
+    db = Database()
+    return db[db.CONFIG.CMD_COLLECTION]
+
 def get_source_fullname(col_name):
     pass
 

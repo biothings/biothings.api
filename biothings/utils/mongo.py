@@ -114,6 +114,11 @@ def get_api(conn=None):
     return conn[config.DATA_HUB_DB_DATABASE][config.API_COLLECTION]
 
 @requires_config
+def get_cmd(conn=None):
+    conn = conn or get_hub_db_conn()
+    return conn[config.DATA_HUB_DB_DATABASE][config.CMD_COLLECTION]
+
+@requires_config
 def get_target_conn():
     if config.DATA_TARGET_SERVER_USERNAME and config.DATA_TARGET_SERVER_PASSWORD:
         uri = "mongodb://{}:{}@{}:{}".format(config.DATA_TARGET_SERVER_USERNAME,

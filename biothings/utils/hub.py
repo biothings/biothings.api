@@ -11,12 +11,14 @@ from IPython import InteractiveShell
 import psutil
 from pprint import pprint, pformat
 from collections import OrderedDict
+import pymongo
 
 from biothings import config
 from biothings.utils.dataload import to_boolean
 logging = config.logger
 from biothings.utils.common import timesofar, sizeof_fmt
 import biothings.utils.aws as aws
+from biothings.utils.hub_db import get_cmd
 
 # useful variables to bring into hub namespace
 pending = "pending"
@@ -27,6 +29,11 @@ VERSIONS = HUB_ENV and "%s-versions" % HUB_ENV or "versions"
 LATEST = HUB_ENV and "%s-latest" % HUB_ENV or "latest"
 HUB_REFRESH_COMMANDS = hasattr(config,"HUB_REFRESH_COMMANDS") and config.HUB_REFRESH_COMMANDS or "* * * * * *" # every sec
 
+
+def jsonreadify(cmd):
+    newcmd = copy.copy(cmd)
+    newcmd.pop("jobs")
+    return newcmd
 
 ##############
 # HUB SERVER #
@@ -42,7 +49,8 @@ class HubShell(InteractiveShell):
 
     launched_commands = {}
     pending_outputs = {}
-    cmd_cnt = 1
+    cmd_cnt = None
+    cmd = None # "cmd" collection
 
     def __init__(self):
         self.commands = OrderedDict()
@@ -51,8 +59,22 @@ class HubShell(InteractiveShell):
         self.hidden = {} # not returned by help()
         self.origout = sys.stdout
         self.buf = io.StringIO()
-        #sys.stdout = self.buf
+        # there should be only one shell instance (todo: singleton)
+        self.__class__.cmd = get_cmd()
+        self.__class__.set_command_counter()
         super(HubShell,self).__init__(user_ns=self.extra_ns)
+
+    @classmethod
+    def set_command_counter(klass):
+        assert klass.cmd, "No cmd collection set"
+        try:
+            cur = klass.cmd.find({},{"_id":1}).sort("_id",pymongo.DESCENDING).limit(1)
+            res = next(cur)
+            logging.debug("Last launched command ID: %s" % res["_id"])
+            klass.cmd_cnt = int(res["_id"]) + 1
+        except StopIteration:
+            logging.info("Can't find highest command number, assuming starting from scratch")
+            klass.cmd_cnt = 1
 
     def set_commands(self, basic_commands, *extra_ns):
         def register(commands,hidden=False):
@@ -146,6 +168,11 @@ class HubShell(InteractiveShell):
         except AttributeError:
             raise CommandError("Can't extract command name from '%s'" % repr(cmd))
 
+    @classmethod
+    def save_cmd(klass,_id,cmd):
+        newcmd = jsonreadify(cmd)
+        klass.cmd.replace_one({"_id":_id},newcmd,upsert=True)
+
     def register_command(self, cmd, result, force=False):
         """
         Register a command 'cmd' inside the shell (so we can keep track of it).
@@ -173,6 +200,7 @@ class HubShell(InteractiveShell):
         assert not cmdnum in self.__class__.launched_commands
         # register
         self.__class__.launched_commands[cmdnum] = cmdinfo
+        self.__class__.save_cmd(cmdnum,cmdinfo)
         self.__class__.cmd_cnt += 1
 
         if type(result) == asyncio.tasks.Task or type(result) == asyncio.tasks._GatheringFuture or \
@@ -265,38 +293,33 @@ class HubShell(InteractiveShell):
 
     @classmethod
     def refresh_commands(klass):
-
-        if klass.launched_commands:
-            for num,info in sorted(klass.launched_commands.items()):
-                # already process, this current command is now history
-                # Note: if we have millions of commands there, it could last quite a while,
-                # but IRL we only have a few
-                if info.get("is_done") == True:
-                    continue
-                is_done = set([j.done() for j in info["jobs"]]) == set([True])
-                has_err = is_done and  [True for j in info["jobs"] if j.exception()] or None
-                localoutputs = is_done and ([str(j.exception()) for j in info["jobs"] if j.exception()] or \
-                            [j.result() for j in info["jobs"]]) or None
-                if is_done:
-                    klass.launched_commands[num]["is_done"] = True
-                    klass.launched_commands[num]["failed"] = has_err and has_err[0] or False
-                    klass.launched_commands[num]["results"] = localoutputs
-                    klass.launched_commands[num]["finished_at"] = time.time()
-                    klass.launched_commands[num]["duration"] = timesofar(t0=klass.launched_commands[num]["started_at"],
-                                                                        t1=klass.launched_commands[num]["finished_at"])
-                    if not has_err and localoutputs and set(map(type,localoutputs)) == {str}:
-                        localoutputs = "\n" + "".join(localoutputs)
-                    klass.pending_outputs[num] = "[%s] %s %s: finished %s" % (num,has_err and "ERR" or "OK ",info["cmd"], localoutputs)
-                else:
-                    klass.pending_outputs[num] = "[%s] RUN {%s} %s" % (num,timesofar(info["started_at"]),info["cmd"])
+        for num,info in sorted(klass.launched_commands.items()):
+            # already process, this current command is now history
+            # Note: if we have millions of commands there, it could last quite a while,
+            # but IRL we only have a few
+            if info.get("is_done") == True:
+                continue
+            is_done = set([j.done() for j in info["jobs"]]) == set([True])
+            has_err = is_done and  [True for j in info["jobs"] if j.exception()] or None
+            localoutputs = is_done and ([str(j.exception()) for j in info["jobs"] if j.exception()] or \
+                        [j.result() for j in info["jobs"]]) or None
+            if is_done:
+                klass.launched_commands[num]["is_done"] = True
+                klass.launched_commands[num]["failed"] = has_err and has_err[0] or False
+                klass.launched_commands[num]["results"] = localoutputs
+                klass.launched_commands[num]["finished_at"] = time.time()
+                klass.launched_commands[num]["duration"] = timesofar(t0=klass.launched_commands[num]["started_at"],
+                                                                    t1=klass.launched_commands[num]["finished_at"])
+                klass.save_cmd(num,klass.launched_commands[num])
+                if not has_err and localoutputs and set(map(type,localoutputs)) == {str}:
+                    localoutputs = "\n" + "".join(localoutputs)
+                klass.pending_outputs[num] = "[%s] %s %s: finished %s" % (num,has_err and "ERR" or "OK ",info["cmd"], localoutputs)
+            else:
+                klass.pending_outputs[num] = "[%s] RUN {%s} %s" % (num,timesofar(info["started_at"]),info["cmd"])
 
     @classmethod
     def command_info(klass, id=None, running=None, failed=None):
         cmds = {}
-        def jsonreadify(cmd):
-            newcmd = copy.copy(cmd)
-            newcmd.pop("jobs")
-            return newcmd
         if not id is None:
             try:
                 id = int(id)

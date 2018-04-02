@@ -47,6 +47,7 @@ class BaseDiffer(object):
         self.diff_func = diff_func
         self.timestamp = datetime.now()
         self.setup_log()
+        self.ti = time.time()
         self.metadata = {} # diff metadata
         self.metadata_filename = None
 
