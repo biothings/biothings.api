@@ -445,9 +445,9 @@ class BaseDiffer(object):
         self.logger.info("success %s" % strargs,extra={"notify":True})
 
         # remove some metadata key for diff registering (some are already in build doc, it would be duplication)
-        metadata.pop("_meta",None)
-        metadata.pop("build_config",None)
-        self.register_status("success",diff=metadata)
+        self.metadata.pop("_meta",None)
+        self.metadata.pop("build_config",None)
+        self.register_status("success",diff=self.metadata)
         return diff_stats
 
     def diff(self,old_db_col_names, new_db_col_names, batch_size=100000, steps=["content","mapping","reduce","post"], mode=None, exclude=[]):

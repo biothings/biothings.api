@@ -701,7 +701,9 @@ class HubReloader(object):
         self.mask = mask or pyinotify.IN_CREATE|pyinotify.IN_DELETE|pyinotify.IN_CLOSE_WRITE
         # only listen to these events. Note: directory detection is done via a flag so
         # no need to use IS_DIR
-        self.watcher_manager = pyinotify.WatchManager(exclude_filter=lambda path: path.endswith("__pycache__"))
+        def exclude(path):
+            return path.endswith("__pycache__") or ".git" in path
+        self.watcher_manager = pyinotify.WatchManager(exclude_filter=exclude)
         _paths = [] # cleaned
         for path in paths:
             if not os.path.isabs(path):
