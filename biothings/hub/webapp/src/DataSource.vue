@@ -97,15 +97,37 @@ import BaseDataSource from './BaseDataSource.vue'
 
 export default {
     name: 'data-source',
-    props: ['source'],
+    props: ['psource'],
     components: { InspectForm },
     mixins: [ BaseDataSource, ],
     mounted () {
         $('select.dropdown').dropdown();
     },
+    data() {
+        return {
+            // this object is set by API call, whereas 'source' prop
+            // is set by the parent
+            source_from_api: null,
+        }
+    },
     computed: {
+        source: function () {
+            // select source from API call preferably
+            return this.source_from_api || this.psource;
+        },
     },
     methods: {
+        getSource: function() {
+            console.log(`getSource ${this.source._id}`);
+            var self = this;
+            axios.get(axios.defaults.baseURL + '/source/' + this.source._id)
+            .then(response => {
+                this.source_from_api = response.data.result;
+            })
+            .catch(err => {
+                console.log("Error getting sources information: " + err);
+            })
+        },
     },
 }
 </script>

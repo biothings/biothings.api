@@ -18,7 +18,7 @@
                 </div>
                 <div id="data-source-grid" class="ui grid">
                     <div class="four wide column" v-for="source in orderBy(sources, 'name')">
-                        <data-source v-bind:source="source"></data-source>
+                        <data-source v-bind:psource="source"></data-source>
                     </div>
                 </div>
             </div>
@@ -70,7 +70,7 @@ export default {
     mounted () {
         console.log("DataSourceGrid mounted");
         this.getSourcesStatus();
-        this.interval = setInterval(this.getSourcesStatus,15000);
+        //this.interval = setInterval(this.getSourcesStatus,15000);
         $('select.dropdown').dropdown();
         $('#sources .ui.sidebar')
         .sidebar({context:$('#sources')})
@@ -82,7 +82,7 @@ export default {
     },
     beforeDestroy() {
         bus.$off('refresh_sources',this.refreshSources);
-        clearInterval(this.interval);
+        //clearInterval(this.interval);
     },
     data () {
         return  {

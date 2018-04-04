@@ -12,6 +12,12 @@ export default {
     mounted () {
     },
     components: { },
+    created() {
+        bus.$on('change_source',this.onSourceChanged);
+    },
+    beforeDestroy() {
+        bus.$off('change_source',this.onSourceChanged);
+    },
     computed: {
         inspect_status: function() {
             return this.getStatus("inspect");
@@ -92,7 +98,6 @@ export default {
             axios.put(axios.defaults.baseURL + `/source/${this.source.name}/dump`)
             .then(response => {
                 console.log(response.data.result)
-                this.$parent.getSourcesStatus();
             })
             .catch(err => {
                 console.log("Error getting job manager information: " + err);
@@ -102,7 +107,6 @@ export default {
             axios.put(axios.defaults.baseURL + `/source/${this.source.name}/upload`)
             .then(response => {
                 console.log(response.data.result)
-                this.$parent.getSourcesStatus();
             })
             .catch(err => {
                 console.log("Error getting job manager information: " + err);
@@ -147,6 +151,18 @@ export default {
                 }
             })
             .modal("show");
+        },
+        onSourceChanged(_id=null,op=null) {
+            // this method acts as a dispatcher, reacting to change_source events, filtering
+            // them for the proper source
+            // _id null: event containing change about a source but we don't know which one
+            if(_id == null || this.source._id != _id) {
+                //console.log(`I'm ${this.source._id} but they want ${_id}`);
+                return;
+            } else {
+                console.log("_id was " + _id);
+                return this.getSource();
+            };
         },
     },
 }

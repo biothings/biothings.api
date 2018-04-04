@@ -29,9 +29,9 @@
         </div>
 
         <div class="ui item">
-            <div v-if="socket && socket.readyState == 1" :data-tooltip="'Connected using: ' + socket.protocol" data-position="bottom center">
+            <div v-if="socket && socket.readyState == 1" :data-tooltip="'Connection: ' + socket.protocol" data-position="bottom center">
                 <button class="mini circular ui icon button" @click="closeSocket">
-                    <i class="grey power off icon"></i>
+                    <i class="green power off icon"></i>
                 </button>
             </div>
             <div v-else>
@@ -49,7 +49,7 @@
       </div>
     </div>
 
-    <div id="page_content" class="ui active tab segment">
+    <div id="page_content" class="blurred ui active tab segment">
     <router-view></router-view>
     </div>
 
@@ -68,6 +68,8 @@ import Vue from 'vue';
 Vue.use(Vue2Filters);
 Vue.use(require('vue-moment'));
 Vue.use(VueRouter)
+
+import bus from './bus.js';
 
 function timesofar(value) {
     let hours =  parseInt(Math.floor(value / 3600));
@@ -163,7 +165,7 @@ export default {
           connected: false,
           socket_msg: '',
           socket : null,
-          ping_timestamp : null,
+          msg_timestamp : null,
           ping_interval : null,
           latency_value : null,
       }
@@ -173,12 +175,19 @@ export default {
   watch: {
       latency_value: function (newv, oldv) {
           if(newv != oldv) {
-              console.log(`new: ${newv} old: ${oldv}`);
+              //console.log(`new: ${newv} old: ${oldv}`);
               this.evalLatency(oldv,newv);
           }
       }
   },
   methods: {
+      dispatchMessage(msg) {
+          if(msg.obj) {
+              var event = `change_${msg.obj}`;
+              console.log(`emit ${event} (${msg._id}): ${msg.op}`);
+              bus.$emit(event,msg._id,msg.op);
+          }
+      },
       evalLatency : function(oldv,newv) {
           var info = {}
           function getInfo(val) {
@@ -216,18 +225,20 @@ export default {
           var self = this;
           var transports = null;//["websocket","xhr-polling"];
           // re-init timestamp so we can monitor it again
-          this.ping_timestamp = null;
+          this.msg_timestamp = null;
           this.socket = new SockJS(axios.defaults.baseURL + '/ws', transports);
           this.socket.onopen = function() {
 	          self.connected = true;
               self.pingServer();
               self.ping_interval = setInterval(self.pingServer,PING_INTERVAL_MS);
+              $("#page_content").removeClass("blurred");
           };
           this.socket.onmessage = function (evt) {
               var newts = Date.now();
-              self.latency_value = newts - self.ping_timestamp;
+              self.latency_value = newts - self.msg_timestamp;
               self.socket_msg = evt.data;
-              self.ping_timestamp = null;
+              self.dispatchMessage(evt.data);
+              self.msg_timestamp = null;
           };
           this.socket.onclose = function() {
               self.connected = false;
@@ -237,19 +248,19 @@ export default {
           };
       },
       closeSocket() {
-
           this.socket.close();
-          this.ping_timestamp = null;
+          this.msg_timestamp = null;
+          $("#page_content").addClass("blurred");
       },
 	  pingServer() {
           // check if we got a reply before, it not, we have a connection issue
-          if(this.ping_timestamp != null) {
+          if(this.msg_timestamp != null) {
               console.log("Sent a ping but got no pong, disconnect");
               this.closeSocket();
           }
           console.log("pingServer");
 		  // Send the "pingServer" event to the server.
-          this.ping_timestamp = Date.now();
+          this.msg_timestamp = Date.now();
           this.socket.send(JSON.stringify({'op': 'ping'}));
 	  }
   }
@@ -325,5 +336,9 @@ body,
 }
 
 .red {color: #c31616;}
+.blurred {
+    filter: blur(2px);
+    pointer-events: none;
+}
 
 </style>
