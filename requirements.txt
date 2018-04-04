@@ -10,3 +10,4 @@ prettytable # diff report renderer
 multiprocessing_on_dill # to replace pickler in concurrent.futures
 dill # default pickler for job_manager (so we can pickle lambda)
 pyinotify # hub reloader
+sockjs.tornado==1.0.3

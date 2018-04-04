@@ -13,7 +13,9 @@ classes below. See biothings.utils.mongo and biothings.utils.sqlit3 for
 some examples.
 """
 
-import os
+import os, asyncio, logging
+from functools import wraps, partial
+
 from biothings.utils.common import dump as dumpobj, loadobj, \
                         get_random_string, get_timestamp
 
@@ -206,6 +208,75 @@ def restore(db,archive,drop=False):
         for doc in docs:
             col.save(doc)
 
+#########################################################################
+# small pubsub framework to track changes in hub db internal collection #
+#########################################################################
+
+
+class ChangeListener(object):
+
+    def read(self):
+        raise NotImplementedError("Implement me")
+
+
+class ChangeWatcher(object):
+
+    listeners = set()
+    event_queue = asyncio.Queue()
+    do_publish = False
+
+    @classmethod
+    def publish(klass):
+        klass.do_publish = True
+        @asyncio.coroutine
+        def do():
+            while klass.do_publish:
+                evt = yield from klass.event_queue.get()
+                for listener in klass.listeners:
+                    try:
+                        listener.read(evt)
+                    except Exception as e:
+                        logging.error("Can't publish %s to %s: %s" % (evt,listener,e))
+        return asyncio.ensure_future(do())
+
+    @classmethod
+    def add(klass,listener):
+        assert hasattr(listener,"read"), "Listener '%s' has no read() method" % listener
+        klass.listeners.add(listener)
+
+    @classmethod
+    def monitor(klass,func,colname,op):
+        @wraps(func)
+        def func_wrapper(*args,**kwargs):
+            # don't speak alone in the immensity of the void
+            if klass.listeners:
+                # try to narrow down the event to a doc
+                for arg in args:
+                    event = {"col" : colname, "op" : op}
+                    if type(arg) == dict and "_id" in arg:
+                        event = {"_id": arg["_id"],
+                                "col" : colname,
+                                "op" : op}
+                    klass.event_queue.put_nowait(event)
+
+            return func(*args,**kwargs)
+        return func_wrapper
+
+    @classmethod
+    def wrap(klass,getfunc):
+        def decorate():
+            col = getfunc()
+            for method in ["insert_one","update_one","update",
+                    "save","replace_one"]:
+                colmethod = getattr(col,method)
+                colmethod = klass.monitor(colmethod,
+                    colname=getfunc.__name__.replace("get_",""),
+                    op=method)
+                setattr(col,method,colmethod)
+            return col
+        return partial(decorate)
+
+
 def setup(config):
     global get_hub_db_conn
     global get_src_dump
@@ -217,13 +288,14 @@ def setup(config):
     global get_cmd
     global get_source_fullname
     get_hub_db_conn = config.hub_db.get_hub_db_conn
-    get_src_dump = config.hub_db.get_src_dump
-    get_src_master = config.hub_db.get_src_master
-    get_src_build = config.hub_db.get_src_build
-    get_src_build_config = config.hub_db.get_src_build_config
-    get_data_plugin = config.hub_db.get_data_plugin
-    get_api = config.hub_db.get_api
-    get_cmd = config.hub_db.get_cmd
+    # use ChangeWatcher on internal collections so we can publish changes in real-time
+    get_src_dump = ChangeWatcher.wrap(config.hub_db.get_src_dump)
+    get_src_master = ChangeWatcher.wrap(config.hub_db.get_src_master)
+    get_src_build = ChangeWatcher.wrap(config.hub_db.get_src_build)
+    get_src_build_config = ChangeWatcher.wrap(config.hub_db.get_src_build_config)
+    get_data_plugin = ChangeWatcher.wrap(config.hub_db.get_data_plugin)
+    get_api = ChangeWatcher.wrap(config.hub_db.get_api)
+    get_cmd = ChangeWatcher.wrap(config.hub_db.get_cmd)
     get_source_fullname = config.hub_db.get_source_fullname
     # propagate config module to classes
     config.hub_db.Database.CONFIG = config

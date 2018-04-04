@@ -9,7 +9,7 @@ from collections import defaultdict
 from biothings.utils.common import timesofar, get_random_string, iter_n, \
                                    open_compressed_file, get_compressed_outfile
 from biothings.utils.backend import DocESBackend, DocMongoBackend
-from biothings.utils.hub_db import IDatabase
+from biothings.utils.hub_db import IDatabase, ChangeWatcher
 # stub, until set to real config module
 config = None
 
@@ -91,7 +91,6 @@ def get_src_master(conn=None):
 def get_src_dump(conn=None):
     conn = conn or get_hub_db_conn()
     return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_DUMP_COLLECTION]
-
 
 @requires_config
 def get_src_build(conn=None):

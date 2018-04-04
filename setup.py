@@ -48,7 +48,8 @@ hub_requires = [
     'IPython',
     'boto',
     'multiprocessing_on_dill',
-    'pyinotify'
+    'pyinotify',
+    'sockjs.tornado==1.0.3'
 ]
 
 setup(
