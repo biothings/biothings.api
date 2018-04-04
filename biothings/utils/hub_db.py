@@ -225,6 +225,14 @@ class ChangeWatcher(object):
     event_queue = asyncio.Queue()
     do_publish = False
 
+    col_entity = {
+            "src_dump" : "source",
+            "src_build" : "build",
+            "src_build_config" : "build_config",
+            "src_master" : "master",
+            "cmd" : "command",
+            }
+
     @classmethod
     def publish(klass):
         klass.do_publish = True
@@ -245,17 +253,17 @@ class ChangeWatcher(object):
         klass.listeners.add(listener)
 
     @classmethod
-    def monitor(klass,func,colname,op):
+    def monitor(klass,func,entity,op):
         @wraps(func)
         def func_wrapper(*args,**kwargs):
             # don't speak alone in the immensity of the void
             if klass.listeners:
                 # try to narrow down the event to a doc
                 for arg in args:
-                    event = {"col" : colname, "op" : op}
+                    event = {"obj" : entity, "op" : op}
                     if type(arg) == dict and "_id" in arg:
                         event = {"_id": arg["_id"],
-                                "col" : colname,
+                                "obj" : entity,
                                 "op" : op}
                     klass.event_queue.put_nowait(event)
 
@@ -269,8 +277,9 @@ class ChangeWatcher(object):
             for method in ["insert_one","update_one","update",
                     "save","replace_one"]:
                 colmethod = getattr(col,method)
+                colname = getfunc.__name__.replace("get_","")
                 colmethod = klass.monitor(colmethod,
-                    colname=getfunc.__name__.replace("get_",""),
+                    entity=klass.col_entity.get(colname,colname),
                     op=method)
                 setattr(col,method,colmethod)
             return col
