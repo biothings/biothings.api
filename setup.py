@@ -35,7 +35,7 @@ if commit_hash or num_commits:
 
 install_requires = [
     'requests==2.8.1',
-    'tornado',
+    'tornado==4.5.3',
     'elasticsearch>=6.1.1',
 ]
 hub_requires = [
@@ -49,7 +49,7 @@ hub_requires = [
     'boto',
     'multiprocessing_on_dill',
     'pyinotify',
-    'sockjs.tornado==1.0.3'
+    'sockjs-tornado==1.0.3'
 ]
 
 setup(
