@@ -74,10 +74,11 @@ class BaseAssistant(object):
     def load_manifest(self):
         dp = get_data_plugin()
         p = dp.find_one({"_id":self.plugin_name})
-        if not p.get("data_folder"):
+        if not p.get("download",{}).get("data_folder"):
             # not yet available
+            logging.warning("Can't find data_folder, not available yet ?")
             return
-        df = p["data_folder"]
+        df = p["download"]["data_folder"]
         if os.path.exists(df):
             mf = os.path.join(df,"manifest.json")
             if os.path.exists(mf):
