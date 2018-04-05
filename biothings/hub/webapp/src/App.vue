@@ -7,24 +7,24 @@
           Biothings Hub
         </a>
 
-        <a class="item">
+        <a class="clickable blurred item">
             <i class="ui home icon"></i>
             <router-link to="/">Home</router-link>
         </a>
-        <a class="item">
+        <a class="clickable blurred item">
             <i class="ui database icon"></i>
             <router-link to="/sources">Sources</router-link>
         </a>
-        <a class="item">
+        <a class="clickable blurred item">
             <i class="ui cubes icon"></i>
             <router-link to="/builds">Builds</router-link>
         </a>
-        <a class="item">
+        <a class="clickable blurred item">
             <i class="ui shield alternate icon"></i>
             <router-link to="/apis">API</router-link>
         </a>
 
-        <div class="ui item right">
+        <div class="clickable blurred ui item right">
           <job-summary></job-summary>
         </div>
 
@@ -49,7 +49,7 @@
       </div>
     </div>
 
-    <div id="page_content" class="blurred ui active tab segment">
+    <div id="page_content" class="clickable blurred ui active tab segment">
     <router-view></router-view>
     </div>
 
@@ -151,194 +151,205 @@ export default {
   router: router,
   components: { JobSummary },
   mounted () {
-      $('.menu .item').tab();
+    $('.menu .item').tab();
   },
   created () {
-      console.log("app created");
-      this.setupSocket();
+    console.log("app created");
+    this.setupSocket();
   },
   beforeDestroy() {
-      clearInterval(this.ping_interval);
   },
   data() {
-      return {
-          connected: false,
-          socket_msg: '',
-          socket : null,
-          msg_timestamp : null,
-          ping_interval : null,
-          latency_value : null,
-      }
+    return {
+      connected: false,
+      socket_msg: '',
+      socket : null,
+      msg_timestamp : null,
+      latency_value : null,
+    }
   },
   computed : {
   },
   watch: {
-      latency_value: function (newv, oldv) {
-          if(newv != oldv) {
-              //console.log(`new: ${newv} old: ${oldv}`);
-              this.evalLatency(oldv,newv);
-          }
+    latency_value: function (newv, oldv) {
+      if(newv != oldv) {
+        //console.log(`new: ${newv} old: ${oldv}`);
+        this.evalLatency(oldv,newv);
       }
+    }
   },
   methods: {
-      dispatchMessage(msg) {
-          if(msg.obj) {
-              var event = `change_${msg.obj}`;
-              console.log(`emit ${event} (${msg._id}): ${msg.op}`);
-              bus.$emit(event,msg._id,msg.op);
-          }
-      },
-      evalLatency : function(oldv,newv) {
-          var info = {}
-          function getInfo(val) {
-              // depending on websocket latency, adjust color and text info
-              if(val == null) {
-                  info["color"] = "grey";
-                  info["quality"] = "unknown";
-              } else if(val > 0 && val <= 20) {
-                  info["color"] = "green";
-                  info["quality"] = "excellent";
-              } else if(val > 20 && val <= 30) {
-                  info["color"] = "olive";
-                  info["quality"] = "good";
-              } else if(val > 30 && val <= 50) {
-                  info["color"] = "yellow";
-                  info["quality"] = "average";
-              } else if(val > 50 && val <= 100) {
-                  info["color"] = "orange";
-                  info["quality"] = "poor";
-              } else if(val > 100) {
-                  info["color"] = "red";
-                  info["quality"] = "very poor";
-              } else {
-                  info["color"] = "brown";
-                  info["quality"] = "???";
-              }
-              return info;
-          }
-          var oldinfo = getInfo(oldv);
-          var newinfo = getInfo(newv);
-          $("#connected i").removeClass("grey brown red orange yellow olive green").addClass(newinfo.color);
-          $("#connected").attr("data-tooltip",'Quality: ' + newinfo.quality);
-      },
-      setupSocket() {
-          var self = this;
-          var transports = null;//["websocket","xhr-polling"];
-          // re-init timestamp so we can monitor it again
-          this.msg_timestamp = null;
-          this.socket = new SockJS(axios.defaults.baseURL + '/ws', transports);
-          this.socket.onopen = function() {
-	          self.connected = true;
-              self.pingServer();
-              self.ping_interval = setInterval(self.pingServer,PING_INTERVAL_MS);
-              $("#page_content").removeClass("blurred");
-          };
-          this.socket.onmessage = function (evt) {
-              var newts = Date.now();
-              self.latency_value = newts - self.msg_timestamp;
-              self.socket_msg = evt.data;
-              self.dispatchMessage(evt.data);
-              self.msg_timestamp = null;
-          };
-          this.socket.onclose = function() {
-              self.connected = false;
-              self.socket  =null;
-              clearInterval(self.ping_interval);
-              self.ping_interval = null;
-          };
-      },
-      closeSocket() {
-          this.socket.close();
-          this.msg_timestamp = null;
-          $("#page_content").addClass("blurred");
-      },
-	  pingServer() {
-          // check if we got a reply before, it not, we have a connection issue
-          if(this.msg_timestamp != null) {
-              console.log("Sent a ping but got no pong, disconnect");
-              this.closeSocket();
-          }
-          console.log("pingServer");
-		  // Send the "pingServer" event to the server.
-          this.msg_timestamp = Date.now();
-          this.socket.send(JSON.stringify({'op': 'ping'}));
-	  }
+    dispatchMessage(msg) {
+      if(msg.obj) {
+        var event = `change_${msg.obj}`;
+        console.log(`emit ${event} (${msg._id}): ${msg.op}`);
+        bus.$emit(event,msg._id,msg.op);
+      }
+    },
+    evalLatency : function(oldv,newv) {
+      var info = {}
+      function getInfo(val) {
+        // depending on websocket latency, adjust color and text info
+        if(val == null) {
+          info["color"] = "grey";
+          info["quality"] = "unknown";
+        } else if(val > 0 && val <= 20) {
+          info["color"] = "green";
+          info["quality"] = "excellent";
+        } else if(val > 20 && val <= 30) {
+          info["color"] = "olive";
+          info["quality"] = "good";
+        } else if(val > 30 && val <= 50) {
+          info["color"] = "yellow";
+          info["quality"] = "average";
+        } else if(val > 50 && val <= 100) {
+          info["color"] = "orange";
+          info["quality"] = "poor";
+        } else if(val > 100) {
+          info["color"] = "red";
+          info["quality"] = "very poor";
+        } else {
+          info["color"] = "brown";
+          info["quality"] = "???";
+        }
+        return info;
+      }
+      var oldinfo = getInfo(oldv);
+      var newinfo = getInfo(newv);
+      $("#connected i").removeClass("grey brown red orange yellow olive green").addClass(newinfo.color);
+      $("#connected").attr("data-tooltip",'Quality: ' + newinfo.quality);
+    },
+    setupSocket() {
+      var self = this;
+      var transports = null;//["websocket","xhr-polling"];
+      // re-init timestamp so we can monitor it again
+      this.msg_timestamp = null;
+      // first check we can access a websocket
+      axios.get(axios.defaults.baseURL + '/ws/info')
+      .then(response => {
+        console.log("WebSocket available");
+        this.socket = new SockJS(axios.defaults.baseURL + '/ws', transports);
+        this.socket.onopen = function() {
+          self.connected = true;
+          self.pingServer();
+          $(".clickable").removeClass("blurred");
+        };
+        this.socket.onmessage = function (evt) {
+          var newts = Date.now();
+          self.latency_value = newts - self.msg_timestamp;
+          self.socket_msg = evt.data;
+          self.dispatchMessage(evt.data);
+          self.msg_timestamp = null;
+        };
+        this.socket.onclose = function() {
+          self.closeSocket();
+        },
+        this.socket.ontimeout = function(err) {
+          console.log("got error");
+          console.log(err);
+        }
+
+      })
+      .catch(err => {
+        console.log("Can't connect using websocket");
+        console.log(err);
+      });
+    },
+    closeSocket() {
+      this.connected = false;
+      this.socket.close();
+      this.msg_timestamp = null;
+      $(".clickable").addClass("blurred");
+    },
+    pingServer() {
+      // check if we got a reply before, it not, we have a connection issue
+      if(this.msg_timestamp != null) {
+        console.log("Sent a ping but got no pong, disconnect");
+        this.closeSocket();
+      }
+      console.log("pingServer");
+      // Send the "pingServer" event to the server.
+      this.msg_timestamp = Date.now();
+      this.socket.send(JSON.stringify({'op': 'ping'}));
+      if(this.connected)
+        setTimeout(this.pingServer,PING_INTERVAL_MS);
+    }
   }
 }
 
 </script>
 
 <style>
-#app {
-  font-family: 'Avenir', Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
-}
+    #app {
+      font-family: 'Avenir', Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-align: center;
+      color: #2c3e50;
+      margin-top: 60px;
+    }
 
-h1, h2 {
-  font-weight: normal;
-}
+    h1, h2 {
+      font-weight: normal;
+    }
 
-ul {
-  list-style-type: none;
-  padding: 0;
-}
+    ul {
+      list-style-type: none;
+      padding: 0;
+    }
 
-li {
-  display: inline-block;
-  margin: 0 10px;
-}
+    li {
+      display: inline-block;
+      margin: 0 10px;
+    }
 
-a {
-  color: #42b983;
-}
+    a {
+      color: #42b983;
+    }
 
-table .nowrap {
-  white-space:  nowrap;
-}
+    table .nowrap {
+      white-space:  nowrap;
+    }
 
-@keyframes pulse {
-  0% {transform: scale(1, 1);}
-  50% {transform: scale(1.2, 1.2);}
-  100% {transform: scale(1, 1);}
-}
+    @keyframes pulse {
+      0% {transform: scale(1, 1);}
+      50% {transform: scale(1.2, 1.2);}
+      100% {transform: scale(1, 1);}
+    }
 
-.pulsing {
-  animation: pulse 1s linear infinite;
-}
+    .pulsing {
+      animation: pulse 1s linear infinite;
+    }
 
-.running { animation: 1s rotate360 infinite linear; }
+    .running { animation: 1s rotate360 infinite linear; }
 
-@keyframes pulse {
-  0% {transform: scale(1, 1);}
-  50% {transform: scale(1.2, 1.2);}
-  100% {transform: scale(1, 1);}
-}
-.pulsing {
-  animation: pulse 1s linear infinite;
-}
+    @keyframes pulse {
+      0% {transform: scale(1, 1);}
+      50% {transform: scale(1.2, 1.2);}
+      100% {transform: scale(1, 1);}
+    }
+    .pulsing {
+      animation: pulse 1s linear infinite;
+    }
 
-html,
-body,
-#page_content {
-    min-height: 100%;
-    height: 100%;
-}
+    html,
+    body,
+    #page_content {
+      min-height: 100%;
+      height: 100%;
+    }
 
-html,
-body,
-#app {
-    min-height: 100%;
-    height: 100%;
-}
+    html,
+    body,
+    #app {
+      min-height: 100%;
+      height: 100%;
+    }
 
-.red {color: #c31616;}
-.blurred {
-    filter: blur(2px);
-    pointer-events: none;
-}
+    .red {color: #c31616;}
+    .blurred {
+      filter: blur(2px);
+      pointer-events: none;
+    }
 
-</style>
+    </style>
