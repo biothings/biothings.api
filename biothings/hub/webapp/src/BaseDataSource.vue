@@ -17,6 +17,7 @@ export default {
     },
     beforeDestroy() {
         bus.$off('change_source',this.onSourceChanged);
+        $('.ui.basic.unregister.modal').remove();
     },
     computed: {
         inspect_status: function() {
@@ -121,7 +122,6 @@ export default {
                     axios.delete(axios.defaults.baseURL + '/dataplugin/unregister_url',{"data" : {"url":url}})
                     .then(response => {
                         console.log(response.data.result)
-                        bus.$emit("refresh_sources");
                         return true;
                     })
                     .catch(err => {
@@ -143,7 +143,6 @@ export default {
                               {"data_provider" : [dp,self.source._id],"mode":modes})
                     .then(response => {
                         console.log(response.data.result)
-                        bus.$emit("refresh_sources");
                     })
                     .catch(err => {
                         console.log("Error getting job manager information: " + err);

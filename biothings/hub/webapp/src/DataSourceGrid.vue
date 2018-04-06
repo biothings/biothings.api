@@ -78,11 +78,11 @@ export default {
         .sidebar('attach events', '#sources .menu .item');
     },
     created() {
-        bus.$on('refresh_sources',this.refreshSources);
+        bus.$on('change_data_plugin',this.onDataPluginChanged);
     },
     beforeDestroy() {
-        bus.$off('refresh_sources',this.refreshSources);
-        //clearInterval(this.interval);
+        bus.$off('change_data_plugin',this.onDataPluginChanged);
+        $('.ui.basic.newdatasource.modal').remove();
     },
     data () {
         return  {
@@ -110,7 +110,6 @@ export default {
                     axios.post(axios.defaults.baseURL + '/dataplugin/register_url',{"url":url})
                     .then(response => {
                         console.log(response.data.result)
-                        bus.$emit("refresh_sources");
                         return true;
                     })
                     .catch(err => {
@@ -121,10 +120,12 @@ export default {
             })
             .modal("show");
         },
-        refreshSources: function() {
-            console.log("Refreshing datasources");
+        onDataPluginChanged: function(_id=null, op=null) {
+            // even if _id is set we refresh everything
+            // (as we cannot know if a component for _id actually 
+            //  already exists when creating a data plugin)
             this.getSourcesStatus();
-        }
+        },
     }
 }
 </script>
