@@ -36,6 +36,8 @@ export default {
     console.log(this.command);
     $('.commands.button').popup({popup: $('.commands.popup'), on: 'click' });
     $('.ui.toggle.checkbox').checkbox();
+    // sync
+    this.refreshCommands();
   },
   created() {
       bus.$on('change_command',this.onCommandChanged);

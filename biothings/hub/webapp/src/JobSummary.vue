@@ -54,22 +54,33 @@ import ProcessesList from './ProcessesList.vue';
 import ThreadsList from './ThreadsList.vue';
 import bus from './bus.js';
 
+const POLL_JOBS_INTERVAL = 3000; // when needed, poll job manager every X ms
+
 export default {
   name: 'job-summary',
   mounted () {
     console.log("mounted");
     this.getJobSummary();
-    setInterval(this.getJobSummary,10000);
     // setup menu
-    $('.processes.button').popup({popup: $('.processes.popup'), on: 'click' , lastResort: 'bottom right',});
-    $('.threads.button').popup({popup: $('.threads.popup'), on: 'click' , lastResort: 'bottom right',});
+    $('.processes.button').popup({
+        popup: $('.processes.popup'),
+        on: 'click' ,
+        lastResort: 'bottom right',
+        onVisible: () => {this.onJobsOpened(true)},
+        onHide: () => {this.onJobsOpened(false)},
+    });
+    $('.threads.button').popup({
+        popup: $('.threads.popup'),
+        on: 'click' ,
+        lastResort: 'bottom right',
+        onVisible: () => {this.onJobsOpened(true)},
+        onHide: () => {this.onJobsOpened(false)},
+    });
   },
   created() {
-      bus.$on('refresh_jobs',this.getJobSummary);
       bus.$on('num_commands',this.updateNumCommands);
   },
   beforeDestroy() {
-      bus.$off('refresh_jobs',this.getJobSummary);
       bus.$off('num_commands',this.updateNumCommands);
   },
   data () {
@@ -79,13 +90,37 @@ export default {
       processes : {},
       threads : {},
       show_allcmds : false,
+      jobs_interval: null,
       //errors: [],
     }
+  },
+  watch: {
+      num_commands: function(newv,oldv) {
+          if(newv == 0) {
+              console.log("Stop polling jobs"),
+              this.stopPollJobs();
+          }
+          if(oldv == 0 && newv > 0) {
+              console.log("Start polling jobs"),
+              this.startPollJobs();
+          }
+      },
   },
   components: { CommandsList, ProcessesList, ThreadsList, },
   methods: {
     updateNumCommands: function(num) {
         this.num_commands = num;
+        this.getJobSummary();
+    },
+    startPollJobs: function() {
+        if(this.jobs_interval == null)
+            this.jobs_interval = setInterval(this.getJobSummary,POLL_JOBS_INTERVAL);
+        else
+            console.log("Needs to poll jobs but interval already set !!!");
+    },
+    stopPollJobs: function() {
+        clearInterval(this.jobs_interval);
+        this.jobs_interval = null;
     },
     getJobSummary: function() {
       axios.get(axios.defaults.baseURL + '/job_manager')
@@ -97,6 +132,17 @@ export default {
       .catch(err => {
         console.log("Error getting job manager information: " + err);
       })
+    },
+    onJobsOpened: function(do_poll) {
+        console.log(do_poll);
+        if(do_poll) {
+            // we force the poll
+            this.getJobSummary();
+            this.startPollJobs();
+        } else if(this.num_commands == 0) {
+            // but we let component to decide whether to continue polling or not
+            this.stopPollJobs();
+        }
     },
   }
 }
