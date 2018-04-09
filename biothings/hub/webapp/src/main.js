@@ -6,7 +6,7 @@ import VueRouter from 'vue-router';
 import moment from 'moment'
 Vue.prototype.moment = moment
 
-axios.defaults.baseURL = 'http://localhost:7080'
+axios.defaults.baseURL = `http://${window.location.hostname}:7080`
 
 
 new Vue({
