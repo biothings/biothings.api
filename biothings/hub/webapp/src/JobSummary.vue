@@ -2,13 +2,12 @@
   <div class="ui center aligned tiny">
     <!-- commands -->
     <button
-        class="ui compact labeled icon commands button tiny"
-        v-if="commands">
+        class="ui compact labeled icon commands button tiny">
         <i class="settings icon"></i>
-        {{Object.keys(commands).length}}
+        {{num_commands}}
     </button>
     <div class="ui commands popup top left transition hidden">
-        <commands-list v-bind:commands="commands"></commands-list>
+        <commands-list></commands-list>
     </div>
     <!-- jobs (processes) -->
     <button
@@ -60,26 +59,23 @@ export default {
   mounted () {
     console.log("mounted");
     this.getJobSummary();
-    this.refreshCommands();
     setInterval(this.getJobSummary,10000);
-    setInterval(this.refreshCommands,10000);
     // setup menu
-    $('.commands.button').popup({popup: $('.commands.popup'), on: 'click' });
     $('.processes.button').popup({popup: $('.processes.popup'), on: 'click' , lastResort: 'bottom right',});
     $('.threads.button').popup({popup: $('.threads.popup'), on: 'click' , lastResort: 'bottom right',});
   },
   created() {
-      bus.$on('refresh_commands',this.refreshCommands);
       bus.$on('refresh_jobs',this.getJobSummary);
+      bus.$on('num_commands',this.updateNumCommands);
   },
   beforeDestroy() {
-      bus.$off('refresh_commands',this.refreshCommands);
       bus.$off('refresh_jobs',this.getJobSummary);
+      bus.$off('num_commands',this.updateNumCommands);
   },
   data () {
     return  {
+      num_commands : 0,
       job_manager : {},
-      commands : {},
       processes : {},
       threads : {},
       show_allcmds : false,
@@ -88,6 +84,9 @@ export default {
   },
   components: { CommandsList, ProcessesList, ThreadsList, },
   methods: {
+    updateNumCommands: function(num) {
+        this.num_commands = num;
+    },
     getJobSummary: function() {
       axios.get(axios.defaults.baseURL + '/job_manager')
       .then(response => {
@@ -97,22 +96,6 @@ export default {
       })
       .catch(err => {
         console.log("Error getting job manager information: " + err);
-      })
-    },
-    refreshCommands: function(all) {
-      // only update if explicitely passed (from event)
-      if('undefined' !== typeof all)
-        this.show_allcmds = all;
-      var url = axios.defaults.baseURL + '/commands';
-      if(!this.show_allcmds)
-        url += "?running=1";
-      axios.get(url)
-      .then(response => {
-        this.commands = response.data.result;
-        //console.log(this.commands);
-      })
-      .catch(err => {
-        console.log("Error getting runnings commands: " + err);
       })
     },
   }

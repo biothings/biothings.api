@@ -30,19 +30,19 @@ import bus from './bus.js'
 
 export default {
   name: 'commands-list',
-  props: ['commands'],
-  methods: {
-      showAllToggled() {
-          console.log(`toggled, ${this.allcmds}`);
-          bus.$emit("refresh_commands",this.allcmds);
-      }
-  },
+  props: [],
   mounted () {
     console.log("commands list mounted");
     console.log(this.command);
-    $('.ui.toggle.checkbox')
-    .checkbox()
-    ;
+    $('.commands.button').popup({popup: $('.commands.popup'), on: 'click' });
+    $('.ui.toggle.checkbox').checkbox();
+  },
+  created() {
+      bus.$on('change_command',this.onCommandChanged);
+  },
+  beforeDestroy() {
+      bus.$off('change_command',this.onCommandChanged);
+      $('.ui.basic.unregister.modal').remove();
   },
   ready() {
     console.log("command item ready");
@@ -50,10 +50,34 @@ export default {
   data () {
     return  {
         allcmds : false,
+        commands : {},
     }
   },
   watch: {
       allcmds: 'showAllToggled'
+  },
+  methods: {
+      showAllToggled() {
+          this.refreshCommands();
+      },
+      onCommandChanged(_id=null, op=null) {
+          this.refreshCommands();
+      },
+      refreshCommands: function() {
+          var url = axios.defaults.baseURL + '/commands';
+          if(!this.allcmds)
+              url += "?running=1";
+          axios.get(url)
+          .then(response => {
+              this.commands = response.data.result;
+              bus.$emit("num_commands",Object.keys(this.commands).length);
+              console.log(this.commands);
+          })
+          .catch(err => {
+              console.log("Error getting runnings commands: " + err);
+          })
+      },
+
   },
 }
 </script>
