@@ -359,6 +359,8 @@ export default {
             console.log(this.build_configs[confname]);
         },
         createNewConfiguration: function() {
+            // force close sidebar
+            $('#builds .ui.sidebar').sidebar("hide");
             var self = this;
             $('.ui.basic.newconfiguration.modal')
             .modal("setting", {
@@ -418,6 +420,8 @@ export default {
             .modal("show");
         },
         deleteConfiguration : function(event) {
+            // force close sidebar
+            $('#builds .ui.sidebar').sidebar("hide");
             var conf_name = $(event.currentTarget).attr("conf-name");
             var self = this;
             $('.ui.basic.deleteconf.modal')
@@ -437,6 +441,8 @@ export default {
             .modal("show");
         },
         newBuild : function(event) {
+            // force close sidebar
+            $('#builds .ui.sidebar').sidebar("hide");
             var conf_name = $(event.currentTarget).attr("conf-name");
             var self = this;
             $('.ui.basic.newbuild.modal')
