@@ -221,7 +221,7 @@ class AssistantManager(BaseSourceManager):
         url = url.strip()
         dp = get_data_plugin()
         # should be only one but just in case
-        dp.delete_many({"plugin.url":url})
+        dp.remove({"plugin.url":url})
         assistant = self.submit(url)
         try:
             self.data_plugin_manager.register.pop(assistant.plugin_name)

@@ -659,6 +659,14 @@ class CompositeCommand(str):
     def __str__(self):
         return "<CompositeCommand: '%s'>" % self.cmd
 
+############
+# RELOADER #
+############
+
+def exclude_from_reloader(path):
+    # exlucde cached, git and hidden files
+    return path.endswith("__pycache__") or ".git" in path or \
+           os.path.basename(path).startswith(".")
 
 class ReloadListener(pyinotify.ProcessEvent):
     def my_init(self,managers,watcher_manager):
@@ -666,6 +674,8 @@ class ReloadListener(pyinotify.ProcessEvent):
         self.managers = managers
         self.watcher_manager = watcher_manager
     def process_default(self, event):
+        if exclude_from_reloader(event.pathname):
+            return
         if event.dir:
             if event.mask & pyinotify.IN_CREATE:
                 # add to watcher. no need to check if already watched, manager knows
@@ -701,15 +711,13 @@ class HubReloader(object):
         self.mask = mask or pyinotify.IN_CREATE|pyinotify.IN_DELETE|pyinotify.IN_CLOSE_WRITE
         # only listen to these events. Note: directory detection is done via a flag so
         # no need to use IS_DIR
-        def exclude(path):
-            return path.endswith("__pycache__") or ".git" in path
-        self.watcher_manager = pyinotify.WatchManager(exclude_filter=exclude)
+        self.watcher_manager = pyinotify.WatchManager(exclude_filter=exclude_from_reloader)
         _paths = [] # cleaned
         for path in paths:
             if not os.path.isabs(path):
                 path = os.path.abspath(path)
             _paths.append(path)
-            self.watcher_manager.add_watch(path,self.mask,rec=True) # recursive
+            self.watcher_manager.add_watch(path,self.mask,rec=True,exclude_filter=exclude_from_reloader) # recursive
         self.listener = ReloadListener(managers=managers,watcher_manager=self.watcher_manager)
         self.notifier = pyinotify.Notifier(
                 self.watcher_manager,

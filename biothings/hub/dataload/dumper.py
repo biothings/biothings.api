@@ -383,7 +383,7 @@ class BaseDumper(object):
 
     @property
     def current_release(self):
-        return self.src_doc.get("release")
+        return self.src_doc.get("download",{}).get("release")
 
     @asyncio.coroutine
     def do_dump(self,job_manager=None):

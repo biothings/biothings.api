@@ -240,6 +240,7 @@ class ChangeWatcher(object):
         def do():
             while klass.do_publish:
                 evt = yield from klass.event_queue.get()
+                logging.debug("Publishing event %s" % evt)
                 for listener in klass.listeners:
                     try:
                         listener.read(evt)
@@ -259,12 +260,15 @@ class ChangeWatcher(object):
             # don't speak alone in the immensity of the void
             if klass.listeners:
                 # try to narrow down the event to a doc
-                for arg in args:
+                # analyse the query/filter (1st elem in args), it tells how many docs are
+                # impacted, thus telling us wether to send a detailed or general event
+                if args and type(args[0]) == dict and "_id" in args[0]:
+                    # single event associated to one ID, we send an "detailed" event
+                    event = {"_id" : args[0]["_id"], "obj" : entity, "op" : op}
+                    klass.event_queue.put_nowait(event)
+                else:
+                    # can't find ID, we send a general event (not specific to one doc)
                     event = {"obj" : entity, "op" : op}
-                    if type(arg) == dict and "_id" in arg:
-                        event = {"_id": arg["_id"],
-                                "obj" : entity,
-                                "op" : op}
                     klass.event_queue.put_nowait(event)
 
             return func(*args,**kwargs)
@@ -275,7 +279,7 @@ class ChangeWatcher(object):
         def decorate():
             col = getfunc()
             for method in ["insert_one","update_one","update",
-                    "save","replace_one"]:
+                    "save","replace_one","remove"]:
                 colmethod = getattr(col,method)
                 colname = getfunc.__name__.replace("get_","")
                 colmethod = klass.monitor(colmethod,

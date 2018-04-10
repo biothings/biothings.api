@@ -493,6 +493,8 @@ class DataBuilder(object):
             target_name = self.target_backend.target_collection.name
         self.target_name = target_name
 
+        self.custom_metadata = {}
+
         self.clean_old_collections()
 
         self.logger.info("Merging into target collection '%s'" % self.target_backend.target_collection.name)
@@ -593,7 +595,6 @@ class DataBuilder(object):
         self.src_versions = {}
         self.stats = {}
         self.mapping = {}
-        self.custom_metadata = {}
         # try to identify root document sources amongst the list to first
         # process them (if any)
         defined_root_sources = self.get_root_document_sources()

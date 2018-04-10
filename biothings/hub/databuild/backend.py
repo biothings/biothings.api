@@ -159,7 +159,7 @@ class SourceDocMongoBackend(SourceDocBackendBase):
                 # when more than 1 sub-sources, we can have different version in sub-sources
                 # (not normal) if one sub-source uploaded, then dumper downloaded a new version,
                 # then the other sub-source uploaded that version. This should never happen, just make sure
-                subsrc_versions = [{"sub-source":job["step"],"version":job["release"]} \
+                subsrc_versions = [{"sub-source":job.get("step"),"version":job.get("release")} \
                                   for job in src["upload"].get("jobs",{}).values()]
                 assert len(set([s["version"] for s in subsrc_versions])) == 1, "Expecting one version " + \
                         "in upload sub-sources for main source '%s' but got: %s" % (src["_id"],subsrc_versions)
