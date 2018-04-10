@@ -15,6 +15,7 @@
                         <li>When testing a mapping, an temporary index is created on the selection ElasticSearch environment. That index is then deleted.</li>
                     </ul>
                 </div>
+        <div class="ui segment">
         <div class="ui grid">
             <div class="center aligned sixteen wide column" v-if="maps['inspect_mapping'] && !maps['inspect_mapping']['errors'] && !maps['inspect_mapping']['pre-mapping']">
                 <button class="ui labeled mini icon button"
@@ -24,6 +25,7 @@
                 </button>
             </div>
 
+            <div class="sixteen wide column">
             <div class="ui grid">
                 <div class="eight wide column">
                     <mapping-map v-if="maps"
@@ -48,6 +50,8 @@
                     </mapping-map>
                 </div>
             </div>
+            </div>
+        </div>
         </div>
 
     </span>
