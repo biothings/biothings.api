@@ -73,7 +73,6 @@ export default {
           .then(response => {
               this.commands = response.data.result;
               bus.$emit("num_commands",Object.keys(this.commands).length);
-              console.log(this.commands);
           })
           .catch(err => {
               console.log("Error getting runnings commands: " + err);

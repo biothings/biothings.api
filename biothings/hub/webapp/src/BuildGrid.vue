@@ -214,10 +214,14 @@ export default {
         $('.ui.buildconfigs.dropdown').dropdown();
     },
     created() {
-        this.getBuilds();
+        // load sources to build dropdown list when creating a new config
         this.getSourceList();
+        // builds & configs
+        this.getBuilds();
         this.getBuildConfigs();
+        bus.$on('change_source',this.onSourceChanged);
         bus.$on('change_build',this.onBuildChanged);
+        bus.$on('change_build_config',this.onBuildConfigChanged);
     },
     beforeDestroy() {
         clearInterval(this.interval);
@@ -226,7 +230,9 @@ export default {
         $('.ui.basic.deleteconf.modal').remove();
         $('.ui.basic.newbuild.modal').remove();
         $('.ui.basic.newconfiguration.modal').remove();
+        bus.$off('change_source',this.onSourceChanged);
         bus.$off('change_build',this.onBuildChanged);
+        bus.$off('change_build_config',this.onBuildConfigChanged);
     },
     watch: {
         conf_filter: function(newv,oldv) {
@@ -271,7 +277,10 @@ export default {
         },
         getBuildConfigs: function() {
             var self = this;
+            // reset colors (if configs haven't changed we should get the same colors
+            // as we sort the build config by name)
             self.color_idx = 0;
+            self.build_colors = {};
             axios.get(axios.defaults.baseURL + '/build_manager')
             .then(response => {
                 self.build_configs = response.data.result;
@@ -317,6 +326,10 @@ export default {
             });
             return gotit;
         },
+        onSourceChanged: function(_id=null, op=null) {
+            // reload all of them
+            this.getSourceList();
+        },
         onBuildChanged: function(_id=null, op=null) {
             //console.log(`_id ${_id} op ${op}`);
             if(_id == null) {
@@ -331,6 +344,14 @@ export default {
                     //console.log(`_id ${_id} doesn't exist, get all`);
                     this.getBuilds();
                 }
+            }
+        },
+        onBuildConfigChanged: function(_id=null, op=null) {
+            // reload all of them
+            this.getBuildConfigs();
+            if(op == "remove") {
+                // refresh builds to assign new colors
+                this.getBuilds();
             }
         },
         showBuildConfig: function(event) {
@@ -386,8 +407,6 @@ export default {
                                 "params":optionals})
                     .then(response => {
                         console.log(response.data.result)
-                        self.getBuildConfigs();
-                        self.getBuilds();
                         return true;
                     })
                     .catch(err => {
@@ -407,9 +426,6 @@ export default {
                 onApprove: function () {
                     axios.delete(axios.defaults.baseURL + '/buildconf',{"data":{"name":conf_name}})
                     .then(response => {
-                        console.log(response.data.result)
-                        self.getBuildConfigs();
-                        self.getBuilds();
                         return true;
                     })
                     .catch(err => {

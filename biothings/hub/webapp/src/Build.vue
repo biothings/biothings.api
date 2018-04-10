@@ -149,6 +149,10 @@ export default {
                 if(last && last.err)
                     errs.push(`Step '${last.step}' failed: ${last.err}`);
             }
+            if(errs.length == 0) {
+                // couldn't find an error, weird...
+                errs.push("Unknown error...");
+            }
             return errs.join("<br>");
         },
         deleteBuild : function() {

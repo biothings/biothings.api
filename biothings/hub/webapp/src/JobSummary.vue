@@ -115,8 +115,6 @@ export default {
     startPollJobs: function() {
         if(this.jobs_interval == null)
             this.jobs_interval = setInterval(this.getJobSummary,POLL_JOBS_INTERVAL);
-        else
-            console.log("Needs to poll jobs but interval already set !!!");
     },
     stopPollJobs: function() {
         clearInterval(this.jobs_interval);
