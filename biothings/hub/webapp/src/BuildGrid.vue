@@ -48,7 +48,7 @@
                 </div>
                 <div class="ui centered grid">
                     <div class="ui five wide column" v-for="build in builds">
-                        <build v-bind:build="build" v-bind:color="build_colors[build.build_config.name]"></build>
+                        <build v-bind:pbuild="build" v-bind:color="build_colors[build.build_config.name]"></build>
                     </div>
                 </div>
             </div>
@@ -217,17 +217,16 @@ export default {
         this.getBuilds();
         this.getSourceList();
         this.getBuildConfigs();
-        this.interval = setInterval(this.getBuilds,15000);
-        bus.$on('refresh_builds',this.refreshBuilds);
+        bus.$on('change_build',this.onBuildChanged);
     },
     beforeDestroy() {
-        bus.$off('refresh_builds',this.refreshBuilds);
         clearInterval(this.interval);
         // hacky to remove modal from div outside of app, preventing having more than one
         // modal displayed when getting back to that page. https://github.com/Semantic-Org/Semantic-UI/issues/4049
         $('.ui.basic.deleteconf.modal').remove();
         $('.ui.basic.newbuild.modal').remove();
         $('.ui.basic.newconfiguration.modal').remove();
+        bus.$off('change_build',this.onBuildChanged);
     },
     watch: {
         conf_filter: function(newv,oldv) {
@@ -253,6 +252,15 @@ export default {
     methods: {
         getBuilds: function() {
             var filter = this.conf_filter == "" ? '' : `?conf_name=${this.conf_filter}`;
+            // https://vuejs.org/v2/guide/list.html#Caveats:
+            // "Vue implements some smart heuristics to maximize DOM element reuse, so replacing an 
+            //  array with another array containing overlapping objects is a very efficient operation."
+            // Well, if only one element changes, like a deleted build, it seems that smart heuristic
+            // is somehow dumb enough to partially render the list, so we need to empty that list here
+            // (and if emptied in "response", I guess there's a race condition because builds aren't
+            // rendered properly again...). Anyway, I don't know if it's related but that's the only
+            // explanation I have...
+            this.builds = [];
             axios.get(axios.defaults.baseURL + '/builds' + filter)
             .then(response => {
                 this.builds = response.data.result;
@@ -298,9 +306,32 @@ export default {
                 console.log("Error listing sources: " + err);
             })
         },
-        refreshBuilds: function() {
-            console.log("Refreshing builds");
-            this.getBuilds();
+        buildExists: function(_id) {
+            var gotit = false;
+            var self = this;
+            $(this.builds).each(i => {
+                if(self.builds[i]["_id"] == _id) {
+                    gotit = true;
+                    return false;
+                }
+            });
+            return gotit;
+        },
+        onBuildChanged: function(_id=null, op=null) {
+            //console.log(`_id ${_id} op ${op}`);
+            if(_id == null) {
+                console.log("Refreshing builds");
+                this.getBuilds();
+            } else {
+                if(this.buildExists(_id)) {
+                    // there's an ID for an existing build, propagate
+                    //console.log(`emit build_updated for ${_id}`);
+                    bus.$emit("build_updated",_id,op);
+                } else {
+                    //console.log(`_id ${_id} doesn't exist, get all`);
+                    this.getBuilds();
+                }
+            }
         },
         showBuildConfig: function(event) {
             var confname = $(event.currentTarget).html().trim();
@@ -356,7 +387,7 @@ export default {
                     .then(response => {
                         console.log(response.data.result)
                         self.getBuildConfigs();
-                        self.refreshBuilds();
+                        self.getBuilds();
                         return true;
                     })
                     .catch(err => {
@@ -378,7 +409,7 @@ export default {
                     .then(response => {
                         console.log(response.data.result)
                         self.getBuildConfigs();
-                        self.refreshBuilds();
+                        self.getBuilds();
                         return true;
                     })
                     .catch(err => {
@@ -402,7 +433,6 @@ export default {
                     axios.put(axios.defaults.baseURL + `/build/${conf_name}/new`,{"target_name":target_name})
                     .then(response => {
                         console.log(response.data.result)
-                        self.getBuilds();
                         return true;
                     })
                     .catch(err => {

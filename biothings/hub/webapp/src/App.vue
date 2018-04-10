@@ -182,7 +182,7 @@ export default {
     dispatchMessage(msg) {
       if(msg.obj) {
         var event = `change_${msg.obj}`;
-        console.log(`emit ${event} (${msg._id}): ${msg.op}`);
+        console.log(`dispatch event ${event} (${msg._id}): ${msg.op}`);
         bus.$emit(event,msg._id,msg.op);
       }
     },

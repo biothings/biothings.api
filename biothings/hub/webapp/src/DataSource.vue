@@ -105,7 +105,7 @@ export default {
     },
     data() {
         return {
-            // this object is set by API call, whereas 'source' prop
+            // this object is set by API call, whereas 'psource' prop
             // is set by the parent
             source_from_api: null,
         }

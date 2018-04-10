@@ -114,16 +114,33 @@ Vue.filter('build_time',build_time);
 
 export default {
     name: 'build',
-    props: ['build','color'],
+    props: ['pbuild','color'],
     mounted() {
         $('.menu .item')
         .tab()
         ;
     },
+    created() {
+        bus.$on('build_updated',this.onBuildChanged);
+    },
     beforeDestroy() {
+        bus.$off('build_updated',this.onBuildChanged);
         $(`#${this.build._id}.ui.basic.deletebuild.modal`).remove();
     },
+    data() {
+        return {
+            // this object is set by API call, whereas 'pbuild' prop
+            // is set by the parent
+            build_from_api: null,
+        }
+    },
     components: { InspectForm, BuildLogs, BuildStats, BuildSources, },
+    computed: {
+        build: function () {
+            // select build from API call preferably
+            return this.build_from_api || this.pbuild;
+        },
+    },
     methods: {
         displayError : function() {
             var errs = [];
@@ -142,7 +159,6 @@ export default {
                     axios.delete(axios.defaults.baseURL + `/build/${self.build._id}`)
                     .then(response => {
                         console.log(response.data.result)
-                        bus.$emit("refresh_builds");
                         return true;
                     })
                     .catch(err => {
@@ -163,7 +179,6 @@ export default {
                               {"data_provider" : self.build._id,"mode":modes})
                     .then(response => {
                         console.log(response.data.result)
-                        bus.$emit("refresh_builds");
                     })
                     .catch(err => {
                         console.log("Error getting job manager information: " + err);
@@ -171,6 +186,34 @@ export default {
                 }
             })
             .modal("show");
+        },
+        onBuildChanged: function(_id=null, op=null) {
+            // this method acts as a dispatcher, reacting to change_build events, filtering
+            // them for the proper build
+            // _id null: event containing change about a build but we don't know which one
+            // (it should be captured by build-grid component
+            if(_id == null || this.build._id != _id) {
+                //console.log(`I'm ${this.build._id} but they want ${_id}`);
+                return;
+            } else {
+                //console.log("_id was " + _id);
+                if(op == "remove") {
+                    // can't getBuild() when not there anymore, 
+                    // propagate a general change_build event
+                    bus.$emit("change_build");
+                } else {
+                    return this.getBuild();
+                }
+            };
+        },
+        getBuild: function() {
+            axios.get(axios.defaults.baseURL + '/build/' + this.build._id)
+            .then(response => {
+                this.build_from_api = response.data.result;
+            })
+            .catch(err => {
+                console.log("Error getting build information: " + err);
+            })
         },
     },
 }
