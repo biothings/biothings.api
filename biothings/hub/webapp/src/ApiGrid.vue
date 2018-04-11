@@ -125,13 +125,13 @@ export default {
     },
     created() {
         this.getApis();
-        bus.$on('refresh_apis',this.getApis);
+        bus.$on('change_api',this.onApiChanged);
     },
     beforeDestroy() {
         // hacky to remove modal from div outside of app, preventing having more than one
         // modal displayed when getting back to that page. https://github.com/Semantic-Org/Semantic-UI/issues/4049
         $('.ui.basic.createapi.modal').remove();
-        bus.$off('refresh_apis',this.getApis);
+        bus.$off('change_api',this.onApiChanged);
     },
     watch: {
     },
@@ -153,8 +153,9 @@ export default {
                 console.log("Error getting APIs information: " + err);
             })
         },
-        refreshApis: function() {
-            console.log("Refreshing APIs");
+        onApiChanged: function(_id=null,op=null) {
+            // refresh all of them even if only one is involved
+            // (there's not much events and data isn't big)
             this.getApis();
         },
         createAPI: function() {
@@ -208,13 +209,11 @@ export default {
                              "description" : description})
                         .then(response => {
                             console.log(response.data.result)
-                            bus.$emit("refresh_apis");
                             return response.data.result;
                         })
                         .catch(err => {
                             console.log("Error creating API: ");
                             console.log(err);
-                            bus.$emit("refresh_apis");
                         })
                 }
             })

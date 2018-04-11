@@ -149,13 +149,11 @@ export default {
                     axios.delete(axios.defaults.baseURL + '/api',{"data":{"api_id":self.api._id}})
                     .then(response => {
                         console.log(response.data.result)
-                        bus.$emit("refresh_apis");
                         return true;
                     })
                     .catch(err => {
                         console.log(err);
                         console.log("Error deleting api: " + err.data.error);
-                        bus.$emit("refresh_apis");
                     })
                 }
             })
@@ -165,12 +163,10 @@ export default {
             axios.put(axios.defaults.baseURL + `/api/${this.api._id}/${mode}`)
             .then(response => {
                 console.log(response.data.result);
-                bus.$emit("refresh_apis");
             })
             .catch(err => {
                  console.log(err);
                  console.log(`Error ${mode}ing api: ` + err.data.error);
-                 bus.$emit("refresh_apis");
             });
 
         },
