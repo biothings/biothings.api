@@ -28,6 +28,11 @@
           <job-summary></job-summary>
         </div>
 
+        <div class="clickable blurred ui item">
+			<event-messages>
+			</event-messages>
+        </div>
+
         <div class="ui item">
             <div v-if="socket && socket.readyState == 1" :data-tooltip="'Connection: ' + socket.protocol" data-position="bottom center">
                 <button class="mini circular ui icon button" @click="closeSocket">
@@ -49,9 +54,9 @@
       </div>
     </div>
 
-    <div id="page_content" class="clickable blurred ui active tab segment">
-    <router-view></router-view>
-    </div>
+	<div id="page_content" class="clickable blurred ui active tab segment">
+		<router-view></router-view>
+	</div>
 
   </div>
 </template>
@@ -130,6 +135,7 @@ import DataSourceDetailed from './DataSourceDetailed.vue';
 import BuildGrid from './BuildGrid.vue';
 import BuildDetailed from './BuildDetailed.vue';
 import ApiGrid from './ApiGrid.vue';
+import EventMessages from './EventMessages.vue';
 
 const routes = [
     { path: '/', component: Stats },
@@ -149,9 +155,14 @@ const PING_INTERVAL_MS = 10000;
 export default {
   name: 'app',
   router: router,
-  components: { JobSummary },
+  components: { JobSummary, EventMessages, },
   mounted () {
     $('.menu .item').tab();
+	$('.ui.sticky')
+	.sticky({
+		context: '#page_content'
+	})
+;
   },
   created () {
     console.log("app created");
@@ -182,8 +193,8 @@ export default {
     dispatchMessage(msg) {
       if(msg.obj) {
         var event = `change_${msg.obj}`;
-        console.log(`dispatch event ${event} (${msg._id}): ${msg.op}`);
-        bus.$emit(event,msg._id,msg.op);
+        console.log(`dispatch event ${event} (${msg._id}): ${msg.op} [${msg.data}]`);
+        bus.$emit(event,msg._id,msg.op,msg.data);
       }
     },
     evalLatency : function(oldv,newv) {
@@ -284,7 +295,7 @@ export default {
       font-family: 'Avenir', Helvetica, Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-      text-align: center;
+      //text-align: center;
       color: #2c3e50;
       margin-top: 60px;
     }
