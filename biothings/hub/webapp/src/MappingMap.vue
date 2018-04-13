@@ -280,7 +280,7 @@ export default {
                 return;
             $(`#modal_${this.name}-${this.map_id} span.key`).html(key);
             $(`#modal_${this.name}-${this.map_id} input.path`).val(path);
-            $(`#modal_${this.name}-${this.map_id} span.path`).html(path.slice(1).replace(/\//g,'.'));
+            $(`#modal_${this.name}-${this.map_id} span.path`).html(path.slice(1).replace(/\//g,'.').replace(".properties",""));
             // retrieve actual mapping rules
             var keys = path.split("/").slice(1)
             // position submap to explored key

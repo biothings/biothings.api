@@ -4,9 +4,9 @@
 			<i class="bullhorn icon"></i>
 			<a :class="['ui mini',notifnumcolor,'circular label']">{{events.length}}</a>
 		</button>
-		<div class="ui processes popup top left transition hidden">
-			<div class="ui list" id="messages" v-if="events.length > 0">
-				<div class="item" v-for="evt in events" :key="evt._id">
+		<div class="ui messages popup top left transition hidden">
+			<div class="ui messages list" id="messages" v-if="events.length > 0">
+                <div class="item event" v-for="evt in events" :key="evt._id">
 					<event-message v-bind:event="evt"></event-message>
 				</div>
 			</div>
@@ -83,5 +83,8 @@ export default {
 <style>
 .ui.sidebar {
     overflow: visible !important;
+}
+.item.event {
+    min-width: 25em;
 }
 </style>

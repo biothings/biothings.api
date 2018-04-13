@@ -28,7 +28,6 @@ export default {
     },
     computed: {
         color: function () {
-            console.log(`klklklkl ${this.event.level.toUpperCase()}`);
             switch(this.event.level.toUpperCase()) {
                 case "ERROR":
                     return "red";
