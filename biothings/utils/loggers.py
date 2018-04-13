@@ -81,5 +81,38 @@ class HipchatHandler(logging.StreamHandler):
                 asyncio.ensure_future(fut)
 
 
+class EventRecorder(logging.StreamHandler):
+
+    def __init__(self, *args, **kwargs):
+        super(EventRecorder,self).__init__(*args,**kwargs)
+        from biothings.utils.hub_db import get_event
+        self.eventcol = get_event()
+
+    def emit(self,record):
+        @asyncio.coroutine
+        def aioemit(msg):
+            def recorded(f):
+                res = f.result()
+            fut = loop.run_in_executor(None,
+                    partial(self.eventcol.save,msg))
+            fut.add_done_callback(recorded)
+            yield from fut
+            return fut
+        if record.__dict__.get("notify"):
+            try:
+                loop = asyncio.get_event_loop()
+                msg = {
+                        "_id" : record.created,
+                        "asctime" : record.asctime,
+                        "msg" : record.message,
+                        "level" : record.levelname,
+                        "name" : record.name,
+                        "pid" : record.process,
+                        "pname" : record.processName,
+                        }
+                fut = aioemit(msg)
+                asyncio.ensure_future(fut)
+            except Exception as e:
+                logging.error("Couldn't record event: %s" % e)
 
 

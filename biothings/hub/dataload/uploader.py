@@ -345,8 +345,8 @@ class BaseSourceUploader(object):
             # get release that's been uploaded from download part
             src_doc = self.src_dump.find_one({"_id":self.main_source})
             # back-compatibility while searching for release
-            release = src_doc.get("download",{}).get("release") or src_doc["release"]
-            data_folder = src_doc.get("download",{}).get("data_folder") or src_doc["data_folder"]
+            release = src_doc.get("download",{}).get("release") or src_doc.get("release")
+            data_folder = src_doc.get("download",{}).get("data_folder") or src_doc.get("data_folder")
             # only register time when it's a final state
             # also, keep previous uploading information
             upd = {}

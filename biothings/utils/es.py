@@ -710,6 +710,10 @@ def get_cmd():
     db = Database()
     return db[db.CONFIG.CMD_COLLECTION]
 
+def get_event():
+    db = Database()
+    return db[db.CONFIG.EVENT_COLLECTION]
+
 def get_source_fullname(col_name):
     pass
 

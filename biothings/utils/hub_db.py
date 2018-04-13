@@ -54,6 +54,10 @@ def get_cmd():
     """Return a Collection instance for commands collection/table"""
     raise NotImplementedError()
 
+def get_event():
+    """Return a Collection instance for events collection/table"""
+    raise NotImplementedError()
+
 
 
 def get_source_fullname(col_name):
@@ -252,6 +256,7 @@ class ChangeWatcher(object):
     def add(klass,listener):
         assert hasattr(listener,"read"), "Listener '%s' has no read() method" % listener
         klass.listeners.add(listener)
+        klass.publish()
 
     @classmethod
     def monitor(klass,func,entity,op):
@@ -262,9 +267,13 @@ class ChangeWatcher(object):
                 # try to narrow down the event to a doc
                 # analyse the query/filter (1st elem in args), it tells how many docs are
                 # impacted, thus telling us wether to send a detailed or general event
+                logging.error("for entity %s args: %s" % (entity,repr(args)))
                 if args and type(args[0]) == dict and "_id" in args[0]:
                     # single event associated to one ID, we send an "detailed" event
                     event = {"_id" : args[0]["_id"], "obj" : entity, "op" : op}
+                    if entity == "event":
+                        # sends everything
+                        event["data"] = args[0]
                     klass.event_queue.put_nowait(event)
                 else:
                     # can't find ID, we send a general event (not specific to one doc)
@@ -299,6 +308,7 @@ def setup(config):
     global get_data_plugin
     global get_api
     global get_cmd
+    global get_event
     global get_source_fullname
     get_hub_db_conn = config.hub_db.get_hub_db_conn
     # use ChangeWatcher on internal collections so we can publish changes in real-time
@@ -309,6 +319,7 @@ def setup(config):
     get_data_plugin = ChangeWatcher.wrap(config.hub_db.get_data_plugin)
     get_api = ChangeWatcher.wrap(config.hub_db.get_api)
     get_cmd = ChangeWatcher.wrap(config.hub_db.get_cmd)
+    get_event = ChangeWatcher.wrap(config.hub_db.get_event)
     get_source_fullname = config.hub_db.get_source_fullname
     # propagate config module to classes
     config.hub_db.Database.CONFIG = config

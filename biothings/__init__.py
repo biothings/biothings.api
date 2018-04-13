@@ -1,4 +1,5 @@
 import sys, os, asyncio
+import logging
 import concurrent.futures
 from .version import MAJOR_VER, MINOR_VER, MICRO_VER
 
@@ -33,6 +34,14 @@ def config_for_app(config_mod, check=True):
         config.hub_db = importlib.import_module(config_mod.HUB_DB_BACKEND["module"])
         import biothings.utils.hub_db
         biothings.utils.hub_db.setup(config)
+    from biothings.utils.loggers import EventRecorder
+    logger = logging.getLogger()
+    fmt = logging.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S")
+    erh = EventRecorder()
+    erh.name = "event_recorder"
+    erh.setFormatter(fmt)
+    if not erh.name in [h.name for h in logger.handlers]:
+        logger.addHandler(erh)
 
 
 def get_loop(max_workers=None):
