@@ -1,9 +1,10 @@
 <template>
     <div :class="['ui tiny',color,'message']">
+        <i class="close icon" :data-id="event._id"></i>
         <div><div :class="['ui',color,'horizontal label']">{{event.name}}</div>
-            <div class="ui right floated"><i>{{event.asctime}}</i></div>
         </div>
-        <p>{{event.msg}}</p>
+        <div>{{event.msg}}<div class="ui right floated"><i>{{event.asctime}}</i></div>
+    </div>
     </div>
 </template>
 
@@ -17,6 +18,21 @@ export default {
     props: ['event'],
     mounted () {
         console.log("EventMessage mounted");
+        var self = this;
+        $('.message .close')
+        .on('click', function() {
+
+            var evtid = $(this).attr("data-id");
+            // filter proper event
+            if(evtid == self.event._id) {
+                $(this)
+                .closest('.message')
+                .transition('fade');
+                console.log(evtid);
+                bus.$emit("event_deleted",evtid);
+            }
+        })
+        ;
 	},
     updated() {
     },

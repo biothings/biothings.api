@@ -4,13 +4,18 @@
 			<i class="bullhorn icon"></i>
 			<a :class="['ui mini',notifnumcolor,'circular label']">{{events.length}}</a>
 		</button>
-		<div class="ui messages popup top left transition hidden">
-			<div class="ui messages list" id="messages" v-if="events.length > 0">
+        <div class="ui messages popup top left transition hidden">
+            <div class="ui messages list" id="messages" v-if="events.length > 0">
+                <div class="ui fluid right aligned container">
+            <button class="mini ui button " @click="clearEvents()">
+                Clear
+            </button>
+                </div>
                 <div class="item event" v-for="evt in events" :key="evt._id">
 					<event-message v-bind:event="evt"></event-message>
 				</div>
 			</div>
-			<div v-else>No new notifications</div>
+			<div v-else nowrap>No new notifications</div>
 		</div>
 	</div>
 </template>
@@ -21,7 +26,7 @@ import bus from './bus.js'
 
 import EventMessage from './EventMessage.vue';
 
-const MAX_EVENTS = 20;
+const MAX_EVENTS = 10;
 
 export default {
     name: 'event-messages',
@@ -42,18 +47,19 @@ export default {
     },
     created() {
         bus.$on('change_event',this.onEventChanged);
+        bus.$on('event_deleted',this.eventDeleted);
     },
     beforeDestroy() {
         // hacky to remove modal from div outside of app, preventing having more than one
         // modal displayed when getting back to that page. https://github.com/Semantic-Org/Semantic-UI/issues/4049
         bus.$off('change_event',this.onEventChanged);
+        bus.$off('event_deleted',this.eventDeleted);
     },
     watch: {
     },
     data () {
         return  {
-			//events: [],
-			events: [{'pid': 31239, '_id': 1523566534.4344828, 'pname': 'mainprocess', 'name': 'cgi_upload', 'asctime': '13:55:34', 'msg': 'success [steps=data,post,master,clean]', 'level': 'info'}],
+            events: [],
 			hasnew: false,
         }
     },
@@ -64,6 +70,15 @@ export default {
 		}
 	},
     methods: {
+        clearEvents: function() {
+            this.events = [];
+        },
+        eventDeleted: function(evtid) {
+            var evt = this.events.find(o => o._id == evtid);
+            var idx = this.events.indexOf(evt);
+            if(idx > -1)
+                this.events.splice(idx,1);
+        },
         onEventChanged: function(_id=null,op=null,data=null) {
             if(data != null) {
 				if(data.name == "hub") {
@@ -72,7 +87,7 @@ export default {
 				}
 				this.events.unshift(data)
 				this.hasnew = true;
-				if(this.events.length > MAX_EVENTS)
+				while(this.events.length > MAX_EVENTS)
 					this.events.pop();
             }
         },
