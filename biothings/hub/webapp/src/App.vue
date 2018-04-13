@@ -165,7 +165,7 @@ export default {
 ;
   },
   created () {
-    console.log("app created");
+    console.log("App created");
     this.setupSocket();
   },
   beforeDestroy() {
@@ -177,6 +177,7 @@ export default {
       socket : null,
       msg_timestamp : null,
       latency_value : null,
+      ping_interval : PING_INTERVAL_MS, // adjustable delay
     }
   },
   computed : {
@@ -242,6 +243,7 @@ export default {
         this.socket = new SockJS(axios.defaults.baseURL + '/ws', transports);
         this.socket.onopen = function() {
           self.connected = true;
+          this.ping_interval = PING_INTERVAL_MS;
           self.pingServer();
           $(".clickable").removeClass("blurred");
         };
@@ -278,12 +280,13 @@ export default {
         console.log("Sent a ping but got no pong, disconnect");
         this.closeSocket();
       }
-      console.log("pingServer");
       // Send the "pingServer" event to the server.
       this.msg_timestamp = Date.now();
       this.socket.send(JSON.stringify({'op': 'ping'}));
-      if(this.connected)
-        setTimeout(this.pingServer,PING_INTERVAL_MS);
+      if(this.connected) {
+        setTimeout(this.pingServer,this.ping_interval);
+        this.ping_interval = Math.min(this.ping_interval * 1.2,PING_INTERVAL_MS * 6);
+      }
     }
   }
 }
