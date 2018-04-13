@@ -52,8 +52,7 @@ export default {
   methods: {
   },
   mounted () {
-    console.log("threads list mounted");
-    console.log(this.threads);
+    console.log("ThreadsList mounted");
     $('.ui.toggle.checkbox')
     .checkbox()
     ;

@@ -51,8 +51,7 @@ export default {
   methods: {
   },
   mounted () {
-    console.log("processes list mounted");
-    console.log(this.processes);
+    console.log("ProcessesList mounted");
     $('.ui.toggle.checkbox')
     .checkbox()
     ;

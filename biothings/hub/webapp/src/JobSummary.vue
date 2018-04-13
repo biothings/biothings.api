@@ -59,7 +59,7 @@ const POLL_JOBS_INTERVAL = 3000; // when needed, poll job manager every X ms
 export default {
   name: 'job-summary',
   mounted () {
-    console.log("mounted");
+    console.log("JobSummary mounted");
     this.getJobSummary();
     // setup menu
     $('.processes.button').popup({

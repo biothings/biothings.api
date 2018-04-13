@@ -120,8 +120,6 @@ export default {
         maps: function () {
             // organize mappings in a simple object, if mappings exist
             var _maps = {};
-            console.log("$mapping");
-            console.log(this.source.mapping);
             if(this.source.inspect && this.source.inspect.sources) {
                 for(var subsrc in this.source.inspect.sources) {
                     if(this.source.inspect.sources[subsrc]["inspect"]) {
@@ -133,7 +131,6 @@ export default {
                 }
             }
             for(var subsrc in this.source.mapping) {
-              console.log(`subsrc: ${subsrc}`);
                 if(!subsrc in _maps)
                     _maps[subsrc] = {};
                 if(!_maps[subsrc]) {
@@ -154,7 +151,7 @@ export default {
             var self = this;
             axios.get(axios.defaults.baseURL + `/source/${this._id}`)
             .then(response => {
-                console.log(response.data.result)
+                //console.log(response.data.result)
                 self.source = response.data.result;
             })
             .catch(err => {

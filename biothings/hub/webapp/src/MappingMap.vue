@@ -432,7 +432,6 @@ export default {
                 $(`.ui.${self.map_id}.dropdown`).dropdown({
                     values: envs,
                     onChange: function(value, text, $selectedItem) {
-                        console.log(`value ${value} text ${text}`);
                         $(`.${self.map_id}.test-on`).text(`${value}`);
                     }
                 });
