@@ -1,5 +1,13 @@
 <template>
     <span>
+        <div class="ui fluid basic segment right aligned">
+            <button class="ui button mini" v-on:click="$parent.inspect">
+                <i class="unhide icon"></i>
+                Inspect data
+            </button>
+        </div>
+        <inspect-form v-bind:_id="_id" v-bind:select_data_provider="true">
+        </inspect-form>
         <span v-if="maps">
             <!-- multiple sub-source -->
             <span v-if="Object.keys(maps).length > 1">
@@ -69,6 +77,7 @@ import axios from 'axios'
 import bus from './bus.js'
 import MappingMap from './MappingMap.vue'
 import DiffUtils from './DiffUtils.vue'
+import InspectForm from './InspectForm.vue'
 
 export default {
     name: 'data-source-mapping',
@@ -79,7 +88,7 @@ export default {
         //$('#maps .item:first').addClass('active');
         //$('.tab:first').addClass('active');
     },
-    components: { MappingMap },
+    components: { MappingMap, InspectForm, },
     data () {
         return {
         }

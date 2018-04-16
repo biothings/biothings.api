@@ -105,10 +105,12 @@ export default {
         $('.menu .item').tab();
     },
     created() {
-        bus.$on("reload_datasource_detailed",this.loadData);
+        bus.$on('change_source',this.loadData);
+        bus.$on('change_master',this.loadData);
     },
     beforeDestroy() {
-        bus.$off("reload_datasource_detailed",this.loadData);
+        bus.$on('change_source',this.loadData);
+        bus.$off('change_master',this.loadData);
     },
     data () {
         return {

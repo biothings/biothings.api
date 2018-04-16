@@ -16,13 +16,13 @@
                         <tr>
                             <td >Release</td>
                             <td>
-                                {{source.data_plugin.release}}
+                                {{source.data_plugin.download.release}}
                             </td>
                         </tr>
                         <tr>
                             <td >Source folder</td>
                             <td>
-                                {{source.data_plugin.data_folder}}
+                                {{source.data_plugin.download.data_folder}}
                             </td>
                         </tr>
                         <tr v-if="source.data_plugin.download.error">

@@ -61,7 +61,7 @@
             </div>
         </div>
 
-        <inspect-form v-bind:toinspect="source" v-bind:select_data_provider="true">
+        <inspect-form v-bind:_id="source._id" v-bind:select_data_provider="true">
         </inspect-form>
 
         <!-- Register new data plugin -->
@@ -117,17 +117,6 @@ export default {
         },
     },
     methods: {
-        getSource: function() {
-            console.log(`getSource ${this.source._id}`);
-            var self = this;
-            axios.get(axios.defaults.baseURL + '/source/' + this.source._id)
-            .then(response => {
-                this.source_from_api = response.data.result;
-            })
-            .catch(err => {
-                console.log("Error getting sources information: " + err);
-            })
-        },
     },
 }
 </script>

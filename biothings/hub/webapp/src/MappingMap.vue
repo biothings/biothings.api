@@ -379,7 +379,6 @@ export default {
                         {"mapping" : json, "dest" : dest})
             .then(response => {
                 console.log(response.data.result)
-                bus.$emit("reload_datasource_detailed");
                 this.cleaned();
             })
             .catch(err => {

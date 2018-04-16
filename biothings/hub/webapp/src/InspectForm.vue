@@ -1,9 +1,9 @@
 <template>
     <!-- Inspect -->
-    <div class="ui basic inspect modal" v-bind:id="'inspect-' + toinspect._id">
+    <div class="ui basic inspect modal" v-bind:id="'inspect-' + _id">
         <div class="ui icon">
             <i class="large unhide icon"></i>
-            <h3>Inspect data: {{toinspect._id}}</h3>
+            <h3>Inspect data: {{_id}}</h3>
         </div>
         <div class="ui fluid grid">
 
@@ -94,22 +94,22 @@ import bus from './bus.js'
 
 export default {
     name: 'inspect-form',
-    props: ['toinspect','select_data_provider'],
+    props: ['_id','select_data_provider'],
     mounted () {
         $('select.dropdown').dropdown();
     },
     methods: {
         inspect: function() {
             var self = this;
-            $(`#inspect-${this.toinspect._id}.ui.basic.inspect.modal`)
+            $(`#inspect-${this._id}.ui.basic.inspect.modal`)
             .modal("setting", {
                 onApprove: function () {
-                    var modes = $(`#inspect-${self.toinspect._id}`).find("#select-mode").val();
-                    var dp = $(`#inspect-${self.toinspect._id}`).find("#select-data_provider").val();
+                    var modes = $(`#inspect-${self._id}`).find("#select-mode").val();
+                    var dp = $(`#inspect-${self._id}`).find("#select-data_provider").val();
                     console.log(modes);
                     console.log(dp);
                     axios.put(axios.defaults.baseURL + '/inspect',
-                              {"data_provider" : [dp,self.toinspect._id],"mode":modes})
+                              {"data_provider" : [dp,self._id],"mode":modes})
                     .then(response => {
                         console.log(response.data.result)
                         bus.$emit("refresh_sources");

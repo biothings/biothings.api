@@ -163,6 +163,17 @@ export default {
                 return this.getSource();
             };
         },
+        getSource: function() {
+            console.log(`getSource ${this.source._id}`);
+            var self = this;
+            axios.get(axios.defaults.baseURL + '/source/' + this.source._id)
+            .then(response => {
+                this.source_from_api = response.data.result;
+            })
+            .catch(err => {
+                console.log("Error getting sources information: " + err);
+            })
+        },
     },
 }
 </script>

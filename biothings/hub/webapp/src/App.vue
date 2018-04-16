@@ -361,6 +361,7 @@ export default {
     }
 
     .red {color: #c31616;}
+    .green {color: #0e7948;}
     .blurred {
       filter: blur(2px);
       pointer-events: none;

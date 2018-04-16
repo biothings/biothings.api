@@ -14,7 +14,7 @@
                         <tr>
                             <td >Status</td>
                             <td>
-                                <i :class="source.download.status == 'failed' ? 'red' : ''">{{source.download.status}}</i>
+                                <i :class="source.download.status == 'failed' ? 'red' : 'green'">{{source.download.status}}</i>
                             </td>
                         </tr>
                         <tr>

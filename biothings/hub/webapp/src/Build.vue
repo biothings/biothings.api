@@ -89,7 +89,7 @@
             </div>
         </div>
 
-        <inspect-form v-bind:toinspect="build" v-bind:select_data_provider="false">
+        <inspect-form v-bind:_id="build._id" v-bind:select_data_provider="false">
         </inspect-form>
 
     </div>
