@@ -70,7 +70,7 @@ class InspectorManager(BaseManager):
                 doc = get_src_dump().find_one({"_id":src_name})
                 if not doc:
                     raise InspectorError("Can't find document associated to '%s'" % src_name)
-                if data_provider[0] == "uploader" and not doc.get("data_folder"):
+                if data_provider[0] == "uploader" and not doc.get("download").get("data_folder"):
                     raise InspectorError("Can't find data folder for '%s'" % src_name)
 
                 # get an uploader instance (used to get the data if type is "uploader"
@@ -99,7 +99,7 @@ class InspectorManager(BaseManager):
 
                 # data providers are different
                 if data_provider[0] == "uploader":
-                    data_folder = doc["data_folder"]
+                    data_folder = doc["download"]["data_folder"]
                     # in this case, registerer_obj is also the object used to get the data
                     yielder_provider = partial(provider_uploader,registerer_obj,data_folder)
                 else:
