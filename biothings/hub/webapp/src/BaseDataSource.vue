@@ -97,8 +97,6 @@ export default {
         },
         dump: function(release=null,force=null) {
             var data = {};
-            console.log(`release ${release}`);
-            console.log(`force ${force}`);
             if(release != null && release)
                 data["release"] = release
             if(force != null)

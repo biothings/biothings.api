@@ -135,15 +135,16 @@ export default {
             return errs.join("<br>");
         },
         deleteAPI: function(event) {
-            console.log("on delete");
             console.log(event);
             var api_id = $(event.target).attr("data-api_id");
             // filter Api component to open correct modal
             console.log(`${api_id} ${this.api._id}`);
-            if(!api_id || api_id != this.api._id)
+            if(!api_id || api_id != this.api._id) {
+                console.log("nope");
                 return;
+            }
             var self = this;
-            $(`#${this.api._id}.ui.basic.deleteapi.modal`)
+            $(`#${this.api._id.replace(".","\\.")}.ui.basic.deleteapi.modal`)
             .modal("setting", {
                 onApprove: function () {
                     axios.delete(axios.defaults.baseURL + '/api',{"data":{"api_id":self.api._id}})

@@ -41,10 +41,10 @@
         </div>
         <div class="extra content">
             <div class="ui icon buttons left floated mini">
-                <button class="ui button" v-on:click="dump" v-if="source.download">
+                <button class="ui button" v-on:click="do_dump" v-if="source.download">
                     <i class="download cloud icon"></i>
                 </button>
-                <button class="ui button" v-on:click="upload" v-if="source.upload">
+                <button class="ui button" v-on:click="do_upload" v-if="source.upload">
                     <i class="database icon"></i>
                 </button>
             </div>
@@ -117,6 +117,14 @@ export default {
         },
     },
     methods: {
+        do_dump: function() {
+            // just "eat" mouse event to clean final call
+            return this.dump();
+        },
+        do_upload: function() {
+            // just "eat" mouse event to clean final call
+            return this.upload();
+        },
     },
 }
 </script>
