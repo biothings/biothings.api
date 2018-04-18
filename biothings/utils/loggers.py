@@ -98,7 +98,7 @@ class EventRecorder(logging.StreamHandler):
             fut.add_done_callback(recorded)
             yield from fut
             return fut
-        if record.__dict__.get("notify"):
+        if record.__dict__.get("notify") or record.__dict__.get("event"):
             try:
                 loop = asyncio.get_event_loop()
                 msg = {
