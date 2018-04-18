@@ -98,6 +98,9 @@ export default {
     mounted () {
         $('select.dropdown').dropdown();
     },
+    beforeDestroy() {
+        $(`#inspect-${this._id}.ui.basic.inspect.modal`).remove();
+    },
     methods: {
         inspect: function() {
             var self = this;

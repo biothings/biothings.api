@@ -58,6 +58,8 @@
 		<router-view></router-view>
 	</div>
 
+	<event-alert></event-alert>
+
   </div>
 </template>
 
@@ -99,27 +101,27 @@ var UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
 var STEP = 1024;
 
 function pretty_size(bytes,precision=2) {
-	var units = [
-		'bytes',
-		'KB',
-		'MB',
-		'GB',
-		'TB',
-		'PB'
-	];
+    var units = [
+        'bytes',
+        'KB',
+        'MB',
+        'GB',
+        'TB',
+        'PB'
+    ];
 
-	if ( isNaN( parseFloat( bytes )) || ! isFinite( bytes ) ) {
-		return '?';
-	}
+    if ( isNaN( parseFloat( bytes )) || ! isFinite( bytes ) ) {
+        return '?';
+    }
 
-	var unit = 0;
+    var unit = 0;
 
-	while ( bytes >= 1024 ) {
-		bytes /= 1024;
-		unit ++;
-	}
+    while ( bytes >= 1024 ) {
+        bytes /= 1024;
+        unit ++;
+    }
 
-	return bytes.toFixed( + precision ) + ' ' + units[ unit ];
+    return bytes.toFixed( + precision ) + ' ' + units[ unit ];
 };
 Vue.filter('pretty_size',pretty_size);
 
@@ -136,6 +138,7 @@ import BuildGrid from './BuildGrid.vue';
 import BuildDetailed from './BuildDetailed.vue';
 import ApiGrid from './ApiGrid.vue';
 import EventMessages from './EventMessages.vue';
+import EventAlert from './EventAlert.vue';
 
 const routes = [
     { path: '/', component: Stats },
@@ -153,142 +156,164 @@ const router = new VueRouter({
 const PING_INTERVAL_MS = 10000;
 
 export default {
-  name: 'app',
-  router: router,
-  components: { JobSummary, EventMessages, },
-  mounted () {
-    $('.menu .item').tab();
-	$('.ui.sticky')
-	.sticky({
-		context: '#page_content'
-	})
-;
-  },
-  created () {
-    console.log("App created");
-    this.setupSocket();
-  },
-  beforeDestroy() {
-  },
-  data() {
-    return {
-      connected: false,
-      socket_msg: '',
-      socket : null,
-      msg_timestamp : null,
-      latency_value : null,
-      ping_interval : PING_INTERVAL_MS, // adjustable delay
-    }
-  },
-  computed : {
-  },
-  watch: {
-    latency_value: function (newv, oldv) {
-      if(newv != oldv) {
-        //console.log(`new: ${newv} old: ${oldv}`);
-        this.evalLatency(oldv,newv);
-      }
-    }
-  },
-  methods: {
-    dispatchMessage(msg) {
-      if(msg.obj) {
-        var event = `change_${msg.obj}`;
-        console.log(`dispatch event ${event} (${msg._id}): ${msg.op} [${msg.data}]`);
-        bus.$emit(event,msg._id,msg.op,msg.data);
-      }
+    name: 'app',
+    router: router,
+    components: { JobSummary, EventMessages, EventAlert, },
+    mounted () {
+        $('.menu .item').tab();
+        $('.ui.sticky')
+        .sticky({
+            context: '#page_content'
+        })
+        ;
     },
-    evalLatency : function(oldv,newv) {
-      var info = {}
-      function getInfo(val) {
-        // depending on websocket latency, adjust color and text info
-        if(val == null) {
-          info["color"] = "grey";
-          info["quality"] = "unknown";
-        } else if(val > 0 && val <= 20) {
-          info["color"] = "green";
-          info["quality"] = "excellent";
-        } else if(val > 20 && val <= 30) {
-          info["color"] = "olive";
-          info["quality"] = "good";
-        } else if(val > 30 && val <= 50) {
-          info["color"] = "yellow";
-          info["quality"] = "average";
-        } else if(val > 50 && val <= 100) {
-          info["color"] = "orange";
-          info["quality"] = "poor";
-        } else if(val > 100) {
-          info["color"] = "red";
-          info["quality"] = "very poor";
-        } else {
-          info["color"] = "brown";
-          info["quality"] = "???";
+    created () {
+        console.log("App created");
+        this.setupSocket();
+        bus.$on("reconnect",this.setupSocket);
+    },
+    beforeDestroy() {
+        bus.$off("reconnect",this.setupSocket);
+    },
+    data() {
+        return {
+            connected: false,
+            socket_msg: '',
+            socket : null,
+            msg_timestamp : null,
+            latency_value : null,
+            ping_interval : PING_INTERVAL_MS, // adjustable delay
         }
-        return info;
-      }
-      var oldinfo = getInfo(oldv);
-      var newinfo = getInfo(newv);
-      $("#connected i").removeClass("grey brown red orange yellow olive green").addClass(newinfo.color);
-      $("#connected").attr("data-tooltip",'Quality: ' + newinfo.quality);
     },
-    setupSocket() {
-      var self = this;
-      var transports = null;//["websocket","xhr-polling"];
-      // re-init timestamp so we can monitor it again
-      this.msg_timestamp = null;
-      // first check we can access a websocket
-      axios.get(axios.defaults.baseURL + '/ws/info')
-      .then(response => {
-        console.log("WebSocket available");
-        this.socket = new SockJS(axios.defaults.baseURL + '/ws', transports);
-        this.socket.onopen = function() {
-          self.connected = true;
-          this.ping_interval = PING_INTERVAL_MS;
-          self.pingServer();
-          $(".clickable").removeClass("blurred");
-        };
-        this.socket.onmessage = function (evt) {
-          var newts = Date.now();
-          self.latency_value = newts - self.msg_timestamp;
-          self.socket_msg = evt.data;
-          self.dispatchMessage(evt.data);
-          self.msg_timestamp = null;
-        };
-        this.socket.onclose = function() {
-          self.closeSocket();
+    computed : {
+    },
+    watch: {
+        latency_value: function (newv, oldv) {
+            if(newv != oldv) {
+                //console.log(`new: ${newv} old: ${oldv}`);
+                this.evalLatency(oldv,newv);
+            }
+        }
+    },
+    methods: {
+        dispatchEvent(evt) {
+            if(evt.obj) {
+                // is it a structured event (jsonifiable) or a standard string event
+                var invalid_json = false;
+                if(evt.data && evt.data.msg.startsWith("{") && evt.data.msg.endsWith("}")) {
+                    // try to avoid json process if not even a dict
+                    try {
+                        var dmsg = JSON.parse(evt.data.msg);
+                        // we only know this type for now...
+                        if(dmsg["type"] == "alert") {
+                            bus.$emit("alert",dmsg);
+                            return
+                        } else {
+                            console.log(`Unknown structured event type: ${dmsg["type"]}`);
+                        }
+                    } catch(e) {
+                        // will be processed as a basic/standard event
+                    }
+                }
+                var event = `change_${evt.obj}`;
+                console.log(`dispatch event ${event} (${evt._id}): ${evt.op} [${evt.data}]`);
+                console.log(evt);
+                bus.$emit(event,evt._id,evt.op,evt.data);
+            }
         },
-        this.socket.ontimeout = function(err) {
-          console.log("got error");
-          console.log(err);
-        }
+        evalLatency : function(oldv,newv) {
+            var info = {}
+            function getInfo(val) {
+                // depending on websocket latency, adjust color and text info
+                if(val == null) {
+                    info["color"] = "grey";
+                    info["quality"] = "unknown";
+                } else if(val > 0 && val <= 20) {
+                    info["color"] = "green";
+                    info["quality"] = "excellent";
+                } else if(val > 20 && val <= 30) {
+                    info["color"] = "olive";
+                    info["quality"] = "good";
+                } else if(val > 30 && val <= 50) {
+                    info["color"] = "yellow";
+                    info["quality"] = "average";
+                } else if(val > 50 && val <= 100) {
+                    info["color"] = "orange";
+                    info["quality"] = "poor";
+                } else if(val > 100) {
+                    info["color"] = "red";
+                    info["quality"] = "very poor";
+                } else {
+                    info["color"] = "brown";
+                    info["quality"] = "???";
+                }
+                return info;
+            }
+            var oldinfo = getInfo(oldv);
+            var newinfo = getInfo(newv);
+            $("#connected i").removeClass("grey brown red orange yellow olive green").addClass(newinfo.color);
+            $("#connected").attr("data-tooltip",'Quality: ' + newinfo.quality);
+        },
+        setupSocket() {
+            var self = this;
+            var transports = null;//["websocket","xhr-polling"];
+            // re-init timestamp so we can monitor it again
+            this.msg_timestamp = null;
+            // first check we can access a websocket
+            axios.get(axios.defaults.baseURL + '/ws/info')
+            .then(response => {
+                console.log("WebSocket available");
+                this.socket = new SockJS(axios.defaults.baseURL + '/ws', transports);
+                this.socket.onopen = function() {
+                    self.connected = true;
+                    this.ping_interval = PING_INTERVAL_MS;
+                    self.pingServer();
+                    $(".clickable").removeClass("blurred");
+                };
+                this.socket.onmessage = function (evt) {
+                    var newts = Date.now();
+                    self.latency_value = newts - self.msg_timestamp;
+                    self.socket_msg = evt.data;
+                    self.dispatchEvent(evt.data);
+                    self.msg_timestamp = null;
+                };
+                this.socket.onclose = function() {
+                    //console.log(o"socket is closed");
+                    //bus.$emit("alert",{type: "alert", event: "hub_stop", msg: "Lost connection"})
+                    self.closeSocket();
+                },
+                this.socket.ontimeout = function(err) {
+                    console.log("got error");
+                    console.log(err);
+                }
 
-      })
-      .catch(err => {
-        console.log("Can't connect using websocket");
-        console.log(err);
-      });
-    },
-    closeSocket() {
-      this.connected = false;
-      this.socket.close();
-      this.msg_timestamp = null;
-      $(".clickable").addClass("blurred");
-    },
-    pingServer() {
-      // check if we got a reply before, it not, we have a connection issue
-      if(this.msg_timestamp != null) {
-        console.log("Sent a ping but got no pong, disconnect");
-        this.closeSocket();
-      }
-      // Send the "pingServer" event to the server.
-      this.msg_timestamp = Date.now();
-      this.socket.send(JSON.stringify({'op': 'ping'}));
-      if(this.connected) {
-        setTimeout(this.pingServer,this.ping_interval);
-        this.ping_interval = Math.min(this.ping_interval * 1.2,PING_INTERVAL_MS * 6);
-      }
+            })
+            .catch(err => {
+                console.log("Can't connect using websocket");
+                console.log(err);
+            });
+        },
+        closeSocket() {
+            this.connected = false;
+            this.socket.close();
+            this.msg_timestamp = null;
+            $(".clickable").addClass("blurred");
+        },
+        pingServer() {
+            // check if we got a reply before, it not, we have a connection issue
+            if(this.msg_timestamp != null) {
+                console.log("Sent a ping but got no pong, disconnect");
+                this.closeSocket();
+            }
+            // Send the "pingServer" event to the server.
+            this.msg_timestamp = Date.now();
+            this.socket.send(JSON.stringify({'op': 'ping'}));
+            if(this.connected) {
+                setTimeout(this.pingServer,this.ping_interval);
+                this.ping_interval = Math.min(this.ping_interval * 1.2,PING_INTERVAL_MS * 6);
+            }
+        }
     }
-  }
 }
 
 </script>

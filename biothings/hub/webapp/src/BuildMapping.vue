@@ -1,57 +1,67 @@
 <template>
     <span>
-                <p>
-                    These are the mappings for build <b>{{build._id}}</b>.
-                </p>
-                <p>
-                    <i>Mapping from inspection</i> has been generated during data inspection, while <i>Registered mapping</i> is the actual active mapping, used during indexation.
-                </p>
-                <p>
-                    Mappings can be manually edited and mapping from inspection can be saved as the new registered, active mapping.
-                </p>
-                <div class="ui warning message">
-                    <ul class="ui list">
-                        <li>Registered mapping is created by merging each source's mapping. Modifications may not survive as it can be re-generated.</li>
-                        <li>When testing a mapping, an temporary index is created on the selection ElasticSearch environment. That index is then deleted.</li>
-                    </ul>
-                </div>
-        <div class="ui segment">
-        <div class="ui grid">
-            <div class="center aligned sixteen wide column" v-if="maps['inspect_mapping'] && !maps['inspect_mapping']['errors'] && !maps['inspect_mapping']['pre-mapping']">
-                <button class="ui labeled mini icon button"
-                    v-on:click="diffMapping('tab_mapping_inspected','tab_mapping_registered',build._id)">
-                    <i class="exchange icon"></i>
-                    Diff
-                </button>
-            </div>
-
-            <div class="sixteen wide column">
-            <div class="ui grid">
-                <div class="eight wide column">
-                    <mapping-map v-if="maps"
-                        v-bind:entity="'build'"
-                        v-bind:map="maps['inspect_mapping']"
-                        v-bind:name="build._id"
-                        v-bind:map_origin="'inspect'"
-                        v-bind:map_id="'tab_mapping_inspected'"
-                        v-bind:read_only="maps['inspect_mapping'] && maps['inspect_mapping']['pre-mapping']"
-                        v-bind:can_commit="maps['registered_mapping'] ? maps['registered_mapping']['origin'] != 'uploader' : true">
-                    </mapping-map>
-                </div>
-                <div class="eight wide column">
-                    <mapping-map v-if="maps['registered_mapping']"
-                        v-bind:entity="'build'"
-                        v-bind:map="maps['registered_mapping']"
-                        v-bind:name="build._id"
-                        v-bind:map_origin="'build'"
-                        v-bind:map_id="'tab_mapping_registered'"
-                        v-bind:read_only="false"
-                        v-bind:can_commit="false">
-                    </mapping-map>
-                </div>
-            </div>
-            </div>
+        <div class="ui fluid basic segment right aligned">
+            <button class="ui button mini" v-on:click="$parent.inspect">
+                <i class="unhide icon"></i>
+                Inspect data
+            </button>
         </div>
+
+        <inspect-form v-bind:_id="build._id" v-bind:select_data_provider="false">
+        </inspect-form>
+
+        <p>
+            These are the mappings for build <b>{{build._id}}</b>.
+        </p>
+        <p>
+            <i>Mapping from inspection</i> has been generated during data inspection, while <i>Registered mapping</i> is the actual active mapping, used during indexation.
+        </p>
+        <p>
+            Mappings can be manually edited and mapping from inspection can be saved as the new registered, active mapping.
+        </p>
+        <div class="ui warning message">
+            <ul class="ui list">
+                <li>Registered mapping is created by merging each source's mapping. Modifications may not survive as it can be re-generated.</li>
+                <li>When testing a mapping, an temporary index is created on the selection ElasticSearch environment. That index is then deleted.</li>
+            </ul>
+        </div>
+        <div class="ui segment">
+            <div class="ui grid">
+                <div class="center aligned sixteen wide column" v-if="maps['inspect_mapping'] && !maps['inspect_mapping']['errors'] && !maps['inspect_mapping']['pre-mapping']">
+                    <button class="ui labeled mini icon button"
+                        v-on:click="diffMapping('tab_mapping_inspected','tab_mapping_registered',build._id)">
+                        <i class="exchange icon"></i>
+                        Diff
+                    </button>
+                </div>
+
+                <div class="sixteen wide column">
+                    <div class="ui grid">
+                        <div class="eight wide column">
+                            <mapping-map v-if="maps"
+                                v-bind:entity="'build'"
+                                v-bind:map="maps['inspect_mapping']"
+                                v-bind:name="build._id"
+                                v-bind:map_origin="'inspect'"
+                                v-bind:map_id="'tab_mapping_inspected'"
+                                v-bind:read_only="maps['inspect_mapping'] && maps['inspect_mapping']['pre-mapping']"
+                                v-bind:can_commit="maps['registered_mapping'] ? maps['registered_mapping']['origin'] != 'uploader' : true">
+                            </mapping-map>
+                        </div>
+                        <div class="eight wide column">
+                            <mapping-map v-if="maps['registered_mapping']"
+                                v-bind:entity="'build'"
+                                v-bind:map="maps['registered_mapping']"
+                                v-bind:name="build._id"
+                                v-bind:map_origin="'build'"
+                                v-bind:map_id="'tab_mapping_registered'"
+                                v-bind:read_only="false"
+                                v-bind:can_commit="false">
+                            </mapping-map>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
     </span>

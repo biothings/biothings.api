@@ -81,8 +81,8 @@ export default {
         },
         onEventChanged: function(_id=null,op=null,data=null) {
             if(data != null) {
-				if(data.name == "hub") {
-					// too generic, skip
+				// too generic, skip unless important (critical is a special by-passing level there)
+				if(data.level != "CRITICAL" && data.name == "hub") {
 					return;
 				}
 				this.events.unshift(data)

@@ -107,10 +107,12 @@ export default {
     created() {
         bus.$on('change_source',this.loadData);
         bus.$on('change_master',this.loadData);
+        bus.$on('change_data_plugin',this.loadData);
     },
     beforeDestroy() {
         bus.$on('change_source',this.loadData);
         bus.$off('change_master',this.loadData);
+        bus.$on('change_data_plugin',this.loadData);
     },
     data () {
         return {

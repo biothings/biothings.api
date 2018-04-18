@@ -95,7 +95,7 @@ export default {
             Array.prototype.push.apply(errs,this.getError("inspect"));
             return errs.join("<br>");
         },
-        dump: function() {
+        dump: function(release=null) {
             axios.put(axios.defaults.baseURL + `/source/${this.source.name}/dump`)
             .then(response => {
                 console.log(response.data.result)
@@ -104,8 +104,14 @@ export default {
                 console.log("Error getting job manager information: " + err);
             })
         },
-        upload: function() {
-            axios.put(axios.defaults.baseURL + `/source/${this.source.name}/upload`)
+        upload: function(release=null,subsrc=null) {
+            var body = null;
+            if(release == null)
+                body = {"release" : release};
+            var srcname = this.source.name;
+            if(subsrc != null)
+                srcname += "." + subsrc; // upload a sub-source only
+            axios.put(axios.defaults.baseURL + `/source/${srcname}/upload`,body)
             .then(response => {
                 console.log(response.data.result)
             })

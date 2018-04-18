@@ -99,6 +99,7 @@
 import axios from 'axios'
 import bus from './bus.js'
 import Vue from 'vue';
+import BaseBuild from './BaseBuild.vue'
 import InspectForm from './InspectForm.vue'
 import BuildLogs from './BuildLogs.vue'
 import BuildStats from './BuildStats.vue'
@@ -134,6 +135,7 @@ export default {
             build_from_api: null,
         }
     },
+    mixins: [ BaseBuild, ],
     components: { InspectForm, BuildLogs, BuildStats, BuildSources, },
     computed: {
         build: function () {
@@ -168,24 +170,6 @@ export default {
                     .catch(err => {
                         console.log(err);
                         console.log("Error deleting build: " + err.data.error);
-                    })
-                }
-            })
-            .modal("show");
-        },
-        inspect: function() {
-            var self = this;
-            $(`#inspect-${this.build._id}.ui.basic.inspect.modal`)
-            .modal("setting", {
-                onApprove: function () {
-                    var modes = $(`#inspect-${self.build._id}`).find("#select-mode").val();
-                    axios.put(axios.defaults.baseURL + '/inspect',
-                              {"data_provider" : self.build._id,"mode":modes})
-                    .then(response => {
-                        console.log(response.data.result)
-                    })
-                    .catch(err => {
-                        console.log("Error getting job manager information: " + err);
                     })
                 }
             })

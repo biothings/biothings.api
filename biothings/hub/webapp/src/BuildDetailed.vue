@@ -53,9 +53,6 @@
                 </div>
             </div>
 
-            <inspect-form v-bind:_id="build._id" v-bind:select_data_provider="true">
-            </inspect-form>
-
             <!-- Diff-->
             <diff-modal></diff-modal>
 
@@ -67,6 +64,7 @@
 import axios from 'axios'
 import bus from './bus.js'
 import InspectForm from './InspectForm.vue'
+import BaseBuild from './BaseBuild.vue'
 import BuildReleases from './BuildReleases.vue'
 import BuildSources from './BuildSources.vue'
 import BuildStats from './BuildStats.vue'
@@ -78,6 +76,7 @@ import DiffModal from './DiffModal.vue'
 export default {
     name: 'build-detailed',
     props: ['_id','color'],
+    mixins: [ BaseBuild, ],
     components: { InspectForm, BuildReleases, BuildMapping, DiffModal,
                   BuildSources, BuildStats, BuildLogs, BuildConfig, },
     mounted () {
@@ -89,10 +88,10 @@ export default {
         $('.menu .item').tab();
     },
     created() {
-        bus.$on("reload_build_detailed",this.loadData);
+        bus.$on('change_build',this.loadData);
     },
     beforeDestroy() {
-        bus.$off("reload_build_detailed",this.loadData);
+        bus.$off('change_build',this.loadData);
     },
     data () {
         return {

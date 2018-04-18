@@ -164,7 +164,6 @@ export default {
             axios.put(axios.defaults.baseURL + `/index`,{"indexer_env" : index_env, "target_name" : this.build._id, "index_name" : index_name})
             .then(response => {
                 console.log(response.data.result)
-                bus.$emit("reload_build_detailed");
                 return response.data.result;
             })
             .catch(err => {
@@ -182,7 +181,6 @@ export default {
             axios.put(axios.defaults.baseURL + `/diff`,{"diff_type" : diff_type, "old" : old_build, "new" : this.build._id})
             .then(response => {
                 console.log(response.data.result)
-                bus.$emit("reload_build_detailed");
                 return response.data.result;
             })
             .catch(err => {

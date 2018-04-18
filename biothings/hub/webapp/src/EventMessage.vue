@@ -45,6 +45,9 @@ export default {
     computed: {
         color: function () {
             switch(this.event.level.toUpperCase()) {
+                case "CRITICAL":
+                    return "violet";
+                    break;
                 case "ERROR":
                     return "red";
                     break;
