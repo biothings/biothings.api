@@ -251,6 +251,7 @@ class BaseSourceManager(BaseManager):
         if isinstance(src,str):
             try:
                 src_m = importlib.import_module(src)
+                src_m = importlib.reload(src_m)
             except ImportError:
                 try:
                     src_m = importlib.import_module("%s.%s" % (self.default_src_path,src))
@@ -323,6 +324,52 @@ class JobManager(object):
         self.auto_recycle_setting = auto_recycle # keep setting if we need to restore it its orig value
         self.jobs = {} # all active jobs (thread/process)
 
+    def stop(self,force=False,recycling=False,wait=1):
+        @asyncio.coroutine
+        def do():
+            try:
+                # shutting down the process queue can take a while
+                # if some processes are still running (it'll wait until they're done)
+                # we'll wait in a thread to prevent the hub from being blocked
+                logger.info("Shutting down current process queue...")
+                pinfo = {"__skip_check__" : True, # skip sanity check, mem check to make sure
+                                                  # this worker will be run
+                         "category" : "admin",
+                         "source" : "maintenance",
+                         "step" : "",
+                         "description" : "Stopping process queue"}
+                j = yield from self.defer_to_thread(pinfo,self.process_queue.shutdown)
+                yield from j
+                if recycling:
+                    # now replace
+                    logger.info("Replacing process queue with new one")
+                    self.process_queue = concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
+                else:
+                    self.process_queue = None
+            except Exception as e:
+                logger.error("Error while recycling the process queue: %s" % e)
+                raise
+
+        @asyncio.coroutine
+        def kill():
+            nonlocal wait
+            if wait < 1:
+                wait = 1 # wait a little bit so job manager has time to stop if nothing is running
+            logger.warning("Wait %s seconds before killing queue processes" % wait)
+            yield from asyncio.sleep(wait)
+            logger.warning("Can't wait anymore, killing running processed in the queue !")
+            for proc in self.hub_process.children():
+                logger.warning("Killing %s" % proc)
+                proc.kill()
+
+        def done(f):
+            f.result() # consume future's result to potentially raise exception
+        fut = asyncio.ensure_future(do())
+        fut.add_done_callback(done)
+        if force:
+            futkill = asyncio.ensure_future(kill())
+        return fut
+
     def clean_staled(self):
         # clean old/staled files
         children_pids = [p.pid for p in self.hub_process.children()]
@@ -354,33 +401,7 @@ class JobManager(object):
         processes to terminate, then discard current queue and replace
         it a new one.
         """
-        @asyncio.coroutine
-        def do():
-            try:
-                # shutting down the process queue can take a while
-                # if some processes are still running (it'll wait until they're done)
-                # we'll wait in a thread to prevent the hub from being blocked
-                logger.info("Shutting down current process queue...")
-                pinfo = {"__skip_check__" : True, # skip sanity check, mem check to make sure
-                                                  # this worker will be run
-                         "category" : "admin",
-                         "source" : "maintenance",
-                         "step" : "",
-                         "description" : "Recycling process queue"}
-                j = yield from self.defer_to_thread(pinfo,self.process_queue.shutdown)
-                yield from j
-                # now replace
-                logger.info("Replacing process queue with new one")
-                self.process_queue = concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
-                # and ready to go
-            except Exception as e:
-                logger.error("Error while recycling the process queue: %s" % e)
-                raise
-        def done(f):
-            f.result() # consume future's result to potentially raise exception
-        fut = asyncio.ensure_future(do())
-        fut.add_done_callback(done)
-        return fut
+        return self.stop(recycling=True)
 
     @asyncio.coroutine
     def check_constraints(self,pinfo=None):

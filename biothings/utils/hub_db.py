@@ -249,7 +249,8 @@ class ChangeWatcher(object):
                     try:
                         listener.read(evt)
                     except Exception as e:
-                        logging.error("Can't publish %s to %s: %s" % (evt,listener,e))
+                        pass
+                        #logging.error("Can't publish %s to %s: %s" % (evt,listener,e))
         return asyncio.ensure_future(do())
 
     @classmethod
@@ -267,7 +268,6 @@ class ChangeWatcher(object):
                 # try to narrow down the event to a doc
                 # analyse the query/filter (1st elem in args), it tells how many docs are
                 # impacted, thus telling us wether to send a detailed or general event
-                logging.error("for entity %s args: %s" % (entity,repr(args)))
                 if args and type(args[0]) == dict and "_id" in args[0]:
                     # single event associated to one ID, we send an "detailed" event
                     event = {"_id" : args[0]["_id"], "obj" : entity, "op" : op}

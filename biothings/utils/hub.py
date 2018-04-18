@@ -53,7 +53,8 @@ class HubShell(InteractiveShell):
     cmd_cnt = None
     cmd = None # "cmd" collection
 
-    def __init__(self):
+    def __init__(self, job_manager):
+        self.job_manager = job_manager
         self.commands = OrderedDict()
         self.extra_ns = OrderedDict()
         self.tracked = {} # command calls kept in history or not
@@ -94,8 +95,10 @@ class HubShell(InteractiveShell):
                     self.hidden[name] = hidden
         # update with ssh server default commands
         register(basic_commands)
-        # don't track help calls
-        register({"help":CommandDefinition(command=self.help,tracked=False)})
+        # don't track this calls
+        register({"restart":CommandDefinition(command=self.restart,track=False)})
+        register({"stop":CommandDefinition(command=self.stop,track=False)})
+        register({"help":CommandDefinition(command=self.help,track=False)})
 
         for extra in extra_ns:
             # don't expose extra commands, they're kind of private/advanced
@@ -113,6 +116,57 @@ class HubShell(InteractiveShell):
         # has been passed by ref in __init__() so things get updated automagically
         # (self.user_ns.update(...) can be used otherwise, self.user_ns is IPython
         # internal namespace dict
+
+    def stop(self,force=False):
+        return self.restart(force=force,stop=True)
+
+    def restart(self, force=False, stop=False):
+
+        @asyncio.coroutine
+        def do():
+            try:
+                if stop:
+                    event = "hub_stop"
+                    msg = "Hub is stopping"
+                else:
+                    event = "hub_restart"
+                    msg = "Hub is restarting"
+                logging.critical(json.dumps({"type":"alert",
+                                  "msg":msg,
+                                  "event" : event}),
+                                  extra={"event":True})
+                logging.info("Stopping job manager...")
+                j = self.job_manager.stop(force=force)
+                def ok(f):
+                    f.result() # consume
+                    logging.error("Job manager stopped")
+                j.add_done_callback(ok)
+                yield from j
+            except Exception as e:
+                logging.error("Error while recycling the process queue: %s" % e)
+                raise
+
+        def start(f):
+            f.result() # consume future's result to potentially raise exception
+            logging.debug("%s %s" % ([sys.executable] ,sys.argv))
+            import subprocess
+            p = subprocess.Popen([sys.executable] + sys.argv)
+            sys.exit(0)
+
+        def autokill(f):
+            f.result()
+            self.job_manager.hub_process.kill()
+
+        fut = asyncio.ensure_future(do())
+
+        if stop:
+            logging.warning("Stopping hub")
+            fut.add_done_callback(autokill)
+        else:
+            logging.warning("Restarting hub")
+            fut.add_done_callback(start)
+
+        return fut
 
     def help(self, func=None):
         """
@@ -669,10 +723,13 @@ def exclude_from_reloader(path):
            os.path.basename(path).startswith(".")
 
 class ReloadListener(pyinotify.ProcessEvent):
-    def my_init(self,managers,watcher_manager):
+
+    def my_init(self,managers,watcher_manager,reload_func):
         logging.debug("for managers %s" % managers)
         self.managers = managers
         self.watcher_manager = watcher_manager
+        self.reload_func = reload_func
+
     def process_default(self, event):
         if exclude_from_reloader(event.pathname):
             return
@@ -687,19 +744,15 @@ class ReloadListener(pyinotify.ProcessEvent):
                 # watcher knows when directory is deleted (file descriptor become invalid),
                 # so no need to do it manually
         logging.error("Need to reload manager because of %s" % event)
-        for m in self.managers:
-            try:
-                logging.debug("Reloading manager %s" % m)
-                m.reload()
-            except Exception as e:
-                logging.warning("Can't reload %s: %s" % (m,e))
+        self.reload_func()
+
 
 class HubReloader(object):
     """
     Monitor sources' code and reload managers accordingly to update running code
     """
 
-    def __init__(self,paths,managers=[],wait=5,mask=None):
+    def __init__(self,paths,managers,reload_func,wait=5,mask=None):
         """
         Monitor given paths for directory deletion/creation (which will update pyinotify watchers)
         and for file deletion/creation. Reload given managers accordingly.
@@ -709,6 +762,7 @@ class HubReloader(object):
             paths = [paths]
         paths = set(paths) # get rid of duplicated, just in case
         self.mask = mask or pyinotify.IN_CREATE|pyinotify.IN_DELETE|pyinotify.IN_CLOSE_WRITE
+        self.reload_func = reload_func
         # only listen to these events. Note: directory detection is done via a flag so
         # no need to use IS_DIR
         self.watcher_manager = pyinotify.WatchManager(exclude_filter=exclude_from_reloader)
@@ -718,7 +772,9 @@ class HubReloader(object):
                 path = os.path.abspath(path)
             _paths.append(path)
             self.watcher_manager.add_watch(path,self.mask,rec=True,exclude_filter=exclude_from_reloader) # recursive
-        self.listener = ReloadListener(managers=managers,watcher_manager=self.watcher_manager)
+        self.listener = ReloadListener(managers=managers,
+                                       watcher_manager=self.watcher_manager,
+                                       reload_func=self.reload_func)
         self.notifier = pyinotify.Notifier(
                 self.watcher_manager,
                 default_proc_fun=self.listener)
