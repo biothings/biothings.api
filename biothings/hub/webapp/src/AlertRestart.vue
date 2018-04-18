@@ -41,7 +41,6 @@ export default {
     created() {
     },
     beforeDestroy() {
-		$('.mini.alert.modal').remove();
     },
     watch: {
     },

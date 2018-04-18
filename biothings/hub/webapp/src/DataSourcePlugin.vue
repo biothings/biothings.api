@@ -43,7 +43,19 @@
                 </table>
             </div>
             <div class="six wide column">
-                actions
+                <div :class="['ui plugin form',source._id]">
+                    <div class="fields">
+                        <div class="required ten wide field">
+                            <input type="text" id="release" placeholder="Specify a commit hash (optional)" autofocus>
+                        </div>
+                        <div class="required six wide field">
+                            <button class="ui labeled small icon button" @click="onUpdatePlugin();">
+                                <i class="database icon"></i>
+                                Update
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -60,14 +72,25 @@ export default {
     },
     components: { },
     methods: {
-        dump_plugin: function() {
+        onUpdatePlugin: function() {
+            var field = $(`.ui.plugin.form.${this.source._id}`).form('get field', "release");
+            var release = null;
+            if(field)
+                release = field.val();
+            return this.dumpPlugin(release=release);
+        },
+        dumpPlugin: function(release=null) {
             // note: plugin name has the same name as the source
-            axios.put(axios.defaults.baseURL + `/plugin/${this.source.name}/dump`)
+            var data = null;
+            if(release != null && release != "")
+                data = {"release":release}
+            console.log(data);
+            axios.put(axios.defaults.baseURL + `/dataplugin/${this.source.name}/dump`,data)
             .then(response => {
                 console.log(response.data.result)
             })
             .catch(err => {
-                console.log("Error getting job manager information: " + err);
+                console.log("Error update plugin: " + err);
             })
         },
     },

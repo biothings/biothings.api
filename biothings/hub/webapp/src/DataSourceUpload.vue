@@ -63,7 +63,7 @@
                         <div class="six wide column">
                             <p v-if="info.uploader.dummy">This is a <i>dummy</i> uploader, meaning data isn't actually uploaded but rather already stored in a collection.
                                 In order to register data, a <b>release</b> is required in order the uploader to run properly.</p>
-                            <div :class="['ui form',subsrc]">
+                            <div :class="['ui upload form',subsrc]">
                                 <div class="fields">
                                     <div class="required ten wide field">
                                         <input type="text" id="release" placeholder="Specify a release (optional)" autofocus v-if="info.uploader.dummy">
@@ -100,7 +100,7 @@ export default {
     components: { },
     methods: {
         do_upload(subsrc=null) {
-            var field = $(`.ui.form.${subsrc}`).form('get field', "release");
+            var field = $(`.ui.upload.form.${subsrc}`).form('get field', "release");
             console.log(field);
             var release = null;
             if(field)
