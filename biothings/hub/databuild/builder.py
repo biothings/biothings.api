@@ -850,19 +850,6 @@ class BuilderManager(BaseManager):
         self.builder_class = builder_class
         self.poll_schedule = poll_schedule
         self.setup_log()
-        # check if src_build exist and create it as necessary
-        if self.src_build_config.count() == 0:
-            logging.debug("Creating '%s' collection (one-time)" % self.src_build_config.name)
-            self.src_build_config.database.create_collection(self.src_build_config.name)
-            # with webapp, that placeholder "template" isn't really useful anymore
-            ## this is dummy configuration, used as a template
-            #logging.debug("Creating dummy configuration (one-time)")
-            #conf = {"_id" : "placeholder",
-            #        "name" : "placeholder",
-            #        "doc_type" : "doctypename",
-            #        "root" : [],
-            #        "sources" : []}
-            #self.src_build_config.insert_one(conf)
 
     @property
     def source_backend(self):
