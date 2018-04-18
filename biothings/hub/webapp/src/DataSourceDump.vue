@@ -51,7 +51,22 @@
                 </table>
             </div>
             <div class="six wide column">
-                actions
+                <div :class="['ui dump form',source._id]">
+                    <div class="fields">
+                        <div class="ten wide field">
+                            <div class="ui checkbox">
+                                <input type="checkbox" tabindex="0" class="hidden" id="force">
+                                <label>Bypass check for new release availability, and force dump</label>
+                            </div>
+                        </div>
+                        <div class="required six wide field">
+                            <button :class="['ui labeled small icon button', $parent.download_status == 'downloading' ? 'disabled' : '']" @click="do_dump();">
+                                <i class="download cloud icon"></i>
+                                Dump
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -65,18 +80,18 @@ export default {
     name: 'data-source-dump',
     props: ['source'],
     mounted () {
+        $('.ui.checkbox')
+        .checkbox();
     },
     components: { },
     methods: {
-        dump: function() {
-            axios.put(axios.defaults.baseURL + `/source/${this.source.name}/dump`)
-            .then(response => {
-                console.log(response.data.result)
-                this.$parent.getSourcesStatus();
-            })
-            .catch(err => {
-                console.log("Error getting job manager information: " + err);
-            })
+        do_dump() {
+            var field = $(`.ui.dump.form.${this.source._id}`).form('get field', "force");
+            var force = null;
+            if(field)
+                force = field.is(':checked')
+            console.log(force);
+            return this.$parent.dump(null,force);
         },
     },
 }

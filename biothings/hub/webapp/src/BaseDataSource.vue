@@ -95,8 +95,17 @@ export default {
             Array.prototype.push.apply(errs,this.getError("inspect"));
             return errs.join("<br>");
         },
-        dump: function(release=null) {
-            axios.put(axios.defaults.baseURL + `/source/${this.source.name}/dump`)
+        dump: function(release=null,force=null) {
+            var data = {};
+            console.log(`release ${release}`);
+            console.log(`force ${force}`);
+            if(release != null && release)
+                data["release"] = release
+            if(force != null)
+                data["force"] = force
+            console.log("dump data");
+            console.log(data);
+            axios.put(axios.defaults.baseURL + `/source/${this.source.name}/dump`,data)
             .then(response => {
                 console.log(response.data.result)
             })
