@@ -531,9 +531,8 @@ class Indexer(object):
             steps = [steps]
         self.target_name = target_name
         self.index_name = index_name
-        self.setup_log()
         self.load_build()
-
+        self.setup_log()
         # select proper index worker according to mode:
         if worker is None: # none specified, choose correct one
             if mode == "merge":
@@ -861,8 +860,8 @@ class ColdHotIndexer(Indexer):
         if type(steps) == str:
             steps = [steps]
         self.hot_target_name = hot_name
-        self.setup_log()
         self.load_build()
+        self.setup_log()
         if type(index_name) == list:
             # values are coming from target names, use the cold
             self.index_name = self.hot_target_name
