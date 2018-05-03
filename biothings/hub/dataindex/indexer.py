@@ -223,10 +223,12 @@ class IndexerManager(BaseManager):
                 except KeyError:
                     pass
         if klass is None:
+            self.logger.debug("Using default indexer")
             return Indexer
         else:
             # either we return a default declared in config or
             # a specific one found according to the doc
+            self.logger.debug("Using custom indexer %s" % klass)
             return klass
 
     def index(self, indexer_env, target_name=None, index_name=None, ids=None, **kwargs):
@@ -260,7 +262,9 @@ class IndexerManager(BaseManager):
         if type(steps) == str:
             steps = [steps]
         snapshot = snapshot or index
-        idxr = self[indexer_env]
+        idxklass = self.find_indexer(index)
+        idxkwargs = self[indexer_env]
+        idxr = idxklass(**idxkwargs)
         es_idxr = ESIndexer(index=index,doc_type=idxr.doc_type,es_host=idxr.host)
         # will hold the overall result
         fut = asyncio.Future()
@@ -336,7 +340,13 @@ class IndexerManager(BaseManager):
         # keep passed values if any, otherwise derive them
         index = index or snapshot
         snapshot = snapshot or index
-        idxr = self[indexer_env]
+        # snapshot at this point can be totally different than original
+        # target_name but we still use it to potentially custom indexed
+        # (anyway, it's just to access some snapshot info so default indexer 
+        # will work)
+        idxklass = self.find_indexer(snapshot) 
+        idxkwargs = self[indexer_env]
+        idxr = idxklass(**idxkwargs)
         es_idxr = ESIndexer(index=index,doc_type=idxr.doc_type,es_host=idxr.host)
         esb = DocESBackend(es_idxr)
         assert esb.version, "Can't retrieve a version from index '%s'" % index
