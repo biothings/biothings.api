@@ -8,7 +8,7 @@ import logging
 from pprint import pprint, pformat
 import copy
 
-from .common import timesofar, is_scalar, is_float, is_str, is_int
+from .common import timesofar, is_scalar, is_float, is_str, is_int, splitstr
 from .web.es import flatten_doc
 
 def sumiflist(val):
@@ -70,8 +70,9 @@ def merge_record(target,tomerge,mode):
                     # keep track on splitable (precedence: splitable > non-splitable)
                     # so don't merge if target has a "split" and tomerge has not,
                     # as we would loose that information
-                    if "split" in tomerge[k][typ]:
-                        target[k].update(tomerge[k])
+                    if splitstr is typ:
+                        target.pop(k)
+                        target[k] = tomerge[k]
                 else:
                     if typ in target[k]:
                         # same key, same type, need to merge stats
@@ -93,7 +94,12 @@ def merge_record(target,tomerge,mode):
             if mode == "type":
                 target.setdefault(k,{}).update(tomerge[k])
             else:
-                target.setdefault(k,{}).update(tomerge[k])
+                # if we already have splitstr and we want to merge str, skip it
+                # as splitstr > str
+                if splitstr in target and k is str:
+                    pass
+                else:
+                    target.setdefault(k,{}).update(tomerge[k])
 
     return target
 
@@ -173,9 +179,11 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
         elif mode == "mapping":
             # splittable string ?
             if is_str(struct) and len(re.split(" +",struct.strip())) > 1:
-                mapt[typ] = {"split":{}}
+                mapt[splitstr] = {}
             else:
                 mapt[typ] = {}
+            if str in mapt and splitstr in mapt:
+                mapt.pop(str)
         else:
             mapt.setdefault(typ,copy.deepcopy(stats_tpl))
             if is_str(struct):
@@ -202,6 +210,7 @@ def merge_scalar_list(mapt,mode):
         for e in other_keys:
             if e in mapt[list]:
                 tomerge = mapt.pop(e)
+                # stats mode is buggy
                 if "stats" in mode:
                     for typ in tomerge:
                         if not type(typ) == type:
@@ -223,15 +232,16 @@ def merge_scalar_list(mapt,mode):
                             # that field exist in the [list] but with a different type
                             # just merge the typ
                             mapt[list][e].update(tomerge)
-                        elif "split" in tomerge[typ]:
+                        # precedence splitstr > str
+                        if splitstr is typ:
+                            mapt[list][e].pop(str,None)
                             mapt[list][e].update(tomerge)
                 else:
                     # assuming what's in [list] is enough, we just popped the value
                     # from mapt, that's enough
                     pass
         # explore further
-        for k in mapt[list]:
-            merge_scalar_list(mapt[list][k],mode)
+        merge_scalar_list(mapt[list],mode)
     elif type(mapt) == dict:
         for k in mapt:
             merge_scalar_list(mapt[k],mode)
@@ -280,11 +290,15 @@ def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging,pre_mapp
     for m in modes:
         _map[m] = {}
     cnt = 0
+    errors = set()
     t0 = time.time()
     innert0 = time.time()
     for doc in docs:
         for m in modes:
-            inspect(doc,mapt=_map[m],mode=m)
+            try:
+                inspect(doc,mapt=_map[m],mode=m)
+            except Exception as e:
+                errors.add(str(e))
         cnt += 1
         if cnt % 10000 == 0:
             logger.info("%d documents processed [%s]" % (cnt,timesofar(innert0)))
@@ -309,6 +323,8 @@ def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging,pre_mapp
         except es.MappingError as e:
             prem = {"pre-mapping" : _map["mapping"], "errors" : e.args[1]}
             _map["mapping"] = prem
+    elif errors:
+        _map["errors"] = errors
     return _map
 
 
@@ -463,7 +479,7 @@ if __name__ == "__main__":
     assert m["vals"][list]["bla"][str] == {}
     inspect(sd1,mapt=m,mode="mapping")
     # now it is
-    assert m["vals"][list]["bla"][str] == {"split":{}}
+    assert m["vals"][list]["bla"][splitstr] == {}
     inspect(sd2,mapt=m,mode="mapping")
     # not splitable in sd2
     assert m["vals"]["bla"][str] == {}
@@ -480,13 +496,13 @@ if __name__ == "__main__":
     md3 = {"_id" : "5678",'vals': {"bla":1234}}
     m = inspect_docs([md1,md2],mode="mapping",pre_mapping=True)["mapping"] # "mapping" implies merge=True
     assert not "bla" in m["vals"]
-    assert m["vals"][list]["bla"] == {str: {'split': {}}} # splittable str from md2 merge to list
+    assert m["vals"][list]["bla"] == {splitstr: {}}, m["vals"][list]["bla"] # splittable str from md2 merge to list
     m = inspect_docs([md1,md3],mode="mapping",pre_mapping=True)["mapping"]
     assert not "bla" in m["vals"]
     assert m["vals"][list]["bla"] == {int: {}, str: {}} # keep as both types
     m = inspect_docs([md1,md2,md3],mode="mapping",pre_mapping=True)["mapping"]
     assert not "bla" in m["vals"]
-    assert m["vals"][list]["bla"] == {int: {}, str: {'split': {}}} # splittable kept + merge int to keep both types
+    assert m["vals"][list]["bla"] == {int: {}, splitstr: {}}, m["vals"][list]["bla"]# splittable kept + merge int to keep both types
 
     #### test merge scalar/list with stats
     #### unmerged is a inspect-doc with mode=stats, structure is:
@@ -530,7 +546,6 @@ if __name__ == "__main__":
             'IEA'}]}, '_id': '101241878'}
 
     m = inspect_docs([d1,d1,d2,d2],mode="stats")["stats"]
-    #pprint(m)
 
     # more merge tests involving real case, deeply nested
     # here, go.BP contains a list and some scalars that should be merge
@@ -562,4 +577,25 @@ if __name__ == "__main__":
     assert list(insdocdeep["go"]["BP"].keys()) == [list]
     # and also the second one
     assert list(insdocdeep["go"]["BP"][list]["pubmed"].keys()) == [list]
+
+    # merge_scalar_list when str split involved (?) in list of list
+    doc = {"_id":"1","f":["b",["a 0","b 1"]]}
+
+    # merge list of str and splitstr
+    docb = {"_id":"1","f":["a 0"]}
+    docg = {"_id":"1","f":["a0"]}
+    m = inspect_docs([docb,docg],mode="mapping")
+    assert m["mapping"]["f"] == {"type":"text"} # splitstr > str
+    # same when strings (not list)
+    docb = {"_id":"1","f":"a 0"}
+    docg = {"_id":"1","f":"a0"}
+    m = inspect_docs([docb,docg],mode="mapping")
+    assert m["mapping"]["f"] == {"type":"text"} # splitstr > str
+    # same when strings and list of strings
+    doc1 = {"_id":"1","f":["a 0"]}
+    doc2 = {"_id":"1","f":["a0"]}
+    doc3 = {"_id":"1","f":"a 0"}
+    doc4 = {"_id":"1","f":"a0"}
+    m = inspect_docs([doc1,doc2,doc3,doc4],mode="mapping")
+    assert m["mapping"]["f"] == {"type":"text"} # splitstr > str
 

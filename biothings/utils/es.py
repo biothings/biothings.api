@@ -4,8 +4,9 @@ from elasticsearch import Elasticsearch, NotFoundError, RequestError, TransportE
 from elasticsearch import helpers
 import logging
 import itertools
+from pprint import pprint, pformat
 
-from biothings.utils.common import iter_n, timesofar, ask
+from biothings.utils.common import iter_n, timesofar, ask, splitstr
 from biothings.utils.dataload import dict_walk
 
 # setup ES logging
@@ -577,7 +578,7 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             bool: {"type": "boolean"},
             float: {"type": "float"},
             str: {"type": "text","analyzer":"string_lowercase"}, # not splittable (like an ID for instance)
-            "split_str": {"type": "text"}
+            splitstr: {"type": "text"},
             }
     # inspect_doc, if it's been jsonified, contains keys with type as string,
     # such as "<class 'str'>". This is not a real type and we need to convert them
@@ -617,7 +618,7 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
         # if dict, it can be a dict containing the type (no explore needed) or a dict
         # containing more keys (explore needed)
         if list in keys:
-            # we explore directly the list w/ inspect_doc[rootk][list] as param. 
+            # we explore directly the list w/ inspect_doc[rootk][list] as param.
             # (similar to skipping list type, as there's no such list type in ES mapping)
             # carefull: there could be list of list, if which case we move further into the structure
             # to skip them
@@ -654,15 +655,11 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
                     typ = typ[0]
                 else:
                     typ = [t for t in typ if not t is type(None)][0]
-                if "split" in inspect_doc[rootk][typ]:
-                    typ = "split_str"
                 mapping[rootk] = map_tpl[typ]
             except Exception as e:
                 errors.append("Can't find map type %s for key %s" % (inspect_doc[rootk],rootk))
         elif inspect_doc[rootk] == {}:
             typ = rootk
-            if typ == "split":
-                typ = "split_str"
             return map_tpl[typ]
         else:
             mapping[rootk] = {"properties" : {}}

@@ -652,3 +652,4 @@ def md5sum(fname):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
+class splitstr(str): pass
