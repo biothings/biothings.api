@@ -376,7 +376,7 @@ class BaseDumper(object):
     @property
     def current_data_folder(self):
         try:
-            return self.src_doc.get("data_folder") or self.new_data_folder
+            return self.src_doc.get("download",{}).get("data_folder") or self.new_data_folder
         except DumperException:
             # exception raied from new_data_folder generation, we give up
             return None
