@@ -94,12 +94,11 @@ def merge_record(target,tomerge,mode):
             if mode == "type":
                 target.setdefault(k,{}).update(tomerge[k])
             else:
+                target.setdefault(k,{}).update(tomerge[k])
                 # if we already have splitstr and we want to merge str, skip it
                 # as splitstr > str
-                if splitstr in target and k is str:
-                    pass
-                else:
-                    target.setdefault(k,{}).update(tomerge[k])
+                if str in target and splitstr in target:
+                    target.pop(str)
 
     return target
 
@@ -597,5 +596,9 @@ if __name__ == "__main__":
     doc3 = {"_id":"1","f":"a 0"}
     doc4 = {"_id":"1","f":"a0"}
     m = inspect_docs([doc1,doc2,doc3,doc4],mode="mapping")
+    assert m["mapping"]["f"] == {"type":"text"} # splitstr > str
+    doc1 = {"_id":"1","f":["a0"]}
+    doc2 = {"_id":"1","f":["a 0"]}
+    m = inspect_docs([doc1,doc2],mode="mapping")
     assert m["mapping"]["f"] == {"type":"text"} # splitstr > str
 
