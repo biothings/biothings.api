@@ -20,7 +20,7 @@ from biothings.utils.common import timesofar, iter_n, get_timestamp, \
 from biothings.utils.mongo import doc_feeder, id_feeder
 from biothings.utils.loggers import get_logger, HipchatHandler
 from biothings.utils.manager import BaseManager, ManagerError
-from biothings.utils.dataload import update_dict_recur
+from biothings.utils.dataload import update_dict_recur, merge_struct
 import biothings.utils.mongo as mongo
 from biothings.utils.hub_db import get_source_fullname, get_src_build_config, \
                                    get_src_build, get_src_dump, get_src_master
@@ -389,7 +389,7 @@ class DataBuilder(object):
         for collection in self.build_config['sources']:
             meta = src_master.find_one({"_id" : collection})
             if 'mapping' in meta and meta["mapping"]:
-                mapping.update(meta['mapping'])
+                mapping = merge_struct(mapping,meta['mapping'])
             else:
                 self.logger.info('Warning: "%s" collection has no mapping data.' % collection)
         return mapping
@@ -738,6 +738,11 @@ class DataBuilder(object):
             id_provider = ids and iter_n(ids,int(batch_size/100)) or id_feeder(self.source_backend[src_name],
                     batch_size=id_batch_size,logger=self.logger)
 
+        src_master = self.source_backend.master
+        meta = src_master.find_one({"_id":src_name}) or {}
+        merger = meta.get("merger","upsert")
+        self.logger.info("Documents from source '%s' will be merged using %s" % (src_name,merger))
+
         doc_cleaner = self.document_cleaner(src_name)
         for big_doc_ids in id_provider:
             for doc_ids in iter_n(big_doc_ids,batch_size):
@@ -759,6 +764,7 @@ class DataBuilder(object):
                             self.get_mapper_for_source(src_name,init=False),
                             doc_cleaner,
                             upsert,
+                            merger,
                             bnum))
                 def batch_merged(f,batch_num):
                     nonlocal got_error
@@ -793,19 +799,23 @@ class DataBuilder(object):
 
 from biothings.utils.backend import DocMongoBackend
 
-def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,batch_num):
+def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,merger,batch_num):
     try:
         src = mongo.get_src_db()
         tgt = mongo.get_target_db()
         col = src[col_name]
-        #if batch_num == 2:
-        #    raise ValueError("oula pa bon")
         dest = DocMongoBackend(tgt,tgt[dest_name])
         cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}})
         if cleaner:
             cur = map(cleaner,cur)
         mapper.load()
-        docs = mapper.process(cur)
+        docs = [d for d in mapper.process(cur)]
+        if merger == "merge_struct":
+            stored_docs = dest.mget_from_ids([d["_id"] for d in docs])
+            ddocs = dict([(d["_id"],d) for d in docs])
+            for d in stored_docs:
+                ddocs[d["_id"]] = merge_struct(d,ddocs[d["_id"]])
+            docs = list(ddocs.values())
         cnt = dest.update(docs, upsert=upsert)
         return cnt
     except Exception as e:
