@@ -158,7 +158,12 @@ class InspectorManager(BaseManager):
                     try:
                         # keys can be types, we need to convert keys to strings
                         res = f.result()
-                        _map = {"results" : dict_walk(res,lambda k: str(k))}
+                        def bsoncompat(val):
+                            if type(val) == type:
+                                return val.__name__ # prevent having dots in the field (not storable in mongo)
+                            else:
+                                return str(val)
+                        _map = {"results" : dict_walk(res,bsoncompat)}
                         _map["data_provider"] = repr(data_provider)
                         _map["started_at"] = started_at
                         _map["duration"] = timesofar(t0)
