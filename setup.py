@@ -37,6 +37,7 @@ install_requires = [
     'requests==2.8.1',
     'tornado==4.5.3',
     'elasticsearch>=6.1.1',
+    'networkx>=2.1',
 ]
 hub_requires = [
     'beautifulsoup4',

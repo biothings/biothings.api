@@ -13,3 +13,4 @@ pyinotify # hub reloader
 tornado==4.5.3 # hub webserver
 sockjs-tornado==1.0.3 # websocket for hub webapp
 elasticsearch==6.1.1
+networkx>=2.1
