@@ -100,13 +100,7 @@ export default {
     components: { },
     methods: {
         do_upload(subsrc=null) {
-            var field = $(`.ui.upload.form.${subsrc}`).form('get field', "release");
-            console.log(field);
-            var release = null;
-            if(field)
-                release = field.val();
-            console.log(release)
-            return this.$parent.upload(release=release,subsrc=subsrc);
+            return this.$parent.upload(subsrc=subsrc);
         },
     },
 }
