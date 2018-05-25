@@ -19,6 +19,7 @@ import logging
 import importlib
 import math, statistics
 import hashlib
+import asyncio
 from datetime import date, datetime
 
 if sys.version_info.major == 3:
@@ -627,17 +628,54 @@ def gunzipall(folder,pattern="*.gz"):
     '''
     gunzip all *.gz files in "folder"
     '''
-
     for f in glob.glob(os.path.join(folder,pattern)):
         # build uncompress filename from gz file and pattern
-        destf = f.replace(pattern.replace("*",""),"")
-        fout = open(destf,"wb")
-        with gzip.GzipFile(f) as gz:
-            logging.info("gunzip '%s'" % gz.name)
-            for line in gz:
-                fout.write(line)
-            logging.info("Done gunzip '%s'" % gz.name)
-        fout.close()
+        # pattern is used to select/filter files, but it may not 
+        # match the gzip file suffix (usually ".gz"), so assuming it's the last
+        # bit after "."
+        suffix = ".%s" % pattern.split(".")[1]
+        gunzip(f,suffix)
+
+def gunzip(f,pattern="*.gz"):
+    # build uncompress filename from gz file and pattern
+    destf = f.replace(pattern.replace("*",""),"")
+    fout = open(destf,"wb")
+    with gzip.GzipFile(f) as gz:
+        logging.info("gunzip '%s'" % gz.name)
+        for line in gz:
+            fout.write(line)
+        logging.info("Done gunzip '%s'" % gz.name)
+    fout.close()
+
+@asyncio.coroutine
+def aiogunzipall(folder, pattern, job_manager, pinfo):
+    """
+    Gunzip all files in folder matching pattern. job_manager is used
+    for parallelisation, and pinfo is a pre-filled dict used by 
+    job_manager to report jobs in the hub (see bt.utils.manager.JobManager)
+    """
+    jobs = []
+    got_error = None
+    logging.info("Unzipping files in '%s'" % folder) 
+    for f in glob.glob(os.path.join(folder,pattern)):
+        pinfo["description"] = os.path.basename(f)
+        suffix = pattern.replace("*","")
+        job = yield from job_manager.defer_to_process(pinfo, partial(gunzip,f,suffix=suffix))
+        def gunzipped(fut,inf):
+            try:
+                res = fut.result()
+            except Exception as e:
+                logging.error("Failed to gunzip file %s: %s" % (inf,e))
+                nonlocal got_error
+                got_error = e
+        job.add_done_callback(partial(gunzipped,inf=f))
+        jobs.append(job)
+        if got_error:
+            raise got_error
+    if jobs:
+        yield from asyncio.gather(*jobs)
+        if got_error:
+            raise got_error
 
 def uncompressall(folder):
     """Try to uncompress any known archive files in folder"""
