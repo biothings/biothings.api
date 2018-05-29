@@ -4,8 +4,7 @@ from functools import partial
 import pprint
 
 import tornado.web
-from biothings.hub.api.handlers.base import GenericHandler
-from biothings.hub.api.handlers.hub import HubHandler, StatsHandler
+from biothings.hub.api.handlers.base import GenericHandler, RootHandler
 from biothings.utils.hub import CompositeCommand, CommandInformation, CommandError,\
                                 CommandDefinition
 
@@ -226,5 +225,6 @@ def create_handlers(shell, command_defs):
 
 def generate_api_routes(shell, commands, settings={}):
     routes = create_handlers(shell,commands)
+    routes.append(("/",RootHandler))
     return routes
 

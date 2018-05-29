@@ -1,6 +1,6 @@
 beautifulsoup4
 aiocron
-asyncssh==1.7.1
+asyncssh==1.7.1 # needs libffi-dev installed (apt-get)
 pymongo
 psutil
 IPython

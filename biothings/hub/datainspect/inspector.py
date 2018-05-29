@@ -80,8 +80,8 @@ class InspectorManager(BaseManager):
                 assert len(ups) == 1, "More than one uploader found for '%s', not supported (yet)" % data_provider[1]
                 # create uploader
                 registerer_obj = self.upload_manager.create_instance(ups[0])
-                if isinstance(registerer_obj,ParallelizedSourceUploader):
-                    raise InspectorError("ParallelizedSourceUploader based uploaders aren't supported (yet)")
+                if isinstance(registerer_obj,ParallelizedSourceUploader) and data_provider[0] == "uploader":
+                    raise InspectorError("ParallelizedSourceUploader-based uploaders aren't supported (yet)")
 
                 # just wrap functions returnning data so they're called in new process
                 # when submitted by job_manager

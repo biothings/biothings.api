@@ -1,9 +1,12 @@
+import asyncio
 from tornado.web import RequestHandler
 from tornado import escape
+import logging, datetime
+
 from biothings.utils.common import json_encode
 escape.json_encode = json_encode
 
-import logging
+from biothings import config
 
 class DefaultHandler(RequestHandler):
 
@@ -58,3 +61,14 @@ class GenericHandler(DefaultHandler):
         logging.debug("HEAD args: %s, kwargs: %s" % (args,kwargs))
         self.write_error(405,exc_info=(None,"Method HEAD not allowed",None))
 
+
+class RootHandler(DefaultHandler):
+
+    @asyncio.coroutine
+    def get(self):
+        self.write({
+                "name": getattr(config,"HUB_NAME","Noname hub"),
+                "version": getattr(config,"HUB_VERSION","noversion"),
+                "icon" : getattr(config,"HUB_ICON","http://18.237.6.45/static/img/biothings-logo.svg"),
+                "now": datetime.datetime.now(),
+                })
