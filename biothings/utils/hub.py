@@ -802,8 +802,12 @@ class HubReloader(object):
                 except KeyboardInterrupt:
                     logging.warning("Stop monitoring code")
                     break
-        self.do_monitor = True
-        return asyncio.ensure_future(do())
+        if getattr(config,"USE_RELOADER",False) and config.USE_RELOADER:
+            self.do_monitor = True
+            return asyncio.ensure_future(do())
+        else:
+            logging.info("USE_RELOADER not set (or False), won't monitor for changes")
+            return None
 
     def watches(self):
         return [v.path for v in self.watcher_manager.watches.values()]
