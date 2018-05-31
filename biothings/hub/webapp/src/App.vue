@@ -289,6 +289,9 @@ export default {
             if(conn != null) {
                 this.conn = conn;
             }
+            if(this.connected) {
+                this.closeConnection();
+            }
             var url = this.conn["url"].replace(/\/$/,"");
             console.log(`Connecting to ${this.conn.name} (${url})`);
             axios.defaults.baseURL = url;
