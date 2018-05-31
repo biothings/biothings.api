@@ -2,10 +2,18 @@
   <div id="app">
     <div class="ui fixed inverted menu">
       <div class="ui container">
-        <a href="/" class="header item">
-          <img class="logo" src="./assets/biothings_logo.png">
-          Biothings Hub
-        </a>
+
+		<div class="item">
+			<div class="ui middle aligned mini">
+				<choose-hub></choose-hub>
+			</div>
+		</div>
+
+
+        <div class="header item">
+            <img class="logo" src="./assets/biothings-studio-color.svg">
+            <div :data-tooltip="conn.url" data-position="bottom center">{{conn.name}}</div>
+        </div>
 
         <a class="clickable blurred item">
             <i class="ui home icon"></i>
@@ -35,12 +43,12 @@
 
         <div class="ui item">
             <div v-if="socket && socket.readyState == 1" :data-tooltip="'Connection: ' + socket.protocol" data-position="bottom center">
-                <button class="mini circular ui icon button" @click="closeSocket">
+                <button class="mini circular ui icon button" @click="closeConnection">
                     <i class="green power off icon"></i>
                 </button>
             </div>
             <div v-else>
-                <button class="mini circular ui icon button" @click="setupSocket"
+                <button class="mini circular ui icon button" @click="openConnection"
                     data-tooltip="Click to reconnect"
                     data-position="bottom center">
                     <i class="red plug icon"></i>
@@ -139,6 +147,7 @@ import BuildDetailed from './BuildDetailed.vue';
 import ApiGrid from './ApiGrid.vue';
 import EventMessages from './EventMessages.vue';
 import EventAlert from './EventAlert.vue';
+import ChooseHub from './ChooseHub.vue';
 
 const routes = [
     { path: '/', component: Stats },
@@ -158,7 +167,7 @@ const PING_INTERVAL_MS = 10000;
 export default {
     name: 'app',
     router: router,
-    components: { JobSummary, EventMessages, EventAlert, },
+    components: { JobSummary, EventMessages, EventAlert, ChooseHub},
     mounted () {
         $('.menu .item').tab();
         $('.ui.sticky')
@@ -166,14 +175,23 @@ export default {
             context: '#page_content'
         })
         ;
+        var last = Vue.localStorage.get('last_conn');
+        this.conn = this.default_conn;
+        if(last) {
+            this.conn = JSON.parse(last);
+        }
+        this.setupConnection();
     },
     created () {
         console.log("App created");
-        this.setupSocket();
-        bus.$on("reconnect",this.setupSocket);
+        bus.$on("reconnect",this.setupConnection);
+        bus.$on("connect",this.setupConnection,null,"/");
+        // connect to default one to start
+        this.conn = this.default_conn;
     },
     beforeDestroy() {
-        bus.$off("reconnect",this.setupSocket);
+        bus.$off("reconnect",this.setupConnection);
+        bus.$off("connect",this.setupConnection);
     },
     data() {
         return {
@@ -183,6 +201,13 @@ export default {
             msg_timestamp : null,
             latency_value : null,
             ping_interval : PING_INTERVAL_MS, // adjustable delay
+            default_conn: {
+                "icon" : "/dist/biothings-studio-color.svg",
+                "name" : "BioThings Hub",
+                "version" : null,
+                "url" : "http://localhost:7080",
+            },
+            conn: null,
         }
     },
     computed : {
@@ -190,8 +215,12 @@ export default {
     watch: {
         latency_value: function (newv, oldv) {
             if(newv != oldv) {
-                //console.log(`new: ${newv} old: ${oldv}`);
                 this.evalLatency(oldv,newv);
+            }
+        },
+        conn: function(newv,oldv) {
+            if(newv != oldv) {
+                $(".logo").attr("src",this.conn.icon);
             }
         }
     },
@@ -217,7 +246,6 @@ export default {
                 }
                 var event = `change_${evt.obj}`;
                 console.log(`dispatch event ${event} (${evt._id}): ${evt.op} [${evt.data}]`);
-                console.log(evt);
                 bus.$emit(event,evt._id,evt.op,evt.data);
             }
         },
@@ -254,7 +282,20 @@ export default {
             $("#connected i").removeClass("grey brown red orange yellow olive green").addClass(newinfo.color);
             $("#connected").attr("data-tooltip",'Quality: ' + newinfo.quality);
         },
-        setupSocket() {
+        openConnection() {
+            this.setupConnection(null,false);
+        },
+        setupConnection(conn=null,redirect=false) {
+            if(conn != null) {
+                this.conn = conn;
+            }
+            var url = this.conn["url"].replace(/\/$/,"");
+            console.log(`Connecting to ${this.conn.name} (${url})`);
+            axios.defaults.baseURL = url;
+            Vue.localStorage.set('last_conn',JSON.stringify(this.conn));
+            this.setupSocket(redirect);
+        },
+        setupSocket(redirect=false) {
             var self = this;
             var transports = null;//["websocket","xhr-polling"];
             // re-init timestamp so we can monitor it again
@@ -269,6 +310,9 @@ export default {
                     this.ping_interval = PING_INTERVAL_MS;
                     self.pingServer();
                     $(".clickable").removeClass("blurred");
+                    if(redirect) {
+                        window.location.assign(redirect)
+                    }
                 };
                 this.socket.onmessage = function (evt) {
                     var newts = Date.now();
@@ -278,9 +322,8 @@ export default {
                     self.msg_timestamp = null;
                 };
                 this.socket.onclose = function() {
-                    //console.log(o"socket is closed");
                     //bus.$emit("alert",{type: "alert", event: "hub_stop", msg: "Lost connection"})
-                    self.closeSocket();
+                    self.closeConnection();
                 },
                 this.socket.ontimeout = function(err) {
                     console.log("got error");
@@ -290,10 +333,11 @@ export default {
             })
             .catch(err => {
                 console.log("Can't connect using websocket");
-                console.log(err);
+                // invalidate connection and use default
+                this.conn = this.default_conn;
             });
         },
-        closeSocket() {
+        closeConnection() {
             this.connected = false;
             this.socket.close();
             this.msg_timestamp = null;
@@ -303,7 +347,7 @@ export default {
             // check if we got a reply before, it not, we have a connection issue
             if(this.msg_timestamp != null) {
                 console.log("Sent a ping but got no pong, disconnect");
-                this.closeSocket();
+                this.closeConnection();
             }
             // Send the "pingServer" event to the server.
             this.msg_timestamp = Date.now();
@@ -326,6 +370,10 @@ export default {
       //text-align: center;
       color: #2c3e50;
       margin-top: 60px;
+    }
+
+    .logo {
+      margin-right: 0.5em !important;
     }
 
     h1, h2 {
@@ -392,4 +440,4 @@ export default {
       pointer-events: none;
     }
 
-    </style>
+</style>
