@@ -85,7 +85,7 @@ export default {
     name: 'diff-release-event',
     props: ['release','build_config'],
     mounted() {
-        $(".ui.dropdown").dropdown();
+        $(".ui.backendenv.dropdown").dropdown();
     },
     beforeDestroy() {
         $('.ui.basic.applydiff.modal').remove();

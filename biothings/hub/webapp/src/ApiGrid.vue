@@ -110,7 +110,7 @@ export default {
     name: 'api-grid',
     mounted () {
         console.log("ApiGrid mounted");
-        $('.ui.dropdown').dropdown();
+        $('.ui.apibackends.dropdown').dropdown();
         $('#apis .ui.sidebar')
         .sidebar({context:$('#apis')})
         .sidebar('setting', 'transition', 'overlay')
@@ -121,7 +121,6 @@ export default {
         // there's some kind of race-condition regarding dropdown init, if
         // in mounted() they won't get init, prob. because data changed and needs to
         // be re-rendered
-        $('.ui.buildconfigs.dropdown').dropdown();
     },
     created() {
         this.getApis();
@@ -179,7 +178,6 @@ export default {
             .catch(err => {
                 console.log("Error getting index environments: ");
                 console.log(err);
-                throw err;
             })
             $(`.ui.basic.createapi.modal`)
             .modal("setting", {

@@ -27,7 +27,7 @@
 
                             <label>Select the type of release</label>
                             <div>
-                                <select class="ui dropdown" name="release_type" v-model="release_type">
+                                <select class="ui releasetype dropdown" name="release_type" v-model="release_type">
                                     <option>incremental</option>
                                     <option>full</option>
                                 </select>
@@ -116,7 +116,7 @@ export default {
     name: 'build-releases',
     props: ['build'],
     mounted() {
-        $(".ui.dropdown").dropdown();
+        $(".ui.releasetype.dropdown").dropdown();
     },
     created() {
         this.loadData();

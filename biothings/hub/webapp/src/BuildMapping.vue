@@ -1,4 +1,4 @@
-<template>
+<template v-if="maps">
     <span>
         <div class="ui fluid basic segment right aligned">
             <button class="ui button mini" v-on:click="$parent.inspect">

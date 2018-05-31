@@ -187,7 +187,8 @@ export default {
     name: 'build-grid',
     mounted () {
         console.log("BuildGrid mounted");
-        $('.ui.dropdown').dropdown();
+        $('.ui.filterbuilds.dropdown').dropdown();
+        $('.ui.buildconfigs.dropdown').dropdown();
         $('.ui.sources.dropdown').dropdown({
             onChange: function(addedValue, addedText, $addedChoice) {
                 console.log(addedValue);console.log(addedText);
