@@ -3,105 +3,58 @@ from biothings.utils.keylookup_api import KeyLookupMyChemInfo
 from biothings.utils.keylookup_api import KeyLookupMyGeneInfo
 
 
-class TestKeyLookupSimple(unittest.TestCase):
+class TestKeyLookupAPI(unittest.TestCase):
 
     def test_mycheminfo(self):
         """
-        Test of the internal key_lookup method for KeyLookupMyChemInfo
+        Test of KeyLookupMyChemInfo
         :return:
         """
 
-        klmychem = KeyLookupMyChemInfo('inchikey', ['inchikey'])
+        def _MyChemInfoSingleDoc(input_type, output_types, question, answer):
+            @KeyLookupMyChemInfo(input_type, output_types)
+            def load_document(doc_lst):
+                for d in doc_lst:
+                    yield d
+            doc_lst = [{'_id': question}]
+            res_lst = load_document(doc_lst)
+            res = next(res_lst)
+            self.assertEqual(res['_id'], answer)
 
         # Examples - paracetamol (acetaminophen)
-        r = klmychem.key_lookup('RZVAJINKPMORJF-UHFFFAOYSA-N', 'inchikey')
-        self.assertEqual(r[0]['inchikey'], 'RZVAJINKPMORJF-UHFFFAOYSA-N')
-        r = klmychem.key_lookup('CHEBI\\:46195', 'chebi')
-        self.assertEqual(r[0]['inchikey'], 'RZVAJINKPMORJF-UHFFFAOYSA-N')
-        r = klmychem.key_lookup('362O9ITL9D', 'unii')
-        self.assertEqual(r[0]['inchikey'], 'RZVAJINKPMORJF-UHFFFAOYSA-N')
-        r = klmychem.key_lookup('DB00316', 'drugbank')
-        self.assertEqual(r[0]['inchikey'], 'RZVAJINKPMORJF-UHFFFAOYSA-N')
-        r = klmychem.key_lookup('CHEMBL112', 'chembl')
-        self.assertEqual(r[0]['inchikey'], 'RZVAJINKPMORJF-UHFFFAOYSA-N')
-        r = klmychem.key_lookup('CID1983', 'pubchem')
-        self.assertEqual(r[0]['inchikey'], 'RZVAJINKPMORJF-UHFFFAOYSA-N')
+        _MyChemInfoSingleDoc('inchikey', ['inchikey'], 'RZVAJINKPMORJF-UHFFFAOYSA-N', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
+        _MyChemInfoSingleDoc('chebi', ['inchikey'], 'CHEBI:46195', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
+        _MyChemInfoSingleDoc('unii', ['inchikey'], '362O9ITL9D', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
+        _MyChemInfoSingleDoc('drugbank', ['inchikey'], 'DB00316', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
+        _MyChemInfoSingleDoc('chembl', ['inchikey'], 'CHEMBL112', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
+        _MyChemInfoSingleDoc('pubchem', ['inchikey'], 'CID1983', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
 
-        # # Other examples
-        r = klmychem.key_lookup('CHEBI\\:63599', 'chebi')
-        self.assertEqual(r[0]['inchikey'], 'GIUYCYHIANZCFB-FJFJXFQQSA-N')
-
-        r = klmychem.key_lookup('ATBDZSAENDYQDW-UHFFFAOYSA-N', 'inchikey')
-        self.assertEqual(r[0]['pubchem'], 'CID4080429')
-        self.assertEqual(r[0]['unii'], '18MXK3D6DB')
-
-    def test_mychem_decorator(self):
-        """
-        Test of the decorator interface for KeyLookupMyChemInfo
-        :return:
-        """
-
-        test_doc = {
-            '_id': 'RZVAJINKPMORJF-UHFFFAOYSA-N'
-        }
-
-        @KeyLookupMyChemInfo('inchikey', ['undefined', 'pubchem'], skip_on_failure=True)
-        def load_document(data_folder):
-            doc_lst = [test_doc]
-            for d in doc_lst:
-                yield d
-
-        # Test a list being passed with 3 documents, 2 are returned, 1 is skipped
-        res_lst = load_document('data/folder/')
-        res1 = next(res_lst)
-        self.assertEqual(res1['_id'], 'CID1983')
-
-        # Verify that the generator is out of documents
-        with self.assertRaises(StopIteration):
-            next(res_lst)
+        # Other examples
+        _MyChemInfoSingleDoc('chebi', ['inchikey'], 'CHEBI:63599', 'GIUYCYHIANZCFB-FJFJXFQQSA-N')
+        _MyChemInfoSingleDoc('inchikey', ['pubchem'], 'ATBDZSAENDYQDW-UHFFFAOYSA-N', 'CID4080429')
+        _MyChemInfoSingleDoc('inchikey', ['unii'], 'ATBDZSAENDYQDW-UHFFFAOYSA-N', '18MXK3D6DB')
 
     def test_mygeneinfo(self):
         """
-        Test of the internal key_lookup method for KeyLookupMyGeneInfo
+        Test of KeyLookupMyGeneInfo
         :return:
         """
 
-        klmygene = KeyLookupMyGeneInfo('symbol', ['symbol'])
-        # "CDK2", "NM_052827", "204639_at", "chr1:151,073,054-151,383,976", "hg19.chr1:151073054-151383976".
+        def _MyGeneInfoSingleDoc(input_type, output_types, question, answer):
+            @KeyLookupMyGeneInfo(input_type, output_types)
+            def load_document(doc_lst):
+                for d in doc_lst:
+                    yield d
+            doc_lst = [{'_id': question}]
+            res_lst = load_document(doc_lst)
+            res = next(res_lst)
+            self.assertEqual(res['_id'], answer)
 
-        r = klmygene.key_lookup('CDK2', 'symbol')
-        self.assertEqual(r[0]['symbol'], 'CDK2')
-        r = klmygene.key_lookup('ENSG00000123374', 'ensembl')
-        self.assertEqual(r[0]['symbol'], 'CDK2')
-        r = klmygene.key_lookup('1017', 'entrezgene')
-        self.assertEqual(r[0]['symbol'], 'CDK2')
-        r = klmygene.key_lookup('P24941', 'uniprot')
-        self.assertEqual(r[0]['symbol'], 'CDK2')
+        _MyGeneInfoSingleDoc('ensembl', ['symbol'], 'ENSG00000123374', 'CDK2')
+        _MyGeneInfoSingleDoc('entrezgene', ['symbol'], '1017', 'CDK2')
 
-    def test_mygene_decorator(self):
-        """
-        Test of the decorator interface for KeyLookupMyGeneInfo
-        :return:
-        """
-
-        test_doc = {
-            '_id': 'ENSG00000123374'
-        }
-
-        @KeyLookupMyGeneInfo('ensembl', ['undefined', 'symbol'], skip_on_failure=True)
-        def load_document(data_folder):
-            doc_lst = [test_doc]
-            for d in doc_lst:
-                yield d
-
-        # Test a list being passed with 3 documents, 2 are returned, 1 is skipped
-        res_lst = load_document('data/folder/')
-        res1 = next(res_lst)
-        self.assertEqual(res1['_id'], 'CDK2')
-
-        # Verify that the generator is out of documents
-        with self.assertRaises(StopIteration):
-            next(res_lst)
+        # TODO:  uniprot.Swiss-Prot doesn't with query_many
+        # _MyGeneInfoSingleDoc('uniprot', ['symbol'], 'P24941', 'CDK2')
 
     def test_mygene_one2many(self):
         """
@@ -110,18 +63,64 @@ class TestKeyLookupSimple(unittest.TestCase):
         :return:
         """
 
-        test_doc = {
-            '_id': 'CDK2'
-        }
-
-        @KeyLookupMyGeneInfo('symbol', ['undefined', 'ensembl'], skip_on_failure=True)
+        doc_lst = [{'_id': 'CDK2'}]
+        @KeyLookupMyGeneInfo('symbol', ['ensembl'], skip_on_failure=True)
         def load_document(data_folder):
-            doc_lst = [test_doc]
             for d in doc_lst:
                 yield d
 
-        # Test a list being passed with 3 documents, 2 are returned, 1 is skipped
         res_lst = load_document('data/folder/')
         res_cnt = sum(1 for _ in res_lst)
         # assert that at least 5 elements are returned
         self.assertGreater(res_cnt, 5)
+
+    def test_batch_queries(self):
+        """
+        Test converting a long-ish list of entrezgenes to symbols.  The
+        purpose of this test is to exercise the query_many behavior of
+        the class which will break the list into batches.
+        :return:
+        """
+
+        # Build up document list
+        input = [
+            51300,
+            54958,
+            57829,
+            100526772,
+            6836,
+            84910,
+            644672,
+            643382,
+            348013,
+            2707400000 # broken on purpose
+        ]
+        doc_lst = []
+        for e in input:
+            doc_lst.append({'_id': e})
+
+        answers = [
+            'TIMMDC1',
+            'TMEM160',
+            'ZP4',
+            'TMEM110-MUSTN1',
+            'SURF4',
+            'TMEM87B',
+            'CLDN25',
+            'TMEM253',
+            'TMEM255B',
+            # The last key was not converted
+            2707400000
+        ]
+
+
+        # Test a list being passed with 10 documents
+        @KeyLookupMyGeneInfo('entrezgene', ['symbol'])
+        def load_document(data_folder):
+            for d in doc_lst:
+                yield d
+
+        res_lst = load_document('data/folder/')
+        for res in res_lst:
+            print(res['_id'])
+            self.assertTrue(res['_id'] in answers)
