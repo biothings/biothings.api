@@ -1,7 +1,7 @@
 import biothings_client
 import copy
+from itertools import islice, chain
 import logging
-import pprint
 
 # Setup logger and logging level
 logging.basicConfig()
@@ -11,63 +11,69 @@ lg.setLevel(logging.ERROR)
 
 class KeyLookupAPI(object):
     """
-    Base KeyLookupAPI class to be inherited by children classes and
-    configured for individual APIs.
+    Perform key lookup or key conversion from one key type to another using
+    an API endpoint as a data source.
+
+    This class uses biothings apis to conversion from one key type to another.
+    Base classes are used with the decorator syntax shown below:
+
+    @KeyLookupMyChemInfo(input_type, output_types)
+    def load_document(doc_lst):
+        for d in doc_lst:
+            yield d
     """
+    batch_size = 10000
     lookup_fields = {}
 
     def __init__(self, input_type, output_types, skip_on_failure=False):
         """
         Initialize the KeyLookupAPI object.
-
         """
         self._generate_return_fields()
-        self.input_type = input_type
-        self.output_types = output_types
+
+        if input_type in self.lookup_fields.keys():
+            self.input_type = input_type
+        else:
+            raise ValueError('Provided input_type is not configured in lookup_fields')
+
+        self.output_types = []
+        for output_type in output_types:
+            if output_type in self.lookup_fields.keys():
+                self.output_types.append(output_type)
+        if not output_types:
+            raise ValueError('output_types provided do not contain any values in lookup_fields')
+
         self.skip_on_failure = skip_on_failure
 
     def __call__(self, f):
         """
         Perform the key conversion and all lookups on call.
-
         :param f:
         :return:
         """
         def wrapped_f(*args):
             input_docs = f(*args)
             lg.info("input: %s" % input_docs)
-            output_docs = []
-            for doc in input_docs:
-                lg.info("Decorator arguments:  {}".format(self.input_type))
-                lg.info("Input document:  {}".format(doc))
-                hits = self.key_lookup(doc['_id'], self.input_type)
-                for output_type in self.output_types:
-                    # Key(s) were found, create new documents
-                    # and add them to the output list
-                    hits_found = False
-                    for h in hits:
-                        if output_type in h.keys():
-                            new_doc = copy.deepcopy(doc)
-                            new_doc['_id'] = h[output_type]
-                            output_docs.append(new_doc)
-                            hits_found = True
-                    if hits_found:
-                        break
 
-                # No keys were found, keep the original (unless the skip_on_failure option is passed)
-                if not hits_found and not self.skip_on_failure:
-                    output_docs.append(doc)
-
-            for odoc in output_docs:
-                lg.info("yield odoc: %s" % odoc)
-                yield odoc
+            # split input_docs into chunks of size self.batch_size
+            for batchiter in KeyLookupAPI.batch(input_docs, self.batch_size):
+                output_docs = self.key_lookup_batch(batchiter)
+                for odoc in output_docs:
+                    lg.info("yield odoc: %s" % odoc)
+                    yield odoc
 
         return wrapped_f
+
+    @staticmethod
+    def batch(iterable, size):
+        sourceiter = iter(iterable)
+        while True:
+            batchiter = islice(sourceiter, size)
+            yield chain([next(batchiter)], batchiter)
 
     def _generate_return_fields(self):
         """
         Generate the return_fields member variable from the lookup_fields dictionary.
-
         :return:
         """
         self.return_fields = ''
@@ -75,45 +81,80 @@ class KeyLookupAPI(object):
             self.return_fields += self.lookup_fields[k] + ','
         lg.info("KeyLookupAPI return_fields:  {}".format(self.return_fields))
 
-    def key_lookup(self, orig_id, id_type):
+    def key_lookup_batch(self, batchiter):
         """
-        Virtual method of key_lookup to be over-ridden by child classes
-
-        :param orig_id:
-        :param id_type:
+        Look up all keys for ids given in the batch iterator (1 block)
+        :param batchiter:  1 lock of records to look up keys for
         :return:
         """
-        pass
 
-    def _parse_query_results(self, qr):
+        id_lst, doc_cache = self._build_cache(batchiter)
+        qr = self._query_many(id_lst)
+        return self.parse_querymany(qr, doc_cache)
+
+    def _build_cache(self, batchiter):
         """
-        Parse the query results from one API call.  Multiple hits may be returned.
-        If no hits are found then None is returned.
-
-        :param qr:
+        Build an id list and document cache for documents read from the
+        batch iterator.
+        :param batchiter:  an iterator for a batch of documents.
         :return:
         """
-        if len(qr['hits']) == 0:
-            return None
-        r = []
-        for h in qr['hits']:
-            r.append(self._parse_hit(h))
-        return r
+        id_lst = []
+        doc_cache = []
+        for doc in batchiter:
+            id_lst.append(doc['_id'])
+            doc_cache.append(doc)
+        return list(set(id_lst)), doc_cache
 
-    def _parse_hit(self, h):
+    def _query_many(self, id_lst):
+        """
+        Call the biothings_client querymany function with a list of identifiers
+        and output fields that will be returned.
+        :param id_lst: list of identifiers to query
+        :return:
+        """
+        # Query MyGene.info
+        lg.info("query_many scopes:  {}".format(self.lookup_fields[self.input_type]))
+        return self.client.querymany(id_lst,
+                                     scopes=self.lookup_fields[self.input_type],
+                                     fields=self.return_fields,
+                                     as_generator=True,
+                                     returnall=True)
+
+    def parse_querymany(self, qr, doc_lst):
+        """
+        Parse the querymany results from the biothings_client and return results
+        in the id fields of the document list
+        :param qr: querymany results
+        :param doc_lst: list of documents (cached) used for a return structure.
+        :return:
+        """
+        lg.info("QueryMany Structure:  {}".format(qr))
+        res_lst = []
+        for i, q in enumerate(qr['out']):
+            val = self._parse_h(q)
+            if val:
+                for d in doc_lst:
+                    if q['query'] == d['_id']:
+                        new_doc = copy.deepcopy(d)
+                        new_doc['_id'] = val
+                        res_lst.append(new_doc)
+        lg.info("parse_querymany doc_lst: {}".format(doc_lst))
+        return res_lst
+
+    def _parse_h(self, h):
         """
         Parse a single hit from the API.
-
         :param h:
         :return: dictionary of keys
         """
-        r = {}
-        for k in self.lookup_fields.keys():
-            fields = self.lookup_fields[k].split('.')
+        for output_type in self.output_types:
+            print(output_type)
+            fields = self.lookup_fields[output_type].split('.')
             val = self._parse_field(h, fields)
+            print(val)
             if val:
-                r[k] = val
-        return r
+                return val
 
     @staticmethod
     def _parse_field(h, fields):
@@ -124,7 +165,6 @@ class KeyLookupAPI(object):
         For example fields = ['key1', 'key2'] would return
         the value of h[key1][key2].  None is returned if the
         lookup fails.
-
         :param h: query hit
         :param fields: list of fields to traverse
         :return:
@@ -136,21 +176,8 @@ class KeyLookupAPI(object):
             t = t[f]
         return t
 
-    def _print_result(self, r):
-        """
-        Print results for a single hit (used in testing).
-        :param r:
-        :return:
-        """
-        pp = pprint.PrettyPrinter(indent=2)
-        pp.pprint(r)
-
 
 class KeyLookupMyChemInfo(KeyLookupAPI):
-    """
-    KeyLookupAPI class for the MyChem.Info API service.
-    """
-
     lookup_fields = {
         'inchikey': '_id',
         'chebi': 'chebi.chebi_id',
@@ -167,24 +194,8 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
         super(KeyLookupMyChemInfo, self).__init__(input_type, output_types, skip_on_failure)
         self.client = biothings_client.get_client('drug')
 
-    def key_lookup(self, orig_id, id_type):
-        """
-        Lookup a key and return results in a dictionary structure.
-        :param orig_id:
-        :param id_type:
-        :return:
-        """
-        lg.info('%s:%s' % (id_type, orig_id))
-        q = "{}:{}".format(self.lookup_fields[id_type], orig_id)
-        qr = self.client.query(q, fields=self.return_fields)
-        return self._parse_query_results(qr)
-
 
 class KeyLookupMyGeneInfo(KeyLookupAPI):
-    """
-    KeyLookupAPI class for the MyGene.Info API service.
-    """
-
     lookup_fields = {
         'ensembl': 'ensembl.gene',
         'entrezgene': 'entrezgene',
@@ -198,15 +209,3 @@ class KeyLookupMyGeneInfo(KeyLookupAPI):
         """
         super(KeyLookupMyGeneInfo, self).__init__(input_type, output_types, skip_on_failure)
         self.client = biothings_client.get_client('gene')
-
-    def key_lookup(self, orig_id, id_type):
-        """
-        Lookup a key and return results in a dictionary structure.
-        :param orig_id:
-        :param id_type:
-        :return:
-        """
-        lg.info('%s:%s' % (id_type, orig_id))
-        q = "{}:{}".format(self.lookup_fields[id_type], orig_id)
-        qr = self.client.query(q, fields=self.return_fields)
-        return self._parse_query_results(qr)
