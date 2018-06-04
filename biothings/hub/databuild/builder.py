@@ -985,28 +985,51 @@ class BuilderManager(BaseManager):
         (last time is datasource information from metadata, either from
         given old src_build doc name, or the latest found if old=None)
         """
-        if build_name is None and old is None:
-            raise ValueError("Either a build document ID to compare with (old=...), or at least a " + \
-                             "build name to look for the latest one (build_name=...)")
         dbbuild = get_src_build()
         dbdump = get_src_dump()
-        if old is None:
-            # TODO: this will get big... but needs to be generic 
-            # because we handle different hub db backends (or it needs to be a 
-            # specific helper func to be defined all backends
-            builds = dbbuild.find({"build_config.name": build_name})
-            builds = sorted(builds,key=lambda e: e["started_at"])
-            old = builds[-1]
+
+        def whatsnewcomparedto(build_name,old=None):
+            if old is None:
+                # TODO: this will get big... but needs to be generic 
+                # because we handle different hub db backends (or it needs to be a 
+                # specific helper func to be defined all backends
+                builds = dbbuild.find({"build_config.name": build_name})
+                builds = sorted(builds,key=lambda e: e["started_at"])
+                if builds:
+                    old = builds[-1]
+                else:
+                    raise BuilderException("Can't find a build associated to config '%s'" % build_name)
+            else:
+                old = dbbuild.find_one({"_id":old})
+            meta_srcs = old.get("_meta",{}).get("src",{})
+            new = {"old_build" : {"name" : old["_id"], "built_at" : old["started_at"]} ,"sources":{}}
+            for src_name,data in meta_srcs.items():
+                srcd = dbdump.find_one({"_id":src_name})
+                # TODO: should take release from upload, not download, but what about sources with more than 1 sub-sources ?
+                if srcd and srcd.get("download",{}).get("release") and srcd["download"]["release"] != data["version"]:
+                    new["sources"][src_name] = {
+                            "old": {"version" : data["version"]},
+                            "new": {"version" : srcd["download"]["release"],
+                                    "downloaded_at" : srcd["download"]["started_at"]}
+                            }
+            return {build_name : new}
+
+        if old is None and build_name is None:
+            # do this for all build configs
+            dbbuildconfig = get_src_build_config()
+            configs = {}
+            for d in dbbuildconfig.find():
+                try:
+                    news = whatsnewcomparedto(d["_id"])
+                    logging.error("news: %s" % news)
+                    if news[d["_id"]]["sources"]:
+                        configs.update(news)
+                except BuilderException:
+                    continue
+            return configs
         else:
-            old = dbbuild.find_one({"_id":old})
-        meta_srcs = old.get("_meta",{}).get("src",{})
-        new = {"old_build" : old["_id"],"src_version":{}}
-        for src_name,data in meta_srcs.items():
-            srcd = dbdump.find_one({"_id":src_name})
-            # TODO: should take release from upload, not download, but what about sources with more than 1 sub-sources ?
-            if srcd and srcd.get("download",{}).get("release") and srcd["download"]["release"] != data["version"]:
-                new["src_version"][src_name] = {"old":data["version"],"new":srcd["download"]["release"]}
-        return new
+            return whatsnewcomparedto(build_name,old)
+
 
     def clean_temp_collections(self,build_name,date=None,prefix=''):
         """

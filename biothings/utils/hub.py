@@ -19,7 +19,7 @@ from biothings.utils.dataload import to_boolean
 logging = config.logger
 from biothings.utils.common import timesofar, sizeof_fmt
 import biothings.utils.aws as aws
-from biothings.utils.hub_db import get_cmd
+from biothings.utils.hub_db import get_cmd, get_src_dump, get_src_build, get_src_build_config
 
 # useful variables to bring into hub namespace
 pending = "pending"
@@ -56,6 +56,7 @@ class HubShell(InteractiveShell):
     def __init__(self, job_manager):
         self.job_manager = job_manager
         self.commands = OrderedDict()
+        self.managers = {}
         self.extra_ns = OrderedDict()
         self.tracked = {} # command calls kept in history or not
         self.hidden = {} # not returned by help()
@@ -168,6 +169,52 @@ class HubShell(InteractiveShell):
 
         return fut
 
+    def status(self):
+        total_srcs = None
+        total_docs = None
+        total_confs = None
+        total_builds = None
+        total_apis = None
+        total_running_apis = None
+        if self.managers.get("source_manager"):
+            try:
+                srcm = self.managers["source_manager"]
+                srcs = srcm.get_sources()
+                total_srcs = len(srcs)
+                total_docs = sum([s["upload"]["sources"][subs].get("count",0) or 0 \
+                                for s in srcs \
+                                for subs in s["upload"]["sources"] \
+                                if s.get("upload")])
+            except Exception as e:
+                logging.error("Can't get stats for sources: %s" % e)
+
+        try:
+            bm = self.managers["build_manager"]
+            total_confs = len(bm.build_config_info())
+        except Exception as e:
+            logging.error("Can't get total number of build configurations: %s" % e)
+        try:
+            total_builds = len(bm.build_info())
+        except Exception as e:
+            logging.error("Can't get total number of builds: %s" % e)
+
+        try:
+            am = self.managers["api_manager"]
+            apis = am.get_apis()
+            total_apis = len(apis)
+            total_running_apis = len([a for a in apis if a.get("status") == "running"])
+        except Exception as e:
+            logging.error("Can't get stats for APIs: %s" % e)
+
+        return {
+                "source" : {"total" : total_srcs,
+                            "documents" : total_docs},
+                "build" : {"total" : total_builds},
+                "build_conf" : {"total" : total_confs},
+                "api" : {"total" : total_apis,
+                         "running" : total_running_apis},
+                }
+
     def help(self, func=None):
         """
         Display help on given function/object or list all available commands
@@ -227,6 +274,9 @@ class HubShell(InteractiveShell):
     def save_cmd(klass,_id,cmd):
         newcmd = jsonreadify(cmd)
         klass.cmd.replace_one({"_id":_id},newcmd,upsert=True)
+
+    def register_managers(self,managers):
+        self.managers = managers
 
     def register_command(self, cmd, result, force=False):
         """

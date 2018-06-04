@@ -430,7 +430,7 @@ class IndexerManager(BaseManager):
             if remote:
                 # lost all indices, remotely
                 try:
-                    cl = Elasticsearch(res["env"][kenv]["host"])
+                    cl = Elasticsearch(res["env"][kenv]["host"],timeout=1,max_retries=0)
                     indices = [{"index":k,
                         "doc_type":list(v["mappings"].keys())[0],
                         "aliases":list(v["aliases"].keys())}
@@ -447,7 +447,6 @@ class IndexerManager(BaseManager):
                 except Exception as e:
                     self.logger.warning("Can't load remote indices: %s" % e)
                     continue
-
         return res
 
     def validate_mapping(self, mapping, env):
