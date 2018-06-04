@@ -138,8 +138,29 @@ function split_and_join(str,sep="_",glue=" ") {
 }
 Vue.filter('splitjoin',split_and_join);
 
+var numeral = require("numeral");
+numeral.register('locale', 'mine', {
+    delimiters: {
+        thousands: ',',
+        decimal: '.'
+    },
+    abbreviations: {
+        thousand: 'thousand',
+        million: 'million',
+        billion: 'billion',
+        trillion: 'trillion'
+    },
+});
+numeral.locale('mine');
+
+
+
+Vue.filter("formatNumber", function (value) {
+    return numeral(value).format("0.00 a");
+});
+
 import JobSummary from './JobSummary.vue';
-import Stats from './Stats.vue';
+import Status from './Status.vue';
 import DataSourceGrid from './DataSourceGrid.vue';
 import DataSourceDetailed from './DataSourceDetailed.vue';
 import BuildGrid from './BuildGrid.vue';
@@ -150,7 +171,7 @@ import EventAlert from './EventAlert.vue';
 import ChooseHub from './ChooseHub.vue';
 
 const routes = [
-    { path: '/', component: Stats },
+    { path: '/', component: Status },
     { path: '/sources', component: DataSourceGrid },
     { path: '/source/:_id', component: DataSourceDetailed, props: true },
     { path: '/builds', component: BuildGrid },
@@ -288,9 +309,6 @@ export default {
         setupConnection(conn=null,redirect=false) {
             if(conn != null) {
                 this.conn = conn;
-            }
-            if(this.connected) {
-                this.closeConnection();
             }
             var url = this.conn["url"].replace(/\/$/,"");
             console.log(`Connecting to ${this.conn.name} (${url})`);
