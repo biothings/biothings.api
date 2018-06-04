@@ -2,6 +2,7 @@ import biothings_client
 import copy
 from itertools import islice, chain
 import logging
+import types
 
 # Setup logger and logging level
 logging.basicConfig()
@@ -36,13 +37,17 @@ class KeyLookupAPI(object):
         else:
             raise ValueError('Provided input_type is not configured in lookup_fields')
 
+        if not isinstance(output_types, list):
+            raise ValueError('Provided output_types is not a list')
         self.output_types = []
         for output_type in output_types:
             if output_type in self.lookup_fields.keys():
                 self.output_types.append(output_type)
-        if not output_types:
+        if not self.output_types:
             raise ValueError('output_types provided do not contain any values in lookup_fields')
 
+        if not isinstance(skip_on_failure, bool):
+            raise ValueError('skip_on_failure must be a boolean value')
         self.skip_on_failure = skip_on_failure
 
     def __call__(self, f):
@@ -102,8 +107,9 @@ class KeyLookupAPI(object):
         id_lst = []
         doc_cache = []
         for doc in batchiter:
-            id_lst.append(doc['_id'])
-            doc_cache.append(doc)
+            if '_id' in doc.keys():
+                id_lst.append(doc['_id'])
+                doc_cache.append(doc)
         return list(set(id_lst)), doc_cache
 
     def _query_many(self, id_lst):
