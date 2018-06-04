@@ -9,8 +9,11 @@
                     <div class="statistic">
                         <div class="value">
                             <i class="database icon"></i>
-                            <span v-if="status && status.source">{{status.source.total}}</span>
-                            <span v-else>??</span>
+                            <span v-if="Object.keys(status).length">
+                                <span v-if="status.source">{{status.source.total}}</span>
+                                <span v-else></span>
+                            </span>
+                            <span v-else>0</span>
                         </div>
                         <div class="label">
                             Datasources
@@ -18,10 +21,13 @@
                     </div>
                     <div class="statistic">
                         <div class="text value">
-                            <span v-if="status && status.source">
+                            <span v-if="Object.keys(status).length">
+                                <span v-if="status.source">
                                 {{status.source.documents | formatNumber}}
+                                </span>
+                                <span v-else>0</span>
                             </span>
-                            <span v-else>??</span>
+                            <span v-else>0</span>
                             <br>
                         </div>
                         <div class="label">
@@ -31,10 +37,13 @@
                     <div class="statistic">
                         <div class="value">
                             <i class="cubes icon"></i>
-                            <span v-if="status && status.build">
-                                {{status.build.total}}
+                            <span v-if="Object.keys(status).length">
+                                <span v-if="status.build">
+                                    {{status.build.total}}
+                                </span>
+                                <span v-else></span>
                             </span>
-                            <span v-else>??</span>
+                            <span v-else>0</span>
                         </div>
                         <div class="label">
                             Builds
