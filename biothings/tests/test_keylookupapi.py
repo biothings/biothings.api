@@ -124,3 +124,51 @@ class TestKeyLookupAPI(unittest.TestCase):
         for res in res_lst:
             print(res['_id'])
             self.assertTrue(res['_id'] in answers)
+
+    def test_strangecases(self):
+
+        doc_lst = [{'_id': 'CDK2'}]
+
+        # with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError):
+            @KeyLookupMyGeneInfo('entrezgene', ['undefined'])
+            def load_document(data_folder):
+                for d in doc_lst:
+                    yield d
+
+        # Non-string input-type
+        with self.assertRaises(ValueError):
+            @KeyLookupMyGeneInfo(None, ['undefined'])
+            def load_document(data_folder):
+                for d in doc_lst:
+                    yield d
+
+        # Non-list output-type
+        with self.assertRaises(ValueError):
+            @KeyLookupMyGeneInfo('entrezgene', 'symbol')
+            def load_document(data_folder):
+                for d in doc_lst:
+                    yield d
+
+        # output-type with a non-string
+        with self.assertRaises(ValueError):
+            @KeyLookupMyGeneInfo('entrezgene', [None])
+            def load_document(data_folder):
+                for d in doc_lst:
+                    yield d
+
+    def test_invalid_record(self):
+        """
+        Test an invalid record in the document set.
+        :return:
+        """
+
+        doc_lst = [{'_id': 'CID1983'}, {'_id': None}, {'id': 'CID1983'}]
+        @KeyLookupMyChemInfo('pubchem', ['inchikey'], skip_on_failure=True)
+        def load_document(data_folder):
+            for d in doc_lst:
+                yield d
+
+        res_lst = load_document('data/folder/')
+        res_cnt = sum(1 for _ in res_lst)
+        self.assertEqual(res_cnt, 1)
