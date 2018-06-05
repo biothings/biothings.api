@@ -32,14 +32,31 @@ class KeyLookup(object):
         are then post processed by call and the 'id' key conversion is
         performed.
 
-        :param G:
-        :param collections:
-        :param input_type:
-        :param output_types:
+        :param G: nx.DiGraph (networkx 2.1) configuration graph
+        :param collections: list of mongodb collection names
+        :param input_type: key type to start key lookup from
+        :param output_types: list of all output types to convert to
         """
+        if not isinstance(G, nx.DiGraph):
+            raise ValueError("key_lookup configuration error:  G must be of type nx.DiGraph")
+        self._validate_graph(G)
         self.G = G
+
+        if not isinstance(input_type, str):
+            raise ValueError("input_type should be of type string")
+        if input_type not in self.G.nodes():
+            raise ValueError("input_type is not a node in the key_lookup graph")
         self.input_type = input_type
+
+        if not isinstance(output_types, list):
+            raise ValueError("output_types should be of type list")
+        for output_type in output_types:
+            if output_type not in self.G.nodes():
+                raise ValueError("output_type is not a node in the key_lookup graph")
         self.output_types = output_types
+
+        if not isinstance(skip_on_failure, bool):
+            raise ValueError("skip_on_failure should be of type bool")
         self.skip_on_failure = skip_on_failure
 
         self._load_collections(collections)
@@ -93,6 +110,25 @@ class KeyLookup(object):
             if collection.count() > 0:
                 self.collections[col] = collection
                 kl_log.info("Loading collection:  {} (count:  {})".format(col, collection.count()))
+        if not self.collections:
+            raise ValueError("At least one configured collection is required for MongoDB key lookup.")
+
+    def _validate_graph(self, G):
+        """
+        Check if the input configuration graph G has a valid structure.
+        :param G: key_lookup configuration graph
+        :return:
+        """
+        for (v1, v2) in G.edges():
+            if 'object' not in G.edges[v1, v2].keys():
+                raise ValueError("edge_object for ({}, {}) is missing".format(v1, v2))
+            edge_object = G.edges[v1, v2]['object']
+            if 'col' not in edge_object.keys():
+                raise ValueError("edge_object for ({}, {}) is missing the 'col' field".format(v1, v2))
+            if 'lookup' not in edge_object.keys():
+                raise ValueError("edge_object for ({}, {}) is missing the 'lookup' field".format(v1, v2))
+            if 'field' not in edge_object.keys():
+                raise ValueError("edge_object for ({}, {}) is missing the 'field' field".format(v1, v2))
 
     def _precompute_paths(self):
         """
