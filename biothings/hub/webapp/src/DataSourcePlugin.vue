@@ -46,7 +46,7 @@
                 <div :class="['ui plugin form',source._id]">
                     <div class="fields">
                         <div class="required ten wide field">
-                            <input type="text" id="release" placeholder="Specify a commit hash (optional)" autofocus>
+                            <input type="text" id="release" placeholder="Specify a commit hash or branch (optional)" autofocus>
                         </div>
                         <div class="required six wide field">
                             <button class="ui labeled small icon button" @click="onUpdatePlugin();">
