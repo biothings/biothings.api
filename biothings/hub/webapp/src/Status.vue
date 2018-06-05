@@ -9,35 +9,42 @@
                     <div class="statistic">
                         <div class="value">
                             <i class="database icon"></i>
-                            <span v-if="Object.keys(status).length">
+                            <span v-if="Object.keys(status).length && status.source && status.source.total">
                                 <span v-if="status.source">{{status.source.total}}</span>
                                 <span v-else></span>
                             </span>
                             <span v-else>0</span>
                         </div>
                         <div class="label">
-                            Datasources
+                            <span v-if="Object.keys(status).length && status.source && status.source.total > 1">
+                                Datasources
+                            </span>
+                            <span v-else>Datasource</span>
                         </div>
                     </div>
                     <div class="statistic">
                         <div class="text value">
-                            <span v-if="Object.keys(status).length">
+                            <span v-if="Object.keys(status).length && status.source && status.source.documents">
                                 <span v-if="status.source">
                                 {{status.source.documents | formatNumber}}
                                 </span>
-                                <span v-else>0</span>
+                                <span v-else></span>
                             </span>
-                            <span v-else>0</span>
+                            <span v-else>No</span>
                             <br>
+                            <i class="file icon"></i>
                         </div>
                         <div class="label">
+                            <span v-if="Object.keys(status).length && status.source && status.source.documents > 1">
                             Documents
+                            </span>
+                            <span v-else>Document (yet)</span>
                         </div>
                     </div>
                     <div class="statistic">
                         <div class="value">
                             <i class="cubes icon"></i>
-                            <span v-if="Object.keys(status).length">
+                            <span v-if="Object.keys(status).length && status.build && status.build.total">
                                 <span v-if="status.build">
                                     {{status.build.total}}
                                 </span>
@@ -46,7 +53,10 @@
                             <span v-else>0</span>
                         </div>
                         <div class="label">
-                            Builds
+                            <span v-if="Object.keys(status).length && status.build && status.build.total > 1">
+                                Builds
+                            </span>
+                            <span v-else>Build</span>
                         </div>
                     </div>
                     <!--div class="statistic">
@@ -106,7 +116,7 @@
                 <div class="four column centered row">
                 </div>
             </span>
-            <span v-else>Not much, nothing has been updated recently...</span>
+            <span v-else>Not much, nothing happened recently...</span>
             </div>
 
 
