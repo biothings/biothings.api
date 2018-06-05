@@ -835,6 +835,10 @@ class GitDumper(BaseDumper):
             cmd = ["git","pull","--ff-only","origin",self.__class__.BRANCH]
             subprocess.check_call(cmd)
             if commit != "HEAD":
+                # first get the latest code from repo
+                # (if a newly created branch is avail in remote, we can't check it out)
+                cmd = ["git","fetch","--all"]
+                subprocess.check_call(cmd)
                 self.logger.info("git checkout to commit %s" % commit)
                 cmd = ["git","checkout",commit]
                 subprocess.check_call(cmd)
