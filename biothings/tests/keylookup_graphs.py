@@ -105,3 +105,16 @@ graph_one2many.add_edge('cc', 'dd',
                    'lookup': 'c_id',
                    'field': 'd_id'})
 
+###############################################################################
+# Invalid-Graph
+###############################################################################
+graph_invalid = nx.DiGraph()
+
+graph_invalid.add_node('aa')
+graph_invalid.add_node('bb')
+
+graph_invalid.add_edge('aa', 'bb',
+                        object={'col': 'bb',
+                   'lookup': 'a_id',
+                   'field-invalid': 'b_id'})
+

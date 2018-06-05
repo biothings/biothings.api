@@ -4,7 +4,7 @@ config_for_app(btconfig)
 
 from biothings.utils.keylookup import KeyLookup
 from biothings.tests.keylookup_graphs import graph_simple, \
-    graph_weights, graph_one2many
+    graph_weights, graph_one2many, graph_invalid
 import unittest
 import biothings.utils.mongo as mongo
 
@@ -204,3 +204,43 @@ class TestKeyLookup(unittest.TestCase):
         # Verify that the generator is out of documents
         with self.assertRaises(StopIteration):
             next(res_lst)
+
+    def test_strangecases(self):
+        """
+        Test invalid input that should generate exceptions.
+        :return:
+        """
+
+        self.collections = ['b', 'c', 'd', 'e']
+
+        # Null collections
+        with self.assertRaises(ValueError):
+            @KeyLookup(graph_simple, ['a-invalid'], 'a-invalid', ['d', 'e'], skip_on_failure=True)
+            def load_document(data_folder):
+                doc_lst = [{'_id': 'a:1234'}, {'_id': 'a:invalid'}, {'_id': 'a:1234'}]
+                for d in doc_lst:
+                    yield d
+
+        # invalid input-type
+        with self.assertRaises(ValueError):
+            @KeyLookup(graph_simple, self.collections, 'a-invalid', ['d', 'e'], skip_on_failure=True)
+            def load_document(data_folder):
+                doc_lst = [{'_id': 'a:1234'}, {'_id': 'a:invalid'}, {'_id': 'a:1234'}]
+                for d in doc_lst:
+                    yield d
+
+        # Invalid output-type
+        with self.assertRaises(ValueError):
+            @KeyLookup(graph_simple, self.collections, 'a', ['d-invalid', 'e'], skip_on_failure=True)
+            def load_document(data_folder):
+                doc_lst = [{'_id': 'a:1234'}, {'_id': 'a:invalid'}, {'_id': 'a:1234'}]
+                for d in doc_lst:
+                    yield d
+
+        # Invalid graph
+        with self.assertRaises(ValueError):
+            @KeyLookup(graph_invalid, self.collections, 'a', ['d-invalid', 'e'], skip_on_failure=True)
+            def load_document(data_folder):
+                doc_lst = [{'_id': 'a:1234'}, {'_id': 'a:invalid'}, {'_id': 'a:1234'}]
+                for d in doc_lst:
+                    yield d
