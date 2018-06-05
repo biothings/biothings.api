@@ -164,14 +164,24 @@ export default {
                 self.backends = [];
                 var envs = response.data.result;
                 $.each(envs.env, function( env, value ) {
-                    for(var cat in value.index) {
-                        var idxs = value.index[cat];
+                    var fillbackend = function(idxs) {
                         for(var idx in idxs) {
-                        self.backends.push({
-                            "env":env, "host":value["host"],
-                            "index":idxs[idx]["index"],
-                            "doc_type":idxs[idx]["doc_type"]
-                        });
+                            self.backends.push({
+                                "env":env, "host":value["host"],
+                                "index":idxs[idx]["index"],
+                                "doc_type":idxs[idx]["doc_type"]
+                            });
+                        }
+                    }
+                    // either directly a list of index definition
+                    // or a dict with different
+                    if(Array.isArray(value.index)) {
+                        var idxs = value.index;
+                        fillbackend(idxs);
+                    } else {
+                        for(var cat in value.index) {
+                            var idxs = value.index[cat];
+                            fillbackend(idxs);
                         }
                     }
                 });
