@@ -1,9 +1,6 @@
-##############################
-BioThings Studio
-##############################
-------------------------------------------
- From a flat file to fully operational API
-------------------------------------------
+#########################
+BioThings Studio tutorial
+#########################
 
 This tutorial will guide you through BioThings Studio, a pre-configured system used to build
 and administrate BioThings API. This guide will show how to convert a simple flat file
@@ -75,7 +72,7 @@ Prerequisites
 Using BioThings Studio requires to have a Docker server up and running, some basic knowledge
 about commands to run and use containers. Images have been tested on Docker >=17. Using AWS cloud,
 you can use our public AMI **biothings_demo_docker** (``ami-44865e3c``) with Docker pre-configured
-and ready for standalone demo instances deployment. Instance type depends on the size of data you
+and ready for studio deployment. Instance type depends on the size of data you
 want to integrate and parsers' performances. For this tutorial, we recommend using instance type with at least
 4GiB RAM, such as ``t2.medium``. AMI comes with an extra 30GiB EBS volume, which is more than enough
 for the scope of this tutorial.
@@ -142,7 +139,7 @@ A BioThings Studio instance expose several services on different ports:
 * **7080**: BioThings hub REST API port
 * **9200**: ElasticSearch port
 * **27017**: MongoDB port
-* **8000**: BioThings API, once created, it can be any non-priviledged (>10240) port
+* **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
 
 We will map and expose those ports to the host server using option ``-p`` so we can access BioThings services without
 having to enter the container:
@@ -154,7 +151,7 @@ having to enter the container:
 .. note:: Instance will store MongoDB data in `/var/lib/mongodb`, ElasticSearch data in `/var/lib/elasticsearch/` directory,
    and downloaded data and logs in `/home/biothings/biothings_studio/data`. Those locations could require extra disk space,
    if needed Docker option ``-v`` can be used to mount a directory from the host, inside the container.
-   Please refer to Docker documnentation.
+   Please refer to Docker documentation.
 
 Let's enter the container to check everything is running fine. Services may take a while, up to 1 min, before fully started.
 If some services are missing, the troubleshooting section may help.
@@ -434,6 +431,83 @@ inspection as many time as we want, without impacting active/registered mapping 
 
 .. image:: ../_static/registered.png
    :width: 400px
+
+Defining and creating a build
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Once we have integrated data and a valid ElasticSeach mapping, we can move forward by creating a build configuration. A `build configuration`
+tells the Hub which datasources should be merged together, and how. Click on |builds| then |menu| and finally, click on |newbuildconf|.
+
+.. |builds| image:: ../_static/builds.png
+   :width: 75px
+.. |newbuildconf| image:: ../_static/newbuildconf.png
+   :width: 125px
+
+.. image:: ../_static/buildconfform.png
+   :width: 600px
+
+* enter a `name` for this configuration. We're going to have only one configuration created through this tutorial so it doesn't matter, let's make it "default"
+* the `document type` represents the kind of documents stored in the merged collection. It gives its name to the annotate API endpoint (eg. /variant). This source
+  is about variant, so "variant" it is...
+* open the dropdown list and select the `sources` you want to be part of the merge. We only have one, "mvcgi"
+* in `root sources`, we can declare which sources are allowed to create new documents in the merged collection, that is merge documents from a
+  datasource, but only if corresponding documents exist in the merged collection. It's usefull if data from a specific source relates to data on
+  another source (it only makes sense to merge that relating data if the data itself is present). If root sources are declared, Hub will first
+  merged them, then the others. In our case, we can leave it empty (no root sources specified, all sources can create documents in the merged collection)
+* the other fields are for advanced usage and are out-of-topic for this tutorial
+
+Click "OK" and open the menu again, you should see the new configuration available in the list.
+
+.. image:: ../_static/buildconflist.png
+   :width: 300px
+
+Click on it and create a new build.
+
+.. image:: ../_static/newbuild.png
+   :width: 600px
+
+You can give a specific name for that build, or let the Hub generate one for you. Click "OK", after few seconds, you should see the new build displayed on the page.
+
+.. image:: ../_static/builddone.png
+   :width: 300px
+
+Open it by clicking on its name. You can explore the tabs for more information about it (sources involved, build times, etc...). The "Release" tab is the one we're going to use next.
+
+Creating a data release
+^^^^^^^^^^^^^^^^^^^^^^^
+
+If not there yet, open the new created build and go the "Release" tab. This is the place where we can create new data release. Click on |newrelease|.
+
+.. |newrelease| image:: ../_static/newrelease.png
+   :width: 125px
+
+.. image:: ../_static/newreleaseform.png
+   :width: 600px
+
+Since we only have one build available, we can't generate an `incremental` release so we'll have to select `full` this time. Click "OK" to launch the process.
+
+.. note:: Should there be a new build available (coming from the same configuration), and should there be data differences, we could generate an
+   incremental release. In this case, Hub would compute a diff between previous and new build and generate diff files (using JSON diff format).
+   Incremental releases are usually smaller than full releases, but also take more time to deploy (appying diff data). 
+
+Hub will directly index the data on its locally installed ElasticSearch server (``test`` environment). After few seconds, a new `full` release is created.
+
+.. image:: ../_static/newfullrelease.png
+   :width: 500px
+
+Generating a BioThings API
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+At this stage, a new index containing our data has been created on ElasticSearch, it is now time for final step...
+Click on |api| then |menu| and finally |newapi|:
+
+.. |api| image:: ../_static/api.png
+   :width: 75px
+.. |newapi| image:: ../_static/newapi.png
+   :width: 125px
+
+
+
 
 ***************
 Troubleshooting
