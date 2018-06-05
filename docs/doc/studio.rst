@@ -156,6 +156,8 @@ having to enter the container:
 Let's enter the container to check everything is running fine. Services may take a while, up to 1 min, before fully started.
 If some services are missing, the troubleshooting section may help.
 
+.. _services:
+
 .. code:: bash
 
   $ docker exec -ti studio /bin/bash
@@ -395,6 +397,8 @@ Since the collection is very small, inspection is fast, you should have a mappin
 .. image:: ../_static/inspected.png
    :width: 400px
 
+.. _fieldbydefault:
+
 For each field highlighted in blue, you can decide whether you want the field to be searchable or not, and whether the field should be searched
 by default when no specific field is passed when querying the API. Let's click on "gene" field and make it searched by default.
 
@@ -499,22 +503,156 @@ Generating a BioThings API
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 At this stage, a new index containing our data has been created on ElasticSearch, it is now time for final step...
-Click on |api| then |menu| and finally |newapi|:
+Click on |api| then |menu| and finally |newapi|
 
 .. |api| image:: ../_static/api.png
-   :width: 75px
+   :width: 60px
 .. |newapi| image:: ../_static/newapi.png
-   :width: 125px
+   :width: 100px
+
+.. image:: ../_static/apilist.png
+   :width: 250px
+
+To turn on this API instance, just click on |playicon|, you should then see a |running| label on the top right corner, meaning the API
+can be accessed:
+
+.. |playicon| image:: ../_static/playicon.png
+   :width: 25px
+.. |running| image:: ../_static/running.png
+   :width: 60px
+
+.. image:: ../_static/apirunning.png
+   :width: 300px
+
+.. note:: Whe running, queries such ``/metadata`` and ``/query?q=*`` are provided as examples. They contain a hostname set by Docker though (it's the Docker instance hostname), which probably
+   means nothing outside of Docker's context. In order to use the API you may need to replace this hostname by the one actually used to access the
+   Docker instance.
+
+Generating a BioThings API
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Assuming API is accessible through http://localhost:8000, we can easily query it with ``curl`` for instance. The endpoint ``/metadata`` gives
+information about the datasources and build date:
+
+.. code:: bash
+
+   $ curl localhost:8000/metadata
+   {
+     "build_date": "2018-06-05T18:32:23.604840",
+     "build_version": "20180605",
+     "src": {
+       "mvcgi": {
+         "stats": {
+           "mvcgi": 323
+         },
+         "version": "2018-04-24"
+       }
+     },
+     "src_version": {
+       "mvcgi": "2018-04-24"
+     },
+     "stats": {}
+
+Let's query the data using a gene name (results truncated):
+
+.. code:: bash
+
+   $ curl localhost:8000/query?q=ABL1
+   {
+     "max_score": 2.5267246,
+     "took": 24,
+     "total": 93,
+     "hits": [
+       {
+         "_id": "chr9:g.133748283C>T",
+         "_score": 2.5267246,
+         "cgi": [
+           {
+             "association": "Responsive",
+             "cdna": "c.944C>T",
+             "drug": "Ponatinib (BCR-ABL inhibitor 3rd gen&Pan-TK inhibitor)",
+             "evidence_level": "NCCN guidelines",
+             "gene": "ABL1",
+             "primary_tumor_type": "Chronic myeloid leukemia",
+             "protein_change": "ABL1:T315I",
+             "region": "inside_[cds_in_exon_6]",
+             "source": "PMID:21562040",
+             "transcript": "ENST00000318560"
+           },
+           {
+             "association": "Resistant",
+             "cdna": "c.944C>T",
+             "drug": "Bosutinib (BCR-ABL inhibitor  3rd gen)",
+             "evidence_level": "European LeukemiaNet guidelines",
+             "gene": "ABL1",
+             "primary_tumor_type": "Chronic myeloid leukemia",
+             "protein_change": "ABL1:T315I",
+             "region": "inside_[cds_in_exon_6]",
+             "source": "PMID:21562040",
+             "transcript": "ENST00000318560"
+           },
+           ...
+
+.. note:: we don't have to specify ``cgi.gene``, the field in which the value "ABL1" should be searched, because we explicitely asked ElasticSearch
+   to search that field by default (see fieldbydefault_)
+
+Finally, we can fetch a variant by its ID:
+
+.. code:: bash
+
+   $ curl "localhost:8000/variant/chr19:g.4110584A>T"
+   {
+     "_id": "chr19:g.4110584A>T",
+     "_version": 1,
+     "cgi": [
+       {
+         "association": "Resistant",
+         "cdna": "c.373T>A",
+         "drug": "BRAF inhibitors",
+         "evidence_level": "Pre-clinical",
+         "gene": "MAP2K2",
+         "primary_tumor_type": "Cutaneous melanoma",
+         "protein_change": "MAP2K2:C125S",
+         "region": "inside_[cds_in_exon_3]",
+         "source": "PMID:24265153",
+         "transcript": "ENST00000262948"
+       },
+       {
+         "association": "Resistant",
+         "cdna": "c.373T>A",
+         "drug": "MEK inhibitors",
+         "evidence_level": "Pre-clinical",
+         "gene": "MAP2K2",
+         "primary_tumor_type": "Cutaneous melanoma",
+         "protein_change": "MAP2K2:C125S",
+         "region": "inside_[cds_in_exon_3]",
+         "source": "PMID:24265153",
+         "transcript": "ENST00000262948"
+       }
+     ]
+   }
 
 
+Conclusions
+^^^^^^^^^^^
+
+We've been able to easily convert a remote flat file to a fully operational BioThings API:
+
+* by defining a data plugin, we told the Hub where the remote data was and what the parser function was
+* BioThings Hub then generated a `dumper` to download data locally
+* It also generated an `uploader` to run the parser and store resulting JSON documents
+* We defined a build configuration to include the newly integrated datasource and then trigger a new build
+* Data was indexed internally on local ElasticSearch by creating a full release
+* Then we created a BioThings API instance pointing to that new index
+
+The final step would then be to deploy that API as cluster, on a cloud. This last step is currently under development, stay tuned!
 
 
 ***************
 Troubleshooting
 ***************
 
-We test and make sure, as much as we can, that standalone images are up-to-date and hub is properly running for each
-data release. But things can still go wrong...
+We test and make sure, as much as we can, that BioThings studio image is up-to-date and running properly. But things can still go wrong...
 
 First make sure all services are running. Enter the container and type ``netstat -tnlp``, you should see
 services running on ports (see usual running `services`_). If services running on ports 7080 or 7022 aren't running,
@@ -527,28 +665,42 @@ If after ~1 min, you still don't see the hub running, log to user ``biothings`` 
 
 .. code:: bash
 
-  # sudo su - biothings
-  $ tmux a # recall tmux session
+   # sudo su - biothings
+   $ tmux a # recall tmux session
 
-  python -m biothings.bin.autohub
-  (pyenv) biothings@a6a6812e2969:~/mygene.info/src$ python -m biothings.bin.autohub
-  INFO:root:Hub DB backend: {'module': 'biothings.utils.es', 'host': 'localhost:9200'}
-  INFO:root:Hub database: hubdb
-  DEBUG:asyncio:Using selector: EpollSelector
-  start
+   $ python bin/hub.py
+   DEBUG:asyncio:Using selector: EpollSelector
+   INFO:root:Hub DB backend: {'uri': 'mongodb://localhost:27017', 'module': 'biothings.utils.mongo'}
+   INFO:root:Hub database: biothings_src
+   DEBUG:hub:Last launched command ID: 14
+   INFO:root:Found sources: []
+   INFO:hub:Loading data plugin 'https://github.com/sirloon/mvcgi.git' (type: github)
+   DEBUG:hub:Creating new GithubAssistant instance
+   DEBUG:hub:Loading manifest: {'dumper': {'data_url': 'https://www.cancergenomeinterpreter.org/data/cgi_biomarkers_latest.zip',
+               'uncompress': True},
+    'uploader': {'ignore_duplicates': False, 'parser': 'parser:load_data'},
+    'version': '0.1'}
+   INFO:indexmanager:{}
+   INFO:indexmanager:{'test': {'max_retries': 10, 'retry_on_timeout': True, 'es_host': 'localhost:9200', 'timeout': 300}}
+   DEBUG:hub:for managers [<SourceManager [0 registered]: []>, <AssistantManager [1 registered]: ['github']>]
+   INFO:root:route: ['GET'] /job_manager => <class 'biothings.hub.api.job_manager_handler'>
+   INFO:root:route: ['GET'] /command/([\w\.]+)? => <class 'biothings.hub.api.command_handler'>
+   ...
+   INFO:root:route: ['GET'] /api/list => <class 'biothings.hub.api.api/list_handler'>
+   INFO:root:route: ['PUT'] /restart => <class 'biothings.hub.api.restart_handler'>
+   INFO:root:route: ['GET'] /status => <class 'biothings.hub.api.status_handler'>
+   DEBUG:tornado.general:sockjs.tornado will use json module
+   INFO:hub:Monitoring source code in, ['/home/biothings/biothings_studio/hub/dataload/sources', '/home/biothings/biothings_studio/plugins']:
+   ['/home/biothings/biothings_studio/hub/dataload/sources',
+    '/home/biothings/biothings_studio/plugins']
 
 You should see something looking like this above. If not, you should see the actual error, and depending on the error, you may be able to
-fix it (not enough disk space, etc...). The hub can be started again using ``python -m biothings.bin.autohub`` from within the application
-directory (in our case, ``/home/biothings/mygene.info/src/``)
+fix it (not enough disk space, etc...). The hub can be started again using ``python bin/hub.py`` from within the application
+directory (in our case, ``/home/biothings/biothings_studio``)
 
 .. note:: Press Control-B then D to dettach the tmux session and let the hub running in background.
 
-Logs are available in ``/data/mygene.info/logs/``. You can have a look at:
-
-* ``dump_*.log`` files for logs about data download
-* ``upload_*.log`` files for logs about index update in general (full/incremental)
-* ``sync_*.log`` files for logs about incremental update only
-* and ``hub_*.log`` files for general logs about the hub process
+By default, logs are available in ``/home/biothings/biothings_studio/data/logs``.
 
 Finally, you can report issues and request for help, by joining Biothings Google Groups (https://groups.google.com/forum/#!forum/biothings)
 
