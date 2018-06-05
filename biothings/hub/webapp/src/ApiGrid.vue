@@ -158,6 +158,7 @@ export default {
             this.getApis();
         },
         createAPI: function() {
+            $('#apis .ui.sidebar').sidebar("hide");
             var self = this;
             axios.get(axios.defaults.baseURL + '/index_manager?remote=1')
             .then(response => {
