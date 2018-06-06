@@ -224,7 +224,7 @@ export default {
             ping_interval : PING_INTERVAL_MS, // adjustable delay
             default_conn: {
                 "icon" : "/dist/biothings-studio-color.svg",
-                "name" : "BioThings Hub",
+                "name" : "BioThings Studio",
                 "version" : null,
                 "url" : "http://localhost:7080",
             },
