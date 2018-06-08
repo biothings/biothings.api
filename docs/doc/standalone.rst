@@ -24,10 +24,10 @@ avaiable Docker images from the following tables.
 
 .. _`contact us`: biothings@googlegroups.com
 
-|mygenelogo| mygene.info
-^^^^^^^^^^^^^^^^^^^^^^^^
-.. |mygenelogo| image:: http://biothings.io/assets/img/icons/mygene.png
-   :width: 30 px
+|mygenelogo|
+^^^^^^^^^^^^
+.. |mygenelogo| image:: ../_static/mygene-text.png
+   :width: 200px
 
 Production and old data require at least 30GiB disk space.
 
@@ -41,10 +41,10 @@ Production and old data require at least 30GiB disk space.
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_mygene/demo_mygene.docker
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/old_mygene/old_mygene.docker
 
-|myvariantlogo| myvariant.info
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. |myvariantlogo| image:: http://biothings.io/assets/img/icons/myvariant.png
-   :width: 30 px
+|myvariantlogo|
+^^^^^^^^^^^^^^^
+.. |myvariantlogo| image:: ../_static/myvariant-text.png
+   :width: 200px
 
 Production and old data require at least 2TiB disk space.
 
@@ -58,10 +58,10 @@ Production and old data require at least 2TiB disk space.
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/demo_myvariant/demo_myvariant.docker
 .. __: http://biothings-containers.s3-website-us-west-2.amazonaws.com/old_myvariant/old_myvariant.docker
 
-|mychemlogo| mychem.info
-^^^^^^^^^^^^^^^^^^^^^^^^
-.. |mychemlogo| image:: http://biothings.io/assets/img/icons/mychem.png
-   :width: 30 px
+|mychemlogo|
+^^^^^^^^^^^^
+.. |mychemlogo| image:: ../_static/mychem-text.png
+   :width: 200px
 
 Production and old data require at least 150Gib disk space.
 
@@ -80,7 +80,7 @@ Prerequisites
 
 Using standalone instances requires to have a Docker server up and running, some basic knowledge
 about commands to run and use containers. Images have been tested on Docker >=17. Using AWS cloud,
-you can use our public AMI **biothings_demo_docker** (``ami-44865e3c``) with Docker pre-configured
+you can use our public AMI **biothings_demo_docker** (``ami-44865e3c`` in Oregon region) with Docker pre-configured
 and ready for standalone demo instances deployment. We recommend using instance type with at least
 8GiB RAM, such as ``t2.large``. AMI comes with an extra 30GiB EBS volume, which should be enough to
 deploy any demo instances.
