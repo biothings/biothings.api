@@ -568,6 +568,19 @@ class Indexer(object):
             if not mode in ["resume","merge"]:
                 es_idxer.create_index({self.doc_type:_mapping},_extra)
 
+            def clean_ids(ids):
+                # can't use a generator, it's going to be pickled
+                cleaned = []
+                for _id in ids:
+                    if type(_id) != str:
+                        self.logger.warning("_id '%s' has invalid type (!str), skipped" % repr(_id))
+                        continue
+                    if len(_id) > 512: # this is an ES6 limitation
+                        self.logger.warning("_id is too long: '%s'" % _id)
+                        continue
+                    cleaned.append(_id)
+                return cleaned
+
             jobs = []
             total = target_collection.count()
             btotal = math.ceil(total/batch_size) 
@@ -580,6 +593,13 @@ class Indexer(object):
                 id_provider = id_feeder(target_collection, batch_size=batch_size,logger=self.logger)
             for ids in id_provider:
                 yield from asyncio.sleep(0.0)
+                origcnt = len(ids)
+                ids = clean_ids(ids)
+                newcnt = len(ids)
+                if origcnt != newcnt:
+                    self.logger.warning("%d document(s) can't be indexed and " % (origcnt-newcnt) + \
+                                        "will be skipped (invalid _id)")
+                # progress count
                 cnt += len(ids)
                 pinfo = self.get_pinfo()
                 pinfo["step"] = self.target_name
