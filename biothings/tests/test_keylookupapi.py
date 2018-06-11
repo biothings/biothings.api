@@ -173,3 +173,37 @@ class TestKeyLookupAPI(unittest.TestCase):
         res_lst = load_document('data/folder/')
         res_cnt = sum(1 for _ in res_lst)
         self.assertEqual(res_cnt, 1)
+
+    def test_long_doc_lst(self):
+        """
+        Test a document list containing 10000 entries.  Verify that the correct
+        number of documents are returned.
+
+        Unfortunately in this test there are a large number of duplicates, but the
+        correct number of documents are returned.
+        :return:
+        """
+        # Build up document list
+        input = 51300
+        doc_lst = []
+        for i in range(10000):
+            doc_lst.append({'_id': input})
+
+        answers = [
+            'TIMMDC1'
+        ]
+
+        # Test a list being passed with 10 documents
+        @KeyLookupMyGeneInfo('entrezgene', ['symbol'])
+        def load_document(data_folder):
+            for d in doc_lst:
+                yield d
+
+        res_lst = load_document('data/folder/')
+        res_cnt = 0
+        for res in res_lst:
+            res_cnt += 1
+            self.assertTrue(res['_id'] in answers)
+        self.assertEqual(res_cnt, 10000)
+
+        raise ValueError
