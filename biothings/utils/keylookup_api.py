@@ -23,7 +23,7 @@ class KeyLookupAPI(object):
         for d in doc_lst:
             yield d
     """
-    batch_size = 10000
+    batch_size = 1000
     lookup_fields = {}
 
     def __init__(self, input_type, output_types, skip_on_failure=False):
@@ -50,6 +50,9 @@ class KeyLookupAPI(object):
             raise ValueError('skip_on_failure must be a boolean value')
         self.skip_on_failure = skip_on_failure
 
+        # default value of None for client
+        self.client = None
+
     def __call__(self, f):
         """
         Perform the key conversion and all lookups on call.
@@ -59,7 +62,6 @@ class KeyLookupAPI(object):
         def wrapped_f(*args):
             input_docs = f(*args)
             lg.info("input: %s" % input_docs)
-
             # split input_docs into chunks of size self.batch_size
             for batchiter in KeyLookupAPI.batch(input_docs, self.batch_size):
                 output_docs = self.key_lookup_batch(batchiter)
@@ -95,7 +97,7 @@ class KeyLookupAPI(object):
 
         id_lst, doc_cache = self._build_cache(batchiter)
         qr = self._query_many(id_lst)
-        return self.parse_querymany(qr, doc_cache)
+        return self._parse_querymany(qr, doc_cache)
 
     def _build_cache(self, batchiter):
         """
@@ -121,13 +123,14 @@ class KeyLookupAPI(object):
         """
         # Query MyGene.info
         lg.info("query_many scopes:  {}".format(self.lookup_fields[self.input_type]))
-        return self.client.querymany(id_lst,
-                                     scopes=self.lookup_fields[self.input_type],
-                                     fields=self.return_fields,
-                                     as_generator=True,
-                                     returnall=True)
+        client = self._get_client()
+        return client.querymany(id_lst,
+                                scopes=self.lookup_fields[self.input_type],
+                                fields=self.return_fields,
+                                as_generator=True,
+                                returnall=True)
 
-    def parse_querymany(self, qr, doc_lst):
+    def _parse_querymany(self, qr, doc_lst):
         """
         Parse the querymany results from the biothings_client and return results
         in the id fields of the document list
@@ -136,16 +139,21 @@ class KeyLookupAPI(object):
         :return:
         """
         lg.info("QueryMany Structure:  {}".format(qr))
+        lg.info("parse_querymany input doc_lst: {}".format(doc_lst))
         res_lst = []
         for i, q in enumerate(qr['out']):
             val = self._parse_h(q)
+            lg.info("_parse_querymany val: {}".format(val))
             if val:
+                lg.info("q['query'] in qr:  {}".format(q['query']))
                 for d in doc_lst:
-                    if q['query'] == d['_id']:
+                    lg.info("d in doc_lst:  {}".format(d))
+                    if q['query'] == str(d['_id']):
+                        lg.info("match between q['query'] and d['_id']")
                         new_doc = copy.deepcopy(d)
                         new_doc['_id'] = val
                         res_lst.append(new_doc)
-        lg.info("parse_querymany doc_lst: {}".format(doc_lst))
+        lg.info("parse_querymany return res_lst: {}".format(res_lst))
         return res_lst
 
     def _parse_h(self, h):
@@ -155,10 +163,8 @@ class KeyLookupAPI(object):
         :return: dictionary of keys
         """
         for output_type in self.output_types:
-            print(output_type)
             fields = self.lookup_fields[output_type].split('.')
             val = self._parse_field(h, fields)
-            print(val)
             if val:
                 return val
 
@@ -198,7 +204,18 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
         Initialize the class by seting up the client object.
         """
         super(KeyLookupMyChemInfo, self).__init__(input_type, output_types, skip_on_failure)
-        self.client = biothings_client.get_client('drug')
+
+    def _get_client(self):
+        """
+        Get Client - return a client appropriate for KeyLookup
+
+        This method must be defined in the child class.  It is an artifact
+        of multithreading.
+        :return:
+        """
+        if not self.client:
+            self.client = biothings_client.get_client('drug')
+        return self.client
 
 
 class KeyLookupMyGeneInfo(KeyLookupAPI):
@@ -214,4 +231,15 @@ class KeyLookupMyGeneInfo(KeyLookupAPI):
         Initialize the class by seting up the client object.
         """
         super(KeyLookupMyGeneInfo, self).__init__(input_type, output_types, skip_on_failure)
-        self.client = biothings_client.get_client('gene')
+
+    def _get_client(self):
+        """
+        Get Client - return a client appropriate for KeyLookup
+
+        This method must be defined in the child class.  It is an artifact
+        of multithreading.
+        :return:
+        """
+        if not self.client:
+            self.client = biothings_client.get_client('gene')
+        return self.client

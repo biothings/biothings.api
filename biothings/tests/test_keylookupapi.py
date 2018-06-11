@@ -113,7 +113,6 @@ class TestKeyLookupAPI(unittest.TestCase):
             2707400000
         ]
 
-
         # Test a list being passed with 10 documents
         @KeyLookupMyGeneInfo('entrezgene', ['symbol'])
         def load_document(data_folder):
@@ -121,9 +120,11 @@ class TestKeyLookupAPI(unittest.TestCase):
                 yield d
 
         res_lst = load_document('data/folder/')
+        res_cnt = 0
         for res in res_lst:
-            print(res['_id'])
+            res_cnt += 1
             self.assertTrue(res['_id'] in answers)
+        self.assertEqual(res_cnt, 9)
 
     def test_strangecases(self):
 
