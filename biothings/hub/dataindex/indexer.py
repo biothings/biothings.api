@@ -926,6 +926,8 @@ class ColdHotIndexer(Indexer):
         cold_mapping = self.cold_build_doc.get("mapping",{})
         hot_mapping = self.hot_build_doc.get("mapping",{})
         hot_mapping.update(cold_mapping) # mix cold&hot
+        # default "all" field to replace include_in_all field in older versions of ES
+        hot_mapping["all"] = {'type': 'text'}
         mapping = {"properties": hot_mapping,
                    "dynamic": "false"}
         mapping["_meta"] = self.get_metadata()
