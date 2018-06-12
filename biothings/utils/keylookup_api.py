@@ -7,7 +7,7 @@ import types
 # Setup logger and logging level
 logging.basicConfig()
 lg = logging.getLogger('keylookup_api')
-lg.setLevel(logging.ERROR)
+lg.setLevel(logging.INFO)
 
 
 class KeyLookupAPI(object):
@@ -61,13 +61,16 @@ class KeyLookupAPI(object):
         """
         def wrapped_f(*args):
             input_docs = f(*args)
-            lg.info("input: %s" % input_docs)
+            lg.debug("input: %s" % input_docs)
             # split input_docs into chunks of size self.batch_size
             for batchiter in KeyLookupAPI.batch(input_docs, self.batch_size):
                 output_docs = self.key_lookup_batch(batchiter)
+                odoc_cnt = 0
                 for odoc in output_docs:
-                    lg.info("yield odoc: %s" % odoc)
+                    odoc_cnt += 1
+                    lg.debug("yield odoc: %s" % odoc)
                     yield odoc
+                lg.info("wrapped_f Num. output_docs:  {}".format(odoc_cnt))
 
         return wrapped_f
 
@@ -86,7 +89,7 @@ class KeyLookupAPI(object):
         self.return_fields = ''
         for k in self.lookup_fields:
             self.return_fields += self.lookup_fields[k] + ','
-        lg.info("KeyLookupAPI return_fields:  {}".format(self.return_fields))
+        lg.debug("KeyLookupAPI return_fields:  {}".format(self.return_fields))
 
     def key_lookup_batch(self, batchiter):
         """
@@ -122,7 +125,7 @@ class KeyLookupAPI(object):
         :return:
         """
         # Query MyGene.info
-        lg.info("query_many scopes:  {}".format(self.lookup_fields[self.input_type]))
+        lg.debug("query_many scopes:  {}".format(self.lookup_fields[self.input_type]))
         client = self._get_client()
         return client.querymany(id_lst,
                                 scopes=self.lookup_fields[self.input_type],
@@ -138,22 +141,22 @@ class KeyLookupAPI(object):
         :param doc_lst: list of documents (cached) used for a return structure.
         :return:
         """
-        lg.info("QueryMany Structure:  {}".format(qr))
-        lg.info("parse_querymany input doc_lst: {}".format(doc_lst))
+        lg.debug("QueryMany Structure:  {}".format(qr))
+        lg.debug("parse_querymany input doc_lst: {}".format(doc_lst))
         res_lst = []
         for i, q in enumerate(qr['out']):
             val = self._parse_h(q)
-            lg.info("_parse_querymany val: {}".format(val))
+            lg.debug("_parse_querymany val: {}".format(val))
             if val:
-                lg.info("q['query'] in qr:  {}".format(q['query']))
+                lg.debug("q['query'] in qr:  {}".format(q['query']))
                 for d in doc_lst:
-                    lg.info("d in doc_lst:  {}".format(d))
+                    lg.debug("d in doc_lst:  {}".format(d))
                     if q['query'] == str(d['_id']):
-                        lg.info("match between q['query'] and d['_id']")
+                        lg.debug("match between q['query'] and d['_id']")
                         new_doc = copy.deepcopy(d)
                         new_doc['_id'] = val
                         res_lst.append(new_doc)
-        lg.info("parse_querymany return res_lst: {}".format(res_lst))
+        lg.debug("parse_querymany return res_lst: {}".format(res_lst))
         return res_lst
 
     def _parse_h(self, h):
