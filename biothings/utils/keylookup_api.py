@@ -99,6 +99,7 @@ class KeyLookupAPI(object):
         """
 
         id_lst, doc_cache = self._build_cache(batchiter)
+        lg.info("key_lookup_batch num. id_lst items:  {}".format(len(id_lst)))
         qr = self._query_many(id_lst)
         return self._parse_querymany(qr, doc_cache)
 
