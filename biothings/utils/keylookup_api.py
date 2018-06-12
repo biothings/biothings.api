@@ -7,7 +7,7 @@ import types
 # Setup logger and logging level
 logging.basicConfig()
 lg = logging.getLogger('keylookup_api')
-lg.setLevel(logging.INFO)
+lg.setLevel(logging.ERROR)
 
 
 class KeyLookupAPI(object):
@@ -23,7 +23,7 @@ class KeyLookupAPI(object):
         for d in doc_lst:
             yield d
     """
-    batch_size = 1000
+    batch_size = 10
     lookup_fields = {}
 
     def __init__(self, input_type, output_types, skip_on_failure=False):
