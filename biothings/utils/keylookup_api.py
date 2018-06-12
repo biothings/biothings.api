@@ -199,7 +199,10 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
         'unii': 'unii.unii',
         'drugbank': 'drugbank.drugbank_id',
         'chembl': 'chembl.molecule_chembl_id',
-        'pubchem': 'pubchem.cid'
+        'pubchem': 'pubchem.cid',
+        # inchikey fields
+        'dinchikey': 'drugbank.inchi_key',
+        'cinchikey': 'chembl.inchi_key'
     }
 
     def __init__(self, input_type, output_types, skip_on_failure=False):
