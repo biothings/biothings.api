@@ -132,7 +132,8 @@ class KeyLookupAPI(object):
                                 scopes=self.lookup_fields[self.input_type],
                                 fields=self.return_fields,
                                 as_generator=True,
-                                returnall=True)
+                                returnall=True,
+                                size=self.batch_size)
 
     def _parse_querymany(self, qr, doc_lst):
         """
