@@ -144,7 +144,9 @@ class KeyLookupAPI(object):
         lg.debug("QueryMany Structure:  {}".format(qr))
         lg.debug("parse_querymany input doc_lst: {}".format(doc_lst))
         res_lst = []
+        qr_out_cnt = 0
         for i, q in enumerate(qr['out']):
+            qr_out_cnt += 1
             val = self._parse_h(q)
             lg.debug("_parse_querymany val: {}".format(val))
             if val:
@@ -157,6 +159,7 @@ class KeyLookupAPI(object):
                         new_doc['_id'] = val
                         res_lst.append(new_doc)
         lg.debug("parse_querymany return res_lst: {}".format(res_lst))
+        lg.info("parse_querymany num. qr['out'] items:  {}".format(qr_out_cnt))
         return res_lst
 
     def _parse_h(self, h):
