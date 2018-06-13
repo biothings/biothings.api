@@ -123,8 +123,10 @@ class TestKeyLookupAPI(unittest.TestCase):
         res_cnt = 0
         for res in res_lst:
             res_cnt += 1
+            if not res['_id'] in answers:
+                print(res['_id'])
             self.assertTrue(res['_id'] in answers)
-        self.assertEqual(res_cnt, 9)
+        self.assertEqual(res_cnt, 10)
 
     def test_strangecases(self):
 
@@ -174,6 +176,7 @@ class TestKeyLookupAPI(unittest.TestCase):
         res_cnt = sum(1 for _ in res_lst)
         self.assertEqual(res_cnt, 1)
 
+    @unittest.skip("Test is too long for routine use")
     def test_long_doc_lst(self):
         """
         Test a document list containing 10000 entries.  Verify that the correct

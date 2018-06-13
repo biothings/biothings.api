@@ -7,7 +7,7 @@ import types
 # Setup logger and logging level
 logging.basicConfig()
 lg = logging.getLogger('keylookup_api')
-lg.setLevel(logging.ERROR)
+lg.setLevel(logging.INFO)
 
 
 class KeyLookupAPI(object):
@@ -101,7 +101,8 @@ class KeyLookupAPI(object):
         id_lst, doc_cache = self._build_cache(batchiter)
         lg.info("key_lookup_batch num. id_lst items:  {}".format(len(id_lst)))
         qr = self._query_many(id_lst)
-        return self._parse_querymany(qr, doc_cache)
+        qm_struct = self._parse_querymany(qr)
+        return self._replace_keys(qm_struct, doc_cache)
 
     def _build_cache(self, batchiter):
         """
@@ -135,34 +136,24 @@ class KeyLookupAPI(object):
                                 returnall=True,
                                 size=self.batch_size)
 
-    def _parse_querymany(self, qr, doc_lst):
+    def _parse_querymany(self, qr):
         """
-        Parse the querymany results from the biothings_client and return results
-        in the id fields of the document list
+        Parse the querymany results from the biothings_client into a structure
+        that will later be used for document key replacement.
         :param qr: querymany results
-        :param doc_lst: list of documents (cached) used for a return structure.
         :return:
         """
         lg.debug("QueryMany Structure:  {}".format(qr))
-        lg.debug("parse_querymany input doc_lst: {}".format(doc_lst))
-        res_lst = []
-        qr_out_cnt = 0
-        for i, q in enumerate(qr['out']):
-            qr_out_cnt += 1
+        qm_struct = {}
+        for q in qr['out']:
             val = self._parse_h(q)
-            lg.debug("_parse_querymany val: {}".format(val))
             if val:
-                lg.debug("q['query'] in qr:  {}".format(q['query']))
-                for d in doc_lst:
-                    lg.debug("d in doc_lst:  {}".format(d))
-                    if q['query'] == str(d['_id']):
-                        lg.debug("match between q['query'] and d['_id']")
-                        new_doc = copy.deepcopy(d)
-                        new_doc['_id'] = val
-                        res_lst.append(new_doc)
-        lg.debug("parse_querymany return res_lst: {}".format(res_lst))
-        lg.info("parse_querymany num. qr['out'] items:  {}".format(qr_out_cnt))
-        return res_lst
+                if q['query'] not in qm_struct.keys():
+                    qm_struct[q['query']] = [val]
+                else:
+                    qm_struct[q['query']] = qm_struct[q['query']] + [val]
+        lg.debug("parse_querymany num qm_struct keys: {}".format(len(qm_struct.keys())))
+        return qm_struct
 
     def _parse_h(self, h):
         """
@@ -195,6 +186,32 @@ class KeyLookupAPI(object):
                 return None
             t = t[f]
         return t
+
+    def _replace_keys(self, qm_struct, doc_cache):
+        """
+        Build a new list of documents to return that have their keys
+        replaced by answers specified in the qm_structure which
+        was built earlier.
+        :param qm_struct: structure of keys from _parse_querymany
+        :param doc_cache: cache of documents that will have keys replaced.
+        :return:
+        """
+        # Replace the keys and build up a new result list
+        res_lst = []
+        for doc in doc_cache:
+            # doc['_id'] must be typed to a string because qm_struct.keys are always strings
+            if str(doc['_id']) in qm_struct.keys():
+                for key in qm_struct[str(doc['_id'])]:
+                    new_doc = copy.deepcopy(doc)
+                    new_doc['_id'] = key
+                    res_lst.append(new_doc)
+            elif not self.skip_on_failure:
+                res_lst.append(doc)
+
+        lg.info("_replace_keys:  Num of documents yielded:  {}".format(len(res_lst)))
+        # Yield the results
+        for r in res_lst:
+            yield r
 
 
 class KeyLookupMyChemInfo(KeyLookupAPI):
