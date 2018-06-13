@@ -10,7 +10,10 @@ def flatten_doc(doc, outfield_sep='.', sort=True):
     def _recursion_helper(_doc, _ret, out):
         if isinstance(_doc, dict):
             for key in _doc:
-                new_key = key if not out else outfield_sep.join([out, key])
+                if outfield_sep:
+                    new_key = key if not out else outfield_sep.join([out, key])
+                else:
+                    new_key = tuple([key]) if not out else tuple(list(tuple(out)) + [key])
                 _recursion_helper(_doc[key], _ret, new_key)
         elif is_seq(_doc):
             for _obj in _doc:
@@ -21,6 +24,6 @@ def flatten_doc(doc, outfield_sep='.', sort=True):
 
     ret = {}
     _recursion_helper(doc, ret, '')
-    if sort:
+    if sort and outfield_sep:
         return OrderedDict(sorted([(k,v[0]) if len(v) == 1 else (k,v) for (k,v) in ret.items()], key=lambda x: x[0]))
     return dict([(k,v[0]) if len(v) == 1 else (k,v) for (k,v) in ret.items()])
