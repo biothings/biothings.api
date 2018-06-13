@@ -56,6 +56,9 @@ class TestKeyLookupAPI(unittest.TestCase):
         # TODO:  uniprot.Swiss-Prot doesn't with query_many
         # _MyGeneInfoSingleDoc('uniprot', ['symbol'], 'P24941', 'CDK2')
 
+        # Test multiple output types (uniprot will be skipped)
+        _MyGeneInfoSingleDoc('entrezgene', ['uniprot', 'ensembl', 'symbol'], '105864946', 'ENSMICG00000026391')
+
     def test_mygene_one2many(self):
         """
         Test the one-to-many relationship for key conversion
@@ -208,5 +211,3 @@ class TestKeyLookupAPI(unittest.TestCase):
             res_cnt += 1
             self.assertTrue(res['_id'] in answers)
         self.assertEqual(res_cnt, 10000)
-
-        raise ValueError
