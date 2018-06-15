@@ -28,6 +28,7 @@ avaiable Docker images from the following tables.
 ^^^^^^^^^^^^
 .. |mygenelogo| image:: ../_static/mygene-text.png
    :width: 200px
+   :alt: MyGene.info
 
 Production and old data require at least 30GiB disk space.
 
@@ -45,6 +46,7 @@ Production and old data require at least 30GiB disk space.
 ^^^^^^^^^^^^^^^
 .. |myvariantlogo| image:: ../_static/myvariant-text.png
    :width: 200px
+   :alt: MyVariant.info
 
 Production and old data require at least 2TiB disk space.
 
@@ -62,6 +64,7 @@ Production and old data require at least 2TiB disk space.
 ^^^^^^^^^^^^
 .. |mychemlogo| image:: ../_static/mychem-text.png
    :width: 200px
+   :alt: MyChem.info
 
 Production and old data require at least 150Gib disk space.
 
