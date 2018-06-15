@@ -53,6 +53,8 @@ class KeyLookupAPI(object):
         # default value of None for client
         self.client = None
 
+        self.one_to_many_cnt = 0
+
     def __call__(self, f):
         """
         Perform the key conversion and all lookups on call.
@@ -151,8 +153,10 @@ class KeyLookupAPI(object):
                 if q['query'] not in qm_struct.keys():
                     qm_struct[q['query']] = [val]
                 else:
+                    self.one_to_many_cnt += 1
                     qm_struct[q['query']] = qm_struct[q['query']] + [val]
         lg.debug("parse_querymany num qm_struct keys: {}".format(len(qm_struct.keys())))
+        lg.info("parse_querymany running one_to_many_cnt: {}".format(self.one_to_many_cnt))
         return qm_struct
 
     def _parse_h(self, h):
