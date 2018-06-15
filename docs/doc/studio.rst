@@ -2,24 +2,24 @@
 BioThings Studio tutorial
 #########################
 
-This tutorial will guide you through **BioThings Studio**, a pre-configured system used to build
-and administrate BioThings API. This guide will show how to convert a simple flat file
+This tutorial will guide you through **BioThings Studio**, a pre-configured environment used to build
+and administer BioThings API. This guide will show how to convert a simple flat file
 to a fully operational BioThings API, with as minimal effort as possible.
 
 ************************
 What is BioThings Studio
 ************************
 
-**BioThings Studio** is a pre-configured, ready-to-use software. At its core is **BioThings Hub**, the
-backend system behind all BioThings API.
+**BioThings Studio** is a pre-configured, ready-to-use application. At its core is **BioThings Hub**, the
+backend service behind all BioThings APIs.
 
-BioThings Hub: the backend sytem
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BioThings Hub: the backend service
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 **Hub** is responsible for maintaining data up-to-date, and
-creating data releases for BioThings front-end.
+creating data releases for the BioThings frontend.
 
-The process of integrating data up to creating to releases involves different steps, as shown
+The process of integrating data and creating releases involves different steps, as shown
 in the following diagram:
 
 .. image:: ../_static/hubarch.png
@@ -29,7 +29,7 @@ in the following diagram:
 * `parsers` will then convert data into JSON documents, those will be stored in a Mongo database using `uploaders`
 * when using multiple sources, data can be combined together using `mergers`
 * data releases are then created by either indexing data to an ElasticSearch cluster with `indexers`, or
-  by computing the differences between current release and previous one, using `differs`, and applying these
+  by computing the differences between the current release and previous one, using `differs`, and applying these
   differences using `syncers`
 
 The final index along with the Tornado application represents the frontend that is actually queried by the
@@ -38,8 +38,8 @@ different available clients, and is out of this document's scope.
 BioThings Studio
 ^^^^^^^^^^^^^^^^
 
-The architecture and different softwares involved in this system can be quite intimidating. That's why
-the whole system is packaged in a pre-configured software, **BioThings Studio**. A docker image is available
+The architecture and different software involved in this system can be quite intimidating. To help
+the whole service is packaged as a pre-configured application, **BioThings Studio**. A docker image is available
 for `download`_ and contains everything required to run **BioThings Hub**.
 
 .. _download: http://biothings-containers.s3-website-us-west-2.amazonaws.com/biothings_studio/biothings_studio_latest.docker
@@ -47,12 +47,12 @@ for `download`_ and contains everything required to run **BioThings Hub**.
 .. image:: ../_static/hubstack.png
    :width: 100%
 
-Within the Studio, **BioThings Hub** and the whole backend system can be accessed through different options:
+Within the Studio, **BioThings Hub** and the whole backend service can be accessed through different options:
 
-* a web application allows to interact with the most used elements of the system
+* a web application allows interaction with the most used elements of the service
 * a console, accessible through SSH, gives access to more commands, for advanced usage
-* a REST API and a websocket can be used either to interact with the **Hub**, query the differents objects inside,
-  and get real-time notifications when processed are running.
+* a REST API and a websocket can be used to interact with the **Hub**, query the differents objects inside,
+  and get real-time notifications when processes are running. This interface is a good choice for third-party integration.
 
 
 Who should use BioThings Studio ?
@@ -61,7 +61,7 @@ Who should use BioThings Studio ?
 **BioThings Studio** can be used in different scenarios:
 
 * you want to contribute to an existing BioThings API by integrating a new data source
-* you want to run you own BioThings API but don't want to have to install all the dependencies and
+* you want to run your own BioThings API but don't want to have to install all the dependencies and
   learn how to configure all the sub-systems
 
 
@@ -69,9 +69,9 @@ Who should use BioThings Studio ?
 Prerequisites
 *************
 
-Using **BioThings Studio** requires to have a Docker server up and running, some basic knowledge
+Using **BioThings Studio** requires a Docker server up and running, some basic knowledge
 about commands to run and use containers. Images have been tested on Docker >=17. Using AWS cloud,
-you can use our public AMI **biothings_demo_docker** (``ami-44865e3c``) with Docker pre-configured
+you can use our public AMI **biothings_demo_docker** (``ami-44865e3c`` in Oregon region) with Docker pre-configured
 and ready for studio deployment. Instance type depends on the size of data you
 want to integrate and parsers' performances. For this tutorial, we recommend using instance type with at least
 4GiB RAM, such as ``t2.medium``. AMI comes with an extra 30GiB EBS volume, which is more than enough
@@ -96,7 +96,7 @@ What you'll learn
 Through this guide, you'll learn:
 
 * how to obtain a Docker image to run your favorite API
-* how to run that image inside a Docker container and how to access **BioThings Studio** application
+* how to run that image inside a Docker container and how to access the **BioThings Studio** application
 * how to integrate a new data source by defining a data plugin
 * how to define a build configuration and create data releases
 * how to create a simple, fully operational BioThings API serving the integrated data
@@ -153,6 +153,12 @@ having to enter the container:
    if needed Docker option ``-v`` can be used to mount a directory from the host, inside the container.
    Please refer to Docker documentation.
 
+.. note:: Biothings Studio and the Hub are not designed to be publicly accessible. Those ports shouhd **not** be exposed. When
+   accessing the Studio and any of these ports, SSH tunneling can be used to safely access the services from outside.
+   Ex: ``ssh -L 7080:localhost:7080 -L 8080:localhost:8080 user@mydockerserver`` will expose the web application and
+   the REST API ports to your computer, so you can access the webapp using http://localhost:8080 and the API using http://localhost:7080.
+   See https://www.howtogeek.com/168145/how-to-use-ssh-tunneling for more
+
 Let's enter the container to check everything is running fine. Services may take a while, up to 1 min, before fully started.
 If some services are missing, the troubleshooting section may help.
 
@@ -189,7 +195,7 @@ shows a summary of current data recent updates. For now, it's pretty quiet since
 
 .. image:: ../_static/homeempty.png
 
-Let's have a quik overview of the different elements accessible through the webapp. At the top, different tabs give
+Let's have a quick overview of the different elements accessible through the webapp. At the top, different tabs give
 access to the main steps involved in building a BioThings API. We'll get into those in more details while we create our
 new API. On the right, we have different information about jobs and resources:
 
@@ -227,20 +233,20 @@ new API. On the right, we have different information about jobs and resources:
 Creating an API from a flat file
 ********************************
 
-In this section we'll dive in more details on using **BioThings Studio** and **Hub**. We will be integrating a simple flat file as a new datasource
-within the **Hub**, declare a build configuration using that datasource, create a build and data release, and finally instantiate a new API service
+In this section we'll dive in more details on using the **BioThings Studio** and **Hub**. We will be integrating a simple flat file as a new datasource
+within the **Hub**, declare a build configuration using that datasource, create a build from that configuration, then a data release and finally instantiate a new API service
 and use it to query our data.
 
 Input data, parser and data plugin
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-For this tutorial, we will integrate data from the `Cancer Genome Interpreter`_ (CGI). This datasource is actually used in `MyVariant.info`_, one of the most used
-BioThings API. The input file is available here: https://www.cancergenomeinterpreter.org/data/cgi_biomarkers_latest.zip.
+For this tutorial, we will integrate data from the `Cancer Genome Interpreter`_ (CGI). This datasource is used in `MyVariant.info`_, one of the most used
+BioThings APIs. The input file is available here: https://www.cancergenomeinterpreter.org/data/cgi_biomarkers_latest.zip.
 
 .. _`Cancer Genome Interpreter`: https://www.cancergenomeinterpreter.org
 .. _`MyVariant.info`: https://myvariant.info
 
-The parser itself is not the main topic of this tutorial, the full code can be found `here`__, in MyVariant's github `repository`__.
+The parser itself is not the main topic of this tutorial, the full code for the parser can be found `here`__, in MyVariant's github `repository`__.
 
 .. __: https://github.com/biothings/myvariant.info/blob/master/src/hub/dataload/sources/cgi/cgi_parser.py
 .. __: https://github.com/biothings/myvariant.info
@@ -265,8 +271,8 @@ From a single flat file, it produces JSON documents looking like this:
     }
   }
 
-.. note:: `_id` key is mandatory and represents a unique ID for this document. Type must a string. _id key is
-   used when data from multiple datasource is merged together, that process is done according to its value
+.. note:: The `_id` key is mandatory and represents a unique identifier for this document. The type must a string. The _id key is
+   used when data from multiple datasources are merged together, that process is done according to its value
    (all documents sharing the same _id from different datasources will be merged together).
 
 
@@ -275,7 +281,7 @@ We can easily create a new datasource and integrate data using **BioThings Studi
 * a github repository, containing everything useful for the datasource
 * within that repository, a `manifest.json` where the parser and the input file are declared
 
-The corresponding data plugin repository can be found at https://github.com/sirloon/mvcgi. The manifest file look like this:
+The corresponding data plugin repository can be found at https://github.com/sirloon/mvcgi. The manifest file looks like this:
 
 .. code:: bash
 
@@ -313,7 +319,7 @@ Click "OK" to register the data plugin.
 
 Interpreting the manifest coming with the plugin, **BioThings Hub** has automatically created for us:
 
-* a `dumper` using HTTP protocol, pointing to the remote file on CGI website. When downloader (or dumping)
+* a `dumper` using HTTP protocol, pointing to the remote file on the CGI website. When downloading (or dumping)
   the data source, the dumper will automatically check whether the remote file is more recent than the one
   we may have locally, and decide whether a new version should be downloaded.
 * and an `uploader` to which it "attached" the parsing function. This uploader will fetch JSON documents
@@ -337,7 +343,7 @@ Upon registration, the new data source appears
 
 Let's open the datasource by clicking on its title to have more information. `Dumper` and `Uploader` tabs are rather empty since
 none of these steps have been launched yet. The `Plugin` tab though shows information about the actual source code pulled from the
-github repository. As shown, we're currently the HEAD version of the plugin, but if needed, we could freeze the version
+github repository. As shown, we're currently at the HEAD version of the plugin, but if needed, we could freeze the version
 by specifiying a git commit hash or a branch/tag name.
 
 .. image:: ../_static/plugintab.png
@@ -375,7 +381,7 @@ Same for the `Uploader` tab, we now have 323 documents uploaded to MongoDB.
 Inspecting the data
 ^^^^^^^^^^^^^^^^^^^
 
-Now that we have integrated a new datasource, we can move forwared. Ultimately, data will be sent to ElasticSearch, an indexing engine.
+Now that we have integrated a new datasource, we can move forward. Ultimately, data will be sent to ElasticSearch, an indexing engine.
 In order to do so, we need to tell ElasticSearch how the data is structured and which fields should be indexed (and which should not).
 This step consists of creating a "mapping", describing the data in ElasticSearch terminology. This can be a tedious process as we would
 need to dig into some tough technical details and manually write this mapping. Fortunately, we can ask **BioThings Studio** to inspect
@@ -400,7 +406,7 @@ Since the collection is very small, inspection is fast, you should have a mappin
 .. _fieldbydefault:
 
 For each field highlighted in blue, you can decide whether you want the field to be searchable or not, and whether the field should be searched
-by default when no specific field is passed when querying the API. Let's click on "gene" field and make it searched by default.
+by default when querying the API. Let's click on "gene" field and make it searched by default.
 
 .. image:: ../_static/genefield.png
    :width: 100%
@@ -421,13 +427,13 @@ moving forwared, we want to make sure the mapping is valid, let's click on |vali
 .. image:: ../_static/validated.png
    :width: 500px
 
-.. note:: "Validate on test" means **Hub** will send the mapping to ElasticSearch by creating a temporary, empty index. It's immediately
-   deleted after validation (wheter successful or not). Also, "test" is the name of an environment, by default, and without further
-   manual configuration, this is the only development environment available in the Studio, pointing to embedded ElasticSearch server.
+.. note:: "Validate on test" means **Hub** will send the mapping to ElasticSearch by creating a temporary, empty index to make sure the mapping syntax
+   and content are valid. It's immediately deleted after validation (wheter successful or not). Also, "test" is the name of an environment, by default,
+   and without further manual configuration, this is the only development environment available in the Studio, pointing to embedded ElasticSearch server.
 
 Everything looks fine, one last step is to "commit" the mapping, meaning we're ok to use this mapping as the official, registered mapping,
 the one that will actually be used by ElasticSearch. Indeed the left side of the page is about inspected mapping, we can re-launch the
-inspection as many time as we want, without impacting active/registered mapping (this is usefull when data structure changes). Click on
+inspection as many time as we want, without impacting active/registered mapping (this is usefull when the data structure changes). Click on
 |commit| then "OK", and you now should see the final, registered mapping on the right:
 
 .. |commit| image:: ../_static/commit.png
@@ -457,7 +463,7 @@ tells the **Hub** which datasources should be merged together, and how. Click on
 * in `root sources`, we can declare which sources are allowed to create new documents in the merged collection, that is merge documents from a
   datasource, but only if corresponding documents exist in the merged collection. It's usefull if data from a specific source relates to data on
   another source (it only makes sense to merge that relating data if the data itself is present). If root sources are declared, **Hub** will first
-  merged them, then the others. In our case, we can leave it empty (no root sources specified, all sources can create documents in the merged collection)
+  merge them, then the others. In our case, we can leave it empty (no root sources specified, all sources can create documents in the merged collection)
 * the other fields are for advanced usage and are out-of-topic for this tutorial
 
 Click "OK" and open the menu again, you should see the new configuration available in the list.
@@ -480,7 +486,7 @@ Open it by clicking on its name. You can explore the tabs for more information a
 Creating a data release
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-If not there yet, open the new created build and go the "Release" tab. This is the place where we can create new data release. Click on |newrelease|.
+If not there yet, open the new created build and go the "Release" tab. This is the place where we can create new data releases. Click on |newrelease|.
 
 .. |newrelease| image:: ../_static/newrelease.png
    :width: 125px
@@ -492,7 +498,9 @@ Since we only have one build available, we can't generate an `incremental` relea
 
 .. note:: Should there be a new build available (coming from the same configuration), and should there be data differences, we could generate an
    incremental release. In this case, **Hub** would compute a diff between previous and new builds and generate diff files (using `JSON diff`_ format).
-   Incremental releases are usually smaller than full releases, but also take more time to deploy (appying diff data). 
+   Incremental releases are usually smaller than full releases, usually take less time to deploy (appying diff data) unless diff content is too big
+   (there's a threshold between using an incremental and a full release, depending on the hardware and the data, because applying a diff requires to first
+   fetch the document from ElasticSearch, patch it, and then save it back)
 
 .. _`JSON diff`: http://www.jsondiff.com/
 
@@ -504,8 +512,7 @@ Since we only have one build available, we can't generate an `incremental` relea
 Generating a BioThings API
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-At this stage, a new index containing our data has been created on ElasticSearch, it is now time for final step...
-Click on |api| then |menu| and finally |newapi|
+At this stage, a new index containing our data has been created on ElasticSearch, it is now time for final step. Click on |api| then |menu| and finally |newapi|
 
 .. |api| image:: ../_static/api.png
    :width: 60px
@@ -526,7 +533,7 @@ can be accessed:
 .. image:: ../_static/apirunning.png
    :width: 300px
 
-.. note:: Whe running, queries such ``/metadata`` and ``/query?q=*`` are provided as examples. They contain a hostname set by Docker though (it's the Docker instance hostname), which probably
+.. note:: When running, queries such ``/metadata`` and ``/query?q=*`` are provided as examples. They contain a hostname set by Docker though (it's the Docker instance hostname), which probably
    means nothing outside of Docker's context. In order to use the API you may need to replace this hostname by the one actually used to access the
    Docker instance.
 
@@ -640,21 +647,21 @@ Conclusions
 
 We've been able to easily convert a remote flat file to a fully operational BioThings API:
 
-* by defining a data plugin, we told the **Hub** where the remote data was and what the parser function was
-* **BioThings Hub** then generated a `dumper` to download data locally
+* by defining a data plugin, we told the **BioThings Hub** where the remote data was and what the parser function was
+* **BioThings Hub** then generated a `dumper` to download data locally on the server
 * It also generated an `uploader` to run the parser and store resulting JSON documents
 * We defined a build configuration to include the newly integrated datasource and then trigger a new build
 * Data was indexed internally on local ElasticSearch by creating a full release
 * Then we created a BioThings API instance pointing to that new index
 
-The final step would then be to deploy that API as cluster, on a cloud. This last step is currently under development, stay tuned!
+The final step would then be to deploy that API as a cluster on a cloud. This last step is currently under development, stay tuned!
 
 
 ***************
 Troubleshooting
 ***************
 
-We test and make sure, as much as we can, that **BioThings Studio** image is up-to-date and running properly. But things can still go wrong...
+We test and make sure, as much as we can, that the **BioThings Studio** image is up-to-date and running properly. But things can still go wrong...
 
 First make sure all services are running. Enter the container and type ``netstat -tnlp``, you should see
 services running on ports (see usual running `services`_). If services running on ports 7080 or 7022 aren't running,
@@ -697,7 +704,7 @@ If after ~1 min, you still don't see the **Hub** running, log to user ``biothing
     '/home/biothings/biothings_studio/plugins']
 
 You should see something looking like this above. If not, you should see the actual error, and depending on the error, you may be able to
-fix it (not enough disk space, etc...). **Hub** can be started again using ``python bin/hub.py`` from within the application
+fix it (not enough disk space, etc...). **BioThings Hub** can be started again using ``python bin/hub.py`` from within the application
 directory (in our case, ``/home/biothings/biothings_studio``)
 
 .. note:: Press Control-B then D to dettach the tmux session and let the **Hub** running in background.
