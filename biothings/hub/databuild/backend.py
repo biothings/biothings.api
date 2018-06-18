@@ -114,13 +114,12 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             self.src_masterdocs = dict([(src['_id'], src) for src in list(self.master.find())])
         return self.src_masterdocs
 
-    def get_src_metadata(self,src_filter=[]):
+    def get_src_metadata(self):
         """
         Return source versions which have been previously accessed wit this backend object
         or all source versions if none were accessed. Accessing means going through __getitem__
         (the usual way) and allows to auto-keep track of sources of interest, thus returning
         versions only for those.
-        src_filter can be passed (list of source _id) to add a filter step.
         """
         src_version = {}
         # what's registered in each uploader, from src_master.
@@ -138,16 +137,11 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             srcs = [d["_id"] for d in self.dump.find()]
         # we need to return main_source named, but if accessed, it's been through sub-source names
         # query is different in that case
-        if src_filter:
-            srcs = list(set(srcs).intersection(set(src_filter)))
         for src in self.dump.find({"_id":{"$in":srcs}}):
-            version = src.get("download",{}).get('release', src.get('timestamp', None))
-            if version:
-                src_version[src['_id']] = version
-                src_meta.setdefault(src["_id"],{}).setdefault("version",version)
             # now merge other extra information from src_master (src_meta key). src_master _id
             # are sub-source names, not main source so we have to deal with src_dump as well
             # in order to resolve/map main/sub source name
+            subsrc_versions = []
             if src and src.get("upload"):
                 meta = []
                 for job_name in src["upload"].get("jobs",{}):
@@ -175,6 +169,10 @@ class SourceDocMongoBackend(SourceDocBackendBase):
                     first = meta[0]
                     for k,v in first.items():
                         src_meta.setdefault(src["_id"],{}).setdefault(k,v)
+            if subsrc_versions:
+                version = subsrc_versions[0]["version"]
+                src_version[src['_id']] = version
+                src_meta.setdefault(src["_id"],{}).setdefault("version",version)
         # backward compatibility
         src_meta["src_version"] = src_version
         return src_meta

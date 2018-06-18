@@ -422,6 +422,27 @@ class IndexerManager(BaseManager):
         publish_data_version(s3_folder,full_info)
         self.logger.info("Registered version '%s'" % (esb.version))
 
+    def update_metadata(self, indexer_env, index_name, build_name=None,_meta=None):
+        """
+        Update _meta for index_name, based on build_name (_meta directly
+        taken from the src_build document) or _meta
+        """
+        idxkwargs = self[indexer_env]
+        # 1st pass we get the doc_type (don't want to ask that on the signature...)
+        indexer = create_backend((idxkwargs["es_host"],index_name,None)).target_esidxer
+        m = indexer._es.indices.get_mapping(index_name)
+        assert len(m[index_name]["mappings"]) == 1, "Found more than one doc_type: " + \
+                    "%s" % m[index_name]["mappings"].keys()
+        doc_type = list(m[index_name]["mappings"].keys())[0]
+        # 2nd pass to re-create correct indexer
+        indexer = create_backend((idxkwargs["es_host"],index_name,doc_type)).target_esidxer
+        if build_name:
+            build = get_src_build().find_one({"_id":build_name})
+            assert build, "No such build named '%s'" % build_name
+            _meta = build.get("_meta")
+        assert not _meta is None, "No _meta found"
+        return indexer.update_mapping_meta({"_meta" : _meta})
+
     def index_info(self, env=None, remote=False):
         res = copy.deepcopy(self.es_config)
         for kenv in self.es_config["env"]:
@@ -603,9 +624,13 @@ class Indexer(object):
                 cnt += len(ids)
                 pinfo = self.get_pinfo()
                 pinfo["step"] = self.target_name
-                pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,(cnt/total*100))
+                try:
+                    descprogress = cnt/total*100
+                except ZeroDivisionError:
+                    descprogress = 0.0
+                pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,descprogress)
                 self.logger.info("Creating indexer job #%d/%d, to index '%s' %d/%d (%.1f%%)" % \
-                        (bnum,btotal,target_name,cnt,total,(cnt/total*100.)))
+                        (bnum,btotal,target_name,cnt,total,descprogress))
                 job = yield from job_manager.defer_to_process(
                         pinfo,
                         partial(indexer_worker,
