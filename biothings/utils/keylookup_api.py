@@ -117,7 +117,7 @@ class KeyLookupAPI(object):
         doc_cache = []
         for doc in batchiter:
             if '_id' in doc.keys():
-                id_lst.append(doc['_id'])
+                id_lst.append('"{}"'.format(doc['_id']))
                 doc_cache.append(doc)
         return list(set(id_lst)), doc_cache
 
@@ -148,15 +148,17 @@ class KeyLookupAPI(object):
         lg.debug("QueryMany Structure:  {}".format(qr))
         qm_struct = {}
         for q in qr['out']:
+            query = q['query']
             val = self._parse_h(q)
             if val:
-                if q['query'] not in qm_struct.keys():
-                    qm_struct[q['query']] = [val]
+                if query not in qm_struct.keys():
+                    qm_struct[query] = [val]
                 else:
                     self.one_to_many_cnt += 1
-                    qm_struct[q['query']] = qm_struct[q['query']] + [val]
+                    qm_struct[query] = qm_struct[query] + [val]
         lg.debug("parse_querymany num qm_struct keys: {}".format(len(qm_struct.keys())))
         lg.info("parse_querymany running one_to_many_cnt: {}".format(self.one_to_many_cnt))
+        lg.debug("parse_querymany qm_struct: {}".format(qm_struct.keys()))
         return qm_struct
 
     def _parse_h(self, h):
@@ -227,6 +229,7 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
         'chembl': 'chembl.molecule_chembl_id',
         'pubchem': 'pubchem.cid',
         # inchikey fields
+        'dinchi': 'drugbank.inchi',
         'dinchikey': 'drugbank.inchi_key',
         'cinchikey': 'chembl.inchi_key'
     }

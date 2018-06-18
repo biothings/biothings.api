@@ -179,6 +179,32 @@ class TestKeyLookupAPI(unittest.TestCase):
         res_cnt = sum(1 for _ in res_lst)
         self.assertEqual(res_cnt, 1)
 
+    def test_inchi_to_inchikey(self):
+        """
+        Inchi strings are long, and contain characters that other fields often
+        do not.  It is a good test case to convert a couple of them to inchikeys.
+        This is used in several mychem.info parsers.
+        :return:
+        """
+        inchi1 = "InChI=1S/C19H25N3O7S/c1-19(2)14(17(26)27)22-15(30-19)13(18(28)29-9-11(20)16(24)25)21-12(23)8-10-6-4-3-5-7-10/h3-7,11,13-15,22H,8-9,20H2,1-2H3,(H,21,23)(H,24,25)(H,26,27)/p-2/t11-,13-,14-,15+/m0/s1"
+        inchi2 = "InChI=1S/C8H9NO2/c1-6(10)9-7-2-4-8(11)5-3-7/h2-5,11H,1H3,(H,9,10)"
+
+        doc_lst = [
+            {'_id': inchi1},
+            {'_id': inchi2},
+        ]
+
+        @KeyLookupMyChemInfo('dinchi', ['dinchikey'])
+        def load_document(data_folder):
+            for d in doc_lst:
+                yield d
+
+        res_lst = load_document(doc_lst)
+        res = next(res_lst)
+        self.assertEqual(res['_id'], 'USNINKBPBVKHHZ-CYUUQNCZSA-L')
+        res = next(res_lst)
+        self.assertEqual(res['_id'], 'RZVAJINKPMORJF-UHFFFAOYSA-N')
+
     @unittest.skip("Test is too long for routine use")
     def test_long_doc_lst(self):
         """
