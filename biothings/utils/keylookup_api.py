@@ -231,7 +231,10 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
         # inchikey fields
         'dinchi': 'drugbank.inchi',
         'dinchikey': 'drugbank.inchi_key',
-        'cinchikey': 'chembl.inchi_key'
+        'cinchi': 'chembl.inchi',
+        'cinchikey': 'chembl.inchi_key',
+        'pinchi': 'pubchem.inchi',
+        'pinchikey': 'pubchem.inchi_key',
     }
 
     def __init__(self, input_type, output_types, skip_on_failure=False):
