@@ -22,11 +22,15 @@ class KeyLookupAPI(object):
     def load_document(doc_lst):
         for d in doc_lst:
             yield d
+
+    Additional Options:
+    - skip_on_failure:  Do not include a document where key lookup fails in the results
+    - source_field:  use this field instead of '_id' as the source for key lookup
     """
     batch_size = 10
     lookup_fields = {}
 
-    def __init__(self, input_type, output_types, skip_on_failure=False):
+    def __init__(self, input_type, output_types, skip_on_failure=False, source_field='_id'):
         """
         Initialize the KeyLookupAPI object.
         """
@@ -49,6 +53,9 @@ class KeyLookupAPI(object):
         if not isinstance(skip_on_failure, bool):
             raise ValueError('skip_on_failure must be a boolean value')
         self.skip_on_failure = skip_on_failure
+
+        # Change which field is used for lookup
+        self.source_field = source_field
 
         # default value of None for client
         self.client = None
@@ -116,8 +123,8 @@ class KeyLookupAPI(object):
         id_lst = []
         doc_cache = []
         for doc in batchiter:
-            if '_id' in doc.keys():
-                id_lst.append('"{}"'.format(doc['_id']))
+            if self.source_field in doc.keys():
+                id_lst.append('"{}"'.format(doc[self.source_field]))
                 doc_cache.append(doc)
         return list(set(id_lst)), doc_cache
 
@@ -205,9 +212,9 @@ class KeyLookupAPI(object):
         # Replace the keys and build up a new result list
         res_lst = []
         for doc in doc_cache:
-            # doc['_id'] must be typed to a string because qm_struct.keys are always strings
-            if str(doc['_id']) in qm_struct.keys():
-                for key in qm_struct[str(doc['_id'])]:
+            # doc[self.source_field] must be typed to a string because qm_struct.keys are always strings
+            if str(doc[self.source_field]) in qm_struct.keys():
+                for key in qm_struct[str(doc[self.source_field])]:
                     new_doc = copy.deepcopy(doc)
                     new_doc['_id'] = key
                     res_lst.append(new_doc)
@@ -237,11 +244,11 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
         'pinchikey': 'pubchem.inchi_key',
     }
 
-    def __init__(self, input_type, output_types, skip_on_failure=False):
+    def __init__(self, input_type, output_types, skip_on_failure=False, source_field='_id'):
         """
         Initialize the class by seting up the client object.
         """
-        super(KeyLookupMyChemInfo, self).__init__(input_type, output_types, skip_on_failure)
+        super(KeyLookupMyChemInfo, self).__init__(input_type, output_types, skip_on_failure, source_field)
 
     def _get_client(self):
         """
@@ -264,11 +271,11 @@ class KeyLookupMyGeneInfo(KeyLookupAPI):
         'uniprot': 'uniprot.Swiss-Prot'
     }
 
-    def __init__(self, input_type, output_types, skip_on_failure=False):
+    def __init__(self, input_type, output_types, skip_on_failure=False, source_field='_id'):
         """
         Initialize the class by seting up the client object.
         """
-        super(KeyLookupMyGeneInfo, self).__init__(input_type, output_types, skip_on_failure)
+        super(KeyLookupMyGeneInfo, self).__init__(input_type, output_types, skip_on_failure, source_field)
 
     def _get_client(self):
         """
