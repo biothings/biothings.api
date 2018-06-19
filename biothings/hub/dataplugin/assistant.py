@@ -16,7 +16,7 @@ from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER, \
 
 from biothings.utils.manager import BaseSourceManager
 from biothings.hub.dataload.uploader import set_pending_to_upload
-from biothings.hub.dataload.dumper import LastModifiedHTTPDumper
+from biothings.hub.dataload.dumper import LastModifiedHTTPDumper, LastModifiedFTPDumper
 from biothings.hub.dataload.uploader import BaseSourceUploader
 from biothings.hub.dataload.storage import IgnoreDuplicatedStorage, BasicStorage
 from biothings.hub.dataplugin.manager import GitDataPlugin
@@ -34,20 +34,27 @@ class BaseAssistant(object):
     uploader_manager = None # set by assistant manager
     # should match a _dict_for_***
     dumper_registry = {"http"  : LastModifiedHTTPDumper,
-                       "https" : LastModifiedHTTPDumper}
+                       "https" : LastModifiedHTTPDumper,
+                       "ftp"   : LastModifiedFTPDumper}
 
-    def _dict_for_http(self, data_url):
+    def _dict_for_base(self,data_url):
         return {
                 "SRC_NAME" : self.plugin_name,
                 "SRC_ROOT_FOLDER" : os.path.join(DATA_ARCHIVE_ROOT,self.plugin_name),
-                "SRC_URLS" : [data_url]
+                "SRC_URLS" : data_url
                 }
+
+    def _dict_for_http(self, data_url):
+        return self._dict_for_base(data_url)
 
     def _dict_for_https(self, data_url):
         d = self._dict_for_http(data_url)
         # not secure, but we want to make sure things will work as much as possible...
         d["VERIFY_CERT"] = False
         return d
+
+    def _dict_for_ftp(self,data_url):
+        return self._dict_for_base(data_url)
 
     def __init__(self, url):
         self.url = url
@@ -95,16 +102,24 @@ class BaseAssistant(object):
         # dumper section: generate 
         if manifest.get("dumper"):
             if manifest["dumper"].get("data_url"):
-                durl = manifest["dumper"]["data_url"]
-                split = urllib.parse.urlsplit(self.url)
+                if not type(manifest["dumper"]["data_url"]) is list:
+                    durls = [manifest["dumper"]["data_url"]]
+                else:
+                    durls = manifest["dumper"]["data_url"]
+                schemes = set([urllib.parse.urlsplit(durl).scheme for durl in durls])
+                # https = http regarding dumper generation
+                if len([sch.replace("https","http") for sch in schemes]) > 1:
+                    raise AssistantException("Manifest specifies URLs of different types (%s), " % schemes + \
+                            "expecting only one")
+                scheme = schemes.pop()
                 klass = manifest["dumper"].get("class")
                 if klass:
                     dumper_class = get_class_from_classpath(klass)
                 else:
-                    dumper_class = self.dumper_registry.get(split.scheme)
+                    dumper_class = self.dumper_registry.get(scheme)
                 if not dumper_class:
-                    raise AssistantException("No dumper class registered to handle scheme '%s'" % split.scheme)
-                confdict = getattr(self,"_dict_for_%s" % split.scheme)(durl)
+                    raise AssistantException("No dumper class registered to handle scheme '%s'" % scheme)
+                confdict = getattr(self,"_dict_for_%s" % scheme)(durls)
                 k = type("AssistedDumper_%s" % self.plugin_name,(AssistedDumper,dumper_class,),confdict)
                 if manifest["dumper"].get("uncompress"):
                     k.UNCOMPRESS = True

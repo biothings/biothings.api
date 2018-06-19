@@ -69,7 +69,11 @@ class BaseDumper(object):
     @property
     def client(self):
         if not self._state["client"]:
-            self.prepare_client()
+            try:
+                self.prepare_client()
+            except Exception as e:
+                # if accessed but not ready, then just ignore and return invalid value for a client
+                return None
         return self._state["client"]
     @property
     def src_dump(self):
@@ -442,6 +446,9 @@ class FTPDumper(BaseDumper):
     FTP_PASSWD = ''
     FTP_TIMEOUT = 10*60.0 # we want dumper to timout if necessary
 
+    # TODO: should we add a __del__ to make sure to close ftp connection ?
+    # ftplib has a context __enter__, but we don't use it that way ("with ...")
+
     def prepare_client(self):
         # FTP side
         self.client = FTP(self.FTP_HOST,timeout=self.FTP_TIMEOUT)
@@ -459,7 +466,7 @@ class FTPDumper(BaseDumper):
 
     def download(self,remotefile,localfile):
         self.prepare_local_folders(localfile)
-        self.logger.debug("Downloading '%s'" % remotefile)
+        self.logger.debug("Downloading '%s' as '%s'" % (remotefile,localfile))
         try:
             with open(localfile,"wb") as out_f:
                 self.client.retrbinary('RETR %s' % remotefile, out_f.write)
@@ -476,8 +483,13 @@ class FTPDumper(BaseDumper):
     def remote_is_better(self,remotefile,localfile):
         """'remotefile' is relative path from current working dir (CWD_DIR), 
         'localfile' is absolute path"""
-        res = os.stat(localfile)
+        try:
+            res = os.stat(localfile)
+        except FileNotFoundError:
+            # no local file, remote is always better
+            return True
         local_lastmodified = int(res.st_mtime)
+        self.logger.info("Getting modification time for '%s'" % remotefile)
         response = self.client.sendcmd('MDTM ' + remotefile)
         code, remote_lastmodified = response.split()
         remote_lastmodified = int(time.mktime(datetime.strptime(remote_lastmodified, '%Y%m%d%H%M%S').timetuple()))
@@ -495,6 +507,105 @@ class FTPDumper(BaseDumper):
             return True
         self.logger.debug("'%s' is up-to-date, no need to download" % remotefile)
         return False
+
+
+class LastModifiedBaseDumper(BaseDumper):
+    '''
+    Use SRC_URLS as a list of URLs to download and
+    implement create_todump_list() according to that list.
+    Shoud be used in parallel with a dumper talking the
+    actual underlying protocol
+    '''
+    SRC_URLS = [] # must be overridden in subclass
+
+    def set_release(self):
+        """
+        Set self.release attribute as the last-modified datetime found in
+        the last SRC_URLs element (so releae is the datetime of the last file
+        to download)
+        """
+        raise NotImplementedError("Implement me in sub-class")
+
+    def create_todump_list(self, force=False):
+        assert type(self.__class__.SRC_URLS) is list, "SRC_URLS should be a list"
+        assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
+        self.set_release() # so we can generate new_data_folder
+        for src_url in self.__class__.SRC_URLS:
+            filename = os.path.basename(src_url)
+            new_localfile = os.path.join(self.new_data_folder,filename)
+            try:
+                current_localfile = os.path.join(self.current_data_folder,filename)
+            except TypeError:
+                # current data folder doesn't even exist
+                current_localfile = new_localfile
+
+            remote_better = self.remote_is_better(src_url,current_localfile)
+            if force or current_localfile is None or remote_better:
+                new_localfile = os.path.join(self.new_data_folder,filename)
+                self.to_dump.append({"remote":src_url, "local":new_localfile})
+
+
+
+class LastModifiedFTPDumper(LastModifiedBaseDumper):
+    """
+    SRC_URLS containing a list of URLs pointing to files to download,
+    use FTP's MDTM command to check whether files should be downloaded
+    The release is generated from the last file's MDTM in SRC_URLS, and
+    formatted according to RELEASE_FORMAT.
+    See also LastModifiedHTTPDumper, working the same way but for HTTP
+    protocol.
+    Note: this dumper is a wrapper over FTPDumper, one URL will give
+    one FTPDumper instance.
+    """
+
+    RELEASE_FORMAT = "%Y-%m-%d"
+
+    def prepare_client(self):
+        pass
+    def release_client(self):
+        pass
+
+    def get_client_for_url(self,url):
+        split = urlparse.urlsplit(url)
+        klass = type("dynftpdumper",(FTPDumper,),{
+                "FTP_HOST" : split.hostname,
+                "CWD_DIR" : "/".join(split.path.split("/")[:-1]),
+                "FTP_USER" : split.username or '',
+                "FTP_PASSWD" : split.password or '',
+                "SRC_NAME" : self.__class__.SRC_NAME,
+                "SRC_ROOT_FOLDER" : self.__class__.SRC_ROOT_FOLDER,
+                })
+        ftpdumper = klass()
+        ftpdumper.prepare_client()
+        return ftpdumper
+
+    def get_remote_file(self,url):
+        split = urlparse.urlsplit(url)
+        remotef = split.path.split("/")[-1]
+        return remotef
+
+    def set_release(self):
+        url = self.__class__.SRC_URLS[-1]
+        ftpdumper = self.get_client_for_url(url)
+        remotefile = self.get_remote_file(url)
+        response = ftpdumper.client.sendcmd('MDTM ' + remotefile)
+        code, lastmodified = response.split()
+        lastmodified = time.mktime(datetime.strptime(lastmodified, '%Y%m%d%H%M%S').timetuple())
+        dt = datetime.fromtimestamp(lastmodified)
+        self.release = dt.strftime(self.__class__.RELEASE_FORMAT)
+        ftpdumper.release_client()
+
+    def remote_is_better(self,urlremotefile,localfile):
+        ftpdumper = self.get_client_for_url(urlremotefile)
+        remotefile = self.get_remote_file(urlremotefile)
+        isitbetter = ftpdumper.remote_is_better(remotefile,localfile)
+        ftpdumper.release_client()
+        return isitbetter
+
+    def download(self,urlremotefile,localfile,headers={}):
+        ftpdumper = self.get_client_for_url(urlremotefile)
+        remotefile = self.get_remote_file(urlremotefile)
+        return ftpdumper.download(remotefile,localfile)
 
 
 import requests
@@ -533,14 +644,17 @@ class HTTPDumper(BaseDumper):
         fout.close()
         return res
 
-class LastModifiedHTTPDumper(HTTPDumper):
+class LastModifiedHTTPDumper(HTTPDumper,LastModifiedBaseDumper):
     """Given a list of URLs, check Last-Modified header to see
     whether the file should be downloaded. Sub-class should only have
     to declare SRC_URLS. Optionally, another field name can be used instead
     of Last-Modified, but date format must follow RFC 2616. If that header
-    doesn't exist, it will always download the data (bypass)"""
+    doesn't exist, it will always download the data (bypass)
+    The release is generated from the last file's Last-Modified in SRC_URLS, and
+    formatted according to RELEASE_FORMAT.
+    """
     LAST_MODIFIED = "Last-Modified"
-    SRC_URLS = [] # must be overridden in subclass
+    RELEASE_FORMAT = "%Y-%m-%d"
 
     def remote_is_better(self,remotefile,localfile):
         res = self.client.head(remotefile,allow_redirects=True)
@@ -550,8 +664,6 @@ class LastModifiedHTTPDumper(HTTPDumper):
             return True
         remote_dt =  datetime.strptime(res.headers[self.__class__.LAST_MODIFIED], '%a, %d %b %Y %H:%M:%S GMT')
         remote_lastmodified = time.mktime(remote_dt.timetuple())
-        # also set release attr
-        self.release = remote_dt.strftime("%Y-%m-%d")
         try:
             res = os.stat(localfile)
             local_lastmodified = int(res.st_mtime)
@@ -564,19 +676,13 @@ class LastModifiedHTTPDumper(HTTPDumper):
         else:
             return False
 
-    def create_todump_list(self, force=False):
-        assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
-        for src_url in self.__class__.SRC_URLS:
-            filename = os.path.basename(src_url)
-            try:
-                current_localfile = os.path.join(self.current_data_folder,filename)
-            except TypeError:
-                # current data folder doesn't even exist
-                current_localfile = None
-            remote_better = self.remote_is_better(src_url,current_localfile)
-            if force or current_localfile is None or remote_better:
-                new_localfile = os.path.join(self.new_data_folder,filename)
-                self.to_dump.append({"remote":src_url, "local":new_localfile})
+    def set_release(self):
+        url = self.__class__.SRC_URLS[-1]
+        res = self.client.head(url,allow_redirects=True)
+        remote_dt =  datetime.strptime(res.headers[self.__class__.LAST_MODIFIED], '%a, %d %b %Y %H:%M:%S GMT')
+        remote_lastmodified = time.mktime(remote_dt.timetuple())
+        # also set release attr
+        self.release = remote_dt.strftime(self.__class__.RELEASE_FORMAT)
 
 
 class WgetDumper(BaseDumper):
