@@ -819,14 +819,23 @@ class Indexer(object):
                     },
                 }
 
+    def enrich_final_mapping(self, final_mapping):
+        """
+        final_mapping is the ES mapping ready to be sent,
+        (with "dynamic" and "all" at its root for instance)
+        this method gives opportunity to add more mapping definitions
+        not directly related to datasources, such as other root keys
+        """
+        return final_mapping
+
     def get_mapping(self):
         '''collect mapping data from data sources.
-           This is for GeneDocESBackend only.
         '''
         mapping = self.build_doc.get("mapping",{})
         # default "all" field to replace include_in_all field in older versions of ES
         mapping["all"] = {'type': 'text'}
         final_mapping = {"properties": mapping, "dynamic": "false"}
+        final_mapping = self.enrich_final_mapping(final_mapping)
         final_mapping["_meta"] = self.get_metadata()
 
         return final_mapping
@@ -947,16 +956,20 @@ class ColdHotIndexer(Indexer):
             raise got_error
         return {self.index_name:cnt}
 
+    # by default, build_doc is considered to be the hot one
+    # (mainly used so we can call super methods as parent)
+    @property
+    def build_doc(self):
+        return self.hot_build_doc
+    @build_doc.setter
+    def build_doc(self,val):
+        self.hot_build_doc = val
+
     def get_mapping(self):
+        final_mapping = super(ColdHotIndexer,self).get_mapping()
         cold_mapping = self.cold_build_doc.get("mapping",{})
-        hot_mapping = self.hot_build_doc.get("mapping",{})
-        hot_mapping.update(cold_mapping) # mix cold&hot
-        # default "all" field to replace include_in_all field in older versions of ES
-        hot_mapping["all"] = {'type': 'text'}
-        mapping = {"properties": hot_mapping,
-                   "dynamic": "false"}
-        mapping["_meta"] = self.get_metadata()
-        return mapping
+        final_mapping["properties"].update(cold_mapping) # mix cold&hot
+        return final_mapping
 
     def get_metadata(self):
         meta = merge_src_build_metadata([self.cold_build_doc,self.hot_build_doc])
