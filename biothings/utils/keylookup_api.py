@@ -213,7 +213,7 @@ class KeyLookupAPI(object):
         res_lst = []
         for doc in doc_cache:
             # doc[self.source_field] must be typed to a string because qm_struct.keys are always strings
-            if str(doc[self.source_field]) in qm_struct.keys():
+            if self.source_field in doc.keys() and str(doc[self.source_field]) in qm_struct.keys():
                 for key in qm_struct[str(doc[self.source_field])]:
                     new_doc = copy.deepcopy(doc)
                     new_doc['_id'] = key
