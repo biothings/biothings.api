@@ -30,16 +30,23 @@ class KeyLookupAPI(object):
     batch_size = 10
     lookup_fields = {}
 
-    def __init__(self, input_type, output_types, skip_on_failure=False, source_field='_id'):
+    def __init__(self, input_types, output_types, skip_on_failure=False, source_field='_id'):
         """
         Initialize the KeyLookupAPI object.
         """
         self._generate_return_fields()
 
-        if input_type in self.lookup_fields.keys():
-            self.input_type = input_type
+        self.input_types = []
+        if isinstance(input_types, str):
+            input_types = [input_types]
+        if isinstance(input_types, list):
+            for input_type in input_types:
+                if input_type in self.lookup_fields.keys():
+                    self.input_types.append(input_type)
+                else:
+                    raise ValueError('Provided input_types is not configured in lookup_fields')
         else:
-            raise ValueError('Provided input_type is not configured in lookup_fields')
+            raise ValueError('Provided input_types is not of the correct type')
 
         if not isinstance(output_types, list):
             raise ValueError('Provided output_types is not a list')
@@ -136,10 +143,14 @@ class KeyLookupAPI(object):
         :return:
         """
         # Query MyGene.info
-        lg.debug("query_many scopes:  {}".format(self.lookup_fields[self.input_type]))
+        # lg.debug("query_many scopes:  {}".format(self.lookup_fields[self.input_type]))
+        scopes = []
+        for input_type in self.input_types:
+            scopes.append(self.lookup_fields[input_type])
         client = self._get_client()
+
         return client.querymany(id_lst,
-                                scopes=self.lookup_fields[self.input_type],
+                                scopes=scopes,
                                 fields=self.return_fields,
                                 as_generator=True,
                                 returnall=True,
@@ -244,11 +255,11 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
         'pinchikey': 'pubchem.inchi_key',
     }
 
-    def __init__(self, input_type, output_types, skip_on_failure=False, source_field='_id'):
+    def __init__(self, input_types, output_types, skip_on_failure=False, source_field='_id'):
         """
         Initialize the class by seting up the client object.
         """
-        super(KeyLookupMyChemInfo, self).__init__(input_type, output_types, skip_on_failure, source_field)
+        super(KeyLookupMyChemInfo, self).__init__(input_types, output_types, skip_on_failure, source_field)
 
     def _get_client(self):
         """
@@ -271,11 +282,11 @@ class KeyLookupMyGeneInfo(KeyLookupAPI):
         'uniprot': 'uniprot.Swiss-Prot'
     }
 
-    def __init__(self, input_type, output_types, skip_on_failure=False, source_field='_id'):
+    def __init__(self, input_types, output_types, skip_on_failure=False, source_field='_id'):
         """
         Initialize the class by seting up the client object.
         """
-        super(KeyLookupMyGeneInfo, self).__init__(input_type, output_types, skip_on_failure, source_field)
+        super(KeyLookupMyGeneInfo, self).__init__(input_types, output_types, skip_on_failure, source_field)
 
     def _get_client(self):
         """
