@@ -2,12 +2,11 @@ import biothings_client
 import copy
 from itertools import islice, chain
 import logging
-import types
 
 # Setup logger and logging level
 logging.basicConfig()
 lg = logging.getLogger('keylookup_api')
-lg.setLevel(logging.INFO)
+lg.setLevel(logging.DEBUG)
 
 
 class KeyLookupAPI(object):
@@ -28,9 +27,10 @@ class KeyLookupAPI(object):
     - source_field:  use this field instead of '_id' as the source for key lookup
     """
     batch_size = 10
+    default_source = '_id'
     lookup_fields = {}
 
-    def __init__(self, input_types, output_types, skip_on_failure=False, source_field='_id'):
+    def __init__(self, input_types, output_types, skip_on_failure=False, source_field=default_source):
         """
         Initialize the KeyLookupAPI object.
         """
@@ -41,10 +41,13 @@ class KeyLookupAPI(object):
             input_types = [input_types]
         if isinstance(input_types, list):
             for input_type in input_types:
-                if input_type in self.lookup_fields.keys():
+                if isinstance(input_type, tuple):
                     self.input_types.append(input_type)
                 else:
-                    raise ValueError('Provided input_types is not configured in lookup_fields')
+                    if input_type in self.lookup_fields.keys():
+                        self.input_types.append((input_type, self.default_source))
+                    else:
+                        raise ValueError('Provided input_types is not configured in lookup_fields')
         else:
             raise ValueError('Provided input_types is not of the correct type')
 
@@ -61,9 +64,6 @@ class KeyLookupAPI(object):
             raise ValueError('skip_on_failure must be a boolean value')
         self.skip_on_failure = skip_on_failure
 
-        # Change which field is used for lookup
-        self.source_field = source_field
-
         # default value of None for client
         self.client = None
 
@@ -79,7 +79,7 @@ class KeyLookupAPI(object):
             input_docs = f(*args)
             lg.debug("input: %s" % input_docs)
             # split input_docs into chunks of size self.batch_size
-            for batchiter in KeyLookupAPI.batch(input_docs, self.batch_size):
+            for batchiter in KeyLookupAPI.batch(input_docs, int(self.batch_size / len(self.input_types))):
                 output_docs = self.key_lookup_batch(batchiter)
                 odoc_cnt = 0
                 for odoc in output_docs:
@@ -130,9 +130,11 @@ class KeyLookupAPI(object):
         id_lst = []
         doc_cache = []
         for doc in batchiter:
-            if self.source_field in doc.keys():
-                id_lst.append('"{}"'.format(doc[self.source_field]))
-                doc_cache.append(doc)
+            for input_type in self.input_types:
+                val = self._nested_lookup(doc, input_type[1])
+                if val:
+                    id_lst.append('"{}"'.format(val))
+                    doc_cache.append(doc)
         return list(set(id_lst)), doc_cache
 
     def _query_many(self, id_lst):
@@ -146,7 +148,7 @@ class KeyLookupAPI(object):
         # lg.debug("query_many scopes:  {}".format(self.lookup_fields[self.input_type]))
         scopes = []
         for input_type in self.input_types:
-            scopes.append(self.lookup_fields[input_type])
+            scopes.append(self.lookup_fields[input_type[0]])
         client = self._get_client()
 
         return client.querymany(id_lst,
@@ -223,19 +225,31 @@ class KeyLookupAPI(object):
         # Replace the keys and build up a new result list
         res_lst = []
         for doc in doc_cache:
-            # doc[self.source_field] must be typed to a string because qm_struct.keys are always strings
-            if self.source_field in doc.keys() and str(doc[self.source_field]) in qm_struct.keys():
-                for key in qm_struct[str(doc[self.source_field])]:
-                    new_doc = copy.deepcopy(doc)
-                    new_doc['_id'] = key
-                    res_lst.append(new_doc)
-            elif not self.skip_on_failure:
+            new_doc = None
+            for input_type in self.input_types:
+                # doc[input_type[1]] must be typed to a string because qm_struct.keys are always strings
+                if self._nested_lookup(doc, input_type[1]) in qm_struct.keys():
+                    for key in qm_struct[self._nested_lookup(doc, input_type[1])]:
+                        new_doc = copy.deepcopy(doc)
+                        new_doc['_id'] = key
+                        res_lst.append(new_doc)
+            if not new_doc and not self.skip_on_failure:
                 res_lst.append(doc)
 
         lg.info("_replace_keys:  Num of documents yielded:  {}".format(len(res_lst)))
         # Yield the results
         for r in res_lst:
             yield r
+
+    @staticmethod
+    def _nested_lookup(doc, field):
+        fields = field.split('.')
+        t = doc
+        for f in fields:
+            if f not in t.keys():
+                return None
+            t = t[f]
+        return str(t)
 
 
 class KeyLookupMyChemInfo(KeyLookupAPI):
