@@ -194,7 +194,7 @@ class TestKeyLookupAPI(unittest.TestCase):
             {'_id': inchi2},
         ]
 
-        @KeyLookupMyChemInfo('dinchi', ['dinchikey'])
+        @KeyLookupMyChemInfo('inchi', ['inchikey'])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -246,7 +246,7 @@ class TestKeyLookupAPI(unittest.TestCase):
             }
         ]
 
-        @KeyLookupMyChemInfo([('dinchi', 'pharmgkb.inchi'), ('drugbank', 'pharmgkb.xref.drugbank_id'), ('pubchem', 'pharmgkb.xref.pubchem_cid'),('chembl', 'pharmgkb.xref.chembl_id')], ['dinchikey', 'cinchikey', 'pinchikey'])
+        @KeyLookupMyChemInfo([('inchi', 'pharmgkb.inchi'), ('drugbank', 'pharmgkb.xref.drugbank_id'), ('pubchem', 'pharmgkb.xref.pubchem_cid'),('chembl', 'pharmgkb.xref.chembl_id')], ['inchikey'])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d

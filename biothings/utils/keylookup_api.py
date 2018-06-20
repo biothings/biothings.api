@@ -104,7 +104,8 @@ class KeyLookupAPI(object):
         """
         self.return_fields = ''
         for k in self.lookup_fields:
-            self.return_fields += self.lookup_fields[k] + ','
+            for field in self._get_lookup_field(k):
+                self.return_fields += field + ','
         lg.debug("KeyLookupAPI return_fields:  {}".format(self.return_fields))
 
     def key_lookup_batch(self, batchiter):
@@ -148,7 +149,8 @@ class KeyLookupAPI(object):
         # lg.debug("query_many scopes:  {}".format(self.lookup_fields[self.input_type]))
         scopes = []
         for input_type in self.input_types:
-            scopes.append(self.lookup_fields[input_type[0]])
+            for field in self._get_lookup_field(input_type[0]):
+                scopes.append(field)
         client = self._get_client()
 
         return client.querymany(id_lst,
@@ -188,10 +190,11 @@ class KeyLookupAPI(object):
         :return: dictionary of keys
         """
         for output_type in self.output_types:
-            fields = self.lookup_fields[output_type].split('.')
-            val = self._parse_field(h, fields)
-            if val:
-                return val
+            for doc_field in self._get_lookup_field(output_type):
+                keys = doc_field.split('.')
+                val = self._parse_field(h, keys)
+                if val:
+                    return val
 
     @staticmethod
     def _parse_field(h, fields):
@@ -241,6 +244,19 @@ class KeyLookupAPI(object):
         for r in res_lst:
             yield r
 
+    def _get_lookup_field(self, field):
+        """
+        Getter for lookup fields which may be either a string or a list of string fields.
+        :param field: the name of the field to lookup
+        :return:
+        """
+        if field not in self.lookup_fields.keys():
+            raise KeyError('provided field {} is not in self.lookup_fields'.format(field))
+        if isinstance(self.lookup_fields[field], str):
+            return [self.lookup_fields[field]]
+        else:
+            return self.lookup_fields[field]
+
     @staticmethod
     def _nested_lookup(doc, field):
         fields = field.split('.')
@@ -254,19 +270,22 @@ class KeyLookupAPI(object):
 
 class KeyLookupMyChemInfo(KeyLookupAPI):
     lookup_fields = {
-        'inchikey': '_id',
         'chebi': 'chebi.chebi_id',
         'unii': 'unii.unii',
         'drugbank': 'drugbank.drugbank_id',
         'chembl': 'chembl.molecule_chembl_id',
         'pubchem': 'pubchem.cid',
         # inchikey fields
-        'dinchi': 'drugbank.inchi',
-        'dinchikey': 'drugbank.inchi_key',
-        'cinchi': 'chembl.inchi',
-        'cinchikey': 'chembl.inchi_key',
-        'pinchi': 'pubchem.inchi',
-        'pinchikey': 'pubchem.inchi_key',
+        'inchi': [
+            'drugbank.inchi',
+            'chembl.inchi',
+            'pubchem.inchi'
+            ],
+        'inchikey': [
+            'drugbank.inchi_key',
+            'chembl.inchi_key',
+            'pubchem.inchi_key'
+        ]
     }
 
     def __init__(self, input_types, output_types, skip_on_failure=False, source_field='_id'):
