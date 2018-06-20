@@ -205,6 +205,62 @@ class TestKeyLookupAPI(unittest.TestCase):
         res = next(res_lst)
         self.assertEqual(res['_id'], 'RZVAJINKPMORJF-UHFFFAOYSA-N')
 
+    def test_input_source_fields(self):
+        """
+        Test input source field options.  These are complicated tests with input source field
+        of varying depth and complexity.  Multiple documents are converted.
+        Conversion to InchiKey is performed.
+        :return:
+        """
+
+        doc_lst = [
+            {
+                '_id': 'test1_acetomenaphin',
+                'pharmgkb': {
+                    'inchi': 'InChI=1S/C8H9NO2/c1-6(10)9-7-2-4-8(11)5-3-7/h2-5,11H,1H3,(H,9,10)'
+                }
+            },
+            {
+                '_id': 'test2_statin',
+                'pharmgkb': {
+                    'xref': {
+                        'drugbank_id': 'DB01076'
+                    }
+                }
+            },
+            {
+                '_id': 'test3_LithiumCarbonate',
+                'pharmgkb': {
+                    'xref': {
+                        'pubchem_cid': 'CID11125'
+                    }
+                }
+            },
+            {
+                '_id': 'test4_IBUPROFEN',
+                'pharmgkb': {
+                    'xref': {
+                        'chembl_id': 'CHEMBL521'
+                    }
+                }
+            }
+        ]
+
+        @KeyLookupMyChemInfo([('dinchi', 'pharmgkb.inchi'), ('drugbank', 'pharmgkb.xref.drugbank_id'), ('pubchem', 'pharmgkb.xref.pubchem_cid'),('chembl', 'pharmgkb.xref.chembl_id')], ['dinchikey', 'cinchikey', 'pinchikey'])
+        def load_document(data_folder):
+            for d in doc_lst:
+                yield d
+
+        res_lst = load_document('data/folder/')
+        r = next(res_lst)
+        self.assertEqual(r['_id'], 'RZVAJINKPMORJF-UHFFFAOYSA-N')
+        r = next(res_lst)
+        self.assertEqual(r['_id'], 'XUKUURHRXDUEBC-KAYWLYCHSA-N')
+        r = next(res_lst)
+        self.assertEqual(r['_id'], 'XGZVUEUWXADBQD-UHFFFAOYSA-L')
+        r = next(res_lst)
+        self.assertEqual(r['_id'], 'HEFNNWSXXWATRW-UHFFFAOYSA-N')
+
     @unittest.skip("Test is too long for routine use")
     def test_long_doc_lst(self):
         """
