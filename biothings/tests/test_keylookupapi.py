@@ -261,28 +261,84 @@ class TestKeyLookupAPI(unittest.TestCase):
         r = next(res_lst)
         self.assertEqual(r['_id'], 'HEFNNWSXXWATRW-UHFFFAOYSA-N')
 
-    @unittest.skip("Test is too long for routine use")
     def test_long_doc_lst(self):
         """
-        Test a document list containing 10000 entries.  Verify that the correct
+        Test a document list containing 12 entries.  Verify that the correct
         number of documents are returned.
-
-        Unfortunately in this test there are a large number of duplicates, but the
-        correct number of documents are returned.
         :return:
         """
-        # Build up document list
-        input = 51300
-        doc_lst = []
-        for i in range(10000):
-            doc_lst.append({'_id': input})
 
-        answers = [
-            'TIMMDC1'
+        # Long document list - created manually for a unique test
+        doc_lst = [
+            {
+                '_id': 'test1',
+                'inchikey': 'SHXWCVYOXRDMCX-UHFFFAOYSA-N',
+            },
+            {
+                '_id': 'test2',
+                'inchikey': 'CXHDSLQCNYLQND-XQRIHRDZSA-N',
+            },
+            {
+                # this test document should still be returned
+                '_id': 'test3',
+            },
+            {
+                '_id': 'test4',
+                'inchikey': 'XMYKNCNAZKMVQN-NYYWCZLTSA-N',
+            },
+            {
+                '_id': 'test5',
+                'inchikey': 'FMGSKLZLMKYGDP-USOAJAOKSA-N',
+            },
+            {
+                '_id': 'test6',
+                'inchikey': 'YAFGHMIAFYQSCF-UHFFFAOYSA-N',
+            },
+            {
+                # This document should be converted to InchiKey
+                # XUKUURHRXDUEBC-KAYWLYCHSA-N
+                '_id': 'test7',
+                'drugbank': 'DB01076'
+            },
+            {
+                '_id': 'test8',
+                'inchikey': 'RXRZOKQPANIEDW-KQYNXXCUSA-N',
+            },
+            {
+                '_id': 'test9',
+                'inchikey': 'BNQDCRGUHNALGH-UHFFFAOYSA-N',
+            },
+            {
+                '_id': 'test10',
+                'inchikey': 'CGVWPQOFHSAKRR-NDEPHWFRSA-N',
+            },
+            {
+                '_id': 'test11',
+                'inchikey': 'PCZHWPSNPWAQNF-LMOVPXPDSA-K',
+            },
+            {
+                '_id': 'test12',
+                'inchikey': 'FABUFPQFXZVHFB-CFWQTKTJSA-N',
+            },
         ]
 
-        # Test a list being passed with 10 documents
-        @KeyLookupMyGeneInfo('entrezgene', ['symbol'])
+        answers = [
+            'SHXWCVYOXRDMCX-UHFFFAOYSA-N',
+            'CXHDSLQCNYLQND-XQRIHRDZSA-N',
+            'test3',
+            'XMYKNCNAZKMVQN-NYYWCZLTSA-N',
+            'FMGSKLZLMKYGDP-USOAJAOKSA-N',
+            'YAFGHMIAFYQSCF-UHFFFAOYSA-N',
+            'XUKUURHRXDUEBC-KAYWLYCHSA-N',
+            'RXRZOKQPANIEDW-KQYNXXCUSA-N',
+            'BNQDCRGUHNALGH-UHFFFAOYSA-N',
+            'CGVWPQOFHSAKRR-NDEPHWFRSA-N',
+            'PCZHWPSNPWAQNF-LMOVPXPDSA-K',
+            'FABUFPQFXZVHFB-CFWQTKTJSA-N',
+        ]
+
+        # Test a list being passed with 12 documents
+        @KeyLookupMyChemInfo([('inchikey', 'inchikey'), ('drugbank', 'drugbank')], ['inchikey'])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -291,5 +347,7 @@ class TestKeyLookupAPI(unittest.TestCase):
         res_cnt = 0
         for res in res_lst:
             res_cnt += 1
+            if not res['_id'] in answers:
+                print(res['_id'])
             self.assertTrue(res['_id'] in answers)
-        self.assertEqual(res_cnt, 10000)
+        self.assertEqual(res_cnt, 12)
