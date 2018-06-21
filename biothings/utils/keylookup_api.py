@@ -17,14 +17,25 @@ class KeyLookupAPI(object):
     This class uses biothings apis to conversion from one key type to another.
     Base classes are used with the decorator syntax shown below:
 
-    @KeyLookupMyChemInfo(input_type, output_types)
+    @KeyLookupMyChemInfo(input_types, output_types)
     def load_document(doc_lst):
         for d in doc_lst:
             yield d
 
+    Lookup fields are configured in the 'lookup_fields' object, examples of which
+    can be found in 'KeyLookupMyGeneInfo' and 'KeyLookupMyChemInfo'.
+
+    Required Options:
+    - input_types
+        - 'type'
+        - ('type': 'nested.source_field')
+        - [('type1': 'nested.source_field1'), ('type2': 'nested.source_field2')]
+    - output_types:
+        - 'type'
+        - ['type1', 'type2']
+
     Additional Options:
     - skip_on_failure:  Do not include a document where key lookup fails in the results
-    - source_field:  use this field instead of '_id' as the source for key lookup
     """
     batch_size = 10
     default_source = '_id'
@@ -192,30 +203,9 @@ class KeyLookupAPI(object):
         """
         for output_type in self.output_types:
             for doc_field in self._get_lookup_field(output_type):
-                keys = doc_field.split('.')
-                val = self._parse_field(h, keys)
+                val = self._nested_lookup(h, doc_field)
                 if val:
                     return val
-
-    @staticmethod
-    def _parse_field(h, fields):
-        """
-        Parse a single field from a query hit.
-        Essentially parse a nested dictionary structure using
-        a list of keys.
-        For example fields = ['key1', 'key2'] would return
-        the value of h[key1][key2].  None is returned if the
-        lookup fails.
-        :param h: query hit
-        :param fields: list of fields to traverse
-        :return:
-        """
-        t = h
-        for f in fields:
-            if f not in t.keys():
-                return None
-            t = t[f]
-        return t
 
     def _replace_keys(self, qm_struct, doc_cache):
         """
@@ -260,6 +250,15 @@ class KeyLookupAPI(object):
 
     @staticmethod
     def _nested_lookup(doc, field):
+        """
+        Helper function for nested key lookup of a document.
+        For example field = 'pharmgkb.xref.drugbank' would return
+        the value of doc['pharmgkb']['xref']['drugbank'].
+        None is returned if the lookup fails.
+        :param doc:
+        :param field:
+        :return:
+        """
         fields = field.split('.')
         t = doc
         for f in fields:
@@ -276,7 +275,6 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
         'drugbank': 'drugbank.drugbank_id',
         'chembl': 'chembl.molecule_chembl_id',
         'pubchem': 'pubchem.cid',
-        # inchikey fields
         'inchi': [
             'drugbank.inchi',
             'chembl.inchi',
