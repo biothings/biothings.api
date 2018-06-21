@@ -6,7 +6,7 @@ import logging
 # Setup logger and logging level
 logging.basicConfig()
 lg = logging.getLogger('keylookup_api')
-lg.setLevel(logging.DEBUG)
+lg.setLevel(logging.INFO)
 
 
 class KeyLookupAPI(object):
@@ -30,7 +30,7 @@ class KeyLookupAPI(object):
     default_source = '_id'
     lookup_fields = {}
 
-    def __init__(self, input_types, output_types, skip_on_failure=False, source_field=default_source):
+    def __init__(self, input_types, output_types, skip_on_failure=False):
         """
         Initialize the KeyLookupAPI object.
         """
@@ -135,7 +135,8 @@ class KeyLookupAPI(object):
                 val = self._nested_lookup(doc, input_type[1])
                 if val:
                     id_lst.append('"{}"'.format(val))
-                    doc_cache.append(doc)
+            # always place the document in the cache
+            doc_cache.append(doc)
         return list(set(id_lst)), doc_cache
 
     def _query_many(self, id_lst):
@@ -288,11 +289,11 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
         ]
     }
 
-    def __init__(self, input_types, output_types, skip_on_failure=False, source_field='_id'):
+    def __init__(self, input_types, output_types, skip_on_failure=False):
         """
         Initialize the class by seting up the client object.
         """
-        super(KeyLookupMyChemInfo, self).__init__(input_types, output_types, skip_on_failure, source_field)
+        super(KeyLookupMyChemInfo, self).__init__(input_types, output_types, skip_on_failure)
 
     def _get_client(self):
         """
@@ -315,11 +316,11 @@ class KeyLookupMyGeneInfo(KeyLookupAPI):
         'uniprot': 'uniprot.Swiss-Prot'
     }
 
-    def __init__(self, input_types, output_types, skip_on_failure=False, source_field='_id'):
+    def __init__(self, input_types, output_types, skip_on_failure=False):
         """
         Initialize the class by seting up the client object.
         """
-        super(KeyLookupMyGeneInfo, self).__init__(input_types, output_types, skip_on_failure, source_field)
+        super(KeyLookupMyGeneInfo, self).__init__(input_types, output_types, skip_on_failure)
 
     def _get_client(self):
         """
