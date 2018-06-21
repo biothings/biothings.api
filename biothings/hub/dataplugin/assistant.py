@@ -353,7 +353,12 @@ class AssistantManager(BaseSourceManager):
             # remove plugins from folder list if already register
             if plugin_dirs and plugin["_id"] in plugin_dirs:
                 plugin_dirs.remove(plugin["_id"])
-            self.load_plugin(plugin)
+            try:
+                self.load_plugin(plugin)
+            except Exception as e:
+                logging.warning("Couldn't load plugin '%s': %s" % (plugin["_id"],e))
+                continue
+
         # some still unregistered ? (note: list always empty if autodiscover=False)
         if plugin_dirs:
             for pdir in plugin_dirs:
@@ -362,7 +367,11 @@ class AssistantManager(BaseSourceManager):
                 if "manifest.json" in os.listdir(fulldir) and \
                         json.load(open(os.path.join(fulldir,"manifest.json"))):
                     logging.info("Found unregistered plugin '%s', auto-register it" % pdir)
+                try:
                     self.register_url("local://%s" % pdir.strip().strip("/"))
+                except Exception as e:
+                    logging.warning("Couldn't auto-register plugin '%s': %s" % (pdir,e))
+                    continue
                 else:
                     logging.warning("Directory '%s' doesn't contain a plugin, skip it" % pdir)
                     continue
