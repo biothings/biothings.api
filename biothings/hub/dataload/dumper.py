@@ -211,7 +211,7 @@ class BaseDumper(object):
         except DumperException:
             data_folder = self.current_data_folder
         release = getattr(self,self.__class__.SUFFIX_ATTR)
-        if not release:
+        if release is None:
             # it has not been set by the dumper before while exploring
             # remote site. maybe we're just running post step ?
             # back-compatibility; use "release" at root level if not found under "download"
@@ -365,7 +365,7 @@ class BaseDumper(object):
         like the actual release.
         """
         if self.archive:
-            if not getattr(self,self.__class__.SUFFIX_ATTR):
+            if getattr(self,self.__class__.SUFFIX_ATTR) is None: # defined but not set
                 # if step is "post" only, it means we didn't even check a new version and we
                 # want to run "post" step on current version again
                 if self.steps == ["post"]:
@@ -768,14 +768,14 @@ class DummyDumper(BaseDumper):
         # make sure we don't create empty directory each time it's launched
         # so create a non-archiving dumper
         super(DummyDumper,self).__init__(archive=False, *args, **kwargs)
-        self.release = "dummy"
+        self.release = ""
 
     def prepare_client(self):
         self.logger.info("Dummy dumper, will do nothing")
         pass
 
     @asyncio.coroutine
-    def dump(self,force=False,job_manager=None):
+    def dump(self,force=False,job_manager=None, *args, **kwargs):
         self.logger.debug("Dummy dumper, nothing to download...")
         self.prepare_local_folders(os.path.join(self.new_data_folder,"dummy_file"))
         # this is the only interesting thing happening here
