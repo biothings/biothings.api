@@ -19,7 +19,7 @@ from biothings.hub.dataload.uploader import set_pending_to_upload
 from biothings.hub.dataload.dumper import LastModifiedHTTPDumper, LastModifiedFTPDumper
 from biothings.hub.dataload.uploader import BaseSourceUploader
 from biothings.hub.dataload.storage import IgnoreDuplicatedStorage, BasicStorage
-from biothings.hub.dataplugin.manager import GitDataPlugin
+from biothings.hub.dataplugin.manager import GitDataPlugin, ManualDataPlugin
 
 
 class AssistantException(Exception):
@@ -175,9 +175,13 @@ class GithubAssistant(BaseAssistant):
 
     def can_handle(self):
         # analyze headers to guess type of required assitant
-        headers = requests.head(self.url).headers
-        if headers.get("server").lower() == "github.com":
-            return True
+        try:
+            headers = requests.head(self.url).headers
+            if headers.get("server").lower() == "github.com":
+                return True
+        except Exception as e:
+            logging.info("%s plugin can't handle URL '%s': %s" % (self.plugin_type,self.url,e))
+            return False
 
     def get_classdef(self):
         # generate class dynamically and register
@@ -191,6 +195,45 @@ class GithubAssistant(BaseAssistant):
         assert self.__class__.data_plugin_manager, "Please set data_plugin_manager attribute"
         klass = self.get_classdef()
         self.__class__.data_plugin_manager.register_classes([klass])
+
+
+class LocalAssistant(BaseAssistant):
+
+    plugin_type = "local"
+
+    @property
+    def plugin_name(self):
+        if not self._plugin_name:
+            split = urllib.parse.urlsplit(self.url)
+            # format local://pluginname so it's in hostname.
+            # if path is set, it means format is  local://subdir/pluginname
+            # and we don't support that for import reason (we would need to 
+            # add .../plugins/subdir to sys.path, not impossible but might have side effects
+            # so for now we stay on the safe (and also let's remember 1st version of
+            # MS DOS didn't support subdirs, so I guess we're on the right path :))
+            assert not split.path, "It seems URL '%s' references a sub-directory (%s)," % (self.url,split.hostname) + \
+                    " with plugin name '%s', sub-directories are not supported (yet)" % split.path.strip("/")
+            self._plugin_name = os.path.basename(split.hostname)
+        return self._plugin_name
+
+    def can_handle(self):
+        if self.url.startswith("local://"):
+            return True
+        else:
+            return False
+
+    def get_classdef(self):
+        # generate class dynamically and register
+        src_folder = os.path.join(DATA_PLUGIN_FOLDER, self.plugin_name)
+        confdict = {"SRC_NAME":self.plugin_name,"SRC_ROOT_FOLDER":src_folder}
+        k = type("AssistedManualDataPlugin_%s" % self.plugin_name,(ManualDataPlugin,),confdict)
+        return k
+
+    def handle(self):
+        assert self.__class__.data_plugin_manager, "Please set data_plugin_manager attribute"
+        klass = self.get_classdef()
+        self.__class__.data_plugin_manager.register_classes([klass])
+
 
 class AssistantManager(BaseSourceManager):
 
@@ -212,7 +255,7 @@ class AssistantManager(BaseSourceManager):
         logging.debug("Creating new %s instance" % klass.__name__)
         return klass(url)
 
-    def configure(self, klasses=[GithubAssistant,]):
+    def configure(self, klasses=[GithubAssistant,LocalAssistant]):
         self.register_classes(klasses)
 
     def register_classes(self, klasses):
@@ -272,24 +315,55 @@ class AssistantManager(BaseSourceManager):
         else:
             raise AssistantException("Could not find any assistant able to handle URL '%s'" % url)
 
-    def load(self):
+    def load_plugin(self,plugin):
+        ptype = plugin["plugin"]["type"]
+        url = plugin["plugin"]["url"]
+        if not plugin["plugin"]["active"]:
+            logging.info("Data plugin '%s' is deactivated, skip" % url)
+            return
+        logging.info("Loading data plugin '%s' (type: %s)" % (url,ptype))
+        if ptype in self.register:
+            try:
+                aklass = self.register[ptype]
+                assistant = self.create_instance(aklass,url)
+                assistant.handle()
+                assistant.load_manifest()
+            except Exception as e:
+                logging.exception("Unable to load plugin '%s': %s" % (url,e))
+        else:
+            raise AssistantException("Unknown data plugin type '%s'" % ptype)
+
+    def load(self,autodiscover=True):
+        """
+        Load plugins registered in internal Hub database and generate/register
+        dumpers & uploaders accordingly.
+        If autodiscover is True, also search DATA_PLUGIN_FOLDER for existing
+        plugin directories not registered yet in the database, and register
+        them automatically.
+        """
+        plugin_dirs = []
+        if autodiscover:
+            try:
+                plugin_dirs = os.listdir(DATA_PLUGIN_FOLDER)
+            except FileNotFoundError as e:
+                raise AssistantException("Invalid DATA_PLUGIN_FOLDER: %s" % e)
         dp = get_data_plugin()
         cur = dp.find()
         for plugin in cur:
-            ptype = plugin["plugin"]["type"]
-            url = plugin["plugin"]["url"]
-            if not plugin["plugin"]["active"]:
-                logging.info("Data plugin '%s' is deactivated, skip" % url)
-                continue
-            logging.info("Loading data plugin '%s' (type: %s)" % (url,ptype))
-            if ptype in self.register:
-                try:
-                    aklass = self.register[ptype]
-                    assistant = self.create_instance(aklass,url)
-                    assistant.handle()
-                    assistant.load_manifest()
-                except Exception as e:
-                    logging.exception("Unable to load plugin '%s': %s" % (url,e))
-            else:
-                raise AssistantException("Unknown data plugin type '%s'" % ptype)
+            # remove plugins from folder list if already register
+            if plugin_dirs and plugin["_id"] in plugin_dirs:
+                plugin_dirs.remove(plugin["_id"])
+            self.load_plugin(plugin)
+        # some still unregistered ? (note: list always empty if autodiscover=False)
+        if plugin_dirs:
+            for pdir in plugin_dirs:
+                fulldir = os.path.join(DATA_PLUGIN_FOLDER, pdir)
+                # basic sanity check to make sure it's plugin
+                if "manifest.json" in os.listdir(fulldir) and \
+                        json.load(open(os.path.join(fulldir,"manifest.json"))):
+                    logging.info("Found unregistered plugin '%s', auto-register it" % pdir)
+                    self.register_url("local://%s" % pdir.strip().strip("/"))
+                else:
+                    logging.warning("Directory '%s' doesn't contain a plugin, skip it" % pdir)
+                    continue
 
