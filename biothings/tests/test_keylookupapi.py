@@ -53,7 +53,7 @@ class TestKeyLookupAPI(unittest.TestCase):
         _MyGeneInfoSingleDoc('ensembl', ['symbol'], 'ENSG00000123374', 'CDK2')
         _MyGeneInfoSingleDoc('entrezgene', ['symbol'], '1017', 'CDK2')
 
-        # TODO:  uniprot.Swiss-Prot doesn't with query_many
+        # TODO:  uniprot.Swiss-Prot query_many error - biothings/mygene.info issue #35
         # _MyGeneInfoSingleDoc('uniprot', ['symbol'], 'P24941', 'CDK2')
 
         # Test multiple output types (uniprot will be skipped)
