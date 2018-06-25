@@ -2,10 +2,12 @@ import biothings_client
 import copy
 from itertools import islice, chain
 import logging
+from biothings.utils.common import iter_n
+from biothings.utils.loggers import get_logger
+from biothings import config as btconfig
 
 # Setup logger and logging level
-logging.basicConfig()
-lg = logging.getLogger('keylookup_api')
+lg = get_logger('keylookup_api', btconfig.LOG_FOLDER)
 lg.setLevel(logging.INFO)
 
 
@@ -90,7 +92,7 @@ class KeyLookupAPI(object):
             input_docs = f(*args)
             lg.debug("input: %s" % input_docs)
             # split input_docs into chunks of size self.batch_size
-            for batchiter in KeyLookupAPI.batch(input_docs, int(self.batch_size / len(self.input_types))):
+            for batchiter in iter_n(input_docs, int(self.batch_size / len(self.input_types))):
                 output_docs = self.key_lookup_batch(batchiter)
                 odoc_cnt = 0
                 for odoc in output_docs:
@@ -100,13 +102,6 @@ class KeyLookupAPI(object):
                 lg.info("wrapped_f Num. output_docs:  {}".format(odoc_cnt))
 
         return wrapped_f
-
-    @staticmethod
-    def batch(iterable, size):
-        sourceiter = iter(iterable)
-        while True:
-            batchiter = islice(sourceiter, size)
-            yield chain([next(batchiter)], batchiter)
 
     def _generate_return_fields(self):
         """
@@ -287,7 +282,9 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
         ]
     }
 
-    def __init__(self, input_types, output_types, skip_on_failure=False):
+    def __init__(self, input_types,
+                 output_types=['inchikey', 'drugbank', 'chembl', 'pubchem'],
+                 skip_on_failure=False):
         """
         Initialize the class by seting up the client object.
         """
@@ -314,7 +311,9 @@ class KeyLookupMyGeneInfo(KeyLookupAPI):
         'uniprot': 'uniprot.Swiss-Prot'
     }
 
-    def __init__(self, input_types, output_types, skip_on_failure=False):
+    def __init__(self, input_types,
+                 output_types=['entrezgene'],
+                 skip_on_failure=False):
         """
         Initialize the class by seting up the client object.
         """
