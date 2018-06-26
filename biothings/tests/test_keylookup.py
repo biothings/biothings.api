@@ -92,7 +92,6 @@ class TestKeyLookup(unittest.TestCase):
         def load_document(doc_lst):
             for d in doc_lst:
                 yield d
-            #return doc_lst
 
         # Initial Test Case
         doc_lst = [{'_id': 'a:1234'}]
@@ -110,13 +109,12 @@ class TestKeyLookup(unittest.TestCase):
 
         self.collections = ['bb', 'cc']
 
-        doc_lst = [{'_id': 'a:1234'}]
+        doc_lst = [{'input_key': 'a:1234'}]
 
-        @KeyLookup(graph_one2many, self.collections, 'aa', ['cc'])
+        @KeyLookup(graph_one2many, self.collections, [('aa', 'input_key')], ['cc'])
         def load_document():
             for d in doc_lst:
                 yield d
-            #return doc_lst
 
         # Initial Test Case
         res_lst = [d for d in load_document()]
@@ -126,6 +124,31 @@ class TestKeyLookup(unittest.TestCase):
         self.assertEqual(res_lst[0]['_id'], 'c:1234')
         self.assertEqual(res_lst[1]['_id'], 'c:01')
         self.assertEqual(res_lst[2]['_id'], 'c:02')
+
+    def test_input_types(self):
+        """
+        test for input_types - artificial documents.
+        :return:
+        """
+
+        self.collections = ['b', 'c', 'd', 'e']
+
+        # Initial Test Case
+        doc_lst = [
+            {'a': 'a:1234'},
+            {'b': 'b:1234'}
+        ]
+        @KeyLookup(graph_simple, self.collections, [('a', 'a'), ('b', 'b')], ['d', 'e'])
+        def load_document(doc_lst):
+            for d in doc_lst:
+                yield d
+
+        res_lst = load_document(doc_lst)
+
+        for res in res_lst:
+            print(res)
+            # Check for expected keys
+            self.assertEqual(res['_id'], 'd:1234')
 
     def test_weights(self):
         """
