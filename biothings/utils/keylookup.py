@@ -70,7 +70,9 @@ class KeyLookup(object):
             raise ValueError("skip_on_failure should be of type bool")
         self.skip_on_failure = skip_on_failure
 
-        self._load_collections(collections)
+        self.collections = None
+        self.collection_names = collections
+
         self._precompute_paths()
 
 
@@ -232,14 +234,25 @@ class KeyLookup(object):
         kl_log.info("key_lookup:  {} - {} - {} - {}".format(col, lookup, field, key))
 
         # Valid state checks
-        if col not in self.collections.keys():
+        if col not in self.get_collections().keys():
             return None
 
         keys = []
-        for doc in self.collections[col].find({lookup: key}):
+        for doc in self.get_collections()[col].find({lookup: key}):
             kl_log.info("document retrieved - looking up value")
             keys = keys + [self._nested_lookup(doc, field)]
         return keys
+
+    def get_collections(self):
+        """
+        Standard 'getter' for self.collections objects.
+        :return:
+        """
+        if self.collections:
+            return self.collections
+        else:
+            self._load_collections(self.collection_names)
+            return self.collections
 
     @staticmethod
     def _nested_lookup(doc, field):
@@ -250,7 +263,6 @@ class KeyLookup(object):
         :param field: period delimited list of fields
         :return:
         """
-
         value = doc
         keys = field.split('.')
         try:
@@ -260,3 +272,4 @@ class KeyLookup(object):
             return None
 
         return value
+
