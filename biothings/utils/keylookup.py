@@ -91,8 +91,8 @@ class KeyLookup(object):
                 kl_log.info("Decorator arguments:  {}".format(self.input_types))
                 kl_log.info("Input document:  {}".format(doc))
                 keys = None
-                for input_type in self.input_types:
-                    for output_type in self.output_types:
+                for output_type in self.output_types:
+                    for input_type in self.input_types:
                         keys = self.travel(input_type[0], output_type, KeyLookup._nested_lookup(doc, input_type[1]))
                         # Key(s) were found, create new documents
                         # and add them to the output list
@@ -102,10 +102,9 @@ class KeyLookup(object):
                                 new_doc['_id'] = k
                                 output_docs.append(new_doc)
                             break
-                    # Break out of the outer loop if the inner loop did not break
+                    # Break out of the outer loop if the outer loop did break
                     else:
-                        continue
-                    break
+                        break
 
                 # No keys were found, keep the original (unless the skip_on_failure option is passed)
                 if not keys and not self.skip_on_failure:
