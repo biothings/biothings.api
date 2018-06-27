@@ -224,7 +224,14 @@ class KeyLookup(object):
         """
         kl_log.info(edge)
 
+        # valid-state: key must be a string
+        if not isinstance(key, str):
+            return None
+
         col = edge['col']
+        # valid-state: col must be a registered collection
+        if col not in self.get_collections().keys():
+            return None
         lookup = edge['lookup']
         # Apply the lookup regex if it exists
         if 'lookup_regex' in edge.keys():
@@ -232,10 +239,6 @@ class KeyLookup(object):
         field = edge['field']
 
         kl_log.info("key_lookup:  {} - {} - {} - {}".format(col, lookup, field, key))
-
-        # Valid state checks
-        if col not in self.get_collections().keys():
-            return None
 
         keys = []
         for doc in self.get_collections()[col].find({lookup: key}):
