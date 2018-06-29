@@ -47,11 +47,11 @@ class KeyLookup(object):
         if isinstance(input_types, list):
             for input_type in input_types:
                 if isinstance(input_type, tuple):
-                    if input_type[0] not in self.G.nodes():
+                    if input_type[0].lower() not in self.G.nodes():
                         raise ValueError("input_type is not a node in the key_lookup graph")
-                    self.input_types.append(input_type)
+                    self.input_types.append((input_type[0].lower(), input_type[1]))
                 elif isinstance(input_type, str):
-                    if input_type not in self.G.nodes():
+                    if input_type.lower() not in self.G.nodes():
                         raise ValueError("input_type is not a node in the key_lookup graph")
                     self.input_types.append((input_type, self.default_source))
                 else:
@@ -102,8 +102,8 @@ class KeyLookup(object):
                                 new_doc['_id'] = k
                                 output_docs.append(new_doc)
                             break
-                    # Break out of the outer loop if the outer loop did break
-                    else:
+                    # Break out of the outer loop if keys were found
+                    if keys:
                         break
 
                 # No keys were found, keep the original (unless the skip_on_failure option is passed)
