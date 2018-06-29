@@ -268,11 +268,21 @@ class KeyLookupAPI(object):
 
 class KeyLookupMyChemInfo(KeyLookupAPI):
     lookup_fields = {
-        'chebi': 'chebi.chebi_id',
         'unii': 'unii.unii',
+        'rxnorm': [
+            'drugcentral.xref.rxnorm',
+            'unii.rxcui'
+        ],        
         'drugbank': 'drugbank.drugbank_id',
+        'chebi': 'chebi.chebi_id',
         'chembl': 'chembl.molecule_chembl_id',
         'pubchem': 'pubchem.cid',
+        'drugname': [
+            'drugbank.name',
+            'unii.preferred_term',
+            'chebi.chebi_name',
+            'chembl.pref_name'
+        ],
         'inchi': [
             'drugbank.inchi',
             'chembl.inchi',
@@ -284,14 +294,17 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
             'pubchem.inchi_key'
         ]
     }
-
+    # The order of output_types decides the priority of the key types we used to get _id value
+    output_types=['inchikey', 'unii', 'rxnorm', 'drugbank', 'chebi', 'chembl', 'pubchem', 'drugname'],
+    
     def __init__(self, input_types,
-                 output_types=['inchikey', 'drugbank', 'chembl', 'pubchem'],
+                 output_types=None,
                  skip_on_failure=False):
         """
         Initialize the class by seting up the client object.
         """
-        super(KeyLookupMyChemInfo, self).__init__(input_types, output_types, skip_on_failure)
+        _output_types = output_types or self.output_types
+        super(KeyLookupMyChemInfo, self).__init__(input_types, _output_types, skip_on_failure)
 
     def _get_client(self):
         """
