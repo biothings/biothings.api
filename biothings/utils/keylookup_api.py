@@ -141,7 +141,7 @@ class KeyLookupAPI(object):
         doc_cache = []
         for doc in batchiter:
             for input_type in self.input_types:
-                val = self._nested_lookup(doc, input_type[1])
+                val = KeyLookupAPI._nested_lookup(doc, input_type[1])
                 if val:
                     id_lst.append('"{}"'.format(val))
             # always place the document in the cache
@@ -201,7 +201,7 @@ class KeyLookupAPI(object):
         """
         for output_type in self.output_types:
             for doc_field in self._get_lookup_field(output_type):
-                val = self._nested_lookup(h, doc_field)
+                val = KeyLookupAPI._nested_lookup(h, doc_field)
                 if val:
                     return val
 
@@ -220,8 +220,8 @@ class KeyLookupAPI(object):
             new_doc = None
             for input_type in self.input_types:
                 # doc[input_type[1]] must be typed to a string because qm_struct.keys are always strings
-                if self._nested_lookup(doc, input_type[1]) in qm_struct.keys():
-                    for key in qm_struct[self._nested_lookup(doc, input_type[1])]:
+                if KeyLookupAPI._nested_lookup(doc, input_type[1]) in qm_struct.keys():
+                    for key in qm_struct[KeyLookupAPI._nested_lookup(doc, input_type[1])]:
                         new_doc = copy.deepcopy(doc)
                         new_doc['_id'] = key
                         res_lst.append(new_doc)
