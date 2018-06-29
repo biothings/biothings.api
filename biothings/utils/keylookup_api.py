@@ -225,6 +225,9 @@ class KeyLookupAPI(object):
                         new_doc = copy.deepcopy(doc)
                         new_doc['_id'] = key
                         res_lst.append(new_doc)
+                # Break out if an input type was used.
+                if new_doc:
+                    break
             if not new_doc and not self.skip_on_failure:
                 res_lst.append(doc)
 
