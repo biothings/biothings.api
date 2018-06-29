@@ -242,7 +242,7 @@ class KeyLookup(object):
         keys = []
         for doc in self.get_collections()[col].find({lookup: key}):
             kl_log.info("document retrieved - looking up value")
-            keys = keys + [self._nested_lookup(doc, field)]
+            keys = keys + [KeyLookup._nested_lookup(doc, field)]
         return keys
 
     def get_collections(self):
