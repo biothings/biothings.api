@@ -278,7 +278,7 @@ def invalidate_cache(col_name,col_type="src"):
 # and doc_feeder should do the same as this function regarding backend support
 @requires_config
 def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
-              force_use=False, force_build=False):
+              force_use=False, force_build=False, validate_only=False):
     """Return an iterator for all _ids in collection "col"
        Search for a valid cache file if available, if not
        return a doc_feeder for that collection. Valid cache is
@@ -290,6 +290,8 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
        it's valid of not.
        "force_build" True will build a new cache even if current one exists
        and is valid.
+       "validate_only" will directly return [] if the cache is valid (convenient
+       way to check if the cache is valid)
     """
     src_db = get_src_db()
     ts = None
@@ -355,6 +357,9 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             pass
     if use_cache:
         logger.debug("Found valid cache file for '%s': %s" % (col.name,cache_file))
+        if validate_only:
+            logging.debug("Only validating cache, now return")
+            return []
         with open_compressed_file(cache_file) as cache_in:
             if cache_format:
                 iocache = io.TextIOWrapper(cache_in)
