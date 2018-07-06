@@ -1,4 +1,7 @@
 import os, subprocess, shutil
+from functools import partial
+from boto import connect_s3
+from biothings.utils.aws import send_s3_file
 
 from biothings.utils.hub_db import get_src_dump, get_src_build
 from biothings.utils.mongo import get_src_db, id_feeder, get_target_db, \
@@ -80,6 +83,7 @@ def export_ids(col_name):
             pcomp = subprocess.Popen(["tee"],stdin=psort.stdout,stdout=fout)
         psort.stdout.close()
         try:
+            logging.info("Running pipe to compute list of unique _ids")
             (out,err) = pcomp.communicate() # run the pipe! (blocking)
             if err:
                 raise Exception(err)
@@ -108,7 +112,28 @@ def export_ids(col_name):
     return outfn
 
 
-        
-
-
+def upload_ids(ids_file, redirect_from, s3_bucket, aws_key, aws_secret):
+    """
+    Upload file ids_file into s3_bucket and modify redirect_from key's metadata
+    so redirect_from link will now point to ids_file
+    redirect_from s3 key must exist.
+    """
+    # cache file should be named the same as target_name
+    logging.info("Uploading _ids file %s to s3 (bucket: %s)" % (repr(ids_file),s3_bucket))
+    s3path = os.path.basename(ids_file)
+    send_s3_file(ids_file, s3path, overwrite=True,
+                 s3_bucket=s3_bucket,
+                 aws_key=aws_key,
+                 aws_secret=aws_secret)
+    # make the file public
+    s3 = connect_s3(aws_key, aws_secret) 
+    bucket = s3.get_bucket(s3_bucket)
+    s3key = bucket.get_key(s3path)
+    s3key.set_acl("public-read")
+    # update permissions and redirect metadata
+    k = bucket.get_key(redirect_from)
+    assert k, "Can't find s3 key '%s' to set redirection" % redirect_from
+    k.set_redirect("/%s" % s3path)
+    k.set_acl("public-read")
+    logging.info("IDs file '%s' uploaded to s3, redirection set from '%s'" % (ids_file,redirect_from), extra={"notify":True})
 
