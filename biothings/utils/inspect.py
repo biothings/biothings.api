@@ -2,7 +2,7 @@
 This module contains util functions may be shared by both BioThings data-hub and web components.
 In general, do not include utils depending on any third-party modules.
 """
-import math, statistics
+import math, statistics, random
 import time, re
 import logging
 from pprint import pprint, pformat
@@ -249,7 +249,8 @@ def merge_scalar_list(mapt,mode):
             merge_scalar_list(e,mode)
 
 
-def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging,pre_mapping=False):
+def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
+                 pre_mapping=False, limit=None, sample=False):
     """Inspect docs and return a summary of its structure:
     - mode:
         + "type": explore documents and report strict data structure
@@ -262,6 +263,10 @@ def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging,pre_mapp
        overhead computing multiple types as most time is spent on actually getting the data)
     - clean: don't delete recorded vqlues or temporary results
     - merge: merge scalar into list when both exist (eg. {"val":..} and [{"val":...}]
+    - limit: can limit the inspection to the x first docs (None = no limit, inspects all)
+    - sample: in combination with limit, randomly extract a sample of 'limit' docs
+              (so not necessarily the x first ones defined by limit). If random.random()
+              is greater than sample, doc is inspected, otherwise it's skipped
     """
 
     def post(mapt, mode,clean):
@@ -292,7 +297,17 @@ def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging,pre_mapp
     errors = set()
     t0 = time.time()
     innert0 = time.time()
+    if not sample is None:
+        assert limit, "Parameter 'sample' requires 'limit' to be defined"
+        assert sample != 1, "Sample value 1 not allowed (no documents would be inspected)"
+    if limit:
+        limit = int(limit)
+        logger.debug("Limiting inspection to the %s first documents" % limit)
     for doc in docs:
+        if not sample is None:
+            if random.random() <= sample:
+                logger.debug("skip")
+                continue
         for m in modes:
             try:
                 inspect(doc,mapt=_map[m],mode=m)
@@ -302,6 +317,9 @@ def inspect_docs(docs,mode="type",clean=True,merge=False,logger=logging,pre_mapp
         if cnt % 10000 == 0:
             logger.info("%d documents processed [%s]" % (cnt,timesofar(innert0)))
             innert0 = time.time()
+        if limit and cnt > limit:
+            logger.debug("done")
+            break
     logger.info("Done [%s]" % timesofar(t0))
     logger.info("Post-processing (stats)")
     for m in modes:

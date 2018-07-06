@@ -24,13 +24,13 @@ class InspectorError(Exception):
 
 
 # commong function used to call inspector
-def inspect_data(yielder_provider,mode):
+def inspect_data(yielder_provider,mode,**kwargs):
     yielder = yielder_provider()
     if callable(yielder):
         data = yielder()
     else:
         data = yielder
-    return btinspect.inspect_docs(data,mode=mode)
+    return btinspect.inspect_docs(data,mode=mode,**kwargs)
 
 
 # just wrap functions returnning data so they're called in new process
@@ -156,7 +156,7 @@ class InspectorManager(BaseManager):
                     # (it's be randomly generated again) and we won't be able to register results
                     pass
                 job = yield from self.job_manager.defer_to_process(pinfo,
-                        partial(inspect_data,yielder_provider,mode=mode))
+                        partial(inspect_data,yielder_provider,mode=mode,**kwargs))
                 def inspected(f):
                     nonlocal inspected
                     nonlocal got_error
