@@ -47,33 +47,8 @@ class KeyLookupAPI(object):
         Initialize the KeyLookupAPI object.
         """
         self._generate_return_fields()
-
-        self.input_types = []
-        if isinstance(input_types, str):
-            input_types = [input_types]
-        if isinstance(input_types, list):
-            for input_type in input_types:
-                if isinstance(input_type, tuple):
-                    self.input_types.append((input_type[0].lower(), input_type[1]))
-                else:
-                    if input_type in self.lookup_fields.keys():
-                        self.input_types.append((input_type.lower(), self.default_source))
-                    else:
-                        raise ValueError('Provided input_types is not configured in lookup_fields')
-        else:
-            raise ValueError('Provided input_types is not of the correct type')
-
-        if not isinstance(output_types, list):
-            raise ValueError('Provided output_types is not a list')
-        self.output_types = []
-        for output_type in output_types:
-            if not isinstance(output_type, str):
-                raise ValueError('output_types provided is not a string')
-            output_type_l = output_type.lower()
-            if output_type_l in self.lookup_fields.keys():
-                self.output_types.append(output_type_l)
-        if not self.output_types:
-            raise ValueError('output_types provided do not contain any values in lookup_fields')
+        self.input_types = self._parse_input_types(input_types)
+        self.output_types = self._parse_output_types(output_types)
 
         if not isinstance(skip_on_failure, bool):
             raise ValueError('skip_on_failure must be a boolean value')
@@ -82,7 +57,48 @@ class KeyLookupAPI(object):
         # default value of None for client
         self.client = None
 
+        # Keep track of one_to_many relationships
         self.one_to_many_cnt = 0
+
+    def _parse_input_types(self, input_types):
+        """
+        Parse the input_types argument
+        :return:
+        """
+        res_input_types = []
+        if isinstance(input_types, str):
+            input_types = [input_types]
+        if isinstance(input_types, list):
+            for input_type in input_types:
+                if isinstance(input_type, tuple):
+                    res_input_types.append((input_type[0].lower(), input_type[1]))
+                else:
+                    if input_type in self.lookup_fields.keys():
+                        res_input_types.append((input_type.lower(), self.default_source))
+                    else:
+                        raise ValueError('Provided input_types is not configured in lookup_fields')
+        else:
+            raise ValueError('Provided input_types is not of the correct type')
+        return res_input_types
+
+    def _parse_output_types(self, output_types):
+        """
+        parse output_types argument
+        :param output_types:
+        :return:
+        """
+        res_output_types = []
+        if not isinstance(output_types, list):
+            raise ValueError('Provided output_types is not a list')
+        for output_type in output_types:
+            if not isinstance(output_type, str):
+                raise ValueError('output_types provided is not a string')
+            output_type_l = output_type.lower()
+            if output_type_l in self.lookup_fields.keys():
+                res_output_types.append(output_type_l)
+        if not res_output_types:
+            raise ValueError('output_types provided do not contain any values in lookup_fields')
+        return res_output_types
 
     def __call__(self, f):
         """
