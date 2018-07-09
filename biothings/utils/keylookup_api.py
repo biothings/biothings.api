@@ -30,7 +30,8 @@ class KeyLookupAPI(object):
     Required Options:
     - input_types
         - 'type'
-        - [('type1': 'nested.source_field1'), ('type2': 'nested.source_field2'), ...]
+        - ('type', 'nested_source_field')
+        - [('type1', 'nested.source_field1'), ('type2', 'nested.source_field2'), ...]
     - output_types:
         - 'type'
         - ['type1', 'type2']
@@ -67,6 +68,8 @@ class KeyLookupAPI(object):
         """
         res_input_types = []
         if isinstance(input_types, str):
+            input_types = [input_types]
+        if isinstance(input_types, tuple):
             input_types = [input_types]
         if isinstance(input_types, list):
             for input_type in input_types:
