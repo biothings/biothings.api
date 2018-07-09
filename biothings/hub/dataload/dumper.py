@@ -421,6 +421,12 @@ class BaseDumper(object):
             job = yield from job_manager.defer_to_process(pinfo, partial(self.download,remote,local))
             job.add_done_callback(done)
             jobs.append(job)
+            # raise error as soon as we get it:
+            # 1. it prevents from launching things for nothing
+            # 2. if we gather the error at the end of the loop *and* if we
+            #    have more errors than the queue size, we get stuck
+            if got_error:
+                raise got_error
         yield from asyncio.gather(*jobs)
         if got_error:
             raise got_error
@@ -477,6 +483,10 @@ class FTPDumper(BaseDumper):
             lastmodified = time.mktime(datetime.strptime(lastmodified, '%Y%m%d%H%M%S').timetuple())
             os.utime(localfile, (lastmodified, lastmodified))
             return code
+        except Exception as e:
+            self.logger.error("Error while downloading %s: %s" % (remotefile,e))
+            self.release_client()
+            raise
         finally:
             self.release_client()
 

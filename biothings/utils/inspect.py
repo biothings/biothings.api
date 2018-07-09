@@ -192,7 +192,7 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
             elif type(struct) == bool:
                 report(struct,mapt[typ])
     else:
-        raise TypeError("Can't analyze type %s" % type(struct))
+        raise TypeError("Can't analyze type %s (data was: %s)" % (type(struct),struct))
 
     return mapt
 
@@ -312,6 +312,7 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
             try:
                 inspect(doc,mapt=_map[m],mode=m)
             except Exception as e:
+                logging.error("Can't inspect document (_id: %s) because: %s" % (doc.get("_id"),e))
                 errors.add(str(e))
         cnt += 1
         if cnt % 10000 == 0:
