@@ -30,8 +30,7 @@ class KeyLookupAPI(object):
     Required Options:
     - input_types
         - 'type'
-        - ('type': 'nested.source_field')
-        - [('type1': 'nested.source_field1'), ('type2': 'nested.source_field2')]
+        - [('type1': 'nested.source_field1'), ('type2': 'nested.source_field2'), ...]
     - output_types:
         - 'type'
         - ['type1', 'type2']
