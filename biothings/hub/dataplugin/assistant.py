@@ -11,8 +11,8 @@ from biothings.utils.common import timesofar, rmdashfr, uncompressall, \
                                    get_class_from_classpath
 from biothings.utils.loggers import HipchatHandler
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
-from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER, \
-                             DATA_PLUGIN_FOLDER, DATA_ARCHIVE_ROOT
+from biothings import config as btconfig
+logging = btconfig.logger
 
 from biothings.utils.manager import BaseSourceManager
 from biothings.hub.dataload.uploader import set_pending_to_upload
@@ -24,7 +24,6 @@ from biothings.hub.dataplugin.manager import GitDataPlugin, ManualDataPlugin
 
 class AssistantException(Exception):
     pass
-
 
 class BaseAssistant(object):
 
@@ -40,8 +39,8 @@ class BaseAssistant(object):
     def _dict_for_base(self,data_url):
         return {
                 "SRC_NAME" : self.plugin_name,
-                "SRC_ROOT_FOLDER" : os.path.join(DATA_ARCHIVE_ROOT,self.plugin_name),
-                "SRC_URLS" : data_url
+                "SRC_ROOT_FOLDER" : os.path.join(btconfig.DATA_ARCHIVE_ROOT,self.plugin_name),
+                "SRC_URLS" : [data_url]
                 }
 
     def _dict_for_http(self, data_url):
@@ -185,7 +184,7 @@ class GithubAssistant(BaseAssistant):
 
     def get_classdef(self):
         # generate class dynamically and register
-        src_folder = os.path.join(DATA_PLUGIN_FOLDER, self.plugin_name)
+        src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, self.plugin_name)
         confdict = {"SRC_NAME":self.plugin_name,"GIT_REPO_URL":self.url,"SRC_ROOT_FOLDER":src_folder}
         # TODO: store confdict in hubconf collection
         k = type("AssistedGitDataPlugin_%s" % self.plugin_name,(GitDataPlugin,),confdict)
@@ -224,7 +223,7 @@ class LocalAssistant(BaseAssistant):
 
     def get_classdef(self):
         # generate class dynamically and register
-        src_folder = os.path.join(DATA_PLUGIN_FOLDER, self.plugin_name)
+        src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, self.plugin_name)
         confdict = {"SRC_NAME":self.plugin_name,"SRC_ROOT_FOLDER":src_folder}
         k = type("AssistedManualDataPlugin_%s" % self.plugin_name,(ManualDataPlugin,),confdict)
         return k
@@ -245,11 +244,11 @@ class AssistantManager(BaseSourceManager):
         self.data_plugin_manager = data_plugin_manager
         self.dumper_manager = dumper_manager
         self.uploader_manager = uploader_manager
-        if not os.path.exists(DATA_PLUGIN_FOLDER):
-            os.makedirs(DATA_PLUGIN_FOLDER)
+        if not os.path.exists(btconfig.DATA_PLUGIN_FOLDER):
+            os.makedirs(btconfig.DATA_PLUGIN_FOLDER)
         # register data plugin folder in python path so we can import
         # plugins (sub-folders) as packages
-        sys.path.insert(0,DATA_PLUGIN_FOLDER)
+        sys.path.insert(0,btconfig.DATA_PLUGIN_FOLDER)
 
     def create_instance(self, klass, url):
         logging.debug("Creating new %s instance" % klass.__name__)
@@ -344,7 +343,7 @@ class AssistantManager(BaseSourceManager):
         plugin_dirs = []
         if autodiscover:
             try:
-                plugin_dirs = os.listdir(DATA_PLUGIN_FOLDER)
+                plugin_dirs = os.listdir(btconfig.DATA_PLUGIN_FOLDER)
             except FileNotFoundError as e:
                 raise AssistantException("Invalid DATA_PLUGIN_FOLDER: %s" % e)
         dp = get_data_plugin()
@@ -362,7 +361,7 @@ class AssistantManager(BaseSourceManager):
         # some still unregistered ? (note: list always empty if autodiscover=False)
         if plugin_dirs:
             for pdir in plugin_dirs:
-                fulldir = os.path.join(DATA_PLUGIN_FOLDER, pdir)
+                fulldir = os.path.join(btconfig.DATA_PLUGIN_FOLDER, pdir)
                 # basic sanity check to make sure it's plugin
                 if "manifest.json" in os.listdir(fulldir) and \
                         json.load(open(os.path.join(fulldir,"manifest.json"))):
