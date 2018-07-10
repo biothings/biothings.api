@@ -8,7 +8,7 @@ from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
 
 # Setup logger and logging level
-kl_log = get_logger('keylookup_networkx', btconfig.LOG_FOLDER)
+kl_log = get_logger('keylookup', btconfig.LOG_FOLDER)
 
 
 class KeyLookup(object):
@@ -79,12 +79,14 @@ class KeyLookup(object):
         :return:
         """
         def wrapped_f(*args):
+            kl_log.info("Converting _id from (type,key) %s to type %s" % \
+                    (repr(self.input_types),repr(self.output_types)))
             input_docs = f(*args)
-            kl_log.info("input: %s" % input_docs)
+            kl_log.debug("input: %s" % input_docs)
             output_docs = []
             for doc in input_docs:
-                kl_log.info("Decorator arguments:  {}".format(self.input_types))
-                kl_log.info("Input document:  {}".format(doc))
+                kl_log.debug("Decorator arguments:  {}".format(self.input_types))
+                kl_log.debug("Input document:  {}".format(doc))
                 keys = None
                 for output_type in self.output_types:
                     for input_type in self.input_types:
@@ -106,7 +108,7 @@ class KeyLookup(object):
                     output_docs.append(doc)
 
             for odoc in output_docs:
-                kl_log.info("yield odoc: %s" % odoc)
+                #kl_log.info("yield odoc: %s" % odoc)
                 yield odoc
 
         return wrapped_f
@@ -121,7 +123,7 @@ class KeyLookup(object):
             collection = mongo.get_src_db()[col]
             if collection.count() > 0:
                 self.collections[col] = collection
-                kl_log.info("Loading collection:  {} (count:  {})".format(col, collection.count()))
+                kl_log.info("Registering collection:  {} (count:  {})".format(col, collection.count()))
         if not self.collections:
             raise ValueError("At least one configured collection is required for MongoDB key lookup.")
 
@@ -184,12 +186,12 @@ class KeyLookup(object):
         :param key: key value of type 'start'
         :return:
         """
-        kl_log.info("Travel Target:  {}".format(target))
+        kl_log.debug("Travel Target:  {}".format(target))
         start_key = key
         for path in map(nx.utils.misc.pairwise, self.paths[(start, target)]):
             keys = [start_key]
             for (v1, v2) in path:
-                kl_log.info("travel_edge:  {} - {}".format(v1, v2))
+                kl_log.debug("travel_edge:  {} - {}".format(v1, v2))
                 edge = self.G.edges[v1, v2]['object']
                 new_keys = []
                 for k in keys:
@@ -197,7 +199,7 @@ class KeyLookup(object):
                     if followed_keys:
                         new_keys = new_keys + followed_keys
                 keys = new_keys
-                kl_log.info("new_key ({})".format(keys))
+                kl_log.debug("new_key ({})".format(keys))
                 if not keys:
                     break
 
@@ -216,8 +218,6 @@ class KeyLookup(object):
         :param key:
         :return:
         """
-        kl_log.info(edge)
-
         # valid-state: key must be a string
         if not isinstance(key, str):
             return None
@@ -232,11 +232,10 @@ class KeyLookup(object):
             key = re.sub(edge['lookup_regex'][0], edge['lookup_regex'][1], key)
         field = edge['field']
 
-        kl_log.info("key_lookup:  {} - {} - {} - {}".format(col, lookup, field, key))
+        kl_log.debug("key_lookup:  {} - {} - {} - {}".format(col, lookup, field, key))
 
         keys = []
         for doc in self.get_collections()[col].find({lookup: key}):
-            kl_log.info("document retrieved - looking up value")
             keys = keys + [KeyLookup._nested_lookup(doc, field)]
         return keys
 
