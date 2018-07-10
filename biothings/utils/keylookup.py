@@ -6,14 +6,9 @@ from networkx import all_simple_paths, nx
 import biothings.utils.mongo as mongo
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
-from biothings import config_for_app
-
-# Configuration of collections from biothings config file
-config_for_app(btconfig)
 
 # Setup logger and logging level
 kl_log = get_logger('keylookup_networkx', btconfig.LOG_FOLDER)
-kl_log.setLevel(logging.ERROR)
 
 
 class KeyLookup(object):
