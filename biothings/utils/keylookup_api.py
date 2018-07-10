@@ -306,7 +306,6 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
     lookup_fields = {
         'unii': 'unii.unii',
         'rxnorm': [
-            'drugcentral.xref.rxnorm',
             'unii.rxcui'
         ],        
         'drugbank': 'drugbank.drugbank_id',
