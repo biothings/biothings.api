@@ -89,7 +89,7 @@ def is_float(f):
     return isinstance(f, float)
 
 def is_scalar(f):
-    return type(f) in (int,str,bool,float,bytes) or f is None
+    return type(f) in (int,str,bool,float,bytes) or f is None or is_int(f) or is_float(f) or is_str(f)
 
 def iter_n(iterable, n, with_cnt=False):
     '''

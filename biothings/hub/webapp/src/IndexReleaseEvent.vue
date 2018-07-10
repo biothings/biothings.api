@@ -17,7 +17,7 @@
             </div>
             <div class="meta">
                 <i class="file alternate icon"></i> {{release.count}} documents indexed
-                <button :class="[release.snapshot ? 'disabled' : '','ui mini labeled icon button']"
+                <!--button :class="[release.snapshot ? 'disabled' : '','ui mini labeled icon button']"
                         @click="snapshot(release)">
                     <i class="bookmark icon"></i>
                     Snapshot
@@ -26,7 +26,7 @@
                         @click="publish(release)">
                     <i class="share alternate square icon"></i>
                     Publish
-                </button>
+                </button-->
             </div>
         </div>
     </div>

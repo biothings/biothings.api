@@ -110,7 +110,7 @@ export default {
     name: 'api-grid',
     mounted () {
         console.log("ApiGrid mounted");
-        $('.ui.dropdown').dropdown();
+        $('.ui.apibackends.dropdown').dropdown();
         $('#apis .ui.sidebar')
         .sidebar({context:$('#apis')})
         .sidebar('setting', 'transition', 'overlay')
@@ -121,7 +121,6 @@ export default {
         // there's some kind of race-condition regarding dropdown init, if
         // in mounted() they won't get init, prob. because data changed and needs to
         // be re-rendered
-        $('.ui.buildconfigs.dropdown').dropdown();
     },
     created() {
         this.getApis();
@@ -159,19 +158,32 @@ export default {
             this.getApis();
         },
         createAPI: function() {
+            $('#apis .ui.sidebar').sidebar("hide");
             var self = this;
             axios.get(axios.defaults.baseURL + '/index_manager?remote=1')
             .then(response => {
                 self.backends = [];
                 var envs = response.data.result;
                 $.each(envs.env, function( env, value ) {
-                    for(var cat in value.index) {
-                        var idx = value.index[cat];
-                        self.backends.push({
-                            "env":env, "host":value["host"],
-                            "index":idx["index"],
-                            "doc_type":idx["doc_type"]
-                        });
+                    var fillbackend = function(idxs) {
+                        for(var idx in idxs) {
+                            self.backends.push({
+                                "env":env, "host":value["host"],
+                                "index":idxs[idx]["index"],
+                                "doc_type":idxs[idx]["doc_type"]
+                            });
+                        }
+                    }
+                    // either directly a list of index definition
+                    // or a dict with different
+                    if(Array.isArray(value.index)) {
+                        var idxs = value.index;
+                        fillbackend(idxs);
+                    } else {
+                        for(var cat in value.index) {
+                            var idxs = value.index[cat];
+                            fillbackend(idxs);
+                        }
                     }
                 });
                 $(".ui.apibackends.dropdown").dropdown();
@@ -179,7 +191,6 @@ export default {
             .catch(err => {
                 console.log("Error getting index environments: ");
                 console.log(err);
-                throw err;
             })
             $(`.ui.basic.createapi.modal`)
             .modal("setting", {

@@ -31,7 +31,7 @@
             <div class="content">
                 <p>Specify a repository type and URL</p>
             </div>
-            <div class="ui form">
+            <div class="ui newdataplugin form">
                 <div class="fields">
                     <div class="required four wide field">
                         <select class="ui dropdown">
@@ -106,7 +106,7 @@ export default {
             .modal("setting", {
                 detachable : false,
                 onApprove: function () {
-                    var url = $(".ui.form").form('get field', "repo_url").val();
+                    var url = $(".ui.newdataplugin.form").form('get field', "repo_url").val();
                     axios.post(axios.defaults.baseURL + '/dataplugin/register_url',{"url":url})
                     .then(response => {
                         console.log(response.data.result)

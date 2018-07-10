@@ -193,8 +193,11 @@ class SourceManager(BaseSourceManager):
                         sources[src["_id"]] = self.sumup_source(src,detailed)
                     if src.get("upload"):
                         for subname in src["upload"].get("jobs",{}):
-                            sources[src["name"]].setdefault("upload",{"sources" : {}})["sources"].setdefault(subname,{})
-                            sources[src["name"]]["upload"]["sources"][subname]["uploader"] = src["upload"]["jobs"][subname]["uploader"]
+                            try:
+                                sources[src["name"]].setdefault("upload",{"sources" : {}})["sources"].setdefault(subname,{})
+                                sources[src["name"]]["upload"]["sources"][subname]["uploader"] = src["upload"]["jobs"][subname].get("uploader")
+                            except Exception as e:
+                                logging.error("Source is invalid: %s\n%s" % (e,pformat(src)))
             # deal with plugin info if any
             dp = bydpsrcs.get(_id)
             if dp:

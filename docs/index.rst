@@ -54,6 +54,7 @@ Alternatively, you can download the source code, or clone the `BioThings SDK rep
     doc/single_source_tutorial
     doc/multiple_sources_tutorial
     doc/standalone
+    doc/studio
     doc/docker_tutorial
 
 .. toctree::

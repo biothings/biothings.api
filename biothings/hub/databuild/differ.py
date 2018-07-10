@@ -1447,7 +1447,7 @@ class DifferManager(BaseManager):
             os.rename(synced,diff_file)
 
     def publish_diff(self, s3_folder, old_db_col_names=None, new_db_col_names=None,
-            diff_folder=None, release_folder=None, steps=["reset","upload","meta"], s3_bucket=None):
+            diff_folder=None, release_folder=None, steps=["reset","upload","meta","post"], s3_bucket=None):
         """
         Publish diff data diff files in config.S3_DIFF_BUCKET/s3_folder and metadata, release notes, etc...
         in config.S3_RELEASE_BUCKET/s3_folder, and then register that version so it's available to auto-updating hub.
@@ -1579,6 +1579,17 @@ class DifferManager(BaseManager):
                 yield from job
                 jobs.append(job)
 
+            if "post" in steps:
+                # then we upload all the folder content
+                pinfo["step"] = "post"
+                self.logger.info("Runnig ost-publish step")
+                job = yield from self.job_manager.defer_to_thread(pinfo,partial(self.post_publish,
+                            s3_folder=s3_folder, old_db_col_names=old_db_col_names,
+                            new_db_col_names=new_db_col_names, diff_folder=diff_folder,
+                            release_folder=release_folder, steps=steps, s3_bucket=s3_bucket))
+                yield from job
+                jobs.append(job)
+
             def uploaded(f):
                 try:
                     res = f.result()
@@ -1592,6 +1603,11 @@ class DifferManager(BaseManager):
             yield from task
 
         return asyncio.ensure_future(do())
+
+    def post_publish(self, s3_folder, old_db_col_names, new_db_col_names, diff_folder, release_folder,
+                     steps, s3_bucket, *args, **kwargs):
+        """Post-publish hook, can be implemented in sub-class"""
+        return
 
     def select_old_collection(self,new_id):
         """

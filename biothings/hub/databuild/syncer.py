@@ -479,29 +479,7 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
                     raise
 
     # update: get doc from indexer and apply diff
-    batch = []
-    ids = [p["_id"] for p in diff["update"]]
-    for i,doc in enumerate(indexer.get_docs(ids)):
-        try:
-            patch_info = diff["update"][i] # same order as what's return by get_doc()...
-            assert patch_info["_id"] == doc["_id"],"%s != %s" % (patch_info["_id"],doc["_id"]) # ... but just make sure
-            newdoc = jsonpatch.apply_patch(doc,patch_info["patch"])
-            if newdoc == doc:
-                # already applied
-                logging.warning("_id '%s' already synced" % doc["_id"])
-                res["skipped"] += 1
-                continue
-            batch.append(newdoc)
-        except jsonpatch.JsonPatchConflict as e:
-            # assuming already applieda
-            logging.warning("_id '%s' already synced ? JsonPatchError: %s" % (doc["_id"],e))
-            res["skipped"] += 1
-            continue
-        if len(batch) >= batch_size:
-            res["updated"] += indexer.index_bulk(batch,batch_size)[0]
-            batch = []
-    if batch:
-        res["updated"] += indexer.index_bulk(batch,batch_size)[0]
+    sync_es_for_update(indexer,diff["update"],res)
 
     # delete: remove from "old"
     for ids in iter_n(diff["delete"],batch_size):
@@ -595,29 +573,8 @@ def sync_es_coldhot_jsondiff_worker(diff_file, es_config, new_db_col_names, batc
             logging.error("Error while updating (via new hot detected docs) documents: %s" % e)
 
     # update: get doc from indexer and apply diff
-    batch = []
-    ids = [p["_id"] for p in diff["update"]]
-    for i,doc in enumerate(indexer.get_docs(ids)):
-        try:
-            patch_info = diff["update"][i] # same order as what's return by get_doc()...
-            assert patch_info["_id"] == doc["_id"],"%s != %s" % (patch_info["_id"],doc["_id"]) # ... but just make sure
-            newdoc = jsonpatch.apply_patch(doc,patch_info["patch"])
-            if newdoc == doc:
-                # already applied
-                logging.warning("_id '%s' already synced" % doc["_id"])
-                res["skipped"] += 1
-                continue
-            batch.append(newdoc)
-        except jsonpatch.JsonPatchConflict as e:
-            # assuming already applied
-            logging.warning("_id '%s' already synced ? JsonPatchError: %s" % (doc["_id"],e))
-            res["skipped"] += 1
-            continue
-        if len(batch) >= batch_size:
-            res["updated"] += indexer.index_bulk(batch,batch_size)[0]
-            batch = []
-    if batch:
-        res["updated"] += indexer.index_bulk(batch,batch_size)[0]
+    # note: it's the same process as for non-coldhot
+    sync_es_for_update(indexer,diff["update"],res)
 
     # delete: remove from "old"
     for ids in iter_n(diff["delete"],batch_size):
@@ -629,6 +586,36 @@ def sync_es_coldhot_jsondiff_worker(diff_file, es_config, new_db_col_names, batc
     # mark as synced
     os.rename(diff_file,synced_file)
     return res
+
+def sync_es_for_update(indexer, diffupdates, res):
+    batch = []
+    ids = [p["_id"] for p in diffupdates]
+    iterids_bcnt = iter_n(ids,batch_size,True)
+    for batchids,bcnt in iterids_bcnt:
+        for i,doc in enumerate(indexer.get_docs(batchids)):
+            # recompute correct index in diff["update"], since we split it in batches
+            diffidx = i + bcnt - len(batchids) # len(batchids) is not == batch_size for the last one...
+            try:
+                patch_info = diffupdates[i] # same order as what's return by get_doc()...
+                assert patch_info["_id"] == doc["_id"],"%s != %s" % (patch_info["_id"],doc["_id"]) # ... but just make sure
+                newdoc = jsonpatch.apply_patch(doc,patch_info["patch"])
+                if newdoc == doc:
+                    # already applied
+                    logging.warning("_id '%s' already synced" % doc["_id"])
+                    res["skipped"] += 1
+                    continue
+                batch.append(newdoc)
+            except jsonpatch.JsonPatchConflict as e:
+                # assuming already applied
+                logging.warning("_id '%s' already synced ? JsonPatchError: %s" % (doc["_id"],e))
+                res["skipped"] += 1
+                continue
+            if len(batch) >= batch_size:
+                res["updated"] += indexer.index_bulk(batch,batch_size)[0]
+                batch = []
+        if batch:
+            res["updated"] += indexer.index_bulk(batch,batch_size)[0]
+
 
 class SyncerManager(BaseManager):
 

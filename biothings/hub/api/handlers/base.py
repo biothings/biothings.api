@@ -67,8 +67,8 @@ class RootHandler(DefaultHandler):
     @asyncio.coroutine
     def get(self):
         self.write({
-                "name": getattr(config,"HUB_NAME","Noname hub"),
-                "version": getattr(config,"HUB_VERSION","noversion"),
-                "icon" : getattr(config,"HUB_ICON","http://18.237.6.45/static/img/biothings-logo.svg"),
+                "name": getattr(config,"HUB_NAME",None),
+                "version": getattr(config,"HUB_VERSION",None),
+                "icon" : getattr(config,"HUB_ICON",None),
                 "now": datetime.datetime.now(),
                 })

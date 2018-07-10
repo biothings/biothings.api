@@ -22,6 +22,37 @@ from biothings.utils.manager import BaseManager
 class InspectorError(Exception):
     pass
 
+
+# commong function used to call inspector
+def inspect_data(yielder_provider,mode,**kwargs):
+    yielder = yielder_provider()
+    if callable(yielder):
+        data = yielder()
+    else:
+        data = yielder
+    return btinspect.inspect_docs(data,mode=mode,**kwargs)
+
+
+# just wrap functions returnning data so they're called in new process
+# when submitted by job_manager
+def provider_uploader(uploader,data_folder):
+    return uploader.load_data(data_folder)
+
+def provider_source(data_provider):
+    # need to ge the actual collection...
+    main_sub = data_provider[1].split(".")
+    if len(main_sub) == 2:
+        # get the sub-source collection
+        col = create_backend((data_provider[0],main_sub[1])).target_collection
+    else:
+        col = create_backend(data_provider).target_collection
+    return col.find() # cursor
+
+def provider_build(data_provider):
+    col = create_backend(data_provider).target_collection
+    return col.find() # cursor
+
+
 class InspectorManager(BaseManager):
 
     def __init__(self, upload_manager, build_manager, *args, **kwargs):
@@ -83,46 +114,20 @@ class InspectorManager(BaseManager):
                 if isinstance(registerer_obj,ParallelizedSourceUploader) and data_provider[0] == "uploader":
                     raise InspectorError("ParallelizedSourceUploader-based uploaders aren't supported (yet)")
 
-                # just wrap functions returnning data so they're called in new process
-                # when submitted by job_manager
-                def provider_uploader(uploader,data_folder):
-                    return uploader.load_data(data_folder)
-                def provider_source():
-                    # need to ge the actual collection...
-                    main_sub = data_provider[1].split(".")
-                    if len(main_sub) == 2:
-                        # get the sub-source collection
-                        col = create_backend((data_provider[0],main_sub[1])).target_collection
-                    else:
-                        col = create_backend(data_provider).target_collection
-                    return col.find() # cursor
-
                 # data providers are different
                 if data_provider[0] == "uploader":
                     data_folder = doc["download"]["data_folder"]
                     # in this case, registerer_obj is also the object used to get the data
                     yielder_provider = partial(provider_uploader,registerer_obj,data_folder)
                 else:
-                    yielder_provider = partial(provider_source)
+                    yielder_provider = partial(provider_source,data_provider)
             else:
                 try:
                     data_provider_type = "build"
-                    def provider_build():
-                        col = create_backend(data_provider).target_collection
-                        return col.find() # cursor
                     registerer_obj = self.build_manager.get_builder(data_provider)
-                    yielder_provider = provider_build
+                    yielder_provider = partial(provider_build,data_provider)
                 except Exception as e:
                     raise InspectorError("Unable to create backend from '%s': %s" % (repr(data_provider),e))
-
-        # commong function used to call inspector
-        def inspect_data(yielder_provider,mode):
-            yielder = yielder_provider()
-            if callable(yielder):
-                data = yielder()
-            else:
-                data = yielder
-            return btinspect.inspect_docs(data,mode=mode)
 
         inspected = None
         got_error = None
@@ -151,7 +156,7 @@ class InspectorManager(BaseManager):
                     # (it's be randomly generated again) and we won't be able to register results
                     pass
                 job = yield from self.job_manager.defer_to_process(pinfo,
-                        partial(inspect_data,yielder_provider,mode=mode))
+                        partial(inspect_data,yielder_provider,mode=mode,**kwargs))
                 def inspected(f):
                     nonlocal inspected
                     nonlocal got_error

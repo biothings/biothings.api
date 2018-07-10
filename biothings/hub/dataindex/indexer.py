@@ -320,7 +320,7 @@ class IndexerManager(BaseManager):
         return fut
 
     def publish_snapshot(self, indexer_env, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
-                         repository=btconfig.SNAPSHOT_REPOSITORY):
+                         repository=btconfig.SNAPSHOT_REPOSITORY, steps=["meta","post"]):
         """
         Publish snapshot metadata (not the actal snapshot, but the metadata, release notes, etc... associated to it) to S3,
         and then register that version to it's available to auto-updating hub.
@@ -336,91 +336,154 @@ class IndexerManager(BaseManager):
         'index' is mainly used to get the build_version from metadata as this information isn't part of snapshot
         information. It means in order to publish a snaphost, both the snapshot *and* the index must exist.
         """
+        if type(steps) == str:
+            steps = [steps]
         assert getattr(btconfig,"BIOTHINGS_ROLE",None) == "master","Hub needs to be master to publish metadata about snapshots"
         # keep passed values if any, otherwise derive them
         index = index or snapshot
         snapshot = snapshot or index
-        # snapshot at this point can be totally different than original
-        # target_name but we still use it to potentially custom indexed
-        # (anyway, it's just to access some snapshot info so default indexer 
-        # will work)
-        idxklass = self.find_indexer(snapshot) 
-        idxkwargs = self[indexer_env]
-        idxr = idxklass(**idxkwargs)
-        es_idxr = ESIndexer(index=index,doc_type=idxr.doc_type,es_host=idxr.host)
-        esb = DocESBackend(es_idxr)
-        assert esb.version, "Can't retrieve a version from index '%s'" % index
-        self.logger.info("Generating JSON metadata for full release '%s'" % esb.version)
-        repo = es_idxr._es.snapshot.get_repository(repository)
-        release_note = "release_%s" % esb.version
-        # generate json metadata about this diff release
-        assert snapshot, "Missing snapshot name information"
-        full_meta = {
-                "type": "full",
-                "build_version": esb.version,
-                "target_version": esb.version,
-                "release_date" : datetime.now().isoformat(),
-                "app_version": None,
-                "metadata" : {"repository" : repo,
-                              "snapshot_name" : snapshot}
-                }
         # TODO: merged collection name can be != index name which can be != snapshot name...
         if prev and index and not release_folder:
             release_folder = generate_folder(btconfig.RELEASE_PATH,prev,index)
-        if release_folder and os.path.exists(release_folder):
-            # ok, we have something in that folder, just pick the release note files
-            # (we can generate diff + snaphost at the same time, so there could be diff files in that folder
-            # from a diff process done before. release notes will be the same though)
-            s3basedir = os.path.join(s3_folder,esb.version)
-            notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
-            self.logger.info("Uploading release notes from '%s' to s3 folder '%s'" % (notes,s3basedir))
-            for note in notes:
-                if os.path.exists(note):
-                    s3key = os.path.join(s3basedir,os.path.basename(note))
-                    aws.send_s3_file(note,s3key,
-                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                            s3_bucket=btconfig.S3_RELEASE_BUCKET,overwrite=True)
-            # specify release note URLs in metadata
-            rel_txt_url = aws.get_s3_url(os.path.join(s3basedir,"%s.txt" % release_note),
-                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
-            rel_json_url = aws.get_s3_url(os.path.join(s3basedir,"%s.json" % release_note),
-                            aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
-            if rel_txt_url:
-                full_meta.setdefault("changes",{})
-                full_meta["changes"]["txt"] = {"url" : rel_txt_url}
-            if rel_json_url:
-                full_meta.setdefault("changes",{})
-                full_meta["changes"]["json"] = {"url" : rel_json_url}
-        else:
-            self.logger.info("No release_folder found, no release notes will be part of the publishing")
 
-        # now dump that metadata
-        build_info = "%s.json" % esb.version
-        build_info_path = os.path.join(btconfig.DIFF_PATH,build_info)
-        json.dump(full_meta,open(build_info_path,"w"))
-        # override lastmodified header with our own timestamp
-        local_ts = dtparse(es_idxr.get_mapping_meta()["_meta"]["build_date"])
-        utc_epoch = int(time.mktime(local_ts.timetuple()))
-        utc_ts = datetime.fromtimestamp(time.mktime(time.gmtime(utc_epoch)))
-        str_utc_epoch = str(utc_epoch)
-        # it's a full release, but all build info metadata (full, incremental) all go
-        # to the diff bucket (this is the main entry)
-        s3key = os.path.join(s3_folder,build_info)
-        aws.send_s3_file(build_info_path,s3key,
-                aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                s3_bucket=btconfig.S3_RELEASE_BUCKET,metadata={"lastmodified":str_utc_epoch},
-                 overwrite=True)
-        url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                s3_bucket=btconfig.S3_RELEASE_BUCKET)
-        self.logger.info("Full release metadata published for version: '%s'" % url)
-        full_info = {"build_version":full_meta["build_version"],
-                "require_version":None,
-                "target_version":full_meta["target_version"],
-                "type":full_meta["type"],
-                "release_date":full_meta["release_date"],
-                "url":url}
-        publish_data_version(s3_folder,full_info)
-        self.logger.info("Registered version '%s'" % (esb.version))
+        @asyncio.coroutine
+        def do():
+            jobs = []
+            pinfo = self.get_pinfo()
+            pinfo["step"] = "publish"
+            pinfo["source"] = snapshot
+            if "meta" in steps:
+                # TODO: this is a clocking call
+                # snapshot at this point can be totally different than original
+                # target_name but we still use it to potentially custom indexed
+                # (anyway, it's just to access some snapshot info so default indexer 
+                # will work)
+                idxklass = self.find_indexer(snapshot) 
+                idxkwargs = self[indexer_env]
+                idxr = idxklass(**idxkwargs)
+                es_idxr = ESIndexer(index=index,doc_type=idxr.doc_type,es_host=idxr.host)
+                esb = DocESBackend(es_idxr)
+                assert esb.version, "Can't retrieve a version from index '%s'" % index
+                self.logger.info("Generating JSON metadata for full release '%s'" % esb.version)
+                repo = es_idxr._es.snapshot.get_repository(repository)
+                release_note = "release_%s" % esb.version
+                # generate json metadata about this diff release
+                assert snapshot, "Missing snapshot name information"
+                full_meta = {
+                        "type": "full",
+                        "build_version": esb.version,
+                        "target_version": esb.version,
+                        "release_date" : datetime.now().isoformat(),
+                        "app_version": None,
+                        "metadata" : {"repository" : repo,
+                                      "snapshot_name" : snapshot}
+                        }
+                if release_folder and os.path.exists(release_folder):
+                    # ok, we have something in that folder, just pick the release note files
+                    # (we can generate diff + snaphost at the same time, so there could be diff files in that folder
+                    # from a diff process done before. release notes will be the same though)
+                    s3basedir = os.path.join(s3_folder,esb.version)
+                    notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
+                    self.logger.info("Uploading release notes from '%s' to s3 folder '%s'" % (notes,s3basedir))
+                    for note in notes:
+                        if os.path.exists(note):
+                            s3key = os.path.join(s3basedir,os.path.basename(note))
+                            aws.send_s3_file(note,s3key,
+                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                                    s3_bucket=btconfig.S3_RELEASE_BUCKET,overwrite=True)
+                    # specify release note URLs in metadata
+                    rel_txt_url = aws.get_s3_url(os.path.join(s3basedir,"%s.txt" % release_note),
+                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
+                    rel_json_url = aws.get_s3_url(os.path.join(s3basedir,"%s.json" % release_note),
+                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
+                    if rel_txt_url:
+                        full_meta.setdefault("changes",{})
+                        full_meta["changes"]["txt"] = {"url" : rel_txt_url}
+                    if rel_json_url:
+                        full_meta.setdefault("changes",{})
+                        full_meta["changes"]["json"] = {"url" : rel_json_url}
+                else:
+                    self.logger.info("No release_folder found, no release notes will be part of the publishing")
+
+                # now dump that metadata
+                build_info = "%s.json" % esb.version
+                build_info_path = os.path.join(btconfig.DIFF_PATH,build_info)
+                json.dump(full_meta,open(build_info_path,"w"))
+                # override lastmodified header with our own timestamp
+                local_ts = dtparse(es_idxr.get_mapping_meta()["_meta"]["build_date"])
+                utc_epoch = int(time.mktime(local_ts.timetuple()))
+                utc_ts = datetime.fromtimestamp(time.mktime(time.gmtime(utc_epoch)))
+                str_utc_epoch = str(utc_epoch)
+                # it's a full release, but all build info metadata (full, incremental) all go
+                # to the diff bucket (this is the main entry)
+                s3key = os.path.join(s3_folder,build_info)
+                aws.send_s3_file(build_info_path,s3key,
+                        aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                        s3_bucket=btconfig.S3_RELEASE_BUCKET,metadata={"lastmodified":str_utc_epoch},
+                         overwrite=True)
+                url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
+                        s3_bucket=btconfig.S3_RELEASE_BUCKET)
+                self.logger.info("Full release metadata published for version: '%s'" % url)
+                full_info = {"build_version":full_meta["build_version"],
+                        "require_version":None,
+                        "target_version":full_meta["target_version"],
+                        "type":full_meta["type"],
+                        "release_date":full_meta["release_date"],
+                        "url":url}
+                publish_data_version(s3_folder,full_info)
+                self.logger.info("Registered version '%s'" % (esb.version))
+
+            if "post" in steps:
+                # then we upload all the folder content
+                pinfo["step"] = "post"
+                self.logger.info("Runnig post-publish step")
+                job = yield from self.job_manager.defer_to_thread(pinfo,partial(self.post_publish,
+                            indexer_env=indexer_env, s3_folder=s3_folder, prev=prev, snapshot=snapshot,
+                            release_folder=release_folder, index=index,
+                            repository=repository, steps=steps))
+                yield from job
+                jobs.append(job)
+
+            def published(f):
+                try:
+                    res = f.result()
+                    self.logger.info("Snapshot '%s' uploaded to S3: %s" % (snapshot,res),extra={"notify":True})
+                except Exception as e:
+                    self.logger.error("Failed to upload snapshot '%s' uploaded to S3: %s" % (snapshot,e),extra={"notify":True})
+
+            if jobs:
+                yield from asyncio.wait(jobs)
+                task = asyncio.gather(*jobs)
+                task.add_done_callback(published)
+                yield from task
+
+        return asyncio.ensure_future(do())
+
+    def post_publish(self, indexer_env, s3_folder, prev, snapshot, release_folder, index,
+                         repository, steps, *args, **kwargs):
+        """Post-publish hook, can be implemented in sub-class"""
+        return
+
+    def update_metadata(self, indexer_env, index_name, build_name=None,_meta=None):
+        """
+        Update _meta for index_name, based on build_name (_meta directly
+        taken from the src_build document) or _meta
+        """
+        idxkwargs = self[indexer_env]
+        # 1st pass we get the doc_type (don't want to ask that on the signature...)
+        indexer = create_backend((idxkwargs["es_host"],index_name,None)).target_esidxer
+        m = indexer._es.indices.get_mapping(index_name)
+        assert len(m[index_name]["mappings"]) == 1, "Found more than one doc_type: " + \
+                    "%s" % m[index_name]["mappings"].keys()
+        doc_type = list(m[index_name]["mappings"].keys())[0]
+        # 2nd pass to re-create correct indexer
+        indexer = create_backend((idxkwargs["es_host"],index_name,doc_type)).target_esidxer
+        if build_name:
+            build = get_src_build().find_one({"_id":build_name})
+            assert build, "No such build named '%s'" % build_name
+            _meta = build.get("_meta")
+        assert not _meta is None, "No _meta found"
+        return indexer.update_mapping_meta({"_meta" : _meta})
 
     def index_info(self, env=None, remote=False):
         res = copy.deepcopy(self.es_config)
@@ -430,7 +493,7 @@ class IndexerManager(BaseManager):
             if remote:
                 # lost all indices, remotely
                 try:
-                    cl = Elasticsearch(res["env"][kenv]["host"])
+                    cl = Elasticsearch(res["env"][kenv]["host"],timeout=1,max_retries=0)
                     indices = [{"index":k,
                         "doc_type":list(v["mappings"].keys())[0],
                         "aliases":list(v["aliases"].keys())}
@@ -447,7 +510,6 @@ class IndexerManager(BaseManager):
                 except Exception as e:
                     self.logger.warning("Can't load remote indices: %s" % e)
                     continue
-
         return res
 
     def validate_mapping(self, mapping, env):
@@ -569,6 +631,19 @@ class Indexer(object):
             if not mode in ["resume","merge"]:
                 es_idxer.create_index({self.doc_type:_mapping},_extra)
 
+            def clean_ids(ids):
+                # can't use a generator, it's going to be pickled
+                cleaned = []
+                for _id in ids:
+                    if type(_id) != str:
+                        self.logger.warning("_id '%s' has invalid type (!str), skipped" % repr(_id))
+                        continue
+                    if len(_id) > 512: # this is an ES6 limitation
+                        self.logger.warning("_id is too long: '%s'" % _id)
+                        continue
+                    cleaned.append(_id)
+                return cleaned
+
             jobs = []
             total = target_collection.count()
             btotal = math.ceil(total/batch_size) 
@@ -581,12 +656,23 @@ class Indexer(object):
                 id_provider = id_feeder(target_collection, batch_size=batch_size,logger=self.logger)
             for ids in id_provider:
                 yield from asyncio.sleep(0.0)
+                origcnt = len(ids)
+                ids = clean_ids(ids)
+                newcnt = len(ids)
+                if origcnt != newcnt:
+                    self.logger.warning("%d document(s) can't be indexed and " % (origcnt-newcnt) + \
+                                        "will be skipped (invalid _id)")
+                # progress count
                 cnt += len(ids)
                 pinfo = self.get_pinfo()
                 pinfo["step"] = self.target_name
-                pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,(cnt/total*100))
+                try:
+                    descprogress = cnt/total*100
+                except ZeroDivisionError:
+                    descprogress = 0.0
+                pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,descprogress)
                 self.logger.info("Creating indexer job #%d/%d, to index '%s' %d/%d (%.1f%%)" % \
-                        (bnum,btotal,target_name,cnt,total,(cnt/total*100.)))
+                        (bnum,btotal,target_name,cnt,total,descprogress))
                 job = yield from job_manager.defer_to_process(
                         pinfo,
                         partial(indexer_worker,
@@ -645,7 +731,7 @@ class Indexer(object):
                     self.logger.error("Post-index process failed for index '%s': %s" % (index_name,e),extra={"notify":True})
                     return
             job.add_done_callback(posted)
-            yield from asyncio.gather(job) # consume future
+            yield from job # consume future
 
         if got_error:
             self.register_status("failed",job={"err": repr(got_error)})
@@ -775,14 +861,23 @@ class Indexer(object):
                     },
                 }
 
+    def enrich_final_mapping(self, final_mapping):
+        """
+        final_mapping is the ES mapping ready to be sent,
+        (with "dynamic" and "all" at its root for instance)
+        this method gives opportunity to add more mapping definitions
+        not directly related to datasources, such as other root keys
+        """
+        return final_mapping
+
     def get_mapping(self):
         '''collect mapping data from data sources.
-           This is for GeneDocESBackend only.
         '''
         mapping = self.build_doc.get("mapping",{})
         # default "all" field to replace include_in_all field in older versions of ES
         mapping["all"] = {'type': 'text'}
         final_mapping = {"properties": mapping, "dynamic": "false"}
+        final_mapping = self.enrich_final_mapping(final_mapping)
         final_mapping["_meta"] = self.get_metadata()
 
         return final_mapping
@@ -855,6 +950,10 @@ class ColdHotIndexer(Indexer):
 
     @asyncio.coroutine
     def index(self, hot_name, index_name, job_manager, steps=["index","post"], batch_size=10000, ids=None, mode="index"):
+        """
+        Same as Indexer.index method but works with a cold/hot collections strategy: first index the cold collection then
+        complete the index with hot collection (adding docs or merging them in existing docs within the index)
+        """
         assert job_manager
         # check what to do
         if type(steps) == str:
@@ -869,48 +968,77 @@ class ColdHotIndexer(Indexer):
             self.index_name = index_name
         got_error = False
         cnt = 0
-        # selectively index cold then hot collections, using default index method
-        # but specifically 'index' step to prevent any post-process before end of
-        # index creation
-        cold_task = super(ColdHotIndexer,self).index(self.cold_target_name,
-                                                     self.index_name,steps="index",
-                                                     job_manager=job_manager,
-                                                     batch_size=batch_size,ids=ids,mode=mode)
-        # wait until cold is fully indexed
-        yield from cold_task
-        # use updating indexer worker for hot to merge in index
-        hot_task = super(ColdHotIndexer,self).index(self.hot_target_name,
-                                                     self.index_name,steps="index",
-                                                     job_manager=job_manager,
-                                                     batch_size=batch_size,ids=ids,mode="merge")
-        task = asyncio.ensure_future(hot_task)
-        def done(f):
-            nonlocal got_error
-            nonlocal cnt
-            try:
-                res = f.result()
-                # compute overall inserted/updated records
-                cnt = sum(res.values())
-                self.register_status("success",job={"step":"index"},index={"count":cnt})
-                self.logger.info("Index '%s' successfully created" % index_name,extra={"notify":True})
-            except Exception as e:
-                logging.exception("Failed indexing cold/hot collections: %s" % e)
-                got_error = e
-                raise
-        task.add_done_callback(done)
-        yield from task
-        if got_error:
-            raise got_error
+        if "index" in steps:
+            # selectively index cold then hot collections, using default index method
+            # but specifically 'index' step to prevent any post-process before end of
+            # index creation
+            cold_task = super(ColdHotIndexer,self).index(self.cold_target_name,
+                                                         self.index_name,steps="index",
+                                                         job_manager=job_manager,
+                                                         batch_size=batch_size,ids=ids,mode=mode)
+            # wait until cold is fully indexed
+            yield from cold_task
+            # use updating indexer worker for hot to merge in index
+            hot_task = super(ColdHotIndexer,self).index(self.hot_target_name,
+                                                         self.index_name,steps="index",
+                                                         job_manager=job_manager,
+                                                         batch_size=batch_size,ids=ids,mode="merge")
+            task = asyncio.ensure_future(hot_task)
+            def done(f):
+                nonlocal got_error
+                nonlocal cnt
+                try:
+                    res = f.result()
+                    # compute overall inserted/updated records
+                    cnt = sum(res.values())
+                    self.register_status("success",job={"step":"index"},index={"count":cnt})
+                    self.logger.info("index '%s' successfully created" % index_name,extra={"notify":true})
+                except exception as e:
+                    logging.exception("failed indexing cold/hot collections: %s" % e)
+                    got_error = e
+                    raise
+            task.add_done_callback(done)
+            yield from task
+            if got_error:
+                raise got_error
+        if "post" in steps:
+            # use super index but this time only on hot collection (this is the entry point, cold collection
+            # remains hidden from outside)
+            hot_task = super(ColdHotIndexer,self).index(self.hot_target_name,
+                                                         self.index_name,steps="post",
+                                                         job_manager=job_manager,
+                                                         batch_size=batch_size,ids=ids,mode=mode)
+            task = asyncio.ensure_future(hot_task)
+            def posted(f):
+                nonlocal got_error
+                try:
+                    res = f.result()
+                    # no need to process the return value more, it's been done in super
+                except exception as e:
+                    self.logger.error("Post-index process failed for index '%s': %s" % (self.index_name,e),extra={"notify":True})
+                    got_error = e
+                    raise
+            task.add_done_callback(posted)
+            yield from task
+            if got_error:
+                raise got_error
+             
         return {self.index_name:cnt}
 
+    # by default, build_doc is considered to be the hot one
+    # (mainly used so we can call super methods as parent)
+    @property
+    def build_doc(self):
+        return self.hot_build_doc
+    @build_doc.setter
+    def build_doc(self,val):
+        self.hot_build_doc = val
+
     def get_mapping(self):
+        final_mapping = super(ColdHotIndexer,self).get_mapping()
         cold_mapping = self.cold_build_doc.get("mapping",{})
-        hot_mapping = self.hot_build_doc.get("mapping",{})
-        hot_mapping.update(cold_mapping) # mix cold&hot
-        mapping = {"properties": hot_mapping,
-                   "dynamic": "false"}
-        mapping["_meta"] = self.get_metadata()
-        return mapping
+        final_mapping["properties"].update(cold_mapping) # mix cold&hot
+        return final_mapping
 
     def get_metadata(self):
         meta = merge_src_build_metadata([self.cold_build_doc,self.hot_build_doc])
