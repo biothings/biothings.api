@@ -2,6 +2,7 @@ import biothings_client
 import copy
 from itertools import islice, chain
 import logging
+import re
 from biothings.utils.common import iter_n
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
@@ -38,12 +39,13 @@ class KeyLookupAPI(object):
 
     Additional Options:
     - skip_on_failure:  Do not include a document where key lookup fails in the results
+    - skip_w_regex:  skip key lookup if the provided regex matches
     """
     batch_size = 10
     default_source = '_id'
     lookup_fields = {}
 
-    def __init__(self, input_types, output_types, skip_on_failure=False):
+    def __init__(self, input_types, output_types, skip_on_failure=False, skip_w_regex=None):
         """
         Initialize the KeyLookupAPI object.
         """
@@ -54,12 +56,19 @@ class KeyLookupAPI(object):
         if not isinstance(skip_on_failure, bool):
             raise ValueError('skip_on_failure must be a boolean value')
         self.skip_on_failure = skip_on_failure
+        if skip_w_regex and not isinstance(skip_w_regex, str):
+            raise ValueError('skip_w_regex must be a string')
+        elif not skip_w_regex:
+            self.skip_w_regex = None
+        else:
+            self.skip_w_regex = re.compile(skip_w_regex)
 
         # default value of None for client
         self.client = None
 
         # Keep track of one_to_many relationships
         self.one_to_many_cnt = 0
+
 
     def _parse_input_types(self, input_types):
         """
@@ -158,10 +167,16 @@ class KeyLookupAPI(object):
         id_lst = []
         doc_cache = []
         for doc in batchiter:
-            for input_type in self.input_types:
-                val = KeyLookupAPI._nested_lookup(doc, input_type[1])
-                if val:
-                    id_lst.append('"{}"'.format(val))
+
+            # handle skip logic
+            if self.skip_w_regex and self.skip_w_regex.match(doc['_id']):
+                pass
+            else:
+                for input_type in self.input_types:
+                    val = KeyLookupAPI._nested_lookup(doc, input_type[1])
+                    if val:
+                        id_lst.append('"{}"'.format(val))
+
             # always place the document in the cache
             doc_cache.append(doc)
         return list(set(id_lst)), doc_cache
@@ -320,12 +335,13 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
     
     def __init__(self, input_types,
                  output_types=None,
-                 skip_on_failure=False):
+                 skip_on_failure=False,
+                 skip_w_regex=None):
         """
         Initialize the class by seting up the client object.
         """
         _output_types = output_types or self.output_types
-        super(KeyLookupMyChemInfo, self).__init__(input_types, _output_types, skip_on_failure)
+        super(KeyLookupMyChemInfo, self).__init__(input_types, _output_types, skip_on_failure, skip_w_regex)
 
     def _get_client(self):
         """
@@ -350,11 +366,12 @@ class KeyLookupMyGeneInfo(KeyLookupAPI):
 
     def __init__(self, input_types,
                  output_types=['entrezgene'],
-                 skip_on_failure=False):
+                 skip_on_failure=False,
+                 skip_w_regex=None):
         """
         Initialize the class by seting up the client object.
         """
-        super(KeyLookupMyGeneInfo, self).__init__(input_types, output_types, skip_on_failure)
+        super(KeyLookupMyGeneInfo, self).__init__(input_types, output_types, skip_on_failure, skip_w_regex)
 
     def _get_client(self):
         """

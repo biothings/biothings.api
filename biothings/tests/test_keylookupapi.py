@@ -22,7 +22,6 @@ class TestKeyLookupAPI(unittest.TestCase):
             self.assertEqual(res['_id'], answer)
 
         # Examples - paracetamol (acetaminophen)
-        _MyChemInfoSingleDoc('inchikey', ['inchikey'], 'RZVAJINKPMORJF-UHFFFAOYSA-N', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
         _MyChemInfoSingleDoc('chebi', ['inchikey'], 'CHEBI:46195', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
         _MyChemInfoSingleDoc('unii', ['inchikey'], '362O9ITL9D', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
         _MyChemInfoSingleDoc('drugbank', ['inchikey'], 'DB00316', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
@@ -349,3 +348,20 @@ class TestKeyLookupAPI(unittest.TestCase):
                 print(res['_id'])
             self.assertTrue(res['_id'] in answers)
         self.assertEqual(res_cnt, 12)
+
+    def test_skip_w_regex(self):
+        """
+        Test the skip_w_regex option.
+        :return:
+        """
+
+        doc_lst = [{'_id': 'CID1983'}]
+
+        @KeyLookupMyChemInfo('pubchem', ['inchikey'], skip_w_regex='CID')
+        def load_document(data_folder):
+            for d in doc_lst:
+                yield d
+
+        res_lst = load_document('data/folder/')
+        res = next(res_lst)
+        self.assertEqual(res['_id'], 'CID1983')
