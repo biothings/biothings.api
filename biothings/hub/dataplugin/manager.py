@@ -26,7 +26,8 @@ class ManualDataPlugin(dumper.ManualDumper):
     @asyncio.coroutine
     def dump(self, *args, **kwargs):
         yield from super(ManualDataPlugin,self).dump(
-                path=self.__class__.SRC_ROOT_FOLDER,
+                path="", # it's the version is original method implemention
+                         # but no version here available
                 release="",*args,**kwargs)
 
 
