@@ -11,8 +11,8 @@ from biothings.utils.common import timesofar, rmdashfr, uncompressall, \
                                    get_class_from_classpath
 from biothings.utils.loggers import HipchatHandler
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
-from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER, \
-                             DATA_PLUGIN_FOLDER, DATA_ARCHIVE_ROOT
+from biothings import config as btconfig
+logging = btconfig.logger
 
 from biothings.utils.manager import BaseSourceManager
 from biothings.hub.dataload.uploader import set_pending_to_upload
@@ -25,22 +25,24 @@ from biothings.hub.dataplugin.manager import GitDataPlugin, ManualDataPlugin
 class AssistantException(Exception):
     pass
 
-
 class BaseAssistant(object):
 
     plugin_type = None # to be defined in subblass
     data_plugin_manager = None # set by assistant manager
     dumper_manager = None # set by assistant manager
     uploader_manager = None # set by assistant manager
+    keylookup = None # set by assistant manager
     # should match a _dict_for_***
     dumper_registry = {"http"  : LastModifiedHTTPDumper,
                        "https" : LastModifiedHTTPDumper,
                        "ftp"   : LastModifiedFTPDumper}
 
     def _dict_for_base(self,data_url):
+        if type(data_url) == str:
+            data_url = [data_url]
         return {
                 "SRC_NAME" : self.plugin_name,
-                "SRC_ROOT_FOLDER" : os.path.join(DATA_ARCHIVE_ROOT,self.plugin_name),
+                "SRC_ROOT_FOLDER" : os.path.join(btconfig.DATA_ARCHIVE_ROOT,self.plugin_name),
                 "SRC_URLS" : data_url
                 }
 
@@ -145,6 +147,11 @@ class BaseAssistant(object):
                     storage_class = manifest["uploader"].get("ignore_duplicates") \
                             and IgnoreDuplicatedStorage or BasicStorage
                     confdict = {"name":self.plugin_name,"storage_class":storage_class, "parser_func":parser_func}
+                    if manifest["uploader"].get("keylookup"):
+                        assert self.__class__.keylookup, "Plugin %s needs _id conversion " % self.plugin_name + \
+                                                         "but no keylookup instance was found"
+                        logging.info("Keylookup conversion required: %s" % manifest["uploader"]["keylookup"])
+                        confdict["idconverter"] = self.__class__.keylookup(**manifest["uploader"]["keylookup"])
                     k = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,),confdict)
                     self.__class__.uploader_manager.register_classes([k])
                     # register class in module so it can be pickled easily
@@ -155,6 +162,7 @@ class BaseAssistant(object):
             else:
                 raise AssistantException("Invalid manifest, expecting 'parser' key in 'uploader' section")
 
+
 class AssistedDumper(object):
     UNCOMPRESS = False
     def post_dump(self, *args, **kwargs):
@@ -162,12 +170,19 @@ class AssistedDumper(object):
             self.logger.info("Uncompress all archive files in '%s'" % self.new_data_folder)
             uncompressall(self.new_data_folder)
 
+# this is a transparent wrapper over parsing func, performining no conversion at all
+def transparent(f):
+    return f
+
 class AssistedUploader(BaseSourceUploader):
     storage_class = None
     parser_func = None
+    idconverter = transparent
+
     def load_data(self,data_folder):
         self.logger.info("Load data from directory: '%s'" % data_folder)
-        return self.__class__.parser_func(data_folder)
+        return self.__class__.idconverter(self.__class__.parser_func)(data_folder)
+
 
 class GithubAssistant(BaseAssistant):
 
@@ -185,7 +200,7 @@ class GithubAssistant(BaseAssistant):
 
     def get_classdef(self):
         # generate class dynamically and register
-        src_folder = os.path.join(DATA_PLUGIN_FOLDER, self.plugin_name)
+        src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, self.plugin_name)
         confdict = {"SRC_NAME":self.plugin_name,"GIT_REPO_URL":self.url,"SRC_ROOT_FOLDER":src_folder}
         # TODO: store confdict in hubconf collection
         k = type("AssistedGitDataPlugin_%s" % self.plugin_name,(GitDataPlugin,),confdict)
@@ -213,7 +228,9 @@ class LocalAssistant(BaseAssistant):
             # MS DOS didn't support subdirs, so I guess we're on the right path :))
             assert not split.path, "It seems URL '%s' references a sub-directory (%s)," % (self.url,split.hostname) + \
                     " with plugin name '%s', sub-directories are not supported (yet)" % split.path.strip("/")
-            self._plugin_name = os.path.basename(split.hostname)
+            # don't use hostname here because it's lowercased, netloc isn't
+            # (and we're matching directory names on the filesystem, it's case-sensitive)
+            self._plugin_name = os.path.basename(split.netloc)
         return self._plugin_name
 
     def can_handle(self):
@@ -224,7 +241,7 @@ class LocalAssistant(BaseAssistant):
 
     def get_classdef(self):
         # generate class dynamically and register
-        src_folder = os.path.join(DATA_PLUGIN_FOLDER, self.plugin_name)
+        src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, self.plugin_name)
         confdict = {"SRC_NAME":self.plugin_name,"SRC_ROOT_FOLDER":src_folder}
         k = type("AssistedManualDataPlugin_%s" % self.plugin_name,(ManualDataPlugin,),confdict)
         return k
@@ -240,16 +257,17 @@ class AssistantManager(BaseSourceManager):
     ASSISTANT_CLASS = BaseAssistant
 
     def __init__(self, data_plugin_manager, dumper_manager, uploader_manager,
-                 *args, **kwargs):
+                 keylookup=None, *args, **kwargs):
         super(AssistantManager,self).__init__(*args,**kwargs)
         self.data_plugin_manager = data_plugin_manager
         self.dumper_manager = dumper_manager
         self.uploader_manager = uploader_manager
-        if not os.path.exists(DATA_PLUGIN_FOLDER):
-            os.makedirs(DATA_PLUGIN_FOLDER)
+        self.keylookup = keylookup
+        if not os.path.exists(btconfig.DATA_PLUGIN_FOLDER):
+            os.makedirs(btconfig.DATA_PLUGIN_FOLDER)
         # register data plugin folder in python path so we can import
         # plugins (sub-folders) as packages
-        sys.path.insert(0,DATA_PLUGIN_FOLDER)
+        sys.path.insert(0,btconfig.DATA_PLUGIN_FOLDER)
 
     def create_instance(self, klass, url):
         logging.debug("Creating new %s instance" % klass.__name__)
@@ -263,6 +281,7 @@ class AssistantManager(BaseSourceManager):
             klass.data_plugin_manager = self.data_plugin_manager
             klass.dumper_manager = self.dumper_manager
             klass.uploader_manager = self.uploader_manager
+            klass.keylookup = self.keylookup
             self.register[klass.plugin_type] = klass
 
     def submit(self,url):
@@ -344,7 +363,7 @@ class AssistantManager(BaseSourceManager):
         plugin_dirs = []
         if autodiscover:
             try:
-                plugin_dirs = os.listdir(DATA_PLUGIN_FOLDER)
+                plugin_dirs = os.listdir(btconfig.DATA_PLUGIN_FOLDER)
             except FileNotFoundError as e:
                 raise AssistantException("Invalid DATA_PLUGIN_FOLDER: %s" % e)
         dp = get_data_plugin()
@@ -362,16 +381,16 @@ class AssistantManager(BaseSourceManager):
         # some still unregistered ? (note: list always empty if autodiscover=False)
         if plugin_dirs:
             for pdir in plugin_dirs:
-                fulldir = os.path.join(DATA_PLUGIN_FOLDER, pdir)
+                fulldir = os.path.join(btconfig.DATA_PLUGIN_FOLDER, pdir)
                 # basic sanity check to make sure it's plugin
                 if "manifest.json" in os.listdir(fulldir) and \
                         json.load(open(os.path.join(fulldir,"manifest.json"))):
                     logging.info("Found unregistered plugin '%s', auto-register it" % pdir)
-                try:
-                    self.register_url("local://%s" % pdir.strip().strip("/"))
-                except Exception as e:
-                    logging.warning("Couldn't auto-register plugin '%s': %s" % (pdir,e))
-                    continue
+                    try:
+                        self.register_url("local://%s" % pdir.strip().strip("/"))
+                    except Exception as e:
+                        logging.warning("Couldn't auto-register plugin '%s': %s" % (pdir,e))
+                        continue
                 else:
                     logging.warning("Directory '%s' doesn't contain a plugin, skip it" % pdir)
                     continue

@@ -365,3 +365,4 @@ class TestKeyLookupAPI(unittest.TestCase):
         res_lst = load_document('data/folder/')
         res = next(res_lst)
         self.assertEqual(res['_id'], 'CID1983')
+
