@@ -3,6 +3,7 @@ import copy
 from itertools import islice, chain
 import logging
 import re
+from biothings.utils.keylookup import KeyLookup
 from biothings.utils.common import iter_n
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
@@ -12,7 +13,7 @@ lg = get_logger('keylookup_api', btconfig.LOG_FOLDER)
 lg.setLevel(logging.INFO)
 
 
-class KeyLookupAPI(object):
+class KeyLookupAPI(KeyLookup):
     """
     Perform key lookup or key conversion from one key type to another using
     an API endpoint as a data source.
@@ -50,18 +51,7 @@ class KeyLookupAPI(object):
         Initialize the KeyLookupAPI object.
         """
         self._generate_return_fields()
-        self.input_types = self._parse_input_types(input_types)
-        self.output_types = self._parse_output_types(output_types)
-
-        if not isinstance(skip_on_failure, bool):
-            raise ValueError('skip_on_failure must be a boolean value')
-        self.skip_on_failure = skip_on_failure
-        if skip_w_regex and not isinstance(skip_w_regex, str):
-            raise ValueError('skip_w_regex must be a string')
-        elif not skip_w_regex:
-            self.skip_w_regex = None
-        else:
-            self.skip_w_regex = re.compile(skip_w_regex)
+        super().__init__(input_types, output_types, skip_on_failure, skip_w_regex)
 
         # default value of None for client
         self.client = None
@@ -69,48 +59,25 @@ class KeyLookupAPI(object):
         # Keep track of one_to_many relationships
         self.one_to_many_cnt = 0
 
-
-    def _parse_input_types(self, input_types):
+    def _valid_input_type(self, input_type):
         """
-        Parse the input_types argument
+        Check if the input_type is valid
+        :param input_type:
         :return:
         """
-        res_input_types = []
-        if isinstance(input_types, str):
-            input_types = [input_types]
-        if isinstance(input_types, tuple):
-            input_types = [input_types]
-        if isinstance(input_types, list):
-            for input_type in input_types:
-                if isinstance(input_type, tuple):
-                    res_input_types.append((input_type[0].lower(), input_type[1]))
-                else:
-                    if input_type in self.lookup_fields.keys():
-                        res_input_types.append((input_type.lower(), self.default_source))
-                    else:
-                        raise ValueError('Provided input_types is not configured in lookup_fields')
-        else:
-            raise ValueError('Provided input_types is not of the correct type')
-        return res_input_types
+        if not isinstance(input_type, str):
+            return False
+        return input_type.lower() in self.lookup_fields.keys()
 
-    def _parse_output_types(self, output_types):
+    def _valid_output_type(self, output_type):
         """
-        parse output_types argument
-        :param output_types:
+        Check if the output_type is valid
+        :param output_type:
         :return:
         """
-        res_output_types = []
-        if not isinstance(output_types, list):
-            raise ValueError('Provided output_types is not a list')
-        for output_type in output_types:
-            if not isinstance(output_type, str):
-                raise ValueError('output_types provided is not a string')
-            output_type_l = output_type.lower()
-            if output_type_l in self.lookup_fields.keys():
-                res_output_types.append(output_type_l)
-        if not res_output_types:
-            raise ValueError('output_types provided do not contain any values in lookup_fields')
-        return res_output_types
+        if not isinstance(output_type, str):
+            return False
+        return output_type.lower() in self.lookup_fields.keys()
 
     def __call__(self, f):
         """
@@ -281,25 +248,6 @@ class KeyLookupAPI(object):
             return [self.lookup_fields[field]]
         else:
             return self.lookup_fields[field]
-
-    @staticmethod
-    def _nested_lookup(doc, field):
-        """
-        Helper function for nested key lookup of a document.
-        For example field = 'pharmgkb.xref.drugbank' would return
-        the value of doc['pharmgkb']['xref']['drugbank'].
-        None is returned if the lookup fails.
-        :param doc:
-        :param field:
-        :return:
-        """
-        fields = field.split('.')
-        t = doc
-        for f in fields:
-            if f not in t.keys():
-                return None
-            t = t[f]
-        return str(t)
 
 
 class KeyLookupMyChemInfo(KeyLookupAPI):

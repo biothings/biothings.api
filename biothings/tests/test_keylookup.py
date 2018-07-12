@@ -2,7 +2,7 @@ from biothings import config as btconfig
 from biothings import config_for_app
 config_for_app(btconfig)
 
-from biothings.utils.keylookup import KeyLookup
+from biothings.utils.keylookup_mdb import KeyLookupMDB as KeyLookup
 from biothings.tests.keylookup_graphs import graph_simple, \
     graph_weights, graph_one2many, graph_invalid
 import unittest
