@@ -561,18 +561,14 @@ class HubSSHServer(asyncssh.SSHServer):
 
 @asyncio.coroutine
 def start_server(loop,name,passwords,keys=['bin/ssh_host_key'],shell=None,
-                        host='',port=8022,commands={},extra_ns={}):
+                 host='',port=8022):
     for key in keys:
         assert os.path.exists(key),"Missing key '%s' (use: 'ssh-keygen -f %s' to generate it" % (key,key)
     HubSSHServer.PASSWORDS = passwords
     HubSSHServer.NAME = name
-    HubSSHServer.SHELL = shell or HubShell(commands,extra_ns)
+    HubSSHServer.SHELL = shell
     cron = aiocron.crontab(HUB_REFRESH_COMMANDS,func=shell.__class__.refresh_commands,
                            start=True, loop=loop)
-    if commands:
-        HubSSHServer.COMMANDS.update(commands)
-    if extra_ns:
-        HubSSHServer.EXTRA_NS.update(extra_ns)
     yield from asyncssh.create_server(HubSSHServer, host, port, loop=loop,
                                  server_host_keys=keys)
 
