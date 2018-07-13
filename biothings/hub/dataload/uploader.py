@@ -386,7 +386,8 @@ class BaseSourceUploader(object):
         try:
             if not self.temp_collection_name:
                 self.make_temp_collection()
-            self.db[self.temp_collection_name].drop()       # drop all existing records just in case.
+            if self.db[self.temp_collection_name]:
+                self.db[self.temp_collection_name].drop()       # drop all existing records just in case.
             self.register_status("uploading")
             if update_data:
                 # unsync to make it pickable

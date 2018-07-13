@@ -7,21 +7,24 @@ from functools import partial
 from collections import defaultdict
 
 from biothings.utils.common import timesofar, get_random_string, iter_n, \
-                                   open_compressed_file, get_compressed_outfile
+                                   open_compressed_file, get_compressed_outfile, \
+                                   dotdict
 from biothings.utils.backend import DocESBackend, DocMongoBackend
 from biothings.utils.hub_db import IDatabase, ChangeWatcher
 # stub, until set to real config module
 config = None
 
 
-class DummyCollection(object):
+class DummyCollection(dotdict):
     def count(self):
         return None
     def drop(self):
         pass
+    def __getitem__(self,what):
+        return DummyCollection() # ???
 
 
-class DummyDatabase(object):
+class DummyDatabase(dotdict):
     def collection_names(self):
         return []
     def __getitem__(self,what):
@@ -63,7 +66,7 @@ def get_conn(server, port):
         # (dummy here means there really shouldn't be any call to get_conn()
         # but mongo is too much tied to the code and needs more work to 
         # unlink it
-        return defaultdict(lambda:DummyDatabase())
+        return DummyDatabase()
 
 
 @requires_config

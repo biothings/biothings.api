@@ -56,7 +56,8 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         # determine if it's about a snapshot/full and diff/incremental
         # we should have a json metadata matching the release
         self.prepare_src_dump() # load infor from src_dump
-        release = self.src_doc.get("release")
+        release = self.src_doc.get("download",{}).get("release")
+        assert release, "Can't find release information in src_dump document"
         build_meta = json.load(open(os.path.join(self.data_folder,"%s.json" % release)))
         if build_meta["type"] == "full":
             res = yield from self.restore_snapshot(build_meta,job_manager=job_manager)
@@ -135,7 +136,20 @@ class BiothingsUploader(uploader.BaseSourceUploader):
     @asyncio.coroutine
     def apply_diff(self, build_meta, job_manager, **kwargs):
         self.logger.info("Applying incremental update from diff folder: %s" % self.data_folder)
-        res = yield from self.syncer_func(diff_folder=self.data_folder)
+        meta = json.load(open(os.path.join(self.data_folder,"metadata.json")))
+        # old: index we want to update
+        old = (self.target_backend.target_esidxer.es_host,
+               self.target_backend.target_name,
+               self.target_backend.target_esidxer._doc_type)
+        # new: index's data we will reach once updated (just informative)
+        new = (self.target_backend.target_esidxer.es_host,
+               meta["new"]["backend"],
+               self.target_backend.target_esidxer._doc_type)
+        res = yield from self.syncer_func(old_db_col_names=old,
+                                          new_db_col_names=new,
+                                          diff_folder=self.data_folder)
         # return current number of docs in index (even if diff update)
         return self.target_backend.count()
 
+    def clean_archived_collections(self):
+        pass

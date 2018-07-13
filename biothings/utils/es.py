@@ -766,8 +766,15 @@ class Database(IDatabase):
     def create_if_needed(self,colname):
         conn = self.get_conn()
         idxcolname = "%s_%s" % (self.name,colname)
+        # it's not usefull to scale internal hubdb
+        body = {
+            'settings': {
+                'number_of_shards': 1,
+                "number_of_replicas": 0,
+            }
+        }
         if not conn.indices.exists(idxcolname):
-            conn.indices.create(idxcolname)
+            conn.indices.create(idxcolname,body=body)
             conn.indices.put_mapping(colname,{"dynamic":True},index=idxcolname)
 
     def __getitem__(self, colname):
