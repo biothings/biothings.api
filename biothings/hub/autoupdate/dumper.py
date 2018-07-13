@@ -233,7 +233,10 @@ class BiothingsDumper(HTTPDumper):
                 new_localfile = os.path.join(self.new_data_folder,os.path.basename(metadata_url))
                 self.download(metadata_url,new_localfile)
                 metadata = json.load(open(new_localfile))
-                for md5_fname in metadata["diff"]["files"]:
+                remote_files = metadata["diff"]["files"]
+                if metadata["diff"]["mapping_file"]:
+                    remote_files.append(metadata["diff"]["mapping_file"])
+                for md5_fname in remote_files:
                     fname = md5_fname["name"]
                     p = urlparse(fname)
                     if not p.scheme:
@@ -244,6 +247,7 @@ class BiothingsDumper(HTTPDumper):
                         furl = fname
                     new_localfile = os.path.join(self.new_data_folder,os.path.basename(fname))
                     self.to_dump.append({"remote":furl, "local":new_localfile}) 
+
             else:
                 # it's a full snapshot release, it always can be applied
                 self.release = build_meta["build_version"]
