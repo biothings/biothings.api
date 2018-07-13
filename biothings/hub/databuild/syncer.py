@@ -42,6 +42,7 @@ class BaseSyncer(object):
         self.log_folder = log_folder
         self.job_manager = job_manager
         self.timestamp = datetime.now()
+        self.ti = time.time()
         self.synced_cols = None # str representation of synced cols (internal usage)
         self.setup_log()
         # set by manager during instanciation
@@ -479,7 +480,7 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
                     raise
 
     # update: get doc from indexer and apply diff
-    sync_es_for_update(indexer,diff["update"],res)
+    sync_es_for_update(indexer,diff["update"],batch_size,res)
 
     # delete: remove from "old"
     for ids in iter_n(diff["delete"],batch_size):
@@ -574,7 +575,7 @@ def sync_es_coldhot_jsondiff_worker(diff_file, es_config, new_db_col_names, batc
 
     # update: get doc from indexer and apply diff
     # note: it's the same process as for non-coldhot
-    sync_es_for_update(indexer,diff["update"],res)
+    sync_es_for_update(indexer,diff["update"],batch_size,res)
 
     # delete: remove from "old"
     for ids in iter_n(diff["delete"],batch_size):
@@ -587,7 +588,7 @@ def sync_es_coldhot_jsondiff_worker(diff_file, es_config, new_db_col_names, batc
     os.rename(diff_file,synced_file)
     return res
 
-def sync_es_for_update(indexer, diffupdates, res):
+def sync_es_for_update(indexer, diffupdates, batch_size, res):
     batch = []
     ids = [p["_id"] for p in diffupdates]
     iterids_bcnt = iter_n(ids,batch_size,True)
@@ -596,7 +597,7 @@ def sync_es_for_update(indexer, diffupdates, res):
             # recompute correct index in diff["update"], since we split it in batches
             diffidx = i + bcnt - len(batchids) # len(batchids) is not == batch_size for the last one...
             try:
-                patch_info = diffupdates[i] # same order as what's return by get_doc()...
+                patch_info = diffupdates[diffidx] # same order as what's return by get_doc()...
                 assert patch_info["_id"] == doc["_id"],"%s != %s" % (patch_info["_id"],doc["_id"]) # ... but just make sure
                 newdoc = jsonpatch.apply_patch(doc,patch_info["patch"])
                 if newdoc == doc:
@@ -659,12 +660,9 @@ class SyncerManager(BaseManager):
         pclass = BaseManager.__getitem__(self,diff_target)
         return pclass()
 
-    def sync(self, backend_type, old_db_col_names=None, new_db_col_names=None, diff_folder=None, 
+    def sync(self, backend_type, old_db_col_names, new_db_col_names, diff_folder=None, 
                    batch_size=100000, mode=None, target_backend=None, steps=["mapping","content","meta"]):
-        if old_db_col_names is None and new_db_col_names is None:
-            assert  diff_folder, "When old/new_db_col_names aren't specified, diff_folder " + \
-                    "must be specified"
-        else:
+        if diff_folder is None:
             diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
         if not os.path.exists(diff_folder):
             raise FileNotFoundError("Directory '%s' does not exist, run a diff first" % diff_folder)
