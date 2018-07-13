@@ -65,6 +65,7 @@ def get_conn(server, port):
         # unlink it
         return defaultdict(lambda:DummyDatabase())
 
+
 @requires_config
 def get_hub_db_conn():
     conn = Database(config.HUB_DB_BACKEND["uri"])
@@ -74,18 +75,15 @@ def get_hub_db_conn():
 def get_src_conn():
     return get_conn(config.DATA_SRC_SERVER, config.DATA_SRC_PORT)
 
-
 @requires_config
 def get_src_db(conn=None):
     conn = conn or get_src_conn()
     return conn[config.DATA_SRC_DATABASE]
 
-
 @requires_config
 def get_src_master(conn=None):
     conn = conn or get_hub_db_conn()
     return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_MASTER_COLLECTION]
-
 
 @requires_config
 def get_src_dump(conn=None):
@@ -121,6 +119,12 @@ def get_cmd(conn=None):
 def get_event(conn=None):
     conn = conn or get_hub_db_conn()
     return conn[config.DATA_HUB_DB_DATABASE][config.EVENT_COLLECTION]
+
+@requires_config
+def get_last_command(conn=None):
+    cmd = get_cmd(conn)
+    cur = cmd.find({},{"_id":1}).sort("_id",pymongo.DESCENDING).limit(1)
+    return next(cur)
 
 @requires_config
 def get_target_conn():

@@ -58,6 +58,10 @@ def get_event():
     """Return a Collection instance for events collection/table"""
     raise NotImplementedError()
 
+def get_last_command():
+    """Return the latest cmd document (according to _id)"""
+    raise NotImplementedError()
+
 
 
 def get_source_fullname(col_name):
@@ -310,6 +314,7 @@ def setup(config):
     global get_cmd
     global get_event
     global get_source_fullname
+    global get_last_command
     get_hub_db_conn = config.hub_db.get_hub_db_conn
     # use ChangeWatcher on internal collections so we can publish changes in real-time
     get_src_dump = ChangeWatcher.wrap(config.hub_db.get_src_dump)
@@ -321,6 +326,7 @@ def setup(config):
     get_cmd = ChangeWatcher.wrap(config.hub_db.get_cmd)
     get_event = ChangeWatcher.wrap(config.hub_db.get_event)
     get_source_fullname = config.hub_db.get_source_fullname
+    get_last_command = config.hub_db.get_last_command
     # propagate config module to classes
     config.hub_db.Database.CONFIG = config
 

@@ -19,7 +19,8 @@ from biothings.utils.dataload import to_boolean
 logging = config.logger
 from biothings.utils.common import timesofar, sizeof_fmt
 import biothings.utils.aws as aws
-from biothings.utils.hub_db import get_cmd, get_src_dump, get_src_build, get_src_build_config
+from biothings.utils.hub_db import get_cmd, get_src_dump, get_src_build, get_src_build_config, \
+                                   get_last_command
 
 # useful variables to bring into hub namespace
 pending = "pending"
@@ -71,10 +72,14 @@ class HubShell(InteractiveShell):
     def set_command_counter(klass):
         assert klass.cmd, "No cmd collection set"
         try:
-            cur = klass.cmd.find({},{"_id":1}).sort("_id",pymongo.DESCENDING).limit(1)
-            res = next(cur)
-            logging.debug("Last launched command ID: %s" % res["_id"])
-            klass.cmd_cnt = int(res["_id"]) + 1
+            res = get_last_command()
+            if res:
+                logging.debug("Last launched command ID: %s" % res["_id"])
+                klass.cmd_cnt = int(res["_id"]) + 1
+            else:
+                logging.info("No previously stored command found, set counter to 1")
+                klass.cmd_cnt = 1
+
         except StopIteration:
             logging.info("Can't find highest command number, assuming starting from scratch")
             klass.cmd_cnt = 1
