@@ -4,7 +4,6 @@ from itertools import islice, chain
 import logging
 import re
 from biothings.utils.keylookup import KeyLookup
-from biothings.utils.common import iter_n
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
 
@@ -78,27 +77,6 @@ class KeyLookupAPI(KeyLookup):
         if not isinstance(output_type, str):
             return False
         return output_type.lower() in self.lookup_fields.keys()
-
-    def __call__(self, f):
-        """
-        Perform the key conversion and all lookups on call.
-        :param f:
-        :return:
-        """
-        def wrapped_f(*args):
-            input_docs = f(*args)
-            lg.debug("input: %s" % input_docs)
-            # split input_docs into chunks of size self.batch_size
-            for batchiter in iter_n(input_docs, int(self.batch_size / len(self.input_types))):
-                output_docs = self.key_lookup_batch(batchiter)
-                odoc_cnt = 0
-                for odoc in output_docs:
-                    odoc_cnt += 1
-                    lg.debug("yield odoc: %s" % odoc)
-                    yield odoc
-                lg.info("wrapped_f Num. output_docs:  {}".format(odoc_cnt))
-
-        return wrapped_f
 
     def _generate_return_fields(self):
         """

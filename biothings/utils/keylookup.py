@@ -1,5 +1,6 @@
 import re
 
+from biothings.utils.common import iter_n
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
 from biothings import config_for_app
@@ -13,6 +14,7 @@ kl_log = get_logger('keylookup', btconfig.LOG_FOLDER)
 
 class KeyLookup(object):
     # Constants
+    batch_size = 1000
     DEFAULT_WEIGHT = 1
     default_source = '_id'
 
@@ -87,6 +89,35 @@ class KeyLookup(object):
         return output_types
 
     def _valid_output_type(self, output_type):
+        pass
+
+    def __call__(self, f):
+        """
+        Perform the key conversion and all lookups on call.
+        :param f:
+        :return:
+        """
+        def wrapped_f(*args):
+            input_docs = f(*args)
+            kl_log.debug("input: %s" % input_docs)
+            # split input_docs into chunks of size self.batch_size
+            for batchiter in iter_n(input_docs, int(self.batch_size / len(self.input_types))):
+                output_docs = self.key_lookup_batch(batchiter)
+                odoc_cnt = 0
+                for odoc in output_docs:
+                    odoc_cnt += 1
+                    kl_log.debug("yield odoc: %s" % odoc)
+                    yield odoc
+                kl_log.info("wrapped_f Num. output_docs:  {}".format(odoc_cnt))
+
+        return wrapped_f
+
+    def key_lookup_batch(self, batchiter):
+        """
+        Core method for looking up all keys in batch (iterator)
+        :param batchiter:
+        :return:
+        """
         pass
 
     @staticmethod

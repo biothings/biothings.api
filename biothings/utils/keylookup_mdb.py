@@ -52,48 +52,6 @@ class KeyLookupMDB(KeyLookup):
     def _valid_output_type(self, output_type):
         return output_type.lower() in self.G.nodes()
 
-    def __call__(self, f):
-        """
-        Perform the key conversion and all lookups on call.
-
-        :param f:
-        :return:
-        """
-        def wrapped_f(*args):
-            kl_log.info("Converting _id from (type,key) %s to type %s" % \
-                    (repr(self.input_types),repr(self.output_types)))
-            input_docs = f(*args)
-            kl_log.debug("input: %s" % input_docs)
-            output_docs = []
-            for doc in input_docs:
-                kl_log.debug("Decorator arguments:  {}".format(self.input_types))
-                kl_log.debug("Input document:  {}".format(doc))
-                keys = None
-                for output_type in self.output_types:
-                    for input_type in self.input_types:
-                        keys = self.travel(input_type[0], output_type, KeyLookup._nested_lookup(doc, input_type[1]))
-                        # Key(s) were found, create new documents
-                        # and add them to the output list
-                        if keys:
-                            for k in keys:
-                                new_doc = copy.deepcopy(doc)
-                                new_doc['_id'] = k
-                                output_docs.append(new_doc)
-                            break
-                    # Break out of the outer loop if keys were found
-                    if keys:
-                        break
-
-                # No keys were found, keep the original (unless the skip_on_failure option is passed)
-                if not keys and not self.skip_on_failure:
-                    output_docs.append(doc)
-
-            for odoc in output_docs:
-                #kl_log.info("yield odoc: %s" % odoc)
-                yield odoc
-
-        return wrapped_f
-
     def _load_collections(self, collections):
         """
         Load all mongodb collections specified in the configuration data structure col_keys.
@@ -140,6 +98,34 @@ class KeyLookupMDB(KeyLookup):
                 # Sort by path length - try the shortest paths first
                 paths = sorted(paths, key=self._compute_path_weight)
                 self.paths[(input_type[0], output_type)] = paths
+
+    def key_lookup_batch(self, batchiter):
+        """
+        Look up all keys for ids given in the batch iterator (1 block)
+        :param batchiter:  1 lock of records to look up keys for
+        :return:
+        """
+        output_docs = []
+        for doc in batchiter:
+            keys = None
+            for output_type in self.output_types:
+                for input_type in self.input_types:
+                    keys = self.travel(input_type[0], output_type, KeyLookup._nested_lookup(doc, input_type[1]))
+                    # Key(s) were found, create new documents
+                    # and add them to the output list
+                    if keys:
+                        for k in keys:
+                            new_doc = copy.deepcopy(doc)
+                            new_doc['_id'] = k
+                            output_docs.append(new_doc)
+                        break
+                # Break out of the outer loop if keys were found
+                if keys:
+                    break
+            # No keys were found, keep the original (unless the skip_on_failure option is passed)
+            if not keys and not self.skip_on_failure:
+                output_docs.append(doc)
+        return output_docs
 
     def _compute_path_weight(self, path):
         """
