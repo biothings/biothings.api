@@ -19,6 +19,13 @@ Quick Links
 If you already know how to run a BioThings standalone instance, you can download the latest
 avaiable Docker images from the following tables.
 
+.. warning:: Some data sources, managed and served by standalone instances (production, demo and old),
+   have restricted licenses. Therefore these standalone instances must not be used for other than non-profit purposes.
+   By clicking on the following links, you agree and understand these restrictions. If you're a for-profit company
+   and would like to run a standalone instance, please `contact us`__.
+
+.. __: mailto:help@biothings.io
+
 .. note:: Images don't contain data but are ready to download and maintain data up-to-date
           running simple commands through the hub.
 
