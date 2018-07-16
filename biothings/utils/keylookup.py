@@ -120,6 +120,30 @@ class KeyLookup(object):
         """
         pass
 
+    def _build_cache(self, batchiter):
+        """
+        Build an id list and document cache for documents read from the
+        batch iterator.
+        :param batchiter:  an iterator for a batch of documents.
+        :return:
+        """
+        id_lst = []
+        doc_cache = []
+        for doc in batchiter:
+
+            # handle skip logic
+            if self.skip_w_regex and self.skip_w_regex.match(doc['_id']):
+                pass
+            else:
+                for input_type in self.input_types:
+                    val = KeyLookup._nested_lookup(doc, input_type[1])
+                    if val:
+                        id_lst.append('"{}"'.format(val))
+
+            # always place the document in the cache
+            doc_cache.append(doc)
+        return list(set(id_lst)), doc_cache
+
     @staticmethod
     def _nested_lookup(doc, field):
         """

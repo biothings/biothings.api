@@ -102,30 +102,6 @@ class KeyLookupAPI(KeyLookup):
         qm_struct = self._parse_querymany(qr)
         return self._replace_keys(qm_struct, doc_cache)
 
-    def _build_cache(self, batchiter):
-        """
-        Build an id list and document cache for documents read from the
-        batch iterator.
-        :param batchiter:  an iterator for a batch of documents.
-        :return:
-        """
-        id_lst = []
-        doc_cache = []
-        for doc in batchiter:
-
-            # handle skip logic
-            if self.skip_w_regex and self.skip_w_regex.match(doc['_id']):
-                pass
-            else:
-                for input_type in self.input_types:
-                    val = KeyLookupAPI._nested_lookup(doc, input_type[1])
-                    if val:
-                        id_lst.append('"{}"'.format(val))
-
-            # always place the document in the cache
-            doc_cache.append(doc)
-        return list(set(id_lst)), doc_cache
-
     def _query_many(self, id_lst):
         """
         Call the biothings_client querymany function with a list of identifiers
