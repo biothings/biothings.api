@@ -159,37 +159,6 @@ class KeyLookupAPI(KeyLookup):
                 if val:
                     return val
 
-    def _replace_keys(self, qm_struct, doc_cache):
-        """
-        Build a new list of documents to return that have their keys
-        replaced by answers specified in the qm_structure which
-        was built earlier.
-        :param qm_struct: structure of keys from _parse_querymany
-        :param doc_cache: cache of documents that will have keys replaced.
-        :return:
-        """
-        # Replace the keys and build up a new result list
-        res_lst = []
-        for doc in doc_cache:
-            new_doc = None
-            for input_type in self.input_types:
-                # doc[input_type[1]] must be typed to a string because qm_struct.keys are always strings
-                if KeyLookupAPI._nested_lookup(doc, input_type[1]) in qm_struct.keys():
-                    for key in qm_struct[KeyLookupAPI._nested_lookup(doc, input_type[1])]:
-                        new_doc = copy.deepcopy(doc)
-                        new_doc['_id'] = key
-                        res_lst.append(new_doc)
-                # Break out if an input type was used.
-                if new_doc:
-                    break
-            if not new_doc and not self.skip_on_failure:
-                res_lst.append(doc)
-
-        lg.info("_replace_keys:  Num of documents yielded:  {}".format(len(res_lst)))
-        # Yield the results
-        for r in res_lst:
-            yield r
-
     def _get_lookup_field(self, field):
         """
         Getter for lookup fields which may be either a string or a list of string fields.
