@@ -1,7 +1,7 @@
 import time, logging, os, io, glob, datetime
 import dateutil.parser as dtparser
 from functools import wraps
-from pymongo import MongoClient
+from pymongo import MongoClient, DESCENDING
 from pymongo.collection import Collection
 from functools import partial
 from collections import defaultdict
@@ -126,7 +126,7 @@ def get_event(conn=None):
 @requires_config
 def get_last_command(conn=None):
     cmd = get_cmd(conn)
-    cur = cmd.find({},{"_id":1}).sort("_id",pymongo.DESCENDING).limit(1)
+    cur = cmd.find({},{"_id":1}).sort("_id",DESCENDING).limit(1)
     return next(cur)
 
 @requires_config
