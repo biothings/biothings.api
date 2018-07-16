@@ -107,6 +107,12 @@ class KeyLookupMDB(KeyLookup):
         """
         output_docs = []
         for doc in batchiter:
+
+            # Skip (regex) logic
+            if self.skip_w_regex and self.skip_w_regex.match(doc['_id']):
+                output_docs.append(doc)
+                continue
+
             keys = None
             for output_type in self.output_types:
                 for input_type in self.input_types:

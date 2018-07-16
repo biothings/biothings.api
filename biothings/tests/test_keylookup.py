@@ -267,3 +267,21 @@ class TestKeyLookup(unittest.TestCase):
                 doc_lst = [{'_id': 'a:1234'}, {'_id': 'a:invalid'}, {'_id': 'a:1234'}]
                 for d in doc_lst:
                     yield d
+
+    def test_skip_w_regex(self):
+        """
+        Test the skip_w_regex option.
+        :return:
+        """
+
+        collections = ['b', 'c', 'd', 'e']
+        doc_lst = [{'_id': 'a:1234'}]
+
+        @KeyLookup(graph_simple, collections, 'a', ['d'], skip_w_regex='a:')
+        def load_document(data_folder):
+            for d in doc_lst:
+                yield d
+
+        res_lst = load_document('data/folder/')
+        res = next(res_lst)
+        self.assertEqual(res['_id'], 'a:1234')
