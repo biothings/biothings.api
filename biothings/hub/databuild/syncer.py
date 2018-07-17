@@ -49,6 +49,7 @@ class BaseSyncer(object):
         self.old = None
         self.new = None
         self.target_backend = None
+        self._meta = None
 
     def setup_log(self):
         # TODO: use bt.utils.loggers.get_logger
@@ -153,9 +154,21 @@ class BaseSyncer(object):
             #src_build.update({'_id': build["_id"]}, {"$set": index_info})
             src_build.replace_one({"_id" : build["_id"]}, build)
 
+    def load_metadata(self,diff_folder):
+        self._meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
+
+    def get_target_backend(self):
+        # first try to use what's been passed explicitely
+        # then default to what's in config (tuple will be used for create_backend() call)
+        # or use what we have in the diff metadata
+        old_db_col_names = self.target_backend or \
+            (btconfig.ES_HOST,btconfig.ES_INDEX_NAME,btconfig.ES_DOC_TYPE) or \
+            self._meta["old"]["backend"]
+        return old_db_col_names
+
     @asyncio.coroutine
     def sync_cols(self, diff_folder, batch_size=10000, mode=None, force=False,
-            target_backend=None,steps=["mapping","content","meta"]):
+            target_backend=None,steps=["mapping","content","meta","post"]):
         """
         Sync a collection with diff files located in diff_folder. This folder contains a metadata.json file which
         describes the different involved collection: "old" is the collection/index to be synced, "new" is the collecion
@@ -170,17 +183,13 @@ class BaseSyncer(object):
         got_error = False
         cnt = 0
         jobs = []
-        meta = json.load(open(os.path.join(diff_folder,"metadata.json")))
+        self.load_metadata(diff_folder)
+        meta = self._meta
         diff_type = self.diff_type
-        selfcontained = "selfcontained" in meta["diff"]["type"]
-        # first try to use what's been passed explicitely
-        # then default to what's in config (tuple will be used for create_backend() call)
-        # or use what we have in the diff metadata
-        old_db_col_names = self.target_backend or \
-            (btconfig.ES_HOST,btconfig.ES_INDEX_NAME,btconfig.ES_DOC_TYPE) or \
-            meta["old"]["backend"]
-        new_db_col_names = meta["new"]["backend"]
-        diff_mapping_file = meta["diff"]["mapping_file"]
+        selfcontained = "selfcontained" in self._meta["diff"]["type"]
+        old_db_col_names = self.get_target_backend()
+        new_db_col_names = self._meta["new"]["backend"]
+        diff_mapping_file = self._meta["diff"]["mapping_file"]
         pinfo = self.get_pinfo()
         self.synced_cols = "%s -> %s" % (old_db_col_names,new_db_col_names)
         pinfo["source"] = self.synced_cols
@@ -189,7 +198,7 @@ class BaseSyncer(object):
             if diff_mapping_file:
                 # old_db_col_names is actually the index name in that case
                 index_name = old_db_col_names[1]
-                doc_type = meta["build_config"]["doc_type"]
+                doc_type = self._meta["build_config"]["doc_type"]
                 indexer = create_backend(old_db_col_names).target_esidxer
                 pinfo["step"] = "mapping"
                 pinfo["description"] = diff_mapping_file
@@ -229,7 +238,7 @@ class BaseSyncer(object):
             if selfcontained:
                 # selfconained is a worker param, isolate diff format
                 diff_type = diff_type.replace("-selfcontained","").replace("-","_")
-            diff_files = [(os.path.join(diff_folder,e["name"]),e.get("worker_args",{})) for e in meta["diff"]["files"]]
+            diff_files = [(os.path.join(diff_folder,e["name"]),e.get("worker_args",{})) for e in self._meta["diff"]["files"]]
             total = len(diff_files)
             self.logger.info("Syncing %s to %s using diff files in '%s'" % (old_db_col_names,new_db_col_names,diff_folder))
             pinfo["step"] = "content"
@@ -237,10 +246,12 @@ class BaseSyncer(object):
             for diff_file,worker_args in diff_files:
                 cnt += 1
                 pinfo["description"] = "file %s (%s/%s)" % (diff_file,cnt,total)
-                worker = getattr(sys.modules[self.__class__.__module__],"sync_%s_%s_worker" % \
+                worker = getattr(sys.modules["biothings.hub.databuild.syncer"],"sync_%s_%s_worker" % \
                         (self.target_backend_type,diff_type))
                 strwargs = worker_args and " using specific worker args %s" % repr(worker_args) or ""
                 self.logger.info("Creating sync worker %s for file %s (%s/%s)%s" % (worker.__name__,diff_file,cnt,total,strwargs))
+                # deepcopy to make we don't embed "self" with unpickleable stuff
+                meta = copy.deepcopy(self._meta)
                 job = yield from self.job_manager.defer_to_process(pinfo,
                         partial(worker, diff_file, old_db_col_names, new_db_col_names, worker_args.get("batch_size") or batch_size, cnt,
                             force, selfcontained, meta))
@@ -268,9 +279,9 @@ class BaseSyncer(object):
         if "meta" in steps and self.target_backend_type == "es":
             # old_db_col_names is actually the index name in that case
             index_name = old_db_col_names[1]
-            doc_type = meta["build_config"]["doc_type"]
+            doc_type = self._meta["build_config"]["doc_type"]
             indexer = create_backend(old_db_col_names).target_esidxer
-            new_meta = meta["_meta"]
+            new_meta = self._meta["_meta"]
             pinfo["step"] = "metadata"
 
             def update_metadata():
@@ -299,13 +310,49 @@ class BaseSyncer(object):
                     (old_db_col_names, got_error),extra={"notify":True})
                 raise got_error
 
+        if "post" in steps:
+            pinfo["step"] = "post"
+            job = yield from self.job_manager.defer_to_thread(pinfo,
+                        partial(self.post_sync_cols,
+                                    diff_folder=diff_folder,
+                                    batch_size=batch_size,
+                                    mode=mode,
+                                    force=force,
+                                    target_backend=target_backend,
+                                    steps=steps
+                        ))
+
+            def posted(f):
+                try:
+                    res = f.result()
+                    self.logger.info("Post-sync process done on index '%s': %s" % (repr(old_db_col_names),res))
+                    summary["post-sync"] = True
+                    self.register_status("success",job={"step":"sync-post"},sync=summary)
+                except Exception as e:
+                    self.logger.error("Failed to run post-sync process on index '%s': %s" % (repr(old_db_col_names),e))
+                    self.register_status("failed",job={"err": repr(e)})
+                    got_error = e
+
+            self.register_status("syncing",transient=True,init=True,job={"step":"sync-post"})
+            job.add_done_callback(posted)
+            yield from job
+
+            if got_error:
+                self.logger.error("Failed to run post-sync process on index '%s': %s" % \
+                    (repr(old_db_col_names), got_error),extra={"notify":True})
+                raise got_error
+
         self.logger.info("Succesfully synced index %s to reach collection %s using diff files in '%s': %s" % \
                 (old_db_col_names, new_db_col_names, diff_folder,summary),extra={"notify":True})
 
         return summary
 
+    def post_sync_cols(self, diff_folder, batch_size, mode, force, target_backend,steps):
+        """Post-sync hook, can be implemented in sub-class"""
+        return
+
     def sync(self, diff_folder=None, batch_size=10000, mode=None, target_backend=None,
-             steps=["mapping","content","meta"]):
+             steps=["mapping","content","meta","post"]):
         """wrapper over sync_cols() coroutine, return a task"""
         job = asyncio.ensure_future(self.sync_cols(
                     diff_folder=diff_folder, batch_size=batch_size, mode=mode,
@@ -661,7 +708,7 @@ class SyncerManager(BaseManager):
         return pclass()
 
     def sync(self, backend_type, old_db_col_names, new_db_col_names, diff_folder=None, 
-                   batch_size=100000, mode=None, target_backend=None, steps=["mapping","content","meta"]):
+                   batch_size=100000, mode=None, target_backend=None, steps=["mapping","content","meta","post"]):
         if diff_folder is None:
             diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
         if not os.path.exists(diff_folder):
@@ -685,7 +732,7 @@ class SyncerManager(BaseManager):
             syncer.old = create_backend(old_db_col_names)
             syncer.new = create_backend(new_db_col_names)
             job = syncer.sync(diff_folder,batch_size=batch_size,mode=mode,
-                    target_backend=target_backend)
+                    target_backend=target_backend,steps=steps)
             return job
         except KeyError as e:
             raise SyncerException("No such syncer (%s,%s) (error: %s)" % (diff_type,backend_type,e))
