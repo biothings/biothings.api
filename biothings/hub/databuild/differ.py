@@ -1582,7 +1582,7 @@ class DifferManager(BaseManager):
             if "post" in steps:
                 # then we upload all the folder content
                 pinfo["step"] = "post"
-                self.logger.info("Runnig ost-publish step")
+                self.logger.info("Running post-publish step")
                 job = yield from self.job_manager.defer_to_thread(pinfo,partial(self.post_publish,
                             s3_folder=s3_folder, old_db_col_names=old_db_col_names,
                             new_db_col_names=new_db_col_names, diff_folder=diff_folder,
