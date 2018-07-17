@@ -355,14 +355,14 @@ class TestKeyLookupAPI(unittest.TestCase):
         :return:
         """
 
-        doc_lst = [{'_id': 'CID1983'}]
+        doc_lst = [{'_id': 'CID1983xyz'}]
 
-        @KeyLookupMyChemInfo('pubchem', ['inchikey'], skip_w_regex='CID')
+        @KeyLookupMyChemInfo('pubchem', ['inchikey'], skip_on_failure=True, skip_w_regex='CID')
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
 
         res_lst = load_document('data/folder/')
         res = next(res_lst)
-        self.assertEqual(res['_id'], 'CID1983')
+        self.assertEqual(res['_id'], 'CID1983xyz')
 

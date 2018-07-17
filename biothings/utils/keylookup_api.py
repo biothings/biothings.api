@@ -206,7 +206,7 @@ class KeyLookupAPI(KeyLookup):
                 # Break out if an input type was used.
                 if new_doc:
                     break
-            if not new_doc and not self.skip_on_failure:
+            if not new_doc and ((self.skip_w_regex and self.skip_w_regex.match(doc['_id'])) or not self.skip_on_failure):
                 res_lst.append(doc)
 
         lg.info("_replace_keys:  Num of documents yielded:  {}".format(len(res_lst)))
