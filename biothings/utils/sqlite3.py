@@ -27,6 +27,26 @@ def get_src_build_config():
     db = Database()
     return db[db.CONFIG.DATA_SRC_BUILD_CONFIG_COLLECTION]
 
+def get_data_plugin():
+    db = Database()
+    return db[db.CONFIG.DATA_PLUGIN_COLLECTION]
+
+def get_api():
+    db = Database()
+    return db[db.CONFIG.API_COLLECTION]
+
+def get_cmd():
+    db = Database()
+    return db[db.CONFIG.CMD_COLLECTION]
+
+def get_event():
+    db = Database()
+    return db[db.CONFIG.EVENT_COLLECTION]
+
+def get_last_command():
+    #dummy...
+    return {"_id":1}
+
 def get_source_fullname(col_name):
     """
     Assuming col_name is a collection created from an upload process,
