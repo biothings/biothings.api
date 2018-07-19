@@ -71,7 +71,8 @@ class BiothingsDumper(HTTPDumper):
         if hasattr(btconfig,"SKIP_CHECK_COMPAT") and btconfig.SKIP_CHECK_COMPAT:
             return
 
-        for version_field in ["app_version","autohub_version"]:
+        msg = []
+        for version_field in ["app_version","autohub_version","biothings_version"]:
             VERSION_FIELD = version_field.upper()
             version = build_meta.get(version_field)
             if type(version) != list:
@@ -83,6 +84,8 @@ class BiothingsDumper(HTTPDumper):
             VERSION.add(getattr(btconfig,VERSION_FIELD))
             found_compat_version = VERSION.intersection(version)
             assert found_compat_version, "Remote data requires %s to be %s, but current app is %s" % (version_field,version,VERSION)
+            msg.append("%s=%s:OK" % (version_field,version))
+        self.logger.debug("Compat: %s" % ", ".join(msg))
 
     def load_remote_json(self,url):
         res = self.client.get(url)
