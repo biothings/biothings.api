@@ -72,14 +72,14 @@ class BiothingsDumper(HTTPDumper):
             return
 
         msg = []
-        for version_field in ["app_version","autohub_version","biothings_version"]:
+        for version_field in ["app_version","standalone_version","biothings_version"]:
             VERSION_FIELD = version_field.upper()
             version = build_meta.get(version_field)
             if type(version) != list:
                 version = [version]
             version = set(version)
             if version == set([None]):
-                raise DumperException("Remote data is too old and can't be handled with current app")
+                raise DumperException("Remote data is too old and can't be handled with current app (%s not defined)" % version_field)
             VERSION = set()
             VERSION.add(getattr(btconfig,VERSION_FIELD))
             found_compat_version = VERSION.intersection(version)
