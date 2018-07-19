@@ -3,14 +3,11 @@ import asyncio
 from urllib.parse import urlparse, urljoin
 from functools import partial
 
-import biothings, config
-biothings.config_for_app(config)
-
-from config import DATA_ARCHIVE_ROOT
+from biothings import config as btconfig
 from biothings.hub.dataload.dumper import HTTPDumper, DumperException
 from biothings.utils.common import gunzipall, md5sum
 
-HUB_ENV = hasattr(config,"HUB_ENV") and config.HUB_ENV or "" # default to prod (normal)
+HUB_ENV = hasattr(btconfig,"HUB_ENV") and btconfig.HUB_ENV or "" # default to prod (normal)
 LATEST = HUB_ENV and "%s-latest" % HUB_ENV or "latest"
 VERSIONS = HUB_ENV and "%s-versions" % HUB_ENV or "versions"
 
@@ -29,7 +26,7 @@ class BiothingsDumper(HTTPDumper):
     BIOTHINGS_S3_FOLDER = None
 
     SRC_NAME = "biothings"
-    SRC_ROOT_FOLDER = os.path.join(DATA_ARCHIVE_ROOT, SRC_NAME)
+    SRC_ROOT_FOLDER = os.path.join(btconfig.DATA_ARCHIVE_ROOT, SRC_NAME)
 
     # URL is always the same, but headers change (template for app + version)
     SRC_URL = "http://biothings-releases.s3-website-us-west-2.amazonaws.com/%s/%s.json"
@@ -69,6 +66,23 @@ class BiothingsDumper(HTTPDumper):
         # because remote is older by just a few milliseconds
         lastmodified = int(res.headers["x-amz-meta-lastmodified"]) + 1
         os.utime(localfile, (lastmodified, lastmodified))
+
+    def check_compat(self,build_meta):
+        if hasattr(btconfig,"SKIP_CHECK_COMPAT") and btconfig.SKIP_CHECK_COMPAT:
+            return
+
+        for version_field in ["app_version","autohub_version"]:
+            VERSION_FIELD = version_field.upper()
+            version = build_meta.get(version_field)
+            if type(version) != list:
+                version = [version]
+            version = set(version)
+            if version == set([None]):
+                raise DumperException("Remote data is too old and can't be handled with current app")
+            VERSION = set()
+            VERSION.add(getattr(btconfig,VERSION_FIELD))
+            found_compat_version = VERSION.intersection(version)
+            assert found_compat_version, "Remote data requires %s to be %s, but current app is %s" % (version_field,version,VERSION)
 
     def load_remote_json(self,url):
         res = self.client.get(url)
@@ -175,6 +189,7 @@ class BiothingsDumper(HTTPDumper):
             # manually get the diff meta file (ie. not using download() because we don't know the version yet,
             # it's in the diff meta
             build_meta = self.load_remote_json(file_url)
+            self.check_compat(build_meta)
             if not build_meta:
                 raise Exception("Can't get remote build information about version '%s' (url was '%s')" % \
                         (version,file_url))
