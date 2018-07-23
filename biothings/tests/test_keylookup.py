@@ -2,7 +2,7 @@ from biothings import config as btconfig
 from biothings import config_for_app
 config_for_app(btconfig)
 
-from biothings.utils.keylookup_mdb import KeyLookupMDB as KeyLookup
+from biothings.utils.keylookup_mdb_batch import KeyLookupMDBBatch as KeyLookup
 from biothings.tests.keylookup_graphs import graph_simple, \
     graph_weights, graph_one2many, graph_invalid
 import unittest
@@ -97,9 +97,8 @@ class TestKeyLookup(unittest.TestCase):
         doc_lst = [{'_id': 'a:1234'}]
         res_lst = load_document(doc_lst)
 
-        for res in res_lst:
-            # Check for expected key
-            self.assertEqual(res['_id'], 'd:1234')
+        res = next(res_lst)
+        self.assertEqual(res['_id'], 'd:1234')
 
     def test_one2many(self):
         """
@@ -201,7 +200,7 @@ class TestKeyLookup(unittest.TestCase):
 
     def test_skip_on_failure(self):
         """
-        Simple test for key lookup - artificial document.
+        Simple test for key lookup skip_on_failure.
 
         This test tests the skip_on_failure option which skips documents
         where lookup was unsuccessful.
@@ -220,9 +219,9 @@ class TestKeyLookup(unittest.TestCase):
         # Test a list being passed with 3 documents, 2 are returned, 1 is skipped
         res_lst = load_document('data/folder/')
         res1 = next(res_lst)
-        res3 = next(res_lst)
+        res2 = next(res_lst)
         self.assertEqual(res1['_id'], 'd:1234')
-        self.assertEqual(res3['_id'], 'd:1234')
+        self.assertEqual(res2['_id'], 'd:1234')
 
         # Verify that the generator is out of documents
         with self.assertRaises(StopIteration):
