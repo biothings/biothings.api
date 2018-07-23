@@ -4,7 +4,7 @@ config_for_app(btconfig)
 
 from biothings.utils.keylookup_mdb_batch import KeyLookupMDBBatch as KeyLookup
 from biothings.tests.keylookup_graphs import graph_simple, \
-    graph_weights, graph_one2many, graph_invalid
+    graph_weights, graph_one2many, graph_invalid, graph_mix
 import unittest
 import biothings.utils.mongo as mongo
 
@@ -54,6 +54,14 @@ class TestKeyLookup(unittest.TestCase):
         self.db['ddd'].insert({'d_id': 'd:1234', 'c_id': 'c:1234'})
         self.db['eee'].insert({'e_id': 'e:1234', 'd_id': 'd:1234'})
 
+        # Collections for the mix mongodb and api test
+        self.db = mongo.get_src_db()
+        self.db.create_collection('mix1')
+        self.db.create_collection('mix3')
+
+        self.db['mix1'].insert({'ensembl': 'ENSG00000123374', 'start_id': 'start1'})
+        self.db['mix3'].insert({'end_id': 'end1', 'entrez': '1017'})
+
     def tearDown(self):
         """
         Reset the mongodb structure after the tests
@@ -77,6 +85,10 @@ class TestKeyLookup(unittest.TestCase):
         self.db.drop_collection('ccc')
         self.db.drop_collection('ddd')
         self.db.drop_collection('eee')
+
+        # Collections for the mix mongodb and api test
+        self.db.drop_collection('mix1')
+        self.db.drop_collection('mix3')
 
     def test_simple(self):
         """
@@ -284,3 +296,20 @@ class TestKeyLookup(unittest.TestCase):
         res_lst = load_document('data/folder/')
         res = next(res_lst)
         self.assertEqual(res['_id'], 'a:1234')
+
+    def test_mix_mdb_api(self):
+        """
+        Test with mixed lookups between MongoDB and API
+        :return:
+        """
+        collections = ['mix1', 'mix3']
+        doc_lst = [{'_id': 'start1'}]
+
+        @KeyLookup(graph_mix, collections, 'mix1', ['mix3'])
+        def load_document(data_folder):
+            for d in doc_lst:
+                yield d
+
+        res_lst = load_document('data/folder/')
+        res = next(res_lst)
+        self.assertEqual(res['_id'], 'end1')

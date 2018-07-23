@@ -76,12 +76,20 @@ class KeyLookupMDBBatch(KeyLookup):
             if 'object' not in G.edges[v1, v2].keys():
                 raise ValueError("edge_object for ({}, {}) is missing".format(v1, v2))
             edge_object = G.edges[v1, v2]['object']
-            if 'col' not in edge_object.keys():
-                raise ValueError("edge_object for ({}, {}) is missing the 'col' field".format(v1, v2))
-            if 'lookup' not in edge_object.keys():
-                raise ValueError("edge_object for ({}, {}) is missing the 'lookup' field".format(v1, v2))
-            if 'field' not in edge_object.keys():
-                raise ValueError("edge_object for ({}, {}) is missing the 'field' field".format(v1, v2))
+            if 'type' not in edge_object.keys() or edge_object['type'] == 'mongodb':
+                if 'col' not in edge_object.keys():
+                    raise ValueError("edge_object for ({}, {}) is missing the 'col' field".format(v1, v2))
+                if 'lookup' not in edge_object.keys():
+                    raise ValueError("edge_object for ({}, {}) is missing the 'lookup' field".format(v1, v2))
+                if 'field' not in edge_object.keys():
+                    raise ValueError("edge_object for ({}, {}) is missing the 'field' field".format(v1, v2))
+            elif edge_object['type'] == 'api':
+                if 'client' not in edge_object.keys():
+                    raise ValueError("edge_object for ({}, {}) is missing the 'client' field".format(v1, v2))
+                if 'scope' not in edge_object.keys():
+                    raise ValueError("edge_object for ({}, {}) is missing the 'scope' field".format(v1, v2))
+                if 'field' not in edge_object.keys():
+                    raise ValueError("edge_object for ({}, {}) is missing the 'field' field".format(v1, v2))
 
     def _precompute_paths(self):
         """
@@ -226,12 +234,30 @@ class KeyLookupMDBBatch(KeyLookup):
         """
         Follow an edge given a key.
 
-        An edge represets a document and this method uses the data is the edge_object
+        This method uses the data in the edge_object
+        to find one key to another key using one of
+        several types of lookup functions.
+        :param edge:
+        :param key:
+        :return:
+        """
+        if 'type' not in edge.keys() or edge['type'] == 'mongodb':
+            return self._edge_lookup_mongodb(edge, id_strct)
+
+        elif edge['type'] == 'api':
+            return self._edge_lookup_api(edge, id_strct)
+
+    def _edge_lookup_mongodb(self, edge, id_strct):
+        """
+        Follow an edge given a key.
+
+        An edge represets a document and this method uses the data in the edge_object
         to find one key to another key using exactly one mongodb lookup.
         :param edge:
         :param key:
         :return:
         """
+
         col = edge['col']
         if col not in self.get_collections().keys():
             return None
@@ -253,6 +279,60 @@ class KeyLookupMDBBatch(KeyLookup):
                 if curr_id == d[lookup]:
                     new_id_strct.append((orig_id, d[field]))
         return new_id_strct
+
+    def _edge_lookup_api(self, edge, id_strct):
+        """
+        Follow an edge given a key.
+
+        This method uses the data in the edge_object
+        to find one key to another key using an api.
+        :param edge:
+        :param key:
+        :return:
+        """
+        qr = self._query_many(edge, id_strct)
+        new_id_strct = self._parse_querymany(qr, id_strct, edge['field'])
+        return new_id_strct
+
+    def _query_many(self, edge, id_strct):
+        """
+        Call the biothings_client querymany function with a list of identifiers
+        and output fields that will be returned.
+        :param id_lst: list of identifiers to query
+        :return:
+        """
+        id_lst = []
+        for (orig_id, curr_id) in id_strct:
+            id_lst.append(curr_id)
+
+        client = edge['client']
+        scopes = edge['scope']
+        fields = edge['field']
+
+        return client.querymany(id_lst,
+                                scopes=scopes,
+                                fields=fields,
+                                as_generator=True,
+                                returnall=True,
+                                size=self.batch_size)
+
+    def _parse_querymany(self, qr, id_strct, field):
+        """
+        Parse the querymany results from the biothings_client into a structure
+        that will later be used for document key replacement.
+        :param qr: querymany results
+        :return:
+        """
+        kl_log.debug("QueryMany Structure:  {}".format(qr))
+        qm_struct = []
+        for q in qr['out']:
+            query = q['query']
+            val = KeyLookupMDBBatch._nested_lookup(q, field)
+            if val:
+                for (orig_id, curr_id) in id_strct:
+                    if query == curr_id:
+                        qm_struct.append((orig_id, val))
+        return qm_struct
 
     def get_collections(self):
         """

@@ -118,3 +118,28 @@ graph_invalid.add_edge('aa', 'bb',
                    'lookup': 'a_id',
                    'field-invalid': 'b_id'})
 
+###############################################################################
+# Mix MongoDB and API Test
+###############################################################################
+import biothings_client
+client = biothings_client.get_client('gene')
+graph_mix = nx.DiGraph()
+
+graph_mix.add_node('mix1')
+graph_mix.add_node('ensembl')
+graph_mix.add_node('entrez')
+graph_mix.add_node('mix3')
+
+graph_mix.add_edge('mix1', 'ensembl',
+                   object={'col': 'mix1',
+                           'lookup': 'start_id',
+                           'field': 'ensembl'})
+graph_mix.add_edge('ensembl', 'entrez',
+                   object={'type': 'api',
+                           'client': client,
+                           'scope': 'ensembl.gene',
+                           'field': 'entrezgene'})
+graph_mix.add_edge('entrez', 'mix3',
+                   object={'col': 'mix3',
+                           'lookup': 'entrez',
+                           'field': 'end_id'})
