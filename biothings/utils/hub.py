@@ -8,7 +8,6 @@ import asyncio, asyncssh, crypt, sys, io, inspect
 import types, aiocron, time
 from functools import partial
 from IPython import InteractiveShell
-import psutil
 from pprint import pprint, pformat
 from collections import OrderedDict
 import pymongo
@@ -651,14 +650,6 @@ def schedule(loop):
             out.append(sch)
 
     return "\n".join(out)
-        
-
-def find_process(pid):
-    g = psutil.process_iter()
-    for p in g:
-        if p.pid == pid:
-            break
-    return p
 
 
 def stats(src_dump):

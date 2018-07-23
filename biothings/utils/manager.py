@@ -13,7 +13,6 @@ logger = config.logger
 
 from biothings.utils.mongo import get_src_conn
 from biothings.utils.common import timesofar, get_random_string, sizeof_fmt
-from biothings.utils.hub import find_process
 from biothings.utils.hub_db import get_src_dump, get_src_build
 
 
@@ -117,6 +116,15 @@ def do_work(job_id, ptype, pinfo=None, func=None, *args, **kwargs):
     # issue pickling directly the passed func because of some import
     # issues ("can't pickle ... object is not the same as ...")
     return func(*args,**kwargs)
+
+
+def find_process(pid):
+    g = psutil.process_iter()
+    for p in g:
+        if p.pid == pid:
+            break
+    return p
+
 
 class UnknownResource(Exception):
     pass
