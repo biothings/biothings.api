@@ -1517,13 +1517,21 @@ class DifferManager(BaseManager):
                                 "('%s'), prevent publishing to avoid infinite loop " % meta["new"]["version"] + \
                                 "while resolving updates in auto-update hub")
                     # generate json metadata about this diff release
+                    if getattr(btconfig,"SKIP_CHECK_VERSIONS",None):
+                        self.logger.info("SKIP_CHECK_VERSIONS %s, no version check will be performed on diff metadata" % repr(btconfig.SKIP_CHECK_VERSIONS))
+                    else:
+                        assert getattr(btconfig,"BIOTHINGS_VERSION","master") != "master", "I won't publish data refering BIOTHINGS_VERSION='master'"
+                        assert getattr(btconfig,"APP_VERSION","master") != "master", "I won't publish data refering APP_VERSION='master'"
+                        assert getattr(btconfig,"STANDALONE_VERSION",None), "STANDALONE_VERSION not defined"
                     diff_meta = {
                             "type": "incremental",
                             "build_version": diff_version,
                             "require_version": meta["old"]["version"],
                             "target_version": meta["new"]["version"],
                             "release_date" : datetime.now().isoformat(),
-                            "app_version": None,
+                            "app_version": btconfig.APP_VERSION,
+                            "biothings_version": btconfig.BIOTHINGS_VERSION,
+                            "standalone_version": btconfig.STANDALONE_VERSION,
                             "metadata" : {"url" : aws.get_s3_url(os.path.join(s3basedir,"metadata.json"),
                                 aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=s3_bucket)},
                             }
