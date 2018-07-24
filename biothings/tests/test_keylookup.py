@@ -4,7 +4,8 @@ config_for_app(btconfig)
 
 from biothings.utils.keylookup_mdb_batch import KeyLookupMDBBatch as KeyLookup
 from biothings.tests.keylookup_graphs import graph_simple, \
-    graph_weights, graph_one2many, graph_invalid, graph_mix
+    graph_weights, graph_one2many, graph_invalid, graph_mix, \
+    graph_mychem
 import unittest
 import biothings.utils.mongo as mongo
 
@@ -313,3 +314,93 @@ class TestKeyLookup(unittest.TestCase):
         res_lst = load_document('data/folder/')
         res = next(res_lst)
         self.assertEqual(res['_id'], 'end1')
+
+    def test_long_doc_lst(self):
+        """
+        Test a document list containing 12 entries.  Verify that the correct
+        number of documents are returned.
+        :return:
+        """
+
+        # Long document list - created manually for a unique test
+        doc_lst = [
+            {
+                '_id': 'test1',
+                'chebi': 'CHEBI:1391',
+            },
+            {
+                '_id': 'test2',
+                'pubchem': 'CID178014',
+            },
+            {
+                # this test document should still be returned
+                '_id': 'test3',
+            },
+            {
+                '_id': 'test4',
+                'drugbank': 'DB11940',
+            },
+            {
+                '_id': 'test5',
+                'chebi': 'CHEBI:28689',
+            },
+            {
+                '_id': 'test6',
+                'pubchem': 'CID164045',
+            },
+            {
+                '_id': 'test7',
+                'drugbank': 'DB01076'
+            },
+            {
+                '_id': 'test8',
+                'drugbank': 'DB03510',
+            },
+            {
+                '_id': 'test9',
+                'pubchem': 'CID40467070',
+            },
+            {
+                '_id': 'test10',
+                'chebi': 'CHEBI:135847',
+            },
+            {
+                '_id': 'test11',
+                'pubchem': 'CID10484732',
+            },
+            {
+                '_id': 'test12',
+                'pubchem': 'CID23305354',
+            },
+        ]
+
+        answers = [
+            'SHXWCVYOXRDMCX-UHFFFAOYSA-N',
+            'CXHDSLQCNYLQND-XQRIHRDZSA-N',
+            'test3',
+            'XMYKNCNAZKMVQN-NYYWCZLTSA-N',
+            'FMGSKLZLMKYGDP-USOAJAOKSA-N',
+            'YAFGHMIAFYQSCF-UHFFFAOYSA-N',
+            'XUKUURHRXDUEBC-KAYWLYCHSA-N',
+            'RXRZOKQPANIEDW-KQYNXXCUSA-N',
+            'BNQDCRGUHNALGH-ZCFIWIBFSA-N',
+            'CGVWPQOFHSAKRR-NDEPHWFRSA-N',
+            'PCZHWPSNPWAQNF-LMOVPXPDSA-N',
+            'FABUFPQFXZVHFB-CFWQTKTJSA-N',
+        ]
+
+        # Test a list being passed with 12 documents
+        collections = []
+        @KeyLookup(graph_mychem, collections, [('chebi', 'chebi'), ('drugbank', 'drugbank'), ('pubchem', 'pubchem')], ['inchikey'])
+        def load_document(data_folder):
+            for d in doc_lst:
+                yield d
+
+        res_lst = load_document('data/folder/')
+        res_cnt = 0
+        for res in res_lst:
+            res_cnt += 1
+            if not res['_id'] in answers:
+                print(res)
+            self.assertTrue(res['_id'] in answers)
+        self.assertEqual(res_cnt, 12)

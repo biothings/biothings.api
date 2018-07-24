@@ -17,6 +17,7 @@ kl_log = get_logger('keylookup', btconfig.LOG_FOLDER)
 
 class KeyLookupMDBBatch(KeyLookup):
     # Constants
+    batch_size = 10
     DEFAULT_WEIGHT = 1
     default_source = '_id'
 
@@ -99,13 +100,14 @@ class KeyLookupMDBBatch(KeyLookup):
         """
         self.paths = {}
         for output_type in self.output_types:
-            kl_log.info("Target Key:  {}".format(output_type))
             for input_type in self.input_types:
+                kl_log.info("Compute Path From '{}' to '{}'".format(input_type[0], output_type))
                 paths = \
                     all_simple_paths(self.G, input_type[0], output_type)
                 # Sort by path length - try the shortest paths first
                 paths = sorted(paths, key=self._compute_path_weight)
                 self.paths[(input_type[0], output_type)] = paths
+        kl_log.debug("All Travel Paths:  {}".format(self.paths))
 
     def key_lookup_batch(self, batchiter):
         """
@@ -114,7 +116,9 @@ class KeyLookupMDBBatch(KeyLookup):
         :return:
         """
         doc_lst = []
+        kl_log.debug("INPUT DOCUMENTS:")
         for doc in batchiter:
+            kl_log.debug(doc)
             doc_lst.append(doc)
 
         output_docs = []
@@ -129,7 +133,9 @@ class KeyLookupMDBBatch(KeyLookup):
             for input_type in self.input_types:
                 (tmp_hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
                 output_docs += tmp_hit_lst
-                kl_log.debug(output_docs)
+                kl_log.debug("Output documents from travel:")
+                for doc in tmp_hit_lst:
+                    kl_log.debug(doc)
 
         # Keep the misses if we do not skip on failure
         if not self.skip_on_failure:
@@ -199,7 +205,7 @@ class KeyLookupMDBBatch(KeyLookup):
                     miss_lst.append(d)
             return hit_lst, miss_lst
 
-        kl_log.debug("Travel Target:  {}".format(target))
+        kl_log.debug("Travel From '{}' To '{}'".format(input_type[0], target))
 
         # Keep a running list of all saved hits
         saved_hits = []

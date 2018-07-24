@@ -1,4 +1,6 @@
+import biothings_client
 import networkx as nx
+
 
 ###############################################################################
 # Simple Graph for Testing
@@ -121,7 +123,6 @@ graph_invalid.add_edge('aa', 'bb',
 ###############################################################################
 # Mix MongoDB and API Test
 ###############################################################################
-import biothings_client
 client = biothings_client.get_client('gene')
 graph_mix = nx.DiGraph()
 
@@ -143,3 +144,30 @@ graph_mix.add_edge('entrez', 'mix3',
                    object={'col': 'mix3',
                            'lookup': 'entrez',
                            'field': 'end_id'})
+
+###############################################################################
+# MyChem.Info API Graph for Test
+###############################################################################
+client = biothings_client.get_client('drug')
+graph_mychem = nx.DiGraph()
+
+graph_mychem.add_node('chebi')
+graph_mychem.add_node('drugbank')
+graph_mychem.add_node('pubchem')
+graph_mychem.add_node('inchikey')
+
+graph_mychem.add_edge('chebi', 'inchikey',
+                   object={'type': 'api',
+                           'client': client,
+                           'scope': 'chebi.chebi_id',
+                           'field': '_id'})
+graph_mychem.add_edge('drugbank', 'inchikey',
+                   object={'type': 'api',
+                           'client': client,
+                           'scope': 'drugbank.drugbank_id',
+                           'field': '_id'})
+graph_mychem.add_edge('pubchem', 'inchikey',
+                   object={'type': 'api',
+                           'client': client,
+                           'scope': 'pubchem.cid',
+                           'field': '_id'})

@@ -99,16 +99,15 @@ class KeyLookup(object):
         """
         def wrapped_f(*args):
             input_docs = f(*args)
-            kl_log.debug("input: %s" % input_docs)
+            output_doc_cnt = 0
             # split input_docs into chunks of size self.batch_size
             for batchiter in iter_n(input_docs, int(self.batch_size / len(self.input_types))):
                 output_docs = self.key_lookup_batch(batchiter)
-                odoc_cnt = 0
                 for odoc in output_docs:
-                    odoc_cnt += 1
-                    kl_log.debug("yield odoc: %s" % odoc)
+                    output_doc_cnt += 1
+                    kl_log.debug("yielded output doc: %s" % odoc)
                     yield odoc
-                kl_log.info("wrapped_f Num. output_docs:  {}".format(odoc_cnt))
+            kl_log.info("wrapped_f Num. output_docs:  {}".format(output_doc_cnt))
 
         return wrapped_f
 
