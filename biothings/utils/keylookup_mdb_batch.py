@@ -15,10 +15,123 @@ config_for_app(btconfig)
 kl_log = get_logger('keylookup', btconfig.LOG_FOLDER)
 
 
+class KeyLookupEdge(object):
+    def edge_lookup(self, keylookup_obj, id_strct):
+        """
+        virtual method for edge lookup.  Each edge class is
+        responsible for its own lookup procedures given a
+        keylookup_obj and an id_strct
+        :param keylookup_obj:
+        :param id_strct: - list of tuples (orig_id, current_id)
+        :return:
+        """
+        pass
+
+
+class MongoDBEdge(KeyLookupEdge):
+    """
+    KeyLookupEdge object for MongoDB queries
+    """
+    def __init__(self, collection, lookup, field, weight=1):
+        self.col = collection
+        self.lookup = lookup
+        self.field = field
+        self.weight = weight
+
+    def edge_lookup(self, keylookup_obj, id_strct):
+        """
+        Follow an edge given a key.
+
+        An edge represets a document and this method uses the data in the edge_object
+        to find one key to another key using exactly one mongodb lookup.
+        :param keylookup_obj:
+        :param id_strct:
+        :return:
+        """
+        if self.col not in keylookup_obj.get_collections().keys():
+            return None
+
+        # build id_lst
+        id_set = set()
+        for (orig_id, curr_id) in id_strct:
+            id_set.add(curr_id)
+        id_lst = list(id_set)
+
+        find_lst = keylookup_obj.get_collections()[self.col].find({self.lookup: {"$in": id_lst}}, {self.lookup: 1, self.field: 1})
+
+        # Build up a new_id_strct from the find_lst
+        new_id_strct = []
+        for d in find_lst:
+            for (orig_id, curr_id) in id_strct:
+                if curr_id == d[self.lookup]:
+                    new_id_strct.append((orig_id, d[self.field]))
+        return new_id_strct
+
+
+class APIEdge(KeyLookupEdge):
+    """
+    APIEdge - KeyLookupEdge object for API calls
+    """
+    def __init__(self, client, scope, field, weight=1):
+        self.client = client
+        self.scope = scope
+        self.field = field
+        self.weight = weight
+
+    def edge_lookup(self, keylookup_obj, id_strct):
+        """
+        Follow an edge given a key.
+
+        This method uses the data in the edge_object
+        to find one key to another key using an api.
+        :param edge:
+        :param key:
+        :return:
+        """
+        qr = self._query_many(keylookup_obj, id_strct)
+        new_id_strct = self._parse_querymany(keylookup_obj, qr, id_strct, self.field)
+        return new_id_strct
+
+    def _query_many(self, keylookup_obj, id_strct):
+        """
+        Call the biothings_client querymany function with a list of identifiers
+        and output fields that will be returned.
+        :param id_lst: list of identifiers to query
+        :return:
+        """
+        id_lst = []
+        for (orig_id, curr_id) in id_strct:
+            id_lst.append(curr_id)
+
+        return self.client.querymany(id_lst,
+                                     scopes=self.scope,
+                                     fields=self.field,
+                                     as_generator=True,
+                                     returnall=True,
+                                     size=keylookup_obj.batch_size)
+
+    def _parse_querymany(self, keylookup_obj, qr, id_strct, field):
+        """
+        Parse the querymany results from the biothings_client into a structure
+        that will later be used for document key replacement.
+        :param qr: querymany results
+        :return:
+        """
+        kl_log.debug("QueryMany Structure:  {}".format(qr))
+        qm_struct = []
+        for q in qr['out']:
+            query = q['query']
+            val = keylookup_obj._nested_lookup(q, field)
+            if val:
+                for (orig_id, curr_id) in id_strct:
+                    if query == curr_id:
+                        qm_struct.append((orig_id, val))
+        return qm_struct
+
+
 class KeyLookupMDBBatch(KeyLookup):
     # Constants
     batch_size = 10
-    DEFAULT_WEIGHT = 1
     default_source = '_id'
 
     def __init__(self, G, collections, input_types, output_types, skip_on_failure=False, skip_w_regex=None):
@@ -77,20 +190,8 @@ class KeyLookupMDBBatch(KeyLookup):
             if 'object' not in G.edges[v1, v2].keys():
                 raise ValueError("edge_object for ({}, {}) is missing".format(v1, v2))
             edge_object = G.edges[v1, v2]['object']
-            if 'type' not in edge_object.keys() or edge_object['type'] == 'mongodb':
-                if 'col' not in edge_object.keys():
-                    raise ValueError("edge_object for ({}, {}) is missing the 'col' field".format(v1, v2))
-                if 'lookup' not in edge_object.keys():
-                    raise ValueError("edge_object for ({}, {}) is missing the 'lookup' field".format(v1, v2))
-                if 'field' not in edge_object.keys():
-                    raise ValueError("edge_object for ({}, {}) is missing the 'field' field".format(v1, v2))
-            elif edge_object['type'] == 'api':
-                if 'client' not in edge_object.keys():
-                    raise ValueError("edge_object for ({}, {}) is missing the 'client' field".format(v1, v2))
-                if 'scope' not in edge_object.keys():
-                    raise ValueError("edge_object for ({}, {}) is missing the 'scope' field".format(v1, v2))
-                if 'field' not in edge_object.keys():
-                    raise ValueError("edge_object for ({}, {}) is missing the 'field' field".format(v1, v2))
+            if not isinstance(edge_object, KeyLookupEdge):
+                raise ValueError("edge_object for ({}, {}) is of the wrong type".format(v1, v2))
 
     def _precompute_paths(self):
         """
@@ -152,11 +253,8 @@ class KeyLookupMDBBatch(KeyLookup):
         weight = 0
         for p in map(nx.utils.pairwise, [path]):
             for (v1, v2) in p:
-                edge = self.G.edges[v1, v2]
-                if 'weight' in edge:
-                    weight = weight + edge['weight']
-                else:
-                    weight = weight + KeyLookup.DEFAULT_WEIGHT
+                edge = self.G.edges[v1, v2]['object']
+                weight = weight + edge.weight
         return weight
 
     def travel(self, input_type, target, doc_lst):
@@ -236,7 +334,7 @@ class KeyLookupMDBBatch(KeyLookup):
         hit_lst, miss_lst = _build_hit_miss_lsts(doc_lst, saved_hits)
         return hit_lst, miss_lst
 
-    def _edge_lookup(self, edge, id_strct):
+    def _edge_lookup(self, edge_obj, id_strct):
         """
         Follow an edge given a key.
 
@@ -247,98 +345,7 @@ class KeyLookupMDBBatch(KeyLookup):
         :param key:
         :return:
         """
-        if 'type' not in edge.keys() or edge['type'] == 'mongodb':
-            return self._edge_lookup_mongodb(edge, id_strct)
-
-        elif edge['type'] == 'api':
-            return self._edge_lookup_api(edge, id_strct)
-
-    def _edge_lookup_mongodb(self, edge, id_strct):
-        """
-        Follow an edge given a key.
-
-        An edge represets a document and this method uses the data in the edge_object
-        to find one key to another key using exactly one mongodb lookup.
-        :param edge:
-        :param key:
-        :return:
-        """
-
-        col = edge['col']
-        if col not in self.get_collections().keys():
-            return None
-        lookup = edge['lookup']
-        field = edge['field']
-
-        # build id_lst
-        id_set = set()
-        for (orig_id, curr_id) in id_strct:
-            id_set.add(curr_id)
-        id_lst = list(id_set)
-
-        find_lst = self.get_collections()[col].find({lookup: {"$in": id_lst}}, {lookup: 1, field: 1})
-
-        # Build up a new_id_strct from the find_lst
-        new_id_strct = []
-        for d in find_lst:
-            for (orig_id, curr_id) in id_strct:
-                if curr_id == d[lookup]:
-                    new_id_strct.append((orig_id, d[field]))
-        return new_id_strct
-
-    def _edge_lookup_api(self, edge, id_strct):
-        """
-        Follow an edge given a key.
-
-        This method uses the data in the edge_object
-        to find one key to another key using an api.
-        :param edge:
-        :param key:
-        :return:
-        """
-        qr = self._query_many(edge, id_strct)
-        new_id_strct = self._parse_querymany(qr, id_strct, edge['field'])
-        return new_id_strct
-
-    def _query_many(self, edge, id_strct):
-        """
-        Call the biothings_client querymany function with a list of identifiers
-        and output fields that will be returned.
-        :param id_lst: list of identifiers to query
-        :return:
-        """
-        id_lst = []
-        for (orig_id, curr_id) in id_strct:
-            id_lst.append(curr_id)
-
-        client = edge['client']
-        scopes = edge['scope']
-        fields = edge['field']
-
-        return client.querymany(id_lst,
-                                scopes=scopes,
-                                fields=fields,
-                                as_generator=True,
-                                returnall=True,
-                                size=self.batch_size)
-
-    def _parse_querymany(self, qr, id_strct, field):
-        """
-        Parse the querymany results from the biothings_client into a structure
-        that will later be used for document key replacement.
-        :param qr: querymany results
-        :return:
-        """
-        kl_log.debug("QueryMany Structure:  {}".format(qr))
-        qm_struct = []
-        for q in qr['out']:
-            query = q['query']
-            val = KeyLookupMDBBatch._nested_lookup(q, field)
-            if val:
-                for (orig_id, curr_id) in id_strct:
-                    if query == curr_id:
-                        qm_struct.append((orig_id, val))
-        return qm_struct
+        return edge_obj.edge_lookup(self, id_strct)
 
     def get_collections(self):
         """
