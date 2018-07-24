@@ -18,7 +18,8 @@ from biothings.utils.manager import BaseSourceManager
 from biothings.hub.dataload.uploader import set_pending_to_upload
 from biothings.hub.dataload.dumper import LastModifiedHTTPDumper, LastModifiedFTPDumper
 from biothings.hub.dataload.uploader import BaseSourceUploader
-from biothings.hub.dataload.storage import IgnoreDuplicatedStorage, BasicStorage
+from biothings.hub.dataload.storage import IgnoreDuplicatedStorage, BasicStorage, \
+                                           MergerStorage
 from biothings.hub.dataplugin.manager import GitDataPlugin, ManualDataPlugin
 
 
@@ -144,8 +145,17 @@ class BaseAssistant(object):
                     importlib.reload(pymod)
                     assert func in dir(pymod)
                     parser_func = getattr(pymod,func)
-                    storage_class = manifest["uploader"].get("ignore_duplicates") \
-                            and IgnoreDuplicatedStorage or BasicStorage
+                    ondups = manifest["uploader"].get("on_duplicates")
+                    if ondups and ondups != "error":
+                        if ondups == "merge":
+                            storage_class = MergerStorage
+                        elif ondups == "ignore":
+                            storage_class= IgnoreDuplicatedStorage
+                    else:
+                        storage_class = BasicStorage
+                    if manifest["uploader"].get("ignore_duplicates"):
+                        raise AssistantException("'ignore_duplicates' key not supported anymore, " +
+                                                 "use 'on_duplicates' : 'error|ignore|merge'")
                     confdict = {"name":self.plugin_name,"storage_class":storage_class, "parser_func":parser_func}
                     if manifest["uploader"].get("keylookup"):
                         assert self.__class__.keylookup, "Plugin %s needs _id conversion " % self.plugin_name + \
