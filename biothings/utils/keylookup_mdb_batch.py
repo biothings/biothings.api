@@ -4,6 +4,7 @@ import re
 from biothings.utils.keylookup import KeyLookup
 from networkx import all_simple_paths, nx
 import biothings.utils.mongo as mongo
+import biothings_client
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
 from biothings import config_for_app
@@ -16,6 +17,10 @@ kl_log = get_logger('keylookup', btconfig.LOG_FOLDER)
 
 
 class KeyLookupEdge(object):
+    def __init__(self):
+        self.prepared = False
+        self.init_state()
+
     def edge_lookup(self, keylookup_obj, id_strct):
         """
         virtual method for edge lookup.  Each edge class is
@@ -27,16 +32,86 @@ class KeyLookupEdge(object):
         """
         pass
 
+    def init_state(self):
+        self._state = {
+            "logger": None
+        }
+
+    @property
+    def logger(self):
+        if not self._state["logger"]:
+            self.prepare()
+        return self._state["logger"]
+
+    @logger.setter
+    def logger(self, value):
+        self._state["logger"] = value
+
+    def setup_log(self):
+        self.logger = get_logger('keylookup', btconfig.LOG_FOLDER)
+
+    def prepare(self, state={}):
+        if self.prepared:
+            return
+        if state:
+            # let's be explicit, _state takes what it wants
+            for k in self._state:
+                self._state[k] = state[k]
+            return
+        self.setup_log()
+
+    def unprepare(self):
+        """
+        reset anything that's not picklable (so self can be pickled)
+        return what's been reset as a dict, so self can be restored
+        once pickled
+        """
+        state = {
+            "logger": self._state["logger"],
+        }
+        for k in state:
+            self._state[k] = None
+        self.prepared = False
+        return state
+
 
 class MongoDBEdge(KeyLookupEdge):
     """
     KeyLookupEdge object for MongoDB queries
     """
     def __init__(self, collection, lookup, field, weight=1):
-        self.col = collection
+        super().__init__()
+        # unpickleable attributes, grouped
+        self.init_state()
+        self.collection_name = collection
         self.lookup = lookup
         self.field = field
         self.weight = weight
+
+    def init_state(self):
+        self._state = {
+            "collection": None,
+            "logger": None
+        }
+
+    @property
+    def collection(self):
+        if not self._state["collection"]:
+            try:
+                self.prepare_collection()
+            except Exception as e:
+                # if accessed but not ready, then just ignore and return invalid value for a client
+                return None
+        return self._state["collection"]
+
+    def prepare_collection(self):
+        """
+        Load the mongodb collection specified by collection_name.
+        :return:
+        """
+        self._state["collection"] = mongo.get_src_db()[self.collection_name]
+        self.logger.info("Registering collection:  {}".format(self.collection_name))
+
 
     def edge_lookup(self, keylookup_obj, id_strct):
         """
@@ -48,16 +123,13 @@ class MongoDBEdge(KeyLookupEdge):
         :param id_strct:
         :return:
         """
-        if self.col not in keylookup_obj.get_collections().keys():
-            return None
-
         # build id_lst
         id_set = set()
         for (orig_id, curr_id) in id_strct:
             id_set.add(curr_id)
         id_lst = list(id_set)
 
-        find_lst = keylookup_obj.get_collections()[self.col].find({self.lookup: {"$in": id_lst}}, {self.lookup: 1, self.field: 1})
+        find_lst = self.collection.find({self.lookup: {"$in": id_lst}}, {self.lookup: 1, self.field: 1})
 
         # Build up a new_id_strct from the find_lst
         new_id_strct = []
@@ -68,15 +140,36 @@ class MongoDBEdge(KeyLookupEdge):
         return new_id_strct
 
 
-class APIEdge(KeyLookupEdge):
+class BiothingsAPIEdge(KeyLookupEdge):
     """
     APIEdge - KeyLookupEdge object for API calls
     """
-    def __init__(self, client, scope, field, weight=1):
-        self.client = client
+    def __init__(self, scope, field, weight=1):
+        super().__init__()
+        self.init_state()
         self.scope = scope
         self.field = field
         self.weight = weight
+
+    def init_state(self):
+        self._state = {
+            "client": None,
+            "logger": None
+        }
+
+    @property
+    def client(self):
+        if not self._state["client"]:
+            try:
+                self.prepare_client()
+            except Exception as e:
+                # if accessed but not ready, then just ignore and return invalid value for a client
+                return None
+        return self._state["client"]
+
+    def prepare_client(self):
+        """do initialization of biothings_client"""
+        raise NotImplementedError("Define in subclass")
 
     def edge_lookup(self, keylookup_obj, id_strct):
         """
@@ -127,6 +220,34 @@ class APIEdge(KeyLookupEdge):
                     if query == curr_id:
                         qm_struct.append((orig_id, val))
         return qm_struct
+
+
+class MyChemInfoEdge(BiothingsAPIEdge):
+
+    def __init__(self, scope, field, weight=1):
+        super().__init__(scope, field, weight)
+
+    def prepare_client(self):
+        """
+        Load the biothings_client for the class
+        :return:
+        """
+        self._state["client"] = biothings_client.get_client('drug')
+        self.logger.info("Registering biothings_client 'gene'")
+
+
+class MyGeneInfoEdge(BiothingsAPIEdge):
+
+    def __init__(self, scope, field, weight=1):
+        super().__init__(scope, field, weight)
+
+    def prepare_client(self):
+        """
+        Load the biothings_client for the class
+        :return:
+        """
+        self._state["client"] = biothings_client.get_client('gene')
+        self.logger.info("Registering biothings_client 'drug'")
 
 
 class KeyLookupMDBBatch(KeyLookup):

@@ -1,7 +1,7 @@
 import biothings_client
 import networkx as nx
 
-from biothings.utils.keylookup_mdb_batch import MongoDBEdge, APIEdge
+from biothings.utils.keylookup_mdb_batch import MongoDBEdge, MyChemInfoEdge, MyGeneInfoEdge
 
 ###############################################################################
 # Simple Graph for Testing
@@ -81,7 +81,6 @@ graph_invalid.add_edge('aa', 'bb', object='invalid-string')
 ###############################################################################
 # Mix MongoDB and API Test
 ###############################################################################
-client = biothings_client.get_client('gene')
 graph_mix = nx.DiGraph()
 
 graph_mix.add_node('mix1')
@@ -92,14 +91,13 @@ graph_mix.add_node('mix3')
 graph_mix.add_edge('mix1', 'ensembl',
                    object=MongoDBEdge('mix1', 'start_id', 'ensembl'))
 graph_mix.add_edge('ensembl', 'entrez',
-                   object=APIEdge(client, 'ensembl.gene', 'entrezgene'))
+                   object=MyGeneInfoEdge('ensembl.gene', 'entrezgene'))
 graph_mix.add_edge('entrez', 'mix3',
                    object=MongoDBEdge('mix3', 'entrez', 'end_id'))
 
 ###############################################################################
 # MyChem.Info API Graph for Test
 ###############################################################################
-client = biothings_client.get_client('drug')
 graph_mychem = nx.DiGraph()
 
 graph_mychem.add_node('chebi')
@@ -108,8 +106,8 @@ graph_mychem.add_node('pubchem')
 graph_mychem.add_node('inchikey')
 
 graph_mychem.add_edge('chebi', 'inchikey',
-                      object=APIEdge(client, 'chebi.chebi_id', '_id'))
+                      object=MyChemInfoEdge('chebi.chebi_id', '_id'))
 graph_mychem.add_edge('drugbank', 'inchikey',
-                      object=APIEdge(client, 'drugbank.drugbank_id', '_id'))
+                      object=MyChemInfoEdge('drugbank.drugbank_id', '_id'))
 graph_mychem.add_edge('pubchem', 'inchikey',
-                      object=APIEdge(client, 'pubchem.cid', '_id'))
+                      object=MyChemInfoEdge('pubchem.cid', '_id'))
