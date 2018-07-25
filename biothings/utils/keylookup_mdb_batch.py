@@ -255,7 +255,7 @@ class KeyLookupMDBBatch(KeyLookup):
     batch_size = 10
     default_source = '_id'
 
-    def __init__(self, G, collections, input_types, output_types, skip_on_failure=False, skip_w_regex=None):
+    def __init__(self, G, input_types, output_types, skip_on_failure=False, skip_w_regex=None):
         """
         Initialize the keylookup object and precompute paths from the
         start key to all target keys.
@@ -274,8 +274,6 @@ class KeyLookupMDBBatch(KeyLookup):
             raise ValueError("key_lookup configuration error:  G must be of type nx.DiGraph")
         self._validate_graph(G)
         self.G = G
-        self.collections = None
-        self.collection_names = collections
 
         super().__init__(input_types, output_types, skip_on_failure, skip_w_regex)
 
@@ -286,20 +284,6 @@ class KeyLookupMDBBatch(KeyLookup):
 
     def _valid_output_type(self, output_type):
         return output_type.lower() in self.G.nodes()
-
-    def _load_collections(self, collections):
-        """
-        Load all mongodb collections specified in the configuration data structure col_keys.
-        :return:
-        """
-        self.collections = {}
-        for col in collections:
-            collection = mongo.get_src_db()[col]
-            if collection.count() > 0:
-                self.collections[col] = collection
-                kl_log.info("Registering collection:  {} (count:  {})".format(col, collection.count()))
-        if not self.collections:
-            raise ValueError("At least one configured collection is required for MongoDB key lookup.")
 
     def _validate_graph(self, G):
         """
@@ -467,14 +451,3 @@ class KeyLookupMDBBatch(KeyLookup):
         :return:
         """
         return edge_obj.edge_lookup(self, id_strct)
-
-    def get_collections(self):
-        """
-        Standard 'getter' for self.collections objects.
-        :return:
-        """
-        if self.collections:
-            return self.collections
-        else:
-            self._load_collections(self.collection_names)
-            return self.collections

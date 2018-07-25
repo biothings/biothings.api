@@ -99,9 +99,7 @@ class TestKeyLookup(unittest.TestCase):
         :return:
         """
 
-        self.collections = ['b', 'c', 'd', 'e']
-
-        @KeyLookup(graph_simple, self.collections, 'a', ['d', 'e'])
+        @KeyLookup(graph_simple, 'a', ['d', 'e'])
         def load_document(doc_lst):
             for d in doc_lst:
                 yield d
@@ -118,12 +116,9 @@ class TestKeyLookup(unittest.TestCase):
         test for one to many key lookup - artificial document.
         :return:
         """
-
-        self.collections = ['bb', 'cc']
-
         doc_lst = [{'input_key': 'a:1234'}]
 
-        @KeyLookup(graph_one2many, self.collections, [('aa', 'input_key')], ['cc'])
+        @KeyLookup(graph_one2many, [('aa', 'input_key')], ['cc'])
         def load_document():
             for d in doc_lst:
                 yield d
@@ -142,15 +137,12 @@ class TestKeyLookup(unittest.TestCase):
         test for input_types - artificial documents.
         :return:
         """
-
-        self.collections = ['b', 'c', 'd', 'e']
-
         # Initial Test Case
         doc_lst = [
             {'a': 'a:1234'},
             {'b': 'b:1234'}
         ]
-        @KeyLookup(graph_simple, self.collections, [('a', 'a'), ('b', 'b')], ['d', 'e'])
+        @KeyLookup(graph_simple, [('a', 'a'), ('b', 'b')], ['d', 'e'])
         def load_document(doc_lst):
             for d in doc_lst:
                 yield d
@@ -170,10 +162,7 @@ class TestKeyLookup(unittest.TestCase):
         that should be avoided.
         :return:
         """
-
-        self.collections = ['bbb', 'ccc', 'ddd', 'eee']
-
-        @KeyLookup(graph_weights, self.collections, 'aaa', ['eee'])
+        @KeyLookup(graph_weights, 'aaa', ['eee'])
         def load_document(doc_lst):
             for d in doc_lst:
                 yield d
@@ -193,10 +182,7 @@ class TestKeyLookup(unittest.TestCase):
         This test is intended to test multiple douments being passed.
         :return:
         """
-
-        self.collections = ['b', 'c', 'd', 'e']
-
-        @KeyLookup(graph_simple, self.collections, 'a', ['d', 'e'])
+        @KeyLookup(graph_simple, 'a', ['d', 'e'])
         def load_document(data_folder):
             doc_lst = [{'_id': 'a:1234'}, {'_id': 'a:1234'}, {'_id': 'a:1234'}]
             for d in doc_lst:
@@ -220,10 +206,7 @@ class TestKeyLookup(unittest.TestCase):
 
         :return:
         """
-
-        self.collections = ['b', 'c', 'd', 'e']
-
-        @KeyLookup(graph_simple, self.collections, 'a', ['d', 'e'], skip_on_failure=True)
+        @KeyLookup(graph_simple, 'a', ['d', 'e'], skip_on_failure=True)
         def load_document(data_folder):
             doc_lst = [{'_id': 'a:1234'}, {'_id': 'a:invalid'}, {'_id': 'a:1234'}]
             for d in doc_lst:
@@ -245,20 +228,9 @@ class TestKeyLookup(unittest.TestCase):
         Test invalid input that should generate exceptions.
         :return:
         """
-
-        self.collections = ['b', 'c', 'd', 'e']
-
-        # Null collections
-        with self.assertRaises(ValueError):
-            @KeyLookup(graph_simple, ['a-invalid'], 'a-invalid', ['d', 'e'], skip_on_failure=True)
-            def load_document(data_folder):
-                doc_lst = [{'_id': 'a:1234'}, {'_id': 'a:invalid'}, {'_id': 'a:1234'}]
-                for d in doc_lst:
-                    yield d
-
         # invalid input-type
         with self.assertRaises(ValueError):
-            @KeyLookup(graph_simple, self.collections, 'a-invalid', ['d', 'e'], skip_on_failure=True)
+            @KeyLookup(graph_simple, 'a-invalid', ['d', 'e'], skip_on_failure=True)
             def load_document(data_folder):
                 doc_lst = [{'_id': 'a:1234'}, {'_id': 'a:invalid'}, {'_id': 'a:1234'}]
                 for d in doc_lst:
@@ -266,7 +238,7 @@ class TestKeyLookup(unittest.TestCase):
 
         # Invalid output-type
         with self.assertRaises(ValueError):
-            @KeyLookup(graph_simple, self.collections, 'a', ['d-invalid', 'e'], skip_on_failure=True)
+            @KeyLookup(graph_simple, 'a', ['d-invalid', 'e'], skip_on_failure=True)
             def load_document(data_folder):
                 doc_lst = [{'_id': 'a:1234'}, {'_id': 'a:invalid'}, {'_id': 'a:1234'}]
                 for d in doc_lst:
@@ -274,7 +246,7 @@ class TestKeyLookup(unittest.TestCase):
 
         # Invalid graph
         with self.assertRaises(ValueError):
-            @KeyLookup(graph_invalid, self.collections, 'a', ['d-invalid', 'e'], skip_on_failure=True)
+            @KeyLookup(graph_invalid, 'a', ['d-invalid', 'e'], skip_on_failure=True)
             def load_document(data_folder):
                 doc_lst = [{'_id': 'a:1234'}, {'_id': 'a:invalid'}, {'_id': 'a:1234'}]
                 for d in doc_lst:
@@ -285,11 +257,9 @@ class TestKeyLookup(unittest.TestCase):
         Test the skip_w_regex option.
         :return:
         """
-
-        collections = ['b', 'c', 'd', 'e']
         doc_lst = [{'_id': 'a:1234'}]
 
-        @KeyLookup(graph_simple, collections, 'a', ['d'], skip_w_regex='a:')
+        @KeyLookup(graph_simple, 'a', ['d'], skip_w_regex='a:')
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -303,10 +273,9 @@ class TestKeyLookup(unittest.TestCase):
         Test with mixed lookups between MongoDB and API
         :return:
         """
-        collections = ['mix1', 'mix3']
         doc_lst = [{'_id': 'start1'}]
 
-        @KeyLookup(graph_mix, collections, 'mix1', ['mix3'])
+        @KeyLookup(graph_mix, 'mix1', ['mix3'])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -390,8 +359,7 @@ class TestKeyLookup(unittest.TestCase):
         ]
 
         # Test a list being passed with 12 documents
-        collections = []
-        @KeyLookup(graph_mychem, collections, [('chebi', 'chebi'), ('drugbank', 'drugbank'), ('pubchem', 'pubchem')], ['inchikey'])
+        @KeyLookup(graph_mychem, [('chebi', 'chebi'), ('drugbank', 'drugbank'), ('pubchem', 'pubchem')], ['inchikey'])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
