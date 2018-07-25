@@ -210,7 +210,7 @@ class BiothingsAPIEdge(KeyLookupEdge):
         :param qr: querymany results
         :return:
         """
-        kl_log.debug("QueryMany Structure:  {}".format(qr))
+        self.logger.debug("QueryMany Structure:  {}".format(qr))
         qm_struct = []
         for q in qr['out']:
             query = q['query']
