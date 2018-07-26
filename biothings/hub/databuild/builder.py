@@ -391,7 +391,7 @@ class DataBuilder(object):
             if 'mapping' in meta and meta["mapping"]:
                 mapping = merge_struct(mapping,meta['mapping'])
             else:
-                self.logger.info('Warning: "%s" collection has no mapping data.' % collection)
+                raise BuilderException('"%s" has no mapping data' % collection)
         return mapping
 
     def store_metadata(self,res,sources,job_manager):
