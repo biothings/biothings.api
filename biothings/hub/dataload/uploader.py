@@ -513,9 +513,9 @@ class DummySourceUploader(BaseSourceUploader):
     def update_data(self, batch_size, job_manager=None, release=None):
         assert not release is None, "Dummy uploader requires 'release' argument to be specified"
         self.logger.info("Dummy uploader, nothing to upload")
-        # by-pass register_status and store release here (it's usually done by dumpers but 
-        # dummy uploaders have no dumper associated b/c it's collection-only resource)
-        self.src_dump.update_one({'_id': self.main_source}, {"$set" : {"release": release}})
+        # dummy uploaders have no dumper associated b/c it's collection-only resource,
+        # so fill minimum information so register_status() can set the proper release
+        self.src_dump.update_one({'_id': self.main_source}, {"$set" : {"download.release": release}})
         # sanity check, dummy uploader, yes, but make sure data is there
         assert self.collection.count() > 0, "No data found in collection '%s' !!!" % self.collection_name
 
