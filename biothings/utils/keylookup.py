@@ -97,7 +97,8 @@ class KeyLookup(object):
                             for k in keys:
                                 new_doc = copy.deepcopy(doc)
                                 new_doc['_id'] = k
-                                output_docs.append(new_doc)
+                                yield new_doc
+                                #output_docs.append(new_doc)
                             break
                     # Break out of the outer loop if keys were found
                     if keys:
@@ -105,11 +106,12 @@ class KeyLookup(object):
 
                 # No keys were found, keep the original (unless the skip_on_failure option is passed)
                 if not keys and not self.skip_on_failure:
-                    output_docs.append(doc)
+                    yield doc
+                    #output_docs.append(doc)
 
-            for odoc in output_docs:
-                #kl_log.info("yield odoc: %s" % odoc)
-                yield odoc
+            #for odoc in output_docs:
+            #    #kl_log.info("yield odoc: %s" % odoc)
+            #    yield odoc
 
         return wrapped_f
 
