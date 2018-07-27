@@ -1,10 +1,11 @@
+import biothings_client
 import copy
 import re
 
-from biothings.utils.keylookup import KeyLookup
 from networkx import all_simple_paths, nx
+from biothings.utils.common import iter_n
+from biothings.utils.idlookup import IDLookup
 import biothings.utils.mongo as mongo
-import biothings_client
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
 from biothings import config_for_app
@@ -16,7 +17,26 @@ config_for_app(btconfig)
 kl_log = get_logger('keylookup', btconfig.LOG_FOLDER)
 
 
-class KeyLookupEdge(object):
+def nested_lookup(doc, field):
+    """
+    Performs a nested lookup of doc using a period (.) delimited
+    list of fields.  This is a nested dictionary lookup.
+    :param doc: document to perform lookup on
+    :param field: period delimited list of fields
+    :return:
+    """
+    value = doc
+    keys = field.split('.')
+    try:
+        for k in keys:
+            value = value[k]
+    except KeyError:
+        return None
+
+    return str(value)
+
+
+class IDLookupEdge(object):
     def __init__(self):
         self.prepared = False
         self.init_state()
@@ -75,9 +95,9 @@ class KeyLookupEdge(object):
         return state
 
 
-class MongoDBEdge(KeyLookupEdge):
+class MongoDBEdge(IDLookupEdge):
     """
-    KeyLookupEdge object for MongoDB queries
+    IDLookupEdge object for MongoDB queries
     """
     def __init__(self, collection, lookup, field, weight=1):
         super().__init__()
@@ -140,9 +160,9 @@ class MongoDBEdge(KeyLookupEdge):
         return new_id_strct
 
 
-class BiothingsAPIEdge(KeyLookupEdge):
+class BiothingsAPIEdge(IDLookupEdge):
     """
-    APIEdge - KeyLookupEdge object for API calls
+    APIEdge - IDLookupEdge object for API calls
     """
     def __init__(self, scope, field, weight=1):
         super().__init__()
@@ -214,7 +234,7 @@ class BiothingsAPIEdge(KeyLookupEdge):
         qm_struct = []
         for q in qr['out']:
             query = q['query']
-            val = keylookup_obj._nested_lookup(q, field)
+            val = nested_lookup(q, field)
             if val:
                 for (orig_id, curr_id) in id_strct:
                     if query == curr_id:
@@ -250,7 +270,7 @@ class MyGeneInfoEdge(BiothingsAPIEdge):
         self.logger.info("Registering biothings_client 'drug'")
 
 
-class KeyLookupMDBBatch(KeyLookup):
+class IDLookupMDBBatch(IDLookup):
     # Constants
     batch_size = 10
     default_source = '_id'
@@ -295,7 +315,7 @@ class KeyLookupMDBBatch(KeyLookup):
             if 'object' not in G.edges[v1, v2].keys():
                 raise ValueError("edge_object for ({}, {}) is missing".format(v1, v2))
             edge_object = G.edges[v1, v2]['object']
-            if not isinstance(edge_object, KeyLookupEdge):
+            if not isinstance(edge_object, IDLookupEdge):
                 raise ValueError("edge_object for ({}, {}) is of the wrong type".format(v1, v2))
 
     def _precompute_paths(self):

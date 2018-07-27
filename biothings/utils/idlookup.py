@@ -12,7 +12,7 @@ config_for_app(btconfig)
 kl_log = get_logger('keylookup', btconfig.LOG_FOLDER)
 
 
-class KeyLookup(object):
+class IDLookup(object):
     # Constants
     batch_size = 1000
     DEFAULT_WEIGHT = 1

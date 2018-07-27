@@ -3,7 +3,7 @@ import copy
 from itertools import islice, chain
 import logging
 import re
-from biothings.utils.keylookup import KeyLookup
+from biothings.utils.idlookup import IDLookup
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
 
@@ -12,7 +12,7 @@ lg = get_logger('keylookup_api', btconfig.LOG_FOLDER)
 lg.setLevel(logging.INFO)
 
 
-class KeyLookupAPI(KeyLookup):
+class IDLookupAPI(IDLookup):
     """
     Perform key lookup or key conversion from one key type to another using
     an API endpoint as a data source.
@@ -20,13 +20,13 @@ class KeyLookupAPI(KeyLookup):
     This class uses biothings apis to conversion from one key type to another.
     Base classes are used with the decorator syntax shown below:
 
-    @KeyLookupMyChemInfo(input_types, output_types)
+    @IDLookupMyChemInfo(input_types, output_types)
     def load_document(doc_lst):
         for d in doc_lst:
             yield d
 
     Lookup fields are configured in the 'lookup_fields' object, examples of which
-    can be found in 'KeyLookupMyGeneInfo' and 'KeyLookupMyChemInfo'.
+    can be found in 'IDLookupMyGeneInfo' and 'IDLookupMyChemInfo'.
 
     Required Options:
     - input_types
@@ -47,7 +47,7 @@ class KeyLookupAPI(KeyLookup):
 
     def __init__(self, input_types, output_types, skip_on_failure=False, skip_w_regex=None):
         """
-        Initialize the KeyLookupAPI object.
+        Initialize the IDLookupAPI object.
         """
         self._generate_return_fields()
         super().__init__(input_types, output_types, skip_on_failure, skip_w_regex)
@@ -87,7 +87,7 @@ class KeyLookupAPI(KeyLookup):
         for k in self.lookup_fields:
             for field in self._get_lookup_field(k):
                 self.return_fields += field + ','
-        lg.debug("KeyLookupAPI return_fields:  {}".format(self.return_fields))
+        lg.debug("IDLookupAPI return_fields:  {}".format(self.return_fields))
 
     def key_lookup_batch(self, batchiter):
         """
@@ -118,7 +118,7 @@ class KeyLookupAPI(KeyLookup):
                 pass
             else:
                 for input_type in self.input_types:
-                    val = KeyLookupAPI._nested_lookup(doc, input_type[1])
+                    val = IDLookupAPI._nested_lookup(doc, input_type[1])
                     if val:
                         id_lst.append('"{}"'.format(val))
 
@@ -179,7 +179,7 @@ class KeyLookupAPI(KeyLookup):
         """
         for output_type in self.output_types:
             for doc_field in self._get_lookup_field(output_type):
-                val = KeyLookupAPI._nested_lookup(h, doc_field)
+                val = IDLookupAPI._nested_lookup(h, doc_field)
                 if val:
                     return val
 
@@ -198,8 +198,8 @@ class KeyLookupAPI(KeyLookup):
             new_doc = None
             for input_type in self.input_types:
                 # doc[input_type[1]] must be typed to a string because qm_struct.keys are always strings
-                if KeyLookupAPI._nested_lookup(doc, input_type[1]) in qm_struct.keys():
-                    for key in qm_struct[KeyLookupAPI._nested_lookup(doc, input_type[1])]:
+                if IDLookupAPI._nested_lookup(doc, input_type[1]) in qm_struct.keys():
+                    for key in qm_struct[IDLookupAPI._nested_lookup(doc, input_type[1])]:
                         new_doc = copy.deepcopy(doc)
                         new_doc['_id'] = key
                         res_lst.append(new_doc)
@@ -228,7 +228,7 @@ class KeyLookupAPI(KeyLookup):
             return self.lookup_fields[field]
 
 
-class KeyLookupMyChemInfo(KeyLookupAPI):
+class IDLookupMyChemInfo(IDLookupAPI):
     lookup_fields = {
         'unii': 'unii.unii',
         'rxnorm': [
@@ -266,11 +266,11 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
         Initialize the class by seting up the client object.
         """
         _output_types = output_types or self.output_types
-        super(KeyLookupMyChemInfo, self).__init__(input_types, _output_types, skip_on_failure, skip_w_regex)
+        super(IDLookupMyChemInfo, self).__init__(input_types, _output_types, skip_on_failure, skip_w_regex)
 
     def _get_client(self):
         """
-        Get Client - return a client appropriate for KeyLookup
+        Get Client - return a client appropriate for IDLookup
 
         This method must be defined in the child class.  It is an artifact
         of multithreading.
@@ -281,7 +281,7 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
         return self.client
 
 
-class KeyLookupMyGeneInfo(KeyLookupAPI):
+class IDLookupMyGeneInfo(IDLookupAPI):
     lookup_fields = {
         'ensembl': 'ensembl.gene',
         'entrezgene': 'entrezgene',
@@ -296,11 +296,11 @@ class KeyLookupMyGeneInfo(KeyLookupAPI):
         """
         Initialize the class by seting up the client object.
         """
-        super(KeyLookupMyGeneInfo, self).__init__(input_types, output_types, skip_on_failure, skip_w_regex)
+        super(IDLookupMyGeneInfo, self).__init__(input_types, output_types, skip_on_failure, skip_w_regex)
 
     def _get_client(self):
         """
-        Get Client - return a client appropriate for KeyLookup
+        Get Client - return a client appropriate for IDLookup
 
         This method must be defined in the child class.  It is an artifact
         of multithreading.

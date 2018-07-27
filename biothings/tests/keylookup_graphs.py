@@ -1,7 +1,7 @@
 import biothings_client
 import networkx as nx
 
-from biothings.utils.keylookup_mdb_batch import MongoDBEdge, MyChemInfoEdge, MyGeneInfoEdge
+from biothings.utils.idlookup_batch import MongoDBEdge, MyChemInfoEdge, MyGeneInfoEdge
 
 ###############################################################################
 # Simple Graph for Testing
