@@ -36,6 +36,55 @@ def nested_lookup(doc, field):
     return str(value)
 
 
+class IDStruct(object):
+    def __init__(self, field=None, doc_lst=None):
+        self._id_tuple_lst = []
+        if field and doc_lst:
+            self._id_tuple_lst = self._init_strct(field, doc_lst)
+
+    def __iter__(self):
+        return iter(self._id_tuple_lst)
+
+    def _init_strct(self, field, doc_lst):
+        strct = set()
+        for doc in doc_lst:
+            if field in doc.keys():
+                strct.add((doc[field], doc[field]))
+        return list(strct)
+
+    def add(self, orig_id, curr_id):
+        self._id_tuple_lst.append((orig_id, curr_id))
+
+    def __iadd__(self, other):
+        if not isinstance(other, IDStruct):
+            raise TypeError("other is not of type IDStruct")
+        self._id_tuple_lst += other._id_tuple_lst
+        return self
+
+    def __str__(self):
+        return str(self._id_tuple_lst)
+
+    @property
+    def id_lst(self):
+        """Build up a list of current ids"""
+        id_set = set()
+        for (orig_id, curr_id) in self._id_tuple_lst:
+            id_set.add(curr_id)
+        return list(id_set)
+
+    def find_left(self, id):
+        for (orig_id, curr_id) in self._id_tuple_lst:
+            if id == orig_id:
+                return curr_id
+        return None
+
+    def find_right(self, id):
+        for (orig_id, curr_id) in self._id_tuple_lst:
+            if id == curr_id:
+                return orig_id
+        return None
+
+
 class IDLookupEdge(object):
     def __init__(self):
         self.prepared = False
@@ -132,7 +181,6 @@ class MongoDBEdge(IDLookupEdge):
         self._state["collection"] = mongo.get_src_db()[self.collection_name]
         self.logger.info("Registering collection:  {}".format(self.collection_name))
 
-
     def edge_lookup(self, keylookup_obj, id_strct):
         """
         Follow an edge given a key.
@@ -143,20 +191,18 @@ class MongoDBEdge(IDLookupEdge):
         :param id_strct:
         :return:
         """
-        # build id_lst
-        id_set = set()
-        for (orig_id, curr_id) in id_strct:
-            id_set.add(curr_id)
-        id_lst = list(id_set)
+        if not isinstance(id_strct, IDStruct):
+            raise TypeError("edge_lookup id_struct is of the wrong type")
 
+        id_lst = id_strct.id_lst
         find_lst = self.collection.find({self.lookup: {"$in": id_lst}}, {self.lookup: 1, self.field: 1})
 
         # Build up a new_id_strct from the find_lst
-        new_id_strct = []
+        new_id_strct = IDStruct()
         for d in find_lst:
-            for (orig_id, curr_id) in id_strct:
-                if curr_id == d[self.lookup]:
-                    new_id_strct.append((orig_id, d[self.field]))
+            orig_id = id_strct.find_right(d[self.lookup])
+            if orig_id:
+                new_id_strct.add(orig_id, d[self.field])
         return new_id_strct
 
 
@@ -212,10 +258,9 @@ class BiothingsAPIEdge(IDLookupEdge):
         :param id_lst: list of identifiers to query
         :return:
         """
-        id_lst = []
-        for (orig_id, curr_id) in id_strct:
-            id_lst.append(curr_id)
-
+        if not isinstance(id_strct, IDStruct):
+            raise TypeError("id_strct shouldb be of type IDStruct")
+        id_lst = id_strct.id_lst
         return self.client.querymany(id_lst,
                                      scopes=self.scope,
                                      fields=self.field,
@@ -231,14 +276,14 @@ class BiothingsAPIEdge(IDLookupEdge):
         :return:
         """
         self.logger.debug("QueryMany Structure:  {}".format(qr))
-        qm_struct = []
+        qm_struct = IDStruct()
         for q in qr['out']:
             query = q['query']
             val = nested_lookup(q, field)
             if val:
                 for (orig_id, curr_id) in id_strct:
                     if query == curr_id:
-                        qm_struct.append((orig_id, val))
+                        qm_struct.add(orig_id, val)
         return qm_struct
 
 
@@ -398,12 +443,7 @@ class IDLookupMDBBatch(IDLookup):
             Build the path structure for the travel function
             :return:
             """
-            path_strct = set()
-            for doc in doc_lst:
-                if input_type[1] in doc.keys():
-                    path_strct.add((doc[input_type[1]], doc[input_type[1]]))
-            path_strct = list(path_strct)
-            return path_strct
+            return IDStruct(input_type[1], doc_lst)
 
         def _build_hit_miss_lsts(doc_lst, saved_hits):
             """
@@ -431,7 +471,7 @@ class IDLookupMDBBatch(IDLookup):
         kl_log.debug("Travel From '{}' To '{}'".format(input_type[0], target))
 
         # Keep a running list of all saved hits
-        saved_hits = []
+        saved_hits = IDStruct()
 
         # Build the path structure, which will save results
         path_strct = _build_path_strct(input_type, doc_lst)
@@ -444,15 +484,22 @@ class IDLookupMDBBatch(IDLookup):
 
                 kl_log.debug("Travel id_lst:  {}".format(path_strct))
 
+            if not saved_hits:
+                raise TypeError("saved_hits is None (checkpoint 1)")
             # save the hits from the path
             saved_hits += path_strct
+            if not saved_hits:
+                raise TypeError("saved_hits is None (checkpoint 2)")
 
             # reset the state to lookup misses
-            path_strct = []
+            path_strct = IDStruct()
             for doc in doc_lst:
                 if input_type[1] in doc.keys():
-                    if doc[input_type[1]] not in [i[0] for i in saved_hits]:
-                        path_strct.append((doc[input_type[1]], doc[input_type[1]]))
+                    val = saved_hits.find_left(doc[input_type[1]])
+                    if not val:
+                        path_strct.add(doc[input_type[1]], doc[input_type[1]])
+                    # if doc[input_type[1]] not in [i[0] for i in saved_hits]:
+                    #     path_strct.add((doc[input_type[1]], doc[input_type[1]]))
 
         # Return a list of documents that have had their identifiers replaced
         # also return a list of documents that were not changed

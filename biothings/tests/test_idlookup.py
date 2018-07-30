@@ -10,7 +10,7 @@ import unittest
 import biothings.utils.mongo as mongo
 
 
-class TestKeyLookup(unittest.TestCase):
+class TestIDLookup(unittest.TestCase):
 
     def setUp(self):
         """
