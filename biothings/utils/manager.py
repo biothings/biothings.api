@@ -235,21 +235,23 @@ class BaseSourceManager(BaseManager):
         SOURCE_CLASS (must inherit from)
         """
         # try to find a uploader class in the module
-        found_one = False
+        klasses = []
         for attr in dir(src_module):
             something = getattr(src_module,attr)
-            if type(something) == type and issubclass(something,self.__class__.SOURCE_CLASS):
+                    # not interested in classes coming from biothings.hub.*, these would typically come
+                    # from "from biothings.hub.... import aclass" statements and would be incorrectly registered 
+                    # we only look for classes defined straight from the actual module
+            if type(something) == type and issubclass(something,self.__class__.SOURCE_CLASS) and \
+                    not something.__module__.startswith("biothings.hub"):
                 klass = something
                 if not self.filter_class(klass):
                     continue
-                found_one = True
                 logger.debug("Found a class based on %s: '%s'" % (self.__class__.SOURCE_CLASS.__name__,klass))
-                yield klass
-        if not found_one:
+                klasses.append(klass)
+        if not klasses:
             if fail_on_notfound:
                 raise UnknownResource("Can't find a class based on %s in module '%s'" % (self.__class__.SOURCE_CLASS.__name__,src_module))
-            return []
-
+        return klasses
 
     def register_source(self, src, fail_on_notfound=True):
         """Register a new data source. src can be a module where some classes
@@ -277,7 +279,23 @@ class BaseSourceManager(BaseManager):
             return
         else:
             src_m = src
+        # first try to find classes defined in __init__.py (in package) explicitely
         klasses = self.find_classes(src_m,fail_on_notfound)
+        # then if none found, try to search within the package's modules
+        if not klasses:
+            src_m_path = src_m.__path__[0]
+            for d in os.listdir(src_m_path):
+                if d.endswith("__pycache__"):
+                    continue
+                modpath = os.path.join(src_m.__name__,d).replace(".py","").replace(os.path.sep,".")
+                try:
+                    m = importlib.import_module(modpath)
+                    klasses.extend(self.find_classes(m,fail_on_notfound))
+                except (SyntaxError,ImportError) as e:
+                    logger.debug("Couldn't import %s: %s" % (modpath,e))
+                    continue
+        logger.debug("Found classes to register: %s" % repr(klasses))
+
         self.register_classes(klasses)
 
     def register_sources(self, sources):
