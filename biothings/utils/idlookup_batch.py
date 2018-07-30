@@ -413,21 +413,22 @@ class IDLookupMDBBatch(IDLookup):
         miss_lst = []
         for doc in doc_lst:
             if self.skip_w_regex and self.skip_w_regex.match(doc['_id']):
-                output_docs.append(doc)
+                yield doc
             else:
                 miss_lst.append(doc)
 
         for output_type in self.output_types:
             for input_type in self.input_types:
-                (tmp_hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
-                output_docs += tmp_hit_lst
+                (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
                 kl_log.debug("Output documents from travel:")
-                for doc in tmp_hit_lst:
+                for doc in hit_lst:
                     kl_log.debug(doc)
+                    yield doc
 
         # Keep the misses if we do not skip on failure
         if not self.skip_on_failure:
-            output_docs += miss_lst
+            for doc in miss_lst:
+                yield doc
 
         return output_docs
 
