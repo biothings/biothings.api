@@ -37,31 +37,46 @@ def nested_lookup(doc, field):
 
 
 class IDStruct(object):
+    """
+    IDStruct - id structure for use with the IDLookup classes.  The basic idea
+    is to provide a structure that provides a list of (original_id, current_id)
+    pairs.
+    """
     def __init__(self, field=None, doc_lst=None):
+        """
+        Initialize the structure
+        :param field: field for documents to use as an initial id (optional)
+        :param doc_lst: list of documents to use when building an initial list (optional)
+        """
         self._id_tuple_lst = []
         if field and doc_lst:
             self._id_tuple_lst = self._init_strct(field, doc_lst)
 
-    def __iter__(self):
-        return iter(self._id_tuple_lst)
-
     def _init_strct(self, field, doc_lst):
+        """initialze _id_tuple_lst"""
         strct = set()
         for doc in doc_lst:
             if field in doc.keys():
                 strct.add((doc[field], doc[field]))
         return list(strct)
 
+    def __iter__(self):
+        """iterator overload function"""
+        return iter(self._id_tuple_lst)
+
     def add(self, orig_id, curr_id):
+        """add a (original_id, current_id) pair to the list"""
         self._id_tuple_lst.append((orig_id, curr_id))
 
     def __iadd__(self, other):
+        """object += additional, which combines lists"""
         if not isinstance(other, IDStruct):
             raise TypeError("other is not of type IDStruct")
         self._id_tuple_lst += other._id_tuple_lst
         return self
 
     def __str__(self):
+        """convert to a string, useful for debugging"""
         return str(self._id_tuple_lst)
 
     @property
@@ -73,12 +88,14 @@ class IDStruct(object):
         return list(id_set)
 
     def find_left(self, id):
+        """Find the first id founding by searching the (left, _) identifiers"""
         for (orig_id, curr_id) in self._id_tuple_lst:
             if id == orig_id:
                 return curr_id
         return None
 
     def find_right(self, id):
+        """Find the first id founding by searching the (_, right) identifiers"""
         for (orig_id, curr_id) in self._id_tuple_lst:
             if id == curr_id:
                 return orig_id
@@ -498,8 +515,6 @@ class IDLookupMDBBatch(IDLookup):
                     val = saved_hits.find_left(doc[input_type[1]])
                     if not val:
                         path_strct.add(doc[input_type[1]], doc[input_type[1]])
-                    # if doc[input_type[1]] not in [i[0] for i in saved_hits]:
-                    #     path_strct.add((doc[input_type[1]], doc[input_type[1]]))
 
         # Return a list of documents that have had their identifiers replaced
         # also return a list of documents that were not changed
