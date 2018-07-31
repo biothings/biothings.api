@@ -48,56 +48,87 @@ class IDStruct(object):
         :param field: field for documents to use as an initial id (optional)
         :param doc_lst: list of documents to use when building an initial list (optional)
         """
-        self._id_tuple_lst = []
+        self.forward = {}
+        self.inverse = {}
         if field and doc_lst:
-            self._id_tuple_lst = self._init_strct(field, doc_lst)
+            self._init_strct(field, doc_lst)
 
     def _init_strct(self, field, doc_lst):
         """initialze _id_tuple_lst"""
-        strct = set()
         for doc in doc_lst:
             if field in doc.keys():
-                strct.add((doc[field], doc[field]))
-        return list(strct)
+                self.add(doc[field], doc[field])
 
     def __iter__(self):
         """iterator overload function"""
-        return iter(self._id_tuple_lst)
+        for k in self.forward.keys():
+            for f in self.forward[k]:
+                yield k, f
 
-    def add(self, orig_id, curr_id):
+    def add(self, left, right):
         """add a (original_id, current_id) pair to the list"""
-        self._id_tuple_lst.append((orig_id, curr_id))
+        if self.lookup(left, right):
+            return  # tuple already in the list
+        if left not in self.forward.keys():
+            self.forward[left] = [right]
+        else:
+            self.forward[left] = self.forward[left] + [right]
+        if right not in self.inverse.keys():
+            self.inverse[right] = [left]
+        else:
+            self.inverse[right] = self.inverse[right] + [left]
 
     def __iadd__(self, other):
         """object += additional, which combines lists"""
         if not isinstance(other, IDStruct):
             raise TypeError("other is not of type IDStruct")
-        self._id_tuple_lst += other._id_tuple_lst
+        for (left, right) in other:
+            self.add(left, right)
         return self
 
     def __str__(self):
         """convert to a string, useful for debugging"""
-        return str(self._id_tuple_lst)
+        lst = []
+        for k in self.forward.keys():
+            for f in self.forward[k]:
+                lst.append((k, f))
+        return str(lst)
 
     @property
     def id_lst(self):
         """Build up a list of current ids"""
         id_set = set()
-        for (orig_id, curr_id) in self._id_tuple_lst:
-            id_set.add(curr_id)
+        for k in self.forward.keys():
+            for f in self.forward[k]:
+                id_set.add(f)
         return list(id_set)
+
+    def lookup(self, left, right):
+        """Find if a (left, right) pair is already in the list"""
+        for r in self.find_left(left):
+            if right == r:
+                return True
+        return False
+
+    def left(self, id):
+        """Determine if the id (left, _) is registered"""
+        return id in self.forward.keys()
 
     def find_left(self, id):
         """Find the first id by searching the (left, _) identifiers"""
-        for (orig_id, curr_id) in self._id_tuple_lst:
-            if id == orig_id:
-                yield curr_id
+        if id in self.forward.keys():
+            for f in self.forward[id]:
+                yield f
+
+    def right(self, id):
+        """Determine if the id (_, right) is registered"""
+        return id in self.inverse.keys()
 
     def find_right(self, id):
         """Find the first id founding by searching the (_, right) identifiers"""
-        for (orig_id, curr_id) in self._id_tuple_lst:
-            if id == curr_id:
-                yield orig_id
+        if id in self.inverse.keys():
+            for i in self.inverse[id]:
+                yield i
 
 
 class DataTransformEdge(object):
@@ -425,6 +456,7 @@ class DataTransformBatch(DataTransform):
         # Keep the misses if we do not skip on failure
         if not self.skip_on_failure:
             for doc in miss_lst:
+                print("Yielding Miss:  {}".format(doc))
                 yield doc
 
         return output_docs
@@ -509,8 +541,7 @@ class DataTransformBatch(DataTransform):
             path_strct = IDStruct()
             for doc in doc_lst:
                 if input_type[1] in doc.keys():
-                    val = saved_hits.find_left(doc[input_type[1]])
-                    if not val:
+                    if not saved_hits.left(doc[input_type[1]]):
                         path_strct.add(doc[input_type[1]], doc[input_type[1]])
 
         # Return a list of documents that have had their identifiers replaced
