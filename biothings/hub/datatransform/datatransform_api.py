@@ -3,7 +3,7 @@ import copy
 from itertools import islice, chain
 import logging
 import re
-from biothings.utils.idlookup import IDLookup
+from biothings.hub.datatransform.datatransform import DataTransform
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
 
@@ -12,7 +12,7 @@ lg = get_logger('keylookup_api', btconfig.LOG_FOLDER)
 lg.setLevel(logging.INFO)
 
 
-class IDLookupAPI(IDLookup):
+class DataTransformAPI(DataTransform):
     """
     Perform key lookup or key conversion from one key type to another using
     an API endpoint as a data source.
@@ -118,7 +118,7 @@ class IDLookupAPI(IDLookup):
                 pass
             else:
                 for input_type in self.input_types:
-                    val = IDLookupAPI._nested_lookup(doc, input_type[1])
+                    val = DataTransformAPI._nested_lookup(doc, input_type[1])
                     if val:
                         id_lst.append('"{}"'.format(val))
 
@@ -179,7 +179,7 @@ class IDLookupAPI(IDLookup):
         """
         for output_type in self.output_types:
             for doc_field in self._get_lookup_field(output_type):
-                val = IDLookupAPI._nested_lookup(h, doc_field)
+                val = DataTransformAPI._nested_lookup(h, doc_field)
                 if val:
                     return val
 
@@ -198,8 +198,8 @@ class IDLookupAPI(IDLookup):
             new_doc = None
             for input_type in self.input_types:
                 # doc[input_type[1]] must be typed to a string because qm_struct.keys are always strings
-                if IDLookupAPI._nested_lookup(doc, input_type[1]) in qm_struct.keys():
-                    for key in qm_struct[IDLookupAPI._nested_lookup(doc, input_type[1])]:
+                if DataTransformAPI._nested_lookup(doc, input_type[1]) in qm_struct.keys():
+                    for key in qm_struct[DataTransformAPI._nested_lookup(doc, input_type[1])]:
                         new_doc = copy.deepcopy(doc)
                         new_doc['_id'] = key
                         res_lst.append(new_doc)
@@ -228,7 +228,7 @@ class IDLookupAPI(IDLookup):
             return self.lookup_fields[field]
 
 
-class IDLookupMyChemInfo(IDLookupAPI):
+class DataTransformMyChemInfo(DataTransformAPI):
     lookup_fields = {
         'unii': 'unii.unii',
         'rxnorm': [
@@ -266,7 +266,7 @@ class IDLookupMyChemInfo(IDLookupAPI):
         Initialize the class by seting up the client object.
         """
         _output_types = output_types or self.output_types
-        super(IDLookupMyChemInfo, self).__init__(input_types, _output_types, skip_on_failure, skip_w_regex)
+        super(DataTransformMyChemInfo, self).__init__(input_types, _output_types, skip_on_failure, skip_w_regex)
 
     def _get_client(self):
         """
@@ -281,7 +281,7 @@ class IDLookupMyChemInfo(IDLookupAPI):
         return self.client
 
 
-class IDLookupMyGeneInfo(IDLookupAPI):
+class DataTransformMyGeneInfo(DataTransformAPI):
     lookup_fields = {
         'ensembl': 'ensembl.gene',
         'entrezgene': 'entrezgene',
@@ -296,7 +296,7 @@ class IDLookupMyGeneInfo(IDLookupAPI):
         """
         Initialize the class by seting up the client object.
         """
-        super(IDLookupMyGeneInfo, self).__init__(input_types, output_types, skip_on_failure, skip_w_regex)
+        super(DataTransformMyGeneInfo, self).__init__(input_types, output_types, skip_on_failure, skip_w_regex)
 
     def _get_client(self):
         """

@@ -1,9 +1,9 @@
 import unittest
-from biothings.utils.idlookup_api import IDLookupMyChemInfo
-from biothings.utils.idlookup_api import IDLookupMyGeneInfo
+from biothings.hub.datatransform.datatransform_api import DataTransformMyChemInfo
+from biothings.hub.datatransform.datatransform_api import DataTransformMyGeneInfo
 
 
-class TestIDLookupAPI(unittest.TestCase):
+class TestDataTransformAPI(unittest.TestCase):
 
     def test_mycheminfo(self):
         """
@@ -12,7 +12,7 @@ class TestIDLookupAPI(unittest.TestCase):
         """
 
         def _MyChemInfoSingleDoc(input_type, output_types, question, answer):
-            @IDLookupMyChemInfo(input_type, output_types)
+            @DataTransformMyChemInfo(input_type, output_types)
             def load_document(doc_lst):
                 for d in doc_lst:
                     yield d
@@ -40,7 +40,7 @@ class TestIDLookupAPI(unittest.TestCase):
         """
 
         def _MyGeneInfoSingleDoc(input_type, output_types, question, answer):
-            @IDLookupMyGeneInfo(input_type, output_types)
+            @DataTransformMyGeneInfo(input_type, output_types)
             def load_document(doc_lst):
                 for d in doc_lst:
                     yield d
@@ -64,7 +64,7 @@ class TestIDLookupAPI(unittest.TestCase):
         """
 
         doc_lst = [{'_id': 'CDK2'}]
-        @IDLookupMyGeneInfo('symbol', ['ensembl'], skip_on_failure=True)
+        @DataTransformMyGeneInfo('symbol', ['ensembl'], skip_on_failure=True)
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -114,7 +114,7 @@ class TestIDLookupAPI(unittest.TestCase):
         ]
 
         # Test a list being passed with 10 documents
-        @IDLookupMyGeneInfo('entrezgene', ['symbol'])
+        @DataTransformMyGeneInfo('entrezgene', ['symbol'])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -134,28 +134,28 @@ class TestIDLookupAPI(unittest.TestCase):
 
         # with self.assertRaises(ValueError):
         with self.assertRaises(ValueError):
-            @IDLookupMyGeneInfo('entrezgene', ['undefined'])
+            @DataTransformMyGeneInfo('entrezgene', ['undefined'])
             def load_document(data_folder):
                 for d in doc_lst:
                     yield d
 
         # Non-string input-type
         with self.assertRaises(ValueError):
-            @IDLookupMyGeneInfo(None, ['undefined'])
+            @DataTransformMyGeneInfo(None, ['undefined'])
             def load_document(data_folder):
                 for d in doc_lst:
                     yield d
 
         # Non-list output-type
         with self.assertRaises(ValueError):
-            @IDLookupMyGeneInfo('entrezgene', 'symbol')
+            @DataTransformMyGeneInfo('entrezgene', 'symbol')
             def load_document(data_folder):
                 for d in doc_lst:
                     yield d
 
         # output-type with a non-string
         with self.assertRaises(ValueError):
-            @IDLookupMyGeneInfo('entrezgene', [None])
+            @DataTransformMyGeneInfo('entrezgene', [None])
             def load_document(data_folder):
                 for d in doc_lst:
                     yield d
@@ -167,7 +167,7 @@ class TestIDLookupAPI(unittest.TestCase):
         """
 
         doc_lst = [{'_id': 'CID1983'}, {'_id': None}, {'id': 'CID1983'}]
-        @IDLookupMyChemInfo('pubchem', ['inchikey'], skip_on_failure=True)
+        @DataTransformMyChemInfo('pubchem', ['inchikey'], skip_on_failure=True)
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -191,7 +191,7 @@ class TestIDLookupAPI(unittest.TestCase):
             {'_id': inchi2},
         ]
 
-        @IDLookupMyChemInfo('inchi', ['inchikey'])
+        @DataTransformMyChemInfo('inchi', ['inchikey'])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -243,7 +243,7 @@ class TestIDLookupAPI(unittest.TestCase):
             }
         ]
 
-        @IDLookupMyChemInfo([('inchi', 'pharmgkb.inchi'), ('drugbank', 'pharmgkb.xref.drugbank_id'), ('pubchem', 'pharmgkb.xref.pubchem_cid'),('chembl', 'pharmgkb.xref.chembl_id')], ['inchikey'])
+        @DataTransformMyChemInfo([('inchi', 'pharmgkb.inchi'), ('drugbank', 'pharmgkb.xref.drugbank_id'), ('pubchem', 'pharmgkb.xref.pubchem_cid'), ('chembl', 'pharmgkb.xref.chembl_id')], ['inchikey'])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -335,7 +335,7 @@ class TestIDLookupAPI(unittest.TestCase):
         ]
 
         # Test a list being passed with 12 documents
-        @IDLookupMyChemInfo([('inchikey', 'inchikey'), ('drugbank', 'drugbank')], ['inchikey'])
+        @DataTransformMyChemInfo([('inchikey', 'inchikey'), ('drugbank', 'drugbank')], ['inchikey'])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -357,7 +357,7 @@ class TestIDLookupAPI(unittest.TestCase):
 
         doc_lst = [{'_id': 'CID1983xyz'}]
 
-        @IDLookupMyChemInfo('pubchem', ['inchikey'], skip_on_failure=True, skip_w_regex='CID')
+        @DataTransformMyChemInfo('pubchem', ['inchikey'], skip_on_failure=True, skip_w_regex='CID')
         def load_document(data_folder):
             for d in doc_lst:
                 yield d

@@ -4,7 +4,7 @@ import re
 
 from networkx import all_simple_paths, nx
 from biothings.utils.common import iter_n
-from biothings.utils.idlookup import IDLookup
+from biothings.hub.datatransform.datatransform import DataTransform
 import biothings.utils.mongo as mongo
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
@@ -100,7 +100,7 @@ class IDStruct(object):
                 yield orig_id
 
 
-class IDLookupEdge(object):
+class DataTransformEdge(object):
     def __init__(self):
         self.prepared = False
         self.init_state()
@@ -159,7 +159,7 @@ class IDLookupEdge(object):
         return state
 
 
-class MongoDBEdge(IDLookupEdge):
+class MongoDBEdge(DataTransformEdge):
     """
     IDLookupEdge object for MongoDB queries
     """
@@ -220,7 +220,7 @@ class MongoDBEdge(IDLookupEdge):
         return new_id_strct
 
 
-class BiothingsAPIEdge(IDLookupEdge):
+class BiothingsAPIEdge(DataTransformEdge):
     """
     APIEdge - IDLookupEdge object for API calls
     """
@@ -329,7 +329,7 @@ class MyGeneInfoEdge(BiothingsAPIEdge):
         self.logger.info("Registering biothings_client 'drug'")
 
 
-class IDLookupMDBBatch(IDLookup):
+class DataTransformBatch(DataTransform):
     # Constants
     batch_size = 10
     default_source = '_id'
@@ -374,7 +374,7 @@ class IDLookupMDBBatch(IDLookup):
             if 'object' not in G.edges[v1, v2].keys():
                 raise ValueError("edge_object for ({}, {}) is missing".format(v1, v2))
             edge_object = G.edges[v1, v2]['object']
-            if not isinstance(edge_object, IDLookupEdge):
+            if not isinstance(edge_object, DataTransformEdge):
                 raise ValueError("edge_object for ({}, {}) is of the wrong type".format(v1, v2))
 
     def _precompute_paths(self):

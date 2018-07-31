@@ -2,7 +2,7 @@ from biothings import config as btconfig
 from biothings import config_for_app
 config_for_app(btconfig)
 
-from biothings.utils.idlookup_batch import IDLookupMDBBatch as KeyLookup
+from biothings.hub.datatransform.datatransform_batch import DataTransformBatch as KeyLookup
 from biothings.tests.keylookup_graphs import graph_simple, \
     graph_weights, graph_one2many, graph_invalid, graph_mix, \
     graph_mychem
@@ -10,7 +10,7 @@ import unittest
 import biothings.utils.mongo as mongo
 
 
-class TestIDLookup(unittest.TestCase):
+class TestDataTransform(unittest.TestCase):
 
     def setUp(self):
         """

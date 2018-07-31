@@ -1,7 +1,7 @@
 import copy
 import re
 
-from biothings.utils.keylookup import KeyLookup
+from biothings.hub.datatransform.datatransform import DataTransform
 from networkx import all_simple_paths, nx
 import biothings.utils.mongo as mongo
 from biothings.utils.loggers import get_logger
@@ -15,7 +15,7 @@ config_for_app(btconfig)
 kl_log = get_logger('keylookup', btconfig.LOG_FOLDER)
 
 
-class KeyLookupMDB(KeyLookup):
+class DataTransformMDB(DataTransform):
     # Constants
     DEFAULT_WEIGHT = 1
     default_source = '_id'
