@@ -88,18 +88,16 @@ class IDStruct(object):
         return list(id_set)
 
     def find_left(self, id):
-        """Find the first id founding by searching the (left, _) identifiers"""
+        """Find the first id by searching the (left, _) identifiers"""
         for (orig_id, curr_id) in self._id_tuple_lst:
             if id == orig_id:
-                return curr_id
-        return None
+                yield curr_id
 
     def find_right(self, id):
         """Find the first id founding by searching the (_, right) identifiers"""
         for (orig_id, curr_id) in self._id_tuple_lst:
             if id == curr_id:
-                return orig_id
-        return None
+                yield orig_id
 
 
 class IDLookupEdge(object):
@@ -217,8 +215,7 @@ class MongoDBEdge(IDLookupEdge):
         # Build up a new_id_strct from the find_lst
         new_id_strct = IDStruct()
         for d in find_lst:
-            orig_id = id_strct.find_right(d[self.lookup])
-            if orig_id:
+            for orig_id in id_strct.find_right(d[self.lookup]):
                 new_id_strct.add(orig_id, d[self.field])
         return new_id_strct
 
@@ -463,25 +460,24 @@ class IDLookupMDBBatch(IDLookup):
             """
             return IDStruct(input_type[1], doc_lst)
 
-        def _build_hit_miss_lsts(doc_lst, saved_hits):
+        def _build_hit_miss_lsts(doc_lst, id_strct):
             """
             Return a list of documents that have had their identifiers replaced
             also return a list of documents that were not changed
             :param doc_lst:
-            :param saved_hits:
+            :param id_strct:
             :return:
             """
             hit_lst = []
             miss_lst = []
             for d in doc_lst:
                 hit_flag = False
-                for (orig_id, lookup_id) in saved_hits:
-                    if input_type[1] in d.keys():
-                        if orig_id == d[input_type[1]]:
-                            new_doc = copy.deepcopy(d)
-                            new_doc['_id'] = lookup_id
-                            hit_lst.append(new_doc)
-                            hit_flag = True
+                if input_type[1] in d.keys():
+                    for lookup_id in id_strct.find_left(d[input_type[1]]):
+                        new_doc = copy.deepcopy(d)
+                        new_doc['_id'] = lookup_id
+                        hit_lst.append(new_doc)
+                        hit_flag = True
                 if not hit_flag:
                     miss_lst.append(d)
             return hit_lst, miss_lst
