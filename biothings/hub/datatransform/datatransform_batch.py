@@ -86,6 +86,10 @@ class IDStruct(object):
             self.add(left, right)
         return self
 
+    def __len__(self):
+        """Return the number of keys (forward direction)"""
+        return len(self.forward.keys())
+
     def __str__(self):
         """convert to a string, useful for debugging"""
         lst = []
@@ -240,15 +244,18 @@ class MongoDBEdge(DataTransformEdge):
         if not isinstance(id_strct, IDStruct):
             raise TypeError("edge_lookup id_struct is of the wrong type")
 
-        id_lst = id_strct.id_lst
-        find_lst = self.collection.find({self.lookup: {"$in": id_lst}}, {self.lookup: 1, self.field: 1})
+        # Build up a new_id_strct from the results
+        res_id_strct = IDStruct()
 
-        # Build up a new_id_strct from the find_lst
-        new_id_strct = IDStruct()
-        for d in find_lst:
-            for orig_id in id_strct.find_right(d[self.lookup]):
-                new_id_strct.add(orig_id, d[self.field])
-        return new_id_strct
+        id_lst = id_strct.id_lst
+        if len(id_lst):
+            find_lst = self.collection.find({self.lookup: {"$in": id_lst}}, {self.lookup: 1, self.field: 1})
+
+            for d in find_lst:
+                for orig_id in id_strct.find_right(d[self.lookup]):
+                    res_id_strct.add(orig_id, d[self.field])
+            kl_log.debug("results for {} ids".format(res_id_strct))
+        return res_id_strct
 
 
 class BiothingsAPIEdge(DataTransformEdge):
@@ -436,9 +443,7 @@ class DataTransformBatch(DataTransform):
         :return:
         """
         doc_lst = []
-        kl_log.debug("INPUT DOCUMENTS:")
         for doc in batchiter:
-            kl_log.debug(doc)
             doc_lst.append(doc)
 
         output_docs = []
@@ -452,9 +457,9 @@ class DataTransformBatch(DataTransform):
         for output_type in self.output_types:
             for input_type in self.input_types:
                 (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
-                kl_log.debug("Output documents from travel:")
+                # kl_log.debug("Output documents from travel:")
                 for doc in hit_lst:
-                    kl_log.debug(doc)
+                    # kl_log.debug(doc) # too much information to be useful
                     yield doc
 
         # Keep the misses if we do not skip on failure
@@ -527,25 +532,22 @@ class DataTransformBatch(DataTransform):
 
         for path in map(nx.utils.misc.pairwise, self.paths[(input_type[0], target)]):
             for (v1, v2) in path:
-                kl_log.debug("travel_edge:  {} - {}".format(v1, v2))
                 edge = self.G.edges[v1, v2]['object']
+                num_input_ids = len(path_strct)
                 path_strct = self._edge_lookup(edge, path_strct)
+                num_output_ids = len(path_strct)
+                if num_input_ids:
+                    kl_log.debug("Edge {} - {}, {} searched retuned {}".format(v1, v2, num_input_ids, num_output_ids))
 
-                kl_log.debug("Travel id_lst:  {}".format(path_strct))
+            if len(path_strct):
+                saved_hits += path_strct
 
-            if not saved_hits:
-                raise TypeError("saved_hits is None (checkpoint 1)")
-            # save the hits from the path
-            saved_hits += path_strct
-            if not saved_hits:
-                raise TypeError("saved_hits is None (checkpoint 2)")
-
-            # reset the state to lookup misses
-            path_strct = IDStruct()
-            for doc in doc_lst:
-                if input_type[1] in doc.keys():
-                    if not saved_hits.left(doc[input_type[1]]):
-                        path_strct.add(doc[input_type[1]], doc[input_type[1]])
+                # reset the state to lookup misses
+                path_strct = IDStruct()
+                for doc in doc_lst:
+                    if input_type[1] in doc.keys():
+                        if not saved_hits.left(doc[input_type[1]]):
+                            path_strct.add(doc[input_type[1]], doc[input_type[1]])
 
         # Return a list of documents that have had their identifiers replaced
         # also return a list of documents that were not changed
