@@ -362,7 +362,7 @@ class MyGeneInfoEdge(BiothingsAPIEdge):
 
 class DataTransformBatch(DataTransform):
     # Constants
-    batch_size = 10
+    batch_size = 1000
     default_source = '_id'
 
     def __init__(self, G, input_types, output_types, skip_on_failure=False, skip_w_regex=None):
@@ -401,6 +401,10 @@ class DataTransformBatch(DataTransform):
         :param G: key_lookup configuration graph
         :return:
         """
+        # all node names should be lowercase
+        for n in G.nodes():
+            if n != n.lower():
+                raise ValueError("node object {} is not lowercase".format(n))
         for (v1, v2) in G.edges():
             if 'object' not in G.edges[v1, v2].keys():
                 raise ValueError("edge_object for ({}, {}) is missing".format(v1, v2))
@@ -456,7 +460,6 @@ class DataTransformBatch(DataTransform):
         # Keep the misses if we do not skip on failure
         if not self.skip_on_failure:
             for doc in miss_lst:
-                print("Yielding Miss:  {}".format(doc))
                 yield doc
 
         return output_docs
