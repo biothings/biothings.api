@@ -284,6 +284,33 @@ class TestDataTransform(unittest.TestCase):
         res = next(res_lst)
         self.assertEqual(res['_id'], 'end1')
 
+    def test_input_source_fields(self):
+        """
+        Test input source field options.  These are complicated tests with input source field
+        of varying depth and complexity.  Multiple documents are converted.
+        Conversion to InchiKey is performed.
+        :return:
+        """
+        doc_lst = [
+            {
+                '_id': 'test2_drugbank',
+                'pharmgkb': {
+                    'xref': {
+                        'drugbank_id': 'a:1234'
+                    }
+                }
+            }
+        ]
+
+        @KeyLookup(graph_simple, [('a', 'pharmgkb.xref.drugbank_id')], ['d', 'e'])
+        def load_document(data_folder):
+            for d in doc_lst:
+                yield d
+
+        res_lst = load_document('data/folder/')
+        r = next(res_lst)
+        self.assertEqual(r['_id'], 'd:1234')
+
     def test_long_doc_lst(self):
         """
         Test a document list containing 12 entries.  Verify that the correct

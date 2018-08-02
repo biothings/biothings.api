@@ -513,12 +513,12 @@ class DataTransformBatch(DataTransform):
             miss_lst = []
             for d in doc_lst:
                 hit_flag = False
-                if input_type[1] in d.keys():
-                    for lookup_id in id_strct.find_left(d[input_type[1]]):
-                        new_doc = copy.deepcopy(d)
-                        new_doc['_id'] = lookup_id
-                        hit_lst.append(new_doc)
-                        hit_flag = True
+                value = nested_lookup(d, input_type[1])
+                for lookup_id in id_strct.find_left(value):
+                    new_doc = copy.deepcopy(d)
+                    new_doc['_id'] = lookup_id
+                    hit_lst.append(new_doc)
+                    hit_flag = True
                 if not hit_flag:
                     miss_lst.append(d)
             return hit_lst, miss_lst
