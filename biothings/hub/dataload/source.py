@@ -43,7 +43,7 @@ class SourceManager(BaseSourceManager):
         if not type(paths) == list:
             paths = [paths]
 
-        def eval_one_src(one_path):
+        def eval_one_source(one_path):
             if "/" in one_path:
                 # it's path to directory
                 # expecting 
