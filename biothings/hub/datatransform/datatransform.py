@@ -105,7 +105,6 @@ class DataTransform(object):
                 output_docs = self.key_lookup_batch(batchiter)
                 for odoc in output_docs:
                     output_doc_cnt += 1
-                    kl_log.debug("yielded output doc: %s" % odoc)
                     yield odoc
             kl_log.info("wrapped_f Num. output_docs:  {}".format(output_doc_cnt))
 

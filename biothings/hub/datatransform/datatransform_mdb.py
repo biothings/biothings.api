@@ -116,7 +116,7 @@ class DataTransformMDB(DataTransform):
             keys = None
             for output_type in self.output_types:
                 for input_type in self.input_types:
-                    keys = self.travel(input_type[0], output_type, KeyLookup._nested_lookup(doc, input_type[1]))
+                    keys = self.travel(input_type[0], output_type, DataTransformMDB._nested_lookup(doc, input_type[1]))
                     # Key(s) were found, create new documents
                     # and add them to the output list
                     if keys:
@@ -146,7 +146,7 @@ class DataTransformMDB(DataTransform):
                 if 'weight' in edge:
                     weight = weight + edge['weight']
                 else:
-                    weight = weight + KeyLookup.DEFAULT_WEIGHT
+                    weight = weight + DataTransformMDB.DEFAULT_WEIGHT
         return weight
 
     def travel(self, start, target, key):
@@ -172,7 +172,7 @@ class DataTransformMDB(DataTransform):
                     if followed_keys:
                         new_keys = new_keys + followed_keys
                 keys = new_keys
-                kl_log.debug("new_key ({})".format(keys))
+                kl_log.debug("new_keys ({})".format(keys))
                 if not keys:
                     break
 
@@ -209,7 +209,7 @@ class DataTransformMDB(DataTransform):
 
         keys = []
         for doc in self.get_collections()[col].find({lookup: key}):
-            keys = keys + [KeyLookup._nested_lookup(doc, field)]
+            keys = keys + [DataTransformMDB._nested_lookup(doc, field)]
         return keys
 
     def get_collections(self):

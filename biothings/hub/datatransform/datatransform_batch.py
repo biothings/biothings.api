@@ -56,8 +56,9 @@ class IDStruct(object):
     def _init_strct(self, field, doc_lst):
         """initialze _id_tuple_lst"""
         for doc in doc_lst:
-            if field in doc.keys():
-                self.add(doc[field], doc[field])
+            value = nested_lookup(doc, field)
+            if value:
+                self.add(value, value)
 
     def __iter__(self):
         """iterator overload function"""
@@ -537,7 +538,7 @@ class DataTransformBatch(DataTransform):
                 path_strct = self._edge_lookup(edge, path_strct)
                 num_output_ids = len(path_strct)
                 if num_input_ids:
-                    kl_log.debug("Edge {} - {}, {} searched retuned {}".format(v1, v2, num_input_ids, num_output_ids))
+                    kl_log.debug("Edge {} - {}, {} searched returned {}".format(v1, v2, num_input_ids, num_output_ids))
 
             if len(path_strct):
                 saved_hits += path_strct
