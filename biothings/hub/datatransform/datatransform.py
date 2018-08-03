@@ -93,11 +93,12 @@ class DataTransform(object):
 
     def __call__(self, f):
         """
-        Perform the key conversion and all lookups on call.
-        :param f:
+        Perform the data transformation on all documents on call.
+        :param f: function to apply to
         :return:
         """
         def wrapped_f(*args):
+            kl_log.info("DataTransform.__call__ start")
             input_docs = f(*args)
             output_doc_cnt = 0
             # split input_docs into chunks of size self.batch_size
@@ -107,6 +108,7 @@ class DataTransform(object):
                     output_doc_cnt += 1
                     yield odoc
             kl_log.info("wrapped_f Num. output_docs:  {}".format(output_doc_cnt))
+            kl_log.info("DataTransform.__call__ finished")
 
         return wrapped_f
 
