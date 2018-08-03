@@ -22,6 +22,7 @@
                         </a>
                     </div>
                 </div>
+                <loader></loader>
                 <div class="ui centered grid">
                     <div class="ui five wide column" v-for="api in apis">
                         <api v-bind:api="api"></api>
@@ -103,11 +104,13 @@
 <script>
 import axios from 'axios'
 import Api from './Api.vue'
+import Loader from './Loader.vue'
 import bus from './bus.js'
 
 
 export default {
     name: 'api-grid',
+    mixins: [ Loader, ],
     mounted () {
         console.log("ApiGrid mounted");
         $('.ui.apibackends.dropdown').dropdown();
@@ -141,12 +144,13 @@ export default {
             backends : [],
         }
     },
-    components: { Api, },
+    components: { Api, Loader},
     methods: {
         getApis: function() {
             axios.get(axios.defaults.baseURL + '/api/list')
             .then(response => {
                 this.apis = response.data.result;
+                this.loaded();
             })
             .catch(err => {
                 console.log("Error getting APIs information: " + err);

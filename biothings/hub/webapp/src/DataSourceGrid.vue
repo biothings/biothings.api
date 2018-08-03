@@ -16,6 +16,10 @@
                         </a>
                     </div>
                 </div>
+                <loader></loader>
+                <div class="ui active inverted dimmer loading">
+                  <div class="ui text loader">Loading</div>
+                </div>
                 <div id="data-source-grid" class="ui grid">
                     <div class="four wide column" v-for="source in orderBy(sources, 'name')">
                         <data-source v-bind:psource="source"></data-source>
@@ -63,10 +67,12 @@
 <script>
 import axios from 'axios'
 import DataSource from './DataSource.vue'
+import Loader from './Loader.vue'
 import bus from './bus.js'
 
 export default {
     name: 'data-source-grid',
+    mixins: [ Loader, ],
     mounted () {
         console.log("DataSourceGrid mounted");
         this.getSourcesStatus();
@@ -90,15 +96,17 @@ export default {
             errors: [],
         }
     },
-    components: { DataSource, },
+    components: { DataSource, Loader},
     methods: {
         getSourcesStatus: function() {
             axios.get(axios.defaults.baseURL + '/sources')
             .then(response => {
                 this.sources = response.data.result;
+                this.loaded();
             })
             .catch(err => {
                 console.log("Error getting sources information: " + err);
+                this.loaderror(err);
             })
         },
         register: function() {

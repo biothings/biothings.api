@@ -46,6 +46,7 @@
                           </a>
                       </div>
                 </div>
+                <loader></loader>
                 <div class="ui centered grid">
                     <div class="ui five wide column" v-for="build in builds">
                         <build v-bind:pbuild="build" v-bind:color="build_colors[build.build_config.name]"></build>
@@ -180,11 +181,13 @@
 <script>
 import axios from 'axios'
 import Build from './Build.vue'
+import Loader from './Loader.vue'
 import bus from './bus.js'
 
 
 export default {
     name: 'build-grid',
+    mixins: [ Loader, ],
     mounted () {
         console.log("BuildGrid mounted");
         $('.ui.filterbuilds.dropdown').dropdown();
@@ -218,8 +221,8 @@ export default {
         // load sources to build dropdown list when creating a new config
         this.getSourceList();
         // builds & configs
-        this.getBuilds();
         this.getBuildConfigs();
+        this.getBuilds();
         bus.$on('change_source',this.onSourceChanged);
         bus.$on('change_build',this.onBuildChanged);
         bus.$on('change_build_config',this.onBuildConfigChanged);
@@ -255,7 +258,7 @@ export default {
             conf_filter : "",
         }
     },
-    components: { Build, },
+    components: { Build, Loader},
     methods: {
         getBuilds: function() {
             var filter = this.conf_filter == "" ? '' : `?conf_name=${this.conf_filter}`;
@@ -271,9 +274,11 @@ export default {
             axios.get(axios.defaults.baseURL + '/builds' + filter)
             .then(response => {
                 this.builds = response.data.result;
+                this.loaded();
             })
             .catch(err => {
                 console.log("Error getting builds information: " + err);
+                this.loaderror(err);
             })
         },
         getBuildConfigs: function() {

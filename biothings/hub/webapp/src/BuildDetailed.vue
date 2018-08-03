@@ -1,5 +1,6 @@
 <template>
     <div class="ui fluid container">
+        <loader></loader>
         <div id="build" class="ui centered fluid card" v-if="build">
             <div class="content">
 
@@ -72,13 +73,14 @@ import BuildLogs from './BuildLogs.vue'
 import BuildConfig from './BuildConfig.vue'
 import BuildMapping from './BuildMapping.vue'
 import DiffModal from './DiffModal.vue'
+import Loader from './Loader.vue'
 
 export default {
     name: 'build-detailed',
     props: ['_id','color'],
-    mixins: [ BaseBuild, ],
+    mixins: [ BaseBuild, Loader],
     components: { InspectForm, BuildReleases, BuildMapping, DiffModal,
-                  BuildSources, BuildStats, BuildLogs, BuildConfig, },
+                  BuildSources, BuildStats, BuildLogs, BuildConfig, Loader },
     mounted () {
         console.log("BuildDetailed mounted");
         this.loadData();
@@ -109,9 +111,11 @@ export default {
             .then(response => {
                 console.log(response.data.result)
                 self.build = response.data.result;
+                this.loaded();
             })
             .catch(err => {
                 console.log("Error getting build information: " + err);
+                this.loaderror(err);
             })
         },
     },

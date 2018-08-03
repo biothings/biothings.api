@@ -1,6 +1,7 @@
 <template>
 
     <div class="ui two column centered grid">
+        <loader></loader>
         <div class="four column centered row">
         </div>
         <div class="fourteen wide column centered row">
@@ -98,7 +99,7 @@
                                 <div class="summary">
                                     <a class="user">
                                         {{conf}}
-                                    </a> can be rebuilt, it contains <a>{{Object.keys(newd).length}} updated datasource(s)</a>.
+                                    </a> can be rebuilt, it contains <a>{{Object.keys(newd.sources).length}} updated datasource(s)</a>.
                                     <br>
                                     <div class="date">
                                         Previous build was <i>{{ newd.old_build.name }}</i>, built on {{ newd.old_build.built_at | moment('lll') }}
@@ -126,12 +127,14 @@
 </template>
 
 <script>
+import Loader from './Loader.vue'
 import axios from 'axios'
 import bus from './bus.js'
 
 
 export default {
   name: 'status',
+  mixins: [ Loader, ],
   mounted () {
     console.log("Status mounted");
     this.refreshStatus();
@@ -148,15 +151,17 @@ export default {
           errors: [],
       }
   },
-  components: {},
+  components: {Loader},
   methods: {
     refreshStatus: function() {
       axios.get(axios.defaults.baseURL + '/status')
       .then(response => {
         this.status = response.data.result;
+        this.loaded();
       })
       .catch(err => {
         console.log("Error getting sources information: " + err);
+        this.loaderror(err)
       })
     },
     refreshWhatsNew: function() {
