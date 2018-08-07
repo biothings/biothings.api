@@ -447,7 +447,6 @@ class DataTransformBatch(DataTransform):
         for doc in batchiter:
             doc_lst.append(doc)
 
-        output_docs = []
         miss_lst = []
         for doc in doc_lst:
             if self.skip_w_regex and self.skip_w_regex.match(doc['_id']):
@@ -467,8 +466,6 @@ class DataTransformBatch(DataTransform):
         if not self.skip_on_failure:
             for doc in miss_lst:
                 yield doc
-
-        return output_docs
 
     def _compute_path_weight(self, path):
         """
@@ -543,12 +540,13 @@ class DataTransformBatch(DataTransform):
             if len(path_strct):
                 saved_hits += path_strct
 
-                # reset the state to lookup misses
-                path_strct = IDStruct()
-                for doc in doc_lst:
-                    if input_type[1] in doc.keys():
-                        if not saved_hits.left(doc[input_type[1]]):
-                            path_strct.add(doc[input_type[1]], doc[input_type[1]])
+            # reset the state to lookup misses
+            path_strct = IDStruct()
+            for doc in doc_lst:
+                val = nested_lookup(doc, input_type[1])
+                if val:
+                    if not saved_hits.left(val):
+                        path_strct.add(val, val)
 
         # Return a list of documents that have had their identifiers replaced
         # also return a list of documents that were not changed
