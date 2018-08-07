@@ -253,8 +253,8 @@ class MongoDBEdge(DataTransformEdge):
             find_lst = self.collection.find({self.lookup: {"$in": id_lst}}, {self.lookup: 1, self.field: 1})
 
             for d in find_lst:
-                for orig_id in id_strct.find_right(d[self.lookup]):
-                    res_id_strct.add(orig_id, d[self.field])
+                for orig_id in id_strct.find_right(nested_lookup(d, self.lookup)):
+                    res_id_strct.add(orig_id, nested_lookup(d, self.field))
             kl_log.debug("results for {} ids".format(res_id_strct))
         return res_id_strct
 
