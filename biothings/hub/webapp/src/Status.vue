@@ -1,7 +1,6 @@
 <template>
 
     <div class="ui two column centered grid">
-        <loader></loader>
         <div class="four column centered row">
         </div>
         <div class="fourteen wide column centered row">
@@ -154,6 +153,7 @@ export default {
   components: {Loader},
   methods: {
     refreshStatus: function() {
+      this.loading();
       axios.get(axios.defaults.baseURL + '/status')
       .then(response => {
         this.status = response.data.result;

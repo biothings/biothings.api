@@ -35,7 +35,12 @@ export default {
         loaded: function() {
             $(".ui.dimmer.loading").removeClass("active");
         },
+        loadhide: function() {
+            $(".ui.dimmer.error").removeClass("active");
+            $(".ui.dimmer.loading").removeClass("active");
+        },
         loading: function() {
+            this.loadhide(); // reset
             $(".ui.dimmer.loading").addClass("active");
         },
         loaderror: function(err) {

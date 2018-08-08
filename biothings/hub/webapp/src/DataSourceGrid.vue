@@ -16,10 +16,6 @@
                         </a>
                     </div>
                 </div>
-                <loader></loader>
-                <div class="ui active inverted dimmer loading">
-                  <div class="ui text loader">Loading</div>
-                </div>
                 <div id="data-source-grid" class="ui grid">
                     <div class="four wide column" v-for="source in orderBy(sources, 'name')">
                         <data-source v-bind:psource="source"></data-source>
@@ -96,9 +92,10 @@ export default {
             errors: [],
         }
     },
-    components: { DataSource, Loader},
+    components: { DataSource, },
     methods: {
         getSourcesStatus: function() {
+            this.loading();
             axios.get(axios.defaults.baseURL + '/sources')
             .then(response => {
                 this.sources = response.data.result;

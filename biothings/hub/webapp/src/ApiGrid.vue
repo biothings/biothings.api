@@ -22,7 +22,6 @@
                         </a>
                     </div>
                 </div>
-                <loader></loader>
                 <div class="ui centered grid">
                     <div class="ui five wide column" v-for="api in apis">
                         <api v-bind:api="api"></api>
@@ -144,9 +143,10 @@ export default {
             backends : [],
         }
     },
-    components: { Api, Loader},
+    components: { Api, },
     methods: {
         getApis: function() {
+            this.loading();
             axios.get(axios.defaults.baseURL + '/api/list')
             .then(response => {
                 this.apis = response.data.result;

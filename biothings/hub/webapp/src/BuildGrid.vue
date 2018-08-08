@@ -46,7 +46,6 @@
                           </a>
                       </div>
                 </div>
-                <loader></loader>
                 <div class="ui centered grid">
                     <div class="ui five wide column" v-for="build in builds">
                         <build v-bind:pbuild="build" v-bind:color="build_colors[build.build_config.name]"></build>
@@ -219,6 +218,7 @@ export default {
     },
     created() {
         // load sources to build dropdown list when creating a new config
+        this.loading();
         this.getSourceList();
         // builds & configs
         this.getBuildConfigs();
@@ -258,7 +258,7 @@ export default {
             conf_filter : "",
         }
     },
-    components: { Build, Loader},
+    components: { Build, },
     methods: {
         getBuilds: function() {
             var filter = this.conf_filter == "" ? '' : `?conf_name=${this.conf_filter}`;
@@ -270,6 +270,7 @@ export default {
             // (and if emptied in "response", I guess there's a race condition because builds aren't
             // rendered properly again...). Anyway, I don't know if it's related but that's the only
             // explanation I have...
+            this.loading();
             this.builds = [];
             axios.get(axios.defaults.baseURL + '/builds' + filter)
             .then(response => {

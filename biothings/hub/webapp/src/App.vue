@@ -15,28 +15,28 @@
             <div :data-tooltip="conn.url" data-position="bottom center">{{conn.name}}</div>
         </div>
 
-        <a class="clickable blurred item">
+        <a class="clickable item">
             <i class="ui home icon"></i>
             <router-link to="/">Home</router-link>
         </a>
-        <a class="clickable blurred item">
+        <a class="clickable item">
             <i class="ui database icon"></i>
             <router-link to="/sources">Sources</router-link>
         </a>
-        <a class="clickable blurred item">
+        <a class="clickable item">
             <i class="ui cubes icon"></i>
             <router-link to="/builds">Builds</router-link>
         </a>
-        <a class="clickable blurred item">
+        <a class="clickable item">
             <i class="ui shield alternate icon"></i>
             <router-link to="/apis">API</router-link>
         </a>
 
-        <div class="clickable blurred ui item right">
+        <div class="clickable ui item right">
           <job-summary></job-summary>
         </div>
 
-        <div class="clickable blurred ui item">
+        <div class="clickable ui item">
 			<event-messages>
 			</event-messages>
         </div>
@@ -62,7 +62,8 @@
       </div>
     </div>
 
-	<div id="page_content" class="clickable blurred ui active tab segment">
+	<div id="page_content" class="clickable ui active tab segment">
+        <loader></loader>
 		<router-view></router-view>
 	</div>
 
@@ -76,6 +77,7 @@ import axios from 'axios';
 
 import VueLocalStorage from 'vue-localstorage';
 Vue.use(VueLocalStorage);
+import Loader from './Loader.vue'
 
 import Vue2Filters from 'vue2-filters';
 import VueRouter from 'vue-router';
@@ -188,7 +190,7 @@ const PING_INTERVAL_MS = 10000;
 export default {
     name: 'app',
     router: router,
-    components: { JobSummary, EventMessages, EventAlert, ChooseHub},
+    components: { JobSummary, EventMessages, EventAlert, ChooseHub, Loader},
     mounted () {
         $('.menu .item').tab();
         $('.ui.sticky')
@@ -330,7 +332,6 @@ export default {
                     self.connected = true;
                     this.ping_interval = PING_INTERVAL_MS;
                     self.pingServer();
-                    $(".clickable").removeClass("blurred");
                     if(redirect) {
                         window.location.assign(redirect)
                     }
@@ -362,7 +363,6 @@ export default {
             this.connected = false;
             this.socket.close();
             this.msg_timestamp = null;
-            $(".clickable").addClass("blurred");
         },
         pingServer() {
             // check if we got a reply before, it not, we have a connection issue
@@ -456,9 +456,5 @@ export default {
 
     .red {color: #c31616;}
     .green {color: #0e7948;}
-    .blurred {
-      filter: blur(2px);
-      pointer-events: none;
-    }
 
 </style>
