@@ -857,6 +857,7 @@ class Indexer(object):
                 # as of ES6, analysers/tokenizers must be defined in index settings, during creation
                 "analysis": {
                     "analyzer": {
+                        # soon deprecated in favor of keyword_lowercase_normalizer
                         "string_lowercase": {
                             "tokenizer": "keyword",
                             "filter": "lowercase"
@@ -864,6 +865,15 @@ class Indexer(object):
                         "whitespace_lowercase": {
                             "tokenizer": "whitespace",
                             "filter": "lowercase"
+                            },
+                        },
+                    "normalizer": {
+                        "keyword_lowercase_normalizer": {
+                            "filter": [
+                                "lowercase"
+                                ],
+                            "type": "custom",
+                            "char_filter": []
                             },
                         }
                     },
