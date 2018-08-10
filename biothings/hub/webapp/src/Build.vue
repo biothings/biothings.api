@@ -8,6 +8,10 @@
                 v-if="build.status == 'building'"></i>
             <i class="right floated unhide icon pulsing"
                 v-if="build.status == 'inspecting'"></i>
+            <i class="right floated exchange icon pulsing"
+                v-if="build.status == 'diffing'"></i>
+            <i class="right floated bookmark icon pulsing"
+                v-if="build.status == 'indexing'"></i>
 
             <!-- error -->
             <div class="ui"
