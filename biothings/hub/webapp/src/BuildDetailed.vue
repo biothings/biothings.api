@@ -1,6 +1,5 @@
 <template>
     <div class="ui fluid container">
-        <loader></loader>
         <div id="build" class="ui centered fluid card" v-if="build">
             <div class="content">
 
@@ -107,6 +106,7 @@ export default {
         },
         loadData () {
             var self = this;
+            this.loading();
             axios.get(axios.defaults.baseURL + `/build/${this._id}`)
             .then(response => {
                 console.log(response.data.result)

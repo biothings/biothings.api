@@ -1,7 +1,7 @@
 <template>
   <div id="app">
     <div class="ui fixed inverted menu">
-      <div class="ui container">
+      <div class="ui studio container">
 
 		<div class="item">
 			<div class="ui middle aligned mini">
@@ -42,6 +42,10 @@
         </div>
 
         <div class="ui item">
+            <loader></loader>
+            <div id="connected" v-if="socket && socket.readyState == 1" :data-tooltip="'Quality: unknown'" data-position="bottom center">
+                <i class="inverted circular signal icon"></i>
+            </div>
             <div v-if="socket && socket.readyState == 1" :data-tooltip="'Connection: ' + socket.protocol" data-position="bottom center">
                 <button class="mini circular ui icon button" @click="closeConnection">
                     <i class="green power off icon"></i>
@@ -54,16 +58,12 @@
                     <i class="red plug icon"></i>
                 </button>
             </div>
-            <div id="connected" v-if="socket && socket.readyState == 1" :data-tooltip="'Quality: unknown'" data-position="bottom center">
-                <i class="inverted circular signal icon"></i>
-            </div>
         </div>
 
       </div>
     </div>
 
 	<div id="page_content" class="clickable ui active tab segment">
-        <loader></loader>
 		<router-view></router-view>
 	</div>
 
@@ -456,5 +456,11 @@ export default {
 
     .red {color: #c31616;}
     .green {color: #0e7948;}
+
+    .ui.studio.container {
+        width: 100%;
+        margin-left: 1em !important;
+        margin-right: 2em !important;
+    }
 
 </style>

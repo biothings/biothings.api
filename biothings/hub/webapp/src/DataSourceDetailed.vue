@@ -1,6 +1,5 @@
 <template>
     <div class="ui fluid container">
-        <loader></loader>
         <div id="data-source" class="ui centered fluid card" v-if="source">
             <div class="content">
 
@@ -155,6 +154,7 @@ export default {
     methods: {
         loadData () {
             var self = this;
+            this.loading();
             axios.get(axios.defaults.baseURL + `/source/${this._id}`)
             .then(response => {
                 //console.log(response.data.result)
