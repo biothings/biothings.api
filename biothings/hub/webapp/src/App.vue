@@ -12,7 +12,11 @@
 
         <div class="header item">
             <img class="logo" src="./assets/biothings-studio-color.svg">
-            <div :data-tooltip="conn.url" data-position="bottom center">{{conn.name}}</div>
+            <div id="conn" :data-html="
+                '<a>' + conn.url + '</a><br>' +
+                'App. version: <b>' + conn.app_version + '</b><br>' +
+                'Biothings version: <b>' + conn.biothings_version + '</b><br>' 
+                " data-position="bottom center">{{conn.name}}</div>
         </div>
 
         <a class="clickable item">
@@ -192,6 +196,10 @@ export default {
     router: router,
     components: { JobSummary, EventMessages, EventAlert, ChooseHub, Loader},
     mounted () {
+        $('#conn')
+        .popup({
+            on: 'hover'
+        });
         $('.menu .item').tab();
         $('.ui.sticky')
         .sticky({
@@ -227,7 +235,8 @@ export default {
             default_conn: {
                 "icon" : "/dist/biothings-studio-color.svg",
                 "name" : "BioThings Studio",
-                "version" : null,
+                "app_version" : null,
+                "biothings_version" : null,
                 "url" : "http://localhost:7080",
             },
             conn: null,

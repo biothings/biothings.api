@@ -67,6 +67,7 @@ export default {
                 } else {
                     var conn = self.existings[value];
                     var url = conn["url"].replace(/\/$/,"");
+                    self.refreshConnection(url);
                     if(conn)
                         bus.$emit("connect",conn,"/");
                     else
@@ -100,6 +101,32 @@ export default {
                 previous = JSON.parse(previous);
             this.existings = previous;
         },
+        refreshConnection: function(url) {
+            var self = this;
+            if(!url.startsWith("http")) {
+                url = `http://${url}`;
+            }
+            axios.get(url)
+            .then(response => {
+                var data = response.data.result;
+                self.getExistings();
+                data["url"] = url.replace(/\/$/,"");
+                if(!data["name"])
+                    data["name"] = self.$parent.default_conn["name"];
+                if(!data["icon"])
+                    data["icon"] = self.$parent.default_conn["icon"];
+                self.existings[data["name"]] = data;
+                Vue.localStorage.set('hub_connections',JSON.stringify(self.existings));
+                // update base URL for all API calls
+                axios.defaults.baseURL = url;
+                // auto-connect to newly created connection, and redirect to home
+                bus.$emit("connect",data,"/");
+            })
+            .catch(err => {
+                console.log(err);
+                console.log("Error creating new connection: " + err.data.error);
+            })
+        },
         newConnection: function() {
             var self = this;
             $('.ui.basic.newhuburl.modal')
@@ -107,29 +134,7 @@ export default {
                 detachable : false,
                 onApprove: function () {
                     var url = $(".ui.newhuburl.form").form('get field', "huburl").val();
-                    if(!url.startsWith("http")) {
-                        url = `http://${url}`;
-                    }
-                    axios.get(url)
-                    .then(response => {
-                        var data = response.data.result;
-                        self.getExistings();
-                        data["url"] = url.replace(/\/$/,"");
-                        if(!data["name"])
-                            data["name"] = self.$parent.default_conn["name"];
-                        if(!data["icon"])
-                            data["icon"] = self.$parent.default_conn["icon"];
-                        self.existings[data["name"]] = data;
-                        Vue.localStorage.set('hub_connections',JSON.stringify(self.existings));
-                        // update base URL for all API calls
-                        axios.defaults.baseURL = url;
-                        // auto-connect to newly created connection, and redirect to home
-                        bus.$emit("connect",data,"/");
-                    })
-                    .catch(err => {
-                        console.log(err);
-                        console.log("Error creating new connection: " + err.data.error);
-                    })
+                    self.refreshConnection(url);
                 }
             })
             .modal("show");
