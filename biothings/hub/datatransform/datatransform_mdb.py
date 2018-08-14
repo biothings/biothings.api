@@ -4,9 +4,10 @@ import re
 
 from networkx import all_simple_paths, nx
 from biothings.utils.common import iter_n
-from biothings.hub.datatransform.datatransform import DataTransform
-from biothings.hub.datatransform.datatransform import DataTransformEdge
-from biothings.hub.datatransform.datatransform import nested_lookup
+from biothings.hub.datatransform import DataTransform
+from biothings.hub.datatransform import DataTransformEdge
+from biothings.hub.datatransform import IDStruct
+from biothings.hub.datatransform import nested_lookup
 import biothings.utils.mongo as mongo
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig

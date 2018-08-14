@@ -1,4 +1,5 @@
 from biothings.hub.datatransform.datatransform import DataTransform
+from biothings.hub.datatransform.datatransform import IDStruct
 from biothings.hub.datatransform.datatransform import DataTransformEdge
 from biothings.hub.datatransform.datatransform import nested_lookup
 
