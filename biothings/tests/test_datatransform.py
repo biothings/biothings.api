@@ -2,7 +2,7 @@ from biothings import config as btconfig
 from biothings import config_for_app
 config_for_app(btconfig)
 
-from biothings.hub.datatransform.datatransform_batch import DataTransformBatch as KeyLookup
+from biothings.hub.datatransform import DataTransformMDB as KeyLookup
 from biothings.tests.keylookup_graphs import graph_simple, \
     graph_weights, graph_one2many, graph_invalid, graph_mix, \
     graph_mychem
