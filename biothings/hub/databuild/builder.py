@@ -917,6 +917,11 @@ class BuilderManager(BaseManager):
 
         return bdr
 
+    def delete_merged_data(self,merge_name):
+        target_db = mongo.get_target_db()
+        col = target_db[merge_name]
+        col.drop()
+
     def delete_merge(self,merge_name):
         """Delete merged collections and associated metadata"""
         db = get_src_build()
@@ -925,12 +930,28 @@ class BuilderManager(BaseManager):
             db.remove({"_id":merge_name})
         else:
             self.logger.warning("No metadata found for merged collection '%s'" % merge_name)
-        target_db = mongo.get_target_db()
-        col = target_db[merge_name]
-        col.drop()
+        self.delete_merged_data(merge_name)
 
-    def list_merge(self,build_config=None):
-        docs = get_src_build().find()
+    def archive_merge(self,merge_name):
+        """Delete merged collections and associated metadata"""
+        db = get_src_build()
+        meta = db.find_one({"_id":merge_name})
+        if meta:
+            meta["archived"] = datetime.now();
+            db.replace_one({"_id":merge_name},meta)
+        else:
+            self.logger.warning("No metadata found for merged collection '%s'" % merge_name)
+        self.delete_merged_data(merge_name)
+
+    def get_query_for_list_merge(self,only_archived):
+        q = {"archived" : {"$exists" : 0}}
+        if only_archived:
+            q = {"archived" : {"$exists" : 1}}
+        return q
+
+    def list_merge(self,build_config=None,only_archived=False):
+        q = self.get_query_for_list_merge(only_archived)
+        docs = get_src_build().find(q)
         by_confs = {}
         for d in docs:
             by_confs.setdefault(d["build_config"]["name"],[]).append(d["_id"])
@@ -1075,7 +1096,7 @@ class BuilderManager(BaseManager):
                 res[name]["mapper"][mappername] = mapper.__class__.__name__
         return res
 
-    def build_info(self,id=None,conf_name=None,fields=None):
+    def build_info(self,id=None,conf_name=None,fields=None,only_archived=False):
         """
         Return build information given an build _id, or all builds
         if _id is None. "fields" can be passed to select which fields
@@ -1084,9 +1105,10 @@ class BuilderManager(BaseManager):
          - "mapping" (too long)
         If id is None, more are filtered:
          - "sources" and some of "build_config"
+        only_archived=True will return archived merges only
         """
         res = {}
-        q = {}
+        q = self.get_query_for_list_merge(only_archived)
         if not id is None:
             q = {"_id": id}
         else:
