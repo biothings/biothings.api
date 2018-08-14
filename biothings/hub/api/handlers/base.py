@@ -68,7 +68,8 @@ class RootHandler(DefaultHandler):
     def get(self):
         self.write({
                 "name": getattr(config,"HUB_NAME",None),
-                "version": getattr(config,"HUB_VERSION",None),
+                "biothings_version": getattr(config,"BIOTHINGS_VERSION",None),
+                "app_version" : getattr(config,"APP_VERSION",None),
                 "icon" : getattr(config,"HUB_ICON",None),
                 "now": datetime.datetime.now(),
                 })
