@@ -43,7 +43,13 @@
                                     {{name}}
                                 </option>
                             </select>
-                          </a>
+                        </a>
+                        <a class="item">
+                            <div class="ui includearchived checkbox">
+                                <input type="checkbox" name="includearchived" v-model="only_archived">
+                                <label>Show archived builds only</label>
+                            </div>
+                        </a>
                       </div>
                 </div>
                 <div class="ui centered grid">
@@ -209,6 +215,7 @@ export default {
         .sidebar('setting', 'transition', 'overlay')
         .sidebar('attach events', '#side_menu');
         $('.ui.form').form();
+        $('.ui.includearchived.checkbox').checkbox();
     },
     updated() {
         // there's some kind of race-condition regarding dropdown init, if
@@ -244,6 +251,11 @@ export default {
                 this.getBuilds();
             }
         },
+        only_archived: function(newv,oldv) {
+            if(newv != oldv) {
+                this.getBuilds();
+            }
+        },
     },
     data () {
         return  {
@@ -256,6 +268,7 @@ export default {
             colors: ["orange","green","yellow","olive","teal","violet","blue","pink","purple"],
             color_idx : 0,
             conf_filter : "",
+            only_archived : false,
         }
     },
     components: { Build, },
@@ -270,6 +283,12 @@ export default {
             // (and if emptied in "response", I guess there's a race condition because builds aren't
             // rendered properly again...). Anyway, I don't know if it's related but that's the only
             // explanation I have...
+            if(this.only_archived) {
+                if(filter == "")
+                    filter += "?only_archived=1";
+                else
+                    filter += "&only_archived=1";
+            }
             this.loading();
             this.builds = [];
             axios.get(axios.defaults.baseURL + '/builds' + filter)

@@ -5,7 +5,9 @@
 
                 <div class="left aligned header" v-if="build.target_name">{{ build.target_name }}</div>
                 <div class="meta">
-                    <span class="right floated time" v-if="build.started_at">Built {{ build.started_at | moment("from", "now") }}</span>
+                    <span class="right floated time" v-if="build.started_at">Built {{ build.started_at | moment("from", "now") }}
+                        <div class="time" v-if="build.archived">Archived {{ build.archived | moment("from", "now") }}</div>
+                    </span>
                     <div :class="['ui',color ? color : 'grey tiny', 'left floated', 'label conftag']">{{build.build_config.name}}</div>
                 </div>
                 <div class="left aligned description">

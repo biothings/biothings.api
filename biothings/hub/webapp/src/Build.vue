@@ -3,6 +3,9 @@
         <div class="content">
             <div :class="['ui',color ? color : 'grey', 'tiny', '', 'label','conftag']">{{build.build_config.name}}</div>
 
+            <i class="archived right floated archive icon"
+                v-if="build.archived"></i>
+            <span v-else>
             <!-- in progress -->
             <i class="right floated cube icon pulsing"
                 v-if="build.status == 'building'"></i>
@@ -12,6 +15,7 @@
                 v-if="build.status == 'diffing'"></i>
             <i class="right floated bookmark icon pulsing"
                 v-if="build.status == 'indexing'"></i>
+            </span>
 
             <!-- error -->
             <div class="ui"
@@ -70,6 +74,11 @@
                     <i class="trash icon" @click="deleteBuild()"></i>
                 </button>
             </div>
+            <div class="ui icon buttons right floated mini" v-if="!build.archived">
+                <button class="ui button">
+                    <i :class="[build.archived ? 'archived' : '', 'archive icon']" @click="archiveBuild()"></i>
+                </button>
+            </div>
         </div>
 
         <div class="ui basic deletebuild modal" :id="build._id">
@@ -80,6 +89,34 @@
             <div class="content">
                 <p>Are you sure you want to delete build <b>{{build.target_name}}</b> ?</p>
                 <p>All merged data and associated metadata will be deleted.</p>
+                <div class="ui warning message">
+                    Note: this operation is <b>*not* reversible</b> and should be used to completely delete all data and information
+                    related to this build (eg. the build was an error...)
+                </div>
+            </div>
+            <div class="actions">
+                <div class="ui red basic cancel inverted button">
+                    <i class="remove icon"></i>
+                    No
+                </div>
+                <div class="ui green ok inverted button">
+                    <i class="checkmark icon"></i>
+                    Yes
+                </div>
+            </div>
+        </div>
+
+        <div class="ui basic archivebuild modal" :id="build._id">
+            <div class="ui icon header">
+                <i class="archive icon"></i>
+                Archive build
+            </div>
+            <div class="content">
+                <p>Are you sure you want to archive build <b>{{build.target_name}}</b> ?</p>
+                <p>Merged data will be deleted but metadata will be kept (merged source informations, logs, releases, etc...)</p>
+                <div class="ui warning message">
+                    Note: this operation is <b>*not* reversible</b> and should be used only for outdated, past builds no longer relevant nor used.
+                </div>
             </div>
             <div class="actions">
                 <div class="ui red basic cancel inverted button">
@@ -108,6 +145,7 @@ import InspectForm from './InspectForm.vue'
 import BuildLogs from './BuildLogs.vue'
 import BuildStats from './BuildStats.vue'
 import BuildSources from './BuildSources.vue'
+import Loader from './Loader.vue'
 
 function build_time(jobs) {
     return jobs.map((q)=>q.time_in_s).reduce(
@@ -131,6 +169,7 @@ export default {
     beforeDestroy() {
         bus.$off('build_updated',this.onBuildChanged);
         $(`#${this.build._id}.ui.basic.deletebuild.modal`).remove();
+        $(`#${this.build._id}.ui.basic.archivebuild.modal`).remove();
     },
     data() {
         return {
@@ -139,7 +178,7 @@ export default {
             build_from_api: null,
         }
     },
-    mixins: [ BaseBuild, ],
+    mixins: [ BaseBuild, Loader, ],
     components: { InspectForm, BuildLogs, BuildStats, BuildSources, },
     computed: {
         build: function () {
@@ -179,6 +218,26 @@ export default {
             })
             .modal("show");
         },
+        archiveBuild : function() {
+            var self = this;
+            $(`#${self.build._id}.ui.basic.archivebuild.modal`)
+            .modal("setting", {
+                onApprove: function () {
+                    self.loading();
+                    axios.post(axios.defaults.baseURL + `/build/${self.build._id}/archive`)
+                    .then(response => {
+                        console.log(response.data.result)
+                        self.loaded();
+                        return true;
+                    })
+                    .catch(err => {
+                        console.log(err);
+                        self.loaderror(err);
+                    })
+                }
+            })
+            .modal("show");
+        },
         onBuildChanged: function(_id=null, op=null) {
             // this method acts as a dispatcher, reacting to change_build events, filtering
             // them for the proper build
@@ -189,8 +248,9 @@ export default {
                 return;
             } else {
                 //console.log("_id was " + _id);
-                if(op == "remove") {
-                    // can't getBuild() when not there anymore, 
+                // deleted or archived builds (though replace_one could catch more than this command)
+                if(op == "remove" || op == "replace_one") {
+                    // can't getBuild() when not there anymore,
                     // propagate a general change_build event
                     bus.$emit("change_build");
                 } else {
@@ -229,5 +289,8 @@ export default {
   a {
         color: #256e08;
     }
+
+  .archived {color:#208CBC;}
+
 
 </style>
