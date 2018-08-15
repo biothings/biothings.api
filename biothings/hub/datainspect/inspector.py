@@ -9,12 +9,11 @@ import subprocess
 from biothings.utils.hub_db import get_src_dump, get_src_build, get_source_fullname
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_walk
-from biothings.utils.loggers import HipchatHandler
+from biothings.utils.loggers import get_logger
 from biothings.hub import INSPECTOR_CATEGORY
 from biothings.hub.databuild.backend import create_backend
 from biothings.hub.dataload.uploader import ParallelizedSourceUploader
 import biothings.utils.inspect as btinspect
-from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER
 
 from biothings.utils.manager import BaseManager
 
@@ -59,6 +58,12 @@ class InspectorManager(BaseManager):
         super(InspectorManager,self).__init__(*args, **kwargs)
         self.upload_manager = upload_manager
         self.build_manager = build_manager
+        self.logfile = None
+        self.setup_log()
+
+    def setup_log(self):
+        """Setup and return a logger instance"""
+        self.logger, self.logfile = get_logger('inspect')
 
     def inspect(self, data_provider, mode="type", **kwargs):
         """
@@ -89,7 +94,7 @@ class InspectorManager(BaseManager):
         registerer_obj = None # who should register result
         t0 = time.time()
         started_at = datetime.now()
-        logging.info("Inspecting data with mode %s and data_provider %s" % (repr(mode),repr(data_provider)))
+        self.logger.info("Inspecting data with mode %s and data_provider %s" % (repr(mode),repr(data_provider)))
         if callable(data_provider):
             raise NotImplementedError("data_provider as callable untested...")
             yielder_provider = data_provider
@@ -145,7 +150,7 @@ class InspectorManager(BaseManager):
                 elif data_provider_type == "build":
                     registerer_obj.register_status("inspecting",transient=True,init=True,job={"step":"inspect"})
 
-                logging.info("Running inspector on %s (type:%s,data_provider:%s)" % \
+                self.logger.info("Running inspector on %s (type:%s,data_provider:%s)" % \
                         (repr(data_provider),data_provider_type,yielder_provider))
                 # make it pickleable
                 if data_provider_type == "source":
@@ -173,7 +178,6 @@ class InspectorManager(BaseManager):
                         _map["started_at"] = started_at
                         _map["duration"] = timesofar(t0)
                         # register begin of inspection (differ slightly depending on type)
-                        logging.error(res)
                         if "mapping" in mode and "errors" in res["mapping"] and "pre-mapping" in res["mapping"]:
                             registerer_obj.register_status("failed",subkey="inspect",inspect=_map)
                             got_error = res["mapping"]["errors"]
@@ -184,7 +188,7 @@ class InspectorManager(BaseManager):
                                 registerer_obj.register_status("success",job={"step":"inspect"},
                                                                         build={"inspect":_map})
                     except Exception as e:
-                        logging.exception("Error while inspecting data: %s" % e)
+                        self.logger.exception("Error while inspecting data: %s" % e)
                         got_error = e
                         if data_provider_type == "source":
                             registerer_obj.register_status("failed",subkey="inspect",err=repr(e))
@@ -199,6 +203,6 @@ class InspectorManager(BaseManager):
             task = asyncio.ensure_future(do())
             return task
         except Exception as e:
-            logging.error("Error while inspecting '%s': %s" % (repr(data_provider),e))
+            self.logger.error("Error while inspecting '%s': %s" % (repr(data_provider),e))
             raise
 

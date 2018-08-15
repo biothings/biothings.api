@@ -660,7 +660,7 @@ def aiogunzipall(folder, pattern, job_manager, pinfo):
     """
     jobs = []
     got_error = None
-    logging.info("Unzipping files in '%s'" % folder) 
+    logging.info("Unzipping files in '%s'" % folder)
     for f in glob.glob(os.path.join(folder,pattern)):
         pinfo["description"] = os.path.basename(f)
         suffix = pattern.replace("*","")
