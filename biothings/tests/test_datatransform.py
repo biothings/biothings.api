@@ -5,7 +5,7 @@ config_for_app(btconfig)
 from biothings.hub.datatransform import DataTransformMDB as KeyLookup
 from biothings.tests.keylookup_graphs import graph_simple, \
     graph_weights, graph_one2many, graph_invalid, graph_mix, \
-    graph_mychem
+    graph_mychem, graph_regex
 import unittest
 import biothings.utils.mongo as mongo
 
@@ -399,3 +399,19 @@ class TestDataTransform(unittest.TestCase):
                 print(res)
             self.assertTrue(res['_id'] in answers)
         self.assertEqual(res_cnt, 12)
+
+    def test_regex(self):
+        """
+        Test the RegExEdge in a network.
+        """
+        @KeyLookup(graph_regex, 'a', ['bregex'])
+        def load_document(doc_lst):
+            for d in doc_lst:
+                yield d
+
+        # Initial Test Case
+        doc_lst = [{'_id': 'a:1234'}]
+        res_lst = load_document(doc_lst)
+
+        res = next(res_lst)
+        self.assertEqual(res['_id'], 'bregex:1234')

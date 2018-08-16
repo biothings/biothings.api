@@ -299,6 +299,22 @@ class DataTransformEdge(object):
         return state
 
 
+class RegExEdge(DataTransformEdge):
+    def __init__(self, from_regex, to_regex, weight=1):
+        self.from_regex = from_regex
+        self.to_regex = to_regex
+        self.weight = weight
+
+    def edge_lookup(self, keylookup_obj, id_strct):
+        """
+        Transform identifiers using a regular expression substitution.
+        """
+        res_id_strct = IDStruct()
+        for (left, right) in id_strct:
+            res_id_strct.add(left, re.sub(self.from_regex, self.to_regex, right))
+        return res_id_strct
+
+
 def nested_lookup(doc, field):
     """
     Performs a nested lookup of doc using a period (.) delimited

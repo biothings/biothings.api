@@ -1,7 +1,7 @@
 import biothings_client
 import networkx as nx
 
-from biothings.hub.datatransform import MongoDBEdge, MyChemInfoEdge, MyGeneInfoEdge
+from biothings.hub.datatransform import MongoDBEdge, RegExEdge, MyChemInfoEdge, MyGeneInfoEdge
 
 ###############################################################################
 # Simple Graph for Testing
@@ -111,3 +111,15 @@ graph_mychem.add_edge('drugbank', 'inchikey',
                       object=MyChemInfoEdge('drugbank.drugbank_id', '_id'))
 graph_mychem.add_edge('pubchem', 'inchikey',
                       object=MyChemInfoEdge('pubchem.cid', '_id'))
+
+###############################################################################
+# Simple Graph for Testing
+###############################################################################
+graph_regex = nx.DiGraph()
+
+graph_regex.add_node('a')
+graph_regex.add_node('b')
+graph_regex.add_node('bregex')
+
+graph_regex.add_edge('a', 'b', object=MongoDBEdge('b', 'a_id', 'b_id'))
+graph_regex.add_edge('b', 'bregex', object=RegExEdge('b:', 'bregex:'))
