@@ -3,6 +3,7 @@ This module contains util functions may be shared by both BioThings data-hub and
 In general, do not include utils depending on any third-party modules.
 """
 import math, statistics, random
+import collections
 import time, re
 import logging
 from pprint import pprint, pformat
@@ -59,36 +60,43 @@ def merge_record(target,tomerge,mode):
                 tom_stats = tomerge["_stats"]
                 merge_stats(tgt_stats,tom_stats)
                 continue
+            if not isinstance(tomerge[k], collections.Iterable):
+                continue
             for typ in tomerge[k]:
-                if mode == "type":
-                    # we can safely update and possibly overwrite
-                    # target with tomerge's values and in mode "type"
-                    # there's no actual information for scalar fields
-                    # (eg a string field will be like: {"myfield" : {str:{}}}
-                    target[k].update(tomerge[k])
-                elif mode == "mapping":
-                    # keep track on splitable (precedence: splitable > non-splitable)
-                    # so don't merge if target has a "split" and tomerge has not,
-                    # as we would loose that information
-                    if splitstr is typ:
-                        target.pop(k)
-                        target[k] = tomerge[k]
+                # if not an actual type we need to merge further to reach them
+                if type(typ) != type or typ == list:
+                    target[k].setdefault(typ,{})
+                    target[k][typ] = merge_record(target[k][typ],tomerge[k][typ],mode)
                 else:
-                    if typ in target[k]:
-                        # same key, same type, need to merge stats
-                        if not "_stats" in tomerge[k][typ]:
-                            # we try to merge record at a too higher level, need to merge deeper
-                            target[k] = merge_record(target[k],tomerge[k],mode)
-                            continue
-                        tgt_stats = target[k][typ]["_stats"]
-                        tom_stats = tomerge[k][typ]["_stats"]
-                        merge_stats(tgt_stats,tom_stats)
+                    if mode == "type":
+                        # we can safely update and possibly overwrite
+                        # target with tomerge's values and in mode "type"
+                        # there's no actual information for scalar fields
+                        # (eg a string field will be like: {"myfield" : {str:{}}}
+                        target[k].update(tomerge[k])
+                    elif mode == "mapping":
+                        # keep track on splitable (precedence: splitable > non-splitable)
+                        # so don't merge if target has a "split" and tomerge has not,
+                        # as we would loose that information
+                        if splitstr is typ:
+                            target.pop(k)
+                            target[k] = tomerge[k]
                     else:
-                        # key exists but with a different type, create new type
-                        if mode == "type":
-                            target[k].update(tomerge[k])
+                        if typ in target[k]:
+                            # same key, same type, need to merge stats
+                            if not "_stats" in tomerge[k][typ]:
+                                # we try to merge record at a too higher level, need to merge deeper
+                                target[k] = merge_record(target[k],tomerge[k],mode)
+                                continue
+                            tgt_stats = target[k][typ]["_stats"]
+                            tom_stats = tomerge[k][typ]["_stats"]
+                            merge_stats(tgt_stats,tom_stats)
                         else:
-                            target[k].setdefault(typ,{}).update(tomerge[k][typ])
+                            # key exists but with a different type, create new type
+                            if mode == "type":
+                                target[k].update(tomerge[k])
+                            else:
+                                target[k].setdefault(typ,{}).update(tomerge[k][typ])
         else:
             # key doesn't exist, create key
             if mode == "type":
@@ -152,6 +160,7 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
             mapt.setdefault("_stats",copy.deepcopy(stats_tpl["_stats"]))
             report(1,mapt)
     elif type(struct) == list:
+
         mapl = {}
         for e in struct:
             typ = inspect(e,key=key,mapt=mapl,mode=mode,level=level+1)
@@ -227,6 +236,9 @@ def merge_scalar_list(mapt,mode):
                             merge_stats(mapt[list][e][typ]["_stats"],tomerge[typ]["_stats"])
                 elif mode == "mapping":
                     for typ in tomerge:
+                        if typ is str and splitstr in mapt[list][e]:
+                            # precedence splitstr > str, we keep splitstr and ignore str
+                            continue
                         if not typ in mapt[list][e]:
                             # that field exist in the [list] but with a different type
                             # just merge the typ
@@ -250,7 +262,7 @@ def merge_scalar_list(mapt,mode):
 
 
 def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
-                 pre_mapping=False, limit=None, sample=None):
+                 pre_mapping=False, limit=None, sample=None, metadata=True):
     """Inspect docs and return a summary of its structure:
     - mode:
         + "type": explore documents and report strict data structure
@@ -267,6 +279,7 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
     - sample: in combination with limit, randomly extract a sample of 'limit' docs
               (so not necessarily the x first ones defined by limit). If random.random()
               is greater than sample, doc is inspected, otherwise it's skipped
+    - metadata: compute metadata on the result
     """
 
     def post(mapt, mode,clean):
@@ -312,7 +325,7 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
             try:
                 inspect(doc,mapt=_map[m],mode=m)
             except Exception as e:
-                logging.error("Can't inspect document (_id: %s) because: %s" % (doc.get("_id"),e))
+                logging.error("Can't inspect document (_id: %s) because: %s\ndoc: %s" % (doc.get("_id"),e,pformat(doc)))
                 errors.add(str(e))
         cnt += 1
         if cnt % 10000 == 0:
@@ -334,16 +347,23 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
         import biothings.utils.es as es
         try:
             _map["mapping"] = es.generate_es_mapping(_map["mapping"])
-            # compute some extra metadata
-            flat = flatten_doc(_map["mapping"])
-            # total fields: ES6 requires to overcome the default 1000 limit if needed
-            _map["__metadata__"] = {"total_fields" : len(flat)}
+            if metadata:
+                # compute some extra metadata
+                _map = compute_metadata(_map,"mapping")
         except es.MappingError as e:
             prem = {"pre-mapping" : _map["mapping"], "errors" : e.args[1]}
             _map["mapping"] = prem
     elif errors:
         _map["errors"] = errors
     return _map
+
+def compute_metadata(mapt,mode):
+    if mode == "mapping":
+        flat = flatten_doc(mapt["mapping"])
+        # total fields: ES6 requires to overcome the default 1000 limit if needed
+        mapt["__metadata__"] = {"total_fields" : len(flat)}
+
+    return mapt
 
 
 if __name__ == "__main__":
@@ -505,7 +525,7 @@ if __name__ == "__main__":
     sd1 = {"_id" : "123","homologene" : {"id":"bla","gene" : [[123,456],[789,102]]}}
     m = inspect_docs([sd1],mode="mapping")["mapping"]
     assert m == {'homologene': {'properties': {'gene': {'type': 'integer'},
-        'id': {'analyzer': 'string_lowercase', 'type': 'text'}}}}, "mapping %s" % m
+        'id': {'normalizer': 'keyword_lowercase_normalizer', 'type': 'keyword'}}}}, "mapping %s" % m
 
     # ok, "bla" is either a scalar or in a list, test merge
     md1 = {"_id" : "124",'vals': [{"oula":"this is great"},{"bla":"rs24543","arf":"ENS355432"}]}
@@ -620,4 +640,21 @@ if __name__ == "__main__":
     doc2 = {"_id":"1","f":["a 0"]}
     m = inspect_docs([doc1,doc2],mode="mapping")
     assert m["mapping"]["f"] == {"type":"text"} # splitstr > str
+
+    # splitstr > str whatever the order they appear while inspected (here: splitstr,str,str, in list,list,dict)
+    d1 = {'_id': 'a', 'r': {'k': [{'id': 'one', 'rel': 'is'}, {'id': 'two', 'rel': 'simil to'}]}}
+    d2 = {'_id': 'b', 'r': {'k': [{'id': 'three', 'rel': 'is'}, {'id': 'four', 'rel': 'is'}]}}
+    d3 = {'_id': 'c', 'r': {'k': {'id': 'five', 'rel': 'is'}}}
+    m = inspect_docs([d1,d2,d3],mode="mapping")
+    assert "errors" not in m["mapping"]
+
+    # merge_record splitstr > str
+    d1 = {'_id': {str: {}}, 'k': {'a': {list: {'i': {str: {}}, 'r': {str: {}}}}}}
+    d2 = {'_id': {str: {}},'k': {'a': {list: {'i': {str: {}},'r': {splitstr: {}}}}}}
+    m = {}
+    m = merge_record(m,d1,"mapping")
+    m = merge_record(m,d2,"mapping")
+    assert m["k"]["a"][list]["r"] == {splitstr:{}}
+
+    print("All tests OK")
 
