@@ -71,7 +71,7 @@ class ESResultTransformer(object):
                     new_path = key if not path else field_sep.join([path, key])
                     this_list.append((self._alias_output_keys(new_path, key), _recursion_helper(doc[key], new_path, type(doc))))
                 
-                if parent_type != list and parent_type != tuple and path in self.options.always_list:
+                if parent_type != list and parent_type != tuple and self.options.always_list and path in self.options.always_list:
                     if sort:
                         return [OrderedDict(this_list)]
                     else:
@@ -81,7 +81,7 @@ class ESResultTransformer(object):
                         return OrderedDict(this_list)
                     else:
                         return dict(this_list)
-            elif parent_type != list and parent_type != tuple and path in self.options.always_list:
+            elif parent_type != list and parent_type != tuple and self.options.always_list and path in self.options.always_list:
                 return [doc]
             else:
                 return doc
