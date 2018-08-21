@@ -2,6 +2,25 @@ from biothings.utils.common import is_seq
 from biothings.utils.doc_traversal import depth_first_traversal
 from collections import OrderedDict
 
+def exists_or_null(doc, field, val=None):
+    def _helper(doc, _list, val):
+        if isinstance(doc, dict):
+            if len(_list) > 1:
+                if _list[0] not in doc:
+                    doc[_list[0]] = {}
+                _helper(doc[_list[0]], _list[1:], val)
+            else:
+                if _list[0] not in doc:
+                    doc[_list[0]] = val
+        elif is_seq(doc):
+            for o in doc:
+                _helper(o, _list, val)
+
+    _helper(doc, list(field.split('.')), val)
+
+    return doc
+
+
 def flatten_doc_2(doc, outfield_sep='.', sort=True):
     _ret = {}
     for _path, _val in depth_first_traversal(doc):
