@@ -1,6 +1,6 @@
 from biothings.utils.version import get_software_info
 from biothings.utils.common import is_seq
-from biothings.utils.web.es import flatten_doc
+from biothings.utils.web.es import flatten_doc, exists_or_null
 from collections import OrderedDict
 import logging
 
@@ -56,9 +56,9 @@ class ESResultTransformer(object):
         return OrderedDict([(k,v) for (k,v) in sorted(ret.items(), key=lambda x: x[0])])
     
     def _sort_and_annotate_doc(self, doc, sort=True, data_src=False, field_sep='.'):
-        def _recursion_helper(doc, path):
+        def _recursion_helper(doc, path, parent_type):
             if is_seq(doc):
-                return [_recursion_helper(_doc, path) for _doc in doc]
+                return [_recursion_helper(_doc, path, type(doc)) for _doc in doc]
             elif isinstance(doc, dict):
                 if data_src and path in self.data_sources:
                     doc['@sources'] = self.data_sources[path]['@sources']
@@ -69,15 +69,24 @@ class ESResultTransformer(object):
                 this_list = []
                 for key in _doc:
                     new_path = key if not path else field_sep.join([path, key])
-                    this_list.append((self._alias_output_keys(new_path, key), _recursion_helper(doc[key], new_path)))
-                if sort:
-                    return OrderedDict(this_list)
+                    this_list.append((self._alias_output_keys(new_path, key), _recursion_helper(doc[key], new_path, type(doc))))
+                
+                if parent_type != list and parent_type != tuple and path in self.options.always_list:
+                    if sort:
+                        return [OrderedDict(this_list)]
+                    else:
+                        return [dict(this_list)]
                 else:
-                    return dict(this_list)
+                    if sort:
+                        return OrderedDict(this_list)
+                    else:
+                        return dict(this_list)
+            elif parent_type != list and parent_type != tuple and path in self.options.always_list:
+                return [doc]
             else:
                 return doc
 
-        return _recursion_helper(doc, '')
+        return _recursion_helper(doc, '', type(doc))
 
     def _form_doc(self, doc, score=True):
         _doc = doc.get('_source', doc.get('fields', {}))
@@ -92,7 +101,10 @@ class ESResultTransformer(object):
             _doc['found'] = doc['found']
 
         self._modify_doc(_doc)
-           
+        
+        for _field in self.options.allow_null:
+            _doc = exists_or_null(_doc, _field)
+
         if self.options.jsonld:
             _d = OrderedDict([('@context', self.jsonld_context.get('@context', {})), 
                               ('@id', self.doc_url_function(_doc['_id']))])
