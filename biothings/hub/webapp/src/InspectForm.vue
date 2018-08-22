@@ -51,7 +51,8 @@
             <div class="four wide column" v-if="select_data_provider">
                 <select id="select-data_provider" class="ui dropdown">
                     <option value="src">Data Collection</option>
-                    <option value="uploader">Uploader</option>
+                    <!-- deprecated as inspector was parallelized -->
+                    <!--option value="uploader">Uploader</option-->
                 </select>
             </div>
             <div class="ten wide column" v-if="select_data_provider">
@@ -63,13 +64,13 @@
                             <div class="description">Data is fetched from collection (stored data)</div>
                         </div>
                     </a>
-                    <a class="item">
+                    <!--a class="item">
                         <i class="right triangle icon"></i>
                         <div class="content">
                             <div class="header">Uploader</div>
                             <div class="description">Data is fetched directly from the parser, before storage into a collection</div>
                         </div>
-                    </a>
+                    </a-->
                 </div>
             </div>
             <div class="two wide column">
