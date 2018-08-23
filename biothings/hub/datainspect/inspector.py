@@ -126,8 +126,9 @@ class InspectorManager(BaseManager):
                 # normalize mode param and prepare global results
                 if type(mode) == str:
                     mode = [mode]
+                inspected = {}
                 for m in mode:
-                    inspected = {m:{}}
+                    inspected.setdefault(m,{})
 
                 backend = create_backend(backend_provider).target_collection
                 for ids in id_feeder(backend,batch_size=batch_size):

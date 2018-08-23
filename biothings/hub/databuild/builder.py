@@ -1042,7 +1042,6 @@ class BuilderManager(BaseManager):
             for d in dbbuildconfig.find():
                 try:
                     news = whatsnewcomparedto(d["_id"])
-                    logging.error("news: %s" % news)
                     if news[d["_id"]]["sources"]:
                         configs.update(news)
                 except BuilderException:
