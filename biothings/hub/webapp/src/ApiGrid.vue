@@ -103,11 +103,13 @@
 <script>
 import axios from 'axios'
 import Api from './Api.vue'
+import Loader from './Loader.vue'
 import bus from './bus.js'
 
 
 export default {
     name: 'api-grid',
+    mixins: [ Loader, ],
     mounted () {
         console.log("ApiGrid mounted");
         $('.ui.apibackends.dropdown').dropdown();
@@ -144,9 +146,11 @@ export default {
     components: { Api, },
     methods: {
         getApis: function() {
+            this.loading();
             axios.get(axios.defaults.baseURL + '/api/list')
             .then(response => {
                 this.apis = response.data.result;
+                this.loaded();
             })
             .catch(err => {
                 console.log("Error getting APIs information: " + err);

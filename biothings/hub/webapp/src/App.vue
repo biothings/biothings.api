@@ -1,7 +1,7 @@
 <template>
   <div id="app">
     <div class="ui fixed inverted menu">
-      <div class="ui container">
+      <div class="ui studio container">
 
 		<div class="item">
 			<div class="ui middle aligned mini">
@@ -12,36 +12,44 @@
 
         <div class="header item">
             <img class="logo" src="./assets/biothings-studio-color.svg">
-            <div :data-tooltip="conn.url" data-position="bottom center">{{conn.name}}</div>
+            <div id="conn" :data-html="
+                '<a>' + conn.url + '</a><br>' +
+                'App. version: <b>' + conn.app_version + '</b><br>' +
+                'Biothings version: <b>' + conn.biothings_version + '</b><br>' 
+                " data-position="bottom center">{{conn.name}}</div>
         </div>
 
-        <a class="clickable blurred item">
+        <a class="clickable item">
             <i class="ui home icon"></i>
             <router-link to="/">Home</router-link>
         </a>
-        <a class="clickable blurred item">
+        <a class="clickable item">
             <i class="ui database icon"></i>
             <router-link to="/sources">Sources</router-link>
         </a>
-        <a class="clickable blurred item">
+        <a class="clickable item">
             <i class="ui cubes icon"></i>
             <router-link to="/builds">Builds</router-link>
         </a>
-        <a class="clickable blurred item">
+        <a class="clickable item">
             <i class="ui shield alternate icon"></i>
             <router-link to="/apis">API</router-link>
         </a>
 
-        <div class="clickable blurred ui item right">
+        <div class="clickable ui item right">
           <job-summary></job-summary>
         </div>
 
-        <div class="clickable blurred ui item">
+        <div class="clickable ui item">
 			<event-messages>
 			</event-messages>
         </div>
 
         <div class="ui item">
+            <loader></loader>
+            <div id="connected" v-if="socket && socket.readyState == 1" :data-tooltip="'Quality: unknown'" data-position="bottom center">
+                <i class="inverted circular signal icon"></i>
+            </div>
             <div v-if="socket && socket.readyState == 1" :data-tooltip="'Connection: ' + socket.protocol" data-position="bottom center">
                 <button class="mini circular ui icon button" @click="closeConnection">
                     <i class="green power off icon"></i>
@@ -54,15 +62,12 @@
                     <i class="red plug icon"></i>
                 </button>
             </div>
-            <div id="connected" v-if="socket && socket.readyState == 1" :data-tooltip="'Quality: unknown'" data-position="bottom center">
-                <i class="inverted circular signal icon"></i>
-            </div>
         </div>
 
       </div>
     </div>
 
-	<div id="page_content" class="clickable blurred ui active tab segment">
+	<div id="page_content" class="clickable ui active tab segment">
 		<router-view></router-view>
 	</div>
 
@@ -76,6 +81,7 @@ import axios from 'axios';
 
 import VueLocalStorage from 'vue-localstorage';
 Vue.use(VueLocalStorage);
+import Loader from './Loader.vue'
 
 import Vue2Filters from 'vue2-filters';
 import VueRouter from 'vue-router';
@@ -188,8 +194,12 @@ const PING_INTERVAL_MS = 10000;
 export default {
     name: 'app',
     router: router,
-    components: { JobSummary, EventMessages, EventAlert, ChooseHub},
+    components: { JobSummary, EventMessages, EventAlert, ChooseHub, Loader},
     mounted () {
+        $('#conn')
+        .popup({
+            on: 'hover'
+        });
         $('.menu .item').tab();
         $('.ui.sticky')
         .sticky({
@@ -225,7 +235,8 @@ export default {
             default_conn: {
                 "icon" : "/dist/biothings-studio-color.svg",
                 "name" : "BioThings Studio",
-                "version" : null,
+                "app_version" : null,
+                "biothings_version" : null,
                 "url" : "http://localhost:7080",
             },
             conn: null,
@@ -330,7 +341,6 @@ export default {
                     self.connected = true;
                     this.ping_interval = PING_INTERVAL_MS;
                     self.pingServer();
-                    $(".clickable").removeClass("blurred");
                     if(redirect) {
                         window.location.assign(redirect)
                     }
@@ -362,7 +372,6 @@ export default {
             this.connected = false;
             this.socket.close();
             this.msg_timestamp = null;
-            $(".clickable").addClass("blurred");
         },
         pingServer() {
             // check if we got a reply before, it not, we have a connection issue
@@ -456,9 +465,11 @@ export default {
 
     .red {color: #c31616;}
     .green {color: #0e7948;}
-    .blurred {
-      filter: blur(2px);
-      pointer-events: none;
+
+    .ui.studio.container {
+        width: 100%;
+        margin-left: 1em !important;
+        margin-right: 2em !important;
     }
 
 </style>

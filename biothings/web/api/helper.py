@@ -102,7 +102,10 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
                     ret = []
                     #raise BiothingParameterTypeError('Could not listify "{}" in parameter "{}" with "jsoninput" True'.format(argval, arg))
             if not ret:
-                ret = split_ids(argval)
+                try:
+                    ret = split_ids(argval)
+                except ValueError as e:
+                    raise BiothingParameterTypeError("Could not split argument '{0}' due to the following error: '{1}'".format(arg, str(e))) 
                 #ret = [x for x in re.split(getattr(self.web_settings, 'LIST_SPLIT_REGEX', '[\s\r\n+|,]+'), argval) if x]
             ret = ret[:self.kwarg_settings[arg].get('max', getattr(self.web_settings, 'LIST_SIZE_CAP', 1000))]
         elif self.kwarg_settings[arg]['type'] == int:

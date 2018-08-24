@@ -43,7 +43,13 @@
                                     {{name}}
                                 </option>
                             </select>
-                          </a>
+                        </a>
+                        <a class="item">
+                            <div class="ui includearchived checkbox">
+                                <input type="checkbox" name="includearchived" v-model="only_archived">
+                                <label>Show archived builds only</label>
+                            </div>
+                        </a>
                       </div>
                 </div>
                 <div class="ui centered grid">
@@ -180,11 +186,13 @@
 <script>
 import axios from 'axios'
 import Build from './Build.vue'
+import Loader from './Loader.vue'
 import bus from './bus.js'
 
 
 export default {
     name: 'build-grid',
+    mixins: [ Loader, ],
     mounted () {
         console.log("BuildGrid mounted");
         $('.ui.filterbuilds.dropdown').dropdown();
@@ -207,6 +215,7 @@ export default {
         .sidebar('setting', 'transition', 'overlay')
         .sidebar('attach events', '#side_menu');
         $('.ui.form').form();
+        $('.ui.includearchived.checkbox').checkbox();
     },
     updated() {
         // there's some kind of race-condition regarding dropdown init, if
@@ -216,10 +225,11 @@ export default {
     },
     created() {
         // load sources to build dropdown list when creating a new config
+        this.loading();
         this.getSourceList();
         // builds & configs
-        this.getBuilds();
         this.getBuildConfigs();
+        this.getBuilds();
         bus.$on('change_source',this.onSourceChanged);
         bus.$on('change_build',this.onBuildChanged);
         bus.$on('change_build_config',this.onBuildConfigChanged);
@@ -241,6 +251,11 @@ export default {
                 this.getBuilds();
             }
         },
+        only_archived: function(newv,oldv) {
+            if(newv != oldv) {
+                this.getBuilds();
+            }
+        },
     },
     data () {
         return  {
@@ -253,6 +268,7 @@ export default {
             colors: ["orange","green","yellow","olive","teal","violet","blue","pink","purple"],
             color_idx : 0,
             conf_filter : "",
+            only_archived : false,
         }
     },
     components: { Build, },
@@ -267,13 +283,22 @@ export default {
             // (and if emptied in "response", I guess there's a race condition because builds aren't
             // rendered properly again...). Anyway, I don't know if it's related but that's the only
             // explanation I have...
+            if(this.only_archived) {
+                if(filter == "")
+                    filter += "?only_archived=1";
+                else
+                    filter += "&only_archived=1";
+            }
+            this.loading();
             this.builds = [];
             axios.get(axios.defaults.baseURL + '/builds' + filter)
             .then(response => {
                 this.builds = response.data.result;
+                this.loaded();
             })
             .catch(err => {
                 console.log("Error getting builds information: " + err);
+                this.loaderror(err);
             })
         },
         getBuildConfigs: function() {

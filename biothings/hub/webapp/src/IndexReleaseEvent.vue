@@ -1,7 +1,7 @@
 <template>
     <div class="event-container">
         <div class="label">
-            <img class="logo" src="./assets/elasticsearch.png">
+            <i class="ui bookmark icon"></i>
         </div>
         <div class="content">
             <div class="summary">

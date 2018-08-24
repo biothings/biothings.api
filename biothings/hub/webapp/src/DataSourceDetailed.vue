@@ -91,13 +91,14 @@ import DataSourceInspect from './DataSourceInspect.vue'
 import DataSourcePlugin from './DataSourcePlugin.vue'
 import DataSourceMapping from './DataSourceMapping.vue'
 import DiffModal from './DiffModal.vue'
+import Loader from './Loader.vue'
 
 export default {
     name: 'data-source-detailed',
     props: ['_id'],
     components: { InspectForm, DataSourceDump, DataSourceUpload, DataSourceInspect,
-                  DataSourcePlugin, DataSourceMapping, DiffModal },
-    mixins : [ BaseDataSource, ],
+                  DataSourcePlugin, DataSourceMapping, DiffModal, Loader},
+    mixins : [ BaseDataSource, Loader],
     mounted () {
         console.log("DataSourceDetailed mounted");
         this.loadData();
@@ -153,13 +154,16 @@ export default {
     methods: {
         loadData () {
             var self = this;
+            this.loading();
             axios.get(axios.defaults.baseURL + `/source/${this._id}`)
             .then(response => {
                 //console.log(response.data.result)
                 self.source = response.data.result;
+                this.loaded();
             })
             .catch(err => {
                 console.log("Error getting source information: " + err);
+                this.loaderror(err);
             })
         },
     },

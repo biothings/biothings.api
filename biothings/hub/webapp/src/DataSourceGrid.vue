@@ -63,10 +63,12 @@
 <script>
 import axios from 'axios'
 import DataSource from './DataSource.vue'
+import Loader from './Loader.vue'
 import bus from './bus.js'
 
 export default {
     name: 'data-source-grid',
+    mixins: [ Loader, ],
     mounted () {
         console.log("DataSourceGrid mounted");
         this.getSourcesStatus();
@@ -93,12 +95,15 @@ export default {
     components: { DataSource, },
     methods: {
         getSourcesStatus: function() {
+            this.loading();
             axios.get(axios.defaults.baseURL + '/sources')
             .then(response => {
                 this.sources = response.data.result;
+                this.loaded();
             })
             .catch(err => {
                 console.log("Error getting sources information: " + err);
+                this.loaderror(err);
             })
         },
         register: function() {

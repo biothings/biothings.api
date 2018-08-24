@@ -577,7 +577,7 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             int: {"type": "integer"},
             bool: {"type": "boolean"},
             float: {"type": "float"},
-            str: {"type": "text","analyzer":"string_lowercase"}, # not splittable (like an ID for instance)
+            str: {"type": "keyword", "normalizer": "keyword_lowercase_normalizer"}, # not splittable (like an ID for instance)
             splitstr: {"type": "text"},
             }
     # inspect_doc, if it's been jsonified, contains keys with type as string,
