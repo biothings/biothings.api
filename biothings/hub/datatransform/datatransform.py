@@ -172,6 +172,8 @@ class IDStruct(object):
 
     def add(self, left, right):
         """add a (original_id, current_id) pair to the list"""
+        if not left or not right:
+            return  # identifiers cannot be None
         if self.lookup(left, right):
             return  # tuple already in the list
         if left not in self.forward.keys():
@@ -225,7 +227,7 @@ class IDStruct(object):
 
     def find_left(self, id):
         """Find the first id by searching the (left, _) identifiers"""
-        if id in self.forward.keys():
+        if id and id in self.forward.keys():
             for f in self.forward[id]:
                 yield f
 
@@ -235,7 +237,7 @@ class IDStruct(object):
 
     def find_right(self, id):
         """Find the first id founding by searching the (_, right) identifiers"""
-        if id in self.inverse.keys():
+        if id and id in self.inverse.keys():
             for i in self.inverse[id]:
                 yield i
 
