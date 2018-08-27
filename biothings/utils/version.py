@@ -3,7 +3,8 @@ from subprocess import check_output
 from io import StringIO
 from contextlib import redirect_stdout
 import pip
-import os, sys
+import os, sys, logging
+from git import Repo
 import biothings
 
 # cache these
@@ -80,3 +81,37 @@ def get_software_info(app_dir=None):
             'biothings': get_biothings_commit(),
             'python-info' : get_python_exec_version(),
             }
+
+
+
+def set_versions(config, app_folder):
+    """
+    Propagate versions (git branch name) in config module
+    """
+    # app_version: version of the API application
+    if not hasattr(config,"APP_VERSION"):
+        repo = Repo(app_folder) # app dir (mygene, myvariant, ...)
+        try:
+            config.APP_VERSION =  repo.active_branch.name
+        except Exception as e:
+            logging.warning("Can't determine app version, defaulting to 'master': %s" % e)
+            config.APP_VERSION = "master"
+    else:
+        logging.info("app_version '%s' forced in configuration file" % config.APP_VERSION)
+
+    # biothings_version: version of BioThings SDK
+    if not hasattr(config,"BIOTHINGS_VERSION"):
+        import biothings
+        # .../biothings.api/biothings/__init__.py
+        bt_folder,_bt = os.path.split(os.path.split(os.path.realpath(biothings.__file__))[0])
+        assert _bt == "biothings", "Expectig 'biothings' dir in biothings lib path"
+        repo = Repo(bt_folder) # app dir (mygene, myvariant, ...)
+        try:
+            config.BIOTHINGS_VERSION =  repo.active_branch.name
+        except Exception as e:
+            logging.warning("Can't determine biothings version, defaulting to 'master': %s" % e)
+            config.BIOTHINGS_VERSION = "master"
+    else:
+        logging.info("biothings_version '%s' forced in configuration file" % config.BIOTHINGS_VERSION)
+    
+    logging.info("Running app_version=%s with biothings_version=%s" % (repr(config.APP_VERSION),repr(config.BIOTHINGS_VERSION)))

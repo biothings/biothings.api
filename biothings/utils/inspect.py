@@ -250,7 +250,7 @@ def merge_scalar_list(mapt,mode):
 
 
 def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
-                 pre_mapping=False, limit=None, sample=False):
+                 pre_mapping=False, limit=None, sample=None):
     """Inspect docs and return a summary of its structure:
     - mode:
         + "type": explore documents and report strict data structure

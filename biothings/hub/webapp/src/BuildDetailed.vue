@@ -5,7 +5,9 @@
 
                 <div class="left aligned header" v-if="build.target_name">{{ build.target_name }}</div>
                 <div class="meta">
-                    <span class="right floated time" v-if="build.started_at">Built {{ build.started_at | moment("from", "now") }}</span>
+                    <span class="right floated time" v-if="build.started_at">Built {{ build.started_at | moment("from", "now") }}
+                        <div class="time" v-if="build.archived">Archived {{ build.archived | moment("from", "now") }}</div>
+                    </span>
                     <div :class="['ui',color ? color : 'grey tiny', 'left floated', 'label conftag']">{{build.build_config.name}}</div>
                 </div>
                 <div class="left aligned description">
@@ -72,13 +74,14 @@ import BuildLogs from './BuildLogs.vue'
 import BuildConfig from './BuildConfig.vue'
 import BuildMapping from './BuildMapping.vue'
 import DiffModal from './DiffModal.vue'
+import Loader from './Loader.vue'
 
 export default {
     name: 'build-detailed',
     props: ['_id','color'],
-    mixins: [ BaseBuild, ],
+    mixins: [ BaseBuild, Loader],
     components: { InspectForm, BuildReleases, BuildMapping, DiffModal,
-                  BuildSources, BuildStats, BuildLogs, BuildConfig, },
+                  BuildSources, BuildStats, BuildLogs, BuildConfig, Loader },
     mounted () {
         console.log("BuildDetailed mounted");
         this.loadData();
@@ -105,13 +108,16 @@ export default {
         },
         loadData () {
             var self = this;
+            this.loading();
             axios.get(axios.defaults.baseURL + `/build/${this._id}`)
             .then(response => {
                 console.log(response.data.result)
                 self.build = response.data.result;
+                this.loaded();
             })
             .catch(err => {
                 console.log("Error getting build information: " + err);
+                this.loaderror(err);
             })
         },
     },

@@ -133,7 +133,9 @@ ANNOTATION_GET_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 10
 ANNOTATION_GET_ESQB_KWARGS = {}
 ANNOTATION_GET_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool}, 
                                    'jsonld': {'default': False, 'type': bool},
-                                   '_sorted': {'default': True, 'type': bool}}
+                                   '_sorted': {'default': True, 'type': bool},
+                                    'always_list': {'default': [], 'type': list, 'max': 1000},
+                                    'allow_null': {'default': [], 'type': list, 'max': 1000}}
 
 # For annotation POST endpoint
 ANNOTATION_POST_CONTROL_KWARGS = {'raw': {'default': False, 'type': bool},
@@ -144,7 +146,9 @@ ANNOTATION_POST_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 1
 ANNOTATION_POST_ESQB_KWARGS = {}
 ANNOTATION_POST_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool},
                                     'jsonld': {'default': False, 'type': bool},
-                                    '_sorted': {'default': True, 'type': bool}}
+                                    '_sorted': {'default': True, 'type': bool},
+                                    'always_list': {'default': [], 'type': list, 'max': 1000},
+                                    'allow_null': {'default': [], 'type': list, 'max': 1000}}
 
 # For query GET endpoint
 QUERY_GET_CONTROL_KWARGS = {'raw': {'default': False, 'type': bool},
@@ -168,7 +172,9 @@ QUERY_GET_ESQB_KWARGS = {'fetch_all': {'default': False, 'type': bool},
                          'facet_size': {'default': 10, 'type': int, 'max': 1000}}
 QUERY_GET_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool},
                               'jsonld': {'default': False, 'type': bool},
-                              '_sorted': {'default': True, 'type': bool}}
+                              '_sorted': {'default': True, 'type': bool},
+                              'always_list': {'default': [], 'type': list, 'max': 1000},
+                              'allow_null': {'default': [], 'type': list, 'max': 1000}}
 
 # For query POST endpoint
 QUERY_POST_CONTROL_KWARGS = {'q': {'default': None, 'type': list},
@@ -183,7 +189,9 @@ QUERY_POST_ESQB_KWARGS = {'scopes': {'default': None, 'type': list, 'max': 1000,
                             ]}}
 QUERY_POST_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool}, 
                                'jsonld': {'default': False, 'type': bool},
-                               '_sorted': {'default': True, 'type': bool}}
+                               '_sorted': {'default': True, 'type': bool},
+                               'always_list': {'default': [], 'type': list, 'max': 1000},
+                               'allow_null': {'default': [], 'type': list, 'max': 1000}}
 
 # For metadata GET endpoint
 METADATA_GET_CONTROL_KWARGS = {'out_format': {'default': 'json', 'type': str, 'alias': 'format'}}

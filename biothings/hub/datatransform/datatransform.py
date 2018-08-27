@@ -60,11 +60,11 @@ class DataTransform(object):
             for input_type in input_types:
                 if isinstance(input_type, tuple):
                     if not self._valid_input_type(input_type[0]):
-                        raise ValueError("input_type '{}' is not a node in the key_lookup graph".format(input_type[0]))
+                        raise ValueError("input_type '%s' is not a node in the key_lookup graph" % repr(input_type[0]))
                     res_input_types.append((input_type[0].lower(), input_type[1]))
                 elif isinstance(input_type, str):
                     if not self._valid_input_type(input_type.lower()):
-                        raise ValueError("input_type is not a node in the key_lookup graph")
+                        raise ValueError("input_type '%s' is not a node in the key_lookup graph" % repr(input_type))
                     res_input_types.append((input_type, self.default_source))
                 else:
                     raise ValueError('Provided input_types is not of the correct type')

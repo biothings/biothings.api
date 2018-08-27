@@ -1049,7 +1049,11 @@ class DumperManager(BaseSourceManager):
             if klass.SRC_NAME:
                 self.register.setdefault(klass.SRC_NAME,[]).append(klass)
             else:
-                self.register[klass.name] = klass 
+                try:
+                    self.register[klass.name] = klass 
+                except AttributeError as e:
+                    logging.error("Can't register class %s: %s" % (klass,e))
+                    continue
 
     def dump_all(self, force=False, **kwargs):
         """

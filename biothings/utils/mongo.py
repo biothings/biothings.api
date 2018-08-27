@@ -1,27 +1,30 @@
 import time, logging, os, io, glob, datetime
 import dateutil.parser as dtparser
 from functools import wraps
-from pymongo import MongoClient
+from pymongo import MongoClient, DESCENDING
 from pymongo.collection import Collection
 from functools import partial
 from collections import defaultdict
 
 from biothings.utils.common import timesofar, get_random_string, iter_n, \
-                                   open_compressed_file, get_compressed_outfile
+                                   open_compressed_file, get_compressed_outfile, \
+                                   dotdict
 from biothings.utils.backend import DocESBackend, DocMongoBackend
 from biothings.utils.hub_db import IDatabase, ChangeWatcher
 # stub, until set to real config module
 config = None
 
 
-class DummyCollection(object):
+class DummyCollection(dotdict):
     def count(self):
         return None
     def drop(self):
         pass
+    def __getitem__(self,what):
+        return DummyCollection() # ???
 
 
-class DummyDatabase(object):
+class DummyDatabase(dotdict):
     def collection_names(self):
         return []
     def __getitem__(self,what):
@@ -63,7 +66,8 @@ def get_conn(server, port):
         # (dummy here means there really shouldn't be any call to get_conn()
         # but mongo is too much tied to the code and needs more work to 
         # unlink it
-        return defaultdict(lambda:DummyDatabase())
+        return DummyDatabase()
+
 
 @requires_config
 def get_hub_db_conn():
@@ -74,18 +78,15 @@ def get_hub_db_conn():
 def get_src_conn():
     return get_conn(config.DATA_SRC_SERVER, config.DATA_SRC_PORT)
 
-
 @requires_config
 def get_src_db(conn=None):
     conn = conn or get_src_conn()
     return conn[config.DATA_SRC_DATABASE]
 
-
 @requires_config
 def get_src_master(conn=None):
     conn = conn or get_hub_db_conn()
     return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_MASTER_COLLECTION]
-
 
 @requires_config
 def get_src_dump(conn=None):
@@ -121,6 +122,12 @@ def get_cmd(conn=None):
 def get_event(conn=None):
     conn = conn or get_hub_db_conn()
     return conn[config.DATA_HUB_DB_DATABASE][config.EVENT_COLLECTION]
+
+@requires_config
+def get_last_command(conn=None):
+    cmd = get_cmd(conn)
+    cur = cmd.find({},{"_id":1}).sort("_id",DESCENDING).limit(1)
+    return next(cur)
 
 @requires_config
 def get_target_conn():

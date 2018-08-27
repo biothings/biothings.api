@@ -43,7 +43,6 @@ class DataTransformSerial(DataTransform):
         self.collection_names = collections
 
         super().__init__(input_types, output_types, skip_on_failure, skip_w_regex)
-
         self._precompute_paths()
 
     def _valid_input_type(self, input_type):

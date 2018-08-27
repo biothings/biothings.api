@@ -369,12 +369,20 @@ class IndexerManager(BaseManager):
                 release_note = "release_%s" % esb.version
                 # generate json metadata about this diff release
                 assert snapshot, "Missing snapshot name information"
+                if getattr(btconfig,"SKIP_CHECK_VERSIONS",None):
+                    self.logger.info("SKIP_CHECK_VERSIONS %s, no version check will be performed on diff metadata" % repr(btconfig.SKIP_CHECK_VERSION))
+                else:
+                    assert getattr(btconfig,"BIOTHINGS_VERSION","master") != "master", "I won't publish data refering BIOTHINGS_VERSION='master'"
+                    assert getattr(btconfig,"APP_VERSION","master") != "master", "I won't publish data refering APP_VERSION='master'"
+                    assert getattr(btconfig,"STANDALONE_VERSION",None), "STANDALONE_VERSION not defined"
                 full_meta = {
                         "type": "full",
                         "build_version": esb.version,
                         "target_version": esb.version,
                         "release_date" : datetime.now().isoformat(),
-                        "app_version": None,
+                        "app_version": btconfig.APP_VERSION,
+                        "biothings_version": btconfig.BIOTHINGS_VERSION,
+                        "standalone_version": btconfig.STANDALONE_VERSION,
                         "metadata" : {"repository" : repo,
                                       "snapshot_name" : snapshot}
                         }
@@ -849,6 +857,7 @@ class Indexer(object):
                 # as of ES6, analysers/tokenizers must be defined in index settings, during creation
                 "analysis": {
                     "analyzer": {
+                        # soon deprecated in favor of keyword_lowercase_normalizer
                         "string_lowercase": {
                             "tokenizer": "keyword",
                             "filter": "lowercase"
@@ -856,6 +865,15 @@ class Indexer(object):
                         "whitespace_lowercase": {
                             "tokenizer": "whitespace",
                             "filter": "lowercase"
+                            },
+                        },
+                    "normalizer": {
+                        "keyword_lowercase_normalizer": {
+                            "filter": [
+                                "lowercase"
+                                ],
+                            "type": "custom",
+                            "char_filter": []
                             },
                         }
                     },

@@ -577,7 +577,7 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             int: {"type": "integer"},
             bool: {"type": "boolean"},
             float: {"type": "float"},
-            str: {"type": "text","analyzer":"string_lowercase"}, # not splittable (like an ID for instance)
+            str: {"type": "keyword", "normalizer": "keyword_lowercase_normalizer"}, # not splittable (like an ID for instance)
             splitstr: {"type": "text"},
             }
     # inspect_doc, if it's been jsonified, contains keys with type as string,
@@ -676,8 +676,12 @@ from biothings.utils.dotfield import parse_dot_fields
 from biothings.utils.dataload import update_dict_recur
 from biothings.utils.common import json_serial
 
+
 def get_hub_db_conn():
     return Database()
+
+def get_src_conn():
+    return get_hub_db_conn()
 
 def get_src_dump():
     db = Database()
@@ -714,6 +718,27 @@ def get_event():
 def get_source_fullname(col_name):
     pass
 
+def get_last_command():
+    conn = get_hub_db_conn().get_conn()
+    cmd = get_cmd()
+    res = conn.search(cmd.dbname,cmd.colname,{
+        "query": {
+            "match_all": {}
+        },
+        "size": 1,
+        "sort": [
+            {
+                "_id": {
+                    "order": "desc"
+                }
+            }
+        ]
+    })
+    if res["hits"]["hits"]:
+        return res["hits"]["hits"][0]
+    else:
+        return None
+
 
 class Database(IDatabase):
 
@@ -724,17 +749,13 @@ class Database(IDatabase):
         self.name = self.CONFIG.DATA_HUB_DB_DATABASE
         self.es_host = self.CONFIG.HUB_DB_BACKEND["host"]
         self.cols = {}
-        self.setup()
 
     @property
     def address(self):
         return self.es_host
 
     def setup(self):
-        # check if index exists
-        conn = self.get_conn()
-        if not conn.indices.exists(self.name):
-            conn.indices.create(self.name)
+        pass
 
     def get_conn(self):
         return get_es(self.es_host)
@@ -742,10 +763,19 @@ class Database(IDatabase):
     def create_collection(self,colname):
         return self[colname]
 
-    def create_if_needed(self,table):
+    def create_if_needed(self,colname):
         conn = self.get_conn()
-        if not conn.indices.get_mapping(self.name,table):
-            conn.indices.put_mapping(table,{"dynamic":True},index=self.name)
+        idxcolname = "%s_%s" % (self.name,colname)
+        # it's not usefull to scale internal hubdb
+        body = {
+            'settings': {
+                'number_of_shards': 1,
+                "number_of_replicas": 0,
+            }
+        }
+        if not conn.indices.exists(idxcolname):
+            conn.indices.create(idxcolname,body=body)
+            conn.indices.put_mapping(colname,{"dynamic":True},index=idxcolname)
 
     def __getitem__(self, colname):
         if not colname in self.cols:
@@ -764,6 +794,10 @@ class Collection(object):
         return self.db.get_conn() 
 
     @property
+    def dbname(self):
+        return "%s_%s" % (self.db.name,self.colname)
+
+    @property
     def name(self):
         return self.colname
 
@@ -780,7 +814,7 @@ class Collection(object):
         if args and len(args) == 1 and type(args[0]) == dict and len(args[0]) > 0:
             query = {"query":{"match":args[0]}}
         # it's key/value search, let's iterate
-        res = self.get_conn().search(self.db.dbname,self.colname,query)
+        res = self.get_conn().search(self.dbname,self.colname,query)
         for _src in res["hits"]["hits"]:
             doc = {"_id":_src["_id"]}
             doc.update(_src["_source"])
@@ -788,13 +822,16 @@ class Collection(object):
                 return doc
             else:
                 results.append(doc)
+        if "find_one" in kwargs:
+            # we didn't find it if we get there
+            return None
         return results
 
     def insert_one(self,doc,check_unique=True):
         assert "_id" in doc
         _id = doc.pop("_id")
-        res = self.get_conn().index(self.db.dbname,self.colname,doc,id=_id,refresh=True)
-        if check_unique and not res["created"]:
+        res = self.get_conn().index(self.dbname,self.colname,doc,id=_id,refresh=True)
+        if check_unique and not res["result"] == "created":
             raise Exception("Couldn't insert document '%s'" % doc)
 
     def update_one(self,query,what):
@@ -826,7 +863,7 @@ class Collection(object):
     def save(self,doc):
         return self.insert_one(doc,check_unique=False)
 
-    def replace_one(self,query,doc):
+    def replace_one(self,query,doc,*args,**kwargs):
         orig = self.find_one(query)
         if orig:
             self.insert_one(doc,check_unique=False)
@@ -835,10 +872,10 @@ class Collection(object):
         docs = self.find(query)
         conn = self.get_conn()
         for doc in docs:
-            conn.delete(self.db.dbname,self.colname,id=doc["_id"],refresh=True)
+            conn.delete(self.dbname,self.colname,id=doc["_id"],refresh=True)
 
     def count(self):
-        return self.get_conn().count(self.db.dbname,self.colname)["count"]
+        return self.get_conn().count(self.dbname,self.colname)["count"]
 
     def __getitem__(self, _id):
         return self.find_one({"_id":_id})

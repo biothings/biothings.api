@@ -1,4 +1,4 @@
-import os,sys
+import os, sys, types
 import asyncio
 import logging
 from pprint import pformat
@@ -39,9 +39,11 @@ class SourceManager(BaseSourceManager):
 
     def find_sources(self,paths):
         sources = []
-        if type(paths) == str:
+
+        if not type(paths) == list:
             paths = [paths]
-        def eval_one(one_path):
+
+        def eval_one_source(one_path):
             if "/" in one_path:
                 # it's path to directory
                 # expecting 
@@ -55,8 +57,24 @@ class SourceManager(BaseSourceManager):
             else:
                 # assuming it's path to a python module (oath.to.module)
                 sources.append(one_path)
+
+        def eval_one_root(root):
+            logging.debug("Discovering sources in %s" % root)
+            # root is a module path where sources can be found
+            rootdir,__init__ = os.path.split(root.__file__)
+            for srcdir in os.listdir(rootdir):
+                if srcdir.endswith("__pycache__"):
+                    continue
+                srcpath = os.path.join(rootdir,srcdir)
+                if os.path.isdir(srcpath):
+                    srcmod_str = "%s.%s" % (root.__name__,srcdir)
+                    sources.append(srcmod_str)
+
         for path in paths:
-            eval_one(path)
+            if type(path) == str:
+                eval_one_source(path)
+            elif type(path) == types.ModuleType:
+                eval_one_root(path)
 
         # clean with only those which can be imported
         sources = set(sources)
