@@ -63,6 +63,12 @@ class TestDataTransform(unittest.TestCase):
         self.db['mix1'].insert({'ensembl': 'ENSG00000123374', 'start_id': 'start1'})
         self.db['mix3'].insert({'end_id': 'end1', 'entrez': '1017'})
 
+        # Collections for lookup failure
+        self.db['b'].insert({'b_id': 'b:f1', 'a_id': 'a:f1'})
+        self.db['c'].insert({'c_id': 'c:f1', 'b_id': 'b:f1'})
+        self.db['d'].insert({'d_id': 'd:fail1', 'c_id': 'c:f1'})
+        self.db['e'].insert({'e_id': 'e:f1', 'd_id': 'd:f1'})
+
     def tearDown(self):
         """
         Reset the mongodb structure after the tests
@@ -415,3 +421,36 @@ class TestDataTransform(unittest.TestCase):
 
         res = next(res_lst)
         self.assertEqual(res['_id'], 'bregex:1234')
+
+    def test_failure1(self):
+        """
+        Test behavior on lookup failure
+        """
+        @KeyLookup(graph_simple, 'a', ['e'])
+        def load_document(doc_lst):
+            for d in doc_lst:
+                yield d
+
+        # Failure Test Case
+        doc_lst = [{'_id': 'a:f1'}]
+        res_lst = load_document(doc_lst)
+
+        res = next(res_lst)
+        self.assertEqual(res['_id'], 'a:f1')
+
+    def test_copyid(self):
+        """
+        Test behavior on lookup lookup copy.
+        Lookup fails, second identifier value is copied over.
+        """
+        @KeyLookup(graph_simple, ['a', ('b', 'b_id')], ['e', 'b'])
+        def load_document(doc_lst):
+            for d in doc_lst:
+                yield d
+
+        # Copy from second field
+        doc_lst = [{'_id': 'a:f1', 'b_id': 'b:f1'}]
+        res_lst = load_document(doc_lst)
+
+        res = next(res_lst)
+        self.assertEqual(res['_id'], 'b:f1')
