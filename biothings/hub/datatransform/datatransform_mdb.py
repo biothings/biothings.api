@@ -281,7 +281,11 @@ class DataTransformMDB(DataTransform):
 
         for output_type in self.output_types:
             for input_type in self.input_types:
-                (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
+                if input_type[0] != output_type:
+                    (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
+                else:
+                    (hit_lst, miss_lst) = self._copy(input_type, miss_lst)
+
                 # kl_log.debug("Output documents from travel:")
                 for doc in hit_lst:
                     # kl_log.debug(doc) # too much information to be useful
@@ -291,6 +295,19 @@ class DataTransformMDB(DataTransform):
         if not self.skip_on_failure:
             for doc in miss_lst:
                 yield doc
+
+    def _copy(self, input_type, doc_lst):
+        """Copy ids in the case where input_type == output_type"""
+        hit_lst = []
+        miss_lst = []
+        for doc in doc_lst:
+            val = nested_lookup(doc, input_type[1])
+            if val:
+                doc['_id'] = val
+                hit_lst.append(doc)
+            else:
+                miss_lst.append(doc)
+        return (hit_lst, miss_lst)
 
     def _compute_path_weight(self, path):
         """
