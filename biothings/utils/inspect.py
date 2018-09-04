@@ -8,6 +8,7 @@ import time, re
 import logging
 from pprint import pprint, pformat
 import copy
+from datetime import datetime
 
 from .common import timesofar, is_scalar, is_float, is_str, is_int, splitstr
 from .web.es import flatten_doc
@@ -195,7 +196,7 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
         else:
             mapt.setdefault(list,{})
             mapt[list].update(mapl)
-    elif is_scalar(struct):
+    elif is_scalar(struct) or type(struct) == datetime:
         typ = type(struct)
         if mode == "type":
             mapt[typ] = {}
