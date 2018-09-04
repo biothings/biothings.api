@@ -14,7 +14,7 @@ from biothings.utils.manager import BaseSourceManager, \
 from .storage import IgnoreDuplicatedStorage, MergerStorage, \
                      BasicStorage, NoBatchIgnoreDuplicatedStorage, \
                      NoStorage
-from biothings.utils.loggers import HipchatHandler, get_logger
+from biothings.utils.loggers import get_logger
 from biothings import config
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, BUILDER_CATEGORY
 
@@ -142,7 +142,7 @@ class BaseSourceUploader(object):
         self._state["collection"] = self._state["db"][self.collection_name]
         self._state["src_dump"] = self.prepare_src_dump()
         self._state["src_master"] = get_src_master()
-        self._state["logger"] = self.setup_log()
+        self._state["logger"], self.logfile = self.setup_log()
         self.data_folder = self.src_doc.get("download",{}).get("data_folder") or \
                            self.src_doc.get("data_folder")
         # flag ready
@@ -429,25 +429,7 @@ class BaseSourceUploader(object):
         return src_dump
 
     def setup_log(self):
-        """Setup and return a logger instance"""
-        import logging as logging_mod
-        if not os.path.exists(self.src_root_folder):
-            os.makedirs(self.src_root_folder)
-        self.logfile = os.path.join(self.log_folder, 'upload_%s_%s.log' % (self.fullname,time.strftime("%Y%m%d",self.timestamp.timetuple())))
-        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S")
-        fh = logging_mod.FileHandler(self.logfile)
-        fh.setFormatter(fmt)
-        fh.name = "logfile"
-        nh = HipchatHandler(config.HIPCHAT_CONFIG)
-        nh.setFormatter(fmt)
-        nh.name = "hipchat"
-        logger = logging_mod.getLogger("%s_upload" % self.fullname)
-        logger.setLevel(logging_mod.DEBUG)
-        if not fh.name in [h.name for h in logger.handlers]:
-            logger.addHandler(fh)
-        if not nh.name in [h.name for h in logger.handlers]:
-            logger.addHandler(nh)
-        return logger
+        return get_logger('upload_%s' % self.fullname)
 
     def __getattr__(self,attr):
         """This catches access to unpicabkle attributes. If unset,

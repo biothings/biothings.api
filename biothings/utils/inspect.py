@@ -3,13 +3,31 @@ This module contains util functions may be shared by both BioThings data-hub and
 In general, do not include utils depending on any third-party modules.
 """
 import math, statistics, random
+import collections
 import time, re
 import logging
 from pprint import pprint, pformat
 import copy
+from datetime import datetime
 
 from .common import timesofar, is_scalar, is_float, is_str, is_int, splitstr
 from .web.es import flatten_doc
+
+def d3hierarchy(mapt,name,d3=None):
+    if not d3:
+        d3 = {"name": name,"children":[]}
+    pprint(mapt)
+    print("===")
+    for k in mapt:
+        if len(mapt[k]) == 1 and "_stats" in mapt[k]:
+            d3["children"].append({"name" : k, "size" : mapt[k]["_stats"]["_count"]})
+            print("d3-1: %s" % d3)
+        elif k != "_stats":
+            children = d3hierarchy(mapt[k],k)
+            d3["children"].append({"name": k, "children": children["children"]})
+            print("d3-2: %s" % d3)
+
+    return d3
 
 def sumiflist(val):
     if type(val) == list:
@@ -30,7 +48,7 @@ def flatten_stats(stats):
     # is only about data structures). Re-adjust here considering there could lists
     # that need to be sum'ed and min/max to be dealt with
     stats["_count"] = sumiflist(stats["_count"])
-    stats["_sum"] = sumiflist(stats["_sum"])
+    #stats["_sum"] = sumiflist(stats["_sum"])
     stats["_max"] = maxminiflist(stats["_max"],max)
     stats["_min"] = maxminiflist(stats["_min"],min)
     return stats
@@ -41,7 +59,7 @@ def merge_stats(target_stats, tomerge_stats):
     tomerge_stats = flatten_stats(tomerge_stats)
     # sum the counts and the sums
     target_stats["_count"] = target_stats["_count"] + tomerge_stats["_count"]
-    target_stats["_sum"] = target_stats["_sum"] + tomerge_stats["_sum"]
+    #target_stats["_sum"] = target_stats["_sum"] + tomerge_stats["_sum"]
     # adjust min and max
     if tomerge_stats["_max"] > target_stats["_max"]:
         target_stats["_max"] = tomerge_stats["_max"]
@@ -59,42 +77,51 @@ def merge_record(target,tomerge,mode):
                 tom_stats = tomerge["_stats"]
                 merge_stats(tgt_stats,tom_stats)
                 continue
+            if not isinstance(tomerge[k], collections.Iterable):
+                continue
             for typ in tomerge[k]:
-                if mode == "type":
-                    # we can safely update and possibly overwrite
-                    # target with tomerge's values and in mode "type"
-                    # there's no actual information for scalar fields
-                    # (eg a string field will be like: {"myfield" : {str:{}}}
-                    target[k].update(tomerge[k])
-                elif mode == "mapping":
-                    # keep track on splitable (precedence: splitable > non-splitable)
-                    # so don't merge if target has a "split" and tomerge has not,
-                    # as we would loose that information
-                    if splitstr is typ:
-                        target.pop(k)
-                        target[k] = tomerge[k]
+                # if not an actual type we need to merge further to reach them
+                if typ != "_stats" and (type(typ) != type or typ == list):
+                    target[k].setdefault(typ,{})
+                    target[k][typ] = merge_record(target[k][typ],tomerge[k][typ],mode)
                 else:
-                    if typ in target[k]:
-                        # same key, same type, need to merge stats
-                        if not "_stats" in tomerge[k][typ]:
-                            # we try to merge record at a too higher level, need to merge deeper
-                            target[k] = merge_record(target[k],tomerge[k],mode)
-                            continue
-                        tgt_stats = target[k][typ]["_stats"]
-                        tom_stats = tomerge[k][typ]["_stats"]
-                        merge_stats(tgt_stats,tom_stats)
-                    else:
-                        # key exists but with a different type, create new type
-                        if mode == "type":
-                            target[k].update(tomerge[k])
+                    if mode == "type":
+                        # we can safely update and possibly overwrite
+                        # target with tomerge's values and in mode "type"
+                        # there's no actual information for scalar fields
+                        # (eg a string field will be like: {"myfield" : {str:{}}}
+                        target[k].update(tomerge[k])
+                    elif mode == "mapping":
+                        # keep track on splitable (precedence: splitable > non-splitable)
+                        # so don't merge if target has a "split" and tomerge has not,
+                        # as we would loose that information
+                        if splitstr is typ:
+                            target.pop(k)
+                            target[k] = tomerge[k]
+                    elif mode == "stats" or mode == "deepstats":
+                        if typ in target[k]:
+                            # same key, same type, need to merge stats
+                            if not "_stats" in tomerge[k][typ]:
+                                # we try to merge record at a too higher level, need to merge deeper
+                                target[k] = merge_record(target[k],tomerge[k],mode)
+                                continue
+                            tgt_stats = target[k][typ]["_stats"]
+                            tom_stats = tomerge[k][typ]["_stats"]
+                            merge_stats(tgt_stats,tom_stats)
                         else:
                             target[k].setdefault(typ,{}).update(tomerge[k][typ])
+                    else:
+                        raise ValueError("Unknown mode '%s'" % mode)
         else:
             # key doesn't exist, create key
             if mode == "type":
                 target.setdefault(k,{}).update(tomerge[k])
             else:
-                target.setdefault(k,{}).update(tomerge[k])
+                if "_count" in tomerge:
+                    # it's about stats, we just set the keys in target
+                    target.setdefault(k,tomerge[k])
+                else:
+                    target.setdefault(k,{}).update(tomerge[k])
                 # if we already have splitstr and we want to merge str, skip it
                 # as splitstr > str
                 if str in target and splitstr in target:
@@ -114,12 +141,11 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
     - mode: see inspect_docs() documentation
     """
 
-    stats_tpl = {"_stats" : {"_min":math.inf,"_max":-math.inf,"_count":0,"_sum":0,"__vals":[]}}
+    stats_tpl = {"_stats" : {"_min":math.inf,"_max":-math.inf,"_count":0,"__vals":[]}}
 
     def report(val,drep):
-        drep["_stats"] = flatten_stats(drep["_stats"])
         drep["_stats"]["_count"] += 1
-        drep["_stats"]["_sum"] += val
+        #drep["_stats"]["_sum"] += val
         if val < drep["_stats"]["_min"]:
             drep["_stats"]["_min"] = val
         if val > drep["_stats"]["_max"]:
@@ -149,20 +175,19 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
                 mapt.setdefault(k,{})
                 typ = inspect(struct[k],key=k,mapt=mapt[k],mode=mode,level=level+1)
         if  "stats" in mode:
+            # we don't track stats at dict level as it'd bring confusion when interpreting
             mapt.setdefault("_stats",copy.deepcopy(stats_tpl["_stats"]))
             report(1,mapt)
     elif type(struct) == list:
+
         mapl = {}
         for e in struct:
             typ = inspect(e,key=key,mapt=mapl,mode=mode,level=level+1)
             mapl.update(typ)
         if  "stats" in mode:
-            # here we report the number of elements in the list
+            # here we just report that one document had a list
             mapl.update(copy.deepcopy(stats_tpl))
             report(len(struct),mapl)
-            # and here we just report that one document had a list
-            mapt.setdefault("_stats",copy.deepcopy(stats_tpl["_stats"]))
-            report(1,mapt)
         # if mapt exist, it means it's been explored previously but not as a list,
         # instead of mixing dict and list types, we want to normalize so we merge the previous
         # struct into that current list
@@ -171,7 +196,7 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
         else:
             mapt.setdefault(list,{})
             mapt[list].update(mapl)
-    elif is_scalar(struct):
+    elif is_scalar(struct) or type(struct) == datetime:
         typ = type(struct)
         if mode == "type":
             mapt[typ] = {}
@@ -221,12 +246,16 @@ def merge_scalar_list(mapt,mode):
                         # (and we can't really update those stats as scalar stats aren't relevant
                         # to a list context
                         elif typ == "_stats":
-                            #merge_stats(mapt[list][e]["_stats"],tomerge["_stats"])
+                            merge_stats(mapt[list][e]["_stats"],tomerge["_stats"])
                             pass
                         else:
                             merge_stats(mapt[list][e][typ]["_stats"],tomerge[typ]["_stats"])
+                            pass
                 elif mode == "mapping":
                     for typ in tomerge:
+                        if typ is str and splitstr in mapt[list][e]:
+                            # precedence splitstr > str, we keep splitstr and ignore str
+                            continue
                         if not typ in mapt[list][e]:
                             # that field exist in the [list] but with a different type
                             # just merge the typ
@@ -250,7 +279,7 @@ def merge_scalar_list(mapt,mode):
 
 
 def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
-                 pre_mapping=False, limit=None, sample=None):
+                 pre_mapping=False, limit=None, sample=None, metadata=True):
     """Inspect docs and return a summary of its structure:
     - mode:
         + "type": explore documents and report strict data structure
@@ -267,6 +296,7 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
     - sample: in combination with limit, randomly extract a sample of 'limit' docs
               (so not necessarily the x first ones defined by limit). If random.random()
               is greater than sample, doc is inspected, otherwise it's skipped
+    - metadata: compute metadata on the result
     """
 
     def post(mapt, mode,clean):
@@ -306,13 +336,12 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
     for doc in docs:
         if not sample is None:
             if random.random() <= sample:
-                logger.debug("skip")
                 continue
         for m in modes:
             try:
                 inspect(doc,mapt=_map[m],mode=m)
             except Exception as e:
-                logging.error("Can't inspect document (_id: %s) because: %s" % (doc.get("_id"),e))
+                logging.exception("Can't inspect document (_id: %s) because: %s\ndoc: %s" % (doc.get("_id"),e,pformat("dpc")))
                 errors.add(str(e))
         cnt += 1
         if cnt % 10000 == 0:
@@ -334,16 +363,23 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
         import biothings.utils.es as es
         try:
             _map["mapping"] = es.generate_es_mapping(_map["mapping"])
-            # compute some extra metadata
-            flat = flatten_doc(_map["mapping"])
-            # total fields: ES6 requires to overcome the default 1000 limit if needed
-            _map["__metadata__"] = {"total_fields" : len(flat)}
+            if metadata:
+                # compute some extra metadata
+                _map = compute_metadata(_map,"mapping")
         except es.MappingError as e:
             prem = {"pre-mapping" : _map["mapping"], "errors" : e.args[1]}
             _map["mapping"] = prem
     elif errors:
         _map["errors"] = errors
     return _map
+
+def compute_metadata(mapt,mode):
+    if mode == "mapping":
+        flat = flatten_doc(mapt["mapping"])
+        # total fields: ES6 requires to overcome the default 1000 limit if needed
+        mapt["__metadata__"] = {"total_fields" : len(flat)}
+
+    return mapt
 
 
 if __name__ == "__main__":
@@ -381,109 +417,78 @@ if __name__ == "__main__":
     assert m["id"][str]["_stats"]["_count"] == 1
     assert m["id"][str]["_stats"]["_max"] == 3
     assert m["id"][str]["_stats"]["_min"] == 3
-    assert m["id"][str]["_stats"]["_sum"] == 3
-    assert m["lofd"].keys() == {list,"_stats"}
-    # "global" stats (basically record number of docs which have passed this "way")
-    assert m["lofd"]["_stats"]["_count"] == 1
-    assert m["lofd"]["_stats"]["_max"] == 1
-    assert m["lofd"]["_stats"]["_min"] == 1
-    assert m["lofd"]["_stats"]["_sum"] == 1
+    assert m["lofd"].keys() == {list}
     # list's stats
     assert m["lofd"][list]["_stats"]["_count"] == 1
     assert m["lofd"][list]["_stats"]["_max"] == 2
     assert m["lofd"][list]["_stats"]["_min"] == 2
-    assert m["lofd"][list]["_stats"]["_sum"] == 2
     # one list's elem stats
     assert m["lofd"][list]["val"][float]["_stats"]["_count"] == 1
     assert m["lofd"][list]["val"][float]["_stats"]["_max"] == 34.3
     assert m["lofd"][list]["val"][float]["_stats"]["_min"] == 34.3
-    assert m["lofd"][list]["val"][float]["_stats"]["_sum"] == 34.3
     # again
     inspect(d1,mapt=m,mode="stats")
     assert m["id"][str]["_stats"]["_count"] == 2
     assert m["id"][str]["_stats"]["_max"] == 3
     assert m["id"][str]["_stats"]["_min"] == 3
-    assert m["id"][str]["_stats"]["_sum"] == 6
-    assert m["lofd"]["_stats"]["_count"] == 2
-    assert m["lofd"]["_stats"]["_max"] == 1
-    assert m["lofd"]["_stats"]["_min"] == 1
-    assert m["lofd"]["_stats"]["_sum"] == 2
     assert m["lofd"][list]["_stats"]["_count"] == 2
     assert m["lofd"][list]["_stats"]["_max"] == 2
     assert m["lofd"][list]["_stats"]["_min"] == 2
-    assert m["lofd"][list]["_stats"]["_sum"] == 4
     assert m["lofd"][list]["val"][float]["_stats"]["_count"] == 2
     assert m["lofd"][list]["val"][float]["_stats"]["_max"] == 34.3
     assert m["lofd"][list]["val"][float]["_stats"]["_min"] == 34.3
-    assert m["lofd"][list]["val"][float]["_stats"]["_sum"] == 68.6
     # mix with d2
     inspect(d2,mapt=m,mode="stats")
     assert m["id"][str]["_stats"]["_count"] == 3
     assert m["id"][str]["_stats"]["_max"] == 3
     assert m["id"][str]["_stats"]["_min"] == 1 # new min
-    assert m["id"][str]["_stats"]["_sum"] == 7
-    assert m["lofd"]["_stats"]["_count"] == 3
-    assert m["lofd"]["_stats"]["_max"] == 1
-    assert m["lofd"]["_stats"]["_min"] == 1
-    assert m["lofd"]["_stats"]["_sum"] == 3
     assert m["lofd"][list]["_stats"]["_count"] == 2 # not incremented as in d2 it's not a list
     assert m["lofd"][list]["_stats"]["_max"] == 2
     assert m["lofd"][list]["_stats"]["_min"] == 2
-    assert m["lofd"][list]["_stats"]["_sum"] == 4
     # now float & int
     assert m["lofd"][list]["val"][float]["_stats"]["_count"] == 2
     assert m["lofd"][list]["val"][float]["_stats"]["_max"] == 34.3
     assert m["lofd"][list]["val"][float]["_stats"]["_min"] == 34.3
-    assert m["lofd"][list]["val"][float]["_stats"]["_sum"] == 68.6
     # val{int} wasn't merged
     assert m["lofd"]["val"][int]["_stats"]["_count"] == 1
     assert m["lofd"]["val"][int]["_stats"]["_max"] == 34
     assert m["lofd"]["val"][int]["_stats"]["_min"] == 34
-    assert m["lofd"]["val"][int]["_stats"]["_sum"] == 34
     # d2 again
     inspect(d2,mapt=m,mode="stats")
     assert m["id"][str]["_stats"]["_count"] == 4
     assert m["id"][str]["_stats"]["_max"] == 3
     assert m["id"][str]["_stats"]["_min"] == 1
-    assert m["id"][str]["_stats"]["_sum"] == 8
-    assert m["lofd"]["_stats"]["_count"] == 4
-    assert m["lofd"]["_stats"]["_max"] == 1
-    assert m["lofd"]["_stats"]["_min"] == 1
-    assert m["lofd"]["_stats"]["_sum"] == 4
     assert m["lofd"][list]["_stats"]["_count"] == 2
     assert m["lofd"][list]["_stats"]["_max"] == 2
     assert m["lofd"][list]["_stats"]["_min"] == 2
-    assert m["lofd"][list]["_stats"]["_sum"] == 4
     assert m["lofd"][list]["val"][float]["_stats"]["_count"] == 2
     assert m["lofd"][list]["val"][float]["_stats"]["_max"] == 34.3
     assert m["lofd"][list]["val"][float]["_stats"]["_min"] == 34.3
-    assert m["lofd"][list]["val"][float]["_stats"]["_sum"] == 68.6
     assert m["lofd"]["val"][int]["_stats"]["_count"] == 2
     assert m["lofd"]["val"][int]["_stats"]["_max"] == 34
     assert m["lofd"]["val"][int]["_stats"]["_min"] == 34
-    assert m["lofd"]["val"][int]["_stats"]["_sum"] == 68
 
     # all counts should be 10
     m = inspect_docs([d1] * 10,mode="stats")["stats"]
     assert m["d"]["end"][int]["_stats"]["_count"] == 10
     assert m["d"]["start"][int]["_stats"]["_count"] == 10
     assert m["id"][str]["_stats"]["_count"] == 10
-    assert m["lofd"]["_stats"]["_count"] == 10
     assert m["lofd"][list]["_stats"]["_count"] == 10
     assert m["lofd"][list]["ul"][str]["_stats"]["_count"] == 10
     assert m["lofd"][list]["val"][float]["_stats"]["_count"] == 10
 
     #### test merge_stats
-    ###nd1 = {"id" : "124",'lofd': [{"val":34.3},{"ul":"bla"}]}
-    ###nd2 = {"id" : "5678",'lofd': {"val":50.2}}
-    ###m = {}
-    ###inspect(nd1,mapt=m,mode="deepstats")
-    ###inspect(nd2,mapt=m,mode="deepstats")
-    ###assert set(m["lofd"].keys()) == {list,'val','_stats'}, "%s" % pformat(m)
-    ###assert m["lofd"][list]["val"][float]["_stats"] == {'__vals': [34.3], '_count': 1, '_max': 34.3, '_min': 34.3, '_sum': 34.3}
-    #### merge stats into the left param
-    ###merge_stats(m["lofd"][list]["val"][float]["_stats"],m["lofd"]["val"][float]["_stats"])
-    ###assert m["lofd"][list]["val"][float]["_stats"] == {'__vals': [34.3, 50.2], '_count': 2, '_max': 50.2, '_min': 34.3, '_sum': 84.5}
+    nd1 = {"id" : "124",'lofd': [{"val":34.3},{"ul":"bla"}]}
+    nd2 = {"id" : "5678",'lofd': {"val":50.2}}
+    m = {}
+    inspect(nd1,mapt=m,mode="deepstats")
+    inspect(nd2,mapt=m,mode="deepstats")
+    assert set(m["lofd"].keys()) == {list,'val','_stats'}, "%s" % m["lofd"].keys()
+    assert m["lofd"][list]["val"][float]["_stats"] == {'__vals': [34.3], '_count': 1, '_max': 34.3, '_min': 34.3}, \
+            m["lofd"][list]["val"][float]["_stats"]
+    # merge stats into the left param
+    merge_stats(m["lofd"][list]["val"][float]["_stats"],m["lofd"]["val"][float]["_stats"])
+    assert m["lofd"][list]["val"][float]["_stats"] == {'__vals': [34.3, 50.2], '_count': 2, '_max': 50.2, '_min': 34.3}
 
     # mapping mode (splittable strings)
     # "bla" is splitable in one case, not in the other
@@ -505,7 +510,7 @@ if __name__ == "__main__":
     sd1 = {"_id" : "123","homologene" : {"id":"bla","gene" : [[123,456],[789,102]]}}
     m = inspect_docs([sd1],mode="mapping")["mapping"]
     assert m == {'homologene': {'properties': {'gene': {'type': 'integer'},
-        'id': {'analyzer': 'string_lowercase', 'type': 'text'}}}}, "mapping %s" % m
+        'id': {'normalizer': 'keyword_lowercase_normalizer', 'type': 'keyword'}}}}, "mapping %s" % m
 
     # ok, "bla" is either a scalar or in a list, test merge
     md1 = {"_id" : "124",'vals': [{"oula":"this is great"},{"bla":"rs24543","arf":"ENS355432"}]}
@@ -620,4 +625,22 @@ if __name__ == "__main__":
     doc2 = {"_id":"1","f":["a 0"]}
     m = inspect_docs([doc1,doc2],mode="mapping")
     assert m["mapping"]["f"] == {"type":"text"} # splitstr > str
+
+    # splitstr > str whatever the order they appear while inspected (here: splitstr,str,str, in list,list,dict)
+    d1 = {'_id': 'a', 'r': {'k': [{'id': 'one', 'rel': 'is'}, {'id': 'two', 'rel': 'simil to'}]}}
+    d2 = {'_id': 'b', 'r': {'k': [{'id': 'three', 'rel': 'is'}, {'id': 'four', 'rel': 'is'}]}}
+    d3 = {'_id': 'c', 'r': {'k': {'id': 'five', 'rel': 'is'}}}
+    m = inspect_docs([d1,d2,d3],mode="mapping")
+    assert "errors" not in m["mapping"]
+
+    # merge_record splitstr > str
+    d1 = {'_id': {str: {}}, 'k': {'a': {list: {'i': {str: {}}, 'r': {str: {}}}}}}
+    d2 = {'_id': {str: {}},'k': {'a': {list: {'i': {str: {}},'r': {splitstr: {}}}}}}
+    m = {}
+    m = merge_record(m,d1,"mapping")
+    m = merge_record(m,d2,"mapping")
+    assert m["k"]["a"][list]["r"] == {splitstr:{}}
+
+    print("All tests OK")
+
 

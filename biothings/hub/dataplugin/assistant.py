@@ -9,10 +9,9 @@ import inspect, importlib
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.common import timesofar, rmdashfr, uncompressall, \
                                    get_class_from_classpath
-from biothings.utils.loggers import HipchatHandler
+from biothings.utils.loggers import get_logger
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
 from biothings import config as btconfig
-logging = btconfig.logger
 
 from biothings.utils.manager import BaseSourceManager
 from biothings.hub.dataload.uploader import set_pending_to_upload
@@ -62,6 +61,12 @@ class BaseAssistant(object):
     def __init__(self, url):
         self.url = url
         self._plugin_name = None
+        self.logfile = None
+        self.setup_log()
+
+    def setup_log(self):
+        """Setup and return a logger instance"""
+        self.logger, self.logfile = get_logger('assistant_%s' % self.__class__.plugin_type)
 
     @property
     def plugin_name(self):
@@ -86,17 +91,17 @@ class BaseAssistant(object):
         p = dp.find_one({"_id":self.plugin_name})
         if not p.get("download",{}).get("data_folder"):
             # not yet available
-            logging.warning("Can't find data_folder, not available yet ?")
+            self.logger.warning("Can't find data_folder, not available yet ?")
             return
         df = p["download"]["data_folder"]
         if os.path.exists(df):
             mf = os.path.join(df,"manifest.json")
             if os.path.exists(mf):
                 manifest = json.load(open(mf))
-                logging.debug("Loading manifest: %s" % pprint.pformat(manifest))
+                self.logger.debug("Loading manifest: %s" % pprint.pformat(manifest))
                 self.interpret_manifest(manifest)
             else:
-                logging.info("No manifest found for plugin: %s" % p["plugin"]["url"])
+                self.logger.info("No manifest found for plugin: %s" % p["plugin"]["url"])
         else:
             raise FileNotFoundError("Data plugin '%s' says data folder is 's%' but it doesn't exist" % \
                     (p["plugin"]["url"],df))
@@ -160,14 +165,14 @@ class BaseAssistant(object):
                     if manifest["uploader"].get("keylookup"):
                         assert self.__class__.keylookup, "Plugin %s needs _id conversion " % self.plugin_name + \
                                                          "but no keylookup instance was found"
-                        logging.info("Keylookup conversion required: %s" % manifest["uploader"]["keylookup"])
+                        self.logger.info("Keylookup conversion required: %s" % manifest["uploader"]["keylookup"])
                         confdict["idconverter"] = self.__class__.keylookup(**manifest["uploader"]["keylookup"])
                     k = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,),confdict)
                     self.__class__.uploader_manager.register_classes([k])
                     # register class in module so it can be pickled easily
                     sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedUploader_%s" % self.plugin_name] = k
                 except Exception as e:
-                    logging.exception("Error loading plugin: %s" % e)
+                    self.logger.exception("Error loading plugin: %s" % e)
                     raise AssistantException("Can't interpret manifest: %s" % e)
             else:
                 raise AssistantException("Invalid manifest, expecting 'parser' key in 'uploader' section")
@@ -205,7 +210,7 @@ class GithubAssistant(BaseAssistant):
             if headers.get("server").lower() == "github.com":
                 return True
         except Exception as e:
-            logging.info("%s plugin can't handle URL '%s': %s" % (self.plugin_type,self.url,e))
+            self.logger.info("%s plugin can't handle URL '%s': %s" % (self.plugin_type,self.url,e))
             return False
 
     def get_classdef(self):
@@ -278,9 +283,15 @@ class AssistantManager(BaseSourceManager):
         # register data plugin folder in python path so we can import
         # plugins (sub-folders) as packages
         sys.path.insert(0,btconfig.DATA_PLUGIN_FOLDER)
+        self.logfile = None
+        self.setup_log()
+
+    def setup_log(self):
+        """Setup and return a logger instance"""
+        self.logger, self.logfile = get_logger('assistantmanager')
 
     def create_instance(self, klass, url):
-        logging.debug("Creating new %s instance" % klass.__name__)
+        self.logger.debug("Creating new %s instance" % klass.__name__)
         return klass(url)
 
     def configure(self, klasses=[GithubAssistant,LocalAssistant]):
@@ -335,10 +346,10 @@ class AssistantManager(BaseSourceManager):
             def loaded(f):
                 try:
                     res = f.result()
-                    logging.debug("Plugin '%s' loaded, now loading manifest" % assistant.plugin_name)
+                    self.logger.debug("Plugin '%s' loaded, now loading manifest" % assistant.plugin_name)
                     assistant.load_manifest()
                 except Exception as e:
-                    logging.exception("Unable to load plugin '%s': %s" % (assistant.plugin_name,e))
+                    self.logger.exception("Unable to load plugin '%s': %s" % (assistant.plugin_name,e))
             job.add_done_callback(loaded)
             return job
         else:
@@ -348,9 +359,9 @@ class AssistantManager(BaseSourceManager):
         ptype = plugin["plugin"]["type"]
         url = plugin["plugin"]["url"]
         if not plugin["plugin"]["active"]:
-            logging.info("Data plugin '%s' is deactivated, skip" % url)
+            self.logger.info("Data plugin '%s' is deactivated, skip" % url)
             return
-        logging.info("Loading data plugin '%s' (type: %s)" % (url,ptype))
+        self.logger.info("Loading data plugin '%s' (type: %s)" % (url,ptype))
         if ptype in self.register:
             try:
                 aklass = self.register[ptype]
@@ -358,7 +369,7 @@ class AssistantManager(BaseSourceManager):
                 assistant.handle()
                 assistant.load_manifest()
             except Exception as e:
-                logging.exception("Unable to load plugin '%s': %s" % (url,e))
+                self.logger.exception("Unable to load plugin '%s': %s" % (url,e))
         else:
             raise AssistantException("Unknown data plugin type '%s'" % ptype)
 
@@ -385,7 +396,7 @@ class AssistantManager(BaseSourceManager):
             try:
                 self.load_plugin(plugin)
             except Exception as e:
-                logging.warning("Couldn't load plugin '%s': %s" % (plugin["_id"],e))
+                self.logger.warning("Couldn't load plugin '%s': %s" % (plugin["_id"],e))
                 continue
 
         # some still unregistered ? (note: list always empty if autodiscover=False)
@@ -395,13 +406,13 @@ class AssistantManager(BaseSourceManager):
                 # basic sanity check to make sure it's plugin
                 if "manifest.json" in os.listdir(fulldir) and \
                         json.load(open(os.path.join(fulldir,"manifest.json"))):
-                    logging.info("Found unregistered plugin '%s', auto-register it" % pdir)
+                    self.logger.info("Found unregistered plugin '%s', auto-register it" % pdir)
                     try:
                         self.register_url("local://%s" % pdir.strip().strip("/"))
                     except Exception as e:
-                        logging.warning("Couldn't auto-register plugin '%s': %s" % (pdir,e))
+                        self.logger.warning("Couldn't auto-register plugin '%s': %s" % (pdir,e))
                         continue
                 else:
-                    logging.warning("Directory '%s' doesn't contain a plugin, skip it" % pdir)
+                    self.logger.warning("Directory '%s' doesn't contain a plugin, skip it" % pdir)
                     continue
 

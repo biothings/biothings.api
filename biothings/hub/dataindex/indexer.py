@@ -12,7 +12,7 @@ from biothings.utils.hub_db import get_src_build
 import biothings.utils.aws as aws
 from biothings.utils.common import timesofar, get_random_string, iter_n, \
                                    get_class_from_classpath, get_dotfield_value
-from biothings.utils.loggers import HipchatHandler, get_logger
+from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
 from biothings.utils.es import ESIndexer
 from biothings.utils.backend import DocESBackend
@@ -107,24 +107,7 @@ class IndexerManager(BaseManager):
         self.setup_log()
 
     def setup_log(self):
-        import logging as logging_mod
-        if not os.path.exists(self.log_folder):
-            os.makedirs(self.log_folder)
-        self.logfile = os.path.join(self.log_folder, 'indexmanager_%s.log' % time.strftime("%Y%m%d",self.timestamp.timetuple()))
-        fh = logging_mod.FileHandler(self.logfile)
-        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S")
-        fh.setFormatter(fmt)
-        fh.name = "logfile"
-        nh = HipchatHandler(btconfig.HIPCHAT_CONFIG)
-        nh.setFormatter(fmt)
-        nh.name = "hipchat"
-        self.logger = logging_mod.getLogger("indexmanager")
-        self.logger.setLevel(logging_mod.DEBUG)
-        if not fh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(fh)
-        if not nh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(nh)
-        return self.logger
+        self.logger, self.logfile = get_logger('indexmanager',self.log_folder)
 
     def get_predicates(self):
         def no_other_indexmanager_step_running(job_manager):
@@ -825,24 +808,7 @@ class Indexer(object):
         pass
 
     def setup_log(self):
-        import logging as logging_mod
-        if not os.path.exists(self.log_folder):
-            os.makedirs(self.log_folder)
-        self.logfile = os.path.join(self.log_folder, 'index_%s_%s.log' % (self.index_name,time.strftime("%Y%m%d",self.timestamp.timetuple())))
-        fh = logging_mod.FileHandler(self.logfile)
-        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S")
-        fh.setFormatter(fmt)
-        fh.name = "logfile"
-        nh = HipchatHandler(btconfig.HIPCHAT_CONFIG)
-        nh.setFormatter(fmt)
-        nh.name = "hipchat"
-        self.logger = logging_mod.getLogger("%s_index" % self.conf_name)
-        self.logger.setLevel(logging_mod.DEBUG)
-        if not fh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(fh)
-        if not nh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(nh)
-        return self.logger
+        self.logger, self.logfile = get_logger('index_%s' % self.index_name,self.log_folder)
 
     def get_index_creation_settings(self):
         """

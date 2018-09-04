@@ -12,7 +12,7 @@ from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj, md5sum
 from biothings.utils.mongo import id_feeder, get_target_db
 from biothings.utils.hub_db import get_src_build, get_source_fullname
-from biothings.utils.loggers import get_logger, HipchatHandler
+from biothings.utils.loggers import get_logger
 from biothings.utils.diff import diff_docs_jsonpatch
 from biothings.hub.databuild.backend import generate_folder
 from biothings import config as btconfig
@@ -46,30 +46,14 @@ class BaseDiffer(object):
         self.job_manager = job_manager
         self.diff_func = diff_func
         self.timestamp = datetime.now()
+        self.logfile = None
         self.setup_log()
         self.ti = time.time()
         self.metadata = {} # diff metadata
         self.metadata_filename = None
 
     def setup_log(self):
-        import logging as logging_mod
-        if not os.path.exists(self.log_folder):
-            os.makedirs(self.log_folder)
-        self.logfile = os.path.join(self.log_folder, 'diff_%s_%s.log' % (self.__class__.diff_type,time.strftime("%Y%m%d",self.timestamp.timetuple())))
-        fh = logging_mod.FileHandler(self.logfile)
-        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S")
-        fh.setFormatter(fmt)
-        fh.name = "logfile"
-        nh = HipchatHandler(btconfig.HIPCHAT_CONFIG)
-        nh.setFormatter(fmt)
-        nh.name = "hipchat"
-        self.logger = logging_mod.getLogger("diff")
-        self.logger.setLevel(logging_mod.DEBUG)
-        if not fh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(fh)
-        if not nh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(nh)
-        return self.logger
+        self.logger, self.logfile = get_logger('diff_%s' % self.__class__.diff_type,self.log_folder)
 
     def get_predicates(self):
         return []
@@ -1010,24 +994,7 @@ class DifferManager(BaseManager):
             self.register_differ(pdiffer)
 
     def setup_log(self):
-        import logging as logging_mod
-        if not os.path.exists(self.log_folder):
-            os.makedirs(self.log_folder)
-        self.logfile = os.path.join(self.log_folder, 'diffmanager_%s.log' % (time.strftime("%Y%m%d",self.timestamp.timetuple())))
-        fh = logging_mod.FileHandler(self.logfile)
-        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S")
-        fh.setFormatter(fmt)
-        fh.name = "logfile"
-        nh = HipchatHandler(btconfig.HIPCHAT_CONFIG)
-        nh.setFormatter(fmt)
-        nh.name = "hipchat"
-        self.logger = logging_mod.getLogger("diffmanager")
-        self.logger.setLevel(logging_mod.DEBUG)
-        if not fh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(fh)
-        if not nh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(nh)
-        return self.logger
+        self.logger, self.logfile = get_logger('diffmanager')
 
     def get_predicates(self):
         def no_other_diffmanager_step_running(job_manager):

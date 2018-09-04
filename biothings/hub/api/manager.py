@@ -9,7 +9,7 @@ import socket
 
 from biothings.utils.hub_db import get_src_build, get_api
 from biothings.utils.common import timesofar, get_random_string
-from biothings.utils.loggers import HipchatHandler, get_logger
+from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
 from biothings.utils.es import ESIndexer
 
@@ -34,24 +34,7 @@ class APIManager(BaseManager):
         self.setup_log()
 
     def setup_log(self):
-        import logging as logging_mod
-        if not os.path.exists(self.log_folder):
-            os.makedirs(self.log_folder)
-        self.logfile = os.path.join(self.log_folder, 'apimanager_%s.log' % time.strftime("%Y%m%d",self.timestamp.timetuple()))
-        fh = logging_mod.FileHandler(self.logfile)
-        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S")
-        fh.setFormatter(fmt)
-        fh.name = "logfile"
-        nh = HipchatHandler(btconfig.HIPCHAT_CONFIG)
-        nh.setFormatter(fmt)
-        nh.name = "hipchat"
-        self.logger = logging_mod.getLogger("apimanager")
-        self.logger.setLevel(logging_mod.DEBUG)
-        if not fh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(fh)
-        if not nh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(nh)
-        return self.logger
+        self.logger = get_logger('apimanager')
 
     def register_status(self, api_id, status, **extra):
         apidoc = self.api.find_one({"_id":api_id})
