@@ -48,7 +48,7 @@ def get_logger(logger_name,log_folder=None,handlers=["console","file","slack"],t
     if "hipchat" in handlers:
         raise DeprecationWarning("Hipchat is dead...")
 
-    if "slack" in handlers:
+    if "slack" in handlers and getattr(btconfig,"SLACK_WEBHOOK",None):
         nh = SlackHandler(btconfig.SLACK_WEBHOOK)
         nh.setFormatter(fmt)
         nh.name = "slack"
