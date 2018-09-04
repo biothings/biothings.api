@@ -8,7 +8,7 @@ import subprocess
 
 from biothings.utils.hub_db import get_src_dump, get_data_plugin
 from biothings.utils.common import timesofar, rmdashfr
-from biothings.utils.loggers import HipchatHandler
+from biothings.utils.loggers import get_logger
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
 from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER
 
@@ -150,24 +150,7 @@ class BaseDumper(object):
         pass
 
     def setup_log(self):
-        import logging as logging_mod
-        if not os.path.exists(self.src_root_folder):
-            os.makedirs(self.src_root_folder)
-        self.logfile = os.path.join(self.log_folder, 'dump_%s_%s.log' % (self.src_name,self.timestamp))
-        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S")
-        fh = logging_mod.FileHandler(self.logfile)
-        fh.setFormatter(fmt)
-        fh.name = "logfile"
-        nh = HipchatHandler(HIPCHAT_CONFIG)
-        nh.setFormatter(fmt)
-        nh.name = "hipchat"
-        self.logger = logging_mod.getLogger("%s_dump" % self.src_name)
-        self.logger.setLevel(logging_mod.DEBUG)
-        if not fh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(fh)
-        if not nh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(nh)
-        return self.logger
+        self.logger, self.logfile = get_logger("dump_%s" % self.src_name)
 
     def prepare(self,state={}):
         if self.prepared:
@@ -664,6 +647,7 @@ class LastModifiedHTTPDumper(HTTPDumper,LastModifiedBaseDumper):
     formatted according to RELEASE_FORMAT.
     """
     LAST_MODIFIED = "Last-Modified"
+    ETAG = "ETag"
     RELEASE_FORMAT = "%Y-%m-%d"
 
     def remote_is_better(self,remotefile,localfile):
@@ -689,10 +673,14 @@ class LastModifiedHTTPDumper(HTTPDumper,LastModifiedBaseDumper):
     def set_release(self):
         url = self.__class__.SRC_URLS[-1]
         res = self.client.head(url,allow_redirects=True)
-        remote_dt =  datetime.strptime(res.headers[self.__class__.LAST_MODIFIED], '%a, %d %b %Y %H:%M:%S GMT')
-        remote_lastmodified = time.mktime(remote_dt.timetuple())
-        # also set release attr
-        self.release = remote_dt.strftime(self.__class__.RELEASE_FORMAT)
+        for h in self.__class__.LAST_MODIFIED:
+            try:
+                remote_dt =  datetime.strptime(res.headers[self.__class__.LAST_MODIFIED], '%a, %d %b %Y %H:%M:%S GMT')
+                remote_lastmodified = time.mktime(remote_dt.timetuple())
+                # also set release attr
+                self.release = remote_dt.strftime(self.__class__.RELEASE_FORMAT)
+            except KeyError:
+                self.release = res.headers[self.__class__.ETAG]
 
 
 class WgetDumper(BaseDumper):

@@ -14,7 +14,7 @@ from elasticsearch.exceptions import NotFoundError, ConflictError
 from biothings.utils.common import timesofar, iter_n, loadobj, dump
 from biothings.utils.mongo import doc_feeder, get_target_db, invalidate_cache
 from biothings.utils.hub_db import get_src_build
-from biothings.utils.loggers import get_logger, HipchatHandler
+from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
 from biothings.utils.manager import BaseManager, ManagerError
 from .backend import create_backend, generate_folder
@@ -52,25 +52,7 @@ class BaseSyncer(object):
         self._meta = None
 
     def setup_log(self):
-        # TODO: use bt.utils.loggers.get_logger
-        import logging as logging_mod
-        if not os.path.exists(self.log_folder):
-            os.makedirs(self.log_folder)
-        self.logfile = os.path.join(self.log_folder, 'sync_%s.log' % time.strftime("%Y%m%d",self.timestamp.timetuple()))
-        fh = logging_mod.FileHandler(self.logfile)
-        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S")
-        fh.setFormatter(fmt)
-        fh.name = "logfile"
-        nh = HipchatHandler(btconfig.HIPCHAT_CONFIG)
-        nh.setFormatter(fmt)
-        nh.name = "hipchat"
-        self.logger = logging_mod.getLogger("sync")
-        self.logger.setLevel(logging_mod.DEBUG)
-        if not fh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(fh)
-        if not nh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(nh)
-        return self.logger
+        self.logger, self.logfile = get_logger('sync')
 
     def get_predicates(self):
         #def no_same_syncer_running(job_manager):
@@ -696,7 +678,7 @@ class SyncerManager(BaseManager):
             self.register_syncer(klass)
 
     def setup_log(self):
-        self.logger = btconfig.logger
+        self.logger, self.logfile = get_logger("syncmanager")
 
     def __getitem__(self,diff_target):
         """

@@ -8,14 +8,13 @@ import subprocess
 
 from biothings.utils.hub_db import get_src_dump, get_src_build, get_source_fullname
 from biothings.utils.common import timesofar
-from biothings.utils.dataload import dict_walk, merge_struct
-from biothings.utils.loggers import HipchatHandler
+from biothings.utils.dataload import dict_walk
 from biothings.utils.mongo import id_feeder, doc_feeder
+from biothings.utils.loggers import get_logger
 from biothings.hub import INSPECTOR_CATEGORY
 from biothings.hub.databuild.backend import create_backend
 import biothings.utils.inspect as btinspect
 import biothings.utils.es as es
-from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER
 
 from biothings.utils.manager import BaseManager
 
@@ -37,6 +36,12 @@ class InspectorManager(BaseManager):
         super(InspectorManager,self).__init__(*args, **kwargs)
         self.upload_manager = upload_manager
         self.build_manager = build_manager
+        self.logfile = None
+        self.setup_log()
+
+    def setup_log(self):
+        """Setup and return a logger instance"""
+        self.logger, self.logfile = get_logger('inspect')
 
     def inspect(self, data_provider, mode="type", batch_size=10000,**kwargs):
         """
@@ -65,7 +70,7 @@ class InspectorManager(BaseManager):
         registerer_obj = None # who should register result
         t0 = time.time()
         started_at = datetime.now()
-        logging.info("Inspecting data with mode %s and data_provider %s" % (repr(mode),repr(data_provider)))
+        self.logger.info("Inspecting data with mode %s and data_provider %s" % (repr(mode),repr(data_provider)))
         if callable(data_provider):
             raise NotImplementedError("data_provider as callable untested...")
         else:
@@ -110,7 +115,7 @@ class InspectorManager(BaseManager):
                 elif data_provider_type == "build":
                     registerer_obj.register_status("inspecting",transient=True,init=True,job={"step":"inspect"})
 
-                logging.info("Running inspector on %s (type:%s,data_provider:%s)" % \
+                self.logger.info("Running inspector on %s (type:%s,data_provider:%s)" % \
                         (repr(data_provider),data_provider_type,backend_provider))
                 # make it pickleable
                 if data_provider_type == "source":
@@ -144,11 +149,11 @@ class InspectorManager(BaseManager):
                                 inspected[m] = btinspect.merge_record(inspected[m],res[m],m)
                         except Exception as e:
                             got_error = e
-                            logging.error("Error while inspecting data from batch #%s: %s" % (bnum,e))
+                            self.logger.error("Error while inspecting data from batch #%s: %s" % (bnum,e))
                             raise
                     pre_mapping ="mapping" in mode  # we want to generate intermediate mapping so we can merge
                                                     # all maps later and then generate the ES mapping from there
-                    logging.info("Creating inspect worker for batch #%s" % cnt)
+                    self.logger.info("Creating inspect worker for batch #%s" % cnt)
                     job = yield from self.job_manager.defer_to_process(pinfo,
                             partial(inspect_data,backend_provider,ids,mode=mode,pre_mapping=pre_mapping,**kwargs))
                     job.add_done_callback(partial(batch_inspected,cnt,ids))
@@ -192,7 +197,7 @@ class InspectorManager(BaseManager):
                                 registerer_obj.register_status("success",job={"step":"inspect"},
                                                                         build={"inspect":_map})
                     except Exception as e:
-                        logging.exception("Error while inspecting data: %s" % e)
+                        self.logger.exception("Error while inspecting data: %s" % e)
                         got_error = e
                         if data_provider_type == "source":
                             registerer_obj.register_status("failed",subkey="inspect",err=repr(e))
@@ -206,6 +211,6 @@ class InspectorManager(BaseManager):
             task = asyncio.ensure_future(do())
             return task
         except Exception as e:
-            logging.error("Error while inspecting '%s': %s" % (repr(data_provider),e))
+            self.logger.error("Error while inspecting '%s': %s" % (repr(data_provider),e))
             raise
 

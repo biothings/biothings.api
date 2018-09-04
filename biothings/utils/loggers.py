@@ -3,7 +3,7 @@ import logging
 import asyncio
 from functools import partial
 
-from .hipchat import hipchat_msg, hipchat_file
+from .slack import slack_msg
 
 def setup_default_log(default_logger_name,log_folder,level=logging.DEBUG):
     # this will affect any logging calls
@@ -21,7 +21,13 @@ def setup_default_log(default_logger_name,log_folder,level=logging.DEBUG):
     return logger
 
 
-def get_logger(logger_name,log_folder,handlers=["console","file"],timestamp="%Y%m%d"):
+def get_logger(logger_name,log_folder=None,handlers=["console","file","slack"],timestamp="%Y%m%d"):
+    """
+    Configure a logger object from logger_name and return (logger, logfile)
+    """
+    from biothings import config as btconfig
+    if not log_folder:
+        log_folder = btconfig.LOG_FOLDER
     # this will affect any logging calls
     if not os.path.exists(log_folder):
         os.makedirs(log_folder)
@@ -38,47 +44,44 @@ def get_logger(logger_name,log_folder,handlers=["console","file"],timestamp="%Y%
         fh.name = "logfile"
         if not fh.name in [h.name for h in logger.handlers]:
             logger.addHandler(fh)
-    #if "hipchat" in handlers:
-    #    nh = HipchatHandler(config.HIPCHAT_CONFIG)
-    #    nh.setFormatter(fmt)
-    #    nh.name = "hipchat"
-    #    if not nh.name in [h.name for h in logger.handlers]:
-    #        logger.addHandler(nh)
-    return logger
+
+    if "hipchat" in handlers:
+        raise DeprecationWarning("Hipchat is dead...")
+
+    if "slack" in handlers:
+        nh = SlackHandler(btconfig.SLACK_WEBHOOK)
+        nh.setFormatter(fmt)
+        nh.name = "slack"
+        if not nh.name in [h.name for h in logger.handlers]:
+            logger.addHandler(nh)
+
+    return (logger, logfile)
 
 
-class HipchatHandler(logging.StreamHandler):
+class SlackHandler(logging.StreamHandler):
 
-    colors = {logging.DEBUG : "gray",
-              logging.INFO : "green",
-              logging.WARNING : "yellow",
-              logging.ERROR : "red",
-              logging.CRITICAL : "purple"}
+    colors = {logging.DEBUG : "#a1a1a1",
+              logging.INFO : "good",
+              logging.WARNING : "warning",
+              logging.ERROR : "danger",
+              logging.CRITICAL : "#7b0099"}
 
-    def __init__(self,conf={}):
-        super(HipchatHandler,self).__init__()
-        pass
+    def __init__(self,webhook):
+        super(SlackHandler,self).__init__()
+        self.webhook = webhook
 
     def emit(self,record):
         @asyncio.coroutine
         def aioemit():
             fut = yield from loop.run_in_executor(None,partial(
-                hipchat_msg,msg,color=color))
-            return fut
-        def aioshare():
-            fut = yield from loop.run_in_executor(None,partial(
-                hipchat_file,filepath,message=filepath))
+                slack_msg,self.webhook,msg,color=color))
             return fut
         if record.__dict__.get("notify"):
             loop = asyncio.get_event_loop()
             msg = self.format(record)
-            color = self.__class__.colors.get(record.levelno,"gray")
+            color = self.__class__.colors.get(record.levelno,self.__class__.colors[logging.DEBUG])
             fut = aioemit()
             asyncio.ensure_future(fut)
-            if record.__dict__.get("attach"):
-                filepath = record.__dict__["attach"]
-                fut = aioshare()
-                asyncio.ensure_future(fut)
 
 
 class EventRecorder(logging.StreamHandler):

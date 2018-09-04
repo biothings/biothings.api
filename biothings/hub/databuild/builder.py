@@ -18,7 +18,7 @@ from ..databuild.backend import SourceDocMongoBackend, TargetDocMongoBackend
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj, open_compressed_file
 from biothings.utils.mongo import doc_feeder, id_feeder
-from biothings.utils.loggers import get_logger, HipchatHandler
+from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager, ManagerError
 from biothings.utils.dataload import update_dict_recur, merge_struct
 import biothings.utils.mongo as mongo
@@ -179,25 +179,7 @@ class DataBuilder(object):
         return pinfo
 
     def setup_log(self):
-        # TODO: use bt.utils.loggers.get_logger
-        import logging as logging_mod
-        if not os.path.exists(self.log_folder):
-            os.makedirs(self.log_folder)
-        self.logfile = os.path.join(self.log_folder, 'build_%s_%s.log' % (self.build_name,time.strftime("%Y%m%d",self.timestamp.timetuple())))
-        fh = logging_mod.FileHandler(self.logfile)
-        fmt = logging_mod.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S")
-        fh.setFormatter(fmt)
-        fh.name = "logfile"
-        nh = HipchatHandler(btconfig.HIPCHAT_CONFIG)
-        nh.setFormatter(fmt)
-        nh.name = "hipchat"
-        self.logger = logging_mod.getLogger("%s_build" % self.build_name)
-        self.logger.setLevel(logging_mod.DEBUG)
-        if not fh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(fh)
-        if not nh.name in [h.name for h in self.logger.handlers]:
-            self.logger.addHandler(nh)
-        return self.logger
+        self.logger = get_logger('build_%s' % self.build_name)
 
     def check_ready(self,force=False):
         if force:
@@ -963,7 +945,7 @@ class BuilderManager(BaseManager):
             return by_confs
 
     def setup_log(self):
-        self.logger = btconfig.logger
+        self.logger, self.logfile = get_logger("buildmanager")
 
     def __getitem__(self,build_name):
         """
