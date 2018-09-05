@@ -1,18 +1,18 @@
 import unittest
-from biothings.utils.keylookup_api import KeyLookupMyChemInfo
-from biothings.utils.keylookup_api import KeyLookupMyGeneInfo
+from biothings.hub.datatransform.datatransform_api import DataTransformMyChemInfo
+from biothings.hub.datatransform.datatransform_api import DataTransformMyGeneInfo
 
 
-class TestKeyLookupAPI(unittest.TestCase):
+class TestDataTransformAPI(unittest.TestCase):
 
     def test_mycheminfo(self):
         """
-        Test of KeyLookupMyChemInfo
+        Test of IDLookupMyChemInfo
         :return:
         """
 
         def _MyChemInfoSingleDoc(input_type, output_types, question, answer):
-            @KeyLookupMyChemInfo(input_type, output_types)
+            @DataTransformMyChemInfo(input_type, output_types)
             def load_document(doc_lst):
                 for d in doc_lst:
                     yield d
@@ -22,7 +22,6 @@ class TestKeyLookupAPI(unittest.TestCase):
             self.assertEqual(res['_id'], answer)
 
         # Examples - paracetamol (acetaminophen)
-        _MyChemInfoSingleDoc('inchikey', ['inchikey'], 'RZVAJINKPMORJF-UHFFFAOYSA-N', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
         _MyChemInfoSingleDoc('chebi', ['inchikey'], 'CHEBI:46195', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
         _MyChemInfoSingleDoc('unii', ['inchikey'], '362O9ITL9D', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
         _MyChemInfoSingleDoc('drugbank', ['inchikey'], 'DB00316', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
@@ -36,12 +35,12 @@ class TestKeyLookupAPI(unittest.TestCase):
 
     def test_mygeneinfo(self):
         """
-        Test of KeyLookupMyGeneInfo
+        Test of IDLookupMyGeneInfo
         :return:
         """
 
         def _MyGeneInfoSingleDoc(input_type, output_types, question, answer):
-            @KeyLookupMyGeneInfo(input_type, output_types)
+            @DataTransformMyGeneInfo(input_type, output_types)
             def load_document(doc_lst):
                 for d in doc_lst:
                     yield d
@@ -65,7 +64,7 @@ class TestKeyLookupAPI(unittest.TestCase):
         """
 
         doc_lst = [{'_id': 'CDK2'}]
-        @KeyLookupMyGeneInfo('symbol', ['ensembl'], skip_on_failure=True)
+        @DataTransformMyGeneInfo('symbol', ['ensembl'], skip_on_failure=True)
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -115,7 +114,7 @@ class TestKeyLookupAPI(unittest.TestCase):
         ]
 
         # Test a list being passed with 10 documents
-        @KeyLookupMyGeneInfo('entrezgene', ['symbol'])
+        @DataTransformMyGeneInfo('entrezgene', ['symbol'])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -135,28 +134,28 @@ class TestKeyLookupAPI(unittest.TestCase):
 
         # with self.assertRaises(ValueError):
         with self.assertRaises(ValueError):
-            @KeyLookupMyGeneInfo('entrezgene', ['undefined'])
+            @DataTransformMyGeneInfo('entrezgene', ['undefined'])
             def load_document(data_folder):
                 for d in doc_lst:
                     yield d
 
         # Non-string input-type
         with self.assertRaises(ValueError):
-            @KeyLookupMyGeneInfo(None, ['undefined'])
+            @DataTransformMyGeneInfo(None, ['undefined'])
             def load_document(data_folder):
                 for d in doc_lst:
                     yield d
 
         # Non-list output-type
         with self.assertRaises(ValueError):
-            @KeyLookupMyGeneInfo('entrezgene', 'symbol')
+            @DataTransformMyGeneInfo('entrezgene', 'symbol')
             def load_document(data_folder):
                 for d in doc_lst:
                     yield d
 
         # output-type with a non-string
         with self.assertRaises(ValueError):
-            @KeyLookupMyGeneInfo('entrezgene', [None])
+            @DataTransformMyGeneInfo('entrezgene', [None])
             def load_document(data_folder):
                 for d in doc_lst:
                     yield d
@@ -168,7 +167,7 @@ class TestKeyLookupAPI(unittest.TestCase):
         """
 
         doc_lst = [{'_id': 'CID1983'}, {'_id': None}, {'id': 'CID1983'}]
-        @KeyLookupMyChemInfo('pubchem', ['inchikey'], skip_on_failure=True)
+        @DataTransformMyChemInfo('pubchem', ['inchikey'], skip_on_failure=True)
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -192,7 +191,7 @@ class TestKeyLookupAPI(unittest.TestCase):
             {'_id': inchi2},
         ]
 
-        @KeyLookupMyChemInfo('inchi', ['inchikey'])
+        @DataTransformMyChemInfo('inchi', ['inchikey'])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -244,7 +243,7 @@ class TestKeyLookupAPI(unittest.TestCase):
             }
         ]
 
-        @KeyLookupMyChemInfo([('inchi', 'pharmgkb.inchi'), ('drugbank', 'pharmgkb.xref.drugbank_id'), ('pubchem', 'pharmgkb.xref.pubchem_cid'),('chembl', 'pharmgkb.xref.chembl_id')], ['inchikey'])
+        @DataTransformMyChemInfo([('inchi', 'pharmgkb.inchi'), ('drugbank', 'pharmgkb.xref.drugbank_id'), ('pubchem', 'pharmgkb.xref.pubchem_cid'), ('chembl', 'pharmgkb.xref.chembl_id')], ['inchikey'])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -336,7 +335,7 @@ class TestKeyLookupAPI(unittest.TestCase):
         ]
 
         # Test a list being passed with 12 documents
-        @KeyLookupMyChemInfo([('inchikey', 'inchikey'), ('drugbank', 'drugbank')], ['inchikey'])
+        @DataTransformMyChemInfo([('inchikey', 'inchikey'), ('drugbank', 'drugbank')], ['inchikey'])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
@@ -349,3 +348,21 @@ class TestKeyLookupAPI(unittest.TestCase):
                 print(res['_id'])
             self.assertTrue(res['_id'] in answers)
         self.assertEqual(res_cnt, 12)
+
+    def test_skip_w_regex(self):
+        """
+        Test the skip_w_regex option.
+        :return:
+        """
+
+        doc_lst = [{'_id': 'CID1983xyz'}]
+
+        @DataTransformMyChemInfo('pubchem', ['inchikey'], skip_on_failure=True, skip_w_regex='CID')
+        def load_document(data_folder):
+            for d in doc_lst:
+                yield d
+
+        res_lst = load_document('data/folder/')
+        res = next(res_lst)
+        self.assertEqual(res['_id'], 'CID1983xyz')
+

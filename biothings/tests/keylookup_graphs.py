@@ -1,4 +1,7 @@
+import biothings_client
 import networkx as nx
+
+from biothings.hub.datatransform import MongoDBEdge, RegExEdge, MyChemInfoEdge, MyGeneInfoEdge
 
 ###############################################################################
 # Simple Graph for Testing
@@ -12,31 +15,18 @@ graph_simple.add_node('d')
 graph_simple.add_node('e')
 
 graph_simple.add_edge('a', 'b',
-                      object={'col': 'b',
-                   'lookup': 'a_id',
-                   'field': 'b_id'})
+                      object=MongoDBEdge('b', 'a_id', 'b_id'))
 graph_simple.add_edge('b', 'c',
-                      object={'col': 'c',
-                   'lookup': 'b_id',
-                   'field': 'c_id'})
+                      object=MongoDBEdge('c', 'b_id', 'c_id'))
 # Test Loop
 graph_simple.add_edge('b', 'a',
-                      object={'col': 'b',
-                   'lookup': 'b_id',
-                   'field': 'a_id',
-                   'comment': 'b-->a'})
+                      object=MongoDBEdge('b', 'b_id', 'a_id'))
 graph_simple.add_edge('c', 'd',
-                      object={'col': 'd',
-                   'lookup': 'c_id',
-                   'field': 'd_id'})
+                      object=MongoDBEdge('d', 'c_id', 'd_id'))
 graph_simple.add_edge('d', 'e',
-                      object={'col': 'e',
-                   'lookup': 'd_id',
-                   'field': 'e_id'})
+                      object=MongoDBEdge('e', 'd_id', 'e_id'))
 graph_simple.add_edge('c', 'e',
-                      object={'col': 'c',
-                   'lookup': 'c_id',
-                   'field': 'e_id'})
+                      object=MongoDBEdge('c', 'c_id', 'e_id'))
 
 ###############################################################################
 # Weighted graph for testing
@@ -49,37 +39,17 @@ graph_weights.add_node('ccc')
 graph_weights.add_node('ddd')
 graph_weights.add_node('eee')
 
-
 graph_weights.add_edge('aaa', 'bbb',
-                       weight=1,
-                       object={'col': 'bbb',
-                   'lookup': 'a_id',
-                   'field': 'b_id'})
-
+                       object=MongoDBEdge('bbb', 'a_id', 'b_id', weight=1))
 # Shortcut with high weight
 graph_weights.add_edge('aaa', 'eee',
-                       weight=100,
-                       object={'col': 'bbb',
-                   'lookup': 'a_id',
-                   'field': 'e_id'})
-
+                       object=MongoDBEdge('bbb', 'a_id', 'e_id', weight=100))
 graph_weights.add_edge('bbb', 'ccc',
-                       weight=1,
-                       object={'col': 'ccc',
-                   'lookup': 'b_id',
-                   'field': 'c_id'})
-
+                       object=MongoDBEdge('ccc', 'b_id', 'c_id', weight=1))
 graph_weights.add_edge('ccc', 'ddd',
-                       weight=1,
-                       object={'col': 'ddd',
-                   'lookup': 'c_id',
-                   'field': 'd_id'})
-
+                       object=MongoDBEdge('ddd', 'c_id', 'd_id', weight=1))
 graph_weights.add_edge('ddd', 'eee',
-                       weight=1,
-                       object={'col': 'eee',
-                   'lookup': 'd_id',
-                   'field': 'e_id'})
+                       object=MongoDBEdge('eee', 'd_id', 'e_id', weight=1))
 
 
 ###############################################################################
@@ -91,19 +61,12 @@ graph_one2many.add_node('aa')
 graph_one2many.add_node('bb')
 graph_one2many.add_node('cc')
 
-
 graph_one2many.add_edge('aa', 'bb',
-                        object={'col': 'bb',
-                   'lookup': 'a_id',
-                   'field': 'b_id'})
+                        object=MongoDBEdge('bb', 'a_id', 'b_id'))
 graph_one2many.add_edge('bb', 'cc',
-                        object={'col': 'cc',
-                   'lookup': 'b_id',
-                   'field': 'c_id'})
+                        object=MongoDBEdge('cc', 'b_id', 'c_id'))
 graph_one2many.add_edge('cc', 'dd',
-                        object={'col': 'dd',
-                   'lookup': 'c_id',
-                   'field': 'd_id'})
+                        object=MongoDBEdge('dd', 'c_id', 'd_id'))
 
 ###############################################################################
 # Invalid-Graph
@@ -113,8 +76,50 @@ graph_invalid = nx.DiGraph()
 graph_invalid.add_node('aa')
 graph_invalid.add_node('bb')
 
-graph_invalid.add_edge('aa', 'bb',
-                        object={'col': 'bb',
-                   'lookup': 'a_id',
-                   'field-invalid': 'b_id'})
+graph_invalid.add_edge('aa', 'bb', object='invalid-string')
 
+###############################################################################
+# Mix MongoDB and API Test
+###############################################################################
+graph_mix = nx.DiGraph()
+
+graph_mix.add_node('mix1')
+graph_mix.add_node('ensembl')
+graph_mix.add_node('entrez')
+graph_mix.add_node('mix3')
+
+graph_mix.add_edge('mix1', 'ensembl',
+                   object=MongoDBEdge('mix1', 'start_id', 'ensembl'))
+graph_mix.add_edge('ensembl', 'entrez',
+                   object=MyGeneInfoEdge('ensembl.gene', 'entrezgene'))
+graph_mix.add_edge('entrez', 'mix3',
+                   object=MongoDBEdge('mix3', 'entrez', 'end_id'))
+
+###############################################################################
+# MyChem.Info API Graph for Test
+###############################################################################
+graph_mychem = nx.DiGraph()
+
+graph_mychem.add_node('chebi')
+graph_mychem.add_node('drugbank')
+graph_mychem.add_node('pubchem')
+graph_mychem.add_node('inchikey')
+
+graph_mychem.add_edge('chebi', 'inchikey',
+                      object=MyChemInfoEdge('chebi.chebi_id', '_id'))
+graph_mychem.add_edge('drugbank', 'inchikey',
+                      object=MyChemInfoEdge('drugbank.drugbank_id', '_id'))
+graph_mychem.add_edge('pubchem', 'inchikey',
+                      object=MyChemInfoEdge('pubchem.cid', '_id'))
+
+###############################################################################
+# Simple Graph for Testing
+###############################################################################
+graph_regex = nx.DiGraph()
+
+graph_regex.add_node('a')
+graph_regex.add_node('b')
+graph_regex.add_node('bregex')
+
+graph_regex.add_edge('a', 'b', object=MongoDBEdge('b', 'a_id', 'b_id'))
+graph_regex.add_edge('b', 'bregex', object=RegExEdge('b:', 'bregex:'))

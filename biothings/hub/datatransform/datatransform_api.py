@@ -2,7 +2,8 @@ import biothings_client
 import copy
 from itertools import islice, chain
 import logging
-from biothings.utils.common import iter_n
+import re
+from biothings.hub.datatransform.datatransform import DataTransform
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
 
@@ -11,7 +12,7 @@ lg = get_logger('keylookup_api', btconfig.LOG_FOLDER)
 lg.setLevel(logging.INFO)
 
 
-class KeyLookupAPI(object):
+class DataTransformAPI(DataTransform):
     """
     Perform key lookup or key conversion from one key type to another using
     an API endpoint as a data source.
@@ -19,92 +20,63 @@ class KeyLookupAPI(object):
     This class uses biothings apis to conversion from one key type to another.
     Base classes are used with the decorator syntax shown below:
 
-    @KeyLookupMyChemInfo(input_types, output_types)
+    @IDLookupMyChemInfo(input_types, output_types)
     def load_document(doc_lst):
         for d in doc_lst:
             yield d
 
     Lookup fields are configured in the 'lookup_fields' object, examples of which
-    can be found in 'KeyLookupMyGeneInfo' and 'KeyLookupMyChemInfo'.
+    can be found in 'IDLookupMyGeneInfo' and 'IDLookupMyChemInfo'.
 
     Required Options:
     - input_types
         - 'type'
-        - ('type': 'nested.source_field')
-        - [('type1': 'nested.source_field1'), ('type2': 'nested.source_field2')]
+        - ('type', 'nested_source_field')
+        - [('type1', 'nested.source_field1'), ('type2', 'nested.source_field2'), ...]
     - output_types:
         - 'type'
         - ['type1', 'type2']
 
     Additional Options:
     - skip_on_failure:  Do not include a document where key lookup fails in the results
+    - skip_w_regex:  skip key lookup if the provided regex matches
     """
     batch_size = 10
     default_source = '_id'
     lookup_fields = {}
 
-    def __init__(self, input_types, output_types, skip_on_failure=False):
+    def __init__(self, input_types, output_types, skip_on_failure=False, skip_w_regex=None):
         """
-        Initialize the KeyLookupAPI object.
+        Initialize the IDLookupAPI object.
         """
         self._generate_return_fields()
-
-        self.input_types = []
-        if isinstance(input_types, str):
-            input_types = [input_types]
-        if isinstance(input_types, list):
-            for input_type in input_types:
-                if isinstance(input_type, tuple):
-                    self.input_types.append((input_type[0].lower(), input_type[1]))
-                else:
-                    if input_type in self.lookup_fields.keys():
-                        self.input_types.append((input_type.lower(), self.default_source))
-                    else:
-                        raise ValueError('Provided input_types is not configured in lookup_fields')
-        else:
-            raise ValueError('Provided input_types is not of the correct type')
-
-        if not isinstance(output_types, list):
-            raise ValueError('Provided output_types is not a list')
-        self.output_types = []
-        for output_type in output_types:
-            if not isinstance(output_type, str):
-                raise ValueError('output_types provided is not a string')
-            output_type_l = output_type.lower()
-            if output_type_l in self.lookup_fields.keys():
-                self.output_types.append(output_type_l)
-        if not self.output_types:
-            raise ValueError('output_types provided do not contain any values in lookup_fields')
-
-        if not isinstance(skip_on_failure, bool):
-            raise ValueError('skip_on_failure must be a boolean value')
-        self.skip_on_failure = skip_on_failure
+        super().__init__(input_types, output_types, skip_on_failure, skip_w_regex)
 
         # default value of None for client
         self.client = None
 
+        # Keep track of one_to_many relationships
         self.one_to_many_cnt = 0
 
-    def __call__(self, f):
+    def _valid_input_type(self, input_type):
         """
-        Perform the key conversion and all lookups on call.
-        :param f:
+        Check if the input_type is valid
+        :param input_type:
         :return:
         """
-        def wrapped_f(*args):
-            input_docs = f(*args)
-            lg.debug("input: %s" % input_docs)
-            # split input_docs into chunks of size self.batch_size
-            for batchiter in iter_n(input_docs, int(self.batch_size / len(self.input_types))):
-                output_docs = self.key_lookup_batch(batchiter)
-                odoc_cnt = 0
-                for odoc in output_docs:
-                    odoc_cnt += 1
-                    lg.debug("yield odoc: %s" % odoc)
-                    yield odoc
-                lg.info("wrapped_f Num. output_docs:  {}".format(odoc_cnt))
+        if not isinstance(input_type, str):
+            return False
+        return input_type.lower() in self.lookup_fields.keys()
 
-        return wrapped_f
+    def _valid_output_type(self, output_type):
+        """
+        Check if the output_type is valid
+        :param output_type:
+        :return:
+        """
+        if not isinstance(output_type, str):
+            return False
+        return output_type.lower() in self.lookup_fields.keys()
 
     def _generate_return_fields(self):
         """
@@ -115,7 +87,7 @@ class KeyLookupAPI(object):
         for k in self.lookup_fields:
             for field in self._get_lookup_field(k):
                 self.return_fields += field + ','
-        lg.debug("KeyLookupAPI return_fields:  {}".format(self.return_fields))
+        lg.debug("IDLookupAPI return_fields:  {}".format(self.return_fields))
 
     def key_lookup_batch(self, batchiter):
         """
@@ -140,10 +112,16 @@ class KeyLookupAPI(object):
         id_lst = []
         doc_cache = []
         for doc in batchiter:
-            for input_type in self.input_types:
-                val = KeyLookupAPI._nested_lookup(doc, input_type[1])
-                if val:
-                    id_lst.append('"{}"'.format(val))
+
+            # handle skip logic
+            if self.skip_w_regex and self.skip_w_regex.match(doc['_id']):
+                pass
+            else:
+                for input_type in self.input_types:
+                    val = DataTransformAPI._nested_lookup(doc, input_type[1])
+                    if val:
+                        id_lst.append('"{}"'.format(val))
+
             # always place the document in the cache
             doc_cache.append(doc)
         return list(set(id_lst)), doc_cache
@@ -201,7 +179,7 @@ class KeyLookupAPI(object):
         """
         for output_type in self.output_types:
             for doc_field in self._get_lookup_field(output_type):
-                val = KeyLookupAPI._nested_lookup(h, doc_field)
+                val = DataTransformAPI._nested_lookup(h, doc_field)
                 if val:
                     return val
 
@@ -220,15 +198,15 @@ class KeyLookupAPI(object):
             new_doc = None
             for input_type in self.input_types:
                 # doc[input_type[1]] must be typed to a string because qm_struct.keys are always strings
-                if KeyLookupAPI._nested_lookup(doc, input_type[1]) in qm_struct.keys():
-                    for key in qm_struct[KeyLookupAPI._nested_lookup(doc, input_type[1])]:
+                if DataTransformAPI._nested_lookup(doc, input_type[1]) in qm_struct.keys():
+                    for key in qm_struct[DataTransformAPI._nested_lookup(doc, input_type[1])]:
                         new_doc = copy.deepcopy(doc)
                         new_doc['_id'] = key
                         res_lst.append(new_doc)
                 # Break out if an input type was used.
                 if new_doc:
                     break
-            if not new_doc and not self.skip_on_failure:
+            if not new_doc and ((self.skip_w_regex and self.skip_w_regex.match(doc['_id'])) or not self.skip_on_failure):
                 res_lst.append(doc)
 
         lg.info("_replace_keys:  Num of documents yielded:  {}".format(len(res_lst)))
@@ -249,31 +227,11 @@ class KeyLookupAPI(object):
         else:
             return self.lookup_fields[field]
 
-    @staticmethod
-    def _nested_lookup(doc, field):
-        """
-        Helper function for nested key lookup of a document.
-        For example field = 'pharmgkb.xref.drugbank' would return
-        the value of doc['pharmgkb']['xref']['drugbank'].
-        None is returned if the lookup fails.
-        :param doc:
-        :param field:
-        :return:
-        """
-        fields = field.split('.')
-        t = doc
-        for f in fields:
-            if f not in t.keys():
-                return None
-            t = t[f]
-        return str(t)
 
-
-class KeyLookupMyChemInfo(KeyLookupAPI):
+class DataTransformMyChemInfo(DataTransformAPI):
     lookup_fields = {
         'unii': 'unii.unii',
         'rxnorm': [
-            'drugcentral.xref.rxnorm',
             'unii.rxcui'
         ],        
         'drugbank': 'drugbank.drugbank_id',
@@ -302,16 +260,17 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
     
     def __init__(self, input_types,
                  output_types=None,
-                 skip_on_failure=False):
+                 skip_on_failure=False,
+                 skip_w_regex=None):
         """
         Initialize the class by seting up the client object.
         """
         _output_types = output_types or self.output_types
-        super(KeyLookupMyChemInfo, self).__init__(input_types, _output_types, skip_on_failure)
+        super(DataTransformMyChemInfo, self).__init__(input_types, _output_types, skip_on_failure, skip_w_regex)
 
     def _get_client(self):
         """
-        Get Client - return a client appropriate for KeyLookup
+        Get Client - return a client appropriate for IDLookup
 
         This method must be defined in the child class.  It is an artifact
         of multithreading.
@@ -322,7 +281,7 @@ class KeyLookupMyChemInfo(KeyLookupAPI):
         return self.client
 
 
-class KeyLookupMyGeneInfo(KeyLookupAPI):
+class DataTransformMyGeneInfo(DataTransformAPI):
     lookup_fields = {
         'ensembl': 'ensembl.gene',
         'entrezgene': 'entrezgene',
@@ -332,15 +291,16 @@ class KeyLookupMyGeneInfo(KeyLookupAPI):
 
     def __init__(self, input_types,
                  output_types=['entrezgene'],
-                 skip_on_failure=False):
+                 skip_on_failure=False,
+                 skip_w_regex=None):
         """
         Initialize the class by seting up the client object.
         """
-        super(KeyLookupMyGeneInfo, self).__init__(input_types, output_types, skip_on_failure)
+        super(DataTransformMyGeneInfo, self).__init__(input_types, output_types, skip_on_failure, skip_w_regex)
 
     def _get_client(self):
         """
-        Get Client - return a client appropriate for KeyLookup
+        Get Client - return a client appropriate for IDLookup
 
         This method must be defined in the child class.  It is an artifact
         of multithreading.
