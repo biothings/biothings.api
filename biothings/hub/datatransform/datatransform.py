@@ -2,14 +2,6 @@ import re
 
 from biothings.utils.common import iter_n
 from biothings.utils.loggers import get_logger
-from biothings import config as btconfig
-from biothings import config_for_app
-
-# Configuration of collections from biothings config file
-config_for_app(btconfig)
-
-# Setup logger and logging level
-kl_log = get_logger('datatransform', btconfig.LOG_FOLDER)
 
 
 class DataTransform(object):
@@ -48,6 +40,9 @@ class DataTransform(object):
         else:
             self.skip_w_regex = re.compile(skip_w_regex)
 
+        # Setup logger and logging level
+        self.logger,_ = get_logger('datatransform')
+
     def _parse_input_types(self, input_types):
         """
         Parse the input_types argument
@@ -58,7 +53,7 @@ class DataTransform(object):
             input_types = [input_types]
         if isinstance(input_types, list):
             for input_type in input_types:
-                if isinstance(input_type, tuple):
+                if isinstance(input_type, tuple) or isinstance(input_type, list):
                     if not self._valid_input_type(input_type[0]):
                         raise ValueError("input_type '%s' is not a node in the key_lookup graph" % repr(input_type[0]))
                     res_input_types.append((input_type[0].lower(), input_type[1]))
@@ -98,7 +93,7 @@ class DataTransform(object):
         :return:
         """
         def wrapped_f(*args):
-            kl_log.info("DataTransform.__call__ start")
+            self.logger.info("DataTransform.__call__ start")
             input_docs = f(*args)
             output_doc_cnt = 0
             # split input_docs into chunks of size self.batch_size
@@ -107,8 +102,8 @@ class DataTransform(object):
                 for odoc in output_docs:
                     output_doc_cnt += 1
                     yield odoc
-            kl_log.info("wrapped_f Num. output_docs:  {}".format(output_doc_cnt))
-            kl_log.info("DataTransform.__call__ finished")
+            self.logger.info("wrapped_f Num. output_docs:  {}".format(output_doc_cnt))
+            self.logger.info("DataTransform.__call__ finished")
 
         return wrapped_f
 
@@ -274,7 +269,7 @@ class DataTransformEdge(object):
         self._state["logger"] = value
 
     def setup_log(self):
-        self.logger = get_logger('keylookup', btconfig.LOG_FOLDER)
+        self.logger,_ = get_logger('keylookup')
 
     def prepare(self, state={}):
         if self.prepared:

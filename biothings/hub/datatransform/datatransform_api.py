@@ -3,13 +3,9 @@ import copy
 from itertools import islice, chain
 import logging
 import re
-from biothings.hub.datatransform.datatransform import DataTransform
+from biothings.hub.datatransform.datatransform import DataTransform, DataTransformEdge
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
-
-# Setup logger and logging level
-lg = get_logger('keylookup_api', btconfig.LOG_FOLDER)
-lg.setLevel(logging.INFO)
 
 
 class DataTransformAPI(DataTransform):
@@ -58,6 +54,8 @@ class DataTransformAPI(DataTransform):
         # Keep track of one_to_many relationships
         self.one_to_many_cnt = 0
 
+        self.logger,_ = get_logger('keylookup_api')
+
     def _valid_input_type(self, input_type):
         """
         Check if the input_type is valid
@@ -87,7 +85,7 @@ class DataTransformAPI(DataTransform):
         for k in self.lookup_fields:
             for field in self._get_lookup_field(k):
                 self.return_fields += field + ','
-        lg.debug("IDLookupAPI return_fields:  {}".format(self.return_fields))
+        self.logger.debug("IDLookupAPI return_fields:  {}".format(self.return_fields))
 
     def key_lookup_batch(self, batchiter):
         """
@@ -97,7 +95,7 @@ class DataTransformAPI(DataTransform):
         """
 
         id_lst, doc_cache = self._build_cache(batchiter)
-        lg.info("key_lookup_batch num. id_lst items:  {}".format(len(id_lst)))
+        self.logger.info("key_lookup_batch num. id_lst items:  {}".format(len(id_lst)))
         qr = self._query_many(id_lst)
         qm_struct = self._parse_querymany(qr)
         return self._replace_keys(qm_struct, doc_cache)
@@ -134,7 +132,7 @@ class DataTransformAPI(DataTransform):
         :return:
         """
         # Query MyGene.info
-        # lg.debug("query_many scopes:  {}".format(self.lookup_fields[self.input_type]))
+        # self.logger.debug("query_many scopes:  {}".format(self.lookup_fields[self.input_type]))
         scopes = []
         for input_type in self.input_types:
             for field in self._get_lookup_field(input_type[0]):
@@ -155,7 +153,7 @@ class DataTransformAPI(DataTransform):
         :param qr: querymany results
         :return:
         """
-        lg.debug("QueryMany Structure:  {}".format(qr))
+        self.logger.debug("QueryMany Structure:  {}".format(qr))
         qm_struct = {}
         for q in qr['out']:
             query = q['query']
@@ -166,9 +164,9 @@ class DataTransformAPI(DataTransform):
                 else:
                     self.one_to_many_cnt += 1
                     qm_struct[query] = qm_struct[query] + [val]
-        lg.debug("parse_querymany num qm_struct keys: {}".format(len(qm_struct.keys())))
-        lg.info("parse_querymany running one_to_many_cnt: {}".format(self.one_to_many_cnt))
-        lg.debug("parse_querymany qm_struct: {}".format(qm_struct.keys()))
+        self.logger.debug("parse_querymany num qm_struct keys: {}".format(len(qm_struct.keys())))
+        self.logger.info("parse_querymany running one_to_many_cnt: {}".format(self.one_to_many_cnt))
+        self.logger.debug("parse_querymany qm_struct: {}".format(qm_struct.keys()))
         return qm_struct
 
     def _parse_h(self, h):
@@ -209,7 +207,7 @@ class DataTransformAPI(DataTransform):
             if not new_doc and ((self.skip_w_regex and self.skip_w_regex.match(doc['_id'])) or not self.skip_on_failure):
                 res_lst.append(doc)
 
-        lg.info("_replace_keys:  Num of documents yielded:  {}".format(len(res_lst)))
+        self.logger.info("_replace_keys:  Num of documents yielded:  {}".format(len(res_lst)))
         # Yield the results
         for r in res_lst:
             yield r
@@ -233,7 +231,7 @@ class DataTransformMyChemInfo(DataTransformAPI):
         'unii': 'unii.unii',
         'rxnorm': [
             'unii.rxcui'
-        ],        
+        ],
         'drugbank': 'drugbank.drugbank_id',
         'chebi': 'chebi.chebi_id',
         'chembl': 'chembl.molecule_chembl_id',
@@ -257,7 +255,7 @@ class DataTransformMyChemInfo(DataTransformAPI):
     }
     # The order of output_types decides the priority of the key types we used to get _id value
     output_types=['inchikey', 'unii', 'rxnorm', 'drugbank', 'chebi', 'chembl', 'pubchem', 'drugname'],
-    
+
     def __init__(self, input_types,
                  output_types=None,
                  skip_on_failure=False,
@@ -280,6 +278,116 @@ class DataTransformMyChemInfo(DataTransformAPI):
             self.client = biothings_client.get_client('drug')
         return self.client
 
+##########
+
+class BiothingsAPIEdge(DataTransformEdge):
+    """
+    APIEdge - IDLookupEdge object for API calls
+    """
+    def __init__(self, scope, field, weight=1):
+        super().__init__()
+        self.init_state()
+        self.scope = scope
+        self.field = field
+        self.weight = weight
+
+    def init_state(self):
+        self._state = {
+            "client": None,
+            "logger": None
+        }
+
+    @property
+    def client(self):
+        if not self._state["client"]:
+            try:
+                self.prepare_client()
+            except Exception as e:
+                # if accessed but not ready, then just ignore and return invalid value for a client
+                return None
+        return self._state["client"]
+
+    def prepare_client(self):
+        raise NotImplementedError("Define in subclass")
+
+    def edge_lookup(self, keylookup_obj, id_strct):
+        """
+        Follow an edge given a key.
+
+        This method uses the data in the edge_object
+        to find one key to another key using an api.
+        :param edge:
+        :param key:
+        :return:
+        """
+        qr = self._query_many(keylookup_obj, id_strct)
+        new_id_strct = self._parse_querymany(keylookup_obj, qr, id_strct, self.field)
+        return new_id_strct
+
+    def _query_many(self, keylookup_obj, id_strct):
+        """
+        Call the biothings_client querymany function with a list of identifiers
+        and output fields that will be returned.
+        :param id_lst: list of identifiers to query
+        :return:
+        """
+        if not isinstance(id_strct, IDStruct):
+            raise TypeError("id_strct shouldb be of type IDStruct")
+        id_lst = id_strct.id_lst
+        return self.client.querymany(id_lst,
+                                     scopes=self.scope,
+                                     fields=self.field,
+                                     as_generator=True,
+                                     returnall=True,
+                                     size=keylookup_obj.batch_size)
+
+    def _parse_querymany(self, keylookup_obj, qr, id_strct, field):
+        """
+        Parse the querymany results from the biothings_client into a structure
+        that will later be used for document key replacement.
+        :param qr: querymany results
+        :return:
+        """
+        self.logger.debug("QueryMany Structure:  {}".format(qr))
+        qm_struct = IDStruct()
+        for q in qr['out']:
+            query = q['query']
+            val = nested_lookup(q, field)
+            if val:
+                for (orig_id, curr_id) in id_strct:
+                    if query == curr_id:
+                        qm_struct.add(orig_id, val)
+        return qm_struct
+
+class MyChemInfoEdge(BiothingsAPIEdge):
+
+    def __init__(self, scope, field, weight=1):
+        super().__init__(scope, field, weight)
+
+    def prepare_client(self):
+        """
+        Load the biothings_client for the class
+        :return:
+        """
+        self._state["client"] = biothings_client.get_client('drug')
+        self.logger.info("Registering biothings_client 'gene'")
+
+
+class MyGeneInfoEdge(BiothingsAPIEdge):
+
+    def __init__(self, scope, field, weight=1):
+        super().__init__(scope, field, weight)
+
+    def prepare_client(self):
+        """
+        Load the biothings_client for the class
+        :return:
+        """
+        self._state["client"] = biothings_client.get_client('gene')
+        self.logger.info("Registering biothings_client 'drug'")
+
+
+####################
 
 class DataTransformMyGeneInfo(DataTransformAPI):
     lookup_fields = {
