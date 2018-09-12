@@ -535,7 +535,7 @@ class ColdHotJsonDifferBase(ColdHotDiffer):
         coldcol = get_target_db()[new_doc["build_config"]["cold_collection"]]
         assert coldcol.count() > 0, "Cold collection is empty..."
         diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
-        diff_files = glob.glob(os.path.join(diff_folder,"*.pyobj"))
+        diff_files = glob.glob(os.path.join(diff_folder,"diff_*.pyobj"))
         fixed = 0
         for diff_file in diff_files:
             dirty = False

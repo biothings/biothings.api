@@ -78,7 +78,7 @@ def indexer_worker(col_name,ids,pindexer,batch_num,mode="index",
                 return (0,None)
     except Exception as e:
         logger_name = "index_%s_%s_batch_%s" % (pindexer.keywords.get("index","index"),col_name,batch_num)
-        logger = get_logger(logger_name, btconfig.LOG_FOLDER)
+        logger,_ = get_logger(logger_name, btconfig.LOG_FOLDER)
         logger.exception(e)
         exc_fn = os.path.join(btconfig.LOG_FOLDER,"%s.pick" % logger_name)
         pickle.dump({"exc":e,"ids":ids},open(exc_fn,"wb"))

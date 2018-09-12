@@ -34,7 +34,7 @@ class APIManager(BaseManager):
         self.setup_log()
 
     def setup_log(self):
-        self.logger = get_logger('apimanager')
+        self.logger,_ = get_logger('apimanager')
 
     def register_status(self, api_id, status, **extra):
         apidoc = self.api.find_one({"_id":api_id})
