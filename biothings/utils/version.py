@@ -2,7 +2,7 @@
 from subprocess import check_output
 from io import StringIO
 from contextlib import redirect_stdout
-import pip
+#import pip
 import os, sys, logging
 from git import Repo
 import biothings
@@ -13,15 +13,10 @@ APP_REPO_DATA = {}
 
 def get_python_version():
     ''' Get a list of python packages installed and their versions. '''
-    so = StringIO()
-
-    with redirect_stdout(so):
-        pip.main(['freeze'])
-
-    if so.getvalue():
-        return so.getvalue().strip('\n').split('\n')
-
-    return []
+    try:
+        return check_output('pip list', shell=True).decode('utf-8').split('\n')[2:-1]
+    except Exception:
+        return []
 
 def get_biothings_commit():
     ''' Gets the biothings commit information. '''
