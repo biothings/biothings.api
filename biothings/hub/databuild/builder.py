@@ -179,7 +179,7 @@ class DataBuilder(object):
         return pinfo
 
     def setup_log(self):
-        self.logger = get_logger('build_%s' % self.build_name)
+        self.logger,_ = get_logger('build_%s' % self.build_name)
 
     def check_ready(self,force=False):
         if force:
@@ -802,7 +802,7 @@ def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,merger,batch_num)
         return cnt
     except Exception as e:
         logger_name = "build_%s_%s_batch_%s" % (dest_name,col_name,batch_num)
-        logger = get_logger(logger_name, btconfig.LOG_FOLDER)
+        logger,_ = get_logger(logger_name, btconfig.LOG_FOLDER)
         logger.exception(e)
         exc_fn = os.path.join(btconfig.LOG_FOLDER,"%s.pick" % logger_name)
         pickle.dump(e,open(exc_fn,"wb"))
