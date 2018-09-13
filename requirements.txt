@@ -5,6 +5,7 @@ pymongo
 psutil
 IPython
 boto
+boto3
 jsonpointer
 prettytable # diff report renderer
 multiprocessing_on_dill # to replace pickler in concurrent.futures
