@@ -2,6 +2,7 @@ import os, sys, time, datetime, json
 import asyncio
 from urllib.parse import urlparse, urljoin
 from functools import partial
+import boto3
 
 from biothings import config as btconfig
 from biothings.hub.dataload.dumper import HTTPDumper, DumperException
@@ -44,6 +45,10 @@ class BiothingsDumper(HTTPDumper):
     # TODO: should we ensure ARCHIVE is always true ?
     # (ie we have to keep all versions to apply them in order)
 
+    # must be set before use if accessing restricted bucket
+    AWS_ACCESS_KEY_ID = None
+    AWS_SECRET_ACCESS_KEY = None
+
 
     def __init__(self, *args, **kwargs):
         super(BiothingsDumper,self).__init__(*args,**kwargs)
@@ -60,12 +65,32 @@ class BiothingsDumper(HTTPDumper):
         return self._target_backend
 
     def download(self,remoteurl,localfile,headers={}):
+        self.prepare_local_folders(localfile)  
+        parsed = urlparse(remoteurl)
+        if btconfig.S3_DIFF_BUCKET in parsed.netloc and \
+            self.__class__.AWS_ACCESS_KEY_ID and self.__class__.AWS_SECRET_ACCESS_KEY:
+            # accessing diffs controled by auth
+            key = parsed.path.strip("/") # s3 key are relative, not / at beginning
+            return self.auth_download(btconfig.S3_DIFF_BUCKET,key,localfile,headers)
+        else:
+            return self.anonymous_download(remoteurl,localfile,headers)
+
+    def anonymous_download(self,remoteurl,localfile,headers={}):
         res = super(BiothingsDumper,self).download(remoteurl,localfile,headers=headers)
         # use S3 metadata to set local mtime
         # we add 1 second to make sure we wouldn't download remoteurl again
         # because remote is older by just a few milliseconds
         lastmodified = int(res.headers["x-amz-meta-lastmodified"]) + 1
         os.utime(localfile, (lastmodified, lastmodified))
+        return res
+
+    def auth_download(self,bucket_name,key,localfile,headers={}):
+        session = boto3.Session(
+            aws_access_key_id = self.__class__.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key = self.__class__.AWS_SECRET_ACCESS_KEY)
+        bucket = session.resource("s3").Bucket(bucket_name)
+        res = bucket.download_file(key,localfile)
+        return res
 
     def check_compat(self,build_meta):
         if hasattr(btconfig,"SKIP_CHECK_COMPAT") and btconfig.SKIP_CHECK_COMPAT:
@@ -329,4 +354,6 @@ class BiothingsDumper(HTTPDumper):
             res.append("version=%s date=%s type=%s" % ('{0: <20}'.format(ver["build_version"]),'{0: <20}'.format(ver["release_date"]),
             '{0: <16}'.format(ver["type"])))
         return "\n".join(res)
+
+
 

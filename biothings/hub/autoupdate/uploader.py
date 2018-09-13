@@ -70,22 +70,32 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         idxr = self.target_backend.target_esidxer
         # first check if snapshot repo exists
         repo_name, repo_settings = list(build_meta["metadata"]["repository"].items())[0]
+        # do we need to enrich with some credentials ? (there are part of repo creation JSON settings)
+        if repo_settings.get("type") == "s3" and btconfig.STANDALONE_AWS_CREDENTIALS.get("AWS_ACCESS_KEY_ID"):
+            repo_settings["settings"]["access_key"] = btconfig.STANDALONE_AWS_CREDENTIALS["AWS_ACCESS_KEY_ID"]
+            repo_settings["settings"]["secret_key"] = btconfig.STANDALONE_AWS_CREDENTIALS["AWS_SECRET_ACCESS_KEY"]
+            repo_settings["settings"]["readonly"] = True
         try:
             repo = idxr.get_repository(repo_name)
             # ok it exists, check if settings are the same
             if repo[repo_name] != repo_settings:
                 # different, raise exception so it's handles in the except
                 self.logger.info("Repository '%s' was found but settings are different, it needs to be created again" % repo_name)
+                self.logger.debug("Existing setting: %s" % repo[repo_name])
+                self.logger.debug("Required (new) setting: %s" % repo_settings)
                 raise IndexerException
         except IndexerException:
-            # okgg, it doesn't exist let's try to create it
+            # ok, it doesn't exist let's try to create it
             try:
                 repo = idxr.create_repository(repo_name,repo_settings)
             except IndexerException as e:
-                raise uploader.ResourceError("Could not create snapshot repository. Check elasticsearch.yml configuration " + \
-                        "file, you should have a line like this: " + \
-                        'repositories.url.allowed_urls: "%s*" ' % repo_settings["settings"]["url"] + \
-                        "allowing snapshot to be restored from this URL. Error was: %s" % e)
+                if repo_settings["settings"].get("url"):
+                    raise uploader.ResourceError("Could not create snapshot repository. Check elasticsearch.yml configuration " + \
+                            "file, you should have a line like this: " + \
+                            'repositories.url.allowed_urls: "%s*" ' % repo_settings["settings"]["url"] + \
+                            "allowing snapshot to be restored from this URL. Error was: %s" % e)
+                else:
+                    raise uploader.ResourceError("Could not create snapshot repository: %s" % e)
 
         # repository is now ready, let's trigger the restore
         snapshot_name = build_meta["metadata"]["snapshot_name"]

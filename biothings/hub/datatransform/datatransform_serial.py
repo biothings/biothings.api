@@ -1,22 +1,26 @@
 import copy
-import logging
 import re
 
+from biothings.hub.datatransform.datatransform import DataTransform
 from networkx import all_simple_paths, nx
 import biothings.utils.mongo as mongo
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
+from biothings import config_for_app
+
+# Configuration of collections from biothings config file
+config_for_app(btconfig)
 
 # Setup logger and logging level
 kl_log = get_logger('keylookup', btconfig.LOG_FOLDER)
 
 
-class KeyLookup(object):
+class DataTransformSerial(DataTransform):
     # Constants
     DEFAULT_WEIGHT = 1
     default_source = '_id'
 
-    def __init__(self, G, collections, input_types, output_types, skip_on_failure=False):
+    def __init__(self, G, collections, input_types, output_types, skip_on_failure=False, skip_w_regex=None):
         """
         Initialize the keylookup object and precompute paths from the
         start key to all target keys.
@@ -35,85 +39,17 @@ class KeyLookup(object):
             raise ValueError("key_lookup configuration error:  G must be of type nx.DiGraph")
         self._validate_graph(G)
         self.G = G
-
-        self.input_types = []
-        if isinstance(input_types, str):
-            input_types = [input_types]
-        if isinstance(input_types, list):
-            for input_type in input_types:
-                if isinstance(input_type, tuple) or isinstance(input_type, list):
-                    if input_type[0].lower() not in self.G.nodes():
-                        raise ValueError("input_type %s is not a node in the key_lookup graph" % repr(input_type[0]))
-                    self.input_types.append((input_type[0].lower(), input_type[1]))
-                elif isinstance(input_type, str):
-                    if input_type.lower() not in self.G.nodes():
-                        raise ValueError("input_type %s is not a node in the key_lookup graph" % repr(input_type))
-                    self.input_types.append((input_type, self.default_source))
-                else:
-                    raise ValueError('Provided input_types is not of the correct type')
-        else:
-            raise ValueError('Provided input_types is not of the correct type')
-
-        if not isinstance(output_types, list):
-            raise ValueError("output_types should be of type list")
-        for output_type in output_types:
-            if output_type not in self.G.nodes():
-                raise ValueError("output_type is not a node in the key_lookup graph")
-        self.output_types = output_types
-
-        if not isinstance(skip_on_failure, bool):
-            raise ValueError("skip_on_failure should be of type bool")
-        self.skip_on_failure = skip_on_failure
-
         self.collections = None
         self.collection_names = collections
 
+        super().__init__(input_types, output_types, skip_on_failure, skip_w_regex)
         self._precompute_paths()
 
+    def _valid_input_type(self, input_type):
+        return input_type.lower() in self.G.nodes()
 
-    def __call__(self, f):
-        """
-        Perform the key conversion and all lookups on call.
-
-        :param f:
-        :return:
-        """
-        def wrapped_f(*args):
-            kl_log.info("Converting _id from (type,key) %s to type %s" % \
-                    (repr(self.input_types),repr(self.output_types)))
-            input_docs = f(*args)
-            kl_log.debug("input: %s" % input_docs)
-            output_docs = []
-            for doc in input_docs:
-                kl_log.debug("Decorator arguments:  {}".format(self.input_types))
-                kl_log.debug("Input document:  {}".format(doc))
-                keys = None
-                for output_type in self.output_types:
-                    for input_type in self.input_types:
-                        keys = self.travel(input_type[0], output_type, KeyLookup._nested_lookup(doc, input_type[1]))
-                        # Key(s) were found, create new documents
-                        # and add them to the output list
-                        if keys:
-                            for k in keys:
-                                new_doc = copy.deepcopy(doc)
-                                new_doc['_id'] = k
-                                yield new_doc
-                                #output_docs.append(new_doc)
-                            break
-                    # Break out of the outer loop if keys were found
-                    if keys:
-                        break
-
-                # No keys were found, keep the original (unless the skip_on_failure option is passed)
-                if not keys and not self.skip_on_failure:
-                    yield doc
-                    #output_docs.append(doc)
-
-            #for odoc in output_docs:
-            #    #kl_log.info("yield odoc: %s" % odoc)
-            #    yield odoc
-
-        return wrapped_f
+    def _valid_output_type(self, output_type):
+        return output_type.lower() in self.G.nodes()
 
     def _load_collections(self, collections):
         """
@@ -162,6 +98,40 @@ class KeyLookup(object):
                 paths = sorted(paths, key=self._compute_path_weight)
                 self.paths[(input_type[0], output_type)] = paths
 
+    def key_lookup_batch(self, batchiter):
+        """
+        Look up all keys for ids given in the batch iterator (1 block)
+        :param batchiter:  1 lock of records to look up keys for
+        :return:
+        """
+        output_docs = []
+        for doc in batchiter:
+
+            # Skip (regex) logic
+            if self.skip_w_regex and self.skip_w_regex.match(doc['_id']):
+                output_docs.append(doc)
+                continue
+
+            keys = None
+            for output_type in self.output_types:
+                for input_type in self.input_types:
+                    keys = self.travel(input_type[0], output_type, DataTransformSerial._nested_lookup(doc, input_type[1]))
+                    # Key(s) were found, create new documents
+                    # and add them to the output list
+                    if keys:
+                        for k in keys:
+                            new_doc = copy.deepcopy(doc)
+                            new_doc['_id'] = k
+                            output_docs.append(new_doc)
+                        break
+                # Break out of the outer loop if keys were found
+                if keys:
+                    break
+            # No keys were found, keep the original (unless the skip_on_failure option is passed)
+            if not keys and not self.skip_on_failure:
+                output_docs.append(doc)
+        return output_docs
+
     def _compute_path_weight(self, path):
         """
         Helper function to compute the weight of a path
@@ -175,7 +145,7 @@ class KeyLookup(object):
                 if 'weight' in edge:
                     weight = weight + edge['weight']
                 else:
-                    weight = weight + KeyLookup.DEFAULT_WEIGHT
+                    weight = weight + DataTransformSerial.DEFAULT_WEIGHT
         return weight
 
     def travel(self, start, target, key):
@@ -201,7 +171,7 @@ class KeyLookup(object):
                     if followed_keys:
                         new_keys = new_keys + followed_keys
                 keys = new_keys
-                kl_log.debug("new_key ({})".format(keys))
+                kl_log.debug("new_keys ({})".format(keys))
                 if not keys:
                     break
 
@@ -238,7 +208,7 @@ class KeyLookup(object):
 
         keys = []
         for doc in self.get_collections()[col].find({lookup: key}):
-            keys = keys + [KeyLookup._nested_lookup(doc, field)]
+            keys = keys + [DataTransformSerial._nested_lookup(doc, field)]
         return keys
 
     def get_collections(self):
@@ -251,23 +221,3 @@ class KeyLookup(object):
         else:
             self._load_collections(self.collection_names)
             return self.collections
-
-    @staticmethod
-    def _nested_lookup(doc, field):
-        """
-        Performs a nested lookup of doc using a period (.) delimited
-        list of fields.  This is a nested dictionary lookup.
-        :param doc: document to perform lookup on
-        :param field: period delimited list of fields
-        :return:
-        """
-        value = doc
-        keys = field.split('.')
-        try:
-            for k in keys:
-                value = value[k]
-        except KeyError:
-            return None
-
-        return value
-

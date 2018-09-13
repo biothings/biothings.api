@@ -9,6 +9,7 @@ import logging
 from pprint import pprint, pformat
 import copy
 from datetime import datetime
+import bson
 
 from .common import timesofar, is_scalar, is_float, is_str, is_int, splitstr
 from .web.es import flatten_doc
@@ -204,6 +205,8 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
             # splittable string ?
             if is_str(struct) and len(re.split(" +",struct.strip())) > 1:
                 mapt[splitstr] = {}
+            elif typ == bson.int64.Int64:
+                mapt[int] = {}
             else:
                 mapt[typ] = {}
             if str in mapt and splitstr in mapt:
