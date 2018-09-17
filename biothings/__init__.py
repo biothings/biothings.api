@@ -17,6 +17,10 @@ class ConfigurationValue(object):
     code is passed to eval() in the context of the whole "config" dict
     (so for instance, paths declared before in the configuration file can be used
     in the code passed to eval)
+    code will also be executed through exec() *if* eval() raised a syntax error. This
+    would happen when code contains statements, not just expression. In that case,
+    a variable should be created in these statements (named the same as the original
+    config variable) so the proper value can be through ConfigWrapper.
     """
     def __init__(self,code):
         self.code = code
@@ -40,7 +44,15 @@ class ConfigWrapper(types.ModuleType):
             val = getattr(self.conf,name)
             if isinstance(val,ConfigurationDefault):
                 if isinstance(val.default,ConfigurationValue):
-                    return eval(val.default.code,self.conf.__dict__)
+                    try:
+                        return eval(val.default.code,self.conf.__dict__)
+                    except SyntaxError:
+                        # try exec, maybe it's a statement (not just an expression).
+                        # in that case, it eeans user really knows what he's doing...
+                        exec(val.default.code,self.conf.__dict__)
+                        # there must be a variable named the same same, in that dict,
+                        # coming from code's statements
+                        return self.conf.__dict__[name]
                 else:
                     return val.default
             else:
