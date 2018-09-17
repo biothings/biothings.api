@@ -691,6 +691,9 @@ class SyncerManager(BaseManager):
 
     def sync(self, backend_type, old_db_col_names, new_db_col_names, diff_folder=None, 
                    batch_size=100000, mode=None, target_backend=None, steps=["mapping","content","meta","post"]):
+        if hasattr(btconfig,"SYNC_BATCH_SIZE"):
+            batch_size = btconfig.SYNC_BATCH_SIZE
+            self.logger.debug("Overriding sync batch_size default to %s" % batch_size)
         if diff_folder is None:
             diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
         if not os.path.exists(diff_folder):
