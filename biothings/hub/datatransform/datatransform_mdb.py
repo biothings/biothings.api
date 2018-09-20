@@ -1,7 +1,7 @@
 import copy
 import re
 
-from networkx import all_simple_paths, nx
+from networkx import all_simple_paths, all_shortest_paths, nx
 from biothings.utils.common import iter_n
 from biothings.hub.datatransform import DataTransform
 from biothings.hub.datatransform import DataTransformEdge
@@ -136,7 +136,14 @@ class DataTransformMDB(DataTransform):
         for output_type in self.output_types:
             for input_type in self.input_types:
                 self.logger.info("Compute Path From '{}' to '{}'".format(input_type[0], output_type))
-                paths = all_simple_paths(self.G, input_type[0], output_type)
+                paths = [p for p in all_simple_paths(self.G, input_type[0], output_type)]
+                if not paths:
+                    try:
+                        # this will try to find self-loops. all_shortest_paths() return one element,
+                        # the self-lopped node, but we need an tuple so the "*2"
+                        paths = [p*2 for p in all_shortest_paths(self.G, input_type[0], output_type)]
+                    except nx.NetworkXNoPath:
+                        pass
                 # Sort by path length - try the shortest paths first
                 paths = sorted(paths, key=self._compute_path_weight)
                 self.paths[(input_type[0], output_type)] = paths
@@ -161,14 +168,8 @@ class DataTransformMDB(DataTransform):
 
         for output_type in self.output_types:
             for input_type in self.input_types:
-                if input_type[0] != output_type:
-                    (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
-                else:
-                    (hit_lst, miss_lst) = self._copy(input_type, miss_lst)
-
-                # self.logger.debug("Output documents from travel:")
+                (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
                 for doc in hit_lst:
-                    # self.logger.debug(doc) # too much information to be useful
                     yield doc
 
         # Keep the misses if we do not skip on failure

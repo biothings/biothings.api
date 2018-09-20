@@ -1,6 +1,5 @@
-from biothings import config as btconfig
-from biothings import config_for_app
-config_for_app(btconfig)
+import config, biothings
+biothings.config_for_app(config)
 
 from biothings.hub.datatransform import DataTransformMDB as KeyLookup
 from biothings.tests.keylookup_graphs import graph_simple, \
@@ -332,7 +331,7 @@ class TestDataTransform(unittest.TestCase):
             },
             {
                 '_id': 'test2',
-                'pubchem': 'CID178014',
+                'pubchem': '178014',
             },
             {
                 # this test document should still be returned
@@ -348,7 +347,7 @@ class TestDataTransform(unittest.TestCase):
             },
             {
                 '_id': 'test6',
-                'pubchem': 'CID164045',
+                'pubchem': '164045',
             },
             {
                 '_id': 'test7',
@@ -360,7 +359,7 @@ class TestDataTransform(unittest.TestCase):
             },
             {
                 '_id': 'test9',
-                'pubchem': 'CID40467070',
+                'pubchem': '40467070',
             },
             {
                 '_id': 'test10',
@@ -368,11 +367,11 @@ class TestDataTransform(unittest.TestCase):
             },
             {
                 '_id': 'test11',
-                'pubchem': 'CID10484732',
+                'pubchem': '10484732',
             },
             {
                 '_id': 'test12',
-                'pubchem': 'CID23305354',
+                'pubchem': '23305354',
             },
         ]
 
@@ -438,19 +437,20 @@ class TestDataTransform(unittest.TestCase):
         res = next(res_lst)
         self.assertEqual(res['_id'], 'a:f1')
 
-    def test_copyid(self):
-        """
-        Test behavior on lookup lookup copy.
-        Lookup fails, second identifier value is copied over.
-        """
-        @KeyLookup(graph_simple, ['a', ('b', 'b_id')], ['e', 'b'])
-        def load_document(doc_lst):
-            for d in doc_lst:
-                yield d
+    # TODO: this test should be reactivated once we have a "CopyEdge" class implemented
+    #def test_copyid(self):
+    #    """
+    #    Test behavior on lookup lookup copy.
+    #    Lookup fails, second identifier value is copied over.
+    #    """
+    #    @KeyLookup(graph_simple, ['a', ('b', 'b_id')], ['e', 'b'])
+    #    def load_document(doc_lst):
+    #        for d in doc_lst:
+    #            yield d
 
-        # Copy from second field
-        doc_lst = [{'_id': 'a:f1', 'b_id': 'b:f1'}]
-        res_lst = load_document(doc_lst)
+    #    # Copy from second field
+    #    doc_lst = [{'_id': 'a:f1', 'b_id': 'b:f1'}]
+    #    res_lst = load_document(doc_lst)
 
-        res = next(res_lst)
-        self.assertEqual(res['_id'], 'b:f1')
+    #    res = next(res_lst)
+    #    self.assertEqual(res['_id'], 'b:f1')
