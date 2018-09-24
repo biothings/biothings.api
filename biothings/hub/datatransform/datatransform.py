@@ -220,21 +220,26 @@ class IDStruct(object):
         """Determine if the id (left, _) is registered"""
         return id in self.forward.keys()
 
-    def find_left(self, id):
-        """Find the first id by searching the (left, _) identifiers"""
-        if id and id in self.forward.keys():
-            for f in self.forward[id]:
-                yield f
+    def find(self,where,ids):
+        if not ids:
+            return
+        if not type(ids) in (list,tuple):
+            ids = [ids]
+        for id in ids:
+            if id in where.keys():
+                for i in where[id]:
+                    yield i
+
+    def find_left(self, ids):
+        return self.find(self.forward,ids)
 
     def right(self, id):
         """Determine if the id (_, right) is registered"""
         return id in self.inverse.keys()
 
-    def find_right(self, id):
+    def find_right(self, ids):
         """Find the first id founding by searching the (_, right) identifiers"""
-        if id and id in self.inverse.keys():
-            for i in self.inverse[id]:
-                yield i
+        return self.find(self.inverse,ids)
 
 
 class DataTransformEdge(object):
@@ -328,4 +333,4 @@ def nested_lookup(doc, field):
     except KeyError:
         return None
 
-    return str(value)
+    return value

@@ -202,6 +202,7 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
         if mode == "type":
             mapt[typ] = {}
         elif mode == "mapping":
+            # some type precedence processing...
             # splittable string ?
             if is_str(struct) and len(re.split(" +",struct.strip())) > 1:
                 mapt[splitstr] = {}
@@ -209,8 +210,12 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
                 mapt[int] = {}
             else:
                 mapt[typ] = {}
+            # splitstr > str
             if str in mapt and splitstr in mapt:
                 mapt.pop(str)
+            # float > int
+            if int in mapt and float in mapt:
+                mapt.pop(int)
         else:
             mapt.setdefault(typ,copy.deepcopy(stats_tpl))
             if is_str(struct):

@@ -1,7 +1,9 @@
 import biothings_client
 import networkx as nx
 
-from biothings.hub.datatransform import MongoDBEdge, RegExEdge, MyChemInfoEdge, MyGeneInfoEdge
+from biothings.hub.datatransform.datatransform_api import MyChemInfoEdge, MyGeneInfoEdge
+from biothings.hub.datatransform.datatransform_mdb import MongoDBEdge
+from biothings.hub.datatransform.datatransform import RegExEdge
 
 ###############################################################################
 # Simple Graph for Testing
@@ -106,7 +108,7 @@ graph_mychem.add_node('pubchem')
 graph_mychem.add_node('inchikey')
 
 graph_mychem.add_edge('chebi', 'inchikey',
-                      object=MyChemInfoEdge('chebi.chebi_id', '_id'))
+                      object=MyChemInfoEdge('chebi.id', '_id'))
 graph_mychem.add_edge('drugbank', 'inchikey',
                       object=MyChemInfoEdge('drugbank.drugbank_id', '_id'))
 graph_mychem.add_edge('pubchem', 'inchikey',

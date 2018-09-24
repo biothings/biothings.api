@@ -3,7 +3,7 @@ import copy
 from itertools import islice, chain
 import logging
 import re
-from biothings.hub.datatransform.datatransform import DataTransform, DataTransformEdge
+from biothings.hub.datatransform.datatransform import DataTransform, DataTransformEdge, IDStruct, nested_lookup
 from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
 

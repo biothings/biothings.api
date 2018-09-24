@@ -211,7 +211,7 @@ class BaseSourceUploader(object):
         if not force and not self.src_doc.get("download",{}).get("status") == "success":
             raise ResourceNotReady("No successful download found for resource '%s'" % self.name)
         if not os.path.exists(self.src_root_folder):
-            raise ResourceNotReady("Data folder '%s' doesn't exist for resource '%s'" % self.name)
+            raise ResourceNotReady("Data folder '%s' doesn't exist for resource '%s'" % (self.src_root_folder,self.name))
         job = self.src_doc.get("upload",{}).get("job",{}).get(self.name)
         if not force and job:
             raise ResourceNotReady("Resource '%s' is already being uploaded (job: %s)" % (self.name,job))

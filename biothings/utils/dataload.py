@@ -503,9 +503,9 @@ def value_convert_to_number(d, skipped_keys=[]):
             value_convert_to_number(val, skipped_keys)
         if key not in skipped_keys:
             if isinstance(val, list):
-                d[key] = [to_number(x) if type(x) != dict else value_convert_to_number(x, skipped_keys) for x in val]
+                d[key] = [to_number(x) if not isinstance(x, dict) else value_convert_to_number(x, skipped_keys) for x in val]
             elif isinstance(val, tuple):
-                d[key] = tuple([to_number(x) for x in val])
+                d[key] = tuple([to_number(x) if not isinstance(x, dict) else value_convert_to_number(x, skipped_keys) for x in val])
             else:
                 d[key] = to_number(val)
     return d
