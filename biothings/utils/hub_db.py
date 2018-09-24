@@ -38,7 +38,7 @@ def get_src_build():
 
 
 def get_src_build_config():
-    """Return a Collection instance for src_build_config collection/table"""
+    """Return a Collection instance for src_build_hnonfig collection/table"""
     raise NotImplementedError()
 
 
@@ -186,11 +186,15 @@ class Collection(object):
         """Shortcut to find_one({"_id":_id})"""
         raise NotImplementedError()
 
-def dump(db,folder=".",archive=None):
+def backup(folder=".",archive=None):
     """
-    Dump the whole database in given folder. "archive" can be pass
+    Dump the whole hub_db database in given folder. "archive" can be pass
     to specify the target filename, otherwise, it's randomly generated
+    Note: this doesn't backup source/merge data, just the internal data
+          used by the hub
     """
+    # get database name (ie. hub_db internal database)
+    db_name = get_src_dump().database.name
     dump = {}
     for getter in [get_src_dump,get_src_master,get_src_build,
             get_src_build_config,get_data_plugin,get_api]:
@@ -199,7 +203,7 @@ def dump(db,folder=".",archive=None):
         for doc in col.find():
             dump[col.name].append(doc)
     if not archive:
-        archive = "%s_dump_%s_%s.pyobj" % (db.name,get_timestamp(),get_random_string())
+        archive = "%s_dump_%s_%s.pyobj" % (db_name,get_timestamp(),get_random_string())
     path = os.path.join(folder,archive)
     dumpobj(dump,path)
     return path
@@ -209,7 +213,7 @@ def restore(db,archive,drop=False):
     data = loadobj(archive)
     for colname in data:
         docs = data[colname]
-        col = db[colname]
+        col = b[colname]
         if drop:
             # we don't have a drop command but we can remove all docs
             col.remove({})

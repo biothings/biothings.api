@@ -19,7 +19,7 @@ logging = config.logger
 from biothings.utils.common import timesofar, sizeof_fmt
 import biothings.utils.aws as aws
 from biothings.utils.hub_db import get_cmd, get_src_dump, get_src_build, get_src_build_config, \
-                                   get_last_command
+                                   get_last_command, backup, restore
 
 # useful variables to bring into hub namespace
 pending = "pending"
@@ -101,8 +101,10 @@ class HubShell(InteractiveShell):
         # update with ssh server default commands
         register(basic_commands)
         # don't track this calls
-        register({"restart":CommandDefinition(command=self.restart,track=False)})
-        register({"stop":CommandDefinition(command=self.stop,track=False)})
+        register({"restart":CommandDefinition(command=self.restart,track=True)})
+        register({"stop":CommandDefinition(command=self.stop,track=True)})
+        register({"backup":CommandDefinition(command=backup,track=True)})
+        register({"restore":CommandDefinition(command=restore,track=True)})
         register({"help":CommandDefinition(command=self.help,track=False)})
 
         for extra in extra_ns:

@@ -1,6 +1,6 @@
 import sys
 
-from biothings.utils.hub_db import get_src_dump, get_data_plugin, get_hub_db_conn, dump, restore
+from biothings.utils.hub_db import get_src_dump, get_data_plugin, get_hub_db_conn, backup, restore
 from biothings import config
 logging = config.logger
 
@@ -69,8 +69,8 @@ def migrate(from_version, to_version,restore_if_failure=True):
                               to_version.replace(".","dot"))
     # backup
     db = get_hub_db_conn()[config.DATA_HUB_DB_DATABASE]
-    logging.info("Backing up %s" % db)
-    path = dump(db)
+    logging.info("Backing up %s" % db.name)
+    path = backup()
     logging.info("Backup file: %s" % path)
     thismodule = sys.modules[__name__]
     try:
