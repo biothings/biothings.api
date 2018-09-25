@@ -38,7 +38,7 @@ class MetadataHandler(BaseESRequestHandler):
             index=self._get_es_index(options), doc_type=self._get_es_doc_type(options), es_options=options.es_kwargs)
         _backend = self.web_settings.ES_QUERY(client=self.web_settings.es_client, options=options.es_kwargs)
         _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(options=options.transform_kwargs, 
-                    host=self.request.host, app_dir=self.web_settings._app_git_repo)
+                    host=self.request.host, app_dir=self.web_settings._app_git_repo, excluded_keys=self.web_settings.AVAILABLE_FIELDS_EXCLUDED)
 
         # get the query for annotation GET handler
         #try:

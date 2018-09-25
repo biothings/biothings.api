@@ -22,8 +22,9 @@ class ESResultTransformer(object):
     :param data_sources: unused currently (optional)
     :param output_aliases: list of output key names to alias, unused currently (optional)
     :param app_dir: Application directory for this app (used for getting app information in /metadata)
-    :param source_metadata: Metadata object containing source information for _license keys'''
-    def __init__(self, options, host, doc_url_function=lambda x: x, jsonld_context={}, data_sources={}, output_aliases={}, app_dir='', source_metadata={}):
+    :param source_metadata: Metadata object containing source information for _license keys
+    :param excluded_keys: A list of keys to exclude from the available keys output'''
+    def __init__(self, options, host, doc_url_function=lambda x: x, jsonld_context={}, data_sources={}, output_aliases={}, app_dir='', source_metadata={}, excluded_keys=[]):
         self.options = options
         self.host = host
         self.doc_url_function = doc_url_function
@@ -32,6 +33,7 @@ class ESResultTransformer(object):
         self.output_aliases = output_aliases
         self.app_dir = app_dir
         self.source_metadata = source_metadata
+        self.excluded_keys = excluded_keys
 
     def _flatten_doc(self, doc, outfield_sep='.', context_sep='.'):
         def _recursion_helper(d, ret, path, out):
@@ -224,7 +226,7 @@ class ESResultTransformer(object):
                         if 'copy_to' in v and isinstance(v['copy_to'], list) and v['copy_to'] == ['all']:
                             _arr.append(('in_all', True))
                     _v = OrderedDict(_arr)
-                    if ((_k.lower() != 'all') and (_v and ((not self.options.prefix and not self.options.search) or 
+                    if ((_k.lower() not in self.excluded_keys) and (_v and ((not self.options.prefix and not self.options.search) or 
                         (self.options.prefix and _k.startswith(self.options.prefix)) or 
                         (self.options.search and self.options.search in _k)))):
                         _fields.setdefault(_k, _v)

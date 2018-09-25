@@ -61,6 +61,9 @@ LIST_SIZE_CAP = 1000
 ID_REQUIRED_MESSAGE = 'ID required'
 ID_NOT_FOUND_TEMPLATE = "ID '{bid}' not found"
 
+# A list of fields to exclude from metadata/fields endpoint
+AVAILABLE_FIELDS_EXCLUDED = ['all']
+
 # TODO: Need to describe
 #ANNOTATION_ID_REGEX_LIST = [(re.compile(r'rs[0-9]+', re.I), 'dbsnp.rsid')]
 ANNOTATION_ID_REGEX_LIST = []
