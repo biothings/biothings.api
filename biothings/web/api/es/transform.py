@@ -223,7 +223,7 @@ class ESResultTransformer(object):
                             _arr.append(('index', True))
                         if 'analyzer' in v and isinstance(v['analyzer'], str):
                             _arr.append(('analyzer', v['analyzer'].lower()))
-                        if 'copy_to' in v and isinstance(v['copy_to'], list) and v['copy_to'] == ['all']:
+                        if 'copy_to' in v and isinstance(v['copy_to'], list) and 'all' in v['copy_to']:
                             _arr.append(('in_all', True))
                     _v = OrderedDict(_arr)
                     if ((_k.lower() not in self.excluded_keys) and (_v and ((not self.options.prefix and not self.options.search) or 
