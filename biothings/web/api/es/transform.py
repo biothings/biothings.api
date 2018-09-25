@@ -1,6 +1,7 @@
 from biothings.utils.version import get_software_info
 from biothings.utils.common import is_seq
-from biothings.utils.web.es import flatten_doc, exists_or_null
+from biothings.utils.web.es import exists_or_null
+from biothings.utils.doc_traversal import breadth_first_traversal
 from collections import OrderedDict
 import logging
 
@@ -192,22 +193,42 @@ class ESResultTransformer(object):
         return self._clean_common_POST_response(_list=qlist, res=res, single_hit=single_hit)
 
     def _clean_metadata_response(self, res, fields=False):
+        def _form_key(t, sep='.'):
+            ''' takes a tuple, returns the key name as a string '''
+            return sep.join(t).replace('.properties', '')
+
         # assumes only one doc_type in the index... maybe a bad assumption
         _index = next(iter(res))
         _doc_type = next(iter(res[_index]['mappings']))
         if fields:
             # this is an available fields request
             _properties = res[_index]['mappings'][_doc_type]['properties']
-            _properties = OrderedDict([(k.replace('.properties', ''), v) for (k,v) in flatten_doc(_properties).items()])
             _fields = OrderedDict()
-            for (k,v) in _properties.items():
-                _k = '.'.join(k.split('.')[:-1])
-                if ((not self.options.prefix and not self.options.search) or 
-                    (self.options.prefix and _k.startswith(self.options.prefix)) or 
-                    (self.options.search and self.options.search in _k)): 
-                    _fields.setdefault(_k, OrderedDict())
-                    _fields[_k][k.split('.')[-1]] = v
-            return _fields
+            for (k,v) in breadth_first_traversal(_properties):
+                if isinstance(v, dict):
+                    _k = _form_key(k)
+                    _arr = []
+                    if (('properties' in v) or ('type' in v and isinstance(v['type'], str) and v['type'].lower() == 'object')):
+                        # object datatype
+                        _arr.append(('type', 'object'))
+                    elif 'type' in v and isinstance(v['type'], str):
+                        # other type
+                        _arr.append(('type', v['type'].lower()))
+                    if _arr:
+                        if 'index' in v and isinstance(v['index'], str) and v['index'].lower() in ['no', 'false']:
+                            _arr.append(('index', False))
+                        else:
+                            _arr.append(('index', True))
+                        if 'analyzer' in v and isinstance(v['analyzer'], str):
+                            _arr.append(('analyzer', v['analyzer'].lower()))
+                        if 'copy_to' in v and isinstance(v['copy_to'], list) and v['copy_to'] == ['all']:
+                            _arr.append(('in_all', True))
+                    _v = OrderedDict(_arr)
+                    if ((_k.lower() != 'all') and (_v and ((not self.options.prefix and not self.options.search) or 
+                        (self.options.prefix and _k.startswith(self.options.prefix)) or 
+                        (self.options.search and self.options.search in _k)))):
+                        _fields.setdefault(_k, _v)
+            return OrderedDict(sorted(_fields.items(), key=lambda x: x[0]))
 
         # normal metadata request
         _meta = res[_index]['mappings'][_doc_type].get('_meta', {})
