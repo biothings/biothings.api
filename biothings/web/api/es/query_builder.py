@@ -37,7 +37,7 @@ class ESQueries(object):
 
     def match_all(self, query_kwargs):
         ''' Given ``query_kwargs``, validate and return a **match_all** query. '''
-        return self._es_query_template(raw_query={"match_all": {}})
+        return self._es_query_template(query_type="match_all", query_kwargs=query_kwargs)
 
     def query_string(self, query_kwargs):
         ''' Given ``query_kwargs``, validate and return a **query_string** query. '''
@@ -169,7 +169,7 @@ class ESQueryBuilder(object):
         #this will apply to facet counts
         _query = {
             'bool': {
-                'must': _query
+                'must': _query.get('query', _query)
             }
         }
         if filters:
