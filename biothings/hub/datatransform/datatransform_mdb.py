@@ -71,7 +71,7 @@ class MongoDBEdge(DataTransformEdge):
             for d in find_lst:
                 for orig_id in id_strct.find_right(nested_lookup(d, self.lookup)):
                     res_id_strct.add(orig_id, nested_lookup(d, self.field))
-            self.logger.debug("results for {} ids".format(res_id_strct))
+            #self.logger.debug("results for {} ids".format(res_id_strct))
         return res_id_strct
 
 
@@ -80,7 +80,7 @@ class DataTransformMDB(DataTransform):
     batch_size = 1000
     default_source = '_id'
 
-    def __init__(self, G, input_types, output_types, skip_on_failure=False, skip_w_regex=None):
+    def __init__(self, G, *args, **kwargs):
         """
         Initialize the keylookup object and precompute paths from the
         start key to all target keys.
@@ -91,8 +91,7 @@ class DataTransformMDB(DataTransform):
         performed.
 
         :param G: nx.DiGraph (networkx 2.1) configuration graph
-        :param input_type: key type to start key lookup from
-        :param output_types: list of all output types to convert to
+        Other params, see bt.hub.datatransform.datatransform.DataTransform.__init__
         """
         if not isinstance(G, nx.DiGraph):
             raise ValueError("key_lookup configuration error:  G must be of type nx.DiGraph")
@@ -100,7 +99,7 @@ class DataTransformMDB(DataTransform):
         self.G = G
         self.logger,_ = get_logger('datatransform')
 
-        super().__init__(input_types, output_types, skip_on_failure, skip_w_regex)
+        super().__init__(*args,**kwargs)
         self._precompute_paths()
 
     def _valid_input_type(self, input_type):
@@ -219,7 +218,7 @@ class DataTransformMDB(DataTransform):
             Build the path structure for the travel function
             :return:
             """
-            return IDStruct(input_type[1], doc_lst)
+            return self.idstruct_class(input_type[1], doc_lst)
 
         def _build_hit_miss_lsts(doc_lst, id_strct):
             """
@@ -243,7 +242,7 @@ class DataTransformMDB(DataTransform):
                     miss_lst.append(d)
             return hit_lst, miss_lst
 
-        #self.logger.debug("Travel From '{}' To '{}'".format(input_type[0], target))
+        self.logger.debug("Travel From '{}' To '{}'".format(input_type[0], target))
 
         # Keep a running list of all saved hits
         saved_hits = IDStruct()
@@ -264,7 +263,7 @@ class DataTransformMDB(DataTransform):
                 saved_hits += path_strct
 
             # reset the state to lookup misses
-            path_strct = IDStruct()
+            path_strct = self.idstruct_class()
             for doc in doc_lst:
                 val = nested_lookup(doc, input_type[1])
                 if val:
@@ -283,8 +282,5 @@ class DataTransformMDB(DataTransform):
         This method uses the data in the edge_object
         to find one key to another key using one of
         several types of lookup functions.
-        :param edge:
-        :param key:
-        :return:
         """
         return edge_obj.edge_lookup(self, id_strct)
