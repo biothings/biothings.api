@@ -140,7 +140,12 @@ class DataTransformMDB(DataTransform):
                     try:
                         # this will try to find self-loops. all_shortest_paths() return one element,
                         # the self-lopped node, but we need an tuple so the "*2"
-                        paths = [p*2 for p in all_shortest_paths(self.G, input_type[0], output_type)]
+                        # also make sure those self-loops actually are defined in the graph
+                        try:
+                            self.G.edges[input_type[0],output_type] # this will raise a keyerror is edge for self-loop p-to-p isn't defined
+                            paths = [p*2 for p in all_shortest_paths(self.G, input_type[0], output_type)]
+                        except KeyError:
+                            pass
                     except nx.NetworkXNoPath:
                         pass
                 # Sort by path length - try the shortest paths first
@@ -168,6 +173,7 @@ class DataTransformMDB(DataTransform):
         for output_type in self.output_types:
             for input_type in self.input_types:
                 (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
+                self.histogram.update_io(input_type[0], output_type, len(hit_lst))
                 for doc in hit_lst:
                     yield doc
 
@@ -242,7 +248,7 @@ class DataTransformMDB(DataTransform):
                     miss_lst.append(d)
             return hit_lst, miss_lst
 
-        self.logger.debug("Travel From '{}' To '{}'".format(input_type[0], target))
+        #self.logger.debug("Travel From '{}' To '{}'".format(input_type[0], target))
 
         # Keep a running list of all saved hits
         saved_hits = IDStruct()
@@ -258,6 +264,7 @@ class DataTransformMDB(DataTransform):
                 num_output_ids = len(path_strct)
                 if num_input_ids:
                     self.logger.debug("Edge {} - {}, {} searched returned {}".format(v1, v2, num_input_ids, num_output_ids))
+                    self.histogram.update_edge(v1, v2, num_output_ids)
 
             if len(path_strct):
                 saved_hits += path_strct

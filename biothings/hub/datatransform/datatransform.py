@@ -1,5 +1,6 @@
 import re
 
+from .histogram import Histogram
 from biothings.utils.common import iter_n
 from biothings.utils.loggers import get_logger
 
@@ -151,6 +152,7 @@ class DataTransform(object):
 
         self.idstruct_class = idstruct_class
 
+        self.histogram = Histogram()
         # Setup logger and logging level
         self.logger,_ = get_logger('datatransform')
 
@@ -204,7 +206,6 @@ class DataTransform(object):
         :return:
         """
         def wrapped_f(*args):
-            self.logger.info("DataTransform.__call__ start")
             input_docs = f(*args)
             output_doc_cnt = 0
             # split input_docs into chunks of size self.batch_size
@@ -214,7 +215,7 @@ class DataTransform(object):
                     output_doc_cnt += 1
                     yield odoc
             self.logger.info("wrapped_f Num. output_docs:  {}".format(output_doc_cnt))
-            self.logger.info("DataTransform.__call__ finished")
+            self.logger.info("DataTransform.histogram:  {}".format(self.histogram))
 
         return wrapped_f
 
