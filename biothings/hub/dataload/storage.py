@@ -5,7 +5,7 @@ import asyncio
 from pymongo.errors import DuplicateKeyError, BulkWriteError
 
 from biothings.utils.common import timesofar, iter_n
-from biothings.utils.dataload import merge_struct
+from biothings.utils.dataload import merge_struct, dict_attrmerge
 from biothings.utils.mongo import get_src_db
 
 
@@ -75,6 +75,8 @@ class MergerStorage(BasicStorage):
     Since data is here read line by line, the merge is done while storing
     """
 
+    merge_func = merge_struct
+
     def process(self, doc_d, batch_size):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
@@ -109,7 +111,7 @@ class MergerStorage(BasicStorage):
                     existing = hdocs[errdoc["_id"]]
                     assert "_id" in existing
                     _id = errdoc.pop("_id")
-                    merged = merge_struct(errdoc, existing,aslistofdict=aslistofdict)
+                    merged = self.__class__.merge_func(errdoc, existing, aslistofdict=aslistofdict)
                     bob2.find({"_id" : _id}).update_one({"$set" : merged})
                     # update previously fetched doc. if several errors are about the same doc id,
                     # we would't merged things properly without an updated document
@@ -127,6 +129,32 @@ class MergerStorage(BasicStorage):
         self.logger.info('Done[%s]' % timesofar(t0))
 
         return total
+
+
+class RootKeyMergerStorage(MergerStorage):
+    """
+    Just like MergerStorage, this storage deals with duplicated error
+    by appending key's content to existing document. Keys in existing
+    document will be converted to a list as needed.
+    Ex: d1 = {"_id":1,"a":"a","b":{"k":"b"}}
+        d2 = {"_id":1,"a":"A","b":{"k":"B"}} 
+
+        Both documents have the same _id, and 2 root keys, "a" and "b".
+        Using this storage, the resulting document will be:
+
+        {'_id': 1, 'a': ['A', 'a'], 'b': [{'k': 'B'}, {'k': 'b'}]}
+
+    Note:
+      - root keys must have the same type in each documents
+      - inner structures aren't merged together, the merge happend
+        at root key level
+    """
+
+    @classmethod
+    def merge_root_keys(klass,doc1,doc2,**kwargs):
+        return dict_attrmerge([doc1,doc2])
+
+    merge_func = merge_root_keys
 
 
 class IgnoreDuplicatedStorage(BasicStorage):
