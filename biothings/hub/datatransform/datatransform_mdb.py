@@ -180,11 +180,14 @@ class DataTransformMDB(DataTransform):
 
         # Then, for those which no conversion could be done using the graph,
         # try to find a field within the document
-        for output_type in self.output_types:
-            for input_type in self.input_types:
-                (hit_lst, miss_lst) = self._copy(input_type, miss_lst)
-                for doc in hit_lst:
-                    yield doc
+        if self.copy_from_doc:
+            for output_type in self.output_types:
+                for input_type in self.input_types:
+                    # check if the doc itself can have type matching output
+                    if output_type == input_type[0]:
+                        (hit_lst, miss_lst) = self._copy(input_type, miss_lst)
+                        for doc in hit_lst:
+                            yield doc
 
         # Keep the misses if we do not skip on failure
         if not self.skip_on_failure:

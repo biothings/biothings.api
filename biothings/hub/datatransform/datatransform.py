@@ -119,7 +119,7 @@ class DataTransform(object):
     default_source = '_id'
 
     def __init__(self, input_types, output_types, skip_on_failure=False, skip_w_regex=None,
-                 idstruct_class=IDStruct):
+                 idstruct_class=IDStruct, copy_from_doc=False):
         """
         Initialize the keylookup object and precompute paths from the
         start key to all target keys.
@@ -134,6 +134,13 @@ class DataTransform(object):
         :param input_type: key type to start key lookup from
         :param output_types: list of all output types to convert to
         :param id_struct_class: IDStruct used to manager/fetch IDs from docs
+        :param copy_from_doc: if transform failed using the graph, try to get
+               value from the document itself when output_type == input_type.
+               No check is performed, it's a straight copy. If checks are needed
+               (eg. check that an ID referenced in the doc actually exists in
+               another collection, nodes with self-loops can be used, so
+               ID resolution will be forced to go through these loops to ensure
+               data exists)
         """
 
         self.input_types = self._parse_input_types(input_types)
@@ -151,6 +158,7 @@ class DataTransform(object):
             self.skip_w_regex = re.compile(skip_w_regex)
 
         self.idstruct_class = idstruct_class
+        self.copy_from_doc = copy_from_doc
 
         self.histogram = Histogram()
         # Setup logger and logging level
