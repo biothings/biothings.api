@@ -318,8 +318,15 @@ class AssistantManager(BaseSourceManager):
     def unregister_url(self, url):
         url = url.strip()
         dp = get_data_plugin()
+        doc = dp.find_one({"plugin.url":url})
         # should be only one but just in case
         dp.remove({"plugin.url":url})
+        # delete plugin code so it won't be auto-register
+        # by 'local' plugin assistant (issue studio #7)
+        if doc.get("download",{}).get("data_folder"):
+            codefolder = doc["download"]["data_folder"]
+            self.logger.info("Delete plugin source code in '%s'" % codefolder)
+            rmdashfr(codefolder)
         assistant = self.submit(url)
         try:
             self.data_plugin_manager.register.pop(assistant.plugin_name)
