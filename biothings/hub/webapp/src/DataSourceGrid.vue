@@ -107,6 +107,8 @@ export default {
             })
         },
         register: function() {
+            this.loading();
+            var self = this;
             $('.ui.basic.newdatasource.modal')
             .modal("setting", {
                 detachable : false,
@@ -115,11 +117,13 @@ export default {
                     axios.post(axios.defaults.baseURL + '/dataplugin/register_url',{"url":url})
                     .then(response => {
                         console.log(response.data.result)
+                        self.loaded();
                         return true;
                     })
                     .catch(err => {
                         console.log(err);
                         console.log("Error registering repository URL: " + err.data.error);
+                        self.loaderror(err);
                     })
                 }
             })
