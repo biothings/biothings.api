@@ -52,7 +52,7 @@ def get_app(APP_LIST, **settings):
     ''' Return an Application instance. '''
     return tornado.web.Application(APP_LIST, **settings)
 
-def main(APP_LIST, app_settings={}, debug_settings={}, sentry_client_key=None):
+def main(APP_LIST, app_settings={}, debug_settings={"debug": True}, sentry_client_key=None):
     ''' Main ioloop configuration and start
 
         :param APP_LIST: a list of `URLSpec objects or (regex, handler_class) tuples <http://www.tornadoweb.org/en/stable/web.html#tornado.web.Application>`_
