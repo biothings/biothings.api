@@ -154,6 +154,7 @@ export default {
             })
             .catch(err => {
                 console.log("Error getting APIs information: " + err);
+                this.loaderr(err);
             })
         },
         onApiChanged: function(_id=null,op=null) {
@@ -164,6 +165,7 @@ export default {
         createAPI: function() {
             $('#apis .ui.sidebar').sidebar("hide");
             var self = this;
+            self.loading();
             axios.get(axios.defaults.baseURL + '/index_manager?remote=1')
             .then(response => {
                 self.backends = [];
@@ -191,10 +193,12 @@ export default {
                     }
                 });
                 $(".ui.apibackends.dropdown").dropdown();
+                self.loaded();
             })
             .catch(err => {
                 console.log("Error getting index environments: ");
                 console.log(err);
+                self.loaderr(err);
             })
             $(`.ui.basic.createapi.modal`)
             .modal("setting", {
@@ -215,6 +219,7 @@ export default {
                         self.errors.push("Provide a port number")
                     if(self.errors.length)
                         return false;
+                    self.loading();
                     axios.post(axios.defaults.baseURL + '/api',
                             {"api_id" : api_id,
                              "es_host" : es_host,
@@ -224,11 +229,13 @@ export default {
                              "description" : description})
                         .then(response => {
                             console.log(response.data.result)
+                            self.loaded();
                             return response.data.result;
                         })
                         .catch(err => {
                             console.log("Error creating API: ");
                             console.log(err);
+                            self.loaderr(err);
                         })
                 }
             })
