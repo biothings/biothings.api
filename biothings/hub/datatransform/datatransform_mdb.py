@@ -170,24 +170,21 @@ class DataTransformMDB(DataTransform):
             else:
                 miss_lst.append(doc)
 
-        # First try to convert using the graph
         for output_type in self.output_types:
             for input_type in self.input_types:
-                (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
-                self.histogram.update_io(input_type[0], output_type, len(hit_lst))
+                if output_type == input_type[0]:
+                    # the doc itself has the correct ID, 
+                    # so either there's a self-loop avail to check this ID is valid
+                    if self.G.has_edge(output_type,output_type):
+                        (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
+                    # or if copy is allowed, we get the value from the doc
+                    elif self.copy_from_doc:
+                        (hit_lst, miss_lst) = self._copy(input_type, miss_lst)
+                else:    
+                    (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
+                
                 for doc in hit_lst:
                     yield doc
-
-        # Then, for those which no conversion could be done using the graph,
-        # try to find a field within the document
-        if self.copy_from_doc:
-            for output_type in self.output_types:
-                for input_type in self.input_types:
-                    # check if the doc itself can have type matching output
-                    if output_type == input_type[0]:
-                        (hit_lst, miss_lst) = self._copy(input_type, miss_lst)
-                        for doc in hit_lst:
-                            yield doc
 
         # Keep the misses if we do not skip on failure
         if not self.skip_on_failure:
@@ -201,7 +198,8 @@ class DataTransformMDB(DataTransform):
         for doc in doc_lst:
             val = nested_lookup(doc, input_type[1])
             if val:
-                doc['_id'] = val
+                # ensure _id is always a str
+                doc['_id'] = str(val)
                 hit_lst.append(doc)
             else:
                 miss_lst.append(doc)
@@ -253,7 +251,8 @@ class DataTransformMDB(DataTransform):
                 value = nested_lookup(d, input_type[1])
                 for lookup_id in id_strct.find_left(value):
                     new_doc = copy.deepcopy(d)
-                    new_doc['_id'] = lookup_id
+                    # ensure _id is always a str
+                    new_doc['_id'] = str(lookup_id)
                     hit_lst.append(new_doc)
                     hit_flag = True
                 if not hit_flag:
@@ -292,6 +291,7 @@ class DataTransformMDB(DataTransform):
         # Return a list of documents that have had their identifiers replaced
         # also return a list of documents that were not changed
         hit_lst, miss_lst = _build_hit_miss_lsts(doc_lst, saved_hits)
+        self.histogram.update_io(input_type,target,len(hit_lst))
         return hit_lst, miss_lst
 
     def _edge_lookup(self, edge_obj, id_strct):

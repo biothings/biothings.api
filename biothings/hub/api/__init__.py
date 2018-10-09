@@ -193,7 +193,7 @@ def generate_handler(shell, name, command_defs):
             suffix = "/" + suffix
         if num_mandatory:
             # this is for more REST alike URLs (eg. /info/clinvar == /info?src=clinvar
-            url = r"/%s%s%s" % (name,"/([\w\.]+)?"*num_mandatory,suffix)
+            url = r"/%s%s%s" % (name,"/([\w\.-]+)?"*num_mandatory,suffix)
         else:
             url = r"/%s%s" % (name,suffix)
         routes.append((url,handler_class,{"shell":shell}))

@@ -65,7 +65,7 @@
         </inspect-form>
 
         <!-- Register new data plugin -->
-        <div class="ui basic unregister modal" v-if="source.data_plugin">
+        <div :class='[source.name,"ui basic unregister modal"]' v-if="source.data_plugin">
             <input class="plugin_url" type="hidden" :value="source.data_plugin.plugin.url">
             <div class="ui icon header">
                 <i class="remove icon"></i>

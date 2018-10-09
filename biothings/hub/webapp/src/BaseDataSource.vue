@@ -124,7 +124,8 @@ export default {
             })
         },
         unregister: function() {
-            $('.ui.basic.unregister.modal')
+            console.log(`${this.source.name}.ui.basic.unregister.modal`);
+            $(`.${this.source.name}.ui.basic.unregister.modal`)
             .modal("setting", {
                 onApprove: function () {
                     var url = $(this).find("input.plugin_url").val();

@@ -39,6 +39,11 @@ class IDStruct(object):
         """add a (original_id, current_id) pair to the list"""
         if not left or not right:
             return  # identifiers cannot be None
+        # ensure it's hashable
+        if type(left) == list:
+            left = tuple(left)
+        if type(right) == list:
+            right = tuple(right)
         if self.lookup(left, right):
             return  # tuple already in the list
         if left not in self.forward.keys():
@@ -86,9 +91,14 @@ class IDStruct(object):
                 return True
         return False
 
+    def side(self,_id,where):
+        if type(_id) == list:
+            _id = tuple(_id)
+        return _id in where.keys()
+
     def left(self, id):
         """Determine if the id (left, _) is registered"""
-        return id in self.forward.keys()
+        return self.side(id,self.forward)
 
     def find(self,where,ids):
         if not ids:
@@ -105,7 +115,7 @@ class IDStruct(object):
 
     def right(self, id):
         """Determine if the id (_, right) is registered"""
-        return id in self.inverse.keys()
+        return self.side(id,self.inverse)
 
     def find_right(self, ids):
         """Find the first id founding by searching the (_, right) identifiers"""
