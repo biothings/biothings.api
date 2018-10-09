@@ -35,7 +35,7 @@ if commit_hash or num_commits:
 
 install_requires = [
     'requests==2.8.1',
-    'tornado==4.5.3',
+    'tornado>=5.1',
     'elasticsearch>=6.1.1',
     'networkx>=2.1',
 ]
