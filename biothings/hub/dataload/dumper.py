@@ -198,7 +198,7 @@ class BaseDumper(object):
             # it has not been set by the dumper before while exploring
             # remote site. maybe we're just running post step ?
             # back-compatibility; use "release" at root level if not found under "download"
-            release = self.src_doc.get("download",{}).get("release") or self.src_doc["release"]
+            release = self.src_doc.get("download",{}).get("release") or self.src_doc.get("release")
             self.logger.error("No release set, assuming: data_folder: %s, release: %s" % (data_folder,release))
         # make sure to remove old "release" field to get back on track
         for field in ["release","data_folder"]:
@@ -302,7 +302,7 @@ class BaseDumper(object):
             import traceback
             self.logger.error(traceback.format_exc())
             self.register_status("failed",download={"err" : str(e)})
-            self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
+            self.logger.error("failed %s: %s" % (strargs,e),extra={"notify":True})
             raise
         finally:
             if self.client:
