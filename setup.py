@@ -34,7 +34,7 @@ if commit_hash or num_commits:
         git_file.write("{}.git\n{}\n{}".format(REPO_URL, commit_hash, num_commits))
 
 install_requires = [
-    'requests==2.8.1',
+    'requests>=2.8.1',
     'tornado>=5.1',
     'elasticsearch>=6.1.1',
     'networkx>=2.1',
