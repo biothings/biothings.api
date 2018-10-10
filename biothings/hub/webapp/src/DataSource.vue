@@ -40,19 +40,27 @@
             </div>
         </div>
         <div class="extra content">
-            <div class="ui icon buttons left floated mini">
-                <button class="ui button" v-on:click="do_dump" v-if="source.download">
-                    <i class="download cloud icon"></i>
-                </button>
-                <button class="ui button" v-on:click="do_upload" v-if="source.upload">
-                    <i class="database icon"></i>
-                </button>
-            </div>
-            <div class="ui icon buttons left floated mini">
-                <button class="ui button" v-on:click="inspect">
-                    <i class="unhide icon"></i>
-                </button>
-            </div>
+            <span v-if="source.data_plugin && source.data_plugin.error">
+                <div class="plugin-error">
+                <i class="red alarm icon"></i>
+                    {{source.data_plugin.error}}
+                </div>
+            </span>
+            <span v-else>
+                <div class="ui icon buttons left floated mini">
+                    <button class="ui button" v-on:click="do_dump" v-if="source.download">
+                        <i class="download cloud icon"></i>
+                    </button>
+                    <button class="ui button" v-on:click="do_upload" v-if="source.upload">
+                        <i class="database icon"></i>
+                    </button>
+                </div>
+                <div class="ui icon buttons left floated mini">
+                    <button class="ui button" v-on:click="inspect">
+                        <i class="unhide icon"></i>
+                    </button>
+                </div>
+            </span>
             <div class="ui icon buttons right floated mini">
                 <button class="ui button"
                     v-on:click="unregister" v-if="source.data_plugin">
@@ -134,6 +142,11 @@ export default {
   a {
         color: #0b0089;
     }
+
+  .plugin-error {
+      color: #a00202;
+      word-wrap: break-word;
+  }
 
 </style>
 
