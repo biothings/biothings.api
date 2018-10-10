@@ -25,6 +25,7 @@ from biothings.hub.dataplugin.manager import GitDataPlugin, ManualDataPlugin
 class AssistantException(Exception):
     pass
 
+
 class BaseAssistant(object):
 
     plugin_type = None # to be defined in subblass
@@ -97,14 +98,24 @@ class BaseAssistant(object):
         if os.path.exists(df):
             mf = os.path.join(df,"manifest.json")
             if os.path.exists(mf):
-                manifest = json.load(open(mf))
-                self.logger.debug("Loading manifest: %s" % pprint.pformat(manifest))
-                self.interpret_manifest(manifest)
+                try:
+                    manifest = json.load(open(mf))
+                    self.logger.debug("Loading manifest: %s" % pprint.pformat(manifest))
+                    self.interpret_manifest(manifest)
+                except Exception as e:
+                    self.invalidate_plugin("Error loading manifest: %s" % str(e))
             else:
                 self.logger.info("No manifest found for plugin: %s" % p["plugin"]["url"])
+                self.invalidate_plugin("No manifest found")
         else:
-            raise FileNotFoundError("Data plugin '%s' says data folder is 's%' but it doesn't exist" % \
-                    (p["plugin"]["url"],df))
+            self.invalidate_plugin("Missing plugin folder '%s'" % df)
+
+    def invalidate_plugin(self,error):
+        self.logger.warning("Invalidate plugin '%s' because: %s" % (self.plugin_name,error))
+        # flag all plugin associated (there should only one though, but no need to care here)
+        for klass in self.__class__.data_plugin_manager[self.plugin_name]:
+            klass.data_plugin_error = error
+        pass
 
     def interpret_manifest(self, manifest):
         # dumper section: generate 
