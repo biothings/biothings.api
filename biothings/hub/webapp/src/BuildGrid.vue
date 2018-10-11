@@ -307,6 +307,7 @@ export default {
             // as we sort the build config by name)
             self.color_idx = 0;
             self.build_colors = {};
+            this.loading();
             axios.get(axios.defaults.baseURL + '/build_manager')
             .then(response => {
                 self.build_configs = response.data.result;
@@ -321,13 +322,16 @@ export default {
                         self.color_idx = 0;
                     }
                 }
+                this.loaded();
             })
             .catch(err => {
                 console.log("Error getting builds information: " + err);
+                this.loaderror(err);
             })
         },
         getSourceList: function() {
             var self = this;
+            this.loading();
             axios.get(axios.defaults.baseURL + '/sources')
             .then(response => {
                 $(response.data.result).each(function(i,e) {
@@ -336,9 +340,11 @@ export default {
                     }
                 });
                 self.sources.sort();
+                this.loaded();
             })
             .catch(err => {
                 console.log("Error listing sources: " + err);
+                this.loaderror(err);
             })
         },
         buildExists: function(_id) {
@@ -427,6 +433,7 @@ export default {
                     }
                     if(self.errors.length)
                         return false;
+                    self.loading();
                     axios.post(axios.defaults.baseURL + '/buildconf',
                                {"name":conf_name,
                                 "doc_type": doc_type,
@@ -435,11 +442,13 @@ export default {
                                 "params":optionals})
                     .then(response => {
                         console.log(response.data.result)
+                        self.loaded();
                         return true;
                     })
                     .catch(err => {
                         console.log(err);
                         console.log("Error creating build configuration: " + err.data.error);
+                        self.loaderror(err);
                     })
                 }
             })
@@ -454,13 +463,16 @@ export default {
             .modal("setting", {
                 detachable : false,
                 onApprove: function () {
+                    self.loading();
                     axios.delete(axios.defaults.baseURL + '/buildconf',{"data":{"name":conf_name}})
                     .then(response => {
+                        self.loaded();
                         return true;
                     })
                     .catch(err => {
                         console.log(err);
                         console.log("Error deleting configuration: " + err ? err.data.error : 'unknown error');
+                        self.loaderror(err);
                     })
                 },
             })
@@ -475,17 +487,20 @@ export default {
             .modal("setting", {
                 detachable : false,
                 onApprove: function () {
+                    self.loading();
                     var target_name = $(".ui.newbuild.modal #target_name").val();
                     if(target_name == "")
                         target_name = null;
                     axios.put(axios.defaults.baseURL + `/build/${conf_name}/new`,{"target_name":target_name})
                     .then(response => {
                         console.log(response.data.result)
+                        self.loaded();
                         return true;
                     })
                     .catch(err => {
                         console.log(err);
                         console.log("Error lauching new build: " + err ? err.data.error : 'unknown error');
+                        self.loaderror(err);
                     })
                 },
             })

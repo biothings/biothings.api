@@ -96,6 +96,7 @@ class BaseSourceUploader(object):
         self.collection_name = collection_name or self.name
         self.data_folder = None
         self.prepared = False
+        self.src_doc = {} # will hold src_dump's doc
 
     @property
     def fullname(self):
@@ -144,7 +145,7 @@ class BaseSourceUploader(object):
         self._state["src_master"] = get_src_master()
         self._state["logger"], self.logfile = self.setup_log()
         self.data_folder = self.src_doc.get("download",{}).get("data_folder") or \
-                           self.src_doc.get("data_folder")
+                             self.src_doc.get("data_folder")
         # flag ready
         self.prepared = True
 
@@ -343,7 +344,7 @@ class BaseSourceUploader(object):
             self.src_dump.update_one({"_id":self.main_source},{"$set" : {job_key : upload_info}})
         else:
             # get release that's been uploaded from download part
-            src_doc = self.src_dump.find_one({"_id":self.main_source})
+            src_doc = self.src_dump.find_one({"_id":self.main_source}) or {}
             # back-compatibility while searching for release
             release = src_doc.get("download",{}).get("release") or src_doc.get("release")
             data_folder = src_doc.get("download",{}).get("data_folder") or src_doc.get("data_folder")
@@ -371,23 +372,23 @@ class BaseSourceUploader(object):
         - "post"   : will perform post data load operations
         - "master" : will register the master document in src_master
         """
-        self.logger.info("Uploading '%s' (collection: %s)" % (self.name, self.collection_name))
-        # sanity check before running
-        self.check_ready(force)
-        # check what to do
-        if type(steps) == str:
-            steps = steps.split(",")
-        update_data = "data" in steps
-        update_master = "master" in steps
-        post_update_data = "post" in steps
-        clean_archives = "clean" in steps
-        strargs = "[steps=%s]" % ",".join(steps)
-        cnt = None
         try:
+            # check what to do
+            if type(steps) == str:
+                steps = steps.split(",")
+            update_data = "data" in steps
+            update_master = "master" in steps
+            post_update_data = "post" in steps
+            clean_archives = "clean" in steps
+            strargs = "[steps=%s]" % ",".join(steps)
+            cnt = None
             if not self.temp_collection_name:
                 self.make_temp_collection()
             if self.db[self.temp_collection_name]:
                 self.db[self.temp_collection_name].drop()       # drop all existing records just in case.
+            # sanity check before running
+            self.check_ready(force)
+            self.logger.info("Uploading '%s' (collection: %s)" % (self.name, self.collection_name))
             self.register_status("uploading")
             if update_data:
                 # unsync to make it pickable
@@ -417,15 +418,15 @@ class BaseSourceUploader(object):
             self.register_status("success",count=cnt)
             self.logger.info("success %s" % strargs,extra={"notify":True})
         except Exception as e:
-            self.register_status("failed",err=str(e))
             self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
+            self.register_status("failed",err=str(e))
             raise
 
     def prepare_src_dump(self):
         """Sync with src_dump collection, collection information (src_doc)
         Return src_dump collection"""
         src_dump = get_src_dump()
-        self.src_doc = src_dump.find_one({'_id': self.main_source})
+        self.src_doc = src_dump.find_one({'_id': self.main_source}) or {}
         return src_dump
 
     def setup_log(self):

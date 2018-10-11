@@ -100,10 +100,12 @@
 import axios from 'axios'
 import bus from './bus.js'
 import Vue from 'vue';
+import Loader from './Loader.vue'
 import InspectForm from './InspectForm.vue'
 
 export default {
     name: 'api',
+    mixins: [ Loader, ],
     props: ['api',],
     mounted() {
         $('.menu .item')
@@ -147,27 +149,33 @@ export default {
             $(`#${this.api._id.replace(".","\\.")}.ui.basic.deleteapi.modal`)
             .modal("setting", {
                 onApprove: function () {
+                    self.loading();
                     axios.delete(axios.defaults.baseURL + '/api',{"data":{"api_id":self.api._id}})
                     .then(response => {
                         console.log(response.data.result)
+                        self.loaded();
                         return true;
                     })
                     .catch(err => {
                         console.log(err);
                         console.log("Error deleting api: " + err.data.error);
+                        self.loaderr(err);
                     })
                 }
             })
             .modal("show");
         },
         startStopAPI: function(mode) {
+            this.loading();
             axios.put(axios.defaults.baseURL + `/api/${this.api._id}/${mode}`)
             .then(response => {
+                this.loaded();
                 console.log(response.data.result);
             })
             .catch(err => {
                  console.log(err);
                  console.log(`Error ${mode}ing api: ` + err.data.error);
+                 this.loaderr(err);
             });
 
         },

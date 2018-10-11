@@ -17,11 +17,12 @@ class SourceManager(BaseSourceManager):
     whether it has a dumper and/or uploaders associated.
     """
 
-    def __init__(self, source_list, dump_manager, upload_manager):
+    def __init__(self, source_list, dump_manager, upload_manager, data_plugin_manager):
         self._orig_source_list = source_list
         self.source_list = None
         self.dump_manager = dump_manager
         self.upload_manager = upload_manager
+        self.data_plugin_manager = data_plugin_manager
         self.reload()
         self.src_master = get_src_master()
         self.src_dump = get_src_dump()
@@ -173,10 +174,13 @@ class SourceManager(BaseSourceManager):
     def get_sources(self,id=None,debug=False,detailed=False):
         dm = self.dump_manager
         um = self.upload_manager
+        dpm = self.data_plugin_manager
         ids = set()
         if id and id in dm.register:
             ids.add(id)
         elif id and id in um.register:
+            ids.add(id)
+        elif id and id in dpm.register:
             ids.add(id)
         else:
             # either no id passed, or doesn't exist
@@ -184,6 +188,7 @@ class SourceManager(BaseSourceManager):
                 raise ValueError("Source %s doesn't exist" % repr(id))
             ids = set(dm.register)
             ids.update(um.register)
+            ids.update(dpm.register)
         sources = {}
         bydsrcs = {}
         byusrcs = {}
@@ -217,13 +222,20 @@ class SourceManager(BaseSourceManager):
                             except Exception as e:
                                 logging.error("Source is invalid: %s\n%s" % (e,pformat(src)))
             # deal with plugin info if any
-            dp = bydpsrcs.get(_id)
-            if dp:
-                dp.pop("_id")
-                sources.setdefault(_id,{"data_plugin": {}})
-                if dp.get("download",{}).get("err"):
-                    dp["download"]["error"] = dp["download"].pop("err")
-                sources[_id]["data_plugin"] = dp
+            if dpm:
+                src = bydpsrcs.get(_id)
+                if src:
+                    assert len(dpm[_id]) == 1, "Expected only one uploader, got: %s" % dpm[_id]
+                    klass = dpm[_id][0]
+                    src.pop("_id")
+                    if hasattr(klass,"data_plugin_error"):
+                        src["error"] = klass.data_plugin_error
+                    sources.setdefault(_id,{"data_plugin": {}})
+                    if src.get("download",{}).get("err"):
+                        src["download"]["error"] = src["download"].pop("err")
+                    sources[_id]["data_plugin"] = src
+                    sources[_id]["_id"] = _id
+                    sources[_id]["name"] = _id
         if id:
             return list(sources.values()).pop()
         else:
