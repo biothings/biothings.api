@@ -229,7 +229,7 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
     def support_cors(self, *args, **kwargs):
         '''Provide server side support for CORS request.'''
         self.set_header("Access-Control-Allow-Origin", "*")
-        self.set_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+        self.set_header("Access-Control-Allow-Methods", "{}".format(self.web_settings.ACCESS_CONTROL_ALLOW_METHODS))
         self.set_header("Access-Control-Allow-Headers",
                         "Content-Type, Depth, User-Agent, X-File-Size, X-Requested-With, If-Modified-Since, X-File-Name, Cache-Control")
         self.set_header("Access-Control-Allow-Credentials", "false")

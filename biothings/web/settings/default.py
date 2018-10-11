@@ -82,6 +82,9 @@ STATUS_CHECK = {
     'doc_type': ''
 }
 
+# string used in headers to support CORS
+ACCESS_CONTROL_ALLOW_METHODS = 'GET,POST,OPTIONS'
+
 # These kwarg descriptions are used in generating a swagger API spec
 KWARG_DESCRIPTIONS = {
     '_source': {'name': 'fields', 'text_template': 'a comma-separated list of fields (in dotfield notation) used to limit the fields returned from the matching {biothing_object} hit(s). The supported field names can be found from any {biothing_object} object or from the /metadata/fields endpoint. If "fields=all", all available fields will be returned.{param_type}{param_default_value}{param_max}'},
