@@ -84,6 +84,7 @@ STATUS_CHECK = {
 
 # string used in headers to support CORS
 ACCESS_CONTROL_ALLOW_METHODS = 'GET,POST,OPTIONS'
+ACCESS_CONTROL_ALLOW_HEADERS = 'Content-Type, Depth, User-Agent, X-File-Size, X-Requested-With, If-Modified-Since, X-File-Name, Cache-Control'
 
 # These kwarg descriptions are used in generating a swagger API spec
 KWARG_DESCRIPTIONS = {
