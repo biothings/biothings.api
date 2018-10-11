@@ -1,7 +1,8 @@
-import inspect, types, logging, copy
+import inspect, types, logging, copy, time
 import asyncio
 from functools import partial
 import pprint
+import socket, contextlib
 
 import tornado.web
 from biothings.hub.api.handlers.base import GenericHandler, RootHandler
@@ -227,4 +228,25 @@ def generate_api_routes(shell, commands, settings={}):
     routes = create_handlers(shell,commands)
     routes.append(("/",RootHandler))
     return routes
+
+def start_api(app, port, check=True, wait=5, retry=5):
+    if check:
+        # check if port is used
+        def check_socket(host, port):
+            num = 1
+            with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+                if sock.connect_ex((host, port)) == 0:
+                    if num >= retry:
+                        raise Exception("Can't start API, port %s is already used " % port + \
+                                      "and already tried %s times" % retry)
+                    logging.info("Port %s is already used, sleep and retry (%s/%s)" % (port,num,retry))
+                    time.sleep(wait)
+                    num += 1
+                else:
+                    return
+        check_socket("localhost",port)
+    app_server = tornado.httpserver.HTTPServer(app)
+    app_server.listen(port)
+    app_server.start()
+    return app_server
 

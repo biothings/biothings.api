@@ -158,6 +158,7 @@ class HubShell(InteractiveShell):
             logging.debug("%s %s" % ([sys.executable] ,sys.argv))
             import subprocess
             p = subprocess.Popen([sys.executable] + sys.argv)
+            self.job_manager.hub_process.kill()
             sys.exit(0)
 
         def autokill(f):
