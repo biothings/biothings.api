@@ -158,21 +158,20 @@ class InspectorManager(BaseManager):
                             partial(inspect_data,backend_provider,ids,mode=mode,pre_mapping=pre_mapping,**kwargs))
                     job.add_done_callback(partial(batch_inspected,cnt,ids))
                     jobs.append(job)
-                    # as soon as we can...
-                    if got_error:
-                        raise got_error
 
                 yield from asyncio.gather(*jobs)
 
                 # compute metadata (they were skipped before)
                 for m in mode:
                     if m == "mapping":
-                        inspected["mapping"] = es.generate_es_mapping(inspected["mapping"])
-                    # metadata for mapping only once generated
-                    inspected = btinspect.compute_metadata(inspected,m)
-
-                if got_error:
-                    raise got_error
+                        try:
+                            inspected["mapping"] = es.generate_es_mapping(inspected["mapping"])
+                            # metadata for mapping only once generated
+                            inspected = btinspect.compute_metadata(inspected,m)
+                        except es.MappingError as e:
+                            inspected["mapping"] = {"pre-mapping" : inspected["mapping"], "errors" : e.args[1]}
+                    else:
+                        inspected = btinspect.compute_metadata(inspected,m)
 
                 def fully_inspected(res):
                     nonlocal got_error
