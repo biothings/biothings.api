@@ -3,7 +3,7 @@
         <div id="data-source" class="ui centered fluid card" v-if="source">
             <div class="content">
 
-                <div class="left aligned header" v-if="source.name">{{ source.name | splitjoin | capitalize }}</div>
+                <div class="left aligned header" v-if="source.name">{{ source.name }}</div>
                 <div class="meta">
                     <span class="right floated time" v-if="source.download && source.download.started_at">Updated {{ source.download.started_at | moment("from", "now") }}</span>
                     <span class="right floated time" v-else>Never updated</span>
