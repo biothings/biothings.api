@@ -119,6 +119,7 @@ class BaseAssistant(object):
 
     def interpret_manifest(self, manifest):
         # dumper section: generate 
+        dumper_class = None
         if manifest.get("dumper"):
             if manifest["dumper"].get("data_url"):
                 if not type(manifest["dumper"]["data_url"]) is list:
@@ -147,6 +148,28 @@ class BaseAssistant(object):
                 sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedDumper_%s" % self.plugin_name] = k
             else:
                 raise AssistantException("Invalid manifest, expecting 'data_url' key in 'dumper' section")
+
+            assert dumper_class
+            if manifest["dumper"].get("release"):
+                try:
+                    mod,func = manifest["dumper"].get("release").split(":")
+                except ValueError as e:
+                    raise AssistantException("'release' must be defined as 'module:parser_func' but got: '%s'" % \
+                            manifest["dumper"]["release"])
+                try:
+                    modpath = self.plugin_name + "." + mod
+                    pymod = importlib.import_module(modpath)
+                    # reload in case we need to refresh plugin's code
+                    importlib.reload(pymod)
+                    assert func in dir(pymod), "%s not found in module %s" % (func,pymod)
+                    get_release_func = getattr(pymod,func)
+                    # replace existing method to connect custom release setter
+                    def set_release(self):
+                        self.release = get_release_func(self)
+                    dumper_class.set_release = set_release
+                except Exception as e:
+                    self.logger.exception("Error loading plugin: %s" % e)
+                    raise AssistantException("Can't interpret manifest: %s" % e)
         if manifest.get("uploader"):
             if manifest["uploader"].get("parser"):
                 try:
