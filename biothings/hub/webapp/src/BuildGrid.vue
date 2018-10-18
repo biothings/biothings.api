@@ -335,8 +335,10 @@ export default {
             axios.get(axios.defaults.baseURL + '/sources')
             .then(response => {
                 $(response.data.result).each(function(i,e) {
-                    for(var k in e["upload"]["sources"]) {
-                        self.sources.push(k);
+                    if(e["upload"]) {
+                        for(var k in e["upload"]["sources"]) {
+                            self.sources.push(k);
+                        }
                     }
                 });
                 self.sources.sort();
