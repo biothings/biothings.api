@@ -189,8 +189,8 @@ class HubShell(InteractiveShell):
                 srcs = srcm.get_sources()
                 total_srcs = len(srcs)
                 total_docs = sum([s["upload"]["sources"][subs].get("count",0) or 0 \
-                                for s in srcs \
-                                for subs in s["upload"]["sources"] \
+                                for s in srcs
+                                for subs in s.get("upload",{}).get("sources",{}) \
                                 if s.get("upload")])
             except Exception as e:
                 logging.error("Can't get stats for sources: %s" % e)

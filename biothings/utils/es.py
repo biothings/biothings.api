@@ -598,7 +598,7 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
     mapping = {}
     errors = []
     if init and not "_id" in inspect_doc:
-        errors.append("Not _id key found, documents won't be indexed")
+        errors.append("No _id key found, document won't be indexed. (doc: %s)" % inspect_doc)
     for rootk in inspect_doc:
         if rootk == "_id":
             keys = list(inspect_doc[rootk].keys())
