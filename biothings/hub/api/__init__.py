@@ -229,7 +229,7 @@ def generate_api_routes(shell, commands, settings={}):
     routes.append(("/",RootHandler))
     return routes
 
-def start_api(app, port, check=True, wait=5, retry=5):
+def start_api(app, port, check=True, wait=5, retry=5, settings={}):
     if check:
         # check if port is used
         def check_socket(host, port):
@@ -245,7 +245,7 @@ def start_api(app, port, check=True, wait=5, retry=5):
                 else:
                     return
         check_socket("localhost",port)
-    app_server = tornado.httpserver.HTTPServer(app)
+    app_server = tornado.httpserver.HTTPServer(app,**settings)
     app_server.listen(port)
     app_server.start()
     return app_server
