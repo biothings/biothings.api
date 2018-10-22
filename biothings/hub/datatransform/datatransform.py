@@ -40,20 +40,26 @@ class IDStruct(object):
         if not left or not right:
             return  # identifiers cannot be None
         # ensure it's hashable
+        if not type(left) in [list,tuple]:
+            left = [left]
+        if not type(right) in [list,tuple]:
+            right = [right]
         if type(left) == list:
             left = tuple(left)
         if type(right) == list:
             right = tuple(right)
         if self.lookup(left, right):
             return  # tuple already in the list
-        if left not in self.forward.keys():
-            self.forward[left] = [right]
-        else:
-            self.forward[left] = self.forward[left] + [right]
-        if right not in self.inverse.keys():
-            self.inverse[right] = [left]
-        else:
-            self.inverse[right] = self.inverse[right] + [left]
+        for v in left:
+            if v not in self.forward.keys():
+                self.forward[v] = right
+            else:
+                self.forward[v] = self.forward[v] + right
+        for v in right:
+            if v not in self.inverse.keys():
+                self.inverse[v] = left
+            else:
+                self.inverse[v] = self.inverse[v] + left
 
     def __iadd__(self, other):
         """object += additional, which combines lists"""
@@ -352,7 +358,15 @@ def nested_lookup(doc, field):
     keys = field.split('.')
     try:
         for k in keys:
-            value = value[k]
+            if type(value) in [list,tuple]:
+                # assuming we have a list of dict with k as one of the keys
+                stype = set([type(e) for e in value])
+                assert len(stype) == 1 and stype == {dict}, "Expecting a list of dict, found types: %s" % stype
+                value = [e[k] for e in value if e.get(k)]
+                # can't go further ?
+                return value
+            else:
+                value = value[k]
     except KeyError:
         return None
 

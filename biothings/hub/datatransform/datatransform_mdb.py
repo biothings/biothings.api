@@ -71,7 +71,6 @@ class MongoDBEdge(DataTransformEdge):
             for d in find_lst:
                 for orig_id in id_strct.find_right(nested_lookup(d, self.lookup)):
                     res_id_strct.add(orig_id, nested_lookup(d, self.field))
-            #self.logger.debug("results for {} ids".format(res_id_strct))
         return res_id_strct
 
 
