@@ -91,8 +91,11 @@ class ESResultTransformer(object):
 
         return _recursion_helper(doc, '', type(doc))
 
+    def _get_doc(self, doc):
+        return doc.get('_source', doc.get('fields', {}))
+
     def _form_doc(self, doc, score=True):
-        _doc = doc.get('_source', doc.get('fields', {}))
+        _doc = self._get_doc(doc)
         for attr in ['_id', '_score', '_version']:
             if attr in doc:
                 _doc.setdefault(attr, doc[attr])
