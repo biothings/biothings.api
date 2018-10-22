@@ -40,11 +40,20 @@ def upload_worker(name, storage_class, loaddata_func, col_name,
         return storage.process(data,batch_size)
     except Exception as e:
         logger_name = "%s_batch_%s" % (name,batch_num)
-        logger,_ = get_logger(logger_name, config.LOG_FOLDER)
+        logger,logfile = get_logger(logger_name, config.LOG_FOLDER)
         logger.exception(e)
         logger.error("Parameters:\nname=%s\nstorage_class=%s\n" % (name,storage_class) + \
                 "loaddata_func=%s\ncol_name=%s\nbatch_size=%s\n" % (loaddata_func,col_name,batch_size,) + \
                 "args=%s" % repr(args))
+        import pickle
+        pickfile = os.path.join(os.path.dirname(logfile),"%s.pick" % logger_name)
+        pickle.dump({"exc":e,
+                     "params" : {"name": name, "storage_class": storage_class},
+                     "loaddata_func" : loaddata_func,
+                     "col_name" : col_name,
+                     "batch_size" : batch_size,
+                     "data" : [d for d in data],
+                     "args" : args},open(pickfile,"wb"))
         raise
 
 
@@ -254,10 +263,11 @@ class BaseSourceUploader(object):
            and renaming existing collection to a temp name for archiving purpose.
         '''
         if self.temp_collection_name and self.db[self.temp_collection_name].count() > 0:
-            if self.collection.count() > 0:
+            if self.collection_name in self.db.collection_names():
                 # renaming existing collections
                 new_name = '_'.join([self.collection_name, 'archive', get_timestamp(), get_random_string()])
                 self.collection.rename(new_name, dropTarget=True)
+            self.logger.info("Renaming collection '%s' to '%s'" % (self.temp_collection_name,self.collection_name))
             self.db[self.temp_collection_name].rename(self.collection_name)
         else:
             raise ResourceError("No temp collection (or it's empty)")
