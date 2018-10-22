@@ -153,15 +153,27 @@ class SourceManager(BaseSourceManager):
                 count += info.get("count") or 0
                 if detailed:
                     self.set_mapping_src_meta(job,mini)
-
         if src.get("inspect"):
             mini["inspect"] = {"sources" : {}}
             for job,info in src["inspect"]["jobs"].items():
                 if not detailed:
-                    # remove big inspect data but preserve inspect status/info
-                    info.get("inspect",{}).pop("results",None)
-                if info.get("err"):
-                    info["error"] = info.pop("err")
+                    # remove big inspect data but preserve inspect status/info and errors
+                    mode_has_error = []
+                    mode_ok = []
+                    for mode in info.get("inspect",{}).get("results",{}):
+                        if info["inspect"]["results"][mode].get("errors"):
+                            mode_has_error.append(mode)
+                        else:
+                            mode_ok.append(mode)
+                    for mode in mode_ok:
+                        info["inspect"]["results"].pop(mode)
+                    for mode in mode_has_error:
+                        keys = list(info["inspect"]["results"][mode].keys())
+                        # remove all except errors
+                        for k in keys:
+                            if k != "errors":
+                                info["inspect"]["results"][mode].pop(k)
+                        
                 mini["inspect"]["sources"][job] = info
 
 
