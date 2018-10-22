@@ -33,7 +33,19 @@ export default {
                 return "unknown status";
         },
         inspect_error: function() {
-          return this.getError("inspect");
+          var errors = [];
+          if(this.source["inspect"]) {
+            var srcs = this.source["inspect"]["sources"];
+            for(var subsrc in srcs) {
+              var results = srcs[subsrc]["inspect"]["results"];
+              for(var mode in results) {
+                if(results[mode]["errors"]) {
+                  Array.prototype.push.apply(errors,results[mode]["errors"]);
+                }
+              }
+            }
+          }
+          return errors;
         },
         upload_error: function() {
           return this.getError("upload");
@@ -90,10 +102,12 @@ export default {
         getAllErrors: function() {
             var errs = [];
             if(this.download_error)
-                errs.push(this.download_error);
-            Array.prototype.push.apply(errs,this.getError("upload"));
-            Array.prototype.push.apply(errs,this.getError("inspect"));
-            return errs.join("<br>");
+                errs.push("Dump");
+            if(this.upload_error.length)
+                errs.push("Upload");
+            if(this.inspect_error.length)
+                errs.push("Inspect");
+            return errs.join(" - ") + " error";
         },
         dump: function(release=null,force=null) {
             var data = {};

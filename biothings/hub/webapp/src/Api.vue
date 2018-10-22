@@ -159,7 +159,7 @@ export default {
                     .catch(err => {
                         console.log(err);
                         console.log("Error deleting api: " + err.data.error);
-                        self.loaderr(err);
+                        self.loaderror(err);
                     })
                 }
             })
@@ -175,7 +175,7 @@ export default {
             .catch(err => {
                  console.log(err);
                  console.log(`Error ${mode}ing api: ` + err.data.error);
-                 this.loaderr(err);
+                 this.loaderror(err);
             });
 
         },

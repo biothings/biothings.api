@@ -154,7 +154,7 @@ export default {
             })
             .catch(err => {
                 console.log("Error getting APIs information: " + err);
-                this.loaderr(err);
+                this.loaderror(err);
             })
         },
         onApiChanged: function(_id=null,op=null) {
@@ -198,7 +198,7 @@ export default {
             .catch(err => {
                 console.log("Error getting index environments: ");
                 console.log(err);
-                self.loaderr(err);
+                self.loaderror(err);
             })
             $(`.ui.basic.createapi.modal`)
             .modal("setting", {
@@ -235,7 +235,7 @@ export default {
                         .catch(err => {
                             console.log("Error creating API: ");
                             console.log(err);
-                            self.loaderr(err);
+                            self.loaderror(err);
                         })
                 }
             })
