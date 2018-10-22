@@ -660,6 +660,35 @@ def dict_attrmerge(dict_li, removedup=True, sort=True, special_fns={}):
         out_dict = dict_nodup(out_dict, sort=sort)
     return out_dict
 
+def merge_root_keys(doc1, doc2, exclude=[]):
+    """
+    Ex: d1 = {"_id":1,"a":"a","b":{"k":"b"}}
+        d2 = {"_id":1,"a":"A","b":{"k":"B"},"c":123} 
+
+        Both documents have the same _id, and 2 root keys, "a" and "b".
+        Using this storage, the resulting document will be:
+
+        {'_id': 1, 'a': ['A', 'a'], 'b': [{'k': 'B'}, {'k': 'b'}],"c":123}
+    """
+    # we'll "eat" from doc2 so clean it first as needed
+    for k in exclude:
+        doc2.pop(k,None)
+    for k1 in doc1:
+        if k1 in exclude:
+            continue
+        v2 = doc2.pop(k1,None)
+        if not type(v2) is list:
+            v2 = [v2]
+        if v2:
+            if type(doc1[k1]) == list:
+                doc1[k1].extend(v2)
+            else:
+                doc1[k1] = [doc1[k1]] + v2
+    # merge what's remaining in doc2 that wasn't in doc1
+    doc1.update(doc2)
+
+    return doc1
+        
 
 def dict_apply(dict, key, value, sort=True):
     '''

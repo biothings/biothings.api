@@ -5,7 +5,7 @@ import asyncio
 from pymongo.errors import DuplicateKeyError, BulkWriteError
 
 from biothings.utils.common import timesofar, iter_n
-from biothings.utils.dataload import merge_struct, dict_attrmerge
+from biothings.utils.dataload import merge_struct, merge_root_keys
 from biothings.utils.mongo import get_src_db
 
 
@@ -118,7 +118,7 @@ class MergerStorage(BasicStorage):
                     assert "_id" in merged
                     hdocs[_id] = merged
                     nbinsert += 1
-
+                
                 res = bob2.execute()
                 self.logger.info("OK [%s]" % timesofar(tinner))
             assert nbinsert == toinsert, "nb %s to %s" % (nbinsert,toinsert)
@@ -136,13 +136,6 @@ class RootKeyMergerStorage(MergerStorage):
     Just like MergerStorage, this storage deals with duplicated error
     by appending key's content to existing document. Keys in existing
     document will be converted to a list as needed.
-    Ex: d1 = {"_id":1,"a":"a","b":{"k":"b"}}
-        d2 = {"_id":1,"a":"A","b":{"k":"B"}} 
-
-        Both documents have the same _id, and 2 root keys, "a" and "b".
-        Using this storage, the resulting document will be:
-
-        {'_id': 1, 'a': ['A', 'a'], 'b': [{'k': 'B'}, {'k': 'b'}]}
 
     Note:
       - root keys must have the same type in each documents
@@ -151,10 +144,16 @@ class RootKeyMergerStorage(MergerStorage):
     """
 
     @classmethod
-    def merge_root_keys(klass,doc1,doc2,**kwargs):
-        return dict_attrmerge([doc1,doc2])
-
-    merge_func = merge_root_keys
+    def merge_func(klass, doc1, doc2, **kwargs):
+        # caller popped it from doc1, let's take from doc2
+        _id = doc2["_id"]
+        # exclude_id will remove _if from doc2, that's why we kept it from before
+        # also, copy doc2 ref as the merged doc will be stored in 
+        # a bulk op object, since doc2 is modified in place, this could impact
+        # the bulk op and procude empty $set error from mongo
+        doc = merge_root_keys(doc1,copy.copy(doc2),exclude=["_id"])
+        doc["_id"] = _id
+        return doc
 
 
 class IgnoreDuplicatedStorage(BasicStorage):
