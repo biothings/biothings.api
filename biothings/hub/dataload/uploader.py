@@ -36,7 +36,11 @@ def upload_worker(name, storage_class, loaddata_func, col_name,
     """
     try:
         data = loaddata_func(*args)
-        storage = storage_class(None,col_name,loggingmod)
+        if type(storage_class) is tuple:
+            klass_name = "_".join([k.__class__.__name__ for k in storage_class])
+            storage = type(klass_name,storage_class,{})(None,col_name,loggingmod)
+        else:
+            storage = storage_class(None,col_name,loggingmod)
         return storage.process(data,batch_size)
     except Exception as e:
         logger_name = "%s_batch_%s" % (name,batch_num)

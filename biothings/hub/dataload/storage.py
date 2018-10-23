@@ -6,7 +6,7 @@ from pymongo.errors import DuplicateKeyError, BulkWriteError
 
 from biothings.utils.common import timesofar, iter_n
 from biothings.utils.dataload import merge_struct, merge_root_keys
-from biothings.utils.mongo import get_src_db
+from biothings.utils.mongo import get_src_db, check_document_size
 
 
 class StorageException(Exception):
@@ -26,11 +26,27 @@ class BaseStorage(object):
         """
         raise NotImplementedError("implement-me in subclass")
 
+    def check_doc_func(self,doc):
+        return True
+
+
+class CheckSizeStorage(BaseStorage):
+
+    def check_doc_func(self,doc):
+        ok = check_document_size(doc)
+        # this is typically used to skip LFQSCWFLJHTTHZ-UHFFFAOYSA-N (Ethanol)
+        # because there are too many elements in "ndc" list
+        if not ok:
+            self.logger.warning("Skip document '%s' because too large" % doc.get("_id"))
+        return ok
+
+
 class BasicStorage(BaseStorage):
 
     def doc_iterator(self, doc_d, batch=True, batch_size=10000):
         if isinstance(doc_d, types.GeneratorType) and batch:
             for doc_li in iter_n(doc_d, n=batch_size):
+                doc_li = [d for d in doc_li if self.check_doc_func(d)]
                 yield doc_li
         else:
             if batch:
@@ -39,20 +55,19 @@ class BasicStorage(BaseStorage):
             for _id, doc in doc_d.items():
                 doc['_id'] = _id
                 _doc = {}
-                #_doc.clear()
                 _doc.update(doc)
-                #if validate:
-                #    _doc.validate()
                 if batch:
                     doc_li.append(_doc)
                     i += 1
                     if i % batch_size == 0:
+                        doc_li = [d for d in doc_li if self.check_doc_func(d)]
                         yield doc_li
                         doc_li = []
                 else:
-                    yield _doc
+                    yield self.check_doc_func(_doc)
 
             if batch:
+                doc_li = [d for d in doc_li if self.check_doc_func(d)]
                 yield doc_li
 
     def process(self, doc_d, batch_size):

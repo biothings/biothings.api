@@ -5,6 +5,7 @@ from pymongo import MongoClient, DESCENDING
 from pymongo.collection import Collection
 from functools import partial
 from collections import defaultdict
+import bson
 
 from biothings.utils.common import timesofar, get_random_string, iter_n, \
                                    open_compressed_file, get_compressed_outfile, \
@@ -426,3 +427,10 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             cache_out.close()
             cache_final = os.path.splitext(cache_temp)[0]
             os.rename(cache_temp,cache_final)
+
+def check_document_size(doc):
+    """
+    Return True if doc isn't too large for mongo DB
+    """
+    return len(bson.BSON.encode(doc)) < 16777216 #16*1024*1024
+
