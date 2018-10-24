@@ -1,15 +1,6 @@
-# Required python modules for running a web node of MyVariant.info
+# Required python modules for running a biothing API
 # To install all requirement, run
 #    pip install -r requirements_web.txt
-tornado==4.2.1
-
-# Currently using ES 2, comment the others
-# Elasticsearch 2.x
-elasticsearch>=2.0.0,<3.0.0
-# Elasticsearch 1.x
-#elasticsearch>=1.0.0,<2.0.0
-# Elasticsearch 0.90.x
-#elasticsearch<1.0.0
 
 # biothings
 git+https://github.com/biothings/biothings.api.git#egg=biothings
