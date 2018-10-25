@@ -23,7 +23,7 @@
                                 Data folder
                             </td>
                             <td>
-                                {{source.download.data_folder}}
+                                <a :href="source.download.data_folder | replace('/data/biothings_studio','')">{{ source.download.data_folder }}</a>
                             </td>
                         </tr>
                         <tr v-if="source.download.error">
