@@ -34,6 +34,7 @@ def upload_worker(name, storage_class, loaddata_func, col_name,
     collection name. loaddata_func is the parsing/loading function,
     called with *args
     """
+    data = []
     try:
         data = loaddata_func(*args)
         if type(storage_class) is tuple:
