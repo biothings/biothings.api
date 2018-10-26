@@ -283,17 +283,20 @@ class BaseSourceManager(BaseManager):
         klasses = self.find_classes(src_m,fail_on_notfound)
         # then if none found, try to search within the package's modules
         if not klasses:
-            src_m_path = src_m.__path__[0]
-            for d in os.listdir(src_m_path):
-                if d.endswith("__pycache__"):
-                    continue
-                modpath = os.path.join(src_m.__name__,d).replace(".py","").replace(os.path.sep,".")
-                try:
-                    m = importlib.import_module(modpath)
-                    klasses.extend(self.find_classes(m,fail_on_notfound))
-                except (SyntaxError,ImportError) as e:
-                    logger.debug("Couldn't import %s: %s" % (modpath,e))
-                    continue
+            try:
+                src_m_path = src_m.__path__[0]
+                for d in os.listdir(src_m_path):
+                    if d.endswith("__pycache__"):
+                        continue
+                    modpath = os.path.join(src_m.__name__,d).replace(".py","").replace(os.path.sep,".")
+                    try:
+                        m = importlib.import_module(modpath)
+                        klasses.extend(self.find_classes(m,fail_on_notfound))
+                    except (SyntaxError,ImportError) as e:
+                        logger.debug("Couldn't import %s: %s" % (modpath,e))
+                        continue
+            except TypeError as e:
+                logger.warning("Can't register source '%s', something's wrong with path: %s" % (src_m,e))
         logger.debug("Found classes to register: %s" % repr(klasses))
 
         self.register_classes(klasses)
