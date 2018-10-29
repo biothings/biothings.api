@@ -52,13 +52,16 @@ def upload_worker(name, storage_class, loaddata_func, col_name,
                 "args=%s" % repr(args))
         import pickle
         pickfile = os.path.join(os.path.dirname(logfile),"%s.pick" % logger_name)
-        pickle.dump({"exc":e,
-                     "params" : {"name": name, "storage_class": storage_class},
-                     "loaddata_func" : loaddata_func,
-                     "col_name" : col_name,
-                     "batch_size" : batch_size,
-                     "data" : [d for d in data],
-                     "args" : args},open(pickfile,"wb"))
+        try:
+            pickle.dump({"exc":e,
+                         "params" : {"name": name, "storage_class": storage_class},
+                         "loaddata_func" : loaddata_func,
+                         "col_name" : col_name,
+                         "batch_size" : batch_size,
+                         "data" : [d for d in data],
+                         "args" : args},open(pickfile,"wb"))
+        except TypeError as ie:
+            logger.warning("Could not pickle batch errors: %s" % ie)
         raise
 
 

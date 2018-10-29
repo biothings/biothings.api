@@ -15,6 +15,9 @@ from biothings.utils.mongo import get_src_conn
 from biothings.utils.common import timesofar, get_random_string, sizeof_fmt
 from biothings.utils.hub_db import get_src_dump, get_src_build
 
+# see psutil cpu_percent() recommandation
+# this is in seconds, and provokes a blocking call, so keep it low
+CPU_PERCENT_WAIT_DELAY = 0.1
 
 def track(func):
     @wraps(func)
@@ -752,7 +755,7 @@ class JobManager(object):
                         },
                     "cpu" : {
                         "status" : child.status(),
-                        "percent" : child.cpu_percent()
+                        "percent" : child.cpu_percent(CPU_PERCENT_WAIT_DELAY)
                         },
                     "io" : {
                         "read_count" : pio.read_count,
