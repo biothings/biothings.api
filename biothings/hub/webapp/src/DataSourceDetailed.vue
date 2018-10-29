@@ -12,9 +12,48 @@
                 <div class="left aligned description">
                     <p>
                         <div class="ui clearing divider"></div>
-                        <div>
+                        <div class="left floated">
                             <i class="file outline icon"></i>
                             {{ source.count | currency('',0) }} document{{ source.count &gt; 1 ? "s" : "" }}
+                        </div>
+                        <div class="right floated">
+                            <span v-if="typeof license === 'object'">
+                                <table class="meta ui single line compact small table">
+                                    <thead>
+                                        <tr>
+                                            <th v-for="(_,src) in license">{{src}}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td v-for="url in license">
+                                                <a v-if="url.startsWith('http')" :href="url">license</a>
+                                                <span v-else>{{license}}</span>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td v-for="url in website">
+                                                <a :href="url">website</a>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </span>
+                            <span v-else>
+                                <table class="meta ui single line compact small table">
+                                    <tbody>
+                                        <tr>
+                                            <td>
+                                                <a v-if="license && license.startsWith('http')" :href="license">license</a>
+                                                <span v-else>{{license}}</span>
+                                            </td>
+                                            <td>
+                                                <a v-if="website" :href="website">website</a>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </span>
                         </div>
                         <br>
                     </p>
@@ -149,6 +188,12 @@ export default {
 
             return null;
         },
+        license: function() {
+            return this.pick_metadata(["license_url","license_url_short","license"]);
+        },
+        website: function() {
+            return this.pick_metadata(["url"]);
+        },
 
     },
     methods: {
@@ -166,9 +211,53 @@ export default {
                 this.loaderror(err);
             })
         },
+        pick_metadata: function(fields_priority) {
+            var meta = null;
+            function pick(values) {
+                var picked = null;
+                for(var field in fields_priority) {
+                    if(values[fields_priority[field]]) {
+                        picked = values[fields_priority[field]];
+                    }
+                }
+                return picked;
+            };
+
+            if(this.source.__metadata__) {
+                // one or more licenses ?
+                // One : __metadata__ is a dictionary containing license keys
+                // More: __metadata__ is a dictionary indexed by sub-src names
+                if(Array.isArray(this.source.__metadata__)) {
+                    meta = {}
+                    for(var idx in this.source.__metadata__) {
+                        var m = this.source.__metadata__[idx];
+                        for(var subsrc in m) {
+                            meta[subsrc] = pick(m[subsrc]);
+                        }
+                    }
+                } else {
+                    for(var src in this.source.__metadata__) {
+                        meta= pick(this.source.__metadata__)
+                    }
+                }
+            }
+            return meta;
+        },
     },
 }
 </script>
 
 <style>
+.meta.ui.table {
+    margin-bottom: 1em;
+    border: 0px;
+}
+.meta.ui.table thead th {
+    padding: 0.4em 0.4em 0.4em 0.4em !important;
+    text-align: center;
+}
+.meta.ui.table tbody td {
+    padding: 0.4em 0.4em 0.4em 0.4em !important;
+    text-align: center;
+}
 </style>
