@@ -642,7 +642,7 @@ class JobManager(object):
 
                     worker["process"] = {
                             "mem" : proc.memory_info().rss,
-                            "cpu" : proc.cpu_percent()
+                            "cpu" : proc.cpu_percent(CPU_PERCENT_WAIT_DELAY)
                             }
                     pids[pid] = worker
             except IndexError:
@@ -748,14 +748,18 @@ class JobManager(object):
         for child in pchildren:
             mem = child.memory_info().rss
             pio = child.io_counters()
+            cpu = child.cpu_percent(CPU_PERCENT_WAIT_DELAY)
             res[child.pid] = {
                     "memory" : {
                         "size" : child.memory_info().rss,
                         "percent": child.memory_percent(),
                         },
                     "cpu" : {
-                        "status" : child.status(),
-                        "percent" : child.cpu_percent(CPU_PERCENT_WAIT_DELAY)
+                        # override status() when we have cpu activity to avoid
+                        # having a "sleeping" process that's actually running something
+                        # (prob happening because delay between status and cpu_percent(), like a race condition)
+                        "status" : cpu > 0.0 and "running" or child.status(),
+                        "percent" : cpu
                         },
                     "io" : {
                         "read_count" : pio.read_count,
