@@ -98,7 +98,7 @@ class SourceManager(BaseSourceManager):
             upk = self.upload_manager["%s.%s" % (mini["_id"],subsrc)]
             assert len(upk) == 1, "More than 1 uploader found, can't handle that..."
             upk = upk.pop()
-            src_meta = getattr(upk,"__metadata__",{})
+            src_meta = upk.__metadata__["src_meta"]
             mapping = upk.get_mapping()
             origin = "uploader"
             if not mapping:
@@ -115,7 +115,7 @@ class SourceManager(BaseSourceManager):
             mini.setdefault("mapping",{}).setdefault(subsrc,{}).setdefault("mapping",mapping)
             mini.setdefault("mapping",{}).setdefault(subsrc,{}).setdefault("origin",origin)
         if src_meta:
-            mini.setdefault("src_meta",{}).setdefault(subsrc,src_meta)
+            mini.setdefault("__metadata__",{}).setdefault(subsrc,src_meta)
 
     def sumup_source(self,src,detailed=False):
         """Return minimal info about src"""
@@ -175,7 +175,6 @@ class SourceManager(BaseSourceManager):
                                 info["inspect"]["results"][mode].pop(k)
                         
                 mini["inspect"]["sources"][job] = info
-
 
         if src.get("locked"):
             mini["locked"] = src["locked"]
@@ -249,7 +248,49 @@ class SourceManager(BaseSourceManager):
                     sources[_id]["_id"] = _id
                     sources[_id]["name"] = _id
         if id:
-            return list(sources.values()).pop()
+            src = list(sources.values()).pop()
+            # enrich with metadata (uploader > dumper)
+            ks = []
+            if dm:
+                try:
+                    ks.extend(dm.register[id])
+                except KeyError:
+                    pass
+            if um:
+                try:
+                    ks.extend(um.register[id])
+                except KeyError:
+                    pass
+            for upk in ks:
+                # name either from uploader or dumper
+                name = getattr(upk,"name",None) or upk.SRC_NAME
+                if getattr(upk,"__metadata__",{}).get("src_meta"):
+                    src.setdefault("__metadata__",{}).setdefault(name,{})
+                    src["__metadata__"][name] = upk.__metadata__["src_meta"]
+            # simplify as needed (if only one source in metadata, remove source key level,
+            # or if licenses are the same amongst sources, keep one copy)
+            if len(src.get("__metadata__",{})) == 1:
+                src["__metadata__"] = list(src["__metadata__"].values()).pop()
+            elif len(src.get("__metadata__",{})) > 1:
+                metas = list(src["__metadata__"].values())
+                simplified = [metas.pop()]
+                same = True
+                while metas:
+                    m = metas.pop()
+                    if not m in simplified:
+                        same = False
+                        break
+                if same:
+                    # we consume all of them, ie. they're all equals
+                    src["__metadata__"] = list(src["__metadata__"].values()).pop()
+                else:
+                    # convert to a list of dict (so it's easier to detect if one or more
+                    # licenses just by checking if type is dict (one) or array (more))
+                    metas = src.pop("__metadata__")
+                    src["__metadata__"] = []
+                    for m in metas:
+                        src["__metadata__"].append({m:metas[m]})
+            return src
         else:
             return list(sources.values())
 

@@ -140,6 +140,8 @@ class BaseAssistant(object):
                 if not dumper_class:
                     raise AssistantException("No dumper class registered to handle scheme '%s'" % scheme)
                 confdict = getattr(self,"_dict_for_%s" % scheme)(durls)
+                if manifest.get("__metadata__"):
+                    confdict["__metadata__"] = {"src_meta" : manifest.get("__metadata__")}
                 k = type("AssistedDumper_%s" % self.plugin_name,(AssistedDumper,dumper_class,),confdict)
                 if manifest["dumper"].get("uncompress"):
                     k.UNCOMPRESS = True
@@ -201,6 +203,8 @@ class BaseAssistant(object):
                                                          "but no keylookup instance was found"
                         self.logger.info("Keylookup conversion required: %s" % manifest["uploader"]["keylookup"])
                         confdict["idconverter"] = self.__class__.keylookup(**manifest["uploader"]["keylookup"])
+                    if manifest.get("__metadata__"):
+                        confdict["__metadata__"] = {"src_meta" : manifest.get("__metadata__")}
                     k = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,),confdict)
                     self.__class__.uploader_manager.register_classes([k])
                     # register class in module so it can be pickled easily
