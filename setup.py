@@ -38,6 +38,8 @@ install_requires = [
     'tornado>=5.1',
     'elasticsearch>=6.1.1',
     'networkx>=2.1',
+    'pytz',
+    'gitpython'
 ]
 hub_requires = [
     'beautifulsoup4',
