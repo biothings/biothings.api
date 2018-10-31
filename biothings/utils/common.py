@@ -20,8 +20,7 @@ import importlib
 import math, statistics
 import hashlib
 import asyncio
-from datetime import date, datetime
-import pytz
+from datetime import date, datetime, timezone
 
 if sys.version_info.major == 3:
     str_types = str
@@ -565,7 +564,7 @@ def json_serial(obj):
     if isinstance(obj, (datetime, date)):
         if obj.tzinfo is None:
             # assuming UTC if no timezone info
-            obj = obj.replace(tzinfo=pytz.UTC)
+            obj = obj.replace(tzinfo=timezone.utc)
         serial = obj.isoformat()
         return serial
     raise TypeError ("Type %s not serializable" % type(obj))
