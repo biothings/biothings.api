@@ -36,21 +36,24 @@ if commit_hash or num_commits:
 install_requires = [
     'requests>=2.8.1',
     'tornado>=5.1',
-    'elasticsearch>=6.1.1',
+    'elasticsearch==6.1.1',
     'networkx>=2.1',
-    'gitpython'
+    'gitpython==2.1.11'
 ]
 hub_requires = [
     'beautifulsoup4',
     'aiocron',
-    'asyncssh==1.7.1',
+    'asyncssh==1.7.1', # needs libffi-dev installed (apt-get)
     'pymongo',
     'psutil',
     'jsonpointer',
     'IPython',
     'boto',
-    'multiprocessing_on_dill',
-    'pyinotify',
+    'boto3',
+    'multiprocessing_on_dill', # can replace pickler in concurrent.futures
+    'dill',
+    'pyinotify', # hub reloader
+    'prettytable', # diff report renderer
     'sockjs-tornado==1.0.3'
 ]
 
