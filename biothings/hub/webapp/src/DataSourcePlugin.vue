@@ -22,7 +22,7 @@
                         <tr>
                             <td >Source folder</td>
                             <td>
-                                {{source.data_plugin.download.data_folder}}
+                                <a v-if="source.data_plugin.download.data_folder" :href="source.data_plugin.download.data_folder | replace('/data/biothings_studio','')">{{  source.data_plugin.download.data_folder}}</a>
                             </td>
                         </tr>
                         <tr v-if="source.data_plugin.download.error">
