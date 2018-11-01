@@ -54,7 +54,7 @@ hub_requires = [
     'dill',
     'pyinotify', # hub reloader
     'prettytable', # diff report renderer
-    'sockjs-tornado==1.0.3'
+    'sockjs-tornado==1.0.6'
 ]
 
 setup(

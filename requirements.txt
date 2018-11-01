@@ -11,8 +11,8 @@ prettytable # diff report renderer
 multiprocessing_on_dill # to replace pickler in concurrent.futures
 dill # default pickler for job_manager (so we can pickle lambda)
 pyinotify # hub reloader
-tornado==4.5.3 # hub webserver
-sockjs-tornado==1.0.3 # websocket for hub webapp
+tornado==5.1.1 # hub webserver
+sockjs-tornado==1.0.6 # websocket for hub webapp
 elasticsearch==6.1.1
 networkx>=2.1
 GitPython==2.1.11
