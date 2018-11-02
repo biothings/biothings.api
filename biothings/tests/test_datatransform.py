@@ -116,6 +116,10 @@ class TestDataTransform(unittest.TestCase):
         res = next(res_lst)
         self.assertEqual(res['_id'], 'd:1234')
 
+        # Verify that the generator is out of documents
+        with self.assertRaises(StopIteration):
+            next(res_lst)
+
     def test_one2many(self):
         """
         test for one to many key lookup - artificial document.
