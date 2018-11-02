@@ -25,7 +25,7 @@
                                             Data folder
                                         </td>
                                         <td>
-                                            {{info.data_folder}}
+                                            <a v-if="info.data_folder" :href="info.data_folder | replace('/data/biothings_studio','')">{{ info.data_folder }}</a>
                                         </td>
                                     </tr>
                                     <tr>
