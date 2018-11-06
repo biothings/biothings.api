@@ -856,3 +856,127 @@ class HubReloader(object):
 
     def watches(self):
         return [v.path for v in self.watcher_manager.watches.values()]
+
+
+def get_managers(source_list,
+                 features=["dump","upload","build","diff",
+                           "index","dataplugin","inspect",
+                           "sync","api","job"],
+                 custom_args={}):
+    """
+    Helper to setup and instantiate common managers usually used in a hub
+    (eg. dumper manager, uploader manager, etc...)
+    "source_list" is either:
+        - a list of string corresponding to paths to datasources modules
+        - a package containing sub-folders with datasources modules
+    Specific managers can be retrieved adjusting "features" parameter, where
+    each feature corresponds to one or more managers. Parameter defaults to
+    all possible available.
+    custom_args is an optional dict used to pass specific arguments while
+    init managers:
+        custom_args={"upload" : {"poll_schedule" : "*/5 * * * *"}}
+    will set poll schedule to check upload every 5min (instead of default 10s)
+    """
+    managers = {}
+
+    def mixargs(feat,params={}):
+        args = {}
+        for p in params:
+            args[p] = custom_args.get(feat,{}).pop(p,None) or params[p]
+        # mix remaining
+        args.update(custom_args.get(feat,{}))
+        return args
+
+    logging.info("Setting up managers for following features: %s" % features)
+    assert "job" in features, "'job' feature is mandatory"
+
+    if "job" in features:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        from biothings.utils.manager import JobManager
+        args = mixargs("job",{"num_workers":config.HUB_MAX_WORKERS,"max_memory_usage":config.HUB_MAX_MEM_USAGE})
+        job_manager = JobManager(loop,**args)
+        managers["job_manager"] = job_manager
+    if "dump" in features:
+        from biothings.hub.dataload.dumper import DumperManager
+        args = mixargs("dump")
+        dmanager = DumperManager(job_manager=managers["job_manager"],**args)
+        managers["dump_manager"] = dmanager
+    if "upload" in features:
+        from biothings.hub.dataload.uploader import UploaderManager
+        args = mixargs("upload",{"poll_schedule":"* * * * * */10"})
+        upload_manager = UploaderManager(job_manager=managers["job_manager"],**args)
+        managers["upload_manager"] = upload_manager
+    if "dataplugin" in features:
+        from biothings.hub.dataplugin.manager import DataPluginManager
+        dp_manager = DataPluginManager(job_manager=managers["job_manager"])
+        managers["dataplugin_manager"] = dp_manager
+        from biothings.hub.dataplugin.assistant import AssistantManager
+        args = mixargs("dataplugin")
+        assistant_manager = AssistantManager(
+                data_plugin_manager=dp_manager,
+                dumper_manager=managers["dump_manager"],
+                uploader_manager=managers["upload_manager"],
+                job_manager=managers["job_manager"],
+                **args)
+        assistant_manager.configure()
+        assistant_manager.load()
+        managers["assistant_manager"] = assistant_manager
+    if "build" in features:
+        from biothings.hub.databuild.builder import BuilderManager
+        args = mixargs("build")
+        build_manager = BuilderManager(job_manager=managers["job_manager"],**args)
+        build_manager.configure()
+        managers["build_manager"] = build_manager
+    if "diff" in features:
+        from biothings.hub.databuild.differ import DifferManager, SelfContainedJsonDiffer
+        args = mixargs("diff")
+        diff_manager = DifferManager(job_manager=managers["job_manager"],**args)
+        diff_manager.configure([SelfContainedJsonDiffer,])
+        managers["diff_manager"] = diff_manager
+    if "index" in features:
+        from biothings.hub.dataindex.indexer import IndexerManager
+        args = mixargs("index")
+        index_manager = IndexerManager(job_manager=managers["job_manager"],**args)
+        index_manager.configure(config.ES_CONFIG)
+        managers["index_manager"] = index_manager
+    if "sync" in features:
+        from biothings.hub.databuild.syncer import ThrottledESJsonDiffSelfContainedSyncer, \
+                ESJsonDiffSelfContainedSyncer, SyncerManager
+        args = mixargs("sync")
+        sync_manager = SyncerManager(job_manager=managers["job_manager"],**args)
+        managers["sync_manager"] = sync_manager
+    if "inspect" in features:
+        assert "upload" in features, "'inspect' feature requires 'upload'"
+        assert "build" in features, "'inspect' feature requires 'build'"
+        from biothings.hub.datainspect.inspector import InspectorManager
+        args = mixargs("inspect")
+        inspect_manager = InspectorManager(
+                upload_manager=managers["upload_manager"],
+                build_manager=managers["build_manager"],
+                job_manager=managers["job_manager"],**args)
+        managers["inspect_manager"] = inspect_manager
+    if "api" in features:
+        from biothings.hub.api.manager import APIManager
+        args = mixargs("api")
+        api_manager = APIManager(**args)
+        managers["api_manager"] = api_manager
+    if "dump" in features or "upload" in features:
+        args = mixargs("source")
+        from biothings.hub.dataload.source import SourceManager
+        source_manager = SourceManager(
+                source_list=source_list,
+                dump_manager=managers["dump_manager"],
+                upload_manager=managers["upload_manager"],
+                data_plugin_manager=managers.get("dataplugin_manager"),
+                )
+        managers["source_manager"] = source_manager
+        # now that we have the source manager setup, we can schedule and poll
+        if "dump" in features and not getattr(config,"SKIP_DUMPER_SCHEDULE",False):
+            managers["dump_manager"].schedule_all()
+        if "upload" in features and not getattr(config,"SKIP_UPLOADER_POLL",False):
+            managers["upload_manager"].poll('upload',lambda doc:
+                    shell.launch(partial(upload_manager.upload_src,doc["_id"])))
+
+    logging.info("Active manager(s): %s" % managers)
+    return managers
