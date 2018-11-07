@@ -133,7 +133,6 @@ class DataTransformMDB(DataTransform):
         self.paths = {}
         for output_type in self.output_types:
             for input_type in self.input_types:
-                self.logger.info("Compute Path From '{}' to '{}'".format(input_type[0], output_type))
                 paths = [p for p in all_simple_paths(self.G, input_type[0], output_type)]
                 if not paths:
                     try:
@@ -150,7 +149,7 @@ class DataTransformMDB(DataTransform):
                 # Sort by path length - try the shortest paths first
                 paths = sorted(paths, key=self._compute_path_weight)
                 self.paths[(input_type[0], output_type)] = paths
-        self.logger.debug("All Travel Paths:  {}".format(self.paths))
+        self.logger.debug("All Pre-Computed DataTransform Paths:  {}".format(self.paths))
 
     def key_lookup_batch(self, batchiter):
         """
@@ -181,7 +180,7 @@ class DataTransformMDB(DataTransform):
                         (hit_lst, miss_lst) = self._copy(input_type, miss_lst)
                 else:    
                     (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
-                
+
                 for doc in hit_lst:
                     yield doc
 
@@ -273,7 +272,7 @@ class DataTransformMDB(DataTransform):
                 path_strct = self._edge_lookup(edge, path_strct)
                 num_output_ids = len(path_strct)
                 if num_input_ids:
-                    self.logger.debug("Edge {} - {}, {} searched returned {}".format(v1, v2, num_input_ids, num_output_ids))
+                    # self.logger.debug("Edge {} - {}, {} searched returned {}".format(v1, v2, num_input_ids, num_output_ids))
                     self.histogram.update_edge(v1, v2, num_output_ids)
 
             if len(path_strct):
