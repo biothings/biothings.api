@@ -120,6 +120,8 @@ class BaseAssistant(object):
     def interpret_manifest(self, manifest):
         # dumper section: generate 
         dumper_class = None
+        assisted_dumper_class = None
+        assisted_uploader_class = None
         if manifest.get("dumper"):
             if manifest["dumper"].get("data_url"):
                 if not type(manifest["dumper"]["data_url"]) is list:
@@ -142,16 +144,16 @@ class BaseAssistant(object):
                 confdict = getattr(self,"_dict_for_%s" % scheme)(durls)
                 if manifest.get("__metadata__"):
                     confdict["__metadata__"] = {"src_meta" : manifest.get("__metadata__")}
-                k = type("AssistedDumper_%s" % self.plugin_name,(AssistedDumper,dumper_class,),confdict)
+                assisted_dumper_class = type("AssistedDumper_%s" % self.plugin_name,(AssistedDumper,dumper_class,),confdict)
                 if manifest["dumper"].get("uncompress"):
-                    k.UNCOMPRESS = True
-                self.__class__.dumper_manager.register_classes([k])
+                    assisted_dumper_class.UNCOMPRESS = True
+                self.__class__.dumper_manager.register_classes([assisted_dumper_class])
                 # register class in module so it can be pickled easily
-                sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedDumper_%s" % self.plugin_name] = k
+                sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedDumper_%s" % self.plugin_name] = assisted_dumper_class
             else:
                 raise AssistantException("Invalid manifest, expecting 'data_url' key in 'dumper' section")
 
-            assert dumper_class
+            assert assisted_dumper_class
             if manifest["dumper"].get("release"):
                 try:
                     mod,func = manifest["dumper"].get("release").split(":")
@@ -168,7 +170,7 @@ class BaseAssistant(object):
                     # replace existing method to connect custom release setter
                     def set_release(self):
                         self.release = get_release_func(self)
-                    dumper_class.set_release = set_release
+                    assisted_dumper_class.set_release = set_release
                 except Exception as e:
                     self.logger.exception("Error loading plugin: %s" % e)
                     raise AssistantException("Can't interpret manifest: %s" % e)
@@ -205,10 +207,10 @@ class BaseAssistant(object):
                         confdict["idconverter"] = self.__class__.keylookup(**manifest["uploader"]["keylookup"])
                     if manifest.get("__metadata__"):
                         confdict["__metadata__"] = {"src_meta" : manifest.get("__metadata__")}
-                    k = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,),confdict)
-                    self.__class__.uploader_manager.register_classes([k])
+                    assisted_uploader_class = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,),confdict)
+                    self.__class__.uploader_manager.register_classes([assisted_uploader_class])
                     # register class in module so it can be pickled easily
-                    sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedUploader_%s" % self.plugin_name] = k
+                    sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedUploader_%s" % self.plugin_name] = assisted_uploader_class
                 except Exception as e:
                     self.logger.exception("Error loading plugin: %s" % e)
                     raise AssistantException("Can't interpret manifest: %s" % e)

@@ -18,24 +18,21 @@ class UploadHandler(GenericHandler):
     def initialize(self,upload_root,**kwargs):
         self.upload_root = upload_root
 
-    def set_default_headers(self):
-        self.set_header('Access-Control-Allow-Origin','*')
-        # part of pre-flight requests
-        self.set_header('Access-Control-Allow-Methods','PUT, DELETE, POST, GET, OPTIONS')
-        self.set_header('Access-Control-Allow-Headers','Content-Type')
-
     def prepare(self):
         # sanity check + extract boundary
         ct = self.request.headers.get("Content-Type")
         if not ct:
             self.write_error(400,exc_info=[None,"No Content-Type header found",None])
+            return
         try:
             ct,boundary = ct.split(";")
         except Exception as e:
             self.write_error(400,exc_info=[None,str(e),None])
+            return
         ct = ct.strip()
         if ct != "multipart/form-data":
             self.write_error(400,exc_info=[None,"Excepting 'Content-Type: multipart/form-data', got %s" % ct,None])
+            return
         boundname,boundary = boundary.strip().split("=")
         if boundname != "boundary":
             self.write_error(400,exc_info=[None,"No boundary field found in headers",None])

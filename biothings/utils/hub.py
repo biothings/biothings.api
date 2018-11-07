@@ -20,6 +20,7 @@ from biothings.utils.common import timesofar, sizeof_fmt
 import biothings.utils.aws as aws
 from biothings.utils.hub_db import get_cmd, get_src_dump, get_src_build, get_src_build_config, \
                                    get_last_command, backup, restore
+from biothings.utils.jsondiff import make as jsondiff
 
 # useful variables to bring into hub namespace
 pending = "pending"
@@ -106,6 +107,9 @@ class HubShell(InteractiveShell):
         register({"backup":CommandDefinition(command=backup,track=True)})
         register({"restore":CommandDefinition(command=restore,track=True)})
         register({"help":CommandDefinition(command=self.help,track=False)})
+        register({"commands":CommandDefinition(command=self.command_info,tracked=False)})
+        register({"command":CommandDefinition(command=lambda id,*args,**kwargs:
+            self.command_info(id=id,*args,**kwargs),tracked=False)})
 
         for extra in extra_ns:
             # don't expose extra commands, they're kind of private/advanced
@@ -175,52 +179,6 @@ class HubShell(InteractiveShell):
             fut.add_done_callback(start)
 
         return fut
-
-    def status(self):
-        total_srcs = None
-        total_docs = None
-        total_confs = None
-        total_builds = None
-        total_apis = None
-        total_running_apis = None
-        if self.managers.get("source_manager"):
-            try:
-                srcm = self.managers["source_manager"]
-                srcs = srcm.get_sources()
-                total_srcs = len(srcs)
-                total_docs = sum([s["upload"]["sources"][subs].get("count",0) or 0 \
-                                for s in srcs
-                                for subs in s.get("upload",{}).get("sources",{}) \
-                                if s.get("upload")])
-            except Exception as e:
-                logging.error("Can't get stats for sources: %s" % e)
-
-        try:
-            bm = self.managers["build_manager"]
-            total_confs = len(bm.build_config_info())
-        except Exception as e:
-            logging.error("Can't get total number of build configurations: %s" % e)
-        try:
-            total_builds = len(bm.build_info())
-        except Exception as e:
-            logging.error("Can't get total number of builds: %s" % e)
-
-        try:
-            am = self.managers["api_manager"]
-            apis = am.get_apis()
-            total_apis = len(apis)
-            total_running_apis = len([a for a in apis if a.get("status") == "running"])
-        except Exception as e:
-            logging.error("Can't get stats for APIs: %s" % e)
-
-        return {
-                "source" : {"total" : total_srcs,
-                            "documents" : total_docs},
-                "build" : {"total" : total_builds},
-                "build_conf" : {"total" : total_confs},
-                "api" : {"total" : total_apis,
-                         "running" : total_running_apis},
-                }
 
     def help(self, func=None):
         """
@@ -858,11 +816,58 @@ class HubReloader(object):
         return [v.path for v in self.watcher_manager.watches.values()]
 
 
-def get_managers(source_list,
-                 features=["dump","upload","build","diff",
-                           "index","dataplugin","inspect",
-                           "sync","api","job"],
-                 custom_args={}):
+def status(managers):
+    """
+    Return a global hub status (number or sources, documents, etc...)
+    according to available managers
+    """
+    total_srcs = None
+    total_docs = None
+    total_confs = None
+    total_builds = None
+    total_apis = None
+    total_running_apis = None
+    if managers.get("source_manager"):
+        try:
+            srcm = managers["source_manager"]
+            srcs = srcm.get_sources()
+            total_srcs = len(srcs)
+            total_docs = sum([s["upload"]["sources"][subs].get("count",0) or 0 \
+                            for s in srcs
+                            for subs in s.get("upload",{}).get("sources",{}) \
+                            if s.get("upload")])
+        except Exception as e:
+            logging.error("Can't get stats for sources: %s" % e)
+
+    try:
+        bm = managers["build_manager"]
+        total_confs = len(bm.build_config_info())
+    except Exception as e:
+        logging.error("Can't get total number of build configurations: %s" % e)
+    try:
+        total_builds = len(bm.build_info())
+    except Exception as e:
+        logging.error("Can't get total number of builds: %s" % e)
+
+    try:
+        am = managers["api_manager"]
+        apis = am.get_apis()
+        total_apis = len(apis)
+        total_running_apis = len([a for a in apis if a.get("status") == "running"])
+    except Exception as e:
+        logging.error("Can't get stats for APIs: %s" % e)
+
+    return {
+            "source" : {"total" : total_srcs,
+                        "documents" : total_docs},
+            "build" : {"total" : total_builds},
+            "build_conf" : {"total" : total_confs},
+            "api" : {"total" : total_apis,
+                     "running" : total_running_apis},
+            }
+
+
+def get_managers(source_list, features, custom_args={}):
     """
     Helper to setup and instantiate common managers usually used in a hub
     (eg. dumper manager, uploader manager, etc...)
@@ -871,7 +876,7 @@ def get_managers(source_list,
         - a package containing sub-folders with datasources modules
     Specific managers can be retrieved adjusting "features" parameter, where
     each feature corresponds to one or more managers. Parameter defaults to
-    all possible available.
+    all possible available. Sett get_hub_server() for complete list of features
     custom_args is an optional dict used to pass specific arguments while
     init managers:
         custom_args={"upload" : {"poll_schedule" : "*/5 * * * *"}}
@@ -980,3 +985,252 @@ def get_managers(source_list,
 
     logging.info("Active manager(s): %s" % managers)
     return managers
+
+
+def get_commands(managers):
+    """
+    Return a dict {"command_name" : command} containing all commands
+    that can be exposed according to passed managers dict (see get_managers)
+    """
+    commands = OrderedDict()
+    commands["status"] = CommandDefinition(command=partial(status,managers),tracked=False)
+    # getting info
+    if managers.get("source_manager"):
+        commands["source_info"] = CommandDefinition(command=managers["source_manager"].get_source,tracked=False)
+    # dump commands
+    if managers.get("dump_manager"):
+        commands["dump"] = managers["dump_manager"].dump_src
+        commands["dump_all"] = managers["dump_manager"].dump_all
+    # upload commands
+    if managers.get("upload_manager"):
+        commands["upload"] = managers["upload_manager"].upload_src
+        commands["upload_all"] = managers["upload_manager"].upload_all
+    # building/merging
+    if managers.get("build_manager"):
+        commands["whatsnew"] = CommandDefinition(command=managers["build_manager"].whatsnew,tracked=False)
+        commands["lsmerge"] = managers["build_manager"].list_merge
+        commands["rmmerge"] = managers["build_manager"].delete_merge
+        commands["merge"] = managers["build_manager"].merge
+    if hasattr(config,"ES_CONFIG"):
+        commands["es_config"] = config.ES_CONFIG
+    # diff
+    if managers.get("diff_manager"):
+        commands["diff"] = managers["diff_manager"].diff
+        commands["report"] = managers["diff_manager"].diff_report
+        commands["release_note"] = managers["diff_manager"].release_note
+        commands["publish_diff"] = managers["diff_manager"].publish_diff
+    # indexing commands
+    if managers.get("index_manager"):
+        commands["index"] = managers["index_manager"].index
+        commands["snapshot"] = managers["index_manager"].snapshot
+        commands["publish_snapshot"] = managers["index_manager"].publish_snapshot
+    # inspector
+    if managers.get("inspect_manager"):
+        commands["inspect"] = managers["inspect_manager"].inspect
+    # data plugins
+    if managers.get("assistant_manager"):
+        commands["register_url"] = partial(managers["assistant_manager"].register_url)
+        commands["unregister_url"] = partial(managers["assistant_manager"].unregister_url)
+    if managers.get("dataplugin_manager"):
+        commands["dump_plugin"] = managers["dataplugin_manager"].dump_src
+
+    logging.info("Registered commands: %s" % list(commands.keys()))
+    return commands
+
+
+def get_extra_commands(managers):
+    """
+    Same as get_commands but returned commands are not exposed publicly in the shell
+    (they are shortcuts or commands for API endpoints, supporting commands, etc...)
+    """
+    extra_commands = {} # unordered since not exposed, we don't care
+    loop = managers.get("job_manager") and managers["job_manager"].loop or asyncio.get_event_loop()
+    extra_commands["g"] = CommandDefinition(command=globals(),tracked=False)
+    extra_commands["sch"] = CommandDefinition(command=partial(schedule,loop),tracked=False)
+    # expose contant so no need to put quotes (eg. top(pending) instead of top("pending")
+    extra_commands["pending"] = CommandDefinition(command=pending,tracked=False)
+    extra_commands["done"] = CommandDefinition(command=done,tracked=False)
+    extra_commands["loop"] = CommandDefinition(command=loop,tracked=False)
+
+    if managers.get("source_manager"):
+        extra_commands["sources"] = CommandDefinition(command=managers["source_manager"].get_sources,tracked=False)
+        extra_commands["source_save_mapping"] = CommandDefinition(command=managers["source_manager"].save_mapping)
+    if managers.get("dump_manager"):
+        extra_commands["dm"] = CommandDefinition(command=managers["dump_manager"],tracked=False)
+        extra_commands["dump_info"] = CommandDefinition(command=managers["dump_manager"].dump_info,tracked=False)
+    if managers.get("dataplugin_manager"):
+        extra_commands["dpm"] = CommandDefinition(command=managers["dataplugin_manager"],tracked=False)
+    if managers.get("assistant_manager"):
+        extra_commands["am"] = CommandDefinition(command=managers["assistant_manager"],tracked=False)
+    if managers.get("upload_manager"):
+        extra_commands["um"] = CommandDefinition(command=managers["upload_manager"],tracked=False)
+        extra_commands["upload_info"] = CommandDefinition(command=managers["upload_manager"].upload_info,tracked=False)
+    if managers.get("build_manager"):
+        extra_commands["bm"] = CommandDefinition(command=managers["build_manager"],tracked=False)
+        extra_commands["builds"] = CommandDefinition(command=managers["build_manager"].build_info,tracked=False)
+        extra_commands["build"] = CommandDefinition(command=lambda id: managers["build_manager"].build_info(id=id),tracked=False)
+        extra_commands["build_config_info"] = CommandDefinition(command=managers["build_manager"].build_config_info,tracked=False)
+        extra_commands["build_save_mapping"] = CommandDefinition(command=managers["build_manager"].save_mapping)
+        extra_commands["create_build_conf"] = CommandDefinition(command=managers["build_manager"].create_build_configuration)
+        extra_commands["delete_build_conf"] = CommandDefinition(command=managers["build_manager"].delete_build_configuration)
+    if managers.get("diff_manager"):
+        extra_commands["dim"] = CommandDefinition(command=managers["diff_manager"],tracked=False)
+        extra_commands["diff_info"] = CommandDefinition(command=managers["diff_manager"].diff_info,tracked=False)
+        extra_commands["jsondiff"] = CommandDefinition(command=jsondiff,tracked=False)
+    if managers.get("sync_manager"):
+        extra_commands["sm"] = CommandDefinition(command=managers["sync_manager"],tracked=False)
+        extra_commands["sync"] = CommandDefinition(command=managers["sync_manager"].sync)
+    if managers.get("index_manager"):
+        extra_commands["im"] = CommandDefinition(command=managers["index_manager"],tracked=False)
+        extra_commands["index_info"] = CommandDefinition(command=managers["index_manager"].index_info,tracked=False)
+        extra_commands["validate_mapping"] = CommandDefinition(command=managers["index_manager"].validate_mapping)
+        extra_commands["pqueue"] = CommandDefinition(command=managers["job_manager"].process_queue,tracked=False)
+        extra_commands["tqueue"] = CommandDefinition(command=managers["job_manager"].thread_queue,tracked=False)
+        extra_commands["jm"] = CommandDefinition(command=managers["job_manager"],tracked=False)
+        extra_commands["top"] = CommandDefinition(command=managers["job_manager"].top,tracked=False)
+        extra_commands["job_info"] = CommandDefinition(command=managers["job_manager"].job_info,tracked=False)
+    if managers.get("inspect_manager"):
+        extra_commands["ism"] = CommandDefinition(command=managers["inspect_manager"],tracked=False)
+    if managers.get("api_manager"):
+        extra_commands["api"] = CommandDefinition(command=managers["api_manager"],tracked=False)
+        extra_commands["get_apis"] = CommandDefinition(command=managers["api_manager"].get_apis,tracked=False)
+        extra_commands["delete_api"] = CommandDefinition(command=managers["api_manager"].delete_api)
+        extra_commands["create_api"] = CommandDefinition(command=managers["api_manager"].create_api)
+        extra_commands["start_api"] = CommandDefinition(command=managers["api_manager"].start_api)
+        extra_commands["stop_api"] = managers["api_manager"].stop_api
+
+    logging.debug("Registered extra (private) commands: %s" % list(extra_commands.keys()))
+    return extra_commands
+
+
+def get_api_endpoints(commands, extra_commands={}):
+    cmdnames = list(commands.keys())
+    if extra_commands:
+        cmdnames.extend(list(extra_commands.keys()))
+    from biothings.hub.api import EndpointDefinition
+    api_endpoints = {}
+    if "builds" in cmdnames: api_endpoints["builds"] = EndpointDefinition(name="builds",method="get")
+    api_endpoints["build"] = []
+    if "build" in cmdnames: api_endpoints["build"].append(EndpointDefinition(method="get",name="build"))
+    if "rmmerge" in cmdnames: api_endpoints["build"].append(EndpointDefinition(method="delete",name="rmmerge"))
+    if "merge" in cmdnames: api_endpoints["build"].append(EndpointDefinition(name="merge",method="put",suffix="new"))
+    if "build_save_mapping" in cmdnames: api_endpoints["build"].append(EndpointDefinition(name="build_save_mapping",method="put",suffix="mapping"))
+    if not api_endpoints["build"]:
+        api_endpoints.pop("build")
+    if "diff" in cmdnames: api_endpoints["diff"] = EndpointDefinition(name="diff",method="put",force_bodyargs=True)
+    if "job_info" in cmdnames: api_endpoints["job_manager"] = EndpointDefinition(name="job_info",method="get")
+    if "dump_info" in cmdnames: api_endpoints["dump_manager"] = EndpointDefinition(name="dump_info", method="get")
+    if "upload_info" in cmdnames: api_endpoints["upload_manager"] = EndpointDefinition(name="upload_info",method="get")
+    if "build_config_info" in cmdnames: api_endpoints["build_manager"] = EndpointDefinition(name="build_config_info",method="get")
+    if "index_info" in cmdnames: api_endpoints["index_manager"] = EndpointDefinition(name="index_info",method="get")
+    if "diff_info" in cmdnames: api_endpoints["diff_manager"] = EndpointDefinition(name="diff_info",method="get")
+    if "commands" in cmdnames: api_endpoints["commands"] = EndpointDefinition(name="commands",method="get")
+    if "command" in cmdnames: api_endpoints["command"] = EndpointDefinition(name="command",method="get")
+    if "sources" in cmdnames: api_endpoints["sources"] = EndpointDefinition(name="sources",method="get")
+    api_endpoints["source"] = []
+    if "source_info" in cmdnames: api_endpoints["source"].append(EndpointDefinition(name="source_info",method="get"))
+    if "dump" in cmdnames: api_endpoints["source"].append(EndpointDefinition(name="dump",method="put",suffix="dump"))
+    if "upload" in cmdnames: api_endpoints["source"].append(EndpointDefinition(name="upload",method="put",suffix="upload"))
+    if "source_save_mapping" in cmdnames: api_endpoints["source"].append(EndpointDefinition(name="source_save_mapping",method="put",suffix="mapping"))
+    if not api_endpoints["source"]:
+        api_endpoints.pop("source")
+    if "inspect" in cmdnames: api_endpoints["inspect"] = EndpointDefinition(name="inspect",method="put",force_bodyargs=True)
+    if "register_url" in cmdnames: api_endpoints["dataplugin/register_url"] = EndpointDefinition(name="register_url",method="post",force_bodyargs=True)
+    if "unregister_url" in cmdnames: api_endpoints["dataplugin/unregister_url"] = EndpointDefinition(name="unregister_url",method="delete",force_bodyargs=True)
+    if "dump_plugin" in cmdnames: api_endpoints["dataplugin"] = [EndpointDefinition(name="dump_plugin",method="put",suffix="dump")]
+    if "jsondiff" in cmdnames: api_endpoints["jsondiff"] = EndpointDefinition(name="jsondiff",method="post",force_bodyargs=True)
+    if "validate_mapping" in cmdnames: api_endpoints["mapping/validate"] = EndpointDefinition(name="validate_mapping",method="post",force_bodyargs=True)
+    api_endpoints["buildconf"] = []
+    if "create_build_conf" in cmdnames: api_endpoints["buildconf"].append(EndpointDefinition(name="create_build_conf",method="post",force_bodyargs=True))
+    if "delete_build_conf" in cmdnames: api_endpoints["buildconf"].append(EndpointDefinition(name="delete_build_conf",method="delete",force_bodyargs=True))
+    if not api_endpoints["buildconf"]:
+        api_endpoints.pop("buildconf")
+    if "index" in cmdnames: api_endpoints["index"] = EndpointDefinition(name="index",method="put",force_bodyargs=True)
+    if "sync" in cmdnames: api_endpoints["sync"] = EndpointDefinition(name="sync",method="post",force_bodyargs=True)
+    if "whatsnew" in cmdnames: api_endpoints["whatsnew"] = EndpointDefinition(name="whatsnew",method="get")
+    if "status" in cmdnames: api_endpoints["status"] = EndpointDefinition(name="status",method="get")
+    api_endpoints["api"] = []
+    if "start_api" in cmdnames: api_endpoints["api"].append(EndpointDefinition(name="start_api",method="put",suffix="start"))
+    if "stop_api" in cmdnames: api_endpoints["api"].append(EndpointDefinition(name="stop_api",method="put",suffix="stop"))
+    if "delete_api" in cmdnames: api_endpoints["api"].append(EndpointDefinition(name="delete_api",method="delete",force_bodyargs=True))
+    if "create_api" in cmdnames: api_endpoints["api"].append(EndpointDefinition(name="create_api",method="post",force_bodyargs=True))
+    if not api_endpoints["api"]:
+        api_endpoints.pop("api")
+    if "get_apis" in cmdnames: api_endpoints["api/list"] = EndpointDefinition(name="get_apis",method="get")
+    if "stop" in cmdnames: api_endpoints["stop"] = EndpointDefinition(name="stop",method="put")
+    if "restart" in cmdnames: api_endpoints["restart"] = EndpointDefinition(name="restart",method="put")
+
+    return api_endpoints
+
+
+def get_hub_server(source_list, features=["dump","upload","build","diff",
+                                          "index","dataplugin","inspect",
+                                          "sync","api","job"],
+                   with_websocket=True, with_dataupload = True, with_reloader=True,
+                   reloader_config={
+                       "folders": None, # will use default one
+                       "managers" : ["source_manager","assistant_manager"],
+                       "reload_func" : None, # will use default one
+                       },
+                   custom_args={"upload":{"poll_schedule":'* * * * * */10'}}):
+
+    managers = get_managers(source_list,features,custom_args=custom_args)
+    shell = HubShell(managers["job_manager"])
+    shell.register_managers(managers)
+    commands = get_commands(managers)
+    extra_commands = get_extra_commands(managers)
+    shell.set_commands(commands,extra_commands)
+    # can't use asyncio.get_event_loop() if python < 3.5.3 as it would return
+    # another instance of aio loop, take it from job_manager to make sure
+    # we share the same one
+    from biothings.hub.api import generate_api_routes, start_api
+    api_endpoints = get_api_endpoints(commands,extra_commands)
+
+    routes = generate_api_routes(shell, api_endpoints)
+
+    if with_dataupload:
+        # this one is not bound to a specific command
+        from biothings.hub.api.handlers.upload import UploadHandler
+        # tuple type = interpreted as a route handler
+        routes.append(("/dataupload/([\w\.-]+)?",UploadHandler,{"upload_root":config.DATA_UPLOAD_FOLDER}))
+
+
+    if with_websocket:
+        # add websocket endpoint
+        import biothings.hub.api.handlers.ws as ws
+        import sockjs.tornado
+        from biothings.utils.hub_db import ChangeWatcher
+        listener = ws.HubDBListener()
+        ChangeWatcher.add(listener)
+        ChangeWatcher.publish()
+        ws_router = sockjs.tornado.SockJSRouter(partial(ws.WebSocketConnection,listener=listener), '/ws')
+        routes.extend(ws_router.urls)
+
+    if with_reloader:
+        from biothings.utils.hub import HubReloader
+        monitored_folders = reloader_config["folders"] or ["hub/dataload/sources",getattr(config,"DATA_PLUGIN_FOLDER",None)]
+        reload_managers = [managers[m] for m in reloader_config["managers"]]
+        reload_func = reloader_config["reload_func"] or partial(shell.restart,force=True)
+        reloader = HubReloader(monitored_folders, reload_managers, reload_func=reload_func)
+        reloader.monitor()
+
+    loop = managers["job_manager"].loop
+
+    import tornado.web
+    import tornado.platform.asyncio
+    tornado.platform.asyncio.AsyncIOMainLoop().install()
+    # register app into current event loop
+    app = tornado.web.Application(routes)
+    extra_commands["app"] = app
+    app_server = start_api(app,config.HUB_API_PORT,settings=config.TORNADO_SETTINGS)
+    server = start_server(loop,"BioThings Studio hub",passwords=config.HUB_PASSWD,
+                          port=config.HUB_SSH_PORT,shell=shell)
+    try:
+        loop.run_until_complete(server)
+    except (OSError, asyncssh.Error) as exc:
+        sys.exit('Error starting server: ' + str(exc))
+    
+    loop.run_forever()
+
+    return server
+

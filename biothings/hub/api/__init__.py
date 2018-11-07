@@ -214,9 +214,6 @@ def create_handlers(shell, command_defs):
                          method=config.get("method","GET"),
                          force_bodyargs=config.get("force_bodyargs",False))]
         try:
-            klasses_nums_suffices = []
-            #for cmddef in commands:
-            #    klasses_nums_suffices += generate_handler(shell,cmdname,cmddef)
             routes += generate_handler(shell,cmdname,commands)
         except TypeError as e:
             logging.exception("Can't generate handler for '%s': %s" % (cmdname,e))
