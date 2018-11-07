@@ -20,6 +20,7 @@ from biothings.utils.common import timesofar, sizeof_fmt
 import biothings.utils.aws as aws
 from biothings.utils.hub_db import get_cmd, get_src_dump, get_src_build, get_src_build_config, \
                                    get_last_command, backup, restore
+from biothings.utils.loggers import get_logger
 from biothings.utils.jsondiff import make as jsondiff
 
 # useful variables to bring into hub namespace
@@ -99,6 +100,9 @@ class HubShell(InteractiveShell):
                 else:
                     self.commands[name] = cmd
                     self.hidden[name] = hidden
+                # update original passed commands to caller knows what's been done therz
+                if not name in basic_commands:
+                    basic_commands[name] = cmd
         # update with ssh server default commands
         register(basic_commands)
         # don't track this calls
@@ -867,370 +871,425 @@ def status(managers):
             }
 
 
-def get_managers(source_list, features, custom_args={}):
-    """
-    Helper to setup and instantiate common managers usually used in a hub
-    (eg. dumper manager, uploader manager, etc...)
-    "source_list" is either:
-        - a list of string corresponding to paths to datasources modules
-        - a package containing sub-folders with datasources modules
-    Specific managers can be retrieved adjusting "features" parameter, where
-    each feature corresponds to one or more managers. Parameter defaults to
-    all possible available. Sett get_hub_server() for complete list of features
-    custom_args is an optional dict used to pass specific arguments while
-    init managers:
-        custom_args={"upload" : {"poll_schedule" : "*/5 * * * *"}}
-    will set poll schedule to check upload every 5min (instead of default 10s)
-    """
-    managers = {}
+class HubServer(object):
 
-    def mixargs(feat,params={}):
-        args = {}
-        for p in params:
-            args[p] = custom_args.get(feat,{}).pop(p,None) or params[p]
-        # mix remaining
-        args.update(custom_args.get(feat,{}))
-        return args
+    DEFAULT_FEATURES = ["dump","upload","build","diff", "index",
+                        "dataplugin","inspect","sync","api","job"]
+    DEFAULT_MANAGERS_ARGS = {"upload" : {"poll_schedule" : "* * * * * */10"}}
+    DEFAULT_RELOADER_CONFIG = {"folders": None, # will use default one
+                               "managers" : ["source_manager","assistant_manager"],
+                               "reload_func" : None} # will use default one
+    DEFAULT_DATAUPLOAD_CONFIG = {"upload_root" : getattr(config,"DATA_UPLOAD_FOLDER",None)}
+    DEFAULT_WEBSOCKET_CONFIG = {}
+    DEFAULT_API_CONFIG = {}
 
-    logging.info("Setting up managers for following features: %s" % features)
-    assert "job" in features, "'job' feature is mandatory"
+    def __init__(self, source_list, features=None, name="BioThings Hub",
+                 managers_custom_args={}, api_config=None, reloader_config=None,
+                 dataupload_config=None, websocket_config=None):
+        """
+        Helper to setup and instantiate common managers usually used in a hub
+        (eg. dumper manager, uploader manager, etc...)
+        "source_list" is either:
+            - a list of string corresponding to paths to datasources modules
+            - a package containing sub-folders with datasources modules
+        Specific managers can be retrieved adjusting "features" parameter, where
+        each feature corresponds to one or more managers. Parameter defaults to
+        all possible available.
+        "managers_custom_args" is an optional dict used to pass specific arguments while
+        init managers:
+            managers_custom_args={"upload" : {"poll_schedule" : "*/5 * * * *"}}
+        will set poll schedule to check upload every 5min (instead of default 10s)
+        "reloader_config", "dataupload_config" and "websocket_config" can be used to
+        customize reloader, dataupload and websocket. If None, default config is used.
+        If explicitely False, feature is deactivated.
+        """
+        self.name = name
+        self.source_list = source_list
+        self.logger, self.logfile = get_logger("hub")
+        self._passed_features = features
+        self._passed_managers_custom_args = managers_custom_args
+        self.features = features or self.DEFAULT_FEATURES
+        self.managers_custom_args = managers_custom_args or self.DEFAULT_MANAGERS_ARGS
+        if reloader_config == False:
+            self.logger.debug("Reloader deactivated")
+            self.reloader_config = False
+        else:
+            self.reloader_config = reloader_config or self.DEFAULT_RELOADER_CONFIG
+        if dataupload_config == False:
+            self.logger.debug("Data upload deactivated")
+            self.dataupload_config = False
+        else:
+            self.dataupload_config = dataupload_config or self.DEFAULT_DATAUPLOAD_CONFIG
+        if websocket_config == False:
+            self.logger.debug("Websocket deactivated")
+            self.websocket_config = False
+        else:
+            self.websocket_config = websocket_config or self.DEFAULT_WEBSOCKET_CONFIG
+        if api_config == False:
+            self.logger.debug("API deactivated")
+            self.api_config = False
+        else:
+            self.api_config = api_config or self.DEFAULT_API_CONFIG
+        # set during configure()
+        self.managers = None
+        self.api_endpoints = None
+        self.shell = None
+        self.commands = None
+        self.extra_commands = None
+        self.routes = []
+        # flag "do we need to configure?"
+        self.configured = False
 
-    if "job" in features:
-        import asyncio
-        loop = asyncio.get_event_loop()
-        from biothings.utils.manager import JobManager
-        args = mixargs("job",{"num_workers":config.HUB_MAX_WORKERS,"max_memory_usage":config.HUB_MAX_MEM_USAGE})
-        job_manager = JobManager(loop,**args)
-        managers["job_manager"] = job_manager
-    if "dump" in features:
-        from biothings.hub.dataload.dumper import DumperManager
-        args = mixargs("dump")
-        dmanager = DumperManager(job_manager=managers["job_manager"],**args)
-        managers["dump_manager"] = dmanager
-    if "upload" in features:
-        from biothings.hub.dataload.uploader import UploaderManager
-        args = mixargs("upload",{"poll_schedule":"* * * * * */10"})
-        upload_manager = UploaderManager(job_manager=managers["job_manager"],**args)
-        managers["upload_manager"] = upload_manager
-    if "dataplugin" in features:
-        from biothings.hub.dataplugin.manager import DataPluginManager
-        dp_manager = DataPluginManager(job_manager=managers["job_manager"])
-        managers["dataplugin_manager"] = dp_manager
-        from biothings.hub.dataplugin.assistant import AssistantManager
-        args = mixargs("dataplugin")
-        assistant_manager = AssistantManager(
-                data_plugin_manager=dp_manager,
-                dumper_manager=managers["dump_manager"],
-                uploader_manager=managers["upload_manager"],
-                job_manager=managers["job_manager"],
-                **args)
-        assistant_manager.configure()
-        assistant_manager.load()
-        managers["assistant_manager"] = assistant_manager
-    if "build" in features:
-        from biothings.hub.databuild.builder import BuilderManager
-        args = mixargs("build")
-        build_manager = BuilderManager(job_manager=managers["job_manager"],**args)
-        build_manager.configure()
-        managers["build_manager"] = build_manager
-    if "diff" in features:
-        from biothings.hub.databuild.differ import DifferManager, SelfContainedJsonDiffer
-        args = mixargs("diff")
-        diff_manager = DifferManager(job_manager=managers["job_manager"],**args)
-        diff_manager.configure([SelfContainedJsonDiffer,])
-        managers["diff_manager"] = diff_manager
-    if "index" in features:
-        from biothings.hub.dataindex.indexer import IndexerManager
-        args = mixargs("index")
-        index_manager = IndexerManager(job_manager=managers["job_manager"],**args)
-        index_manager.configure(config.ES_CONFIG)
-        managers["index_manager"] = index_manager
-    if "sync" in features:
-        from biothings.hub.databuild.syncer import ThrottledESJsonDiffSelfContainedSyncer, \
-                ESJsonDiffSelfContainedSyncer, SyncerManager
-        args = mixargs("sync")
-        sync_manager = SyncerManager(job_manager=managers["job_manager"],**args)
-        managers["sync_manager"] = sync_manager
-    if "inspect" in features:
-        assert "upload" in features, "'inspect' feature requires 'upload'"
-        assert "build" in features, "'inspect' feature requires 'build'"
-        from biothings.hub.datainspect.inspector import InspectorManager
-        args = mixargs("inspect")
-        inspect_manager = InspectorManager(
-                upload_manager=managers["upload_manager"],
-                build_manager=managers["build_manager"],
-                job_manager=managers["job_manager"],**args)
-        managers["inspect_manager"] = inspect_manager
-    if "api" in features:
-        from biothings.hub.api.manager import APIManager
-        args = mixargs("api")
-        api_manager = APIManager(**args)
-        managers["api_manager"] = api_manager
-    if "dump" in features or "upload" in features:
-        args = mixargs("source")
-        from biothings.hub.dataload.source import SourceManager
-        source_manager = SourceManager(
-                source_list=source_list,
-                dump_manager=managers["dump_manager"],
-                upload_manager=managers["upload_manager"],
-                data_plugin_manager=managers.get("dataplugin_manager"),
-                )
-        managers["source_manager"] = source_manager
-        # now that we have the source manager setup, we can schedule and poll
-        if "dump" in features and not getattr(config,"SKIP_DUMPER_SCHEDULE",False):
-            managers["dump_manager"].schedule_all()
-        if "upload" in features and not getattr(config,"SKIP_UPLOADER_POLL",False):
-            managers["upload_manager"].poll('upload',lambda doc:
-                    shell.launch(partial(upload_manager.upload_src,doc["_id"])))
+    def configure(self):
+        self.configure_managers()
+        self.configure_commands()
+        self.configure_extra_commands()
+        # setup the shell
+        self.shell = HubShell(self.managers["job_manager"])
+        self.shell.register_managers(self.managers)
+        self.shell.set_commands(self.commands,self.extra_commands)
+        self.shell.server = self # propagate server instance in shell
+                                 # so it's accessible from the console if needed
+        # set api
+        if self.api_config != False:
+            self.configure_api_endpoints() # after shell setup as it adds some default commands
+                                           # we want to expose throught the api
+            from biothings.hub.api import generate_api_routes
+            self.routes = generate_api_routes(self.shell, self.api_endpoints)
 
-    logging.info("Active manager(s): %s" % managers)
-    return managers
+        if self.dataupload_config != False:
+            # this one is not bound to a specific command
+            from biothings.hub.api.handlers.upload import UploadHandler
+            # tuple type = interpreted as a route handler
+            self.routes.append(("/dataupload/([\w\.-]+)?",UploadHandler,self.dataupload_config))
 
+        if self.websocket_config != False:
+            # add websocket endpoint
+            import biothings.hub.api.handlers.ws as ws
+            import sockjs.tornado
+            from biothings.utils.hub_db import ChangeWatcher
+            listener = ws.HubDBListener()
+            ChangeWatcher.add(listener)
+            ChangeWatcher.publish()
+            ws_router = sockjs.tornado.SockJSRouter(partial(ws.WebSocketConnection,listener=listener), '/ws')
+            self.routes.extend(ws_router.urls)
 
-def get_commands(managers):
-    """
-    Return a dict {"command_name" : command} containing all commands
-    that can be exposed according to passed managers dict (see get_managers)
-    """
-    commands = OrderedDict()
-    commands["status"] = CommandDefinition(command=partial(status,managers),tracked=False)
-    # getting info
-    if managers.get("source_manager"):
-        commands["source_info"] = CommandDefinition(command=managers["source_manager"].get_source,tracked=False)
-    # dump commands
-    if managers.get("dump_manager"):
-        commands["dump"] = managers["dump_manager"].dump_src
-        commands["dump_all"] = managers["dump_manager"].dump_all
-    # upload commands
-    if managers.get("upload_manager"):
-        commands["upload"] = managers["upload_manager"].upload_src
-        commands["upload_all"] = managers["upload_manager"].upload_all
-    # building/merging
-    if managers.get("build_manager"):
-        commands["whatsnew"] = CommandDefinition(command=managers["build_manager"].whatsnew,tracked=False)
-        commands["lsmerge"] = managers["build_manager"].list_merge
-        commands["rmmerge"] = managers["build_manager"].delete_merge
-        commands["merge"] = managers["build_manager"].merge
-    if hasattr(config,"ES_CONFIG"):
-        commands["es_config"] = config.ES_CONFIG
-    # diff
-    if managers.get("diff_manager"):
-        commands["diff"] = managers["diff_manager"].diff
-        commands["report"] = managers["diff_manager"].diff_report
-        commands["release_note"] = managers["diff_manager"].release_note
-        commands["publish_diff"] = managers["diff_manager"].publish_diff
-    # indexing commands
-    if managers.get("index_manager"):
-        commands["index"] = managers["index_manager"].index
-        commands["snapshot"] = managers["index_manager"].snapshot
-        commands["publish_snapshot"] = managers["index_manager"].publish_snapshot
-    # inspector
-    if managers.get("inspect_manager"):
-        commands["inspect"] = managers["inspect_manager"].inspect
-    # data plugins
-    if managers.get("assistant_manager"):
-        commands["register_url"] = partial(managers["assistant_manager"].register_url)
-        commands["unregister_url"] = partial(managers["assistant_manager"].unregister_url)
-    if managers.get("dataplugin_manager"):
-        commands["dump_plugin"] = managers["dataplugin_manager"].dump_src
+        if self.reloader_config != False:
+            monitored_folders = self.reloader_config["folders"] or ["hub/dataload/sources",getattr(config,"DATA_PLUGIN_FOLDER",None)]
+            reload_managers = [self.managers[m] for m in self.reloader_config["managers"]]
+            reload_func = self.reloader_config["reload_func"] or partial(self.shell.restart,force=True)
+            reloader = HubReloader(monitored_folders, reload_managers, reload_func=reload_func)
+            reloader.monitor()
 
-    logging.info("Registered commands: %s" % list(commands.keys()))
-    return commands
+        # done
+        self.configured = True
+
+    def start(self):
+        if not self.configured:
+            self.configure()
+        self.logger.info("Starting server '%s'" % self.name)
+        # can't use asyncio.get_event_loop() if python < 3.5.3 as it would return
+        # another instance of aio loop, take it from job_manager to make sure
+        # we share the same one
+        loop = self.managers["job_manager"].loop
+
+        if self.routes:
+            import tornado.web
+            import tornado.platform.asyncio
+            tornado.platform.asyncio.AsyncIOMainLoop().install()
+            # register app into current event loop
+            api = tornado.web.Application(self.routes)
+            self.extra_commands["api"] = api
+            from biothings.hub.api import start_api
+            api_server = start_api(api,config.HUB_API_PORT,settings=config.TORNADO_SETTINGS)
+        else:
+            self.logger.info("No route defined, API server won't start")
+        self.server = start_server(loop,self.name,passwords=config.HUB_PASSWD,
+                              port=config.HUB_SSH_PORT,shell=self.shell)
+        try:
+            loop.run_until_complete(self.server)
+        except (OSError, asyncssh.Error) as exc:
+            sys.exit('Error starting server: ' + str(exc))
+        loop.run_forever()
 
 
-def get_extra_commands(managers):
-    """
-    Same as get_commands but returned commands are not exposed publicly in the shell
-    (they are shortcuts or commands for API endpoints, supporting commands, etc...)
-    """
-    extra_commands = {} # unordered since not exposed, we don't care
-    loop = managers.get("job_manager") and managers["job_manager"].loop or asyncio.get_event_loop()
-    extra_commands["g"] = CommandDefinition(command=globals(),tracked=False)
-    extra_commands["sch"] = CommandDefinition(command=partial(schedule,loop),tracked=False)
-    # expose contant so no need to put quotes (eg. top(pending) instead of top("pending")
-    extra_commands["pending"] = CommandDefinition(command=pending,tracked=False)
-    extra_commands["done"] = CommandDefinition(command=done,tracked=False)
-    extra_commands["loop"] = CommandDefinition(command=loop,tracked=False)
+    def configure_managers(self):
 
-    if managers.get("source_manager"):
-        extra_commands["sources"] = CommandDefinition(command=managers["source_manager"].get_sources,tracked=False)
-        extra_commands["source_save_mapping"] = CommandDefinition(command=managers["source_manager"].save_mapping)
-    if managers.get("dump_manager"):
-        extra_commands["dm"] = CommandDefinition(command=managers["dump_manager"],tracked=False)
-        extra_commands["dump_info"] = CommandDefinition(command=managers["dump_manager"].dump_info,tracked=False)
-    if managers.get("dataplugin_manager"):
-        extra_commands["dpm"] = CommandDefinition(command=managers["dataplugin_manager"],tracked=False)
-    if managers.get("assistant_manager"):
-        extra_commands["am"] = CommandDefinition(command=managers["assistant_manager"],tracked=False)
-    if managers.get("upload_manager"):
-        extra_commands["um"] = CommandDefinition(command=managers["upload_manager"],tracked=False)
-        extra_commands["upload_info"] = CommandDefinition(command=managers["upload_manager"].upload_info,tracked=False)
-    if managers.get("build_manager"):
-        extra_commands["bm"] = CommandDefinition(command=managers["build_manager"],tracked=False)
-        extra_commands["builds"] = CommandDefinition(command=managers["build_manager"].build_info,tracked=False)
-        extra_commands["build"] = CommandDefinition(command=lambda id: managers["build_manager"].build_info(id=id),tracked=False)
-        extra_commands["build_config_info"] = CommandDefinition(command=managers["build_manager"].build_config_info,tracked=False)
-        extra_commands["build_save_mapping"] = CommandDefinition(command=managers["build_manager"].save_mapping)
-        extra_commands["create_build_conf"] = CommandDefinition(command=managers["build_manager"].create_build_configuration)
-        extra_commands["delete_build_conf"] = CommandDefinition(command=managers["build_manager"].delete_build_configuration)
-    if managers.get("diff_manager"):
-        extra_commands["dim"] = CommandDefinition(command=managers["diff_manager"],tracked=False)
-        extra_commands["diff_info"] = CommandDefinition(command=managers["diff_manager"].diff_info,tracked=False)
-        extra_commands["jsondiff"] = CommandDefinition(command=jsondiff,tracked=False)
-    if managers.get("sync_manager"):
-        extra_commands["sm"] = CommandDefinition(command=managers["sync_manager"],tracked=False)
-        extra_commands["sync"] = CommandDefinition(command=managers["sync_manager"].sync)
-    if managers.get("index_manager"):
-        extra_commands["im"] = CommandDefinition(command=managers["index_manager"],tracked=False)
-        extra_commands["index_info"] = CommandDefinition(command=managers["index_manager"].index_info,tracked=False)
-        extra_commands["validate_mapping"] = CommandDefinition(command=managers["index_manager"].validate_mapping)
-        extra_commands["pqueue"] = CommandDefinition(command=managers["job_manager"].process_queue,tracked=False)
-        extra_commands["tqueue"] = CommandDefinition(command=managers["job_manager"].thread_queue,tracked=False)
-        extra_commands["jm"] = CommandDefinition(command=managers["job_manager"],tracked=False)
-        extra_commands["top"] = CommandDefinition(command=managers["job_manager"].top,tracked=False)
-        extra_commands["job_info"] = CommandDefinition(command=managers["job_manager"].job_info,tracked=False)
-    if managers.get("inspect_manager"):
-        extra_commands["ism"] = CommandDefinition(command=managers["inspect_manager"],tracked=False)
-    if managers.get("api_manager"):
-        extra_commands["api"] = CommandDefinition(command=managers["api_manager"],tracked=False)
-        extra_commands["get_apis"] = CommandDefinition(command=managers["api_manager"].get_apis,tracked=False)
-        extra_commands["delete_api"] = CommandDefinition(command=managers["api_manager"].delete_api)
-        extra_commands["create_api"] = CommandDefinition(command=managers["api_manager"].create_api)
-        extra_commands["start_api"] = CommandDefinition(command=managers["api_manager"].start_api)
-        extra_commands["stop_api"] = managers["api_manager"].stop_api
+        def mixargs(feat,params={}):
+            args = {}
+            for p in params:
+                args[p] = self.managers_custom_args.get(feat,{}).pop(p,None) or params[p]
+            # mix remaining
+            args.update(self.managers_custom_args.get(feat,{}))
+            return args
 
-    logging.debug("Registered extra (private) commands: %s" % list(extra_commands.keys()))
-    return extra_commands
+        self.managers = {}
 
+        self.logger.info("Setting up managers for following features: %s" % self.features)
+        assert "job" in self.features, "'job' feature is mandatory"
 
-def get_api_endpoints(commands, extra_commands={}):
-    cmdnames = list(commands.keys())
-    if extra_commands:
-        cmdnames.extend(list(extra_commands.keys()))
-    from biothings.hub.api import EndpointDefinition
-    api_endpoints = {}
-    if "builds" in cmdnames: api_endpoints["builds"] = EndpointDefinition(name="builds",method="get")
-    api_endpoints["build"] = []
-    if "build" in cmdnames: api_endpoints["build"].append(EndpointDefinition(method="get",name="build"))
-    if "rmmerge" in cmdnames: api_endpoints["build"].append(EndpointDefinition(method="delete",name="rmmerge"))
-    if "merge" in cmdnames: api_endpoints["build"].append(EndpointDefinition(name="merge",method="put",suffix="new"))
-    if "build_save_mapping" in cmdnames: api_endpoints["build"].append(EndpointDefinition(name="build_save_mapping",method="put",suffix="mapping"))
-    if not api_endpoints["build"]:
-        api_endpoints.pop("build")
-    if "diff" in cmdnames: api_endpoints["diff"] = EndpointDefinition(name="diff",method="put",force_bodyargs=True)
-    if "job_info" in cmdnames: api_endpoints["job_manager"] = EndpointDefinition(name="job_info",method="get")
-    if "dump_info" in cmdnames: api_endpoints["dump_manager"] = EndpointDefinition(name="dump_info", method="get")
-    if "upload_info" in cmdnames: api_endpoints["upload_manager"] = EndpointDefinition(name="upload_info",method="get")
-    if "build_config_info" in cmdnames: api_endpoints["build_manager"] = EndpointDefinition(name="build_config_info",method="get")
-    if "index_info" in cmdnames: api_endpoints["index_manager"] = EndpointDefinition(name="index_info",method="get")
-    if "diff_info" in cmdnames: api_endpoints["diff_manager"] = EndpointDefinition(name="diff_info",method="get")
-    if "commands" in cmdnames: api_endpoints["commands"] = EndpointDefinition(name="commands",method="get")
-    if "command" in cmdnames: api_endpoints["command"] = EndpointDefinition(name="command",method="get")
-    if "sources" in cmdnames: api_endpoints["sources"] = EndpointDefinition(name="sources",method="get")
-    api_endpoints["source"] = []
-    if "source_info" in cmdnames: api_endpoints["source"].append(EndpointDefinition(name="source_info",method="get"))
-    if "dump" in cmdnames: api_endpoints["source"].append(EndpointDefinition(name="dump",method="put",suffix="dump"))
-    if "upload" in cmdnames: api_endpoints["source"].append(EndpointDefinition(name="upload",method="put",suffix="upload"))
-    if "source_save_mapping" in cmdnames: api_endpoints["source"].append(EndpointDefinition(name="source_save_mapping",method="put",suffix="mapping"))
-    if not api_endpoints["source"]:
-        api_endpoints.pop("source")
-    if "inspect" in cmdnames: api_endpoints["inspect"] = EndpointDefinition(name="inspect",method="put",force_bodyargs=True)
-    if "register_url" in cmdnames: api_endpoints["dataplugin/register_url"] = EndpointDefinition(name="register_url",method="post",force_bodyargs=True)
-    if "unregister_url" in cmdnames: api_endpoints["dataplugin/unregister_url"] = EndpointDefinition(name="unregister_url",method="delete",force_bodyargs=True)
-    if "dump_plugin" in cmdnames: api_endpoints["dataplugin"] = [EndpointDefinition(name="dump_plugin",method="put",suffix="dump")]
-    if "jsondiff" in cmdnames: api_endpoints["jsondiff"] = EndpointDefinition(name="jsondiff",method="post",force_bodyargs=True)
-    if "validate_mapping" in cmdnames: api_endpoints["mapping/validate"] = EndpointDefinition(name="validate_mapping",method="post",force_bodyargs=True)
-    api_endpoints["buildconf"] = []
-    if "create_build_conf" in cmdnames: api_endpoints["buildconf"].append(EndpointDefinition(name="create_build_conf",method="post",force_bodyargs=True))
-    if "delete_build_conf" in cmdnames: api_endpoints["buildconf"].append(EndpointDefinition(name="delete_build_conf",method="delete",force_bodyargs=True))
-    if not api_endpoints["buildconf"]:
-        api_endpoints.pop("buildconf")
-    if "index" in cmdnames: api_endpoints["index"] = EndpointDefinition(name="index",method="put",force_bodyargs=True)
-    if "sync" in cmdnames: api_endpoints["sync"] = EndpointDefinition(name="sync",method="post",force_bodyargs=True)
-    if "whatsnew" in cmdnames: api_endpoints["whatsnew"] = EndpointDefinition(name="whatsnew",method="get")
-    if "status" in cmdnames: api_endpoints["status"] = EndpointDefinition(name="status",method="get")
-    api_endpoints["api"] = []
-    if "start_api" in cmdnames: api_endpoints["api"].append(EndpointDefinition(name="start_api",method="put",suffix="start"))
-    if "stop_api" in cmdnames: api_endpoints["api"].append(EndpointDefinition(name="stop_api",method="put",suffix="stop"))
-    if "delete_api" in cmdnames: api_endpoints["api"].append(EndpointDefinition(name="delete_api",method="delete",force_bodyargs=True))
-    if "create_api" in cmdnames: api_endpoints["api"].append(EndpointDefinition(name="create_api",method="post",force_bodyargs=True))
-    if not api_endpoints["api"]:
-        api_endpoints.pop("api")
-    if "get_apis" in cmdnames: api_endpoints["api/list"] = EndpointDefinition(name="get_apis",method="get")
-    if "stop" in cmdnames: api_endpoints["stop"] = EndpointDefinition(name="stop",method="put")
-    if "restart" in cmdnames: api_endpoints["restart"] = EndpointDefinition(name="restart",method="put")
+        if "job" in self.features:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            from biothings.utils.manager import JobManager
+            args = mixargs("job",{"num_workers":config.HUB_MAX_WORKERS,"max_memory_usage":config.HUB_MAX_MEM_USAGE})
+            job_manager = JobManager(loop,**args)
+            self.managers["job_manager"] = job_manager
+        if "dump" in self.features:
+            from biothings.hub.dataload.dumper import DumperManager
+            args = mixargs("dump")
+            dmanager = DumperManager(job_manager=self.managers["job_manager"],**args)
+            self.managers["dump_manager"] = dmanager
+        if "upload" in self.features:
+            from biothings.hub.dataload.uploader import UploaderManager
+            args = mixargs("upload",{"poll_schedule":"* * * * * */10"})
+            upload_manager = UploaderManager(job_manager=self.managers["job_manager"],**args)
+            self.managers["upload_manager"] = upload_manager
+        if "dataplugin" in self.features:
+            from biothings.hub.dataplugin.manager import DataPluginManager
+            dp_manager = DataPluginManager(job_manager=self.managers["job_manager"])
+            self.managers["dataplugin_manager"] = dp_manager
+            from biothings.hub.dataplugin.assistant import AssistantManager
+            args = mixargs("dataplugin")
+            assistant_manager = AssistantManager(
+                    data_plugin_manager=dp_manager,
+                    dumper_manager=self.managers["dump_manager"],
+                    uploader_manager=self.managers["upload_manager"],
+                    job_manager=self.managers["job_manager"],
+                    **args)
+            self.managers["assistant_manager"] = assistant_manager
+        if "build" in self.features:
+            from biothings.hub.databuild.builder import BuilderManager
+            args = mixargs("build")
+            build_manager = BuilderManager(job_manager=self.managers["job_manager"],**args)
+            build_manager.configure()
+            self.managers["build_manager"] = build_manager
+        if "diff" in self.features:
+            from biothings.hub.databuild.differ import DifferManager, SelfContainedJsonDiffer
+            args = mixargs("diff")
+            diff_manager = DifferManager(job_manager=self.managers["job_manager"],**args)
+            diff_manager.configure([SelfContainedJsonDiffer,])
+            self.managers["diff_manager"] = diff_manager
+        if "index" in self.features:
+            from biothings.hub.dataindex.indexer import IndexerManager
+            args = mixargs("index")
+            index_manager = IndexerManager(job_manager=self.managers["job_manager"],**args)
+            index_manager.configure(config.ES_CONFIG)
+            self.managers["index_manager"] = index_manager
+        if "sync" in self.features:
+            from biothings.hub.databuild.syncer import ThrottledESJsonDiffSelfContainedSyncer, \
+                    ESJsonDiffSelfContainedSyncer, SyncerManager
+            args = mixargs("sync")
+            sync_manager = SyncerManager(job_manager=self.managers["job_manager"],**args)
+            self.managers["sync_manager"] = sync_manager
+        if "inspect" in self.features:
+            assert "upload" in self.features, "'inspect' feature requires 'upload'"
+            assert "build" in self.features, "'inspect' feature requires 'build'"
+            from biothings.hub.datainspect.inspector import InspectorManager
+            args = mixargs("inspect")
+            inspect_manager = InspectorManager(
+                    upload_manager=self.managers["upload_manager"],
+                    build_manager=self.managers["build_manager"],
+                    job_manager=self.managers["job_manager"],**args)
+            self.managers["inspect_manager"] = inspect_manager
+        if "api" in self.features:
+            from biothings.hub.api.manager import APIManager
+            args = mixargs("api")
+            api_manager = APIManager(**args)
+            self.managers["api_manager"] = api_manager
+        if "dump" in self.features or "upload" in self.features:
+            args = mixargs("source")
+            from biothings.hub.dataload.source import SourceManager
+            source_manager = SourceManager(
+                    source_list=self.source_list,
+                    dump_manager=self.managers["dump_manager"],
+                    upload_manager=self.managers["upload_manager"],
+                    data_plugin_manager=self.managers.get("dataplugin_manager"),
+                    )
+            self.managers["source_manager"] = source_manager
+            # now that we have the source manager setup, we can schedule and poll
+            if "dump" in self.features and not getattr(config,"SKIP_DUMPER_SCHEDULE",False):
+                self.managers["dump_manager"].schedule_all()
+            if "upload" in self.features and not getattr(config,"SKIP_UPLOADER_POLL",False):
+                self.managers["upload_manager"].poll('upload',lambda doc:
+                        self.shell.launch(partial(upload_manager.upload_src,doc["_id"])))
+        # init data plugin once source_manager has been set (it inits dumper and uploader
+        # managers, if assistant_manager is configured/loaded before, datasources won't appear
+        # in dumper/uploader managers as they were not ready yet)
+        if "dataplugin" in self.features:
+            self.managers["assistant_manager"].configure()
+            self.managers["assistant_manager"].load()
 
-    return api_endpoints
+        self.logger.info("Active manager(s): %s" % pformat(self.managers))
 
+    def configure_commands(self):
+        """
+        Configure hub commands according to available managers
+        """
+        assert self.managers, "No managers configured"
+        self.commands = OrderedDict()
+        self.commands["status"] = CommandDefinition(command=partial(status,self.managers),tracked=False)
+        # getting info
+        if self.managers.get("source_manager"):
+            self.commands["source_info"] = CommandDefinition(command=self.managers["source_manager"].get_source,tracked=False)
+        # dump commands
+        if self.managers.get("dump_manager"):
+            self.commands["dump"] = self.managers["dump_manager"].dump_src
+            self.commands["dump_all"] = self.managers["dump_manager"].dump_all
+        # upload commands
+        if self.managers.get("upload_manager"):
+            self.commands["upload"] = self.managers["upload_manager"].upload_src
+            self.commands["upload_all"] = self.managers["upload_manager"].upload_all
+        # building/merging
+        if self.managers.get("build_manager"):
+            self.commands["whatsnew"] = CommandDefinition(command=self.managers["build_manager"].whatsnew,tracked=False)
+            self.commands["lsmerge"] = self.managers["build_manager"].list_merge
+            self.commands["rmmerge"] = self.managers["build_manager"].delete_merge
+            self.commands["merge"] = self.managers["build_manager"].merge
+        if hasattr(config,"ES_CONFIG"):
+            self.commands["es_config"] = config.ES_CONFIG
+        # diff
+        if self.managers.get("diff_manager"):
+            self.commands["diff"] = self.managers["diff_manager"].diff
+            self.commands["report"] = self.managers["diff_manager"].diff_report
+            self.commands["release_note"] = self.managers["diff_manager"].release_note
+            self.commands["publish_diff"] = self.managers["diff_manager"].publish_diff
+        # indexing commands
+        if self.managers.get("index_manager"):
+            self.commands["index"] = self.managers["index_manager"].index
+            self.commands["snapshot"] = self.managers["index_manager"].snapshot
+            self.commands["publish_snapshot"] = self.managers["index_manager"].publish_snapshot
+        # inspector
+        if self.managers.get("inspect_manager"):
+            self.commands["inspect"] = self.managers["inspect_manager"].inspect
+        # data plugins
+        if self.managers.get("assistant_manager"):
+            self.commands["register_url"] = partial(self.managers["assistant_manager"].register_url)
+            self.commands["unregister_url"] = partial(self.managers["assistant_manager"].unregister_url)
+        if self.managers.get("dataplugin_manager"):
+            self.commands["dump_plugin"] = self.managers["dataplugin_manager"].dump_src
 
-def get_hub_server(source_list, features=["dump","upload","build","diff",
-                                          "index","dataplugin","inspect",
-                                          "sync","api","job"],
-                   with_websocket=True, with_dataupload = True, with_reloader=True,
-                   reloader_config={
-                       "folders": None, # will use default one
-                       "managers" : ["source_manager","assistant_manager"],
-                       "reload_func" : None, # will use default one
-                       },
-                   custom_args={"upload":{"poll_schedule":'* * * * * */10'}}):
+        logging.info("Registered commands: %s" % list(self.commands.keys()))
 
-    managers = get_managers(source_list,features,custom_args=custom_args)
-    shell = HubShell(managers["job_manager"])
-    shell.register_managers(managers)
-    commands = get_commands(managers)
-    extra_commands = get_extra_commands(managers)
-    shell.set_commands(commands,extra_commands)
-    # can't use asyncio.get_event_loop() if python < 3.5.3 as it would return
-    # another instance of aio loop, take it from job_manager to make sure
-    # we share the same one
-    from biothings.hub.api import generate_api_routes, start_api
-    api_endpoints = get_api_endpoints(commands,extra_commands)
+    def configure_extra_commands(self):
+        """
+        Same as configure_commands() but commands are not exposed publicly in the shell
+        (they are shortcuts or commands for API endpoints, supporting commands, etc...)
+        """
+        assert self.managers, "No managers configured"
+        self.extra_commands = {} # unordered since not exposed, we don't care
+        loop = self.managers.get("job_manager") and self.managers["job_manager"].loop or asyncio.get_event_loop()
+        self.extra_commands["g"] = CommandDefinition(command=globals(),tracked=False)
+        self.extra_commands["sch"] = CommandDefinition(command=partial(schedule,loop),tracked=False)
+        # expose contant so no need to put quotes (eg. top(pending) instead of top("pending")
+        self.extra_commands["pending"] = CommandDefinition(command=pending,tracked=False)
+        self.extra_commands["done"] = CommandDefinition(command=done,tracked=False)
+        self.extra_commands["loop"] = CommandDefinition(command=loop,tracked=False)
 
-    routes = generate_api_routes(shell, api_endpoints)
+        if self.managers.get("source_manager"):
+            self.extra_commands["sources"] = CommandDefinition(command=self.managers["source_manager"].get_sources,tracked=False)
+            self.extra_commands["source_save_mapping"] = CommandDefinition(command=self.managers["source_manager"].save_mapping)
+        if self.managers.get("dump_manager"):
+            self.extra_commands["dm"] = CommandDefinition(command=self.managers["dump_manager"],tracked=False)
+            self.extra_commands["dump_info"] = CommandDefinition(command=self.managers["dump_manager"].dump_info,tracked=False)
+        if self.managers.get("dataplugin_manager"):
+            self.extra_commands["dpm"] = CommandDefinition(command=self.managers["dataplugin_manager"],tracked=False)
+        if self.managers.get("assistant_manager"):
+            self.extra_commands["am"] = CommandDefinition(command=self.managers["assistant_manager"],tracked=False)
+        if self.managers.get("upload_manager"):
+            self.extra_commands["um"] = CommandDefinition(command=self.managers["upload_manager"],tracked=False)
+            self.extra_commands["upload_info"] = CommandDefinition(command=self.managers["upload_manager"].upload_info,tracked=False)
+        if self.managers.get("build_manager"):
+            self.extra_commands["bm"] = CommandDefinition(command=self.managers["build_manager"],tracked=False)
+            self.extra_commands["builds"] = CommandDefinition(command=self.managers["build_manager"].build_info,tracked=False)
+            self.extra_commands["build"] = CommandDefinition(command=lambda id: self.managers["build_manager"].build_info(id=id),tracked=False)
+            self.extra_commands["build_config_info"] = CommandDefinition(command=self.managers["build_manager"].build_config_info,tracked=False)
+            self.extra_commands["build_save_mapping"] = CommandDefinition(command=self.managers["build_manager"].save_mapping)
+            self.extra_commands["create_build_conf"] = CommandDefinition(command=self.managers["build_manager"].create_build_configuration)
+            self.extra_commands["delete_build_conf"] = CommandDefinition(command=self.managers["build_manager"].delete_build_configuration)
+        if self.managers.get("diff_manager"):
+            self.extra_commands["dim"] = CommandDefinition(command=self.managers["diff_manager"],tracked=False)
+            self.extra_commands["diff_info"] = CommandDefinition(command=self.managers["diff_manager"].diff_info,tracked=False)
+            self.extra_commands["jsondiff"] = CommandDefinition(command=jsondiff,tracked=False)
+        if self.managers.get("sync_manager"):
+            self.extra_commands["sm"] = CommandDefinition(command=self.managers["sync_manager"],tracked=False)
+            self.extra_commands["sync"] = CommandDefinition(command=self.managers["sync_manager"].sync)
+        if self.managers.get("index_manager"):
+            self.extra_commands["im"] = CommandDefinition(command=self.managers["index_manager"],tracked=False)
+            self.extra_commands["index_info"] = CommandDefinition(command=self.managers["index_manager"].index_info,tracked=False)
+            self.extra_commands["validate_mapping"] = CommandDefinition(command=self.managers["index_manager"].validate_mapping)
+            self.extra_commands["pqueue"] = CommandDefinition(command=self.managers["job_manager"].process_queue,tracked=False)
+            self.extra_commands["tqueue"] = CommandDefinition(command=self.managers["job_manager"].thread_queue,tracked=False)
+            self.extra_commands["jm"] = CommandDefinition(command=self.managers["job_manager"],tracked=False)
+            self.extra_commands["top"] = CommandDefinition(command=self.managers["job_manager"].top,tracked=False)
+            self.extra_commands["job_info"] = CommandDefinition(command=self.managers["job_manager"].job_info,tracked=False)
+        if self.managers.get("inspect_manager"):
+            self.extra_commands["ism"] = CommandDefinition(command=self.managers["inspect_manager"],tracked=False)
+        if self.managers.get("api_manager"):
+            self.extra_commands["api"] = CommandDefinition(command=self.managers["api_manager"],tracked=False)
+            self.extra_commands["get_apis"] = CommandDefinition(command=self.managers["api_manager"].get_apis,tracked=False)
+            self.extra_commands["delete_api"] = CommandDefinition(command=self.managers["api_manager"].delete_api)
+            self.extra_commands["create_api"] = CommandDefinition(command=self.managers["api_manager"].create_api)
+            self.extra_commands["start_api"] = CommandDefinition(command=self.managers["api_manager"].start_api)
+            self.extra_commands["stop_api"] = self.managers["api_manager"].stop_api
 
-    if with_dataupload:
-        # this one is not bound to a specific command
-        from biothings.hub.api.handlers.upload import UploadHandler
-        # tuple type = interpreted as a route handler
-        routes.append(("/dataupload/([\w\.-]+)?",UploadHandler,{"upload_root":config.DATA_UPLOAD_FOLDER}))
+        logging.debug("Registered extra (private) commands: %s" % list(self.extra_commands.keys()))
 
+    def configure_api_endpoints(self):
+        cmdnames = list(self.commands.keys())
+        if self.extra_commands:
+            cmdnames.extend(list(self.extra_commands.keys()))
+        from biothings.hub.api import EndpointDefinition
+        self.api_endpoints = {}
+        if "builds" in cmdnames: self.api_endpoints["builds"] = EndpointDefinition(name="builds",method="get")
+        self.api_endpoints["build"] = []
+        if "build" in cmdnames: self.api_endpoints["build"].append(EndpointDefinition(method="get",name="build"))
+        if "rmmerge" in cmdnames: self.api_endpoints["build"].append(EndpointDefinition(method="delete",name="rmmerge"))
+        if "merge" in cmdnames: self.api_endpoints["build"].append(EndpointDefinition(name="merge",method="put",suffix="new"))
+        if "build_save_mapping" in cmdnames: self.api_endpoints["build"].append(EndpointDefinition(name="build_save_mapping",method="put",suffix="mapping"))
+        if not self.api_endpoints["build"]:
+            self.api_endpoints.pop("build")
+        if "diff" in cmdnames: self.api_endpoints["diff"] = EndpointDefinition(name="diff",method="put",force_bodyargs=True)
+        if "job_info" in cmdnames: self.api_endpoints["job_manager"] = EndpointDefinition(name="job_info",method="get")
+        if "dump_info" in cmdnames: self.api_endpoints["dump_manager"] = EndpointDefinition(name="dump_info", method="get")
+        if "upload_info" in cmdnames: self.api_endpoints["upload_manager"] = EndpointDefinition(name="upload_info",method="get")
+        if "build_config_info" in cmdnames: self.api_endpoints["build_manager"] = EndpointDefinition(name="build_config_info",method="get")
+        if "index_info" in cmdnames: self.api_endpoints["index_manager"] = EndpointDefinition(name="index_info",method="get")
+        if "diff_info" in cmdnames: self.api_endpoints["diff_manager"] = EndpointDefinition(name="diff_info",method="get")
+        if "commands" in cmdnames: self.api_endpoints["commands"] = EndpointDefinition(name="commands",method="get")
+        if "command" in cmdnames: self.api_endpoints["command"] = EndpointDefinition(name="command",method="get")
+        if "sources" in cmdnames: self.api_endpoints["sources"] = EndpointDefinition(name="sources",method="get")
+        self.api_endpoints["source"] = []
+        if "source_info" in cmdnames: self.api_endpoints["source"].append(EndpointDefinition(name="source_info",method="get"))
+        if "dump" in cmdnames: self.api_endpoints["source"].append(EndpointDefinition(name="dump",method="put",suffix="dump"))
+        if "upload" in cmdnames: self.api_endpoints["source"].append(EndpointDefinition(name="upload",method="put",suffix="upload"))
+        if "source_save_mapping" in cmdnames: self.api_endpoints["source"].append(EndpointDefinition(name="source_save_mapping",method="put",suffix="mapping"))
+        if not self.api_endpoints["source"]:
+            self.api_endpoints.pop("source")
+        if "inspect" in cmdnames: self.api_endpoints["inspect"] = EndpointDefinition(name="inspect",method="put",force_bodyargs=True)
+        if "register_url" in cmdnames: self.api_endpoints["dataplugin/register_url"] = EndpointDefinition(name="register_url",method="post",force_bodyargs=True)
+        if "unregister_url" in cmdnames: self.api_endpoints["dataplugin/unregister_url"] = EndpointDefinition(name="unregister_url",method="delete",force_bodyargs=True)
+        if "dump_plugin" in cmdnames: self.api_endpoints["dataplugin"] = [EndpointDefinition(name="dump_plugin",method="put",suffix="dump")]
+        if "jsondiff" in cmdnames: self.api_endpoints["jsondiff"] = EndpointDefinition(name="jsondiff",method="post",force_bodyargs=True)
+        if "validate_mapping" in cmdnames: self.api_endpoints["mapping/validate"] = EndpointDefinition(name="validate_mapping",method="post",force_bodyargs=True)
+        self.api_endpoints["buildconf"] = []
+        if "create_build_conf" in cmdnames: self.api_endpoints["buildconf"].append(EndpointDefinition(name="create_build_conf",method="post",force_bodyargs=True))
+        if "delete_build_conf" in cmdnames: self.api_endpoints["buildconf"].append(EndpointDefinition(name="delete_build_conf",method="delete",force_bodyargs=True))
+        if not self.api_endpoints["buildconf"]:
+            self.api_endpoints.pop("buildconf")
+        if "index" in cmdnames: self.api_endpoints["index"] = EndpointDefinition(name="index",method="put",force_bodyargs=True)
+        if "sync" in cmdnames: self.api_endpoints["sync"] = EndpointDefinition(name="sync",method="post",force_bodyargs=True)
+        if "whatsnew" in cmdnames: self.api_endpoints["whatsnew"] = EndpointDefinition(name="whatsnew",method="get")
+        if "status" in cmdnames: self.api_endpoints["status"] = EndpointDefinition(name="status",method="get")
+        self.api_endpoints["api"] = []
+        if "start_api" in cmdnames: self.api_endpoints["api"].append(EndpointDefinition(name="start_api",method="put",suffix="start"))
+        if "stop_api" in cmdnames: self.api_endpoints["api"].append(EndpointDefinition(name="stop_api",method="put",suffix="stop"))
+        if "delete_api" in cmdnames: self.api_endpoints["api"].append(EndpointDefinition(name="delete_api",method="delete",force_bodyargs=True))
+        if "create_api" in cmdnames: self.api_endpoints["api"].append(EndpointDefinition(name="create_api",method="post",force_bodyargs=True))
+        if not self.api_endpoints["api"]:
+            self.api_endpoints.pop("api")
+        if "get_apis" in cmdnames: self.api_endpoints["api/list"] = EndpointDefinition(name="get_apis",method="get")
+        if "stop" in cmdnames: self.api_endpoints["stop"] = EndpointDefinition(name="stop",method="put")
+        if "restart" in cmdnames: self.api_endpoints["restart"] = EndpointDefinition(name="restart",method="put")
 
-    if with_websocket:
-        # add websocket endpoint
-        import biothings.hub.api.handlers.ws as ws
-        import sockjs.tornado
-        from biothings.utils.hub_db import ChangeWatcher
-        listener = ws.HubDBListener()
-        ChangeWatcher.add(listener)
-        ChangeWatcher.publish()
-        ws_router = sockjs.tornado.SockJSRouter(partial(ws.WebSocketConnection,listener=listener), '/ws')
-        routes.extend(ws_router.urls)
-
-    if with_reloader:
-        from biothings.utils.hub import HubReloader
-        monitored_folders = reloader_config["folders"] or ["hub/dataload/sources",getattr(config,"DATA_PLUGIN_FOLDER",None)]
-        reload_managers = [managers[m] for m in reloader_config["managers"]]
-        reload_func = reloader_config["reload_func"] or partial(shell.restart,force=True)
-        reloader = HubReloader(monitored_folders, reload_managers, reload_func=reload_func)
-        reloader.monitor()
-
-    loop = managers["job_manager"].loop
-
-    import tornado.web
-    import tornado.platform.asyncio
-    tornado.platform.asyncio.AsyncIOMainLoop().install()
-    # register app into current event loop
-    app = tornado.web.Application(routes)
-    extra_commands["app"] = app
-    app_server = start_api(app,config.HUB_API_PORT,settings=config.TORNADO_SETTINGS)
-    server = start_server(loop,"BioThings Studio hub",passwords=config.HUB_PASSWD,
-                          port=config.HUB_SSH_PORT,shell=shell)
-    try:
-        loop.run_until_complete(server)
-    except (OSError, asyncssh.Error) as exc:
-        sys.exit('Error starting server: ' + str(exc))
-    
-    loop.run_forever()
-
-    return server
 
