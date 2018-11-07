@@ -39,6 +39,8 @@ class IDStruct(object):
         """add a (original_id, current_id) pair to the list"""
         if not left or not right:
             return  # identifiers cannot be None
+        if self.lookup(left, right):
+            return  # tuple already in the list
         # ensure it's hashable
         if not type(left) in [list,tuple]:
             left = [left]
@@ -48,8 +50,6 @@ class IDStruct(object):
             left = tuple(left)
         if type(right) == list:
             right = tuple(right)
-        if self.lookup(left, right):
-            return  # tuple already in the list
         for v in left:
             if v not in self.forward.keys():
                 self.forward[v] = right
