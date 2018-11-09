@@ -411,13 +411,21 @@ class JobManager(object):
             pid = pid_pat.findall(fn)
             if not pid:
                 continue
-            pid = int(pid[0].split("_")[0])
+            try:
+                pid = int(pid[0].split("_")[0])
+            except IndexError:
+                logger.warning("Invalid PID file '%s', skip it" % fn)
+                raise
             if not pid in children_pids:
                 logger.info("Removing staled pid file '%s'" % fn)
                 os.unlink(fn)
         tid_pat = re.compile(".*/(Thread-\d+)_.*\.pickle")
         for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
-            tid = tid_pat.findall(fn)[0].split("_")[0]
+            try:
+                tid = tid_pat.findall(fn)[0].split("_")[0]
+            except IndexError:
+                logger.warning("Invalid TID file '%s', skip it" % fn)
+                raise
             if not tid:
                 continue
             if not tid in active_tids:
