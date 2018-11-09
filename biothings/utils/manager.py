@@ -419,7 +419,7 @@ class JobManager(object):
             if not pid in children_pids:
                 logger.info("Removing staled pid file '%s'" % fn)
                 os.unlink(fn)
-        tid_pat = re.compile(".*/(Thread-\d+)_.*\.pickle")
+        tid_pat = re.compile(".*/(Thread\w*-\d+)_.*\.pickle")
         for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
             try:
                 tid = tid_pat.findall(fn)[0].split("_")[0]
