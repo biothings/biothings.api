@@ -37,12 +37,14 @@ export default {
           if(this.source["inspect"]) {
             var srcs = this.source["inspect"]["sources"];
             for(var subsrc in srcs) {
-              var results = srcs[subsrc]["inspect"]["results"];
-              for(var mode in results) {
-                if(results[mode]["errors"]) {
-                  Array.prototype.push.apply(errors,results[mode]["errors"]);
+                if(srcs[subsrc]["inspect"]) { 
+                    var results = srcs[subsrc]["inspect"]["results"];
+                    for(var mode in results) {
+                        if(results[mode]["errors"]) {
+                            Array.prototype.push.apply(errors,results[mode]["errors"]);
+                        }
+                    }
                 }
-              }
             }
           }
           return errors;
