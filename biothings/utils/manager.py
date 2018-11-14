@@ -660,7 +660,7 @@ class JobManager(object):
 
     def get_thread_files(self):
         # see track() for filename format
-        pat = re.compile(".*/(Thread-\d+)_.*\.pickle")
+        pat = re.compile(".*/(Thread\w*-\d+)_.*\.pickle")
         threads = self.thread_queue._threads
         active_tids = [t.getName() for t in threads]
         tids = {}
