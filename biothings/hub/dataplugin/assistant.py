@@ -130,7 +130,7 @@ class BaseAssistant(object):
                     durls = manifest["dumper"]["data_url"]
                 schemes = set([urllib.parse.urlsplit(durl).scheme for durl in durls])
                 # https = http regarding dumper generation
-                if len([sch.replace("https","http") for sch in schemes]) > 1:
+                if len(set([sch.replace("https","http") for sch in schemes])) > 1:
                     raise AssistantException("Manifest specifies URLs of different types (%s), " % schemes + \
                             "expecting only one")
                 scheme = schemes.pop()
