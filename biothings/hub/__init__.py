@@ -415,7 +415,7 @@ class HubServer(object):
                 self.managers["dump_manager"].schedule_all()
             if "upload" in self.features and not getattr(config,"SKIP_UPLOADER_POLL",False):
                 self.managers["upload_manager"].poll('upload',lambda doc:
-                        self.shell.launch(partial(upload_manager.upload_src,doc["_id"])))
+                        self.shell.launch(partial(self.managers["upload_manager"].upload_src,doc["_id"])))
         # init data plugin once source_manager has been set (it inits dumper and uploader
         # managers, if assistant_manager is configured/loaded before, datasources won't appear
         # in dumper/uploader managers as they were not ready yet)
