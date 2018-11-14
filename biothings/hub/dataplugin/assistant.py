@@ -451,14 +451,14 @@ class AssistantManager(BaseSourceManager):
             for pdir in plugin_dirs:
                 fulldir = os.path.join(btconfig.DATA_PLUGIN_FOLDER, pdir)
                 # basic sanity check to make sure it's plugin
-                if "manifest.json" in os.listdir(fulldir) and \
-                        json.load(open(os.path.join(fulldir,"manifest.json"))):
-                    self.logger.info("Found unregistered plugin '%s', auto-register it" % pdir)
-                    try:
+                try:
+                    if "manifest.json" in os.listdir(fulldir) and \
+                            json.load(open(os.path.join(fulldir,"manifest.json"))):
+                        self.logger.info("Found unregistered plugin '%s', auto-register it" % pdir)
                         self.register_url("local://%s" % pdir.strip().strip("/"))
-                    except Exception as e:
-                        self.logger.warning("Couldn't auto-register plugin '%s': %s" % (pdir,e))
-                        continue
+                except Exception as e:
+                    self.logger.exception("Couldn't auto-register plugin '%s': %s" % (pdir,e))
+                    continue
                 else:
                     self.logger.warning("Directory '%s' doesn't contain a plugin, skip it" % pdir)
                     continue
