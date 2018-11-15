@@ -37,7 +37,6 @@ install_requires = [
     'requests>=2.8.1',
     'tornado>=5.1',
     'elasticsearch==6.1.1',
-    'networkx>=2.1',
     'gitpython==2.1.11'
 ]
 hub_requires = [
