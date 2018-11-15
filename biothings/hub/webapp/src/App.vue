@@ -328,8 +328,21 @@ export default {
             var url = this.conn["url"].replace(/\/$/,"");
             console.log(`Connecting to ${this.conn.name} (${url})`);
             axios.defaults.baseURL = url;
+            this.refreshConnection(url);
             Vue.localStorage.set('last_conn',JSON.stringify(this.conn));
             this.setupSocket(redirect);
+        },
+        refreshConnection: function(url) {
+            var self = this;
+            axios.get(url)
+            .then(response => {
+                this.conn = response.data.result;
+                this.conn["url"] = url;
+            })
+            .catch(err => {
+                console.log(err);
+                console.log("Error creating new connection: " + err.data.error);
+            })
         },
         setupSocket(redirect=false) {
             var self = this;
