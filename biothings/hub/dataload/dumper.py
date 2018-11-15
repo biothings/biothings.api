@@ -10,7 +10,7 @@ from biothings.utils.hub_db import get_src_dump, get_data_plugin
 from biothings.utils.common import timesofar, rmdashfr
 from biothings.utils.loggers import get_logger
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
-from config import logger as logging, HIPCHAT_CONFIG, LOG_FOLDER
+from config import logger as logging, LOG_FOLDER
 
 from biothings.utils.manager import BaseSourceManager
 from biothings.hub.dataload.uploader import set_pending_to_upload
