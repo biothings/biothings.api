@@ -1,5 +1,8 @@
 <template>
     <div>
+        <div v-if="error" class="ui error message">
+            {{error}}
+        </div>
         <button class="ui newrelease  button" @click="newRelease">
             New release
         </button>
@@ -151,7 +154,12 @@ export default {
             });
             console.log(_releases);
             return _releases;
-        }
+        },
+        error: function() {
+            var last = this.build.jobs[this.build.jobs.length-1];
+            if(last && last.err)
+                return last.err;
+        },
     },
     methods: {
         displayError : function() {

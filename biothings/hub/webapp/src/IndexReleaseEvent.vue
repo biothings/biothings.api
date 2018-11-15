@@ -16,7 +16,7 @@
                 </div>
             </div>
             <div class="meta">
-                <i class="file alternate icon"></i> {{release.count}} documents indexed
+                <i class="file alternate icon"></i> {{num_indexed}} documents indexed
                 <!--button :class="[release.snapshot ? 'disabled' : '','ui mini labeled icon button']"
                         @click="snapshot(release)">
                     <i class="bookmark icon"></i>
@@ -50,6 +50,9 @@ export default {
         }
     },
     computed: {
+        num_indexed: function() {
+            return this.release.count || 0;
+        }
     },
     methods: {
         displayError : function() {
