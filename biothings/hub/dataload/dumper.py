@@ -1,5 +1,5 @@
 import time, copy
-import os, pprint
+import os, pprint, cgi
 from datetime import datetime
 import asyncio
 from functools import partial
@@ -630,6 +630,13 @@ class HTTPDumper(BaseDumper):
         if not res.status_code == 200:
             raise DumperException("Error while downloading '%s' (status: %s, reason: %s)" % \
                     (remoteurl,res.status_code,res.reason))
+        # issue biothings.api #3: take filename from header if specified
+        if res.headers.get("content-disposition"):
+            parsed = cgi.parse_header(res.headers["content-disposition"])
+            # looks like: ('attachment', {'filename': 'the_filename.txt'})
+            if parsed and parsed[0] == "attachment" and parsed[1].get("filename"):
+                # localfile is an absolute path, replace last part
+                localfile = os.path.join(os.path.dirname(localfile),parsed[1]["filename"])
         fout = open(localfile, 'wb')
         for chunk in res.iter_content(chunk_size=512 * 1024):
             if chunk:
