@@ -226,7 +226,7 @@ class IndexerManager(BaseManager):
             try:
                 self.logger.info("Done indexing target '%s' to index '%s': %s" % (target_name,index_name,res))
             except Exception as e:
-                self.logger.exception("Error while running merge job, %s" % e)
+                self.logger.exception("Error while running index job, %s" % e)
                 raise
         idxklass = self.find_indexer(target_name)
         idxkwargs = self[indexer_env]
@@ -617,7 +617,9 @@ class Indexer(object):
                 if mode == "purge":
                     es_idxer.delete_index()
                 elif not mode in ["resume","merge"]:
-                    raise IndexerException("Index already '%s' exists, (use mode='purge' to auto-delete it or mode='resume' to add more documents)" % index_name)
+                    msg = "Index already '%s' exists, (use mode='purge' to auto-delete it or mode='resume' to add more documents)" % index_name
+                    self.register_status("failed",job={"err": msg})
+                    raise IndexerException(msg)
 
             if not mode in ["resume","merge"]:
                 es_idxer.create_index({self.doc_type:_mapping},_extra)

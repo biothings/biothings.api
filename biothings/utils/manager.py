@@ -645,7 +645,13 @@ class JobManager(object):
             try:
                 pid = int(pat.findall(fn)[0].split("_")[0])
                 if not child or child.pid == pid:
-                    worker = pickle.load(open(fn,"rb"))
+                    try:
+                        worker = pickle.load(open(fn,"rb"))
+                    except FileNotFoundError:
+                        # it's possible that, as this point, the pickle file
+                        # doesn't exist anymore (process is done and file was unlinked)
+                        # just ignore go to next one
+                        continue
                     proc = pchildren[children_pids.index(pid)]
 
                     worker["process"] = {
