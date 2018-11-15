@@ -87,10 +87,15 @@ def set_versions(config, app_folder):
     if not hasattr(config,"APP_VERSION"):
         repo = Repo(app_folder) # app dir (mygene, myvariant, ...)
         try:
-            config.APP_VERSION =  repo.active_branch.name
+            commit = repo.head.object.hexsha[:6]
+        except Exception as e:
+            logging.warning("Can't determine app commit hash: %s" % e)
+            commit = "unknown"
+        try:
+            config.APP_VERSION = "%s [%s]" % (repo.active_branch.name,commit)
         except Exception as e:
             logging.warning("Can't determine app version, defaulting to 'master': %s" % e)
-            config.APP_VERSION = "master"
+            config.APP_VERSION = "master [%s]" % commit
     else:
         logging.info("app_version '%s' forced in configuration file" % config.APP_VERSION)
 
@@ -102,10 +107,15 @@ def set_versions(config, app_folder):
         assert _bt == "biothings", "Expectig 'biothings' dir in biothings lib path"
         repo = Repo(bt_folder) # app dir (mygene, myvariant, ...)
         try:
-            config.BIOTHINGS_VERSION =  repo.active_branch.name
+            commit = repo.head.object.hexsha[:6]
+        except Exception as e:
+            logging.warning("Can't determine biothings commit hash: %s" % e)
+            commit = "unknown"
+        try:
+            config.BIOTHINGS_VERSION = "%s [%s]" % (repo.active_branch.name,commit)
         except Exception as e:
             logging.warning("Can't determine biothings version, defaulting to 'master': %s" % e)
-            config.BIOTHINGS_VERSION = "master"
+            config.BIOTHINGS_VERSION = "master [%s]" % commit
     else:
         logging.info("biothings_version '%s' forced in configuration file" % config.BIOTHINGS_VERSION)
     
