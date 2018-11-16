@@ -52,15 +52,19 @@
                                     </tr>
                                     <tr>
                                         <td class="ui grey">Uploader</td>
-                                        <td>
+                                        <td v-if="info.uploader">
                                             {{info.uploader.name}}
                                             <span v-if="info.uploader.dummy">(dummy)</span>
                                         </td>
+                                        <td v-else>
+                                            <div class="red">No uploader found, datasource may be broken</div>
+                                        </td>
+
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
-                        <div class="six wide column">
+                        <div class="six wide column" v-if="info.uploader">
                             <p v-if="info.uploader.dummy">This is a <i>dummy</i> uploader, meaning data isn't actually uploaded but rather already stored in a collection.
                                 In order to register data, a <b>release</b> is required in order the uploader to run properly.</p>
                             <div :class="['ui upload form',subsrc]">
