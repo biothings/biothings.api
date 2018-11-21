@@ -345,6 +345,8 @@ class JobManager(object):
             max_memory_usage = limited
         elif max_memory_usage:
             logger.info("Setting memory usage to %s" % sizeof_fmt(max_memory_usage))
+        else:
+            logger.info("No memory limit set")
         self.max_memory_usage = max_memory_usage
         self.avail_memory = int(psutil.virtual_memory().available)
         self._phub = None
