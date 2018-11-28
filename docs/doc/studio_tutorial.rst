@@ -9,7 +9,7 @@ to a fully operational BioThings API, with as minimal effort as possible.
 .. note:: You may also want to read the `developer's guide <studio_guide.html>`_ for more detailed informations.
 
 .. note:: The following tutorial is only valid for **BioThings Studio** release **0.1.e**. Check
-   all available `release <https://github.com/biothings/biothings_studio/releases>`_ for more.
+   all available `releases <https://github.com/biothings/biothings_studio/releases>`_ for more.
 
 *****************
 What you'll learn

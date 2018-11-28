@@ -1,6 +1,6 @@
-*********************************************************
-Multiple Data Sources, Automated Source Updating Tutorial
-*********************************************************
+**********************
+BioThings Hub tutorial
+**********************
 
 In this tutorial, we will build the whole process, or "hub", which produces the data
 for Taxonomy BioThings API, accessible at `<t.biothings.io>`. This API serves information

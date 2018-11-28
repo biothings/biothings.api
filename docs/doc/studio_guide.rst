@@ -240,7 +240,7 @@ on the protocol. All properties, methods from the instance are available, specif
        yield {"_id":"..."}
 
 ``data_folder`` is the folder containing the previously downloaded (dumped) data, it is automatically set to the latest release available. Note the function doesn't
-  take an filename as input, it should select the file(s) to parse.
+take an filename as input, it should select the file(s) to parse.
 
   * *on_duplicates* defines the strategy to use when duplicated record are found (according to the ``_id`` key):
 
