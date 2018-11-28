@@ -156,9 +156,9 @@ new API. On the right, we have different information about jobs and resources:
    on average)
 
 
-*********************************************
-Data plugin architecture and specifications *
-*********************************************
+*******************************************
+Data plugin architecture and specifications
+*******************************************
 
 **BioThings Studio** allows to easily define and register datasources using *data plugins*. Such a plugin is defined by:
 
@@ -249,7 +249,4 @@ on the protocol. All properties, methods from the instance are available, specif
     - ``merge`` will merge existing document with the duplicated one. Refer to ``biothings.hub.dataload.storage.MergerStorage`` class for more.
 
 .. note:: a fully implemented data plugin is available at https://github.com/sirloon/mvcgi as an example.
-
-
-TODO: spotting errors
 

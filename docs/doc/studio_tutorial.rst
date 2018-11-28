@@ -6,7 +6,7 @@ This tutorial will guide you through **BioThings Studio**, a pre-configured envi
 and administer BioThings API. This guide will show how to convert a simple flat file
 to a fully operational BioThings API, with as minimal effort as possible.
 
-.. note:: You may also want to read the __developer's guide__ for more detailed informations.
+.. note:: You may also want to read the `developer's guide <studio_guide.html>`_ for more detailed informations.
 
 .. note:: The following tutorial is only valid for **BioThings Studio** release **0.1.e**. Check
    all available `release <https://github.com/biothings/biothings_studio/releases>`_ for more.
@@ -158,7 +158,7 @@ BioThings APIs. The input file is available here: https://www.cancergenomeinterp
 .. _`Cancer Genome Interpreter`: https://www.cancergenomeinterpreter.org
 .. _`MyVariant.info`: https://myvariant.info
 
-The parser itself is not the main topic of this tutorial, the full code for the parser can be found `here`__, in MyVariant's github `repository`__.
+The parser itself is not the main topic of this tutorial, the full code for the parser can be found here__, in MyVariant's github repository__.
 
 .. __: https://github.com/biothings/myvariant.info/blob/master/src/hub/dataload/sources/cgi/cgi_parser.py
 .. __: https://github.com/biothings/myvariant.info

@@ -1,6 +1,6 @@
-##################
-BioThings Studio #
-##################
+################
+BioThings Studio
+################
 
 **BioThings Studio** is a pre-configured environment used to build
 and administer BioThings API.
