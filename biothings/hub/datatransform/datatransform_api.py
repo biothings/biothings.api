@@ -284,11 +284,16 @@ class BiothingsAPIEdge(DataTransformEdge):
     """
     APIEdge - IDLookupEdge object for API calls
     """
-    def __init__(self, scope, field, weight=1):
+    def __init__(self, scope, fields, weight=1):
         super().__init__()
         self.init_state()
         self.scope = scope
-        self.field = field
+        if isinstance(fields, str):
+            self.fields = [fields]
+        elif isinstance(fields, list):
+            self.fields = fields
+        else:
+            raise TypeError("fields argument must be str or list")
         self.weight = weight
 
     def init_state(self):
@@ -321,7 +326,7 @@ class BiothingsAPIEdge(DataTransformEdge):
         :return:
         """
         qr = self._query_many(keylookup_obj, id_strct)
-        new_id_strct = self._parse_querymany(keylookup_obj, qr, id_strct, self.field)
+        new_id_strct = self._parse_querymany(keylookup_obj, qr, id_strct, self.fields)
         return new_id_strct
 
     def _query_many(self, keylookup_obj, id_strct):
@@ -333,15 +338,17 @@ class BiothingsAPIEdge(DataTransformEdge):
         """
         if not isinstance(id_strct, IDStruct):
             raise TypeError("id_strct shouldb be of type IDStruct")
-        id_lst = id_strct.id_lst
+        id_lst = []
+        for id in id_strct.id_lst:
+            id_lst.append('"{}"'.format(id))
         return self.client.querymany(id_lst,
                                      scopes=self.scope,
-                                     fields=self.field,
+                                     fields=self.fields,
                                      as_generator=True,
                                      returnall=True,
                                      size=keylookup_obj.batch_size)
 
-    def _parse_querymany(self, keylookup_obj, qr, id_strct, field):
+    def _parse_querymany(self, keylookup_obj, qr, id_strct, fields):
         """
         Parse the querymany results from the biothings_client into a structure
         that will later be used for document key replacement.
@@ -352,11 +359,12 @@ class BiothingsAPIEdge(DataTransformEdge):
         qm_struct = IDStruct()
         for q in qr['out']:
             query = q['query']
-            val = nested_lookup(q, field)
-            if val:
-                for (orig_id, curr_id) in id_strct:
-                    if query == curr_id:
-                        qm_struct.add(orig_id, val)
+            for field in fields:
+                val = nested_lookup(q, field)
+                if val:
+                    for (orig_id, curr_id) in id_strct:
+                        if query == curr_id:
+                            qm_struct.add(orig_id, val)
         return qm_struct
 
 class MyChemInfoEdge(BiothingsAPIEdge):
