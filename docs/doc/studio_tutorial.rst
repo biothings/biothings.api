@@ -71,16 +71,47 @@ having to enter the container:
 
   $ docker run --name studio -p 8080:8080 -p 7022:7022 -p 7080:7080 -p 9200:9200 -p 27017:27017 -p 8000:8000 -d biothings_studio
 
-.. note:: Instance will store MongoDB data in `/var/lib/mongodb`, ElasticSearch data in `/var/lib/elasticsearch/` directory,
-   and downloaded data and logs in `/home/biothings/biothings_studio/data`. Those locations could require extra disk space,
-   if needed Docker option ``-v`` can be used to mount a directory from the host, inside the container.
-   Please refer to Docker documentation.
-
-.. note:: Biothings Studio and the Hub are not designed to be publicly accessible. Those ports shouhd **not** be exposed. When
+.. note:: Biothings Studio and the Hub are not designed to be publicly accessible. Those ports should **not** be exposed. When
    accessing the Studio and any of these ports, SSH tunneling can be used to safely access the services from outside.
    Ex: ``ssh -L 7080:localhost:7080 -L 8080:localhost:8080 user@mydockerserver`` will expose the web application and
    the REST API ports to your computer, so you can access the webapp using http://localhost:8080 and the API using http://localhost:7080.
    See https://www.howtogeek.com/168145/how-to-use-ssh-tunneling for more
+
+Filesystem overview
+^^^^^^^^^^^^^^^^^^^
+
+Several locations on the filesystem are important to notice, when it comes to change default configuration or troubleshoot the application.
+
+* **Hub** (backend service) is running under ``biothings`` user, running code is located in ``/home/biothings/biothings_studio``. It heavely relies on
+  BioThings SDK located in ``/home/biothings/biothings.api``.
+* Several scripts/helpers can be found in ``/home/biothings/bin``:
+
+  - ``run_studio`` is used to run the Hub in a tmux session. If a session is already running, it will first kill it and create new one. We don't have
+    to run this manually when the studio first starts, it is part of the starting sequence.
+  - ``update_studio`` is used to fetch the latest code for **BioThings Studio**
+  - ``update_biotnings``, same as above but for BioThings SDK
+
+* ``/data`` contains several important folders:
+
+  - ``mongodb`` folder, where MongoDB server stores its data
+  - ``elasticsearch`` folder, where ElasticSearch stores its data
+  - ``biothings_studio`` folder, containing different sub-folders used by the **Hub**
+
+    - ``datasources`` contains data downloaded by the different ``dumpers``, it contains sub-folders named according to the datasource's name.
+      Inside the datasource folder can be found the different releases, one per folder.
+    - ``dataupload`` is where data is stored when uploading data to the Hub (see below dedicated section for more).
+    - ``logs`` contains all log files produced by the **Hub**
+    - ``plugins`` is where data plugins can be found (one sub-folder per plugin's name)
+
+.. note:: Instance will store MongoDB data in `/data/mongodb`, ElasticSearch data in `/data/elasticsearch/` directory,
+   and downloaded data and logs in `/data/biothings_studio`. Those locations could require extra disk space,
+   if needed Docker option ``-v`` can be used to mount a directory from the host, inside the container.
+   Please refer to Docker documentation. It's also important to give enough permissions so the differences services
+   (MongoDB, ElasticSearch, NGNIX, BioThings Hub, ...) can actually write data on the docker host.
+
+
+Services check
+^^^^^^^^^^^^^^
 
 Let's enter the container to check everything is running fine. Services may take a while, up to 1 min, before fully started.
 If some services are missing, the troubleshooting section may help.
@@ -95,18 +126,20 @@ If some services are missing, the troubleshooting section may help.
   Active Internet connections (only servers)
   Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name
   tcp        0      0 0.0.0.0:7080            0.0.0.0:*               LISTEN      -
+  tcp        0      0 0.0.0.0:9000            0.0.0.0:*               LISTEN      -
   tcp        0      0 127.0.0.1:27017         0.0.0.0:*               LISTEN      -
   tcp        0      0 0.0.0.0:7022            0.0.0.0:*               LISTEN      -
-  tcp        0      0 0.0.0.0:8080            0.0.0.0:*               LISTEN      120/nginx
-  tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      185/sshd
+  tcp        0      0 0.0.0.0:9200            0.0.0.0:*               LISTEN      -
+  tcp        0      0 0.0.0.0:8080            0.0.0.0:*               LISTEN      166/nginx: master p
+  tcp        0      0 0.0.0.0:9300            0.0.0.0:*               LISTEN      -
+  tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      416/sshd
   tcp6       0      0 :::7080                 :::*                    LISTEN      -
   tcp6       0      0 :::7022                 :::*                    LISTEN      -
-  tcp6       0      0 :::9200                 :::*                    LISTEN      -
-  tcp6       0      0 :::9300                 :::*                    LISTEN      -
-  tcp6       0      0 :::22                   :::*                    LISTEN      185/sshd
+  tcp6       0      0 :::22                   :::*                    LISTEN      416/sshd
 
 We can see the different BioThings services' ports: 7080, 7022 and 8080. We can now access **BioThings Studio**
 using the dedicated web application.
+
 
 ********************************
 Creating an API from a flat file
@@ -157,28 +190,44 @@ From a single flat file, it produces JSON documents looking like this:
 
 We can easily create a new datasource and integrate data using **BioThings Studio**, by declaring a `data plugin`. Such plugin is defined by:
 
-* a github repository, containing everything useful for the datasource
-* within that repository, a `manifest.json` where the parser and the input file are declared
+* a folder containing a `manifest.json` file, where the parser and the input file location are declared
+
+This folder must be located in the plugins directory (by default ``/data/biothings_studio/plugins``, where the **Hub** monitors changes and
+reloads itself accordingly to register data plugins. Another way to declare such plugin is to register a github repository,
+containing everything useful for the datasource. This is what we'll do in the following section.
+
+.. note:: whether the plugin comes from a github repository or directly found in the plugins directory doesn't really matter. In the end, the code
+   will be found that same plugins directory, whether it comes from a ``git clone`` command while registeting the github URL or whether it comes
+   from folder and files manually created in that location. It's however easier, when developing a plugin, to directly work on local files first
+   so we don't have to regurlarly update the plugin code (``git pull``) from the webapp, to fetch the latest code. That said, since the plugin
+   is already defined in github in our case, we'll use the github repo registration method.
 
 The corresponding data plugin repository can be found at https://github.com/sirloon/mvcgi. The manifest file looks like this:
 
 .. code:: bash
 
   {
-      "version": "0.1",
+      "version": "0.2",
+      "__metadata__" : {
+          "license_url" : "https://www.cancergenomeinterpreter.org/faq#q11c",
+          "licence" : "CC BY-NC 4.0",
+          "url" : "https://www.cancergenomeinterpreter.org"
+      },
       "dumper" : {
           "data_url" : "https://www.cancergenomeinterpreter.org/data/cgi_biomarkers_latest.zip",
-          "uncompress" : true
+          "uncompress" : true,
       },
       "uploader" : {
           "parser" : "parser:load_data",
-          "ignore_duplicates" : false
+          "on_duplicates" : "ignore"
       }
   }
 
 * the `dumper` section declares where the input file is, using `data_url` key. Since the input file is a ZIP file, we first need to uncompress the archive, using `uncompress : true`.
 * the `uploader` section tells the **Hub** how to upload JSON documents to MongoDB. `parser` has a special format, `module_name:function_name`. Here, the parsing function is named
-  `load_data` and can be found in `parser.py` module. `ignore_duplicates` tells the **Hub** no duplicated data should be found (all JSON documents have unique IDs).
+  `load_data` and can be found in `parser.py` module. `'on_duplicates' : 'ignore'` tells the **Hub** to ignore any duplicated records (documents with same _id).
+
+For more information about the other fields, please refer to the `plugin specification <studio_guide.html#data-plugin-architecture-and-specifications>`_.
 
 Let's register that data plugin using the Studio. First, copy the repository URL:
 

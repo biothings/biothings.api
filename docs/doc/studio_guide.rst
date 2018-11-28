@@ -111,9 +111,9 @@ A **BioThings Studio** instance expose several services on different ports:
 * **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
 
 
-**********************************************
-Overview of BioThings Studio web application *
-**********************************************
+********************************************
+Overview of BioThings Studio web application
+********************************************
 
 **BioThings Studio** web application can simply be accessed using any browser pointing to port 8080. The home page
 shows a summary of current data recent updates. For now, it's pretty quiet since we didn't integrate any data yet.
@@ -249,4 +249,7 @@ on the protocol. All properties, methods from the instance are available, specif
     - ``merge`` will merge existing document with the duplicated one. Refer to ``biothings.hub.dataload.storage.MergerStorage`` class for more.
 
 .. note:: a fully implemented data plugin is available at https://github.com/sirloon/mvcgi as an example.
+
+
+TODO: spotting errors
 
