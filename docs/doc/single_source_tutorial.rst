@@ -47,20 +47,8 @@ Elasticsearch
 =============
 
 BioThings APIs currently serve data from an Elasticsearch index, so Elasticsearch is a requirement.
-Install Elasticsearch 2.4 either `directly <https://www.elastic.co/guide/en/elasticsearch/reference/2.4/_installation.html>`_,
-or as a `docker container <https://www.elastic.co/guide/en/elasticsearch/reference/current/docker.html>`_.
-
-Configure Elasticsearch
-+++++++++++++++++++++++
-
-To configure Elasticsearch, execute the following commands as su:
-
-.. code-block:: bash
-
-    echo 'http.enabled: True' >> /etc/elasticsearch/elasticsearch.yml
-    echo 'network.host: "0.0.0.0"' >> /etc/elasticsearch/elasticsearch.yml
-
-.. note:: This guide was created using Ubuntu 16.04, the exact location of elasticsearch.yml may vary in other platforms.
+Install an Elasticsearch version greater than 6 either `directly <https://www.elastic.co/guide/en/elasticsearch/reference/6.x/_installation.html>`_,
+or as a `docker container <https://www.elastic.co/guide/en/elasticsearch/reference/6.x/docker.html>`_.  This tutorial was created using Elasticsearch version 6.5.1.
 
 PharmGKB Gene
 ^^^^^^^^^^^^^
