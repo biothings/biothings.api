@@ -5,7 +5,7 @@ BioThings Studio: a developer's guide
 This section provides both an overview and detailed information abouth **BioThings Studio**,
 and is specifically aimed to developers who like to know more about internals.
 
-A complementary __tutorial__ is also available, explaining how to setup and use **BioThings Studio**,
+A complementary `tutorial <studio_tutorial.html>`_ is also available, explaining how to setup and use **BioThings Studio**,
 step-by-step, by building an API from a flat file.
 
 ************************
@@ -37,15 +37,6 @@ in the following diagram:
 The final index along with the Tornado application represents the frontend that is actually queried by the
 different available clients, and is out of this document's scope.
 
-A **BioThings Studio** instance expose several services on different ports:
-
-* **8080**: **BioThings Studio** web application port
-* **7022**: **BioThings Hub** SSH port
-* **7080**: **BioThings Hub** REST API port
-* **9200**: ElasticSearch port
-* **27017**: MongoDB port
-* **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
-* **9000**: Cerebro, a webapp used to easily interact with ElasticSearch clusters
 
 BioThings Studio
 ^^^^^^^^^^^^^^^^
@@ -59,11 +50,22 @@ for `download`_ and contains everything required to run **BioThings Hub**.
 .. image:: ../_static/hubstack.png
    :width: 100%
 
-Within the Studio, **BioThings Hub** and the whole backend service can be accessed through different options:
+A **BioThings Studio** instance expose several services on different ports:
 
-* a web application allows interaction with the most used elements of the service
-* a console, accessible through SSH, gives access to more commands, for advanced usage
-* a REST API and a websocket can be used to interact with the **Hub**, query the differents objects inside,
+* **8080**: **BioThings Studio** web application port
+* **7022**: **BioThings Hub** SSH port
+* **7080**: **BioThings Hub** REST API port
+* **9200**: ElasticSearch port
+* **27017**: MongoDB port
+* **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
+* **9000**: Cerebro, a webapp used to easily interact with ElasticSearch clusters
+
+**BioThings Hub** and the whole backend service can be accessed through different options according to some
+of these services
+
+* a web application allows interaction with the most used elements of the service (port 8080)
+* a console, accessible through SSH, gives access to more commands, for advanced usage (port 7022)
+* a REST API and a websocket (port 7080) can be used to interact with the **Hub**, query the differents objects inside,
   and get real-time notifications when processes are running. This interface is a good choice for third-party integration.
 
 
@@ -77,38 +79,67 @@ Who should use BioThings Studio ?
   learn how to configure all the sub-systems
 
 
-*************
-Prerequisites
-*************
+Filesystem overview
+^^^^^^^^^^^^^^^^^^^
 
-Using **BioThings Studio** requires a Docker server up and running, some basic knowledge
-about commands to run and use containers. Images have been tested on Docker >=17. Using AWS cloud,
-you can use our public AMI **biothings_demo_docker** (``ami-44865e3c`` in Oregon region) with Docker pre-configured
-and ready for studio deployment. Instance type depends on the size of data you
-want to integrate and parsers' performances. For this tutorial, we recommend using instance type with at least
-4GiB RAM, such as ``t2.medium``. AMI comes with an extra 30GiB EBS volume, which is more than enough
-for the scope of this tutorial.
+Several locations on the filesystem are important to notice, when it comes to change default configuration or troubleshoot the application.
 
-Alternately, you can install your own Docker server (on recent Ubuntu systems, ``sudo apt-get install docker.io``
-is usually enough). You may need to point Docker images directory to a specific hard drive to get enough space,
-using ``-g`` option:
+* **Hub** (backend service) is running under ``biothings`` user, running code is located in ``/home/biothings/biothings_studio``. It heavely relies on
+  BioThings SDK located in ``/home/biothings/biothings.api``.
+* Several scripts/helpers can be found in ``/home/biothings/bin``:
+
+  - ``run_studio`` is used to run the Hub in a tmux session. If a session is already running, it will first kill it and create new one. We don't have
+    to run this manually when the studio first starts, it is part of the starting sequence.
+  - ``update_studio`` is used to fetch the latest code for **BioThings Studio**
+  - ``update_biotnings``, same as above but for BioThings SDK
+
+* ``/data`` contains several important folders:
+
+  - ``mongodb`` folder, where MongoDB server stores its data
+  - ``elasticsearch`` folder, where ElasticSearch stores its data
+  - ``biothings_studio`` folder, containing different sub-folders used by the **Hub**
+
+    - ``datasources`` contains data downloaded by the different ``dumpers``, it contains sub-folders named according to the datasource's name.
+      Inside the datasource folder can be found the different releases, one per folder.
+    - ``dataupload`` is where data is stored when uploading data to the Hub (see below dedicated section for more).
+    - ``logs`` contains all log files produced by the **Hub**
+    - ``plugins`` is where data plugins can be found (one sub-folder per plugin's name)
+
+.. note:: Instance will store MongoDB data in `/data/mongodb`, ElasticSearch data in `/data/elasticsearch/` directory,
+   and downloaded data and logs in `/data/biothings_studio`. Those locations could require extra disk space,
+   if needed Docker option ``-v`` can be used to mount a directory from the host, inside the container.
+   Please refer to Docker documentation. It's also important to give enough permissions so the differences services
+   (MongoDB, ElasticSearch, NGNIX, BioThings Hub, ...) can actually write data on the docker host.
+
+
+Services check
+^^^^^^^^^^^^^^
+
+Let's enter the container to check everything is running fine. Services may take a while, up to 1 min, before fully started.
+If some services are missing, the troubleshooting section may help.
+
+.. _services:
 
 .. code:: bash
 
-  # /mnt/docker points to a hard drive with enough disk space
-  sudo echo 'DOCKER_OPTS="-g /mnt/docker"' >> /etc/default/docker
-  # restart to make this change active
-  sudo service docker restart
+  $ docker exec -ti studio /bin/bash
 
+  root@301e6a6419b9:/tmp# netstat -tnlp
+  Active Internet connections (only servers)
+  Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name
+  tcp        0      0 0.0.0.0:7080            0.0.0.0:*               LISTEN      -
+  tcp        0      0 0.0.0.0:9000            0.0.0.0:*               LISTEN      -
+  tcp        0      0 127.0.0.1:27017         0.0.0.0:*               LISTEN      -
+  tcp        0      0 0.0.0.0:7022            0.0.0.0:*               LISTEN      -
+  tcp        0      0 0.0.0.0:9200            0.0.0.0:*               LISTEN      -
+  tcp        0      0 0.0.0.0:8080            0.0.0.0:*               LISTEN      166/nginx: master p
+  tcp        0      0 0.0.0.0:9300            0.0.0.0:*               LISTEN      -
+  tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      416/sshd
+  tcp6       0      0 :::7080                 :::*                    LISTEN      -
+  tcp6       0      0 :::7022                 :::*                    LISTEN      -
+  tcp6       0      0 :::22                   :::*                    LISTEN      416/sshd
 
-A **BioThings Studio** instance expose several services on different ports:
-
-* **8080**: **BioThings Studio** web application port
-* **7022**: **BioThings Hub** SSH port
-* **7080**: **BioThings Hub** REST API port
-* **9200**: ElasticSearch port
-* **27017**: MongoDB port
-* **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
+Specifically, BioThings Studio services' ports are: 7080, 7022 and 8080.
 
 
 ********************************************
