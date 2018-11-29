@@ -256,7 +256,10 @@ export default {
         },
         conn: function(newv,oldv) {
             if(newv != oldv) {
-                $(".logo").attr("src",this.conn.icon);
+                if(this.conn.icon)
+                    $(".logo").attr("src",this.conn.icon);
+                else
+                    $(".logo").attr("src",this.default_conn.icon);
             }
         }
     },
