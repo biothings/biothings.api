@@ -328,7 +328,10 @@ class JobManager(object):
             num_workers=None,num_threads=None,default_executor="thread",auto_recycle=True):
         self.loop = loop
         self.num_workers = num_workers
-        self.num_threads = num_threads or num_workers
+        if self.num_workers == 0:
+            logger.debug("Adjusting number of worker to 1")
+            self.num_workers = 1
+        self.num_threads = num_threads or self.num_workers
         self.process_queue = process_queue or concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
         # TODO: limit the number of threads (as argument) ?
         self.thread_queue = thread_queue or concurrent.futures.ThreadPoolExecutor(max_workers=self.num_threads)
