@@ -13,13 +13,27 @@ from biothings.utils.loggers import get_logger
 
 class MongoDBEdge(DataTransformEdge):
     """
-    IDLookupEdge object for MongoDB queries
+    The MongoDBEdge uses data within a MongoDB collection to convert
+    one identifier to another. The input identifier is used to search
+    a collection. The output identifier values are read out of that
+    collection:
     """
-    def __init__(self, collection, lookup, field, weight=1):
+    def __init__(self, collection_name, lookup, field, weight=1):
+        """
+        :param collection_name: The name of the MongoDB collection.
+        :type collection_name: str
+        :param lookup: The field that will match the input identifier in the collection.
+        :type lookup: str
+        :param field: The output identifier field that will be read out of matching documents.
+        :type field: str
+        :param weight: Weights are used to prefer one path over another. The path with the lowest weight is preferred. The default weight is 1.
+        :type weight: int
+        """
+
         super().__init__()
         # unpickleable attributes, grouped
         self.init_state()
-        self.collection_name = collection
+        self.collection_name = collection_name
         self.lookup = lookup
         self.field = field
         self.weight = weight
@@ -75,22 +89,33 @@ class MongoDBEdge(DataTransformEdge):
 
 
 class DataTransformMDB(DataTransform):
+    """
+    Convert document identifiers from one type to another.
+    """
     # Constants
     batch_size = 1000
     default_source = '_id'
 
     def __init__(self, G, *args, **kwargs):
         """
-        Initialize the keylookup object and precompute paths from the
-        start key to all target keys.
-
-        The decorator is intended to be applied to the load_data function
-        of an uploader.  The load_data function yields documents, which
-        are then post processed by call and the 'id' key conversion is
-        performed.
+        The DataTransform MDB module was written as a decorator class
+        which should be applied to the load_data function of a
+        Biothings Uploader.  The load_data function yields documents,
+        which are then post processed by call and the 'id' key
+        conversion is performed.
 
         :param G: nx.DiGraph (networkx 2.1) configuration graph
-        Other params, see bt.hub.datatransform.datatransform.DataTransform.__init__
+        :param input_types: A list of input types for the form (identifier, field) where identifier matches a node and field is an optional dotstring field for where the identifier should be read from (the default is ‘_id’).
+        :param output_types: A priority list of identifiers to convert to. These identifiers should match nodes in the graph.
+        :type output_types: list(str)
+        :param skip_on_failure: If True, documents where identifier conversion fails will be skipped in the final document list.
+        :type skip_on_failure: bool
+        :param skip_w_regex: Do not perform conversion if the identifier matches the regular expression provided to this argument. By default, this option is disabled.
+        :type skip_w_regex: bool
+        :param idstruct_class: Override an internal data structure used by the this module (advanced usage)
+        :type idstruct_class: class
+        :param copy_from_doc: If true then an identifier is copied from the input source document regardless as to weather it matches an edge or not. (advanced usage)
+        :type copy_from_doc: bool
         """
         if not isinstance(G, nx.DiGraph):
             raise ValueError("key_lookup configuration error:  G must be of type nx.DiGraph")

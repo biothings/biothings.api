@@ -8,8 +8,8 @@ class Histogram(object):
 
     def __str__(self):
         res = {
-            'io_hist': self.io_histogram,
-            'edge_hist': self.edge_histogram
+            'io_report': self.io_histogram,
+            'edge_report': self.edge_histogram
             }
         return str(res)
 

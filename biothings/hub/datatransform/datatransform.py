@@ -331,7 +331,19 @@ class DataTransformEdge(object):
 
 
 class RegExEdge(DataTransformEdge):
+    """
+    The RegExEdge allows an identifier to be transformed using a regular expression. POSIX regular expressions are supported.
+    """
+
     def __init__(self, from_regex, to_regex, weight=1):
+        """
+        :param from_regex: The first parameter of the regular expression substitution.
+        :type from_regex: str
+        :param to_regex: The second parameter of the regular expression substitution.
+        :type to_regex: str
+        :param weight: Weights are used to prefer one path over another. The path with the lowest weight is preferred. The default weight is 1.
+        :type weight: int
+        """
         self.from_regex = from_regex
         self.to_regex = to_regex
         self.weight = weight
