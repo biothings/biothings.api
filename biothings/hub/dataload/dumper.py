@@ -12,7 +12,7 @@ from biothings.utils.loggers import get_logger
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
 from config import logger as logging, LOG_FOLDER
 
-from biothings.utils.manager import BaseSourceManager
+from biothings.utils.manager import BaseSourceManager, ResourceError
 from biothings.hub.dataload.uploader import set_pending_to_upload
 
 
@@ -1042,10 +1042,13 @@ class DumperManager(BaseSourceManager):
     def register_classes(self,klasses):
         for klass in klasses:
             if klass.SRC_NAME:
+                if len(self.register.get(klass.SRC_NAME,[])) >= 1:
+                        raise ResourceError("Can't register %s for source '%s', dumper already registered: %s" % \
+                                (klass,klass.SRC_NAME,self.register[klass.SRC_NAME]))
                 self.register.setdefault(klass.SRC_NAME,[]).append(klass)
             else:
                 try:
-                    self.register[klass.name] = klass 
+                    self.register[klass.name] = klass
                 except AttributeError as e:
                     logging.error("Can't register class %s: %s" % (klass,e))
                     continue
@@ -1147,7 +1150,7 @@ class DumperManager(BaseSourceManager):
         res = []
         for _id in src_ids:
             src = src_dump.find_one({"_id":_id}) or {}
-            assert len(self.register[_id]) == 1
+            assert len(self.register[_id]) == 1, "Found more than one dumper for source '%s': %s" % (_id,self.register[_id])
             dumper = self.register[_id][0]
             src.setdefault("download",{})
             src["download"]["dumper"] = {

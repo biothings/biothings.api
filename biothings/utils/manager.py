@@ -311,7 +311,7 @@ class BaseSourceManager(BaseManager):
             try:
                 # batch registration, we'll silently ignore not-found sources
                 self.register_source(src,fail_on_notfound=False)
-            except UnknownResource as e:
+            except (UnknownResource,ResourceError) as e:
                 logger.info("Can't register source '%s', skip it; %s" % (src,e))
                 import traceback
                 logger.error(traceback.format_exc())
