@@ -77,16 +77,23 @@ class InspectorManager(BaseManager):
             if data_provider[0] == "src":
                 data_provider_type = "source"
                 # find src_dump doc
-                src_name = data_provider[1].split(".")[0]
-                doc = get_src_dump().find_one({"_id":src_name})
+                # is it a full source name (dot notation) ?
+                fullname = get_source_fullname(data_provider[1])
+                if fullname:
+                    # it's a dot-notation
+                    src_name = fullname.split(".")[0]
+                else:
+                    # no subsource, full source name is the passed name
+                    src_name = data_provider[1]
+                    fullname = src_name
+                doc = get_src_dump().find_one({"_id":src_name}) # query by main source
                 if not doc:
                     raise InspectorError("Can't find document associated to '%s'" % src_name)
-
                 # get an uploader instance (used to get the data if type is "uploader"
                 # but also used to update status of the datasource via register_status()
-                ups = self.upload_manager[data_provider[1]]
+                ups = self.upload_manager[fullname] # potentially using dot notation
                 # TODO: if dealing with a jobs list later (job_manager), we can handle this easily
-                assert len(ups) == 1, "More than one uploader found for '%s', not supported (yet)" % data_provider[1]
+                assert len(ups) == 1, "More than one uploader found for '%s', not supported (yet), use main_source.source notation" % data_provider[1]
                 # create uploader
                 registerer_obj = self.upload_manager.create_instance(ups[0])
                 backend_provider = data_provider
