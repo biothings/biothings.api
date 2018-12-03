@@ -384,7 +384,8 @@ class HubShell(InteractiveShell):
                 klass.save_cmd(num,klass.launched_commands[num])
                 if not has_err and localoutputs and set(map(type,localoutputs)) == {str}:
                     localoutputs = "\n" + "".join(localoutputs)
-                klass.pending_outputs[num] = "[%s] %s %s: finished %s" % (num,has_err and "ERR" or "OK ",info["cmd"], localoutputs)
+                klass.pending_outputs[num] = "[%s] %s {%s} %s: finished %s " % \
+                        (num,has_err and "ERR" or "OK",timesofar(info["started_at"]),info["cmd"],localoutputs)
             else:
                 klass.pending_outputs[num] = "[%s] RUN {%s} %s" % (num,timesofar(info["started_at"]),info["cmd"])
 
