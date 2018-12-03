@@ -183,12 +183,8 @@ class InspectorManager(BaseManager):
                 def fully_inspected(res):
                     nonlocal got_error
                     try:
-                        def bsoncompat(val):
-                            if type(val) == type:
-                                return val.__name__ # prevent having dots in the field (not storable in mongo)
-                            else:
-                                return str(val)
-                        _map = {"results" : dict_walk(res,bsoncompat)}
+                        res = btinspect.stringify_inspect_doc(res)
+                        _map = {"results" : res}
                         _map["data_provider"] = repr(data_provider)
                         _map["started_at"] = started_at
                         _map["duration"] = timesofar(t0)

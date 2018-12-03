@@ -13,6 +13,7 @@ import bson
 
 from .common import timesofar, is_scalar, is_float, is_str, is_int, splitstr
 from .web.es import flatten_doc
+from biothings.utils.dataload import dict_walk
 
 def d3hierarchy(mapt,name,d3=None):
     if not d3:
@@ -388,6 +389,29 @@ def compute_metadata(mapt,mode):
         mapt["__metadata__"] = {"total_fields" : len(flat)}
 
     return mapt
+
+
+def typify_inspect_doc(dmap):
+    """
+    dmap is an inspect which was converted to be stored in a database,
+    namely actual python types were stringify to be storabled. This function
+    does the oposite and restore back python types within the inspect doc
+    """
+    def typify(val):
+        if val.startswith("__type__:"):
+            return eval(val.replace("__type__:",""))
+        else:
+            return val
+    return dict_walk(dmap,typify)
+
+
+def stringify_inspect_doc(dmap):
+    def stringify(val):
+        if type(val) == type:
+            return "__type__:%s" % val.__name__ # prevent having dots in the field (not storable in mongo)
+        else:
+            return str(val)
+    return dict_walk(dmap,stringify)
 
 
 if __name__ == "__main__":
