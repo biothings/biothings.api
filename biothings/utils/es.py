@@ -602,7 +602,9 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
     for rootk in inspect_doc:
         if rootk == "_id":
             keys = list(inspect_doc[rootk].keys())
-            if not len(keys) == 1 or keys[0] != str:
+            if str in keys and splitstr in keys:
+                keys.remove(str)
+            if not len(keys) == 1 or (keys[0] != str and keys[0] != splitstr):
                 errors.append("_id fields should all be a string type (got: %s)" % keys)
             # it was just a check, it's not part of the mapping
             continue
