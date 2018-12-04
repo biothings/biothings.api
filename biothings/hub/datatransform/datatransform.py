@@ -19,6 +19,7 @@ class IDStruct(object):
         """
         self.forward = {}
         self.inverse = {}
+        self.debug = {}
         if field and doc_lst:
             self._init_strct(field, doc_lst)
 
@@ -67,6 +68,8 @@ class IDStruct(object):
             raise TypeError("other is not of type IDStruct")
         for (left, right) in other:
             self.add(left, right)
+            # retain debug information
+            self.debug[left] = other.get_debug(left)
         return self
 
     def __len__(self):
@@ -127,15 +130,32 @@ class IDStruct(object):
         """Find the first id founding by searching the (_, right) identifiers"""
         return self.find(self.inverse,ids)
 
+    def set_debug(self, left, right):
+        try:
+            self.debug[left] = self.debug[left] + [right]
+        except KeyError:
+            self.debug[left] = [left, right]
+
+    def get_debug(self, key):
+        try:
+            return self.debug[key]
+        except KeyError:
+            return 'not-available'
+
+    def import_debug(self, other):
+        for id in other.debug.keys():
+            self.debug[id] = other.get_debug(id)
+
 
 class DataTransform(object):
     # Constants
     batch_size = 1000
     DEFAULT_WEIGHT = 1
     default_source = '_id'
+    debug = False
 
     def __init__(self, input_types, output_types, skip_on_failure=False, skip_w_regex=None,
-                 idstruct_class=IDStruct, copy_from_doc=False):
+                 idstruct_class=IDStruct, copy_from_doc=False, debug=False):
         """
         Initialize the keylookup object and precompute paths from the
         start key to all target keys.
@@ -157,6 +177,8 @@ class DataTransform(object):
                another collection, nodes with self-loops can be used, so
                ID resolution will be forced to go through these loops to ensure
                data exists)
+        :param debug: Enable debugging information.
+        :type debug: bool
         """
 
         self.input_types = self._parse_input_types(input_types)
@@ -179,6 +201,8 @@ class DataTransform(object):
         self.histogram = Histogram()
         # Setup logger and logging level
         self.logger,_ = get_logger('datatransform')
+
+        self.debug = debug
 
     def _parse_input_types(self, input_types):
         """
@@ -276,7 +300,7 @@ class DataTransformEdge(object):
         self.prepared = False
         self.init_state()
 
-    def edge_lookup(self, keylookup_obj, id_strct):
+    def edge_lookup(self, keylookup_obj, id_strct, debug=False):
         """
         virtual method for edge lookup.  Each edge class is
         responsible for its own lookup procedures given a
@@ -348,7 +372,7 @@ class RegExEdge(DataTransformEdge):
         self.to_regex = to_regex
         self.weight = weight
 
-    def edge_lookup(self, keylookup_obj, id_strct):
+    def edge_lookup(self, keylookup_obj, id_strct, debug=False):
         """
         Transform identifiers using a regular expression substitution.
         """

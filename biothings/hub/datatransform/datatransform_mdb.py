@@ -62,7 +62,7 @@ class MongoDBEdge(DataTransformEdge):
         self._state["collection"] = mongo.get_src_db()[self.collection_name]
         self.logger.info("Registering collection:  {}".format(self.collection_name))
 
-    def edge_lookup(self, keylookup_obj, id_strct):
+    def edge_lookup(self, keylookup_obj, id_strct, debug=False):
         """
         Follow an edge given a key.
 
@@ -78,6 +78,10 @@ class MongoDBEdge(DataTransformEdge):
         # Build up a new_id_strct from the results
         res_id_strct = IDStruct()
 
+        # Keep the old debug information
+        if debug:
+            res_id_strct.import_debug(id_strct)
+
         id_lst = id_strct.id_lst
         if len(id_lst):
             find_lst = self.collection.find({self.lookup: {"$in": id_lst}}, {self.lookup: 1, self.field: 1})
@@ -85,6 +89,8 @@ class MongoDBEdge(DataTransformEdge):
             for d in find_lst:
                 for orig_id in id_strct.find_right(nested_lookup(d, self.lookup)):
                     res_id_strct.add(orig_id, nested_lookup(d, self.field))
+                    if debug:
+                        res_id_strct.set_debug(orig_id, nested_lookup(d, self.field))
         return res_id_strct
 
 
@@ -116,6 +122,9 @@ class DataTransformMDB(DataTransform):
         :type idstruct_class: class
         :param copy_from_doc: If true then an identifier is copied from the input source document regardless as to weather it matches an edge or not. (advanced usage)
         :type copy_from_doc: bool
+        :param debug: Enable debugging information.  When enabled, debugging information
+               will be retained in the 'dt_debug' field of each document.
+        :type debug: bool
         """
         if not isinstance(G, nx.DiGraph):
             raise ValueError("key_lookup configuration error:  G must be of type nx.DiGraph")
@@ -259,7 +268,7 @@ class DataTransformMDB(DataTransform):
             """
             return self.idstruct_class(input_type[1], doc_lst)
 
-        def _build_hit_miss_lsts(doc_lst, id_strct):
+        def _build_hit_miss_lsts(doc_lst, id_strct, debug):
             """
             Return a list of documents that have had their identifiers replaced
             also return a list of documents that were not changed
@@ -276,6 +285,9 @@ class DataTransformMDB(DataTransform):
                     new_doc = copy.deepcopy(d)
                     # ensure _id is always a str
                     new_doc['_id'] = str(lookup_id)
+                    # capture debug information
+                    if debug:
+                        new_doc['dt_debug'] = id_strct.get_debug(value)
                     hit_lst.append(new_doc)
                     hit_flag = True
                 if not hit_flag:
@@ -313,7 +325,7 @@ class DataTransformMDB(DataTransform):
 
         # Return a list of documents that have had their identifiers replaced
         # also return a list of documents that were not changed
-        hit_lst, miss_lst = _build_hit_miss_lsts(doc_lst, saved_hits)
+        hit_lst, miss_lst = _build_hit_miss_lsts(doc_lst, saved_hits, self.debug)
         self.histogram.update_io(input_type,target,len(hit_lst))
         return hit_lst, miss_lst
 
@@ -325,4 +337,4 @@ class DataTransformMDB(DataTransform):
         to find one key to another key using one of
         several types of lookup functions.
         """
-        return edge_obj.edge_lookup(self, id_strct)
+        return edge_obj.edge_lookup(self, id_strct, self.debug)

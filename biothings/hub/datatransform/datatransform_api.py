@@ -310,7 +310,7 @@ class BiothingsAPIEdge(DataTransformEdge):
     def prepare_client(self):
         raise NotImplementedError("Define in subclass")
 
-    def edge_lookup(self, keylookup_obj, id_strct):
+    def edge_lookup(self, keylookup_obj, id_strct, debug=False):
         """
         Follow an edge given a key.
 
