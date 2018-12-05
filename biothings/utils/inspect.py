@@ -398,7 +398,7 @@ def typify_inspect_doc(dmap):
     does the oposite and restore back python types within the inspect doc
     """
     def typify(val):
-        if val.startswith("__type__:"):
+        if type(val) != type and val.startswith("__type__:"):
             return eval(val.replace("__type__:",""))
         else:
             return val

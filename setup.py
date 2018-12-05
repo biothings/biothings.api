@@ -54,7 +54,8 @@ hub_requires = [
     'pyinotify', # hub reloader
     'prettytable', # diff report renderer
     'sockjs-tornado==1.0.6',
-    'networkx>=2.1'
+    'networkx>=2.1',
+    'jsonschema>=2.6.0',
 ]
 
 setup(
