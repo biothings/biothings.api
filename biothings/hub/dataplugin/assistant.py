@@ -16,7 +16,7 @@ from biothings import config as btconfig
 from biothings.utils.manager import BaseSourceManager
 from biothings.hub.dataload.uploader import set_pending_to_upload
 from biothings.hub.dataload.dumper import LastModifiedHTTPDumper, LastModifiedFTPDumper
-from biothings.hub.dataload.uploader import BaseSourceUploader
+from biothings.hub.dataload.uploader import BaseSourceUploader, ParallelizedSourceUploader
 from biothings.hub.dataload.storage import IgnoreDuplicatedStorage, BasicStorage, \
                                            MergerStorage
 from biothings.hub.dataplugin.manager import GitDataPlugin, ManualDataPlugin
@@ -207,7 +207,29 @@ class BaseAssistant(object):
                         confdict["idconverter"] = self.__class__.keylookup(**manifest["uploader"]["keylookup"])
                     if manifest.get("__metadata__"):
                         confdict["__metadata__"] = {"src_meta" : manifest.get("__metadata__")}
-                    assisted_uploader_class = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,),confdict)
+
+                    if manifest["uploader"].get("parallelizer"):
+                        assisted_uploader_class = type("AssistedParallelizedUploader_%s" % \
+                                self.plugin_name,(AssistedUploader,ParallelizedSourceUploader),confdict)
+                        try:
+                            mod,func = manifest["uploader"].get("parallelizer").split(":")
+                        except ValueError as e:
+                            raise AssistantException("'parallelizer' must be defined as 'module:parallelizer_func' but got: '%s'" % \
+                                    manifest["uploader"]["parallelizer"])
+                        try:
+                            modpath = self.plugin_name + "." + mod
+                            pymod = importlib.import_module(modpath)
+                            # reload in case we need to refresh plugin's code
+                            importlib.reload(pymod)
+                            assert func in dir(pymod), "%s not found in module %s" % (func,pymod)
+                            jobs_func = getattr(pymod,func)
+                            # replace existing method to connect jobs parallelized func
+                            assisted_uploader_class.jobs = jobs_func
+                        except Exception as e:
+                            self.logger.exception("Error loading plugin: %s" % e)
+                            raise AssistantException("Can't interpret manifest: %s" % e)
+                    else:
+                        assisted_uploader_class = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,),confdict)
                     self.__class__.uploader_manager.register_classes([assisted_uploader_class])
                     # register class in module so it can be pickled easily
                     sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedUploader_%s" % self.plugin_name] = assisted_uploader_class
