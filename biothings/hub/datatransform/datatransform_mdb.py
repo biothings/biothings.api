@@ -76,7 +76,7 @@ class MongoDBEdge(DataTransformEdge):
 
 class DataTransformMDB(DataTransform):
     # Constants
-    batch_size = 1000
+    batch_size = 5000
     default_source = '_id'
 
     def __init__(self, G, *args, **kwargs):
