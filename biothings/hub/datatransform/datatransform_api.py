@@ -153,7 +153,7 @@ class DataTransformAPI(DataTransform):
         :param qr: querymany results
         :return:
         """
-        self.logger.debug("QueryMany Structure:  {}".format(qr))
+        # self.logger.debug("QueryMany Structure:  {}".format(qr))
         qm_struct = {}
         for q in qr['out']:
             query = q['query']
@@ -164,9 +164,9 @@ class DataTransformAPI(DataTransform):
                 else:
                     self.one_to_many_cnt += 1
                     qm_struct[query] = qm_struct[query] + [val]
-        self.logger.debug("parse_querymany num qm_struct keys: {}".format(len(qm_struct.keys())))
-        self.logger.info("parse_querymany running one_to_many_cnt: {}".format(self.one_to_many_cnt))
-        self.logger.debug("parse_querymany qm_struct: {}".format(qm_struct.keys()))
+        # self.logger.debug("parse_querymany num qm_struct keys: {}".format(len(qm_struct.keys())))
+        # self.logger.info("parse_querymany running one_to_many_cnt: {}".format(self.one_to_many_cnt))
+        # self.logger.debug("parse_querymany qm_struct: {}".format(qm_struct.keys()))
         return qm_struct
 
     def _parse_h(self, h):
@@ -354,7 +354,7 @@ class BiothingsAPIEdge(DataTransformEdge):
         :param qr: querymany results
         :return:
         """
-        self.logger.debug("QueryMany Structure:  {}".format(qr))
+        # self.logger.debug("QueryMany Structure:  {}".format(qr))
         qm_struct = IDStruct()
         for q in qr['out']:
             query = q['query']
