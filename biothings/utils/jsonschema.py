@@ -1,55 +1,83 @@
 import json, jsonschema
 from biothings.utils.common import is_str
+from pprint import pprint,pformat
 
-def generate_json_schema(dmap,level=0):
 
-    schtypesmap = {
+def generate_json_schema(dmap):
+
+    scalarmap = {
             str: "string",
             int: "integer",
             float: "number",
-            list: "array",
             bool: "boolean",
-            dict: "object",
             }
 
-    schema = {
-            "type" : schtypesmap[type(dmap)],
-            "properties" : {}
-        }
+    def merge_type(typ1,typ2):
+        if type(typ1) == list:
+            if type(typ2) == list:
+                typ1.extend(typ2)
+            else:
+                typ1.append(typ2)
+        elif type(typ2) == list:
+            typ1 = [typ1] + typ1
+        else:
+            typ1 = [typ1,typ2]
 
-    errors = []
+        return list(set(typ1))
 
-    for rootk in dmap:
-        typekeys = [k for k in dmap[rootk].keys() if type(k) is type]
-        typesonly = len(typekeys) == len(dmap[rootk])
-        if not typesonly:
-            typekeys.append(dict)
-        if not is_str(rootk) or rootk.startswith("_"):
-            # _stats
-            continue
-        if len(typekeys) > 1:
-            schema["properties"][rootk] = {"type" : [schtypesmap[k] for k in typekeys]}
-        elif typekeys:
-            schema["properties"][rootk] = {"type" : [schtypesmap[k] for k in typekeys][0]}
+    schema = {}
 
-        if list in typekeys:
-            typekeys.remove(list)
-            schema["properties"][rootk]["items"] = generate_json_schema(dmap[rootk][list],level=level+1)
-            dmap[rootk].pop(list)
+    if type(dmap) == dict:
+        for k in dmap:
+            if is_str(k):
+                esch = generate_json_schema(dmap[k])
+                if schema:
+                    if schema["type"] == "object":
+                        # we just complete 'properties', key already defined previously
+                        pass
+                    elif schema["type"] == "array":
+                        if not schema.get("properties"):
+                            schema["properties"] = {}
+                            schema["type"] = merge_type(schema["type"],"object")
+                        #typ = esch.pop("type")
+                        #schema.update(esch)
+                        #schema["type"] = merge_type(schema["type"],typ)
+                    elif type(schema["type"]) == list:
+                        assert set(schema["type"]) == {"object","array"}
+                        pass
+                    else:
+                        raise Exception("Previous schema type not expected: %s" % schema["type"])
 
-        if typekeys:
-            sch = generate_json_schema(dmap[rootk],level=level+1)
-            sch.pop("type")
-            #schema["properties"][rootk] = generate_json_schema(dmap[rootk],level=level+1)
-            schema["properties"][rootk].update(sch)
-            pass
+                else:
+                    schema = {"type" : "object", "properties" : {}}
+                schema["properties"][k] = esch
+            elif type(k) == type:
+                if k == list:
+                    if schema:
+                        # already defined for this key, mixed types
+                        # since here k is a list, previous schema must be about
+                        # a dict/object, so we can safely update()
+                        assert "properties" in schema
+                        schema.update({"items" : {}})
+                        schema["type"] = merge_type(schema["type"],"array")
+                    else:
+                        schema = {"type" : "array", "items" : {}}
+                    esch = generate_json_schema(dmap[k])
+                    schema["items"] = generate_json_schema(dmap[k])
+                else:
+                    if schema:
+                        schema["type"] = merge_type(schema["type"],scalarmap[k])
+                    else:
+                        schema = {"type" : scalarmap[k]}
+            else:
+                raise Exception("no not here")
+    else:
+        pass
 
-    if schema["properties"] == {}:
-        schema.pop("properties")
     return schema
 
 
-if __name__ == "__main__":
+def test():
     from biothings.utils.inspect import typify_inspect_doc, inspect_docs
     import pickle
     from pprint import pprint,pformat
@@ -59,9 +87,16 @@ if __name__ == "__main__":
     s1 = {'properties': {'i': {'properties': {'a': {'type': 'integer'}},
        'type': 'object'}},
      'type': 'object'}
-    m = inspect_docs([td1],mode="stats")["stats"]
+    m = inspect_docs([td1],mode="type")["type"]
     gs = generate_json_schema(m)
     assert gs == s1, "%s  !=\n%s" % (gs,s1)
+
+    td5 = {"i" : [1,2,3]}
+    s5 = {'properties': {'i': {'items': {'type': 'integer'}, 'type': 'array'}},
+            'type': 'object'}
+    m = inspect_docs([td5],mode="type")["type"]
+    gs = generate_json_schema(m)
+    assert gs == s5, "%s  !=\n%s" % (gs,s5)
 
     # array of object
     td2 = {"i" : [{"a":123}]}
@@ -69,7 +104,7 @@ if __name__ == "__main__":
         'type': 'object'},
        'type': 'array'}},
      'type': 'object'}
-    m = inspect_docs([td2],mode="stats")["stats"]
+    m = inspect_docs([td2],mode="type")["type"]
     gs = generate_json_schema(m)
     assert gs == s2, "%s  !=\n%s" % (gs,s2)
 
@@ -79,9 +114,17 @@ if __name__ == "__main__":
          'type': 'object'}},
        'type': 'object'}},
      'type': 'object'}
-    m = inspect_docs([td3],mode="stats")["stats"]
+    m = inspect_docs([td3],mode="type")["type"]
     gs = generate_json_schema(m)
     assert gs == s3, "%s  !=\n%s" % (gs,s3)
+
+    # mixed str/float in array
+    td6 = {"i" : [1,2,"a"]}
+    s6 = {'properties': {'i': {'items': {'type': ['integer','string']}, 'type': 'array'}},
+            'type': 'object'}
+    m = inspect_docs([td6],mode="type")["type"]
+    gs = generate_json_schema(m) 
+    assert gs == s6, "%s  !=\n%s" % (gs,s6)
 
     # mixed array/object
     td1 = {"i" : {"a":456}}
@@ -91,9 +134,25 @@ if __name__ == "__main__":
        'properties': {'a': {'type': 'integer'}},
        'type': ['array', 'object']}},
      'type': 'object'}
-    m = inspect_docs([td1,td2],mode="stats")["stats"] 
+    m = inspect_docs([td1,td2],mode="type")["type"] 
     gs = generate_json_schema(m)
     assert gs == s12, "%s  !=\n%s" % (gs,s12)
+
+    # list of integer (list of things which are not objects)
+    #td4 = {'i': {'a': [5, 5, 3]}}
+    td4 = {'a': [5, 5, 3]}
+    #s4 = {'properties': {'i': {'properties': {'a': {'items': {'type': 'integer'},
+    #    'type': 'array'}},
+    #  'type': 'object'}},
+    #'type' : 'object'}
+    s4 = {'properties': {'a': {'items': {'type': 'integer'},
+        'type': 'array'}},
+      'type': 'object'}
+    m = inspect_docs([td4],mode="type")["type"]
+    gs = generate_json_schema(m)
+    assert gs == s4, "%s  !=\n%s" % (gs,s4)
+
+    td7 = {"i" : {"a":1,"b":2}}
 
     # small real-life collection
     cgi_schema = \
@@ -123,39 +182,39 @@ if __name__ == "__main__":
 
 	# generated from inspect_docs
     cgi_dmap = \
-{'_id': {str: {'_stats': {'_count': 323, '_max': 36, '_min': 17}}},
- '_stats': {'_count': 323, '_max': 1, '_min': 1},
- 'cgi': {list: {'_stats': {'_count': 111, '_max': 32, '_min': 2},
-   'association': {str: {'_stats': {'_count': 401, '_max': 39, '_min': 9}}},
-   'cdna': {str: {'_stats': {'_count': 401, '_max': 21, '_min': 7}}},
-   'drug': {str: {'_stats': {'_count': 401, '_max': 91, '_min': 14}}},
-   'evidence_level': {str: {'_stats': {'_count': 401,
-      '_max': 31,
-      '_min': 11}}},
-   'gene': {str: {'_stats': {'_count': 401, '_max': 6, '_min': 2}}},
-   'primary_tumor_type': {str: {'_stats': {'_count': 401,
-      '_max': 78,
-      '_min': 4}}},
-   'protein_change': {str: {'_stats': {'_count': 401, '_max': 13, '_min': 8}}},
-   'region': {str: {'_stats': {'_count': 401, '_max': 23, '_min': 22}}},
-   'source': {str: {'_stats': {'_count': 401, '_max': 119, '_min': 3}}},
-   'transcript': {str: {'_stats': {'_count': 401, '_max': 15, '_min': 15}}}},
-  'evidence_level': {str: {'_stats': {'_count': 212, '_max': 31, '_min': 11}}},
-  'region': {str: {'_stats': {'_count': 212, '_max': 23, '_min': 22}}},
-  'drug': {str: {'_stats': {'_count': 212, '_max': 61, '_min': 14}}},
-  '_stats': {'_count': 212, '_max': 1, '_min': 1},
-  'gene': {str: {'_stats': {'_count': 212, '_max': 6, '_min': 2}}},
-  'transcript': {str: {'_stats': {'_count': 212, '_max': 15, '_min': 15}}},
-  'protein_change': {str: {'_stats': {'_count': 212, '_max': 12, '_min': 8}}},
-  'association': {str: {'_stats': {'_count': 212, '_max': 38, '_min': 9}}},
-  'source': {str: {'_stats': {'_count': 212, '_max': 69, '_min': 3}}},
-  'primary_tumor_type': {str: {'_stats': {'_count': 212,
-     '_max': 37,
-     '_min': 4}}},
-  'cdna': {str: {'_stats': {'_count': 212, '_max': 21, '_min': 7}}}}}
+{
+ 'cgi': {'gene': {str: {}},
+  'evidence_level': {str: {}},
+  'primary_tumor_type': {str: {}},
+  'association': {str: {}},
+  list: {'association': {str: {}},
+   'cdna': {str: {}},
+   'drug': {str: {}},
+   'evidence_level': {str: {}},
+   'gene': {str: {}},
+   'primary_tumor_type': {str: {}},
+   'protein_change': {str: {}},
+   'region': {str: {}},
+   'source': {str: {}},
+   'transcript': {str: {}}},
+  'drug': {str: {}},
+  'transcript': {str: {}},
+  'source': {str: {}},
+  'region': {str: {}},
+  'cdna': {str: {}},
+  'protein_change': {str: {}}}}
 
     schema = generate_json_schema(cgi_dmap)
-    assert cgi_schema == schema
+    assert cgi_schema == schema, "%s\n!=\n%s" % (pformat(cgi_schema),pformat(schema))
+
+    # from app folder, biothings as symlink
+    clinvar_schema = json.load(open("biothings/tests/clinvar_schema.json"))
+    clinvar_map = typify_inspect_doc(json.load(open("biothings/tests/clinvar_map.json")))
+    schema = generate_json_schema(clinvar_map)
+    assert clinvar_schema == schema
 
     print("All test OK")
 
+
+if __name__ == "__main__":
+    test()
