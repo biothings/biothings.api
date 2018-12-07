@@ -209,8 +209,7 @@ class BaseAssistant(object):
                         confdict["__metadata__"] = {"src_meta" : manifest.get("__metadata__")}
 
                     if manifest["uploader"].get("parallelizer"):
-                        assisted_uploader_class = type("AssistedParallelizedUploader_%s" % \
-                                self.plugin_name,(AssistedUploader,ParallelizedSourceUploader),confdict)
+                        assisted_uploader_class = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,ParallelizedSourceUploader,),confdict)
                         try:
                             mod,func = manifest["uploader"].get("parallelizer").split(":")
                         except ValueError as e:
