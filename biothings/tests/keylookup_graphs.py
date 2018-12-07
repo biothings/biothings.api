@@ -125,3 +125,24 @@ graph_regex.add_node('bregex')
 
 graph_regex.add_edge('a', 'b', object=MongoDBEdge('b', 'a_id', 'b_id'))
 graph_regex.add_edge('b', 'bregex', object=RegExEdge('b:', 'bregex:'))
+
+###############################################################################
+# PubChem API Graph for Testing
+###############################################################################
+
+graph_pubchem = nx.DiGraph()
+
+graph_pubchem.add_node('inchi')
+graph_pubchem.add_node('pubchem')
+graph_pubchem.add_node('inchikey')
+
+inchikey_fields = [
+    'pubchem.inchi_key',
+    'drugbank.inchi_key',
+    'chembl.inchi_key'
+]
+
+graph_pubchem.add_edge('inchi', 'pubchem',
+                      object=MyChemInfoEdge('pubchem.inchi', 'pubchem.cid'))
+graph_pubchem.add_edge('pubchem', 'inchikey',
+                      object=MyChemInfoEdge('pubchem.cid', inchikey_fields))
