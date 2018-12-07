@@ -363,7 +363,8 @@ class BiothingsAPIEdge(DataTransformEdge):
                 val = nested_lookup(q, field)
                 if val:
                     for (orig_id, curr_id) in id_strct:
-                        if query == curr_id:
+                        # query is always a string, so this check requires conversion
+                        if query == str(curr_id):
                             qm_struct.add(orig_id, val)
         return qm_struct
 
