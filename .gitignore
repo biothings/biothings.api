@@ -14,3 +14,4 @@ tests/.noseids
 /.tox
 
 # IDEs
+.vscode

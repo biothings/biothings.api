@@ -52,7 +52,7 @@ def get_app(APP_LIST, **settings):
     ''' Return an Application instance. '''
     return tornado.web.Application(APP_LIST, **settings)
 
-def main(APP_LIST, app_settings={}, debug_settings={"debug": True}, sentry_client_key=None):
+def main(APP_LIST, app_settings={}, debug_settings={}, sentry_client_key=None, select_curl=None):
     ''' Main ioloop configuration and start
 
         :param APP_LIST: a list of `URLSpec objects or (regex, handler_class) tuples <http://www.tornadoweb.org/en/stable/web.html#tornado.web.Application>`_
@@ -63,9 +63,13 @@ def main(APP_LIST, app_settings={}, debug_settings={"debug": True}, sentry_clien
     settings = app_settings
     if options.debug:
         settings.update(debug_settings)
+        settings.update({"debug": True})
     application = get_app(APP_LIST, **settings)
     if __USE_SENTRY__ and sentry_client_key:
        application.sentry_client = AsyncSentryClient(sentry_client_key)
+    if select_curl:
+        tornado.httpclient.AsyncHTTPClient.configure(
+            "tornado.curl_httpclient.CurlAsyncHTTPClient")
     http_server = tornado.httpserver.HTTPServer(application)
     http_server.listen(options.port, address=options.address)
     loop = tornado.ioloop.IOLoop.instance()
