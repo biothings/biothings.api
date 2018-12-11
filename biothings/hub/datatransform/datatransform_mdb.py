@@ -18,7 +18,7 @@ class MongoDBEdge(DataTransformEdge):
     a collection. The output identifier values are read out of that
     collection:
     """
-    def __init__(self, collection_name, lookup, field, weight=1):
+    def __init__(self, collection_name, lookup, field, weight=1, label=None):
         """
         :param collection_name: The name of the MongoDB collection.
         :type collection_name: str
@@ -30,7 +30,7 @@ class MongoDBEdge(DataTransformEdge):
         :type weight: int
         """
 
-        super().__init__()
+        super().__init__(label)
         # unpickleable attributes, grouped
         self.init_state()
         self.collection_name = collection_name
@@ -90,7 +90,7 @@ class MongoDBEdge(DataTransformEdge):
                 for orig_id in id_strct.find_right(nested_lookup(d, self.lookup)):
                     res_id_strct.add(orig_id, nested_lookup(d, self.field))
                     if debug:
-                        res_id_strct.set_debug(orig_id, nested_lookup(d, self.field))
+                        res_id_strct.set_debug(orig_id, self.label, nested_lookup(d, self.field))
         return res_id_strct
 
 

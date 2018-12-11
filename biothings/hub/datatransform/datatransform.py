@@ -130,7 +130,11 @@ class IDStruct(object):
         """Find the first id founding by searching the (_, right) identifiers"""
         return self.find(self.inverse,ids)
 
-    def set_debug(self, left, right):
+    def set_debug(self, left, label, right):
+        # capture the label if it is used
+        if label:
+            right = (label, right)
+
         try:
             self.debug[left] = self.debug[left] + [right]
         except KeyError:
@@ -296,8 +300,9 @@ class DataTransform(object):
 
 
 class DataTransformEdge(object):
-    def __init__(self):
+    def __init__(self, label=None):
         self.prepared = False
+        self.label = label
         self.init_state()
 
     def edge_lookup(self, keylookup_obj, id_strct, debug=False):

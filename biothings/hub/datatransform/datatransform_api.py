@@ -284,8 +284,8 @@ class BiothingsAPIEdge(DataTransformEdge):
     """
     APIEdge - IDLookupEdge object for API calls
     """
-    def __init__(self, lookup, field, weight=1):
-        super().__init__()
+    def __init__(self, lookup, field, weight=1, label=None):
+        super().__init__(label)
         self.init_state()
         self.scope = lookup
         self.field = field
@@ -364,7 +364,7 @@ class MyChemInfoEdge(BiothingsAPIEdge):
     The MyChemInfoEdge uses the MyChem.info API to convert identifiers.
     """
 
-    def __init__(self, lookup, field, weight=1):
+    def __init__(self, lookup, field, weight=1, label=None):
         """
         :param lookup: The field in the API to search with the input identifier.
         :type lookup: str
@@ -373,7 +373,7 @@ class MyChemInfoEdge(BiothingsAPIEdge):
         :param weight: Weights are used to prefer one path over another. The path with the lowest weight is preferred. The default weight is 1.
         :type weight: int
         """
-        super().__init__(lookup, field, weight)
+        super().__init__(lookup, field, weight, label)
 
     def prepare_client(self):
         """
@@ -389,7 +389,7 @@ class MyGeneInfoEdge(BiothingsAPIEdge):
     The MyGeneInfoEdge uses the MyGene.info API to convert identifiers.
     """
 
-    def __init__(self, lookup, field, weight=1):
+    def __init__(self, lookup, field, weight=1, label=None):
         """
         :param lookup: The field in the API to search with the input identifier.
         :type lookup: str
@@ -398,7 +398,7 @@ class MyGeneInfoEdge(BiothingsAPIEdge):
         :param weight: Weights are used to prefer one path over another. The path with the lowest weight is preferred. The default weight is 1.
         :type weight: int
         """
-        super().__init__(lookup, field, weight)
+        super().__init__(lookup, field, weight, label)
 
     def prepare_client(self):
         """

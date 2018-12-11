@@ -17,7 +17,7 @@ graph_simple.add_node('d')
 graph_simple.add_node('e')
 
 graph_simple.add_edge('a', 'b',
-                      object=MongoDBEdge('b', 'a_id', 'b_id'))
+                      object=MongoDBEdge('b', 'a_id', 'b_id', label="a_to_b"))
 graph_simple.add_edge('b', 'c',
                       object=MongoDBEdge('c', 'b_id', 'c_id'))
 # Test Loop
