@@ -284,10 +284,10 @@ class BiothingsAPIEdge(DataTransformEdge):
     """
     APIEdge - IDLookupEdge object for API calls
     """
-    def __init__(self, scope, field, weight=1):
+    def __init__(self, lookup, field, weight=1):
         super().__init__()
         self.init_state()
-        self.scope = scope
+        self.scope = lookup
         self.field = field
         self.weight = weight
 
@@ -360,9 +360,20 @@ class BiothingsAPIEdge(DataTransformEdge):
         return qm_struct
 
 class MyChemInfoEdge(BiothingsAPIEdge):
+    """
+    The MyChemInfoEdge uses the MyChem.info API to convert identifiers.
+    """
 
-    def __init__(self, scope, field, weight=1):
-        super().__init__(scope, field, weight)
+    def __init__(self, lookup, field, weight=1):
+        """
+        :param lookup: The field in the API to search with the input identifier.
+        :type lookup: str
+        :param field: The field in the API to convert to.
+        :type field: str
+        :param weight: Weights are used to prefer one path over another. The path with the lowest weight is preferred. The default weight is 1.
+        :type weight: int
+        """
+        super().__init__(lookup, field, weight)
 
     def prepare_client(self):
         """
@@ -374,9 +385,20 @@ class MyChemInfoEdge(BiothingsAPIEdge):
 
 
 class MyGeneInfoEdge(BiothingsAPIEdge):
+    """
+    The MyGeneInfoEdge uses the MyGene.info API to convert identifiers.
+    """
 
-    def __init__(self, scope, field, weight=1):
-        super().__init__(scope, field, weight)
+    def __init__(self, lookup, field, weight=1):
+        """
+        :param lookup: The field in the API to search with the input identifier.
+        :type lookup: str
+        :param field: The field in the API to convert to.
+        :type field: str
+        :param weight: Weights are used to prefer one path over another. The path with the lowest weight is preferred. The default weight is 1.
+        :type weight: int
+        """
+        super().__init__(lookup, field, weight)
 
     def prepare_client(self):
         """
