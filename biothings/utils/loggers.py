@@ -77,7 +77,14 @@ class SlackHandler(logging.StreamHandler):
                 slack_msg,self.webhook,msg,color=color))
             return fut
         if record.__dict__.get("notify"):
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                # if the logger is running in a thread, there's no asyncio loop there
+                # (we usually take it from job_manager.loop, but it's not accessible there)
+                # so we use another loop
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
             msg = self.format(record)
             color = self.__class__.colors.get(record.levelno,self.__class__.colors[logging.DEBUG])
             fut = aioemit()
