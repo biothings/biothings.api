@@ -10,5 +10,6 @@ from biothings.hub.datatransform.datatransform import nested_lookup
 from biothings.hub.datatransform.datatransform_mdb import DataTransformMDB
 from biothings.hub.datatransform.datatransform_mdb import MongoDBEdge
 
-from biothings.hub.datatransform.datatransform_api import MyChemInfoEdge
-from biothings.hub.datatransform.datatransform_api import MyGeneInfoEdge
+# this involved biothings client dependency, skip it for now
+#from biothings.hub.datatransform.datatransform_api import MyChemInfoEdge
+#from biothings.hub.datatransform.datatransform_api import MyGeneInfoEdge
