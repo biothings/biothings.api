@@ -206,7 +206,11 @@ class DataTransform(object):
         # Setup logger and logging level
         self.logger,_ = get_logger('datatransform')
 
-        self.debug = debug
+        if not debug:
+            self.debug = False
+        elif isinstance(debug, list):
+            self.logger.debug("DataTransform Debug Mode:  {}".format(debug))
+            self.debug = debug
 
     def _parse_input_types(self, input_types):
         """
