@@ -268,6 +268,9 @@ class DataTransform(object):
             for batchiter in iter_n(input_docs, int(self.batch_size / len(self.input_types))):
                 output_docs = self.key_lookup_batch(batchiter)
                 for odoc in output_docs:
+                    # print debug information if available
+                    if self.debug:
+                        self.logger.debug("DataTransform Debug doc['dt_debug']:  {}".format(odoc['dt_debug']))
                     output_doc_cnt += 1
                     yield odoc
             self.logger.info("wrapped_f Num. output_docs:  {}".format(output_doc_cnt))
