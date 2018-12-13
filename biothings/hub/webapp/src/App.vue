@@ -143,6 +143,10 @@ function split_and_join(str,sep="_",glue=" ") {
     return str.split(sep).join(" ");
 }
 Vue.filter('splitjoin',split_and_join);
+function jsonstr(value) {
+    return JSON.stringify(value);
+}
+Vue.filter('json',jsonstr);
 
 var numeral = require("numeral");
 numeral.register('locale', 'mine', {
