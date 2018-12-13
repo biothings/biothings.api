@@ -319,8 +319,12 @@ export default {
     },
     components: { },
     methods: {
-        generateField: function(map_id,name,path) {
-            return `<a class='mapkey' id='${path}/${name}' map_id='${map_id}'>${name}</a>`;
+        generateField: function(map_id,name,path,leaf) {
+            if(leaf)
+              return `<a class='mapkey leaf' id='${path}/${name}' map_id='${map_id}'>${name}</a>`;
+            else
+              return `<span class='non-leaf'>${name}</span>`;
+
         },
         walkSubMap: function(map,path,replace) {
             if(path.length) {
@@ -347,8 +351,10 @@ export default {
             var copy_to_all = $(`#modal_${this.name}-${this.map_id} #copy_to_all_checkbox`).is(":checked");
             var path = $(`#modal_${this.name}-${this.map_id} input.path`).val()
             // TODO: for now we only support outter keys to be modified
-            if("properties" in this.submap)
+            if("properties" in this.submap) {
+                // this shouldn't happen since non-leaf aren't clickable
                 throw new Error("Only 'leaf' keys can be modified");
+            }
             // copy to all ?
             if(copy_to_all)
                 Vue.set(this.submap,"copy_to",["all"]);
@@ -420,7 +426,10 @@ export default {
                 var self = this;
                 traverse(html, function(key,val,obj,path){
                     if(typeof val == "object" && ["properties","copy_to"].indexOf(key) == -1) {
-                        var field = self.generateField(`${self.name}-${self.map_id}`,key,path);
+                        var leaf = true;
+                        if("properties" in obj[key])
+                            leaf = false;
+                        var field = self.generateField(`${self.name}-${self.map_id}`,key,path,leaf);
                         obj[field] = val;
                         // this key should later be deleted as it's been replaced.
                         // we can't do it there though as traversal would stop
@@ -530,5 +539,12 @@ export default {
     color: #4183c4;
     font-family: monospace,monospace;
     font-size: 0.8em;
+}
+.non-leaf {
+  font-weight: bold;
+}
+.leaf {
+  font-weight: bold;
+  background-color: #ececec;
 }
 </style>
