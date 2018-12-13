@@ -193,7 +193,11 @@ class DataTransformMDB(DataTransform):
         """
         doc_lst = []
         for doc in batchiter:
-            doc_lst.append(doc)
+            # in debug mode, skip all documents not in the debug list
+            if self.debug and doc['_id'] in self.debug:
+                doc_lst.append(doc)
+            else:
+                doc_lst.append(doc)
 
         miss_lst = []
         for doc in doc_lst:
