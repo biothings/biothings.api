@@ -458,3 +458,27 @@ class TestDataTransform(unittest.TestCase):
 
     #    res = next(res_lst)
     #    self.assertEqual(res['_id'], 'b:f1')
+
+    def test_debug_mode(self):
+        """
+        Test debug mode 'a' to 'e' conversion using the simple test
+        :return:
+        """
+        @KeyLookup(graph_simple, 'a', ['e'], debug = ['a:1234'])
+        def load_document(doc_lst):
+            for d in doc_lst:
+                yield d
+
+        # Initial Test Case
+        doc_lst = [
+            {'_id': 'a:1234'},
+            {'_id': 'skip_me'}
+        ]
+        res_lst = load_document(doc_lst)
+
+        res = next(res_lst)
+        self.assertEqual(res['_id'], 'e:1234')
+
+        # Verify that the generator is out of documents
+        with self.assertRaises(StopIteration):
+            next(res_lst)
