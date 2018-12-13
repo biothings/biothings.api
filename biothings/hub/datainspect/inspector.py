@@ -92,7 +92,15 @@ class InspectorManager(BaseManager):
                 # get an uploader instance (used to get the data if type is "uploader"
                 # but also used to update status of the datasource via register_status()
                 ups = self.upload_manager[fullname] # potentially using dot notation
-                # TODO: if dealing with a jobs list later (job_manager), we can handle this easily
+                if len(ups) > 1:
+                    # recursively call inspect(), collect and return corresponding tasks
+                    self.logger.debug("Multiple uploaders found, running inspector for each of them: %s" % ups)
+                    res = []
+                    for up in ups:
+                        r = self.inspect((data_provider[0],"%s" % up.name),mode=mode, batch_size=batch_size,**kwargs)
+                        res.append(r)
+                    return res
+
                 assert len(ups) == 1, "More than one uploader found for '%s', not supported (yet), use main_source.source notation" % data_provider[1]
                 # create uploader
                 registerer_obj = self.upload_manager.create_instance(ups[0])
