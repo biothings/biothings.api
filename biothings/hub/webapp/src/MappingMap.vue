@@ -68,6 +68,7 @@
                             Field: <span class="key"></span><br>
                             Path: <span class="path"></span>
                         </h5>
+                        <p>
                             <div class="index ui checkbox">
                                 <input type="checkbox" name="index" id="index_checkbox" v-model="indexed">
                                 <label>Index this field</label>
@@ -78,6 +79,23 @@
                                 <input type="checkbox" name="copy_to_all" id="copy_to_all_checkbox" v-model="copied_to_all">
                                 <label>Search this field by default</label>
                             </div>
+                        </p>
+                        <p>
+                            <div class="index ui">
+                                <label>Change type</label>
+                                <div class="ui selection estype dropdown" id="estype">
+                                  <div class="text"></div>
+                                  <i class="dropdown icon"></i>
+                                </div>
+                            </div>
+                        </p>
+                        <p>
+                          <div class="six wide field">
+                            <textarea class="json" rows="5" id="submap" v-model="strsubmap">{{ strsubmap }}</textarea>
+                            <div class="ui mini negative message" v-if="json_err">
+                                <p>Invalid JSON format</p>
+                            </div>
+                          </div>
                         </p>
                     </div>
                     <div class="ten wide column">
@@ -108,6 +126,26 @@
                                                 <code>/query?q=<b>value_to_search</b></code>.
                                             </li>
                                         </ul>
+                                    </div>
+                                </div>
+                            </a>
+                            <a class="item">
+                                <i class="right triangle icon"></i>
+                                <div class="content">
+                                    <div class="description">
+                                      ElasticSearch field data type can be changed if needed. See 
+                                      <a target="_blank" href="https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-types.html">
+                                        Field datatypes
+                                      </a> for more information.
+                                      <i>Note: only core datatypes are available in this list </i>
+                                    </div>
+                                </div>
+                            </a>
+                            <a class="item">
+                                <i class="right triangle icon"></i>
+                                <div class="content">
+                                    <div class="description">
+                                        Field definition can also be manually specificed in the text box, using JSON notation, for more advanced usage.
                                     </div>
                                 </div>
                             </a>
@@ -168,6 +206,9 @@ export default {
         this.$forceUpdate();
         this.buildIndexDropdown();
     },
+    filters : {
+      log: (value) => {console.log(`in log ${value}`); return value;},
+    },
     // TODO: those events are mostly due because of bad page design, with actions on a mapping separated from
     // the actual component (see DataSourceMapping.vue and the relation)
     created() {
@@ -186,29 +227,52 @@ export default {
             mapping_error : false,
             mapping_msg: null,
             environments : {},
+            estypes : ["text","keyword","long", "integer", "short", "byte", "double", "float",
+                "half_float", "scaled_float","date","boolean","binary","integer_range",
+                "float_range", "long_range", "double_range", "date_range"],
+            selected_type: null,
+            json_err: false,
+            tmp_strsubmap: null, // hold manually edited map until valid JSON
         }
     },
     computed: {
         strmap: function () {
             return JSON.stringify(this.map);
         },
+        strsubmap: {
+            get: function() {
+              if(this.tmp_strsubmap)
+                return this.tmp_strsubmap;
+              else
+                return JSON.stringify(this.submap,null,2);
+            },
+            set: function(val) {
+                try {
+                    this.submap = JSON.parse(val);
+                    this.json_err = false;
+                    this.tmp_strsubmap = null;
+                } catch (err) {
+                    this.json_err = true;
+                    this.tmp_strsubmap = val;
+
+                }
+            }
+        },
         indexed: {
             cache : false,
             get : function() {
                 if("index" in this.submap && this.submap["index"] === false) {
-                    //console.log("indexed: false");
                     return false;
                 } else {
-                    //console.log("indexed: true");
                     return true;
                 }
             },
             set : function(val) {
-                //console.log(`dummy indexed setter ${val}`);
                 if(val)
                     $(`#modal_${this.name}-${this.map_id} .copy_to_all`).removeClass("disabled");
                 else
                     $(`#modal_${this.name}-${this.map_id} .copy_to_all`).addClass("disabled");
+                this.updateSubMap();
             }
         },
         copied_to_all: {
@@ -217,15 +281,21 @@ export default {
                 if("copy_to" in this.submap 
                     //&& typeof this.submap["copy_to"] == "array"
                     &&  this.submap["copy_to"].indexOf("all") != -1) {
-                    //console.log("copied_to_all: true");
                     return true;
                 } else {
-                    //console.log("copied_to_all: false");
                     return false;
                 }
             },
             set : function(val) {
-                //console.log(`dummy copied_to_all setter ${val}`);
+                this.updateSubMap();
+            }
+        },
+        current_type : {
+            cache : false,
+            get : function() {
+                return this.submap["type"];
+            },
+            set : function(val) {
             }
         },
         has_errors : function() {
@@ -272,6 +342,28 @@ export default {
                 this.submap = map;
             }
         },
+        updateSubMap: function() {
+            var index = $(`#modal_${this.name}-${this.map_id} #index_checkbox`).is(":checked");
+            var copy_to_all = $(`#modal_${this.name}-${this.map_id} #copy_to_all_checkbox`).is(":checked");
+            var path = $(`#modal_${this.name}-${this.map_id} input.path`).val()
+            // TODO: for now we only support outter keys to be modified
+            if("properties" in this.submap)
+                throw new Error("Only 'leaf' keys can be modified");
+            // copy to all ?
+            if(copy_to_all)
+                Vue.set(this.submap,"copy_to",["all"]);
+            else
+                Vue.delete(this.submap,"copy_to");
+            // index or not
+            if(index)
+                Vue.delete(this.submap,"index");
+            else {
+                Vue.set(this.submap,"index",false);
+                // make sure to delete this one even if selected, makes no senses when index is false
+                Vue.delete(this.submap,"copy_to");
+            }
+            Vue.set(this.submap,"type",this.selected_type);
+        },
         modifyMapKey: function(event) {
             var key = event.currentTarget.innerText;
             var path = event.currentTarget.id;
@@ -286,32 +378,18 @@ export default {
             // position submap to explored key
             this.walkSubMap(this.map,keys);
             var self = this;
+                var typs = [];
+                typs = this.estypes.map(typ => ({"name":typ,"value":typ,"selected":typ == this.current_type}))
+                $(`.ui.estype.dropdown`).dropdown({
+                    values: typs,
+                    onChange: function(value, text, $selectedItem) {
+                        self.selected_type = value;
+                        self.updateSubMap();
+                    }
+                });
             $(`#modal_${this.name}-${this.map_id}`)
             .modal("setting", {
                 onApprove: function () {
-                    var index = $(`#modal_${self.name}-${self.map_id} #index_checkbox`).is(":checked");
-                    var copy_to_all = $(`#modal_${self.name}-${self.map_id} #copy_to_all_checkbox`).is(":checked");
-                    var path = $(`#modal_${self.name}-${self.map_id} input.path`).val()
-                    console.log(`#modal_${self.name}-${self.map_id} input.path`);
-                    console.log(`index form ${index}`);
-                    console.log(`copy_to_all form ${copy_to_all}`);
-                    console.log(`path form ${path}`);
-                    // TODO: for now we only support outter keys to be modified
-                    if("properties" in self.submap)
-                        throw new Error("Only 'leaf' keys can be modified");
-                    // copy to all ?
-                    if(copy_to_all)
-                        Vue.set(self.submap,"copy_to",["all"]);
-                    else
-                        Vue.delete(self.submap,"copy_to");
-                    // index or not
-                    if(index)
-                        Vue.delete(self.submap,"index");
-                    else {
-                        Vue.set(self.submap,"index",false);
-                        // make sure to delete this one even if selected, makes no senses when index is false
-                        Vue.delete(self.submap,"copy_to");
-                    }
                     self.walkSubMap(self.map,path.split("/").slice(1),self.submap)
                     self.dirty = true;
                     self.$forceUpdate();
@@ -446,5 +524,11 @@ export default {
 <style>
 .list-label {
     padding-left: 1.5em;
+}
+.json {
+    width: 100%;
+    color: #4183c4;
+    font-family: monospace,monospace;
+    font-size: 0.8em;
 }
 </style>

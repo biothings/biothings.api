@@ -55,9 +55,6 @@ def generate_json_schema(dmap):
                 if k == list:
                     if schema:
                         # already defined for this key, mixed types
-                        # since here k is a list, previous schema must be about
-                        # a dict/object, so we can safely update()
-                        assert "properties" in schema
                         schema.update({"items" : {}})
                         schema["type"] = merge_type(schema["type"],"array")
                     else:
@@ -82,6 +79,11 @@ def test():
     import pickle
     from pprint import pprint,pformat
 
+    # can't use assert directly, as we can't ensure the order of types (for instance)
+    import biothings.utils.jsondiff
+    biothings.utils.jsondiff.UNORDERED_LIST = True
+    jsondiff = biothings.utils.jsondiff.make
+
     # object
     td1 = {"i" : {"a":456}}
     s1 = {'properties': {'i': {'properties': {'a': {'type': 'integer'}},
@@ -89,14 +91,14 @@ def test():
      'type': 'object'}
     m = inspect_docs([td1],mode="type")["type"]
     gs = generate_json_schema(m)
-    assert gs == s1, "%s  !=\n%s" % (gs,s1)
+    assert jsondiff(gs,s1) == [], "%s  !=\n%s" % (gs,s1)
 
     td5 = {"i" : [1,2,3]}
     s5 = {'properties': {'i': {'items': {'type': 'integer'}, 'type': 'array'}},
             'type': 'object'}
     m = inspect_docs([td5],mode="type")["type"]
     gs = generate_json_schema(m)
-    assert gs == s5, "%s  !=\n%s" % (gs,s5)
+    assert jsondiff(gs,s5) == [], "%s  !=\n%s" % (gs,s5)
 
     # array of object
     td2 = {"i" : [{"a":123}]}
@@ -106,7 +108,7 @@ def test():
      'type': 'object'}
     m = inspect_docs([td2],mode="type")["type"]
     gs = generate_json_schema(m)
-    assert gs == s2, "%s  !=\n%s" % (gs,s2)
+    assert jsondiff(gs,s2) == [], "%s  !=\n%s" % (gs,s2)
 
     # object in object
     td3 = {"i" : {"a":{"b":123}}}
@@ -116,7 +118,7 @@ def test():
      'type': 'object'}
     m = inspect_docs([td3],mode="type")["type"]
     gs = generate_json_schema(m)
-    assert gs == s3, "%s  !=\n%s" % (gs,s3)
+    assert jsondiff(gs,s3) == [], "%s  !=\n%s" % (gs,s3)
 
     # mixed str/float in array
     td6 = {"i" : [1,2,"a"]}
@@ -124,7 +126,7 @@ def test():
             'type': 'object'}
     m = inspect_docs([td6],mode="type")["type"]
     gs = generate_json_schema(m) 
-    assert gs == s6, "%s  !=\n%s" % (gs,s6)
+    assert jsondiff(gs,s6) == [], "%s  !=\n%s" % (gs,s6)
 
     # mixed array/object
     td1 = {"i" : {"a":456}}
@@ -136,7 +138,7 @@ def test():
      'type': 'object'}
     m = inspect_docs([td1,td2],mode="type")["type"] 
     gs = generate_json_schema(m)
-    assert gs == s12, "%s  !=\n%s" % (gs,s12)
+    assert jsondiff(gs,s12) == [], "%s  !=\n%s" % (gs,s12)
 
     # list of integer (list of things which are not objects)
     #td4 = {'i': {'a': [5, 5, 3]}}
@@ -150,68 +152,39 @@ def test():
       'type': 'object'}
     m = inspect_docs([td4],mode="type")["type"]
     gs = generate_json_schema(m)
-    assert gs == s4, "%s  !=\n%s" % (gs,s4)
+    assert jsondiff(gs,s4) == [], "%s  !=\n%s" % (gs,s4)
 
     td7 = {"i" : {"a":1,"b":2}}
+    s7 = {'type': 'object', 'properties': {
+            'i': {'type': 'object', 'properties': {
+                'a': {'type': 'integer'},
+                'b': {'type': 'integer'}
+          }}}}
+    m = inspect_docs([td7],mode="type")["type"]
+    gs = generate_json_schema(m)
+    assert jsondiff(gs,s7) == [], "%s  !=\n%s" % (gs,s7)
+
+    # int or list of int (not a list of dict, testing scalar there)
+    td81 = {"i": 1}
+    td82 = {"i" : [2,3]}
+    s812 = {'properties': {'i': {'items': {'type': 'integer'}, 'type': ['array', 'integer']}},
+            'type': 'object'}
+    m = inspect_docs([td81,td82],mode="type")["type"]
+    gs = generate_json_schema(m)
+    assert jsondiff(gs,s812) == [], "%s  !=\n%s" % (gs,s812)
+
+    # run from app folder, biothings as symlink
 
     # small real-life collection
-    cgi_schema = \
-{'properties': {'cgi': {'items': {'properties': {'association': {'type': 'string'},
-     'cdna': {'type': 'string'},
-     'drug': {'type': 'string'},
-     'evidence_level': {'type': 'string'},
-     'gene': {'type': 'string'},
-     'primary_tumor_type': {'type': 'string'},
-     'protein_change': {'type': 'string'},
-     'region': {'type': 'string'},
-     'source': {'type': 'string'},
-     'transcript': {'type': 'string'}},
-    'type': 'object'},
-   'properties': {'association': {'type': 'string'},
-    'cdna': {'type': 'string'},
-    'drug': {'type': 'string'},
-    'evidence_level': {'type': 'string'},
-    'gene': {'type': 'string'},
-    'primary_tumor_type': {'type': 'string'},
-    'protein_change': {'type': 'string'},
-    'region': {'type': 'string'},
-    'source': {'type': 'string'},
-    'transcript': {'type': 'string'}},
-   'type': ['array', 'object']}},
- 'type': 'object'}
+    cgi_schema = json.load(open("biothings/tests/cgi_schema.json"))
+    cgi_map = typify_inspect_doc(json.load(open("biothings/tests/cgi_map.json")))
+    schema = generate_json_schema(cgi_map)
+    assert jsondiff(cgi_schema,schema) == []
 
-	# generated from inspect_docs
-    cgi_dmap = \
-{
- 'cgi': {'gene': {str: {}},
-  'evidence_level': {str: {}},
-  'primary_tumor_type': {str: {}},
-  'association': {str: {}},
-  list: {'association': {str: {}},
-   'cdna': {str: {}},
-   'drug': {str: {}},
-   'evidence_level': {str: {}},
-   'gene': {str: {}},
-   'primary_tumor_type': {str: {}},
-   'protein_change': {str: {}},
-   'region': {str: {}},
-   'source': {str: {}},
-   'transcript': {str: {}}},
-  'drug': {str: {}},
-  'transcript': {str: {}},
-  'source': {str: {}},
-  'region': {str: {}},
-  'cdna': {str: {}},
-  'protein_change': {str: {}}}}
-
-    schema = generate_json_schema(cgi_dmap)
-    assert cgi_schema == schema, "%s\n!=\n%s" % (pformat(cgi_schema),pformat(schema))
-
-    # from app folder, biothings as symlink
     clinvar_schema = json.load(open("biothings/tests/clinvar_schema.json"))
     clinvar_map = typify_inspect_doc(json.load(open("biothings/tests/clinvar_map.json")))
     schema = generate_json_schema(clinvar_map)
-    assert clinvar_schema == schema
+    assert jsondiff(clinvar_schema,schema) == []
 
     print("All test OK")
 
