@@ -283,6 +283,9 @@ class BiothingsAPIEdge(DataTransformEdge):
     """
     APIEdge - IDLookupEdge object for API calls
     """
+    # define in subclass
+    client_name = None
+
     def __init__(self, lookup, fields, weight=1):
         super().__init__()
         self.init_state()
@@ -312,7 +315,14 @@ class BiothingsAPIEdge(DataTransformEdge):
         return self._state["client"]
 
     def prepare_client(self):
-        raise NotImplementedError("Define in subclass")
+        """
+        Load the biothings_client for the class
+        :return:
+        """
+        if not self.client_name:
+            raise NotImplementedError("Define client_name in subclass")
+        self._state["client"] = biothings_client.get_client(self.client_name)
+        self.logger.info("Registering biothings_client {}".format(self.client_name))
 
     def edge_lookup(self, keylookup_obj, id_strct):
         """
@@ -367,10 +377,12 @@ class BiothingsAPIEdge(DataTransformEdge):
                             qm_struct.add(orig_id, val)
         return qm_struct
 
+
 class MyChemInfoEdge(BiothingsAPIEdge):
     """
     The MyChemInfoEdge uses the MyChem.info API to convert identifiers.
     """
+    client_name = "drug"
 
     def __init__(self, lookup, field, weight=1):
         """
@@ -382,21 +394,13 @@ class MyChemInfoEdge(BiothingsAPIEdge):
         :type weight: int
         """
         super().__init__(lookup, field, weight)
-
-    def prepare_client(self):
-        """
-        Load the biothings_client for the class
-        :return:
-        """
-        client = "drug"
-        self._state["client"] = biothings_client.get_client(client)
-        self.logger.info("Registering biothings_client {}".format(client))
 
 
 class MyGeneInfoEdge(BiothingsAPIEdge):
     """
     The MyGeneInfoEdge uses the MyGene.info API to convert identifiers.
     """
+    client_name = "gene"
 
     def __init__(self, lookup, field, weight=1):
         """
@@ -408,15 +412,6 @@ class MyGeneInfoEdge(BiothingsAPIEdge):
         :type weight: int
         """
         super().__init__(lookup, field, weight)
-
-    def prepare_client(self):
-        """
-        Load the biothings_client for the class
-        :return:
-        """
-        client = "gene"
-        self._state["client"] = biothings_client.get_client(client)
-        self.logger.info("Registering biothings_client {}".format(client))
 
 
 ####################
