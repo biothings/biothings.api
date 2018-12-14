@@ -17,7 +17,7 @@
                             {{ source.count | currency('',0) }} document{{ source.count &gt; 1 ? "s" : "" }}
                         </div>
                         <div class="right floated">
-                            <span v-if="typeof license === 'object'">
+                            <span v-if="license !== null && typeof license === 'object'">
                                 <table class="meta ui single line compact small table">
                                     <thead>
                                         <tr>
@@ -44,7 +44,10 @@
                                     <tbody>
                                         <tr>
                                             <td>
-                                                <a v-if="license && license.startsWith('http')" :href="license">license</a>
+                                                <a v-if="license_url" :href="license_url">
+                                                    <span v-if="license">{{license}}</span*>
+                                                    <span v-else>license</span>
+                                                </a>
                                                 <span v-else>{{license}}</span>
                                             </td>
                                             <td>
@@ -189,7 +192,10 @@ export default {
             return null;
         },
         license: function() {
-            return this.pick_metadata(["license_url","license_url_short","license"]);
+            return this.pick_metadata(["license"]);
+        },
+        license_url: function() {
+            return this.pick_metadata(["license_url","license_url_short"]);
         },
         website: function() {
             return this.pick_metadata(["url"]);
