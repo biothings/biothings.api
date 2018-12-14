@@ -388,8 +388,9 @@ class MyChemInfoEdge(BiothingsAPIEdge):
         Load the biothings_client for the class
         :return:
         """
-        self._state["client"] = biothings_client.get_client('drug')
-        self.logger.info("Registering biothings_client 'gene'")
+        client = "drug"
+        self._state["client"] = biothings_client.get_client(client)
+        self.logger.info("Registering biothings_client {}".format(client))
 
 
 class MyGeneInfoEdge(BiothingsAPIEdge):
@@ -413,8 +414,9 @@ class MyGeneInfoEdge(BiothingsAPIEdge):
         Load the biothings_client for the class
         :return:
         """
-        self._state["client"] = biothings_client.get_client('gene')
-        self.logger.info("Registering biothings_client 'drug'")
+        client = "gene"
+        self._state["client"] = biothings_client.get_client(client)
+        self.logger.info("Registering biothings_client {}".format(client))
 
 
 ####################
