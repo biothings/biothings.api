@@ -206,7 +206,7 @@ class ESQueryBuilder(object):
         if not _query:
             _query = self._default_query(q)
 
-        _query = self.add_query_filters(_query)
+        _query['query'] = self.add_query_filters(_query)
         _query = self.add_extra_filters(_query)
 
         _query = self.queries.raw_query(_query)
