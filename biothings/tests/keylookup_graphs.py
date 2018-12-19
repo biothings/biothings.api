@@ -2,7 +2,7 @@ import biothings_client
 import networkx as nx
 
 from biothings.hub.datatransform.datatransform_api import MyChemInfoEdge, MyGeneInfoEdge
-from biothings.hub.datatransform.datatransform_mdb import MongoDBEdge
+from biothings.hub.datatransform.datatransform_networkx import MongoDBEdge
 from biothings.hub.datatransform.datatransform import RegExEdge
 
 ###############################################################################

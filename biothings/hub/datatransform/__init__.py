@@ -7,8 +7,8 @@ from biothings.hub.datatransform.datatransform import nested_lookup
 # only for testing purpose, this one is not optimized
 #from biothings.hub.datatransform.datatransform_serial import DataTransformSerial
 
-from biothings.hub.datatransform.datatransform_mdb import DataTransformMDB
-from biothings.hub.datatransform.datatransform_mdb import MongoDBEdge
+from biothings.hub.datatransform.datatransform_networkx import DataTransformNetworkX
+from biothings.hub.datatransform.datatransform_networkx import MongoDBEdge
 
 # this involved biothings client dependency, skip it for now
 #from biothings.hub.datatransform.datatransform_api import MyChemInfoEdge
