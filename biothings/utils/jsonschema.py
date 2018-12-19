@@ -39,9 +39,6 @@ def generate_json_schema(dmap):
                         if not schema.get("properties"):
                             schema["properties"] = {}
                             schema["type"] = merge_type(schema["type"],"object")
-                        #typ = esch.pop("type")
-                        #schema.update(esch)
-                        #schema["type"] = merge_type(schema["type"],typ)
                     elif type(schema["type"]) == list:
                         assert set(schema["type"]) == {"object","array"}
                         pass
@@ -141,12 +138,7 @@ def test():
     assert jsondiff(gs,s12) == [], "%s  !=\n%s" % (gs,s12)
 
     # list of integer (list of things which are not objects)
-    #td4 = {'i': {'a': [5, 5, 3]}}
     td4 = {'a': [5, 5, 3]}
-    #s4 = {'properties': {'i': {'properties': {'a': {'items': {'type': 'integer'},
-    #    'type': 'array'}},
-    #  'type': 'object'}},
-    #'type' : 'object'}
     s4 = {'properties': {'a': {'items': {'type': 'integer'},
         'type': 'array'}},
       'type': 'object'}
@@ -185,6 +177,11 @@ def test():
     clinvar_map = typify_inspect_doc(json.load(open("biothings/tests/clinvar_map.json")))
     schema = generate_json_schema(clinvar_map)
     assert jsondiff(clinvar_schema,schema) == []
+
+    mygene_schema = json.load(open("biothings/tests/mygene_schema.json"))
+    mygene_map = typify_inspect_doc(json.load(open("biothings/tests/mygene_map.json")))
+    schema = generate_json_schema(mygene_map)
+    assert jsondiff(mygene_schema,schema) == []
 
     print("All test OK")
 
