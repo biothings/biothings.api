@@ -88,7 +88,7 @@ class MongoDBEdge(DataTransformEdge):
         return res_id_strct
 
 
-class DataTransformMDB(DataTransform):
+class DataTransformNetworkX(DataTransform):
     """
     Convert document identifiers from one type to another.
     """
@@ -98,7 +98,7 @@ class DataTransformMDB(DataTransform):
 
     def __init__(self, G, *args, **kwargs):
         """
-        The DataTransform MDB module was written as a decorator class
+        The DataTransformNetworkX module was written as a decorator class
         which should be applied to the load_data function of a
         Biothings Uploader.  The load_data function yields documents,
         which are then post processed by call and the 'id' key

@@ -1,7 +1,7 @@
 import config, biothings
 biothings.config_for_app(config)
 
-from biothings.hub.datatransform import DataTransformMDB as KeyLookup
+from biothings.hub.datatransform import DataTransformNetworkX as KeyLookup
 from biothings.tests.keylookup_graphs import graph_simple, \
     graph_weights, graph_one2many, graph_invalid, graph_mix, \
     graph_mychem, graph_regex
