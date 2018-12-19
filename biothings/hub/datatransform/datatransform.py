@@ -269,7 +269,7 @@ class DataTransform(object):
                 output_docs = self.key_lookup_batch(batchiter)
                 for odoc in output_docs:
                     # print debug information if available
-                    if self.debug:
+                    if self.debug and 'dt_debug' in odoc:
                         self.logger.debug("DataTransform Debug doc['dt_debug']:  {}".format(odoc['dt_debug']))
                     output_doc_cnt += 1
                     yield odoc
