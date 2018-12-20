@@ -5,6 +5,7 @@ from datetime import datetime
 import asyncio
 from functools import partial
 import inspect, importlib
+import pip, subprocess
 
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.common import timesofar, rmdashfr, uncompressall, \
@@ -122,6 +123,14 @@ class BaseAssistant(object):
         dumper_class = None
         assisted_dumper_class = None
         assisted_uploader_class = None
+        # start with requirements before importing anything
+        if manifest.get("requires"):
+            reqs = manifest["requires"]
+            if not type(reqs) == list:
+                reqs = [reqs]
+            for req in reqs:
+                self.logger.info("Install requirement '%s'" % req)
+                subprocess.check_call([sys.executable, '-m', 'pip', 'install', req])
         if manifest.get("dumper"):
             if manifest["dumper"].get("data_url"):
                 if not type(manifest["dumper"]["data_url"]) is list:

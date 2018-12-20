@@ -209,6 +209,7 @@ A manifest file is defined like this:
 	        "license_url" : "<url>",
 	        "licence" : "<license name>"
 	    },
+        "requires" : ["lib==1.3","anotherlib"],
 	    "dumper" : {
 	        "data_url" : "<url>" # (or list of url: ["<url1>", "<url1>"]),
 	        "uncompress" : true|false, # optional, default to false
@@ -226,6 +227,8 @@ A manifest file is defined like this:
 - a *version* defines the specification version the manifest is using. Currently, version 0.2 should be used. This is not the version of the datasource itself.
 - an optional (but highly recommended) *__metadata__* key provides information about the datasource itself, such as a website, a link to its license, the license name.
   This information, when provided, are displayed in the /metadata endpoint of the resulting API.
+- a *requires* section, optional, describes dependencies that should be installed for the plugin to work. This uses `pip` behind the scene, and each element of that list
+  is passed to `pip install` command line. If one dependency installation fails, the plugin is invalidated. Alternately, a single string can be passed, instead of a list.
 - a *dumper* section specifies how to download the actual data.
   * *data_url* specifies where to download the data from. It can be a URL (string) or a list of URLs (list of strings). Currently supported protocols are **http(s)** and **ftp**. 
   URLs must point to individual files (no wildcards) and only one protocol is allowed within a list of URLs (no mix of URLs using htttp and ftp are allowed). All files
