@@ -209,7 +209,7 @@ A manifest file is defined like this:
 	        "license_url" : "<url>",
 	        "licence" : "<license name>"
 	    },
-        "requires" : ["lib==1.3","anotherlib"],
+	    "requires" : ["lib==1.3","anotherlib"],
 	    "dumper" : {
 	        "data_url" : "<url>" # (or list of url: ["<url1>", "<url1>"]),
 	        "uncompress" : true|false, # optional, default to false
