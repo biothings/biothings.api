@@ -4,12 +4,12 @@ In general, do not include utils depending on any third-party modules.
 """
 import math, statistics, random
 import collections
-import time, re
+import time, re, os
 import logging
 from pprint import pprint, pformat
 import copy
 from datetime import datetime
-import bson
+import bson, json
 
 from .common import timesofar, is_scalar, is_float, is_str, is_int, splitstr
 from .web.es import flatten_doc
@@ -23,24 +23,26 @@ class BaseMode(object):
     # key under which values are stored for this mode
     key = None
 
-    @classmethod
-    def report(klass, struct, drep):
+    def report(self, struct, drep, orig_struct=None):
         """
-        Given a data structure "stuct" being inspected, report (fill)
+        Given a data structure "struct" being inspected, report (fill)
         "drep" dictionary with useful values for this mode, under
-        drep[klass.key] key.
+        drep[self.key] key.
+        Sometimes "struct" is already converted to its analytical value at
+        this point (inspect may count number of dict and would force to pass
+        struct as "1", instead of the whole dict, where number of keys could be
+        then be reported), "orig_struct" is that case contains the original
+        structure that was to be reported, whatever the pre-conversion step did.
         """
         raise NotImplementedError("Implement in sub-class")
 
-    @classmethod
-    def merge(klass, target, tomerge):
+    def merge(self, target, tomerge):
         """
         Merge two different maps together (from tomerge into target)
         """
         raise NotImplementedError("Implement in sub-class")
 
-    @classmethod
-    def post(klass, mapt, mode,clean):
+    def post(self, mapt, mode,clean):
         pass
 
 class StatsMode(BaseMode):
@@ -48,50 +50,43 @@ class StatsMode(BaseMode):
     template = {"_stats" : {"_min":math.inf,"_max":-math.inf,"_count":0}}
     key = "_stats"
 
-    @classmethod
-    def sumiflist(klass, val):
+    def sumiflist(self, val):
         if type(val) == list:
             return sum(val)
         else:
             return val
 
-    @classmethod
-    def maxminiflist(klass, val, func):
+    def maxminiflist(self, val, func):
         if type(val) == list:
             return func(val)
         else:
             return val
 
-    @classmethod
-    def flatten_stats(klass, stats):
+    def flatten_stats(self, stats):
         # after merge_struct, stats can be merged together as list (merge_struct
         # is only about data structures). Re-adjust here considering there could lists
         # that need to be sum'ed and min/max to be dealt with
-        stats["_count"] = klass.sumiflist(stats["_count"])
-        stats["_max"] = klass.maxminiflist(stats["_max"],max)
-        stats["_min"] = klass.maxminiflist(stats["_min"],min)
+        stats["_count"] = self.sumiflist(stats["_count"])
+        stats["_max"] = self.maxminiflist(stats["_max"],max)
+        stats["_min"] = self.maxminiflist(stats["_min"],min)
         return stats
 
-    @classmethod
-    def report(klass, struct, drep):
+    def report(self, struct, drep, orig_struct=None):
         if is_str(struct) or type(struct) in [dict,list]:
             val = len(struct)
         else:
             val = struct
-        drep["_stats"]["_count"] += 1
-        #drep["_stats"]["_sum"] += val
-        if val < drep["_stats"]["_min"]:
-            drep["_stats"]["_min"] = val
-        if val > drep["_stats"]["_max"]:
-            drep["_stats"]["_max"] = val
+        drep[self.key]["_count"] += 1
+        if val < drep[self.key]["_min"]:
+            drep[self.key]["_min"] = val
+        if val > drep[self.key]["_max"]:
+            drep[self.key]["_max"] = val
 
-    @classmethod
-    def merge(klass, target_stats, tomerge_stats):
-        target_stats = klass.flatten_stats(target_stats)
-        tomerge_stats = klass.flatten_stats(tomerge_stats)
+    def merge(self, target_stats, tomerge_stats):
+        target_stats = self.flatten_stats(target_stats)
+        tomerge_stats = self.flatten_stats(tomerge_stats)
         # sum the counts and the sums
         target_stats["_count"] = target_stats["_count"] + tomerge_stats["_count"]
-        #target_stats["_sum"] = target_stats["_sum"] + tomerge_stats["_sum"]
         # adjust min and max
         if tomerge_stats["_max"] > target_stats["_max"]:
             target_stats["_max"] = tomerge_stats["_max"]
@@ -104,20 +99,17 @@ class DeepStatsMode(StatsMode):
     template = {"_stats" : {"_min":math.inf,"_max":-math.inf,"_count":0,"__vals":[]}}
     key = "_stats"
 
-    @classmethod
-    def merge(klass, target_stats, tomerge_stats):
-        super(DeepStatsMode, klass).merge(target_stats,tomerge_stats)
+    def merge(self, target_stats, tomerge_stats):
+        super(DeepStatsMode, self).merge(target_stats,tomerge_stats)
         # extend values
         target_stats.get("__vals",[]).extend(tomerge_stats.get("__vals",[]))
 
-    @classmethod
-    def report(klass, val, drep):
-        super(DeepStatsMode, klass).report(val,drep)
+    def report(self, val, drep, orig_struct=None):
+        super(DeepStatsMode, self).report(val,drep,orig_struct)
         # keep track of vals for now, stats are computed at the end
-        drep["_stats"]["__vals"].append(val)
+        drep[self.key]["__vals"].append(val)
 
-    @classmethod
-    def post(klass, mapt, mode,clean):
+    def post(self, mapt, mode,clean):
         if type(mapt) == dict:
             for k in list(mapt.keys()):
                 if is_str(k) and k.startswith("__"):
@@ -129,31 +121,95 @@ class DeepStatsMode(StatsMode):
                     if clean:
                         mapt.pop(k)
                 else:
-                    klass.post(mapt[k],mode,clean)
+                    self.post(mapt[k],mode,clean)
         elif type(mapt) == list:
             for e in mapt:
-                klass.post(e,mode,clean)
+                self.post(e,mode,clean)
 
+
+class RegexMode(BaseMode):
+
+    # list of {"re":"...","info":...}, if regex matches, then content
+    # in "info" is used in report
+    matchers = []
+
+    def __init__(self):
+        # pre-compile patterns
+        for d in self.matchers:
+            d["_pat"] = re.compile(d["re"])
+        assert self.__class__.key, "Define class attribute 'key' in sub-class"
+        self.__class__.template = {self.__class__.key : []}
+
+    def merge(self, target, tomerge):
+        # structure are lists (see template), just extend avoiding duplicated
+        for e in tomerge:
+            if not e in target:
+                target.append(e)
+
+    def report(self, val, drep, orig_struct=None):
+        if not orig_struct is None:
+            v = orig_struct
+        else:
+            v = val
+        if is_scalar(v):
+            sval = str(v)
+            for dreg in self.matchers:
+                if dreg["_pat"].match(sval):
+                    for oneinfo in dreg["info"]:
+                        if not oneinfo in drep.get(self.key,[]):
+                            drep.setdefault(self.key,[]).append(oneinfo)
+
+
+class IdentifiersMode(RegexMode):
+
+    key = "_ident"
+    # set this to a list of dict coming from http://identifiers.org/rest/collections
+    ids = None
+
+    matchers = None
+
+    def __init__(self):
+        if self.__class__.matchers is None:
+            self.__class__.matchers = []
+            res = {}
+            # not initialized
+            for ident in self.__class__.ids:
+                res.setdefault(ident["pattern"],[]).append(ident)
+            for pat,info in res.items():
+                self.__class__.matchers.append({"re" : pat, "info" : info})
+        super().__init__()
+
+
+############################################################################
 
 MODES_MAP = {
         "stats" : StatsMode,
         "deepstats" : DeepStatsMode,
+        "identifiers" : IdentifiersMode,
         }
 
+def get_mode_layer(mode):
+    try:
+        k = MODES_MAP[mode]
+        return k() # instance is what's used
+    except KeyError:
+        return None
+
+
 def merge_record(target,tomerge,mode):
-    mode_class = MODES_MAP.get(mode)
+    mode_inst = get_mode_layer(mode)
     for k in tomerge:
         if k in target:
-            if mode_class and mode_class.key == k:
-                tgt = target[mode_class.key]
-                tom = tomerge[mode_class.key]
-                mode_class.merge(tgt,tom)
+            if mode_inst and mode_inst.key == k:
+                tgt = target[mode_inst.key]
+                tom = tomerge[mode_inst.key]
+                mode_inst.merge(tgt,tom)
                 continue
             if not isinstance(tomerge[k], collections.Iterable):
                 continue
             for typ in tomerge[k]:
                 # if not an actual type we need to merge further to reach them
-                if mode_class is None and (type(typ) != type or typ == list):
+                if mode_inst is None and (type(typ) != type or typ == list):
                     target[k].setdefault(typ,{})
                     target[k][typ] = merge_record(target[k][typ],tomerge[k][typ],mode)
                 else:
@@ -170,16 +226,16 @@ def merge_record(target,tomerge,mode):
                         if splitstr is typ:
                             target.pop(k)
                             target[k] = tomerge[k]
-                    elif mode_class:
+                    elif mode_inst:
                         if typ in target[k]:
                             # same key, same type, need to merge
-                            if not mode_class.key in tomerge[k][typ]:
+                            if not mode_inst.key in tomerge[k][typ]:
                                 # we try to merge record at a too higher level, need to merge deeper
                                 target[k] = merge_record(target[k],tomerge[k],mode)
                                 continue
-                            tgt = target[k][typ][mode_class.key]
-                            tom = tomerge[k][typ][mode_class.key]
-                            mode_class.merge(tgt,tom)
+                            tgt = target[k][typ][mode_inst.key]
+                            tom = tomerge[k][typ][mode_inst.key]
+                            mode_inst.merge(tgt,tom)
                         else:
                             target[k].setdefault(typ,{}).update(tomerge[k][typ])
                     else:
@@ -189,7 +245,7 @@ def merge_record(target,tomerge,mode):
             if mode == "type":
                 target.setdefault(k,{}).update(tomerge[k])
             else:
-                if mode_class:
+                if mode_inst:
                     # running special mode, we just set the keys in target
                     target.setdefault(k,tomerge[k])
                 else:
@@ -213,7 +269,7 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
     - mode: see inspect_docs() documentation
     """
 
-    mode_class = MODES_MAP.get(mode)
+    mode_inst = get_mode_layer(mode)
 
     # init recording structure if none were passed
     if mapt is None:
@@ -236,19 +292,19 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
                 mapt.setdefault(k,{})
                 typ = inspect(struct[k],key=k,mapt=mapt[k],mode=mode,level=level+1)
 
-        if mode_class:
-            mapt.setdefault(mode_class.key,copy.deepcopy(mode_class.template[mode_class.key]))
-            mode_class.report(1,mapt)
+        if mode_inst:
+            mapt.setdefault(mode_inst.key,copy.deepcopy(mode_inst.template[mode_inst.key]))
+            mode_inst.report(1,mapt,struct)
     elif type(struct) == list:
 
         mapl = {}
         for e in struct:
             typ = inspect(e,key=key,mapt=mapl,mode=mode,level=level+1)
             mapl.update(typ)
-        if mode_class:
+        if mode_inst:
             # here we just report that one document had a list
-            mapl.update(copy.deepcopy(mode_class.template))
-            mode_class.report(len(struct),mapl)
+            mapl.update(copy.deepcopy(mode_inst.template))
+            mode_inst.report(struct,mapl)
         # if mapt exist, it means it's been explored previously but not as a list,
         # instead of mixing dict and list types, we want to normalize so we merge the previous
         # struct into that current list
@@ -277,8 +333,8 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
             if int in mapt and float in mapt:
                 mapt.pop(int)
         else:
-            mapt.setdefault(typ,copy.deepcopy(mode_class.template))
-            mode_class.report(struct,mapt[typ])
+            mapt.setdefault(typ,copy.deepcopy(mode_inst.template))
+            mode_inst.report(struct,mapt[typ])
     else:
         raise TypeError("Can't analyze type %s (data was: %s)" % (type(struct),struct))
 
@@ -288,7 +344,7 @@ def merge_scalar_list(mapt,mode):
     # TODO: this looks "strangely" to merge_record... refactoring needed ?
     # if a list is found and other keys at same level are found in that
     # list, then we need to merge. Ex: ...,{"bla":1},["bla":2],...
-    mode_class = MODES_MAP.get(mode)
+    mode_inst = get_mode_layer(mode)
     if "stats" in mode:
         raise NotImplementedError("merging with stats is not supported (yet)")
     if is_scalar(mapt):
@@ -298,7 +354,7 @@ def merge_scalar_list(mapt,mode):
         for e in other_keys:
             if e in mapt[list]:
                 tomerge = mapt.pop(e)
-                if mode_class:
+                if mode_inst:
                     for typ in tomerge:
                         if not type(typ) == type:
                             continue
@@ -308,11 +364,11 @@ def merge_scalar_list(mapt,mode):
                         # that is, what's actually been inspected on the list, originally
                         # (and we can't really update those stats as scalar stats aren't relevant
                         # to a list context
-                        elif typ == mode_class.key:
-                            mode_class.merge(mapt[list][e][mode_class.key],tomerge[mode_class.key])
+                        elif typ == mode_inst.key:
+                            mode_inst.merge(mapt[list][e][mode_inst.key],tomerge[mode_inst.key])
                             pass
                         else:
-                            mode_class.merge(mapt[list][e][typ][mode_class.key],tomerge[typ][mode_class.key])
+                            mode_inst.merge(mapt[list][e][typ][mode_inst.key],tomerge[typ][mode_inst.key])
                             pass
                 elif mode == "mapping":
                     for typ in tomerge:
@@ -399,9 +455,9 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
     logger.info("Done [%s]" % timesofar(t0))
     logger.info("Post-processing")
     for m in modes:
-        mode_class = MODES_MAP.get(m)
-        if mode_class:
-            mode_class.post(_map[m],m,clean)
+        mode_inst = get_mode_layer(m)
+        if mode_inst:
+            mode_inst.post(_map[m],m,clean)
 
     merge = "mapping" in modes and True or merge
     if merge:
@@ -558,7 +614,7 @@ if __name__ == "__main__":
     assert m["lofd"][list]["val"][float]["_stats"] == {'__vals': [34.3], '_count': 1, '_max': 34.3, '_min': 34.3}, \
             m["lofd"][list]["val"][float]["_stats"]
     # merge stats into the left param
-    DeepStatsMode.merge(m["lofd"][list]["val"][float]["_stats"],m["lofd"]["val"][float]["_stats"])
+    DeepStatsMode().merge(m["lofd"][list]["val"][float]["_stats"],m["lofd"]["val"][float]["_stats"])
     assert m["lofd"][list]["val"][float]["_stats"] == {'__vals': [34.3, 50.2], '_count': 2, '_max': 50.2, '_min': 34.3}
 
     # mapping mode (splittable strings)
