@@ -56,6 +56,7 @@ hub_requires = [
     'sockjs-tornado==1.0.6',
     'networkx>=2.1',
     'jsonschema>=2.6.0',
+    'pip', # auto-install requirements from plugins
 ]
 
 setup(
