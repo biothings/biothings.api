@@ -1,4 +1,6 @@
 import json
+import yaml
+from collections import OrderedDict
 import datetime
 import tornado.web
 import re
@@ -185,6 +187,25 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
             img_src=self.web_settings.HTML_OUT_HEADER_IMG, link=_link, link_decode=unquote_plus(_link),
             title_html=self.web_settings.HTML_OUT_TITLE, docs_link=_docs))
         return
+
+    def return_yaml(self, data, status_code=200):
+
+        def ordered_dump(data, stream=None, Dumper=yaml.Dumper, **kwds):
+            class OrderedDumper(Dumper):
+                pass
+
+            def _dict_representer(dumper, data):
+                return dumper.represent_mapping(
+                    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+                    data.items())
+            OrderedDumper.add_representer(OrderedDict, _dict_representer)
+            return yaml.dump(data, stream, OrderedDumper, **kwds)
+        
+        self.set_status(status_code)
+        self.set_header("Content-Type", "text/x-yaml; charset=UTF-8")
+        self.support_cors()
+        self.write(ordered_dump(
+            data=data, Dumper=yaml.SafeDumper, default_flow_style=False))
         
     def return_json(self, data, encode=True, indent=None, status_code=200, _format='json'):
         '''Return passed data object as JSON response.
@@ -195,11 +216,14 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         :param encode: if encode is False, assumes input data is already a JSON encoded string.
         :param indent: number of indents per level in JSON string
         :param status_code: HTTP status code for response
-        :param _format: output format - currently either "html" or "json"
+        :param _format: output format - currently supports "json", "html" or "yaml"
         '''    
         if _format == 'html':
             self.return_html(data, status_code)
             return
+        elif  _format == 'yaml':
+            self.return_yaml(data, status_code)
+            return            
         indent = indent or 2   # tmp settings
         self.set_status(status_code)
         if SUPPORT_MSGPACK and self.web_settings.ENABLE_MSGPACK and getattr(self, 'use_msgpack', False):
