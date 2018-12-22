@@ -1,5 +1,6 @@
 from biothings.web.settings import BiothingESWebSettings
 
+
 class ${settings_class}(BiothingESWebSettings):
     # Add app-specific settings functions here
     pass
