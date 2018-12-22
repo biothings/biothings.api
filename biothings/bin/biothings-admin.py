@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 import os
-import biothings
 import argparse
 from string import Template
+
+import biothings
+
 
 settings_dict = {
     "src_package": "",
@@ -16,6 +18,7 @@ settings_dict = {
     "nosetest_settings_class": "",
     "nosetest_envar": ""
 }
+
 
 def main(args):
     # now only es is supported as a biothing backend...
@@ -53,7 +56,7 @@ def main(args):
 
     if args.verbose:
         print("Creating {} project template using {}".format(args.b, settings_dict))
-    
+
     # Make top level directory
     pdir = os.path.abspath(args.path)
     if args.verbose:
@@ -70,14 +73,17 @@ def main(args):
             thisdir = os.path.join(pdir, settings_dict['src_package'], dirpath)
         os.mkdir(thisdir)
         for fi in [f for f in filenames if f.endswith('-tpl')]:
-            with open(os.path.join(thisdir, fi[:-4]), 'w') as outfile, open(
-                os.path.join(os.path.abspath(dirpath), fi), 'r') as infile:
+            with open(os.path.join(thisdir, fi[:-4]), 'w') as outfile,\
+                    open(os.path.join(os.path.abspath(dirpath), fi), 'r') as infile:
                 outfile.write(Template(infile.read()).substitute(settings_dict))
     os.chdir(cwd)
 
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="A tool to create a skeleton biothings project",
-        epilog="Available settings:\n{}".format(list(settings_dict.keys())))
+    parser = argparse.ArgumentParser(
+        description="A tool to create a skeleton biothings project",
+        epilog="Available settings:\n{}".format(list(settings_dict.keys()))
+    )
     parser.add_argument('obj', help="biothing type (e.g. gene, variant, drug, etc).  Default settings are created from this")
     parser.add_argument('path', help="path where skeleton project should be placed")
     parser.add_argument('-o', default=[], nargs="*", help="override any of the default settings with key=value pairs, to see default settings list, use -l")
