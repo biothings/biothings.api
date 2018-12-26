@@ -200,6 +200,7 @@ class DataTransformMDB(DataTransform):
             else:
                 doc_lst.append(doc)
 
+        hit_lst = []
         miss_lst = []
         for doc in doc_lst:
             if self.skip_w_regex and self.skip_w_regex.match(doc['_id']):
@@ -240,6 +241,8 @@ class DataTransformMDB(DataTransform):
                 hit_lst.append(doc)
             else:
                 miss_lst.append(doc)
+        # Keep a record of IDs copied
+        self.histogram.update_io(input_type, input_type, len(hit_lst))
         return (hit_lst, miss_lst)
 
     def _compute_path_weight(self, path):
