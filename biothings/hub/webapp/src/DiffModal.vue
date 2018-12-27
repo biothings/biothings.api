@@ -35,7 +35,6 @@ export default {
         showDiffed : function() {
             $('.ui.diff.modal').modal({
                 observeChanges: true,
-                detachable: false,
             })
             .modal("show")
         },

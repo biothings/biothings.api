@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from biothings.web.settings.default import *
 from web.api.query_builder import ESQueryBuilder
 from web.api.query import ESQuery

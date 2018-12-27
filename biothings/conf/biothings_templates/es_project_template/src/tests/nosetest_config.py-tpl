@@ -2,9 +2,9 @@
 # Nosetest settings
 ###################################################################################
 
-# biothings specific options - these should be identical to the production server 
+# biothings specific options - these should be identical to the production server
 # you are testing for...  For example, JSONLD_CONTEXT_URL should point to a file
-# with contents identical to the file pointed to by JSONLD_CONTEXT_PATH on the 
+# with contents identical to the file pointed to by JSONLD_CONTEXT_PATH on the
 # production server (if your intention is to test the production server).
 
 JSONLD_CONTEXT_URL = ""
@@ -49,7 +49,7 @@ QUERY_POST_DATA = []
 
 # -----------------------------------------------------------------------------------
 
-# This is a sample ID that will have non-ascii characters injected into it to test non-ascii 
+# This is a sample ID that will have non-ascii characters injected into it to test non-ascii
 # handling on the /{% annotation_endpoint %} endpoint
 ANNOTATION_NON_ASCII_ID = ''
 
@@ -84,4 +84,3 @@ TEST_FIELDS_GET_FIELDS_ENDPOINT = []
 
 # Any additional fields added for check_fields subset test
 CHECK_FIELDS_SUBSET_ADDITIONAL_FIELDS = []
-
