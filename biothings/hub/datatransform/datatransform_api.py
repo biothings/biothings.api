@@ -289,7 +289,12 @@ class BiothingsAPIEdge(DataTransformEdge):
     def __init__(self, lookup, fields, weight=1):
         super().__init__()
         self.init_state()
-        self.scope = lookup
+        if isinstance(lookup, str):
+            self.scopes = [lookup]
+        elif isinstance(lookup, list):
+            self.scopes = lookup
+        else:
+            raise TypeError("scopes argument must be str or list")
         if isinstance(fields, str):
             self.fields = [fields]
         elif isinstance(fields, list):
@@ -351,7 +356,7 @@ class BiothingsAPIEdge(DataTransformEdge):
         for id in id_strct.id_lst:
             id_lst.append('"{}"'.format(id))
         return self.client.querymany(id_lst,
-                                     scopes=self.scope,
+                                     scopes=self.scopes,
                                      fields=self.fields,
                                      as_generator=True,
                                      returnall=True,
