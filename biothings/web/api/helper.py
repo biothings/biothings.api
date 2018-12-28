@@ -1,5 +1,4 @@
 import json
-import yaml
 from collections import OrderedDict
 import datetime
 import tornado.web
@@ -32,6 +31,12 @@ try:
     SUPPORT_MSGPACK = True
 except ImportError:
     SUPPORT_MSGPACK = False
+
+try:
+    import yaml
+    SUPPORT_YAML = True
+except ImportError:
+    SUPPORT_YAML = False
 
 class DateTimeJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -189,6 +194,11 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         return
 
     def return_yaml(self, data, status_code=200):
+
+        if not SUPPORT_YAML:
+            self.set_status(500)
+            self.write({"success":False,"error":"Extra requirements for biothings.web needed."})
+            return
 
         def ordered_dump(data, stream=None, Dumper=yaml.Dumper, **kwds):
             class OrderedDumper(Dumper):
