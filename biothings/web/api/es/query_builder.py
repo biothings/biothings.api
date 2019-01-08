@@ -81,11 +81,18 @@ class ESQueryBuilder(object):
 
     def _get_term_scope(self, term):
         _scopes = None
+        _term = term
         for (regex, scope) in self.regex_list:
-            if match(regex, term):
-                _scopes = scope
-                break
-        return _scopes
+            r = match(regex, term)
+            if r:
+                if r.groupdict() and 'search_term' in r.groupdict() and r.groupdict()['search_term']:
+                    _scopes = scope
+                    _term = r.groupdict()['search_term']
+                    break
+                else:
+                    _scopes = scope
+                    break
+        return _term, _scopes
     
     def _build_single_query(self, term, scopes=None):
         scopes = scopes or self.default_scopes
@@ -98,9 +105,10 @@ class ESQueryBuilder(object):
         _q = []
         _infer_scope = True if not scopes else False
         for term in terms:
+            _term = term
             if _infer_scope:
-                scopes = self._get_term_scope(term)
-            _q.extend(['{}', json.dumps(self._build_single_query(term, scopes=scopes))])
+                _term, scopes = self._get_term_scope(term)
+            _q.extend(['{}', json.dumps(self._build_single_query(_term, scopes=scopes))])
         return self._return_query_kwargs({'body': '\n'.join(_q)})
 
     def _default_query(self, q):
@@ -183,9 +191,9 @@ class ESQueryBuilder(object):
         return {'body': {'scroll_id': scroll_id}, 'scroll': self.scroll_options.get('scroll', '1m')}
 
     def _annotation_GET_query(self, bid):
-        _scopes = self._get_term_scope(bid)
+        _bid, _scopes = self._get_term_scope(bid)
         if _scopes:
-            return self._return_query_kwargs({'body': self._build_single_query(bid, scopes=_scopes)})
+            return self._return_query_kwargs({'body': self._build_single_query(_bid, scopes=_scopes)})
         else:
             # go to es.get
             _get_kwargs = {'id': bid}
