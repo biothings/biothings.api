@@ -1007,14 +1007,28 @@ class BuilderManager(BaseManager):
             meta_srcs = old.get("_meta",{}).get("src",{})
             new = {"old_build" : {"name" : old["_id"], "built_at" : old["started_at"]} ,"sources":{}}
             for src_name,data in meta_srcs.items():
-                srcd = dbdump.find_one({"_id":src_name})
-                # TODO: should take release from upload, not download, but what about sources with more than 1 sub-sources ?
-                if srcd and srcd.get("download",{}).get("release") and srcd["download"]["release"] != data["version"]:
-                    new["sources"][src_name] = {
-                            "old": {"version" : data["version"]},
-                            "new": {"version" : srcd["download"]["release"],
-                                    "downloaded_at" : srcd["download"]["started_at"]}
-                            }
+                try:
+                    srcd = dbdump.find_one({"_id":src_name})
+                    if srcd and not srcd.get("download") and srcd.get("upload") :
+                        # this is a collection only source, find all releases in sub sources, hopefully all are the same
+                        rels = [sub["release"] for sub in srcd["upload"]["jobs"].values()]
+                        srels = set(rels)
+                        if len(srels) != 1:
+                            raise ValueError("Found different releases in sub-sources, expected only one common: %s" % repr(rels))
+                        rel = rels[0]
+                        if rel != data["version"]:
+                            new["sources"][src_name] = {
+                                    "old": {"version" : data["version"]},
+                                    "new": {"version" : rel}
+                                    }
+                    elif srcd and srcd.get("download",{}).get("release") and srcd["download"]["release"] != data["version"]:
+                        new["sources"][src_name] = {
+                                "old": {"version" : data["version"]},
+                                "new": {"version" : srcd["download"]["release"],
+                                        "downloaded_at" : srcd["download"].get("started_at")}
+                                }
+                except Exception as e:
+                    self.logger.exception("Can't check what's new for source '%s': %s" % (src_name,e))
             return {build_name : new}
 
         if old is None and build_name is None:
