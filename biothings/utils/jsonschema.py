@@ -10,6 +10,7 @@ def generate_json_schema(dmap):
             int: "integer",
             float: "number",
             bool: "boolean",
+            None: "null",
             }
 
     def merge_type(typ1,typ2):

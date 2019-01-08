@@ -397,8 +397,40 @@ def merge_scalar_list(mapt,mode):
             merge_scalar_list(e,mode)
 
 
+def get_converters(modes,logger=logging):
+    converters = []
+    # should we actually run another mode and then convert the results ?
+    if "jsonschema" in modes:
+        from biothings.utils.jsonschema import generate_json_schema
+        # first get schema with mode="type", then convert the results
+        # note "type" can't also be specified as jsonschema will replace
+        # the results in _map["type"] key
+        converters.append(
+                {
+                    "output_mode" : "jsonschema",
+                    "input_mode" : "type",
+                     "func" : generate_json_schema,
+                     "delete_input_mode" : not "type" in modes
+                })
+        modes.remove("jsonschema")
+        if not "type" in modes:
+            modes.append("type")
+
+    return converters, modes
+
+
+def run_converters(_map,converters,logger=logging):
+    # need to convert some results ?
+    for converter in converters:
+        logger.info("Finalizing result for mode '%s' using converter %s" % (converter["output_mode"],converter))
+        converted = converter["func"](_map[converter["input_mode"]])
+        _map[converter["output_mode"]] = converted
+        if converter["delete_input_mode"]:
+            _map.pop(converter["input_mode"])
+
 def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
-                 pre_mapping=False, limit=None, sample=None, metadata=True):
+                 pre_mapping=False, limit=None, sample=None, metadata=True,
+                 auto_convert=True):
     """Inspect docs and return a summary of its structure:
     - mode:
         + "type": explore documents and report strict data structure
@@ -407,6 +439,7 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
         + "stats": explore documents and compute basic stats (count,min,max,sum)
         + "deepstats": same as stats but record values and also compute mean,stdev,median
           (memory intensive...)
+        + "jsonschema", same as "type" but returned a json-schema formatted result
       (mode can also be a list of modes, eg. ["type","mapping"]. There's little
        overhead computing multiple types as most time is spent on actually getting the data)
     - clean: don't delete recorded vqlues or temporary results
@@ -416,12 +449,16 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
               (so not necessarily the x first ones defined by limit). If random.random()
               is greater than sample, doc is inspected, otherwise it's skipped
     - metadata: compute metadata on the result
+    - auto_convert: run converters automatically (converters are used to convert one mode's
+                    output to another mode's output, eg. type to jsonschema)
     """
 
     if type(mode) == str:
         modes = [mode]
     else:
         modes = mode
+    if auto_convert:
+        converters,modes = get_converters(modes,logger=logger)
     _map = {}
     for m in modes:
         _map[m] = {}
@@ -429,6 +466,7 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
     errors = set()
     t0 = time.time()
     innert0 = time.time()
+
     if not sample is None:
         assert limit, "Parameter 'sample' requires 'limit' to be defined"
         assert sample != 1, "Sample value 1 not allowed (no documents would be inspected)"
@@ -454,10 +492,15 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
             break
     logger.info("Done [%s]" % timesofar(t0))
     logger.info("Post-processing")
+
+    # post-process, specific for each mode
     for m in modes:
         mode_inst = get_mode_layer(m)
         if mode_inst:
             mode_inst.post(_map[m],m,clean)
+
+    if auto_convert:
+        run_converters(_map,converters,logger=logger)
 
     merge = "mapping" in modes and True or merge
     if merge:
