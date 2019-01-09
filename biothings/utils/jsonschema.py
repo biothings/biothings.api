@@ -1,6 +1,7 @@
 import json, jsonschema
 from biothings.utils.common import is_str
 from pprint import pprint,pformat
+import bson
 
 
 def generate_json_schema(dmap):
@@ -10,6 +11,7 @@ def generate_json_schema(dmap):
             int: "integer",
             float: "number",
             bool: "boolean",
+            bson.int64.Int64: "number",
             None: "null",
             }
 
