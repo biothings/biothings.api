@@ -35,6 +35,8 @@ STATIC_PATH = "static"
 API_VERSION = 'v1'
 # project URL routing
 APP_LIST = []
+# for URLS that don't require settings in initialize
+UNINITIALIZED_APP_LIST = []
 
 # *****************************************************************************
 # Subclass of biothings.web.api.es.query_builder.ESQueryBuilder to build
