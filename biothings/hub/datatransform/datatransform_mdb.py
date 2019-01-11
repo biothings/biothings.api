@@ -99,7 +99,7 @@ class DataTransformMDB(DataTransform):
     Convert document identifiers from one type to another.
     """
     # Constants
-    batch_size = 1000
+    batch_size = 5000
     default_source = '_id'
 
     def __init__(self, G, *args, **kwargs):

@@ -4,7 +4,7 @@ biothings.config_for_app(config)
 from biothings.hub.datatransform import DataTransformMDB as KeyLookup
 from biothings.tests.keylookup_graphs import graph_simple, \
     graph_weights, graph_one2many, graph_invalid, graph_mix, \
-    graph_mychem, graph_regex
+    graph_mychem, graph_regex, graph_pubchem
 import unittest
 import biothings.utils.mongo as mongo
 
@@ -292,6 +292,22 @@ class TestDataTransform(unittest.TestCase):
         res_lst = load_document('data/folder/')
         res = next(res_lst)
         self.assertEqual(res['_id'], 'end1')
+
+    def test_pubchem_api(self):
+        """
+        Test 'inchi' to 'inchikey' conversion using mychem.info
+        :return:
+        """
+        doc_lst = [{'_id': 'InChI=1S/C8H9NO2/c1-6(10)9-7-2-4-8(11)5-3-7/h2-5,11H,1H3,(H,9,10)'}]
+
+        @KeyLookup(graph_pubchem, 'inchi', ['inchikey'])
+        def load_document(data_folder):
+            for d in doc_lst:
+                yield d
+
+        res_lst = load_document('data/folder/')
+        res = next(res_lst)
+        self.assertEqual(res['_id'], 'RZVAJINKPMORJF-UHFFFAOYSA-N')
 
     def test_input_source_fields(self):
         """

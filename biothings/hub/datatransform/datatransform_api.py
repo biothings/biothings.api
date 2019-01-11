@@ -153,7 +153,7 @@ class DataTransformAPI(DataTransform):
         :param qr: querymany results
         :return:
         """
-        self.logger.debug("QueryMany Structure:  {}".format(qr))
+        # self.logger.debug("QueryMany Structure:  {}".format(qr))
         qm_struct = {}
         for q in qr['out']:
             query = q['query']
@@ -164,9 +164,9 @@ class DataTransformAPI(DataTransform):
                 else:
                     self.one_to_many_cnt += 1
                     qm_struct[query] = qm_struct[query] + [val]
-        self.logger.debug("parse_querymany num qm_struct keys: {}".format(len(qm_struct.keys())))
-        self.logger.info("parse_querymany running one_to_many_cnt: {}".format(self.one_to_many_cnt))
-        self.logger.debug("parse_querymany qm_struct: {}".format(qm_struct.keys()))
+        # self.logger.debug("parse_querymany num qm_struct keys: {}".format(len(qm_struct.keys())))
+        # self.logger.info("parse_querymany running one_to_many_cnt: {}".format(self.one_to_many_cnt))
+        # self.logger.debug("parse_querymany qm_struct: {}".format(qm_struct.keys()))
         return qm_struct
 
     def _parse_h(self, h):
@@ -284,11 +284,16 @@ class BiothingsAPIEdge(DataTransformEdge):
     """
     APIEdge - IDLookupEdge object for API calls
     """
-    def __init__(self, lookup, field, weight=1, label=None):
+    def __init__(self, scope, fields, weight=1, label=None):
         super().__init__(label)
         self.init_state()
-        self.scope = lookup
-        self.field = field
+        self.scope = scope
+        if isinstance(fields, str):
+            self.fields = [fields]
+        elif isinstance(fields, list):
+            self.fields = fields
+        else:
+            raise TypeError("fields argument must be str or list")
         self.weight = weight
 
     def init_state(self):
@@ -321,7 +326,7 @@ class BiothingsAPIEdge(DataTransformEdge):
         :return:
         """
         qr = self._query_many(keylookup_obj, id_strct)
-        new_id_strct = self._parse_querymany(keylookup_obj, qr, id_strct, self.field)
+        new_id_strct = self._parse_querymany(keylookup_obj, qr, id_strct, self.fields)
         return new_id_strct
 
     def _query_many(self, keylookup_obj, id_strct):
@@ -333,30 +338,34 @@ class BiothingsAPIEdge(DataTransformEdge):
         """
         if not isinstance(id_strct, IDStruct):
             raise TypeError("id_strct shouldb be of type IDStruct")
-        id_lst = id_strct.id_lst
+        id_lst = []
+        for id in id_strct.id_lst:
+            id_lst.append('"{}"'.format(id))
         return self.client.querymany(id_lst,
                                      scopes=self.scope,
-                                     fields=self.field,
+                                     fields=self.fields,
                                      as_generator=True,
                                      returnall=True,
                                      size=keylookup_obj.batch_size)
 
-    def _parse_querymany(self, keylookup_obj, qr, id_strct, field):
+    def _parse_querymany(self, keylookup_obj, qr, id_strct, fields):
         """
         Parse the querymany results from the biothings_client into a structure
         that will later be used for document key replacement.
         :param qr: querymany results
         :return:
         """
-        self.logger.debug("QueryMany Structure:  {}".format(qr))
+        # self.logger.debug("QueryMany Structure:  {}".format(qr))
         qm_struct = IDStruct()
         for q in qr['out']:
             query = q['query']
-            val = nested_lookup(q, field)
-            if val:
-                for (orig_id, curr_id) in id_strct:
-                    if query == curr_id:
-                        qm_struct.add(orig_id, val)
+            for field in fields:
+                val = nested_lookup(q, field)
+                if val:
+                    for (orig_id, curr_id) in id_strct:
+                        # query is always a string, so this check requires conversion
+                        if query == str(curr_id):
+                            qm_struct.add(orig_id, val)
         return qm_struct
 
 class MyChemInfoEdge(BiothingsAPIEdge):
