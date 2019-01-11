@@ -66,8 +66,10 @@ def generate_json_schema(dmap):
                         schema["type"] = merge_type(schema["type"],scalarmap[k])
                     else:
                         schema = {"type" : scalarmap[k]}
+            elif k == None:
+                schema = {"type" : None}
             else:
-                raise Exception("no not here")
+                raise Exception("no not here, k: %s" % k)
     else:
         pass
 

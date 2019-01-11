@@ -537,7 +537,14 @@ def typify_inspect_doc(dmap):
     """
     def typify(val):
         if type(val) != type and val.startswith("__type__:"):
-            return eval(val.replace("__type__:",""))
+            typ = val.replace("__type__:","")
+            # special cases
+            if typ == "NoneType":
+                return None
+            elif typ == "Int64": # bson's Int64
+                return bson.int64.Int64
+            else:
+                return eval(val.replace("__type__:",""))
         else:
             return val
     return dict_walk(dmap,typify)
