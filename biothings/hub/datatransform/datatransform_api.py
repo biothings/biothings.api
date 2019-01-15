@@ -325,6 +325,10 @@ class BiothingsAPIEdge(DataTransformEdge):
         :param key:
         :return:
         """
+        # If no keys were passed return an empty idstruct_class
+        if not len(id_strct):
+            return keylookup_obj.idstruct_class()
+        # query the api
         qr = self._query_many(keylookup_obj, id_strct)
         new_id_strct = self._parse_querymany(keylookup_obj, qr, id_strct, self.fields)
         return new_id_strct

@@ -196,6 +196,8 @@ class DataTransformMDB(DataTransform):
             # in debug mode, skip all documents not in the debug list
             if self.debug:
                 if doc['_id'] in self.debug:
+                    # set debug information
+                    doc['dt_debug'] = {'orig_key': doc['_id']}
                     doc_lst.append(doc)
             else:
                 doc_lst.append(doc)
@@ -295,7 +297,7 @@ class DataTransformMDB(DataTransform):
                     new_doc['_id'] = str(lookup_id)
                     # capture debug information
                     if debug:
-                        new_doc['dt_debug'] = id_strct.get_debug(value)
+                        new_doc['dt_debug']['debug'] = id_strct.get_debug(value)
                     hit_lst.append(new_doc)
                     hit_flag = True
                 if not hit_flag:

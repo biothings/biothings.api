@@ -131,16 +131,24 @@ class IDStruct(object):
         return self.find(self.inverse,ids)
 
     def set_debug(self, left, label, right):
+        # lowercase left and right keys
+        if isinstance(left, str):
+            left = left.lower()
+        if isinstance(right, str):
+            right = right.lower()
         # capture the label if it is used
         if label:
             right = (label, right)
-
         try:
             self.debug[left] = self.debug[left] + [right]
         except KeyError:
             self.debug[left] = [left, right]
 
     def get_debug(self, key):
+        # lowercase key if possible
+        if isinstance(key, str):
+            key = key.lower()
+        # return debug information
         try:
             return self.debug[key]
         except KeyError:
