@@ -106,6 +106,24 @@ class BiothingESWebSettings(BiothingWebSettings):
 
         return self._source_metadata
 
+    def available_fields_notes(self):
+        ''' Caches the available fields notes for this biothing '''
+        try:
+            return self._available_fields_notes
+        except:
+            pass
+
+        self._available_fields_notes = {}
+
+        if os.path.exists(os.path.abspath(self.AVAILABLE_FIELDS_NOTES_PATH)):
+            try:
+                with open(os.path.abspath(self.AVAILABLE_FIELDS_NOTES_PATH), 'r') as inf:
+                    self._available_fields_notes = json.load(inf)
+            except:
+                pass
+
+        return self._available_fields_notes
+
     def get_es_client(self):
         '''Get the `Elasticsearch client <https://elasticsearch-py.readthedocs.io/en/master/>`_
         for this app, only called once on invocation of server. '''

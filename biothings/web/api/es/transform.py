@@ -23,8 +23,9 @@ class ESResultTransformer(object):
     :param output_aliases: list of output key names to alias, unused currently (optional)
     :param app_dir: Application directory for this app (used for getting app information in /metadata)
     :param source_metadata: Metadata object containing source information for _license keys
-    :param excluded_keys: A list of keys to exclude from the available keys output'''
-    def __init__(self, options, host, doc_url_function=lambda x: x, jsonld_context={}, data_sources={}, output_aliases={}, app_dir='', source_metadata={}, excluded_keys=[]):
+    :param excluded_keys: A list of keys to exclude from the available keys output
+    :param field_notes: A dictionary of notes to add to the available keys output'''
+    def __init__(self, options, host, doc_url_function=lambda x: x, jsonld_context={}, data_sources={}, output_aliases={}, app_dir='', source_metadata={}, excluded_keys=[], field_notes={}):
         self.options = options
         self.host = host
         self.doc_url_function = doc_url_function
@@ -34,6 +35,7 @@ class ESResultTransformer(object):
         self.app_dir = app_dir
         self.source_metadata = source_metadata
         self.excluded_keys = excluded_keys
+        self.field_notes = field_notes
 
     def _flatten_doc(self, doc, outfield_sep='.', context_sep='.'):
         def _recursion_helper(d, ret, path, out):
@@ -108,9 +110,6 @@ class ESResultTransformer(object):
 
         self._modify_doc(_doc)
         
-        for _field in self.options.allow_null:
-            _doc = exists_or_null(_doc, _field)
-
         if self.options.jsonld:
             _d = OrderedDict([('@context', self.jsonld_context.get('@context', {})), 
                               ('@id', self.doc_url_function(_doc['_id']))])
@@ -119,7 +118,10 @@ class ESResultTransformer(object):
         elif self.options.dotfield:
             return self._flatten_doc(_doc)
         else:
-            return self._sort_and_annotate_doc(_doc, sort=self.options._sorted, data_src=self.options.datasource)
+            _doc = self._sort_and_annotate_doc(_doc, sort=self.options._sorted, data_src=self.options.datasource)
+            for _field in self.options.allow_null:
+                _doc = exists_or_null(_doc, _field)
+            return _doc
 
     def _modify_doc(self, doc):
         ''' Override to add custom fields to doc before flattening/sorting '''
@@ -227,7 +229,9 @@ class ESResultTransformer(object):
                         if 'analyzer' in v and isinstance(v['analyzer'], str):
                             _arr.append(('analyzer', v['analyzer'].lower()))
                         if 'copy_to' in v and isinstance(v['copy_to'], list) and 'all' in v['copy_to']:
-                            _arr.append(('in_all', True))
+                            _arr.append(('searched_by_default', True))
+                        if _k in self.field_notes:
+                            _arr.append(('notes', self.field_notes[_k]))
                     _v = OrderedDict(_arr)
                     if ((_k.lower() not in self.excluded_keys) and (_v and ((not self.options.prefix and not self.options.search) or 
                         (self.options.prefix and _k.startswith(self.options.prefix)) or 
