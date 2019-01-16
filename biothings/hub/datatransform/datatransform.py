@@ -2,6 +2,7 @@ import re
 
 from .histogram import Histogram
 from biothings.utils.common import iter_n
+from biothings.utils.common import is_str
 from biothings.utils.loggers import get_logger
 
 
@@ -69,7 +70,7 @@ class IDStruct(object):
         for (left, right) in other:
             self.add(left, right)
             # retain debug information
-            self.debug[left] = other.get_debug(left)
+            self.transfer_debug(left, other)
         return self
 
     def __len__(self):
@@ -132,9 +133,9 @@ class IDStruct(object):
 
     def set_debug(self, left, label, right):
         # lowercase left and right keys
-        if isinstance(left, str):
+        if is_str(left):
             left = left.lower()
-        if isinstance(right, str):
+        if is_str(right):
             right = right.lower()
         # capture the label if it is used
         if label:
@@ -146,7 +147,7 @@ class IDStruct(object):
 
     def get_debug(self, key):
         # lowercase key if possible
-        if isinstance(key, str):
+        if is_str(key):
             key = key.lower()
         # return debug information
         try:
@@ -155,8 +156,21 @@ class IDStruct(object):
             return 'not-available'
 
     def import_debug(self, other):
+        """
+        import debug information the entire IDStruct object
+        """
         for id in other.debug.keys():
-            self.debug[id] = other.get_debug(id)
+            self.transfer_debug(id, other)
+
+    def transfer_debug(self, key, other):
+        """
+        transfer debug information for one key in the IDStruct object
+        """
+        # ensure lower case key
+        if is_str(key):
+            key = key.lower()
+        # transfer debug information
+        self.debug[key] = other.get_debug(key)
 
 
 class DataTransform(object):
@@ -417,6 +431,8 @@ def nested_lookup(doc, field):
             if type(value) in [list,tuple]:
                 # assuming we have a list of dict with k as one of the keys
                 stype = set([type(e) for e in value])
+                if not stype:
+                    return None
                 assert len(stype) == 1 and stype == {dict}, "Expecting a list of dict, found types: %s" % stype
                 value = [e[k] for e in value if e.get(k)]
                 # can't go further ?

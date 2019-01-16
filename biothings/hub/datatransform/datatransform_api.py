@@ -330,7 +330,7 @@ class BiothingsAPIEdge(DataTransformEdge):
             return keylookup_obj.idstruct_class()
         # query the api
         qr = self._query_many(keylookup_obj, id_strct)
-        new_id_strct = self._parse_querymany(keylookup_obj, qr, id_strct, self.fields)
+        new_id_strct = self._parse_querymany(keylookup_obj, qr, id_strct, self.fields, debug)
         return new_id_strct
 
     def _query_many(self, keylookup_obj, id_strct):
@@ -352,7 +352,7 @@ class BiothingsAPIEdge(DataTransformEdge):
                                      returnall=True,
                                      size=keylookup_obj.batch_size)
 
-    def _parse_querymany(self, keylookup_obj, qr, id_strct, fields):
+    def _parse_querymany(self, keylookup_obj, qr, id_strct, fields, debug):
         """
         Parse the querymany results from the biothings_client into a structure
         that will later be used for document key replacement.
@@ -361,6 +361,11 @@ class BiothingsAPIEdge(DataTransformEdge):
         """
         # self.logger.debug("QueryMany Structure:  {}".format(qr))
         qm_struct = IDStruct()
+
+        # Keep the old debug information
+        if debug:
+            qm_struct.import_debug(id_strct)
+
         for q in qr['out']:
             query = q['query']
             for field in fields:
@@ -370,6 +375,9 @@ class BiothingsAPIEdge(DataTransformEdge):
                         # query is always a string, so this check requires conversion
                         if query == str(curr_id):
                             qm_struct.add(orig_id, val)
+                            # save debug information in the option is set
+                            if debug:
+                                qm_struct.set_debug(orig_id, self.label, val)
         return qm_struct
 
 class MyChemInfoEdge(BiothingsAPIEdge):

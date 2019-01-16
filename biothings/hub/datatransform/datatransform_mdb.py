@@ -241,6 +241,9 @@ class DataTransformMDB(DataTransform):
                 # ensure _id is always a str
                 doc['_id'] = str(val)
                 hit_lst.append(doc)
+                # retain debug information if available (assumed dt_debug already in place)
+                if self.debug:
+                    doc['dt_debug']['copy_from'] = (input_type[1], val)
             else:
                 miss_lst.append(doc)
         # Keep a record of IDs copied
