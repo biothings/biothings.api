@@ -607,6 +607,7 @@ class HTTPDumper(BaseDumper):
     """Dumper using HTTP protocol and "requests" library"""
 
     VERIFY_CERT = True
+    IGNORE_HTTP_CODE = [] # list of HTTP code to ignore in case on non-200 response
 
     def prepare_client(self):
         self.client = requests.Session()
@@ -628,8 +629,12 @@ class HTTPDumper(BaseDumper):
         self.logger.debug("Downloading '%s'" % remoteurl)
         res = self.client.get(remoteurl,stream=True,headers=headers)
         if not res.status_code == 200:
-            raise DumperException("Error while downloading '%s' (status: %s, reason: %s)" % \
-                    (remoteurl,res.status_code,res.reason))
+            if res.status_code in self.__class__.IGNORE_HTTP_CODE:
+                self.logger.info("Remote URL gave http code %s, ignored" % (remoteurl,res.status_code))
+                return
+            else:
+                raise DumperException("Error while downloading '%s' (status: %s, reason: %s)" % \
+                        (remoteurl,res.status_code,res.reason))
         # issue biothings.api #3: take filename from header if specified
         if res.headers.get("content-disposition"):
             parsed = cgi.parse_header(res.headers["content-disposition"])
