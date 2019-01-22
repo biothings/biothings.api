@@ -308,6 +308,19 @@ class DataTransform(object):
         """
         pass
 
+    def lookup_one(self, doc):
+        """
+        KeyLookup on document.  This method is called as a function call instead of a
+        decorator on a document iterator.
+        """
+        output_docs = self.key_lookup_batch([doc])
+        for odoc in output_docs:
+            # print debug information if available
+            if self.debug and 'dt_debug' in odoc:
+                self.logger.debug("DataTransform Debug doc['dt_debug']:  {}".format(odoc['dt_debug']))
+            yield odoc
+        self.logger.info("DataTransform.histogram:  {}".format(self.histogram))
+
     @staticmethod
     def _nested_lookup(doc, field):
         """
