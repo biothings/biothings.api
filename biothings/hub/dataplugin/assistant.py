@@ -4,7 +4,7 @@ import urllib.parse, requests
 from datetime import datetime
 import asyncio
 from functools import partial
-import inspect, importlib
+import inspect, importlib, textwrap
 import pip, subprocess
 
 from biothings.utils.hub_db import get_data_plugin
@@ -112,7 +112,7 @@ class BaseAssistant(object):
             self.invalidate_plugin("Missing plugin folder '%s'" % df)
 
     def invalidate_plugin(self,error):
-        self.logger.warning("Invalidate plugin '%s' because: %s" % (self.plugin_name,error))
+        self.logger.exception("Invalidate plugin '%s' because: %s" % (self.plugin_name,error))
         # flag all plugin associated (there should only one though, but no need to care here)
         for klass in self.__class__.data_plugin_manager[self.plugin_name]:
             klass.data_plugin_error = error
@@ -144,45 +144,85 @@ class BaseAssistant(object):
                             "expecting only one")
                 scheme = schemes.pop()
                 klass = manifest["dumper"].get("class")
+                confdict = getattr(self,"_dict_for_%s" % scheme)(durls)
                 if klass:
                     dumper_class = get_class_from_classpath(klass)
+                    confdict["BASE_CLASSES"] = klass
                 else:
                     dumper_class = self.dumper_registry.get(scheme)
+                    confdict["BASE_CLASSES"] = "biothings.hub.dataload.dumper.%s" % dumper_class.__name__
                 if not dumper_class:
                     raise AssistantException("No dumper class registered to handle scheme '%s'" % scheme)
-                confdict = getattr(self,"_dict_for_%s" % scheme)(durls)
                 if manifest.get("__metadata__"):
                     confdict["__metadata__"] = {"src_meta" : manifest.get("__metadata__")}
-                assisted_dumper_class = type("AssistedDumper_%s" % self.plugin_name,(AssistedDumper,dumper_class,),confdict)
-                if manifest["dumper"].get("uncompress"):
-                    assisted_dumper_class.UNCOMPRESS = True
-                self.__class__.dumper_manager.register_classes([assisted_dumper_class])
-                # register class in module so it can be pickled easily
-                sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedDumper_%s" % self.plugin_name] = assisted_dumper_class
-            else:
-                raise AssistantException("Invalid manifest, expecting 'data_url' key in 'dumper' section")
+                else:
+                    confdict["__metadata__"] = {}
 
-            assert assisted_dumper_class
-            if manifest["dumper"].get("release"):
-                try:
-                    mod,func = manifest["dumper"].get("release").split(":")
-                except ValueError as e:
-                    raise AssistantException("'release' must be defined as 'module:parser_func' but got: '%s'" % \
-                            manifest["dumper"]["release"])
-                try:
+                if manifest["dumper"].get("release"):
+                    try:
+                        mod,func = manifest["dumper"].get("release").split(":")
+                    except ValueError as e:
+                        raise AssistantException("'release' must be defined as 'module:parser_func' but got: '%s'" % \
+                                manifest["dumper"]["release"])
                     modpath = self.plugin_name + "." + mod
                     pymod = importlib.import_module(modpath)
                     # reload in case we need to refresh plugin's code
                     importlib.reload(pymod)
                     assert func in dir(pymod), "%s not found in module %s" % (func,pymod)
                     get_release_func = getattr(pymod,func)
-                    # replace existing method to connect custom release setter
-                    def set_release(self):
-                        self.release = get_release_func(self)
-                    assisted_dumper_class.set_release = set_release
+                    # fetch source and indent to class method level in the template
+                    strfunc = inspect.getsource(get_release_func)
+                    # always indent with spaces, normalize to avoid mixed indenting chars
+                    indentfunc = textwrap.indent(strfunc.replace("\t","    "),prefix="    ")
+                    confdict["SET_RELEASE_FUNC"] = """
+%s
+
+    def set_release(self):
+        self.release = self.%s()
+""" % (indentfunc,func)
+
+                else:
+                    confdict["SET_RELEASE_FUNC"] = ""
+
+                dklass = None
+                dumper_name = self.plugin_name.capitalize() + "Dumper"
+                try:
+                    from string import Template
+                    if hasattr(btconfig,"DUMPER_TEMPLATE"):
+                        tpl_file = btconfig.DUMPER_TEMPLATE
+                    else:
+                        # default: assuming in ..../biothings/hub/dataplugin/
+                        curmodpath = os.path.realpath(__file__)
+                        tpl_file = os.path.join(os.path.dirname(curmodpath),"dumper.py.tpl")
+                    tpl = Template(open(tpl_file).read())
+                    confdict["DUMPER_NAME"] = dumper_name
+                    confdict["SRC_NAME"] = self.plugin_name
+                    if manifest["dumper"].get("schedule"):
+                        schedule = """'%s'""" % manifest["dumper"]["schedule"]
+                    else:
+                        schedule = "None"
+                    confdict["SCHEDULE"] = schedule
+                    confdict["UNCOMPRESS"] = manifest["dumper"].get("uncompress") or False
+                    pystr = tpl.substitute(confdict)
+                    self.logger.debug(pystr)
+                    import imp
+                    code = compile(pystr,"<string>","exec")
+                    mod = imp.new_module(self.plugin_name)
+                    exec(code,mod.__dict__,mod.__dict__)
+                    dklass = getattr(mod,dumper_name)
+                    # we need to inherit from a class here in this file so it can be pickled
+                    assisted_dumper_class = type("AssistedDumper_%s" % self.plugin_name,(AssistedDumper,dklass,),{})
+                    assisted_dumper_class.python_code = pystr
                 except Exception as e:
-                    self.logger.exception("Error loading plugin: %s" % e)
-                    raise AssistantException("Can't interpret manifest: %s" % e)
+                    self.logger.exception("Can't generate dumper code for '%s'" % self.plugin_name)
+                self.__class__.dumper_manager.register_classes([assisted_dumper_class])
+                # register class in module so it can be pickled easily
+                sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedDumper_%s" % self.plugin_name] = assisted_dumper_class
+            else:
+                raise AssistantException("Invalid manifest, expecting 'data_url' key in 'dumper' section")
+
+
+            assert assisted_dumper_class
         if manifest.get("uploader"):
             if manifest["uploader"].get("parser"):
                 try:
@@ -249,11 +289,12 @@ class BaseAssistant(object):
 
 
 class AssistedDumper(object):
-    UNCOMPRESS = False
-    def post_dump(self, *args, **kwargs):
-        if self.__class__.UNCOMPRESS:
-            self.logger.info("Uncompress all archive files in '%s'" % self.new_data_folder)
-            uncompressall(self.new_data_folder)
+    assisted = True
+    #UNCOMPRESS = False
+    #def post_dump(self, *args, **kwargs):
+    #    if self.__class__.UNCOMPRESS:
+    #        self.logger.info("Uncompress all archive files in '%s'" % self.new_data_folder)
+    #        uncompressall(self.new_data_folder)
 
 # this is a transparent wrapper over parsing func, performining no conversion at all
 def transparent(f):
