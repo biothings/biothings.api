@@ -608,6 +608,8 @@ class HTTPDumper(BaseDumper):
 
     VERIFY_CERT = True
     IGNORE_HTTP_CODE = [] # list of HTTP code to ignore in case on non-200 response
+    RESOLVE_FILENAME = False # global trigger to get filenames from headers
+                             # when available
 
     def prepare_client(self):
         self.client = requests.Session()
@@ -624,9 +626,7 @@ class HTTPDumper(BaseDumper):
         return True
 
     def download(self,remoteurl,localfile,headers={}):
-        """kwargs will be passed to requests.Session.get()"""
         self.prepare_local_folders(localfile)
-        self.logger.debug("Downloading '%s'" % remoteurl)
         res = self.client.get(remoteurl,stream=True,headers=headers)
         if not res.status_code == 200:
             if res.status_code in self.__class__.IGNORE_HTTP_CODE:
@@ -636,12 +636,14 @@ class HTTPDumper(BaseDumper):
                 raise DumperException("Error while downloading '%s' (status: %s, reason: %s)" % \
                         (remoteurl,res.status_code,res.reason))
         # issue biothings.api #3: take filename from header if specified
-        if res.headers.get("content-disposition"):
+        # note: this has to explicit, either on a globa (class) level or per file to dump
+        if self.__class__.RESOLVE_FILENAME and res.headers.get("content-disposition"):
             parsed = cgi.parse_header(res.headers["content-disposition"])
             # looks like: ('attachment', {'filename': 'the_filename.txt'})
             if parsed and parsed[0] == "attachment" and parsed[1].get("filename"):
                 # localfile is an absolute path, replace last part
                 localfile = os.path.join(os.path.dirname(localfile),parsed[1]["filename"])
+        self.logger.debug("Downloading '%s' as '%s'" % (remoteurl,localfile))
         fout = open(localfile, 'wb')
         for chunk in res.iter_content(chunk_size=512 * 1024):
             if chunk:
@@ -661,6 +663,9 @@ class LastModifiedHTTPDumper(HTTPDumper,LastModifiedBaseDumper):
     LAST_MODIFIED = "Last-Modified"
     ETAG = "ETag"
     RELEASE_FORMAT = "%Y-%m-%d"
+    RESOLVE_FILENAME = True # resolve by default as this dumper is called
+                            # with a list of URLs only, without any information
+                            # about the local filename to store data in
 
     def remote_is_better(self,remotefile,localfile):
         res = self.client.head(remotefile,allow_redirects=True)
