@@ -374,7 +374,7 @@ class DataTransformEdge(object):
         self._state["logger"] = value
 
     def setup_log(self):
-        self.logger,_ = get_logger('keylookup')
+        self.logger,_ = get_logger('datatransform')
 
     def prepare(self, state={}):
         if self.prepared:

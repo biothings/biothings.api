@@ -183,7 +183,7 @@ class DataTransformMDB(DataTransform):
                 # Sort by path length - try the shortest paths first
                 paths = sorted(paths, key=self._compute_path_weight)
                 self.paths[(input_type[0], output_type)] = paths
-        self.logger.debug("All Pre-Computed DataTransform Paths:  {}".format(self.paths))
+        # self.logger.debug("All Pre-Computed DataTransform Paths:  {}".format(self.paths))
 
     def key_lookup_batch(self, batchiter):
         """
@@ -212,6 +212,7 @@ class DataTransformMDB(DataTransform):
 
         for output_type in self.output_types:
             for input_type in self.input_types:
+                # self.logger.debug("Attempt Lookup:  from '{}' To '{}'".format(input_type[0], output_type))
                 if output_type == input_type[0]:
                     # the doc itself has the correct ID, 
                     # so either there's a self-loop avail to check this ID is valid
