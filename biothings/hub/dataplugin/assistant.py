@@ -6,6 +6,7 @@ import asyncio
 from functools import partial
 import inspect, importlib, textwrap
 import pip, subprocess
+from string import Template
 
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.common import timesofar, rmdashfr, uncompressall, \
@@ -118,10 +119,192 @@ class BaseAssistant(object):
             klass.data_plugin_error = error
         pass
 
+    def get_dumper_dynamic_class(self, dumper_section, metadata):
+        if dumper_section.get("data_url"):
+            if not type(dumper_section["data_url"]) is list:
+                durls = [dumper_section["data_url"]]
+            else:
+                durls = dumper_section["data_url"]
+            schemes = set([urllib.parse.urlsplit(durl).scheme for durl in durls])
+            # https = http regarding dumper generation
+            if len(set([sch.replace("https","http") for sch in schemes])) > 1:
+                raise AssistantException("Manifest specifies URLs of different types (%s), " % schemes + \
+                        "expecting only one")
+            scheme = schemes.pop()
+            klass = dumper_section.get("class")
+            confdict = getattr(self,"_dict_for_%s" % scheme)(durls)
+            dumper_class = None
+            if klass:
+                dumper_class = get_class_from_classpath(klass)
+                confdict["BASE_CLASSES"] = klass
+            else:
+                dumper_class = self.dumper_registry.get(scheme)
+                confdict["BASE_CLASSES"] = "biothings.hub.dataload.dumper.%s" % dumper_class.__name__
+            if not dumper_class:
+                raise AssistantException("No dumper class registered to handle scheme '%s'" % scheme)
+            if metadata:
+                confdict["__metadata__"] = metadata
+            else:
+                confdict["__metadata__"] = {}
+
+            if dumper_section.get("release"):
+                try:
+                    mod,func = dumper_section.get("release").split(":")
+                except ValueError as e:
+                    raise AssistantException("'release' must be defined as 'module:parser_func' but got: '%s'" % \
+                            dumper_section["release"])
+                modpath = self.plugin_name + "." + mod
+                pymod = importlib.import_module(modpath)
+                # reload in case we need to refresh plugin's code
+                importlib.reload(pymod)
+                assert func in dir(pymod), "%s not found in module %s" % (func,pymod)
+                get_release_func = getattr(pymod,func)
+                # fetch source and indent to class method level in the template
+                strfunc = inspect.getsource(get_release_func)
+                # always indent with spaces, normalize to avoid mixed indenting chars
+                indentfunc = textwrap.indent(strfunc.replace("\t","    "),prefix="    ")
+                confdict["SET_RELEASE_FUNC"] = """
+%s
+
+    def set_release(self):
+        self.release = self.%s()
+""" % (indentfunc,func)
+
+            else:
+                confdict["SET_RELEASE_FUNC"] = ""
+
+            dklass = None
+            dumper_name = self.plugin_name.capitalize() + "Dumper"
+            try:
+                if hasattr(btconfig,"DUMPER_TEMPLATE"):
+                    tpl_file = btconfig.DUMPER_TEMPLATE
+                else:
+                    # default: assuming in ..../biothings/hub/dataplugin/
+                    curmodpath = os.path.realpath(__file__)
+                    tpl_file = os.path.join(os.path.dirname(curmodpath),"dumper.py.tpl")
+                tpl = Template(open(tpl_file).read())
+                confdict["DUMPER_NAME"] = dumper_name
+                confdict["SRC_NAME"] = self.plugin_name
+                if dumper_section.get("schedule"):
+                    schedule = """'%s'""" % dumper_section["schedule"]
+                else:
+                    schedule = "None"
+                confdict["SCHEDULE"] = schedule
+                confdict["UNCOMPRESS"] = dumper_section.get("uncompress") or False
+                pystr = tpl.substitute(confdict)
+                self.logger.debug(pystr)
+                import imp
+                code = compile(pystr,"<string>","exec")
+                mod = imp.new_module(self.plugin_name)
+                exec(code,mod.__dict__,mod.__dict__)
+                dklass = getattr(mod,dumper_name)
+                # we need to inherit from a class here in this file so it can be pickled
+                assisted_dumper_class = type("AssistedDumper_%s" % self.plugin_name,(AssistedDumper,dklass,),{})
+                assisted_dumper_class.python_code = pystr
+
+                return assisted_dumper_class
+
+            except Exception as e:
+                self.logger.exception("Can't generate dumper code for '%s'" % self.plugin_name)
+        else:
+            raise AssistantException("Invalid manifest, expecting 'data_url' key in 'dumper' section")
+
+    def get_uploader_dynamic_class(self, uploader_section, metadata):
+        if uploader_section.get("parser"):
+            uploader_name = self.plugin_name.capitalize() + "Uploader"
+            confdict = {"SRC_NAME":self.plugin_name, "UPLOADER_NAME" : uploader_name}
+            try:
+                mod,func = uploader_section.get("parser").split(":")
+                confdict["PARSER_MOD"] = mod
+                confdict["PARSER_FUNC"] = func
+            except ValueError as e:
+                raise AssistantException("'parser' must be defined as 'module:parser_func' but got: '%s'" % \
+                        uploader_section["parser"])
+            try:
+                ondups = uploader_section.get("on_duplicates")
+                if ondups and ondups != "error":
+                    if ondups == "merge":
+                        storage_class = "biothings.hub.dataload.storage.MergerStorage"
+                    elif ondups == "ignore":
+                        storage_class= "biothings.hub.dataload.storage.IgnoreDuplicatedStorage"
+                else:
+                    storage_class = "biothings.hub.dataload.storage.BasicStorage"
+                if uploader_section.get("ignore_duplicates"):
+                    raise AssistantException("'ignore_duplicates' key not supported anymore, " +
+                                             "use 'on_duplicates' : 'error|ignore|merge'")
+                # default is not ID conversion at all
+                confdict["IMPORT_IDCONVERTER_FUNC"] = ""
+                confdict["IDCONVERTER_FUNC"] = None
+                confdict["CALL_PARSER_FUNC"] = "return parser_func(data_folder)"
+                if uploader_section.get("keylookup"):
+                    assert self.__class__.keylookup, "Plugin %s needs _id conversion " % self.plugin_name + \
+                                                     "but no keylookup instance was found"
+                    self.logger.info("Keylookup conversion required: %s" % uploader_section["keylookup"])
+                    klmod = inspect.getmodule(self.__class__.keylookup)
+                    confdict["IMPORT_IDCONVERTER_FUNC"] = "from %s import %s" % (klmod.__name__,self.__class__.keylookup.__name__)
+                    convargs = ",".join(["%s=%s" % (k,v) for k,v in uploader_section["keylookup"].items()])
+                    confdict["IDCONVERTER_FUNC"] = "%s(%s)" % (self.__class__.keylookup.__name__,convargs)
+                    confdict["CALL_PARSER_FUNC"] = "self.__class__.idconverter(parser_func)(data_folder)"
+                if metadata:
+                    confdict["__metadata__"] = metadata
+                else:
+                    confdict["__metadata__"] = {}
+
+                self.logger.error(confdict)
+
+                if hasattr(btconfig,"DUMPER_TEMPLATE"):
+                    tpl_file = btconfig.DUMPER_TEMPLATE
+                else:
+                    # default: assuming in ..../biothings/hub/dataplugin/
+                    curmodpath = os.path.realpath(__file__)
+                    tpl_file = os.path.join(os.path.dirname(curmodpath),"uploader.py.tpl")
+                tpl = Template(open(tpl_file).read())
+
+                if uploader_section.get("parallelizer"):
+                    try:
+                        mod,func = uploader_section.get("parallelizer").split(":")
+                    except ValueError as e:
+                        raise AssistantException("'parallelizer' must be defined as 'module:parallelizer_func' but got: '%s'" % \
+                                uploader_section["parallelizer"])
+                    modpath = self.plugin_name + "." + mod
+                    pymod = importlib.import_module(modpath)
+                    # reload in case we need to refresh plugin's code
+                    importlib.reload(pymod)
+                    assert func in dir(pymod), "%s not found in module %s" % (func,pymod)
+                    jobs_func = getattr(pymod,func)
+                    strfunc = inspect.getsource(jobs_func)
+                    # always indent with spaces, normalize to avoid mixed indenting chars
+                    indentfunc = textwrap.indent(strfunc.replace("\t","    "),prefix="    ")
+                    confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.ParallelizedSourceUploader"
+                    confdict["JOBS_FUNC"] = """
+%s
+""" % indentfunc
+                else:
+                    confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.BaseSourceUploader"
+                    confdict["JOBS_FUNC"] = ""
+
+                pystr = tpl.substitute(confdict)
+                self.logger.debug(pystr)
+                import imp
+                code = compile(pystr,"<string>","exec")
+                mod = imp.new_module(self.plugin_name)
+                exec(code,mod.__dict__,mod.__dict__)
+                dklass = getattr(mod,uploader_name)
+                # we need to inherit from a class here in this file so it can be pickled
+                assisted_uploader_class = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,dklass,),{})
+                assisted_uploader_class.python_code = pystr
+
+                return assisted_uploader_class
+
+            except Exception as e:
+                self.logger.exception("Error loading plugin: %s" % e)
+                raise AssistantException("Can't interpret manifest: %s" % e)
+        else:
+            raise AssistantException("Invalid manifest, expecting 'parser' key in 'uploader' section")
+
+
     def interpret_manifest(self, manifest):
         # dumper section: generate 
-        dumper_class = None
-        assisted_dumper_class = None
         assisted_uploader_class = None
         # start with requirements before importing anything
         if manifest.get("requires"):
@@ -132,182 +315,24 @@ class BaseAssistant(object):
                 self.logger.info("Install requirement '%s'" % req)
                 subprocess.check_call([sys.executable, '-m', 'pip', 'install', req])
         if manifest.get("dumper"):
-            if manifest["dumper"].get("data_url"):
-                if not type(manifest["dumper"]["data_url"]) is list:
-                    durls = [manifest["dumper"]["data_url"]]
-                else:
-                    durls = manifest["dumper"]["data_url"]
-                schemes = set([urllib.parse.urlsplit(durl).scheme for durl in durls])
-                # https = http regarding dumper generation
-                if len(set([sch.replace("https","http") for sch in schemes])) > 1:
-                    raise AssistantException("Manifest specifies URLs of different types (%s), " % schemes + \
-                            "expecting only one")
-                scheme = schemes.pop()
-                klass = manifest["dumper"].get("class")
-                confdict = getattr(self,"_dict_for_%s" % scheme)(durls)
-                if klass:
-                    dumper_class = get_class_from_classpath(klass)
-                    confdict["BASE_CLASSES"] = klass
-                else:
-                    dumper_class = self.dumper_registry.get(scheme)
-                    confdict["BASE_CLASSES"] = "biothings.hub.dataload.dumper.%s" % dumper_class.__name__
-                if not dumper_class:
-                    raise AssistantException("No dumper class registered to handle scheme '%s'" % scheme)
-                if manifest.get("__metadata__"):
-                    confdict["__metadata__"] = {"src_meta" : manifest.get("__metadata__")}
-                else:
-                    confdict["__metadata__"] = {}
+            assisted_dumper_class = self.get_dumper_dynamic_class(manifest["dumper"],manifest.get("__metadata__"))
+            self.__class__.dumper_manager.register_classes([assisted_dumper_class])
+            # register class in module so it can be pickled easily
+            sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedDumper_%s" % self.plugin_name] = assisted_dumper_class
 
-                if manifest["dumper"].get("release"):
-                    try:
-                        mod,func = manifest["dumper"].get("release").split(":")
-                    except ValueError as e:
-                        raise AssistantException("'release' must be defined as 'module:parser_func' but got: '%s'" % \
-                                manifest["dumper"]["release"])
-                    modpath = self.plugin_name + "." + mod
-                    pymod = importlib.import_module(modpath)
-                    # reload in case we need to refresh plugin's code
-                    importlib.reload(pymod)
-                    assert func in dir(pymod), "%s not found in module %s" % (func,pymod)
-                    get_release_func = getattr(pymod,func)
-                    # fetch source and indent to class method level in the template
-                    strfunc = inspect.getsource(get_release_func)
-                    # always indent with spaces, normalize to avoid mixed indenting chars
-                    indentfunc = textwrap.indent(strfunc.replace("\t","    "),prefix="    ")
-                    confdict["SET_RELEASE_FUNC"] = """
-%s
-
-    def set_release(self):
-        self.release = self.%s()
-""" % (indentfunc,func)
-
-                else:
-                    confdict["SET_RELEASE_FUNC"] = ""
-
-                dklass = None
-                dumper_name = self.plugin_name.capitalize() + "Dumper"
-                try:
-                    from string import Template
-                    if hasattr(btconfig,"DUMPER_TEMPLATE"):
-                        tpl_file = btconfig.DUMPER_TEMPLATE
-                    else:
-                        # default: assuming in ..../biothings/hub/dataplugin/
-                        curmodpath = os.path.realpath(__file__)
-                        tpl_file = os.path.join(os.path.dirname(curmodpath),"dumper.py.tpl")
-                    tpl = Template(open(tpl_file).read())
-                    confdict["DUMPER_NAME"] = dumper_name
-                    confdict["SRC_NAME"] = self.plugin_name
-                    if manifest["dumper"].get("schedule"):
-                        schedule = """'%s'""" % manifest["dumper"]["schedule"]
-                    else:
-                        schedule = "None"
-                    confdict["SCHEDULE"] = schedule
-                    confdict["UNCOMPRESS"] = manifest["dumper"].get("uncompress") or False
-                    pystr = tpl.substitute(confdict)
-                    self.logger.debug(pystr)
-                    import imp
-                    code = compile(pystr,"<string>","exec")
-                    mod = imp.new_module(self.plugin_name)
-                    exec(code,mod.__dict__,mod.__dict__)
-                    dklass = getattr(mod,dumper_name)
-                    # we need to inherit from a class here in this file so it can be pickled
-                    assisted_dumper_class = type("AssistedDumper_%s" % self.plugin_name,(AssistedDumper,dklass,),{})
-                    assisted_dumper_class.python_code = pystr
-                except Exception as e:
-                    self.logger.exception("Can't generate dumper code for '%s'" % self.plugin_name)
-                self.__class__.dumper_manager.register_classes([assisted_dumper_class])
-                # register class in module so it can be pickled easily
-                sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedDumper_%s" % self.plugin_name] = assisted_dumper_class
-            else:
-                raise AssistantException("Invalid manifest, expecting 'data_url' key in 'dumper' section")
-
-
-            assert assisted_dumper_class
         if manifest.get("uploader"):
-            if manifest["uploader"].get("parser"):
-                try:
-                    mod,func = manifest["uploader"].get("parser").split(":")
-                except ValueError as e:
-                    raise AssistantException("'parser' must be defined as 'module:parser_func' but got: '%s'" % \
-                            manifest["uploader"]["parser"])
-                try:
-                    modpath = self.plugin_name + "." + mod
-                    pymod = importlib.import_module(modpath)
-                    # reload in case we need to refresh plugin's code
-                    importlib.reload(pymod)
-                    assert func in dir(pymod)
-                    parser_func = getattr(pymod,func)
-                    ondups = manifest["uploader"].get("on_duplicates")
-                    if ondups and ondups != "error":
-                        if ondups == "merge":
-                            storage_class = MergerStorage
-                        elif ondups == "ignore":
-                            storage_class= IgnoreDuplicatedStorage
-                    else:
-                        storage_class = BasicStorage
-                    if manifest["uploader"].get("ignore_duplicates"):
-                        raise AssistantException("'ignore_duplicates' key not supported anymore, " +
-                                                 "use 'on_duplicates' : 'error|ignore|merge'")
-                    confdict = {"name":self.plugin_name,"storage_class":storage_class, "parser_func":parser_func}
-                    if manifest["uploader"].get("keylookup"):
-                        assert self.__class__.keylookup, "Plugin %s needs _id conversion " % self.plugin_name + \
-                                                         "but no keylookup instance was found"
-                        self.logger.info("Keylookup conversion required: %s" % manifest["uploader"]["keylookup"])
-                        confdict["idconverter"] = self.__class__.keylookup(**manifest["uploader"]["keylookup"])
-                    if manifest.get("__metadata__"):
-                        confdict["__metadata__"] = {"src_meta" : manifest.get("__metadata__")}
-
-                    if manifest["uploader"].get("parallelizer"):
-                        assisted_uploader_class = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,ParallelizedSourceUploader,),confdict)
-                        try:
-                            mod,func = manifest["uploader"].get("parallelizer").split(":")
-                        except ValueError as e:
-                            raise AssistantException("'parallelizer' must be defined as 'module:parallelizer_func' but got: '%s'" % \
-                                    manifest["uploader"]["parallelizer"])
-                        try:
-                            modpath = self.plugin_name + "." + mod
-                            pymod = importlib.import_module(modpath)
-                            # reload in case we need to refresh plugin's code
-                            importlib.reload(pymod)
-                            assert func in dir(pymod), "%s not found in module %s" % (func,pymod)
-                            jobs_func = getattr(pymod,func)
-                            # replace existing method to connect jobs parallelized func
-                            assisted_uploader_class.jobs = jobs_func
-                        except Exception as e:
-                            self.logger.exception("Error loading plugin: %s" % e)
-                            raise AssistantException("Can't interpret manifest: %s" % e)
-                    else:
-                        assisted_uploader_class = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,),confdict)
-                    self.__class__.uploader_manager.register_classes([assisted_uploader_class])
-                    # register class in module so it can be pickled easily
-                    sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedUploader_%s" % self.plugin_name] = assisted_uploader_class
-                except Exception as e:
-                    self.logger.exception("Error loading plugin: %s" % e)
-                    raise AssistantException("Can't interpret manifest: %s" % e)
-            else:
-                raise AssistantException("Invalid manifest, expecting 'parser' key in 'uploader' section")
+            assisted_uploader_class = self.get_uploader_dynamic_class(manifest["uploader"],manifest.get("__metadata__"))
+            self.__class__.uploader_manager.register_classes([assisted_uploader_class])
+            # register class in module so it can be pickled easily
+            sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedUploader_%s" % self.plugin_name] = assisted_uploader_class
 
 
 class AssistedDumper(object):
-    assisted = True
-    #UNCOMPRESS = False
-    #def post_dump(self, *args, **kwargs):
-    #    if self.__class__.UNCOMPRESS:
-    #        self.logger.info("Uncompress all archive files in '%s'" % self.new_data_folder)
-    #        uncompressall(self.new_data_folder)
+    pass
 
-# this is a transparent wrapper over parsing func, performining no conversion at all
-def transparent(f):
-    return f
 
-class AssistedUploader(BaseSourceUploader):
-    storage_class = None
-    parser_func = None
-    idconverter = transparent
-
-    def load_data(self,data_folder):
-        self.logger.info("Load data from directory: '%s'" % data_folder)
-        return self.__class__.idconverter(self.__class__.parser_func)(data_folder)
+class AssistedUploader(object):
+    pass
 
 
 class GithubAssistant(BaseAssistant):
