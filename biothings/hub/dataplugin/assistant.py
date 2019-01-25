@@ -304,8 +304,6 @@ class BaseAssistant(object):
 
 
     def interpret_manifest(self, manifest):
-        # dumper section: generate 
-        assisted_uploader_class = None
         # start with requirements before importing anything
         if manifest.get("requires"):
             reqs = manifest["requires"]
