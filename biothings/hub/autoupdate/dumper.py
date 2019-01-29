@@ -1,4 +1,4 @@
-import os, sys, time, datetime, json
+import os, sys, time, datetime, json, re
 import asyncio
 from urllib.parse import urlparse, urljoin
 from functools import partial
@@ -102,6 +102,8 @@ class BiothingsDumper(HTTPDumper):
             version = build_meta.get(version_field)
             if type(version) != list:
                 version = [version]
+            # remove hash from versions
+            version = [re.sub("( \[.*\])","",v) for v in version]
             version = set(version)
             if version == set([None]):
                 raise DumperException("Remote data is too old and can't be handled with current app (%s not defined)" % version_field)
