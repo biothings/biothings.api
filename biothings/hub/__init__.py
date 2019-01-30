@@ -380,6 +380,7 @@ class HubServer(object):
         from biothings.hub.databuild.syncer import SyncerManager
         args = self.mixargs("sync")
         sync_manager = SyncerManager(job_manager=self.managers["job_manager"],**args)
+        sync_manager.configure()
         self.managers["sync_manager"] = sync_manager
 
     def configure_inspect_manager(self):
