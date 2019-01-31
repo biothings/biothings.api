@@ -231,7 +231,12 @@ class HubServer(object):
         # flag "do we need to configure?"
         self.configured = False
 
+    def configure_ioloop(self):
+        import tornado.platform.asyncio
+        tornado.platform.asyncio.AsyncIOMainLoop().install()
+
     def configure(self):
+        self.configure_ioloop()
         self.configure_managers()
         self.configure_commands()
         self.configure_extra_commands()
@@ -262,6 +267,7 @@ class HubServer(object):
             listener = ws.HubDBListener()
             ChangeWatcher.add(listener)
             ChangeWatcher.publish()
+            self.logger.info("Starting SockJS router")
             ws_router = sockjs.tornado.SockJSRouter(partial(ws.WebSocketConnection,listener=listener), '/ws')
             self.routes.extend(ws_router.urls)
 
@@ -288,9 +294,8 @@ class HubServer(object):
         loop = self.managers["job_manager"].loop
 
         if self.routes:
+            self.logger.info("Starting Hub API server")
             import tornado.web
-            import tornado.platform.asyncio
-            tornado.platform.asyncio.AsyncIOMainLoop().install()
             # register app into current event loop
             api = tornado.web.Application(self.routes)
             self.extra_commands["api"] = api
@@ -395,6 +400,7 @@ class HubServer(object):
         self.managers["inspect_manager"] = inspect_manager
 
     def configure_api_manager(self):
+        assert "index" in self.features, "'api' feature requires 'index'"
         from biothings.hub.api.manager import APIManager
         args = self.mixargs("api")
         api_manager = APIManager(**args)
