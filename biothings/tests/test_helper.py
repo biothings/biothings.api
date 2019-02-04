@@ -1,8 +1,10 @@
-import sys
 import json
 import re
-import msgpack
+import sys
 from functools import wraps
+
+import msgpack
+import requests
 
 try:
     from urllib.parse import urlencode
@@ -36,12 +38,22 @@ class TornadoRequestHelper(object):
         res.status = res.code
         return res,res.body
 
-
+class HttpRequestHelper(object):
+    def request(self,url,method="GET",body=None,headers=None):
+        '''This simulates httplib2.Http.request() calls with requests library'''
+        if method=='GET':
+            r = requests.get(url, headers=headers)
+        elif method=='POST':
+            r = requests.post(url, data=body, headers=headers)
+        elif method=='HEAD':
+            r = requests.head(url, headers=headers)
+        r.headers.status=r.status_code
+        return r.headers, r.content
 
 class BiothingTestHelperMixin(object):
     ''' Contains common functions to help facilitate testing.  Assumes that this class will be
     subclassed by a class that inherits from both this mixin and from unittest.TestCase.
-    Also assumes that .host .api .h are set in the subclass. '''
+    Also assumes that .host .api are set in the subclass. '''
 
     #def __init__(self):
     #    self.host = os.getenv(ns.nosetest_envar)
@@ -50,6 +62,9 @@ class BiothingTestHelperMixin(object):
     #    self.host = self.host.rstrip('/')
     #    self.api = self.host + '/' + ns.api_version
     #    self.h = httplib2.Http()
+
+    def __init__(self):
+        self.h = HttpRequestHelper()
 
     # TODO: Additional_fields, query_endpoint
 
@@ -307,4 +322,3 @@ def parameterized(cls):
                 add_test(cls, new_test_name, f, v)
             delattr(cls, name)
     return cls
-
