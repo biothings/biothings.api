@@ -203,8 +203,6 @@ class DataTransform(object):
                another collection, nodes with self-loops can be used, so
                ID resolution will be forced to go through these loops to ensure
                data exists)
-        :param debug: Enable debugging information.
-        :type debug: bool
         """
 
         self.input_types = self._parse_input_types(input_types)
@@ -227,12 +225,6 @@ class DataTransform(object):
         self.histogram = Histogram()
         # Setup logger and logging level
         self.logger,_ = get_logger('datatransform')
-
-        if not debug:
-            self.debug = False
-        elif isinstance(debug, list):
-            self.logger.debug("DataTransform Debug Mode:  {}".format(debug))
-            self.debug = debug
 
     def _parse_input_types(self, input_types):
         """
@@ -277,12 +269,21 @@ class DataTransform(object):
     def _valid_output_type(self, output_type):
         pass
 
-    def __call__(self, f):
+    def __call__(self, f, debug=None):
         """
         Perform the data transformation on all documents on call.
         :param f: function to apply to
+        :param debug: Enable debugging information.
+        :type debug: bool
         :return:
         """
+        # additional handling for the debug option
+        if not debug:
+            self.debug = False
+        elif isinstance(debug, list):
+            self.logger.debug("DataTransform Debug Mode:  {}".format(debug))
+            self.debug = debug
+
         def wrapped_f(*args):
             input_docs = f(*args)
             output_doc_cnt = 0
@@ -313,6 +314,9 @@ class DataTransform(object):
         KeyLookup on document.  This method is called as a function call instead of a
         decorator on a document iterator.
         """
+        # special handling for the debug option
+        self.debug = [doc['_id']]
+
         output_docs = self.key_lookup_batch([doc])
         for odoc in output_docs:
             # print debug information if available
