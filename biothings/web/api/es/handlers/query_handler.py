@@ -283,7 +283,7 @@ class QueryHandler(BaseESRequestHandler):
         #    self._return_data_and_track({'success': False, 'error': 'Error executing query'}, ga_event_data={'qsize': len(options.control_kwargs.q)})
         #    return
 
-        logging.debug("Raw query result: {}".format(res))
+        # logging.debug("Raw query result: {}".format(res))
 
         # return raw result if requested
         if options.control_kwargs.raw:
