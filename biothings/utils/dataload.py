@@ -41,7 +41,7 @@ def dict_sweep(d, vals=[".", "-", "", "NA", "none", " ", "Not Available", "unkno
                 val = [v for v in val if v not in vals]
                 for item in val:
                     if isinstance(item, dict):
-                        dict_sweep(item, vals)
+                        dict_sweep(item, vals,remove_invalid_list=remove_invalid_list)
                 if len(val) == 0:
                     del d[key]
                 else:
@@ -51,11 +51,11 @@ def dict_sweep(d, vals=[".", "-", "", "NA", "none", " ", "Not Available", "unkno
                     if item in vals:
                         val.remove(item)
                     elif isinstance(item, dict):
-                        dict_sweep(item, vals)
+                        dict_sweep(item, vals, remove_invalid_list=remove_invalid_list)
                 if len(val) == 0:
                     del d[key]
         elif isinstance(val, dict):
-            dict_sweep(val, vals)
+            dict_sweep(val, vals, remove_invalid_list=remove_invalid_list)
             if len(val) == 0:
                 del d[key]
     return d

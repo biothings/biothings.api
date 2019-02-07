@@ -631,6 +631,10 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
                 # we want to make sure that, whatever the structure, the types involved were the same
                 # Exception: None is allowed with other types (translates to 'null' in ES)
                 other_types = set([k for k in toexplore.keys() if k != list and type(k) == type and not k is type(None)])
+                # some mixes are allowed by ES
+                if {int,float}.issubset(other_types):
+                    other_types.discard(int) # float > int
+                    toexplore.pop(int)
                 if len(other_types) > 1:
                     raise Exception("Mixing types for key '%s': %s" % (rootk,other_types))
             res = generate_es_mapping(toexplore,init=False,level=level+1)

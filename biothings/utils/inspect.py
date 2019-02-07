@@ -330,6 +330,7 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
             if str in mapt and splitstr in mapt:
                 mapt.pop(str)
             # float > int
+            # TODO: could this be moved to es.generate_es_mapping ?
             if int in mapt and float in mapt:
                 mapt.pop(int)
         else:
@@ -817,6 +818,13 @@ if __name__ == "__main__":
     m = merge_record(m,d1,"mapping")
     m = merge_record(m,d2,"mapping")
     assert m["k"]["a"][list]["r"] == {splitstr:{}}
+
+    # allow int & float in mapping (keep float
+    t1 = {"_id":"a","f":[1,2]}
+    t2 = {"_id":"a","f":[1.1,2.2]}
+    m = inspect_docs([t1,t2],mode="mapping")
+    assert m["mapping"]["f"]["type"] == "float"
+
 
     print("All tests OK")
 
