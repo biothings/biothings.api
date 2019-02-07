@@ -29,12 +29,26 @@ class APIManager(BaseManager):
         self.timestamp = datetime.now()
         self.log_folder = log_folder or btconfig.LOG_FOLDER
         self.setup()
+        self.restore_running_apis()
 
     def setup(self):
         self.setup_log()
 
     def setup_log(self):
         self.logger,_ = get_logger('apimanager')
+
+    def restore_running_apis(self):
+        """
+        If some APIs were running but the hub stopped, re-start APIs
+        as hub restarts
+        """
+        apis = self.get_apis()
+        # these were running but had to stop when hub stopped
+        running_apis = [api for api in apis if api.get("status") == "running"]
+        for api in running_apis:
+            self.logger.info("Restart API '%s'" % api["_id"])
+            self.start_api(api["_id"])
+
 
     def register_status(self, api_id, status, **extra):
         apidoc = self.api.find_one({"_id":api_id})

@@ -25,9 +25,12 @@ class InspectorError(Exception):
 
 # commong function used to call inspector
 def inspect_data(backend_provider,ids,mode,pre_mapping,**kwargs):
+    import logging
     col = create_backend(backend_provider).target_collection
     cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}}) 
-    return btinspect.inspect_docs(cur,mode=mode,pre_mapping=pre_mapping,metadata=False,**kwargs)
+    res = btinspect.inspect_docs(cur,mode=mode,pre_mapping=pre_mapping,
+                                  metadata=False,auto_convert=False,**kwargs)
+    return res
 
 
 class InspectorManager(BaseManager):
@@ -50,11 +53,12 @@ class InspectorManager(BaseManager):
           supported format), eg "merged_collection" or ("src","clinvar")
         - or callable yielding documents
         Mode:
-        - "type": will inspect and report type map found in data
+        - "type": will inspect and report type map found in data (internal/non-standard format)
         - "mapping": will inspect and return a map compatible for later
           ElasticSearch mapping generation (see bt.utils.es.generate_es_mapping)
         - "stats": will inspect and report types + different counts found in
           data, giving a detailed overview of the volumetry of each fields and sub-fields
+        - "jsonschema", same as "type" but result is formatted as json-schema standard
         """
         # /!\ attention: this piece of code is critical and not easy to understand...
         # Depending on the source of data to inspect, this method will create an
@@ -146,6 +150,9 @@ class InspectorManager(BaseManager):
                 # normalize mode param and prepare global results
                 if type(mode) == str:
                     mode = [mode]
+
+                converters,mode = btinspect.get_converters(mode)
+
                 inspected = {}
                 for m in mode:
                     inspected.setdefault(m,{})
@@ -187,6 +194,9 @@ class InspectorManager(BaseManager):
                             inspected["mapping"] = {"pre-mapping" : inspected["mapping"], "errors" : e.args[1]}
                     else:
                         inspected = btinspect.compute_metadata(inspected,m)
+
+                # just potential converters
+                btinspect.run_converters(inspected,converters)
 
                 def fully_inspected(res):
                     nonlocal got_error

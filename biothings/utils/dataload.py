@@ -12,6 +12,7 @@ import collections
 import copy
 
 from .common import open_anyfile, is_str, ask, safewfile, anyfile
+from .dotstring import key_value, set_key_value
 
 csv.field_size_limit(10000000)   # default is 131072, too small for some big files
 
@@ -40,7 +41,7 @@ def dict_sweep(d, vals=[".", "-", "", "NA", "none", " ", "Not Available", "unkno
                 val = [v for v in val if v not in vals]
                 for item in val:
                     if isinstance(item, dict):
-                        dict_sweep(item, vals)
+                        dict_sweep(item, vals,remove_invalid_list=remove_invalid_list)
                 if len(val) == 0:
                     del d[key]
                 else:
@@ -50,14 +51,39 @@ def dict_sweep(d, vals=[".", "-", "", "NA", "none", " ", "Not Available", "unkno
                     if item in vals:
                         val.remove(item)
                     elif isinstance(item, dict):
-                        dict_sweep(item, vals)
+                        dict_sweep(item, vals, remove_invalid_list=remove_invalid_list)
                 if len(val) == 0:
                     del d[key]
         elif isinstance(val, dict):
-            dict_sweep(val, vals)
+            dict_sweep(val, vals, remove_invalid_list=remove_invalid_list)
             if len(val) == 0:
                 del d[key]
     return d
+
+
+def safe_type(f, val):
+    """
+    Convert an input string to int/float/... using passed function.
+    If the conversion fails then None is returned.
+    If value of a type other than a string
+    then the original value is returned.
+    """
+    if is_str(val):
+        try:
+            return f(val)
+        except ValueError:
+            pass
+    return val
+
+
+def to_float(val):
+    """convert an input string to int"""
+    return safe_type(float, val)
+
+
+def to_int(val):
+    """convert an input string to float"""
+    return safe_type(int, val)
 
 
 def to_number(val):
@@ -90,6 +116,36 @@ def boolean_convert(d, convert_keys=[], level=0):
             else:
                 d[key] = to_boolean(val)
     return d
+
+
+def float_convert(d, include_keys=[], exclude_keys=[]):
+    """Convert elements in a document to floats.
+
+    By default, traverse all keys
+    If include_keys is specified, only convert the list from include_keys a.b, a.b.c
+    If exclude_keys is specified, only exclude the list from exclude_keys
+
+    :param d: a dictionary to traverse keys on
+    :param include_keys: only convert these keys (optional)
+    :param exclude_keys: exclude all other keys except these keys (optional)
+    :return: generate key, value pairs
+    """
+    return value_convert_incexcl(d, to_float, include_keys, exclude_keys)
+
+
+def int_convert(d, include_keys=[], exclude_keys=[]):
+    """Convert elements in a document to integers.
+
+    By default, traverse all keys
+    If include_keys is specified, only convert the list from include_keys a.b, a.b.c
+    If exclude_keys is specified, only exclude the list from exclude_keys
+
+    :param d: a dictionary to traverse keys on
+    :param include_keys: only convert these keys (optional)
+    :param exclude_keys: exclude all other keys except these keys (optional)
+    :return: generate key, value pairs
+    """
+    return value_convert_incexcl(d, to_int, include_keys, exclude_keys)
 
 
 def to_boolean(val,true_str=['true','1', 't', 'y', 'yes', 'Y','Yes','YES',1],false_str=['false','0','f','n','N','No','no','NO',0]):
@@ -180,6 +236,39 @@ def unlist(d):
             elif isinstance(val, dict):
                 unlist(val)
     return d
+
+
+def unlist_incexcl(d, include_keys=[], exclude_keys=[]):
+    """Unlist elements in a document.
+
+    If there is 1 value in the list, set the element to that value.  Otherwise,
+    leave the list unchanged.
+
+    By default, traverse all keys
+    If include_keys is specified, only traverse the list from include_keys a.b, a.b.c
+    If exclude_keys is specified, only exclude the list from exclude_keys
+
+    :param d: a dictionary to unlist
+    :param include_keys: only unlist these keys (optional)
+    :param exclude_keys: exclude all other keys except these keys (optional)
+    :return: generate key, value pairs
+    """
+    def unlist_helper(d, include_keys=[], exclude_keys=[], keys=[]):
+        if isinstance(d, dict):
+            for key, val in d.items():
+                if isinstance(val, list):
+                    if len(val) == 1:
+                        path = '.'.join(keys + [key])
+                        if include_keys:
+                            if path in include_keys:
+                                d[key] = val[0]
+                        elif path not in exclude_keys:
+                            d[key] = val[0]
+                elif isinstance(val, dict):
+                    unlist_helper(val, include_keys, exclude_keys, keys + [key])
+    unlist_helper(d, include_keys, exclude_keys, [])
+    return d
+
 
 
 # split fields by sep into comma separated lists, strip.
@@ -478,6 +567,40 @@ class MinType(object):
         return (self is other)
 Min = MinType()
 
+
+def traverse_keys(d, include_keys=[], exclude_keys=[]):
+    """Return all key, value pairs for a document.
+
+    By default, traverse all keys
+    If include_keys is specified, only traverse the list from include_kes a.b, a.b.c
+    If exclude_keys is specified, only exclude the list from exclude_keys
+
+    :param d: a dictionary to traverse keys on
+    :param include_keys: only traverse these keys (optional)
+    :param exclude_keys: exclude all other keys except these keys (optional)
+    :return: generate key, value pairs
+    """
+    def traverse_helper(d, keys):
+        if isinstance(d, dict):
+            for k in d.keys():
+                yield from traverse_helper(d[k], keys + [k])
+        elif isinstance(d, list):
+            for i in d:
+                yield from traverse_helper(i, keys)
+        else:
+            yield keys, d
+
+    if include_keys:
+        for k in include_keys:
+            for val in key_value(d, k):
+                yield k, val
+    else:
+        for kl, val in traverse_helper(d, []):
+            key = '.'.join(kl)
+            if key not in exclude_keys:
+                yield key, val
+
+
 # from mygene, originally
 def value_convert(_dict, fn, traverse_list=True):
     '''For each value in _dict, apply fn and then update
@@ -491,6 +614,26 @@ def value_convert(_dict, fn, traverse_list=True):
         else:
             _dict[k] = fn(_dict[k])
     return _dict
+
+
+def value_convert_incexcl(d, fn, include_keys=[], exclude_keys=[]):
+    """Convert elements in a document using a function fn.
+
+    By default, traverse all keys
+    If include_keys is specified, only convert the list from include_keys a.b, a.b.c
+    If exclude_keys is specified, only exclude the list from exclude_keys
+
+    :param d: a dictionary to traverse keys on
+    :param fn: function to convert elements with
+    :param include_keys: only convert these keys (optional)
+    :param exclude_keys: exclude all other keys except these keys (optional)
+    :return: generate key, value pairs
+    """
+    for path, value in traverse_keys(d, include_keys, exclude_keys):
+        new_value = fn(value)
+        set_key_value(d, path, new_value)
+    return d
+
 
 # from biothings, originally
 # closed to value_convert, could be refactored except this one
@@ -509,7 +652,6 @@ def value_convert_to_number(d, skipped_keys=[]):
             else:
                 d[key] = to_number(val)
     return d
-
 
 
 def dict_convert(_dict, keyfn=None, valuefn=None):

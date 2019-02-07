@@ -87,7 +87,7 @@ A **BioThings Studio** instance expose several services on different ports:
 * **9200**: ElasticSearch port
 * **27017**: MongoDB port
 * **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
-* **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
+* **9000**: Cerebro, a webapp used to easily interact with ElasticSearch clusters
 
 We will map and expose those ports to the host server using option ``-p`` so we can access BioThings services without
 having to enter the container:

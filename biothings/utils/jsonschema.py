@@ -1,6 +1,7 @@
 import json, jsonschema
 from biothings.utils.common import is_str
 from pprint import pprint,pformat
+import bson
 
 
 def generate_json_schema(dmap):
@@ -10,6 +11,8 @@ def generate_json_schema(dmap):
             int: "integer",
             float: "number",
             bool: "boolean",
+            bson.int64.Int64: "number",
+            None: "null",
             }
 
     def merge_type(typ1,typ2):
@@ -63,8 +66,10 @@ def generate_json_schema(dmap):
                         schema["type"] = merge_type(schema["type"],scalarmap[k])
                     else:
                         schema = {"type" : scalarmap[k]}
+            elif k == None:
+                schema = {"type" : None}
             else:
-                raise Exception("no not here")
+                raise Exception("no not here, k: %s" % k)
     else:
         pass
 

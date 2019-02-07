@@ -35,6 +35,8 @@ STATIC_PATH = "static"
 API_VERSION = 'v1'
 # project URL routing
 APP_LIST = []
+# for URLS that don't require settings in initialize
+UNINITIALIZED_APP_LIST = []
 
 # *****************************************************************************
 # Subclass of biothings.web.api.es.query_builder.ESQueryBuilder to build
@@ -63,6 +65,9 @@ ID_NOT_FOUND_TEMPLATE = "ID '{bid}' not found"
 
 # A list of fields to exclude from metadata/fields endpoint
 AVAILABLE_FIELDS_EXCLUDED = ['all']
+
+# A path to the available fields notes 
+AVAILABLE_FIELDS_NOTES_PATH = ''
 
 # TODO: Need to describe
 #ANNOTATION_ID_REGEX_LIST = [(re.compile(r'rs[0-9]+', re.I), 'dbsnp.rsid')]

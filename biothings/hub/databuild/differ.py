@@ -1605,7 +1605,8 @@ class DifferManager(BaseManager):
         docs = get_src_build().find({
             "$and":[
                 {"_id":{"$lte":new_id}},
-                {"_id":{"$regex":"^%s.*" % confname}}
+                {"_id":{"$regex":"^%s.*" % confname}},
+                {"archived":{"$exists":0}},
                 ]},
             {"_id":1}).sort([("_id",-1)]).limit(2) 
 

@@ -67,7 +67,7 @@ class BiothingWebSettings(object):
     
     def generate_app_list(self):
         ''' Generates the tornado.web.Application `(regex, handler_class, options) tuples <http://www.tornadoweb.org/en/stable/web.html#application-configuration>`_ for this project.'''
-        return [(endpoint_regex, handler, {"web_settings": self}) for (endpoint_regex, handler) in self.APP_LIST]
+        return [(endpoint_regex, handler, {"web_settings": self}) for (endpoint_regex, handler) in self.APP_LIST] + [(endpoint_regex, handler) for (endpoint_regex, handler) in self.UNINITIALIZED_APP_LIST]
 
     def validate(self):
         ''' Validate these settings '''
@@ -105,6 +105,24 @@ class BiothingESWebSettings(BiothingWebSettings):
         self._source_metadata = self._source_metadata_object()
 
         return self._source_metadata
+
+    def available_fields_notes(self):
+        ''' Caches the available fields notes for this biothing '''
+        try:
+            return self._available_fields_notes
+        except:
+            pass
+
+        self._available_fields_notes = {}
+
+        if os.path.exists(os.path.abspath(self.AVAILABLE_FIELDS_NOTES_PATH)):
+            try:
+                with open(os.path.abspath(self.AVAILABLE_FIELDS_NOTES_PATH), 'r') as inf:
+                    self._available_fields_notes = json.load(inf)
+            except:
+                pass
+
+        return self._available_fields_notes
 
     def get_es_client(self):
         '''Get the `Elasticsearch client <https://elasticsearch-py.readthedocs.io/en/master/>`_

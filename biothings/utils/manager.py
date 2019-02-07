@@ -642,49 +642,53 @@ class JobManager(object):
         return total_mem
 
     def get_pid_files(self, child=None):
-        pat = re.compile(".*/(\d+)_.*\.pickle") # see track() for filename format
-        pchildren = self.hub_process.children()
-        children_pids = [p.pid for p in pchildren]
         pids = {}
-        for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
-            try:
-                pid = int(pat.findall(fn)[0].split("_")[0])
-                if not child or child.pid == pid:
-                    try:
-                        worker = pickle.load(open(fn,"rb"))
-                    except FileNotFoundError:
-                        # it's possible that, as this point, the pickle file
-                        # doesn't exist anymore (process is done and file was unlinked)
-                        # just ignore go to next one
-                        continue
-                    proc = pchildren[children_pids.index(pid)]
+        try:
+            pat = re.compile(".*/(\d+)_.*\.pickle") # see track() for filename format
+            pchildren = self.hub_process.children()
+            children_pids = [p.pid for p in pchildren]
+            for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
+                try:
+                    pid = int(pat.findall(fn)[0].split("_")[0])
+                    if not child or child.pid == pid:
+                        try:
+                            worker = pickle.load(open(fn,"rb"))
+                        except FileNotFoundError:
+                            # it's possible that, as this point, the pickle file
+                            # doesn't exist anymore (process is done and file was unlinked)
+                            # just ignore go to next one
+                            continue
+                        proc = pchildren[children_pids.index(pid)]
 
-                    worker["process"] = {
-                            "mem" : proc.memory_info().rss,
-                            "cpu" : proc.cpu_percent(CPU_PERCENT_WAIT_DELAY)
-                            }
-                    pids[pid] = worker
-            except IndexError:
-                # weird though... should have only pid files there...
-                pass
-        return pids
+                        worker["process"] = {
+                                "mem" : proc.memory_info().rss,
+                                "cpu" : proc.cpu_percent(CPU_PERCENT_WAIT_DELAY)
+                                }
+                        pids[pid] = worker
+                except IndexError:
+                    # weird though... should have only pid files there...
+                    pass
+        finally:
+            return pids
 
     def get_thread_files(self):
-        # see track() for filename format
-        pat = re.compile(".*/(Thread\w*-\d+)_.*\.pickle")
-        threads = self.thread_queue._threads
-        active_tids = [t.getName() for t in threads]
         tids = {}
-        for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
-            try:
-                tid = pat.findall(fn)[0].split("_")[0]
-                worker = pickle.load(open(fn,"rb"))
-                worker["process"] = self.hub_process # misleading... it's the hub process
-                tids[tid] = worker
-            except IndexError:
-                # weird though... should have only pid files there...
-                pass
-        return tids
+        try:
+            # see track() for filename format
+            pat = re.compile(".*/(Thread\w*-\d+)_.*\.pickle")
+            threads = self.thread_queue._threads
+            active_tids = [t.getName() for t in threads]
+            for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
+                try:
+                    tid = pat.findall(fn)[0].split("_")[0]
+                    worker = pickle.load(open(fn,"rb"))
+                    worker["process"] = self.hub_process # misleading... it's the hub process
+                    tids[tid] = worker
+                except IndexError:
+                    # weird though... should have only pid files there...
+                    pass
+        finally:
+            return tids
 
     def extract_pending_info(self, pending):
         info = pending.fn.args[2]
