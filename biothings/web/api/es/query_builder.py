@@ -39,6 +39,10 @@ class ESQueries(object):
         ''' Given ``query_kwargs``, validate and return a **match_all** query. '''
         return self._es_query_template(query_type="match_all", query_kwargs=query_kwargs)
 
+    def function_score(self, query_kwargs):
+        ''' Given ``query_kwargs``, validate and return a **function score** query. '''
+        return self._es_query_template(query_type="function_score", query_kwargs=query_kwargs)
+
     def query_string(self, query_kwargs):
         ''' Given ``query_kwargs``, validate and return a **query_string** query. '''
         return self._es_query_template(query_type="query_string", query_kwargs=query_kwargs)
@@ -118,6 +122,9 @@ class ESQueryBuilder(object):
     def _is_match_all(self, q):
         return (q == '__all__')
 
+    def _is_random_query(self, q):
+        return (q == '__any__')
+
     def _extra_query_types(self, q):
         ''' Override me '''
         return {}
@@ -125,6 +132,9 @@ class ESQueryBuilder(object):
     def _match_all(self, q):
         ''' Override me '''
         return ESQueries().match_all({})
+    
+    def _random_query(self, q):
+        return ESQueries().function_score({"random_score": {}})
 
     def _is_user_query(self, text_file='query.txt'):
         try:
@@ -208,6 +218,8 @@ class ESQueryBuilder(object):
             _query = self._user_query(q)
         elif self._is_match_all(q):
             _query = self._match_all(q)
+        elif self._is_random_query(q):
+            _query = self._random_query(q)
         else:
             _query = self._extra_query_types(q)
 
