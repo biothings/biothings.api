@@ -426,7 +426,11 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
         if build_cache:
             cache_out.close()
             cache_final = os.path.splitext(cache_temp)[0]
-            os.rename(cache_temp,cache_final)
+            try:
+                os.rename(cache_temp,cache_final)
+            except Exception as e:
+                logger.exception("Couldn't set final cache filename, building cache failed")
+
 
 def check_document_size(doc):
     """
