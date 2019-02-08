@@ -510,6 +510,7 @@ class DataBuilder(object):
                             src_build = self.source_backend.build
                             build = src_build.find_one({'_id': target_name})
                             _meta = {
+                                    "doc_type" : build["build_config"]["doc_type"],
                                     "src_version" : self.src_versions,
                                     "src" : self.src_meta,
                                     "stats" : self.stats,
