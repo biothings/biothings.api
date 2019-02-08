@@ -47,7 +47,12 @@ class BaseMode(object):
 
 class StatsMode(BaseMode):
 
-    template = {"_stats" : {"_min":math.inf,"_max":-math.inf,"_count":0}}
+    template = {"_stats" : {
+            "_min":math.inf,
+            "_max":-math.inf,
+            "_count":0,
+            "_none" : 0}
+    }
     key = "_stats"
 
     def sumiflist(self, val):
@@ -77,10 +82,13 @@ class StatsMode(BaseMode):
         else:
             val = struct
         drep[self.key]["_count"] += 1
-        if val < drep[self.key]["_min"]:
-            drep[self.key]["_min"] = val
-        if val > drep[self.key]["_max"]:
-            drep[self.key]["_max"] = val
+        if val is None:
+            drep[self.key]["_none"] += 1
+        else:
+            if val < drep[self.key]["_min"]:
+                drep[self.key]["_min"] = val
+            if val > drep[self.key]["_max"]:
+                drep[self.key]["_max"] = val
 
     def merge(self, target_stats, tomerge_stats):
         target_stats = self.flatten_stats(target_stats)
