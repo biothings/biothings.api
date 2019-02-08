@@ -4,8 +4,10 @@ from io import StringIO
 from contextlib import redirect_stdout
 #import pip
 import os, sys, logging
-from git import Repo
+from git import Repo, Git, GitCommandError, NoSuchPathError, InvalidGitRepositoryError
+import re
 import biothings
+from biothings.utils.dataload import dict_sweep
 
 # cache these
 BIOTHINGS_REPO_DATA = {}
@@ -118,5 +120,72 @@ def set_versions(config, app_folder):
             config.BIOTHINGS_VERSION = "master [%s]" % commit
     else:
         logging.info("biothings_version '%s' forced in configuration file" % config.BIOTHINGS_VERSION)
-    
+
     logging.info("Running app_version=%s with biothings_version=%s" % (repr(config.APP_VERSION),repr(config.BIOTHINGS_VERSION)))
+
+
+def get_source_code_info(src_file):
+    """
+    Given a path to a source code, try to find information
+    about repository, revision, URL pointing to that file, etc...
+    Return None if nothing can be determined.
+    Tricky cases: 
+      - src_file could refer to another repo, within current repo
+        (namely a remote data plugin, cloned within the api's plugins folder
+      - src_file could point to a folder, when for instance a dataplugin is
+        analized. This is because we can't point to an uploader file since
+        it's dynamically generated
+    """
+    # need to be absolute to build proper github URL
+    abs_src_file = os.path.abspath(src_file)
+    try:
+        repo = Repo(abs_src_file,search_parent_directories=True)
+    except (InvalidGitRepositoryError,NoSuchPathError) as e:
+        logging.exception("Can't find a github repository for file '%s'" % src_file)
+        return None
+    try:
+        gcmd = Git(repo)
+        hash = gcmd.rev_list(-1,repo.active_branch,abs_src_file)
+        rel_src_file = abs_src_file.replace(repo.working_dir,"").strip("/")
+        if not hash:
+            # seems to be a repo cloned within a repo, change directory
+            curdir = os.path.abspath(os.curdir)
+            try:
+                if os.path.isdir(abs_src_file):
+                    os.chdir(abs_src_file)
+                    hash = gcmd.rev_list(-1,repo.active_branch)
+                else:
+                    dirname,filename = os.path.split(abs_src_file)
+                    os.chdir(dirname)
+                    hash = gcmd.rev_list(-1,repo.active_branch,filename)
+                rel_src_file = "" # will point to folder by commit hash
+            finally:
+                os.chdir(curdir)
+        if hash:
+            short_hash = gcmd.rev_parse(hash,short=7)
+        else:
+            logging.warning("Couldn't determine commit hash for file '%s'" % src_file)
+            hash = None
+            short_hash = None
+        # could have more than one URLs for origin, only take first
+        repo_url = next(repo.remote().urls)
+        info = {
+                "repo" : repo_url,
+                "commit" : short_hash,
+                "branch" : repo.active_branch.name,
+                }
+        if os.path.isdir(src_file):
+            info["folder"] = rel_src_file
+        else:
+            info["file"] = rel_src_file
+        info = dict_sweep(info)
+        # rebuild URL to that file
+        if "github.com" in repo_url:
+            info["url"] = os.path.join(re.sub("\.git$","",repo_url),
+                                            "tree",hash,rel_src_file)
+
+        return info
+
+    except GitCommandError as e:
+        logging.exception("Error while getting git information for file '%s'" % src_file)
+        return None
