@@ -189,3 +189,7 @@ def get_source_code_info(src_file):
     except GitCommandError as e:
         logging.exception("Error while getting git information for file '%s'" % src_file)
         return None
+    except TypeError as e:
+        # happens with biothings symlink, just ignore
+        logging.debug("Can't determine source code info (but that's fine): %s" % e)
+        return None
