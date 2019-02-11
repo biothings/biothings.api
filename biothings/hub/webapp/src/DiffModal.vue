@@ -30,6 +30,7 @@ export default {
     },
     beforeDestroy() {
         bus.$off("show_diffed",this.showDiffed);
+        $(`.ui.diff.modal`).remove();
     },
     methods: {
         showDiffed : function() {
