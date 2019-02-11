@@ -1036,7 +1036,7 @@ class BuilderManager(BaseManager):
             # do this for all build configs
             dbbuildconfig = get_src_build_config()
             configs = {}
-            for d in dbbuildconfig.find():
+            for d in dbbuildconfig.find({"archived" : {"$exists" : 0}}):
                 try:
                     news = whatsnewcomparedto(d["_id"])
                     if news[d["_id"]]["sources"]:
