@@ -510,6 +510,7 @@ class DataBuilder(object):
                             src_build = self.source_backend.build
                             build = src_build.find_one({'_id': target_name})
                             _meta = {
+                                    "doc_type" : build["build_config"]["doc_type"],
                                     "src_version" : self.src_versions,
                                     "src" : self.src_meta,
                                     "stats" : self.stats,
@@ -1035,7 +1036,7 @@ class BuilderManager(BaseManager):
             # do this for all build configs
             dbbuildconfig = get_src_build_config()
             configs = {}
-            for d in dbbuildconfig.find():
+            for d in dbbuildconfig.find({"archived" : {"$exists" : 0}}):
                 try:
                     news = whatsnewcomparedto(d["_id"])
                     if news[d["_id"]]["sources"]:

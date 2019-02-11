@@ -95,7 +95,17 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                             'repositories.url.allowed_urls: "%s*" ' % repo_settings["settings"]["url"] + \
                             "allowing snapshot to be restored from this URL. Error was: %s" % e)
                 else:
-                    raise uploader.ResourceError("Could not create snapshot repository: %s" % e)
+                    # try to create repo without key/secret, assuming it's already configured in ES keystore
+                    if repo_settings["settings"].get("access_key"):
+                        repo_settings["settings"].pop("access_key")
+                        repo_settings["settings"].pop("secret_key")
+                        try:
+                            repo = idxr.create_repository(repo_name,repo_settings)
+                        except IndexerException as e:
+                            raise uploader.ResourceError("Could not create snapshot repository, even assuming " + \
+                                    "credentials configured in keystore: %s" % e)
+                    else:
+                        raise uploader.ResourceError("Could not create snapshot repository: %s" % e)
 
         # repository is now ready, let's trigger the restore
         snapshot_name = build_meta["metadata"]["snapshot_name"]

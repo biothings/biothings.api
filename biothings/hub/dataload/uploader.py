@@ -4,6 +4,7 @@ import asyncio
 import logging as loggingmod
 from functools import wraps, partial
 import inspect
+import git
 
 from biothings.utils.common import get_timestamp, get_random_string, timesofar, iter_n
 from biothings.utils.hub_db import get_src_dump, get_src_master
@@ -15,6 +16,7 @@ from .storage import IgnoreDuplicatedStorage, MergerStorage, \
                      BasicStorage, NoBatchIgnoreDuplicatedStorage, \
                      NoStorage
 from biothings.utils.loggers import get_logger
+from biothings.utils.version import get_source_code_info
 from biothings import config
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, BUILDER_CATEGORY
 
@@ -328,6 +330,16 @@ class BaseSourceUploader(object):
         # type of id being stored in these docs
         if hasattr(self.__class__, '__metadata__'):
             _doc.update(self.__class__.__metadata__)
+        # try to find information about the uploader source code
+        from biothings.hub.dataplugin.assistant import AssistedUploader
+        if issubclass(self.__class__,AssistedUploader):
+            # it's a plugin, we'll just point to the plugin folder
+            src_file = self.__class__.DATA_PLUGIN_FOLDER
+        else:
+            src_file = inspect.getfile(self.__class__)
+        info = get_source_code_info(src_file)
+        if info:
+            _doc.setdefault("src_meta",{}).update({"code" :  info})
         return _doc
 
     def update_master(self):

@@ -207,7 +207,11 @@ A manifest file is defined like this:
 	    "__metadata__" : { # optional
 	        "url" : "<datasource website/url>",
 	        "license_url" : "<url>",
-	        "licence" : "<license name>"
+	        "licence" : "<license name>",
+            "author" : {
+                "name" : "<author name>",
+                "url" : "<link to github's author for instance>"
+            }
 	    },
 	    "requires" : ["lib==1.3","anotherlib"],
 	    "dumper" : {
