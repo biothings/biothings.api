@@ -75,7 +75,10 @@ class BasicStorage(BaseStorage):
         t0 = time.time()
         total = 0
         for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=batch_size):
-            self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
+            try:
+                self.temp_collection.insert_many(doc_li, ordered=False)
+            except BulkWriteError as e:
+                self.logger.error("BulkWriteError on insert:  {}".format(e))
             total += len(doc_li)
         self.logger.info('Done[%s]' % timesofar(t0))
 
