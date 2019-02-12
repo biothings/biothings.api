@@ -577,6 +577,7 @@ class HubServer(object):
         if "builds" in cmdnames: self.api_endpoints["builds"] = EndpointDefinition(name="builds",method="get")
         self.api_endpoints["build"] = []
         if "build" in cmdnames: self.api_endpoints["build"].append(EndpointDefinition(method="get",name="build"))
+        if "archive" in cmdnames: self.api_endpoints["build"].append(EndpointDefinition(method="post",name="archive",suffix="archive"))
         if "rmmerge" in cmdnames: self.api_endpoints["build"].append(EndpointDefinition(method="delete",name="rmmerge"))
         if "merge" in cmdnames: self.api_endpoints["build"].append(EndpointDefinition(name="merge",method="put",suffix="new"))
         if "build_save_mapping" in cmdnames: self.api_endpoints["build"].append(EndpointDefinition(name="build_save_mapping",method="put",suffix="mapping"))
