@@ -238,7 +238,9 @@ export default {
                     for(var idx in this.source.__metadata__) {
                         var m = this.source.__metadata__[idx];
                         for(var subsrc in m) {
-                            meta[subsrc] = pick(m[subsrc]);
+                            var picked = pick(m[subsrc]);
+                            if(picked)
+                                meta[subsrc] = picked;
                         }
                     }
                 } else {

@@ -28,11 +28,11 @@
         <div class="ui segment">
             <div class="ui grid">
                 <div class="center aligned sixteen wide column" v-if="maps['inspect_mapping'] && !maps['inspect_mapping']['errors'] && !maps['inspect_mapping']['pre-mapping']">
-                    <!--button class="ui labeled mini icon button"
+                    <button class="ui labeled mini icon button"
                         v-on:click="diffMapping('tab_mapping_inspected','tab_mapping_registered',build._id)">
                         <i class="exchange icon"></i>
                         Diff
-                    </button-->
+                    </button>
                 </div>
 
                 <div class="sixteen wide column">
