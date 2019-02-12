@@ -222,8 +222,8 @@ class IndexerManager(BaseManager):
         """
         t0 = time.time()
         def indexed(f):
-            res = f.result()
             try:
+                res = f.result()
                 self.logger.info("Done indexing target '%s' to index '%s': %s" % (target_name,index_name,res))
             except Exception as e:
                 self.logger.exception("Error while running index job, %s" % e)
@@ -622,7 +622,13 @@ class Indexer(object):
                     raise IndexerException(msg)
 
             if not mode in ["resume","merge"]:
-                es_idxer.create_index({self.doc_type:_mapping},_extra)
+                try:
+                    es_idxer.create_index({self.doc_type:_mapping},_extra)
+                except Exception as e:
+                    self.logger.exception("Failed to create index")
+                    self.register_status("failed",job={"err": repr(e)})
+                    raise
+
 
             def clean_ids(ids):
                 # can't use a generator, it's going to be pickled
