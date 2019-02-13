@@ -101,6 +101,7 @@ class DataTransformMDB(DataTransform):
     # Constants
     batch_size = 1000
     default_source = '_id'
+    id_priority_list = None
 
     def __init__(self, G, *args, **kwargs):
         """
@@ -210,7 +211,12 @@ class DataTransformMDB(DataTransform):
             else:
                 miss_lst.append(doc)
 
+        # Reorder the input_types here to follow a new priority list
+        self.input_types = [(x, y) for x, y in sorted(self.input_types, key=lambda e: self._priority_order(e[0]))]
+
+        # Attempt to reach each destination in order...
         for output_type in self.output_types:
+            # Starting with each input_type
             for input_type in self.input_types:
                 # self.logger.debug("Attempt Lookup:  from '{}' To '{}'".format(input_type[0], output_type))
                 if output_type == input_type[0]:
@@ -353,3 +359,17 @@ class DataTransformMDB(DataTransform):
         several types of lookup functions.
         """
         return edge_obj.edge_lookup(self, id_strct, self.debug)
+
+    def _priority_order(self, elem):
+        """
+        Determine the priority order of an input_type following a id_priority_list
+        """
+        default_priority = 1
+        if self.id_priority_list:
+            for i, s in enumerate(id_priority_list):
+            if elem  == s:
+                return i
+            return len(id_priority_list) + 1
+        # id_priority_list not define, return default priority
+        return default_priority
+
