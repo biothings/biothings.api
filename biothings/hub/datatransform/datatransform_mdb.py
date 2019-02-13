@@ -213,6 +213,7 @@ class DataTransformMDB(DataTransform):
 
         # Reorder the input_types here to follow a new priority list
         self.input_types = [(x, y) for x, y in sorted(self.input_types, key=lambda e: self._priority_order(e[0]))]
+        # self.logger.debug("Reordered Input Types:  {}".format(self.input_types))
 
         # Attempt to reach each destination in order...
         for output_type in self.output_types:
@@ -366,10 +367,10 @@ class DataTransformMDB(DataTransform):
         """
         default_priority = 1
         if self.id_priority_list:
-            for i, s in enumerate(id_priority_list):
-            if elem  == s:
-                return i
-            return len(id_priority_list) + 1
+            for i, s in enumerate(self.id_priority_list):
+                if elem  == s:
+                    return i
+            return len(self.id_priority_list) + 1
         # id_priority_list not define, return default priority
         return default_priority
 
