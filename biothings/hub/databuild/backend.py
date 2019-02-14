@@ -143,13 +143,13 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             # in order to resolve/map main/sub source name
             subsrc_versions = []
             if src and src.get("upload"):
-                meta = []
+                meta = {}
                 for job_name in src["upload"].get("jobs",{}):
                     job = src["upload"]["jobs"][job_name]
                     # "step" is the actual sub-source name
                     docm  = self.master.find_one({"_id":job.get("step")})
                     if docm and docm.get("src_meta"):
-                        meta.append(docm["src_meta"])
+                        meta[job.get("step")] = docm["src_meta"]
                 # when more than 1 sub-sources, we can have different version in sub-sources
                 # (not normal) if one sub-source uploaded, then dumper downloaded a new version,
                 # then the other sub-source uploaded that version. This should never happen, just make sure
@@ -157,18 +157,32 @@ class SourceDocMongoBackend(SourceDocBackendBase):
                                   for job in src["upload"].get("jobs",{}).values()]
                 assert len(set([s["version"] for s in subsrc_versions])) == 1, "Expecting one version " + \
                         "in upload sub-sources for main source '%s' but got: %s" % (src["_id"],subsrc_versions)
-                # we'll make sure to have the same src_meta at main source level,
-                # whatever we have at sub-source level. In other words, if a main source
-                # has multiple sub-sources, there should be only src metadata anyway
+                # usually, url & license are the same wathever the sub-sources are. They are
+                # share common metadata, and we don't want them to be repeated for each sub-sources.
+                # but, code key is always different for instance and must specific for each sub-sources
+                # here we make sure to factor common keys, while the specific ones at sub-level
                 if len(meta) > 1:
-                    first = meta[0]
-                    assert set([e == first for e in meta[1:]]) == {True}, \
-                        "Source '%s' has different metadata declared in its sub-sources" % src["_id"]
-                # now we can safely merge src_meta
-                if meta:
-                    first = meta[0]
-                    for k,v in first.items():
+                    common = {}
+                    any = list(meta)[0]
+                    topop = [] # common keys
+                    for anyk in meta[any]:
+                        if len({meta[s].get(anyk) == meta[any][anyk] for s in meta}) == 1:
+                            topop.append(anyk)
+                    for k in topop:
+                        common[k] = meta[any][k]
+                        [meta[subname].pop(k,None) for subname in meta]
+
+                    for k,v in common.items():
                         src_meta.setdefault(src["_id"],{}).setdefault(k,v)
+                    for subname in meta:
+                        for k,v in meta[subname].items():
+                            src_meta.setdefault(src["_id"],{}).setdefault(k,{}).setdefault(subname,v)
+                # we have metadata, but just one (ie. no sub-source), don't display it
+                elif meta:
+                    assert len(meta) == 1
+                    subname,metad = meta.popitem()
+                    for k,v in metad.items():
+                            src_meta.setdefault(src["_id"],{}).setdefault(k,v)
             if subsrc_versions:
                 version = subsrc_versions[0]["version"]
                 src_version[src['_id']] = version
