@@ -1,5 +1,5 @@
 import time, copy
-import os, pprint, json, sys
+import os, pprint, json, sys, re
 import urllib.parse, requests
 from datetime import datetime
 import asyncio
@@ -265,16 +265,18 @@ class BaseAssistant(object):
                     except ValueError as e:
                         raise AssistantException("'parallelizer' must be defined as 'module:parallelizer_func' but got: '%s'" % \
                                 uploader_section["parallelizer"])
+                    ## parse source file to check imports and other code before function definition
                     modpath = self.plugin_name + "." + mod
                     pymod = importlib.import_module(modpath)
                     # reload in case we need to refresh plugin's code
                     importlib.reload(pymod)
                     assert func in dir(pymod), "%s not found in module %s" % (func,pymod)
                     jobs_func = getattr(pymod,func)
-                    strfunc = inspect.getsource(jobs_func)
+                    strfunc = inspect.getsource(pymod)
                     # always indent with spaces, normalize to avoid mixed indenting chars
                     indentfunc = textwrap.indent(strfunc.replace("\t","    "),prefix="    ")
                     confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.ParallelizedSourceUploader"
+                    confdict["IMPORT_FROM_PARALLELIZER"] = ""
                     confdict["JOBS_FUNC"] = """
 %s
 """ % indentfunc
