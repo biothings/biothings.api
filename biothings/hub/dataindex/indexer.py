@@ -26,8 +26,7 @@ from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
 
 
 def new_index_worker(col_name,ids,pindexer,batch_num):
-        tgt = mongo.get_target_db()
-        col = tgt[col_name]
+        col = create_backend(col_name).target_collection
         idxer = pindexer()
         cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}})
         cnt = idxer.index_bulk(cur)
@@ -35,8 +34,7 @@ def new_index_worker(col_name,ids,pindexer,batch_num):
 
 
 def merge_index_worker(col_name,ids,pindexer,batch_num):
-        tgt = mongo.get_target_db()
-        col = tgt[col_name]
+        col = create_backend(col_name).target_collection
         idxer = pindexer()
         upd_cnt = 0
         new_cnt = 0
@@ -598,8 +596,14 @@ class Indexer(object):
 
         if "index" in steps:
             self.register_status("indexing",transient=True,init=True,job={"step":"index"})
-            _db = mongo.get_target_db()
-            target_collection = _db[target_name]
+            assert self.build_doc.get("backend_url")
+            if self.build_doc.get("backend_url"):
+                target_collection = create_backend(self.build_doc["backend_url"]).target_collection
+                backend_url = self.build_doc["backend_url"]
+            else:
+                _db = mongo.get_target_db()
+                target_collection = _db[target_name]
+                backend_url = target_name # ie. a collection in target db
             _mapping = self.get_mapping()
             _extra = self.get_index_creation_settings()
             _meta = {}
@@ -675,7 +679,7 @@ class Indexer(object):
                 job = yield from job_manager.defer_to_process(
                         pinfo,
                         partial(indexer_worker,
-                            self.target_name,
+                            backend_url,
                             ids,
                             partial_idxer,
                             bnum,
