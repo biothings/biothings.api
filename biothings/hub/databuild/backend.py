@@ -92,10 +92,21 @@ class TargetDocBackend(DocBackendBase):
         """
         self._target_name = target_name or self.generate_target_name(build_name)
 
+    @property
+    def target_name(self):
+        return self._target_name
+
     def generate_target_name(self,build_config_name):
         assert not build_config_name is None
         return '{}_{}_{}'.format(build_config_name,
                                          get_timestamp(), get_random_string()).lower()
+
+    def get_backend_url(self):
+        """
+        Return backend URL (see create_backend() for formats)
+        """
+        # default is a collection in target database
+        return self._target_name
 
     def post_merge(self):
         pass
@@ -197,6 +208,33 @@ class TargetDocMongoBackend(TargetDocBackend,DocMongoBackend):
     def set_target_name(self,target_name=None, build_name=None):
         super(TargetDocMongoBackend,self).set_target_name(target_name,build_name)
         self.target_collection = self.target_db[self._target_name]
+
+
+class LinkTargetDocMongoBackend(TargetDocBackend):
+    """
+    This backend type act as a dummy target backend, the data
+    is actually stored in source database. It means only one
+    datasource can be linked to that target backend, as a consequence,
+    when this backend is used in a merge, there's no actual data 
+    merge. This is useful when "merging/indexing" only one datasource,
+    where the merge step is just a duplication of datasource data.
+    """
+    name = 'link'
+
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        # will be set later by LinkDataBuilder, should be the name
+        # of the datasource in src database
+        self.datasource_name = None
+
+    def get_backend_url(self):
+        assert self.datasource_name
+        return ("src",self.datasource_name)
+
+    def drop(self):
+        # nothing to drop we don't store data
+        # but needs to be implemented
+        pass
 
 
 def create_backend(db_col_names,name_only=False,**kwargs):
