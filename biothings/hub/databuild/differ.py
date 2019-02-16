@@ -1604,12 +1604,11 @@ class DifferManager(BaseManager):
         confname = doc["build_config"]["name"]
         docs = get_src_build().find({
             "$and":[
-                {"_id":{"$lte":new_id}},
-                {"_id":{"$regex":"^%s.*" % confname}},
+                {"started_at":{"$lte":doc["started_at"]}},
+                {"build_config.name":confname},
                 {"archived":{"$exists":0}},
                 ]},
-            {"_id":1}).sort([("_id",-1)]).limit(2) 
-
+            {"_id":1}).sort([("started_at",-1)]).limit(2)
         _ids = [d["_id"] for d in docs]
         assert len(_ids) == 2, "Expecting 2 collection _ids, got: %s" % _ids
         assert _ids[0] == new_id, "Can't find collection _id '%s'" % new_id
