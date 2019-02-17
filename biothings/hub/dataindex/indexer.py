@@ -984,8 +984,8 @@ class ColdHotIndexer(Indexer):
                     # compute overall inserted/updated records
                     cnt = sum(res.values())
                     self.register_status("success",job={"step":"index"},index={"count":cnt})
-                    self.logger.info("index '%s' successfully created" % index_name,extra={"notify":true})
-                except exception as e:
+                    self.logger.info("index '%s' successfully created" % index_name,extra={"notify":True})
+                except Exception as e:
                     logging.exception("failed indexing cold/hot collections: %s" % e)
                     got_error = e
                     raise
