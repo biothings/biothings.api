@@ -2,6 +2,7 @@ import copy
 import re
 
 from networkx import all_simple_paths, all_shortest_paths, nx
+from pymongo.collation import Collation
 from biothings.utils.common import iter_n
 from biothings.hub.datatransform import DataTransform
 from biothings.hub.datatransform import DataTransformEdge
@@ -84,7 +85,7 @@ class MongoDBEdge(DataTransformEdge):
 
         id_lst = id_strct.id_lst
         if len(id_lst):
-            find_lst = self.collection.find({self.lookup: {"$in": id_lst}}, {self.lookup: 1, self.field: 1})
+            find_lst = self.collection_find(id_lst, self.lookup, self.field)
 
             for d in find_lst:
                 for orig_id in id_strct.find_right(nested_lookup(d, self.lookup)):
@@ -92,6 +93,27 @@ class MongoDBEdge(DataTransformEdge):
                     if debug:
                         res_id_strct.set_debug(orig_id, self.label, nested_lookup(d, self.field))
         return res_id_strct
+
+    def collection_find(self, id_lst, lookup, field):
+        """
+        Abstract out (as one line) the call to collection.find
+        """
+        return self.collection.find({lookup: {"$in": id_lst}}, {lookup: 1, field: 1})
+
+
+class CIMongoDBEdge(MongoDBEdge):
+    """
+    Case-insensitive MongoDBEdge
+    """
+    def __init__(self, collection_name, lookup, field, weight=1, label=None):
+        super().__init__(collection_name, lookup, field, weight, label)
+
+    def collection_find(self, id_lst, lookup, field):
+        """
+        Abstract out (as one line) the call to collection.find 
+        and use a case-insensitive collation
+        """
+        return self.collection.find({lookup: {"$in": id_lst}}, {lookup: 1, field: 1}).collation(Collation(locale='en', strength=2))
 
 
 class DataTransformMDB(DataTransform):
