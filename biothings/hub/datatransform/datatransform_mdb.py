@@ -137,9 +137,8 @@ class DataTransformMDB(DataTransform):
         self._precompute_paths()
 
         # Reorder the input_types here to follow a new priority list
-        if self.id_priority_list:
-            self.input_types = sorted(self.input_types, key=lambda e: self._priority_order(e[0]))
-            # self.logger.debug("Reordered Input Types:  {}".format(self.input_types))
+        self.input_types = self.sort_priority_order(self.input_types)
+        # self.logger.debug("Reordered Input Types:  {}".format(self.input_types))
 
     def _valid_input_type(self, input_type):
         return input_type.lower() in self.G.nodes()
@@ -361,6 +360,14 @@ class DataTransformMDB(DataTransform):
         several types of lookup functions.
         """
         return edge_obj.edge_lookup(self, id_strct, self.debug)
+
+    def sort_priority_order(self, input_types):
+        """
+        Reorder the given input_types to follow a priority list
+        """
+        if self.id_priority_list:
+            input_types = sorted(input_types, key=lambda e: self._priority_order(e[0]))
+        return input_types
 
     def _priority_order(self, elem):
         """
