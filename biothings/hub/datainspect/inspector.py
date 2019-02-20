@@ -5,6 +5,7 @@ import asyncio
 from functools import partial
 import inspect
 import subprocess
+import random
 
 from biothings.utils.hub_db import get_src_dump, get_src_build, get_source_fullname
 from biothings.utils.common import timesofar
@@ -46,7 +47,8 @@ class InspectorManager(BaseManager):
         """Setup and return a logger instance"""
         self.logger, self.logfile = get_logger('inspect')
 
-    def inspect(self, data_provider, mode="type", batch_size=10000,**kwargs):
+    def inspect(self, data_provider, mode="type", batch_size=10000,
+                limit=None, sample=None, **kwargs):
         """
         Inspect given data provider:
         - backend definition, see bt.hub.dababuild.create_backend for
@@ -59,6 +61,9 @@ class InspectorManager(BaseManager):
         - "stats": will inspect and report types + different counts found in
           data, giving a detailed overview of the volumetry of each fields and sub-fields
         - "jsonschema", same as "type" but result is formatted as json-schema standard
+        - limit: when set to an integer, will inspect only x documents.
+        - sample: combined with limit, for each document, if random.random() <= sample (float), 
+          the document is inspected. This option allows to inspect only a sample of data.
         """
         # /!\ attention: this piece of code is critical and not easy to understand...
         # Depending on the source of data to inspect, this method will create an
@@ -136,6 +141,12 @@ class InspectorManager(BaseManager):
 
                 self.logger.info("Running inspector on %s (type:%s,data_provider:%s)" % \
                         (repr(data_provider),data_provider_type,backend_provider))
+                if not sample is None:
+                    self.logger.info("Sample set to %s, inspect only a subset of data",sample)
+                if limit is None:
+                    self.logger.info("Inspecting all the documents")
+                else:
+                    self.logger.info("Inspecting only %s documents",limit)
                 # make it pickleable
                 if data_provider_type == "source":
                     # because register_obj is also used to fetch data, it has to be unprepare() for pickling
@@ -146,6 +157,7 @@ class InspectorManager(BaseManager):
                     pass
 
                 cnt = 0
+                doccnt = 0
                 jobs = []
                 # normalize mode param and prepare global results
                 if type(mode) == str:
@@ -159,7 +171,13 @@ class InspectorManager(BaseManager):
 
                 backend = create_backend(backend_provider).target_collection
                 for ids in id_feeder(backend,batch_size=batch_size):
+                    if not sample is None:
+                        if random.random() > sample:
+                            continue
                     cnt += 1
+                    doccnt += batch_size
+                    if limit and doccnt > limit:
+                        break
                     pinfo["description"] = "batch #%s" % cnt
                     def batch_inspected(bnum,i,f):
                         nonlocal inspected

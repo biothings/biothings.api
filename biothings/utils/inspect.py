@@ -47,7 +47,12 @@ class BaseMode(object):
 
 class StatsMode(BaseMode):
 
-    template = {"_stats" : {"_min":math.inf,"_max":-math.inf,"_count":0}}
+    template = {"_stats" : {
+            "_min":math.inf,
+            "_max":-math.inf,
+            "_count":0,
+            "_none" : 0}
+    }
     key = "_stats"
 
     def sumiflist(self, val):
@@ -77,10 +82,13 @@ class StatsMode(BaseMode):
         else:
             val = struct
         drep[self.key]["_count"] += 1
-        if val < drep[self.key]["_min"]:
-            drep[self.key]["_min"] = val
-        if val > drep[self.key]["_max"]:
-            drep[self.key]["_max"] = val
+        if val is None:
+            drep[self.key]["_none"] += 1
+        else:
+            if val < drep[self.key]["_min"]:
+                drep[self.key]["_min"] = val
+            if val > drep[self.key]["_max"]:
+                drep[self.key]["_max"] = val
 
     def merge(self, target_stats, tomerge_stats):
         target_stats = self.flatten_stats(target_stats)
@@ -330,6 +338,7 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
             if str in mapt and splitstr in mapt:
                 mapt.pop(str)
             # float > int
+            # TODO: could this be moved to es.generate_es_mapping ?
             if int in mapt and float in mapt:
                 mapt.pop(int)
         else:
@@ -817,6 +826,13 @@ if __name__ == "__main__":
     m = merge_record(m,d1,"mapping")
     m = merge_record(m,d2,"mapping")
     assert m["k"]["a"][list]["r"] == {splitstr:{}}
+
+    # allow int & float in mapping (keep float
+    t1 = {"_id":"a","f":[1,2]}
+    t2 = {"_id":"a","f":[1.1,2.2]}
+    m = inspect_docs([t1,t2],mode="mapping")
+    assert m["mapping"]["f"]["type"] == "float"
+
 
     print("All tests OK")
 

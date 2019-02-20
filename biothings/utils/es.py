@@ -81,7 +81,17 @@ class ESIndexer():
         except NotFoundError:
             # this was a real index name
             self._index = index
-        self._doc_type = doc_type
+        self._doc_type = None
+        if doc_type:
+            self._doc_type = doc_type
+        else:
+            # assuming index exists, get mapping to discover doc_type
+            try:
+                m = self.get_mapping()
+                assert len(m) == 1, "Expected only one doc type, got: %s" % m.keys()
+                self._doc_type = list(m).pop()
+            except Exception as e:
+                logging.info("Failed to guess doc_type: %s" % e)
         self.number_of_shards = number_of_shards # set number_of_shards when create_index
         self.number_of_replicas = int(number_of_replicas) # set number_of_replicas when create_index
         self.step = step  # the bulk size when doing bulk operation.
@@ -631,6 +641,10 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
                 # we want to make sure that, whatever the structure, the types involved were the same
                 # Exception: None is allowed with other types (translates to 'null' in ES)
                 other_types = set([k for k in toexplore.keys() if k != list and type(k) == type and not k is type(None)])
+                # some mixes are allowed by ES
+                if {int,float}.issubset(other_types):
+                    other_types.discard(int) # float > int
+                    toexplore.pop(int)
                 if len(other_types) > 1:
                     raise Exception("Mixing types for key '%s': %s" % (rootk,other_types))
             res = generate_es_mapping(toexplore,init=False,level=level+1)

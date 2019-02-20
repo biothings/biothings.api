@@ -1,5 +1,5 @@
 import time, copy
-import os, pprint, json, sys
+import os, pprint, json, sys, re
 import urllib.parse, requests
 from datetime import datetime
 import asyncio
@@ -101,9 +101,8 @@ class BaseAssistant(object):
             mf = os.path.join(df,"manifest.json")
             if os.path.exists(mf):
                 try:
-                    manifest = json.load(open(mf))
-                    self.logger.debug("Loading manifest: %s" % pprint.pformat(manifest))
-                    self.interpret_manifest(manifest)
+                    self.logger.debug("Loading manifest: %s" % mf)
+                    self.interpret_manifest(mf)
                 except Exception as e:
                     self.invalidate_plugin("Error loading manifest: %s" % str(e))
             else:
@@ -266,16 +265,18 @@ class BaseAssistant(object):
                     except ValueError as e:
                         raise AssistantException("'parallelizer' must be defined as 'module:parallelizer_func' but got: '%s'" % \
                                 uploader_section["parallelizer"])
+                    ## parse source file to check imports and other code before function definition
                     modpath = self.plugin_name + "." + mod
                     pymod = importlib.import_module(modpath)
                     # reload in case we need to refresh plugin's code
                     importlib.reload(pymod)
                     assert func in dir(pymod), "%s not found in module %s" % (func,pymod)
                     jobs_func = getattr(pymod,func)
-                    strfunc = inspect.getsource(jobs_func)
+                    strfunc = inspect.getsource(pymod)
                     # always indent with spaces, normalize to avoid mixed indenting chars
                     indentfunc = textwrap.indent(strfunc.replace("\t","    "),prefix="    ")
                     confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.ParallelizedSourceUploader"
+                    confdict["IMPORT_FROM_PARALLELIZER"] = ""
                     confdict["JOBS_FUNC"] = """
 %s
 """ % indentfunc
@@ -303,7 +304,8 @@ class BaseAssistant(object):
             raise AssistantException("Invalid manifest, expecting 'parser' key in 'uploader' section")
 
 
-    def interpret_manifest(self, manifest):
+    def interpret_manifest(self, manifest_file):
+        manifest = json.load(open(manifest_file))
         # start with requirements before importing anything
         if manifest.get("requires"):
             reqs = manifest["requires"]
@@ -314,23 +316,25 @@ class BaseAssistant(object):
                 subprocess.check_call([sys.executable, '-m', 'pip', 'install', req])
         if manifest.get("dumper"):
             assisted_dumper_class = self.get_dumper_dynamic_class(manifest["dumper"],manifest.get("__metadata__"))
+            assisted_dumper_class.DATA_PLUGIN_FOLDER = os.path.dirname(manifest_file)
             self.__class__.dumper_manager.register_classes([assisted_dumper_class])
             # register class in module so it can be pickled easily
             sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedDumper_%s" % self.plugin_name] = assisted_dumper_class
 
         if manifest.get("uploader"):
             assisted_uploader_class = self.get_uploader_dynamic_class(manifest["uploader"],manifest.get("__metadata__"))
+            assisted_uploader_class.DATA_PLUGIN_FOLDER = os.path.dirname(manifest_file)
             self.__class__.uploader_manager.register_classes([assisted_uploader_class])
             # register class in module so it can be pickled easily
             sys.modules["biothings.hub.dataplugin.assistant"].__dict__["AssistedUploader_%s" % self.plugin_name] = assisted_uploader_class
 
 
 class AssistedDumper(object):
-    pass
+    DATA_PLUGIN_FOLDER = None
 
 
 class AssistedUploader(object):
-    pass
+    DATA_PLUGIN_FOLDER = None
 
 
 class GithubAssistant(BaseAssistant):
