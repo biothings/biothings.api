@@ -78,7 +78,8 @@ class BasicStorage(BaseStorage):
             try:
                 self.temp_collection.insert_many(doc_li, ordered=False)
             except BulkWriteError as e:
-                self.logger.error("BulkWriteError on insert:  {}".format(e))
+                # TODO:  Write logic for reciprocal key matching
+                self.logger.error("BulkWriteError - likely duplicate key without reciprocal matching on insert:  {}".format(e))
             total += len(doc_li)
         self.logger.info('Done[%s]' % timesofar(t0))
 
