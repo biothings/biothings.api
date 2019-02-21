@@ -28,6 +28,7 @@ from biothings.utils.hub_db import get_source_fullname, get_src_build_config, \
                                    get_src_build, get_src_dump, get_src_master
 from biothings import config as btconfig
 from biothings.hub import UPLOADER_CATEGORY, BUILDER_CATEGORY
+from .backend import create_backend
 
 logging = btconfig.logger
 
@@ -1120,6 +1121,12 @@ class BuilderManager(BaseManager):
         res = {}
         for name in self.register:
             builder = self[name]
+            if issubclass(builder.target_backend.__class__,LinkTargetDocMongoBackend):
+                target_db = None # it's not a traditional target database, it's pointing to
+                                 # somewhere else (TODO: maybe LinkTargetDocMongoBackend should
+                                 # implement more methods to return info about that
+            else:
+                target_db = builder.target_backend.target_collection.database.client.address
             res[name] = {
                     "class" : builder.__class__.__name__,
                     "build_config" : builder.build_config,
@@ -1128,8 +1135,8 @@ class BuilderManager(BaseManager):
                         "source_db" : builder.source_backend.sources.client.address,
                         },
                     "target_backend" : {
-                        "type" : builder.source_backend.__class__.__name__,
-                        "target_db" : builder.target_backend.target_db.client.address
+                        "type" : builder.target_backend.__class__.__name__,
+                        "target_db" : target_db
                         },
                     "archived" : "archived" in builder.build_config
                     }
@@ -1162,16 +1169,20 @@ class BuilderManager(BaseManager):
         if not conf_name is None:
             q["build_config._id"] = conf_name
         builds = [b for b in get_src_build().find(q,fields)]
-        db = mongo.get_target_db()
         res = [b for b in sorted(builds, key=lambda e: str(e["started_at"]),reverse=True)]
         # set a global status (ie. latest job's status)
         # + get total #docs
+        db = mongo.get_target_db()
         for b in res:
             jobs = b.get("jobs",[])
             b["status"] = "unknown"
             if jobs:
                 b["status"] = jobs[-1]["status"]
-            b["count"] = db[b["_id"]].count()
+            try:
+                backend = create_backend(b["backend_url"])
+                b["count"] = backend.count()
+            except KeyError:
+                b["count"] = db[b["_id"]].count()
 
         if id:
             if res:
