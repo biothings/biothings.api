@@ -287,8 +287,8 @@ class BiothingsAPIEdge(DataTransformEdge):
     client_name = None
     url = None
 
-    def __init__(self, lookup, fields, weight=1):
-        super().__init__()
+    def __init__(self, lookup, fields, weight=1, label=None):
+        super().__init__(label)
         self.init_state()
         if isinstance(lookup, str):
             self.scopes = [lookup]
