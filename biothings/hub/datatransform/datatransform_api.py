@@ -285,9 +285,8 @@ class BiothingsAPIEdge(DataTransformEdge):
     """
     # define in subclass
     client_name = None
-    url = None
 
-    def __init__(self, lookup, fields, weight=1, label=None):
+    def __init__(self, lookup, fields, weight=1, label=None, url=None):
         super().__init__(label)
         self.init_state()
         if isinstance(lookup, str):
@@ -303,6 +302,7 @@ class BiothingsAPIEdge(DataTransformEdge):
         else:
             raise TypeError("fields argument must be str or list")
         self.weight = weight
+        self.url = url
 
     def init_state(self):
         self._state = {
@@ -405,7 +405,7 @@ class MyChemInfoEdge(BiothingsAPIEdge):
     """
     client_name = "drug"
 
-    def __init__(self, lookup, field, weight=1, label=None):
+    def __init__(self, lookup, field, weight=1, label=None, url=None):
         """
         :param lookup: The field in the API to search with the input identifier.
         :type lookup: str
@@ -414,7 +414,7 @@ class MyChemInfoEdge(BiothingsAPIEdge):
         :param weight: Weights are used to prefer one path over another. The path with the lowest weight is preferred. The default weight is 1.
         :type weight: int
         """
-        super().__init__(lookup, field, weight, label)
+        super().__init__(lookup, field, weight, label, url)
 
 
 class MyGeneInfoEdge(BiothingsAPIEdge):
@@ -423,7 +423,7 @@ class MyGeneInfoEdge(BiothingsAPIEdge):
     """
     client_name = "gene"
 
-    def __init__(self, lookup, field, weight=1, label=None):
+    def __init__(self, lookup, field, weight=1, label=None, url=None):
         """
         :param lookup: The field in the API to search with the input identifier.
         :type lookup: str
@@ -432,7 +432,7 @@ class MyGeneInfoEdge(BiothingsAPIEdge):
         :param weight: Weights are used to prefer one path over another. The path with the lowest weight is preferred. The default weight is 1.
         :type weight: int
         """
-        super().__init__(lookup, field, weight, label)
+        super().__init__(lookup, field, weight, label, url)
 
 
 ####################
