@@ -278,19 +278,24 @@ class DataTransformMyChemInfo(DataTransformAPI):
             self.client = biothings_client.get_client('drug')
         return self.client
 
-##########
 
 class BiothingsAPIEdge(DataTransformEdge):
     """
     APIEdge - IDLookupEdge object for API calls
     """
-    # override in child classes
+    # define in subclass
     client_name = None
+    url = None
 
-    def __init__(self, scope, fields, weight=1, label=None):
-        super().__init__(label)
+    def __init__(self, lookup, fields, weight=1):
+        super().__init__()
         self.init_state()
-        self.scope = scope
+        if isinstance(lookup, str):
+            self.scopes = [lookup]
+        elif isinstance(lookup, list):
+            self.scopes = lookup
+        else:
+            raise TypeError("scopes argument must be str or list")
         if isinstance(fields, str):
             self.fields = [fields]
         elif isinstance(fields, list):
@@ -322,7 +327,10 @@ class BiothingsAPIEdge(DataTransformEdge):
         """
         if not self.client_name:
             raise NotImplementedError("Define client_name in subclass")
-        self._state["client"] = biothings_client.get_client(self.client_name, url='http://localhost:8000/')
+        if self.url:
+            self._state["client"] = biothings_client.get_client(self.client_name, url=self.url)
+        else:
+            self._state["client"] = biothings_client.get_client(self.client_name)
         self.logger.info("Registering biothings_client {}".format(self.client_name))
 
     def edge_lookup(self, keylookup_obj, id_strct, debug=False):
@@ -356,7 +364,7 @@ class BiothingsAPIEdge(DataTransformEdge):
         for id in id_strct.id_lst:
             id_lst.append('"{}"'.format(id))
         return self.client.querymany(id_lst,
-                                     scopes=self.scope,
+                                     scopes=self.scopes,
                                      fields=self.fields,
                                      as_generator=True,
                                      returnall=True,
@@ -395,7 +403,7 @@ class MyChemInfoEdge(BiothingsAPIEdge):
     """
     The MyChemInfoEdge uses the MyChem.info API to convert identifiers.
     """
-    client_name = 'drug'
+    client_name = "drug"
 
     def __init__(self, lookup, field, weight=1, label=None):
         """
@@ -413,7 +421,7 @@ class MyGeneInfoEdge(BiothingsAPIEdge):
     """
     The MyGeneInfoEdge uses the MyGene.info API to convert identifiers.
     """
-    client_name = 'gene'
+    client_name = "gene"
 
     def __init__(self, lookup, field, weight=1, label=None):
         """
