@@ -2,7 +2,7 @@ import biothings_client
 import networkx as nx
 
 from biothings.hub.datatransform.datatransform_api import MyChemInfoEdge, MyGeneInfoEdge
-from biothings.hub.datatransform.datatransform_mdb import MongoDBEdge
+from biothings.hub.datatransform.datatransform_mdb import MongoDBEdge, CIMongoDBEdge
 from biothings.hub.datatransform.datatransform import RegExEdge
 
 ###############################################################################
@@ -146,3 +146,15 @@ graph_pubchem.add_edge('inchi', 'pubchem',
                       object=MyChemInfoEdge('pubchem.inchi', 'pubchem.cid'))
 graph_pubchem.add_edge('pubchem', 'inchikey',
                       object=MyChemInfoEdge('pubchem.cid', inchikey_fields))
+
+###############################################################################
+# Case Insensitive Graph for Testing
+###############################################################################
+graph_ci = nx.DiGraph()
+
+graph_ci.add_node('a')
+graph_ci.add_node('b')
+
+graph_ci.add_edge('a', 'b',
+                  object=CIMongoDBEdge('b', 'a_id', 'b_id', label="a_to_b"))
+

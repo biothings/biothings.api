@@ -4,7 +4,7 @@ biothings.config_for_app(config)
 from biothings.hub.datatransform import DataTransformMDB as KeyLookup
 from biothings.tests.keylookup_graphs import graph_simple, \
     graph_weights, graph_one2many, graph_invalid, graph_mix, \
-    graph_mychem, graph_regex, graph_pubchem
+    graph_mychem, graph_regex, graph_pubchem, graph_ci
 import unittest
 import biothings.utils.mongo as mongo
 
@@ -498,3 +498,25 @@ class TestDataTransform(unittest.TestCase):
         # Verify that the generator is out of documents
         with self.assertRaises(StopIteration):
             next(res_lst)
+
+    def test_case_insensitive(self):
+        """
+        Case insensitive test for key lookup - artificial document.
+        :return:
+        """
+        @KeyLookup(graph_ci, 'a', ['b'])
+        def load_document(doc_lst):
+            for d in doc_lst:
+                yield d
+
+        # Test Case - upper case A in id
+        doc_lst = [{'_id': 'A:1234'}]
+        res_lst = load_document(doc_lst)
+
+        res = next(res_lst)
+        self.assertEqual(res['_id'], 'b:1234')
+
+        # Verify that the generator is out of documents
+        with self.assertRaises(StopIteration):
+            next(res_lst)
+
