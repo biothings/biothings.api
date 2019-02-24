@@ -26,7 +26,7 @@ from functools import wraps
 import requests
 
 from biothings.tests.settings import BiothingTestSettings
-from biothings.tests.test_helper import (BiothingTestHelperMixin,
+from biothings.tests.test_helper import (BiothingsTestCase,
                                          parameterized, parameters)
 
 try:
@@ -54,7 +54,7 @@ except:
 PATTR = '%values'
 
 @parameterized
-class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
+class BiothingGenericTests(BiothingsTestCase):
     __test__ = False # don't run nosetests on this class directly
 
     # Make these class variables so that tornadorequesthelper plays nice.    
