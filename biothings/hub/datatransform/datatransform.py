@@ -53,11 +53,17 @@ class IDStruct(object):
         if type(right) == list:
             right = tuple(right)
         for v in left:
+            # After some thought, this data structure should be case insensitive
+            if isinstance(v, str):
+                v = v.lower()
             if v not in self.forward.keys():
                 self.forward[v] = right
             else:
                 self.forward[v] = self.forward[v] + right
         for v in right:
+            # After some thought, this data structure should be case insensitive
+            if isinstance(v, str):
+                v = v.lower()
             if v not in self.inverse.keys():
                 self.inverse[v] = left
             else:
@@ -111,11 +117,15 @@ class IDStruct(object):
         return self.side(id,self.forward)
 
     def find(self,where,ids):
+        """Case insensitive lookup of ids"""
         if not ids:
             return
         if not type(ids) in (list,tuple):
             ids = [ids]
         for id in ids:
+            # After some thought, this find should be case insensitive
+            if isinstance(id, str):
+                id = id.lower()
             if id in where.keys():
                 for i in where[id]:
                     yield i
