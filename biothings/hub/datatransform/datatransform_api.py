@@ -368,7 +368,8 @@ class BiothingsAPIEdge(DataTransformEdge):
                                      fields=self.fields,
                                      as_generator=True,
                                      returnall=True,
-                                     size=keylookup_obj.batch_size)
+                                     size=keylookup_obj.batch_size,
+                                     verbose=False)
 
     def _parse_querymany(self, keylookup_obj, qr, id_strct, fields, debug):
         """
