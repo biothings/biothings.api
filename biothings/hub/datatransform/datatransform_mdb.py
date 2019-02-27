@@ -123,7 +123,6 @@ class DataTransformMDB(DataTransform):
     # Constants
     batch_size = 1000
     default_source = '_id'
-    id_priority_list = None
 
     def __init__(self, G, *args, **kwargs):
         """
@@ -137,6 +136,8 @@ class DataTransformMDB(DataTransform):
         :param input_types: A list of input types for the form (identifier, field) where identifier matches a node and field is an optional dotstring field for where the identifier should be read from (the default is ‘_id’).
         :param output_types: A priority list of identifiers to convert to. These identifiers should match nodes in the graph.
         :type output_types: list(str)
+        :param id_priority_list: A priority list of identifiers to to sort input and output types by.
+        :type id_priority_list: list(str)
         :param skip_on_failure: If True, documents where identifier conversion fails will be skipped in the final document list.
         :type skip_on_failure: bool
         :param skip_w_regex: Do not perform conversion if the identifier matches the regular expression provided to this argument. By default, this option is disabled.
@@ -157,10 +158,6 @@ class DataTransformMDB(DataTransform):
 
         super().__init__(*args,**kwargs)
         self._precompute_paths()
-
-        # Reorder the input_types here to follow a new priority list
-        self.input_types = self.sort_priority_order(self.input_types)
-        # self.logger.debug("Reordered Input Types:  {}".format(self.input_types))
 
     def _valid_input_type(self, input_type):
         return input_type.lower() in self.G.nodes()
@@ -382,31 +379,4 @@ class DataTransformMDB(DataTransform):
         several types of lookup functions.
         """
         return edge_obj.edge_lookup(self, id_strct, self.debug)
-
-    def sort_priority_order(self, input_types):
-        """
-        Reorder the given input_types to follow a priority list
-        """
-        if self.id_priority_list:
-            input_types = sorted(input_types, key=lambda e: self._priority_order(e[0]))
-        return input_types
-
-    def _priority_order(self, elem):
-        """
-        Determine the priority order of an input_type following a id_priority_list.
-        This list, first defined in DataTransformMDB is used to reorder the input_types
-        so that their order matches the id types listed in id_priority_list.  If an id
-        type is not in that list then the input_type will be placed at the end of the list
-        in arbitrary order.
-        """
-        default_priority = 1
-        if self.id_priority_list:
-            # match id types with id priority
-            for i, s in enumerate(self.id_priority_list):
-                if elem  == s:
-                    return i
-            # the id type is not in id_priority_list so it will be placed last
-            return len(self.id_priority_list) + 1
-        # id_priority_list not define, return default priority
-        return default_priority
 

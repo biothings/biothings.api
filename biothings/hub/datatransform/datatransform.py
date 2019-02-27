@@ -180,7 +180,7 @@ class DataTransform(object):
     default_source = '_id'
     debug = False
 
-    def __init__(self, input_types, output_types, skip_on_failure=False, skip_w_regex=None,
+    def __init__(self, input_types, output_types, id_priority_list=None, skip_on_failure=False, skip_w_regex=None,
                  idstruct_class=IDStruct, copy_from_doc=False, debug=False):
         """
         Initialize the keylookup object and precompute paths from the
@@ -195,6 +195,8 @@ class DataTransform(object):
         :param collections: list of mongodb collection names
         :param input_type: key type to start key lookup from
         :param output_types: list of all output types to convert to
+        :param id_priority_list: A priority list of identifiers to to sort input and output types by.
+        :type id_priority_list: list(str)
         :param id_struct_class: IDStruct used to manager/fetch IDs from docs
         :param copy_from_doc: if transform failed using the graph, try to get
                value from the document itself when output_type == input_type.
@@ -204,9 +206,9 @@ class DataTransform(object):
                ID resolution will be forced to go through these loops to ensure
                data exists)
         """
-
         self.input_types = self._parse_input_types(input_types)
         self.output_types = self._parse_output_types(output_types)
+        self.id_priority_list = id_priority_list
 
         if not isinstance(skip_on_failure, bool):
             raise ValueError("skip_on_failure should be of type bool")
@@ -344,6 +346,50 @@ class DataTransform(object):
 
         return str(value)
 
+    @property
+    def id_priority_list(self):
+        return self._id_priority_list
+
+    @id_priority_list.setter
+    def id_priority_list(self, value):
+        self._id_priority_list = value
+        self.input_types = self.sort_input_by_priority_list(self.input_types)
+        self.output_types = self.sort_output_by_priority_list(self.output_types)
+
+    def sort_input_by_priority_list(self, input_types):
+        """
+        Reorder the given input_types to follow a priority list
+        """
+        if self.id_priority_list:
+            input_types = sorted(input_types, key=lambda e: self._priority_order(e[0]))
+        return input_types
+
+    def sort_output_by_priority_list(self, output_types):
+        """
+        Reorder the given output_types to follow a priority list
+        """
+        if self.id_priority_list:
+            output_types = sorted(output_types, key=lambda e: self._priority_order(e))
+        return output_types
+
+    def _priority_order(self, elem):
+        """
+        Determine the priority order of an input_type following a id_priority_list.
+        This list, first defined in DataTransformMDB is used to reorder the input_types
+        so that their order matches the id types listed in id_priority_list.  If an id
+        type is not in that list then the input_type will be placed at the end of the list
+        in arbitrary order.
+        """
+        default_priority = 1
+        if self.id_priority_list:
+            # match id types with id priority
+            for i, s in enumerate(self.id_priority_list):
+                if elem  == s:
+                    return i
+            # the id type is not in id_priority_list so it will be placed last
+            return len(self.id_priority_list) + 1
+        # id_priority_list not define, return default priority
+        return default_priority
 
 class DataTransformEdge(object):
     def __init__(self, label=None):
