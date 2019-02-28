@@ -3,6 +3,7 @@ biothings.config_for_app(config)
 
 from biothings.hub.datatransform import DataTransform
 from biothings.hub.datatransform import DataTransformMDB as KeyLookup
+from biothings.hub.datatransform import CIIDStruct
 from biothings.tests.keylookup_graphs import graph_simple, \
     graph_weights, graph_one2many, graph_invalid, graph_mix, \
     graph_mychem, graph_regex, graph_pubchem, graph_ci
@@ -512,7 +513,7 @@ class TestDataTransform(unittest.TestCase):
         Case insensitive test for key lookup - artificial document.
         :return:
         """
-        @KeyLookup(graph_ci, 'a', ['b'])
+        @KeyLookup(graph_ci, 'a', ['b'], idstruct_class=CIIDStruct)
         def load_document(doc_lst):
             for d in doc_lst:
                 yield d
