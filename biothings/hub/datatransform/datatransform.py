@@ -180,7 +180,7 @@ class DataTransform(object):
     default_source = '_id'
     debug = False
 
-    def __init__(self, input_types, output_types, id_priority_list=None, skip_on_failure=False, skip_w_regex=None,
+    def __init__(self, input_types, output_types, id_priority_list=[], skip_on_failure=False, skip_w_regex=None,
                  idstruct_class=IDStruct, copy_from_doc=False, debug=False):
         """
         Initialize the keylookup object and precompute paths from the
@@ -253,7 +253,8 @@ class DataTransform(object):
         return res_input_types
 
     def _valid_input_type(self, input_type):
-        pass
+        """In the base class, all input_types and output_types are valid."""
+        return True
 
     def _parse_output_types(self, output_types):
         """
@@ -264,12 +265,13 @@ class DataTransform(object):
         if not isinstance(output_types, list):
             raise ValueError("output_types should be of type list")
         for output_type in output_types:
-            if not self._valid_input_type(output_type):
+            if not self._valid_output_type(output_type):
                 raise ValueError("output_type is not a node in the key_lookup graph")
         return output_types
 
     def _valid_output_type(self, output_type):
-        pass
+        """In the base class, all input_types and output_types are valid."""
+        return True
 
     def __call__(self, f, debug=None):
         """
@@ -358,21 +360,42 @@ class DataTransform(object):
 
     def sort_input_by_priority_list(self, input_types):
         """
-        Reorder the given input_types to follow a priority list
+        Reorder the given input_types to follow a priority list.  Inputs not in the
+        priority list should remain in their given order at the end of the list.
         """
-        if self.id_priority_list:
-            input_types = sorted(input_types, key=lambda e: self._priority_order(e[0]))
+        # construct temporary id_priority_list with extra elements at the end
+        id_priority_list = self._expand_priority_order([x[0] for x in input_types])
+        input_types = sorted(input_types, key=lambda e: self._priority_order(id_priority_list, e[0]))
         return input_types
 
     def sort_output_by_priority_list(self, output_types):
         """
-        Reorder the given output_types to follow a priority list
+        Reorder the given output_types to follow a priority list.  Outputs not in the
+        priority list should remain in their given order at the end of the list.
         """
-        if self.id_priority_list:
-            output_types = sorted(output_types, key=lambda e: self._priority_order(e))
+        # construct temporary id_priority_list with extra elements at the end
+        id_priority_list = self._expand_priority_order(output_types)
+        output_types = sorted(output_types, key=lambda e: self._priority_order(id_priority_list, e))
         return output_types
 
-    def _priority_order(self, elem):
+    def _expand_priority_order(self, id_list):
+        """
+        Expand the self.id_priority_list to also include elements in id_list that are not
+        in the priority list.  These elements are added to the priority list in the order
+        that they appear in the id_list.
+
+        Example:
+        > self.id_priority_list = ['a', 'c']
+        > self._expand_priority_order(['a', 'd', 'e'])
+        ['a', 'c', 'd', 'e']
+        """
+        res = self.id_priority_list.copy()
+        for id in id_list:
+            if id not in self.id_priority_list:
+                res.append(id)
+        return res
+
+    def _priority_order(self, id_priority_list, elem):
         """
         Determine the priority order of an input_type following a id_priority_list.
         This list, first defined in DataTransformMDB is used to reorder the input_types
@@ -380,16 +403,14 @@ class DataTransform(object):
         type is not in that list then the input_type will be placed at the end of the list
         in arbitrary order.
         """
-        default_priority = 1
-        if self.id_priority_list:
-            # match id types with id priority
-            for i, s in enumerate(self.id_priority_list):
-                if elem  == s:
-                    return i
-            # the id type is not in id_priority_list so it will be placed last
-            return len(self.id_priority_list) + 1
-        # id_priority_list not define, return default priority
-        return default_priority
+        assert(isinstance(id_priority_list, list))
+        # match id types with id priority
+        for i, e in enumerate(id_priority_list):
+            if elem  == e:
+                return i
+        # the id type is not in id_priority_list so it will be placed last
+        return len(id_priority_list) + 1
+
 
 class DataTransformEdge(object):
     def __init__(self, label=None):

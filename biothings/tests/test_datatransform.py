@@ -1,6 +1,7 @@
 import config, biothings
 biothings.config_for_app(config)
 
+from biothings.hub.datatransform import DataTransform
 from biothings.hub.datatransform import DataTransformMDB as KeyLookup
 from biothings.tests.keylookup_graphs import graph_simple, \
     graph_weights, graph_one2many, graph_invalid, graph_mix, \
@@ -526,4 +527,28 @@ class TestDataTransform(unittest.TestCase):
         # Verify that the generator is out of documents
         with self.assertRaises(StopIteration):
             next(res_lst)
+
+    def test_id_priority_list(self):
+        """
+        Unit test for id_priority_list and related methods.
+        """
+        input_types = [('1', 'doc.a'), ('5', 'doc.b'), ('10', 'doc.c'), ('15', 'doc.d')]
+        output_types = ['1', '5', '10', '15']
+        keylookup = DataTransform(input_types, output_types)
+
+        # set th id_priority_list using the setter and verify that
+        # that input_types and output_types are in the correct order.
+        keylookup.id_priority_list = ['10', '1']
+
+        # the resulting order for both lists should be 10, 1, 5, 15
+        # - 10, and 1 are brought to the beginning of the list
+        # - and the order of 5 and 15 remains the same
+        self.assertEqual(keylookup.input_types[0][0], '10')
+        self.assertEqual(keylookup.input_types[1][0], '1')
+        self.assertEqual(keylookup.input_types[2][0], '5')
+        self.assertEqual(keylookup.input_types[3][0], '15')
+        self.assertEqual(keylookup.output_types[0], '10')
+        self.assertEqual(keylookup.output_types[1], '1')
+        self.assertEqual(keylookup.output_types[2], '5')
+        self.assertEqual(keylookup.output_types[3], '15')
 
