@@ -279,11 +279,19 @@ class DataTransform(object):
         :param f: function to apply to
         :param debug: Enable debugging information.
         :type debug: bool
+        :param debug: Enable debugging information.  When enabled, debugging information
+                      will be retained in the 'dt_debug' field of each document.  This parameter
+                      can be either list of original id's to retain debugging information for or
+                      a True, which will retain debugging information for all documents.
+        :type debug: bool or list(str)
         :return:
         """
         # additional handling for the debug option
         if not debug:
             self.debug = False
+        elif debug == True:
+            self.debug = True
+            self.logger.debug("DataTransform Debug Mode Enabled for all documents.")
         elif isinstance(debug, list):
             self.logger.debug("DataTransform Debug Mode:  {}".format(debug))
             self.debug = debug
@@ -295,9 +303,10 @@ class DataTransform(object):
             for batchiter in iter_n(input_docs, int(self.batch_size / len(self.input_types))):
                 output_docs = self.key_lookup_batch(batchiter)
                 for odoc in output_docs:
-                    # print debug information if available
-                    if self.debug and 'dt_debug' in odoc:
-                        self.logger.debug("DataTransform Debug doc['dt_debug']:  {}".format(odoc['dt_debug']))
+                    # print debug information if the original id is the in the debug list
+                    if 'dt_debug' in odoc:
+                        if isinstance(self.debug, list) and odoc['dt_debug']['orig_id'] in self.debug:
+                            self.logger.debug("DataTransform Debug doc['dt_debug']:  {}".format(odoc['dt_debug']))
                     output_doc_cnt += 1
                     yield odoc
             self.logger.info("wrapped_f Num. output_docs:  {}".format(output_doc_cnt))

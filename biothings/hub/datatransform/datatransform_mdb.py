@@ -146,9 +146,6 @@ class DataTransformMDB(DataTransform):
         :type idstruct_class: class
         :param copy_from_doc: If true then an identifier is copied from the input source document regardless as to weather it matches an edge or not. (advanced usage)
         :type copy_from_doc: bool
-        :param debug: Enable debugging information.  When enabled, debugging information
-               will be retained in the 'dt_debug' field of each document.
-        :type debug: bool
         """
         if not isinstance(G, nx.DiGraph):
             raise ValueError("key_lookup configuration error:  G must be of type nx.DiGraph")
@@ -219,7 +216,7 @@ class DataTransformMDB(DataTransform):
         for doc in batchiter:
             # in debug mode, skip all documents not in the debug list
             if self.debug:
-                if doc['_id'] in self.debug:
+                if self.debug == True or doc['_id'] in self.debug:
                     # set debug information
                     doc['dt_debug'] = {'orig_id': doc['_id']}
                     doc_lst.append(doc)
