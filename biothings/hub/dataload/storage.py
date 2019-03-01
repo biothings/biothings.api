@@ -86,6 +86,8 @@ class BasicStorage(BaseStorage):
                     # print the keylookup debug information if it is available
                     if 'dt_debug' in we['op'].keys():
                         self.logger.error("BulkWriteError KeyLookup Information:  {}".format(we['op']['dt_debug']))
+                # this is a serious error, so we raise
+                raise StorageException("BulkWriteError - likely duplicate key without reciprocal matching on insert.")
             total += len(doc_li)
         self.logger.info('Done[%s]' % timesofar(t0))
 
