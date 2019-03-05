@@ -92,10 +92,21 @@ class TargetDocBackend(DocBackendBase):
         """
         self._target_name = target_name or self.generate_target_name(build_name)
 
+    @property
+    def target_name(self):
+        return self._target_name
+
     def generate_target_name(self,build_config_name):
         assert not build_config_name is None
         return '{}_{}_{}'.format(build_config_name,
                                          get_timestamp(), get_random_string()).lower()
+
+    def get_backend_url(self):
+        """
+        Return backend URL (see create_backend() for formats)
+        """
+        # default is a collection in target database
+        return self._target_name
 
     def post_merge(self):
         pass
@@ -143,13 +154,13 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             # in order to resolve/map main/sub source name
             subsrc_versions = []
             if src and src.get("upload"):
-                meta = []
+                meta = {}
                 for job_name in src["upload"].get("jobs",{}):
                     job = src["upload"]["jobs"][job_name]
                     # "step" is the actual sub-source name
                     docm  = self.master.find_one({"_id":job.get("step")})
                     if docm and docm.get("src_meta"):
-                        meta.append(docm["src_meta"])
+                        meta[job.get("step")] = docm["src_meta"]
                 # when more than 1 sub-sources, we can have different version in sub-sources
                 # (not normal) if one sub-source uploaded, then dumper downloaded a new version,
                 # then the other sub-source uploaded that version. This should never happen, just make sure
@@ -157,18 +168,32 @@ class SourceDocMongoBackend(SourceDocBackendBase):
                                   for job in src["upload"].get("jobs",{}).values()]
                 assert len(set([s["version"] for s in subsrc_versions])) == 1, "Expecting one version " + \
                         "in upload sub-sources for main source '%s' but got: %s" % (src["_id"],subsrc_versions)
-                # we'll make sure to have the same src_meta at main source level,
-                # whatever we have at sub-source level. In other words, if a main source
-                # has multiple sub-sources, there should be only src metadata anyway
+                # usually, url & license are the same wathever the sub-sources are. They are
+                # share common metadata, and we don't want them to be repeated for each sub-sources.
+                # but, code key is always different for instance and must specific for each sub-sources
+                # here we make sure to factor common keys, while the specific ones at sub-level
                 if len(meta) > 1:
-                    first = meta[0]
-                    assert set([e == first for e in meta[1:]]) == {True}, \
-                        "Source '%s' has different metadata declared in its sub-sources" % src["_id"]
-                # now we can safely merge src_meta
-                if meta:
-                    first = meta[0]
-                    for k,v in first.items():
+                    common = {}
+                    any = list(meta)[0]
+                    topop = [] # common keys
+                    for anyk in meta[any]:
+                        if len({meta[s].get(anyk) == meta[any][anyk] for s in meta}) == 1:
+                            topop.append(anyk)
+                    for k in topop:
+                        common[k] = meta[any][k]
+                        [meta[subname].pop(k,None) for subname in meta]
+
+                    for k,v in common.items():
                         src_meta.setdefault(src["_id"],{}).setdefault(k,v)
+                    for subname in meta:
+                        for k,v in meta[subname].items():
+                            src_meta.setdefault(src["_id"],{}).setdefault(k,{}).setdefault(subname,v)
+                # we have metadata, but just one (ie. no sub-source), don't display it
+                elif meta:
+                    assert len(meta) == 1
+                    subname,metad = meta.popitem()
+                    for k,v in metad.items():
+                            src_meta.setdefault(src["_id"],{}).setdefault(k,v)
             if subsrc_versions:
                 version = subsrc_versions[0]["version"]
                 src_version[src['_id']] = version
@@ -183,6 +208,33 @@ class TargetDocMongoBackend(TargetDocBackend,DocMongoBackend):
     def set_target_name(self,target_name=None, build_name=None):
         super(TargetDocMongoBackend,self).set_target_name(target_name,build_name)
         self.target_collection = self.target_db[self._target_name]
+
+
+class LinkTargetDocMongoBackend(TargetDocBackend):
+    """
+    This backend type act as a dummy target backend, the data
+    is actually stored in source database. It means only one
+    datasource can be linked to that target backend, as a consequence,
+    when this backend is used in a merge, there's no actual data 
+    merge. This is useful when "merging/indexing" only one datasource,
+    where the merge step is just a duplication of datasource data.
+    """
+    name = 'link'
+
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        # will be set later by LinkDataBuilder, should be the name
+        # of the datasource in src database
+        self.datasource_name = None
+
+    def get_backend_url(self):
+        assert self.datasource_name
+        return ("src",self.datasource_name)
+
+    def drop(self):
+        # nothing to drop we don't store data
+        # but needs to be implemented
+        pass
 
 
 def create_backend(db_col_names,name_only=False,**kwargs):

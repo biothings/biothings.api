@@ -81,7 +81,10 @@ class BaseSyncer(object):
         diff_key = "%s-%s" % (self.old.target_name,self.new.target_name)
         # once in diff, select correct sync sub-record (1 diff can be applied to different backend)
         # replace dots as hostname can have dots which could be interpreted as dotted field by mongo
-        sync_key = "-".join(self.target_backend).replace(".","-")
+        # also remove doc_type (which can be sometimes None if hub deals with multiple APIs, 
+        # and is not useful in distinguishing where the diff was applid since there's only one
+        # doc type allowed now since ES6 (last element in self.target_backend is doc_type)
+        sync_key = "-".join(self.target_backend[:-1]).replace(".","-")
         sync_info = {sync_key : {}}
         if transient:
             # record some "in-progress" information

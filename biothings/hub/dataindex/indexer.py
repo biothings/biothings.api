@@ -26,8 +26,7 @@ from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
 
 
 def new_index_worker(col_name,ids,pindexer,batch_num):
-        tgt = mongo.get_target_db()
-        col = tgt[col_name]
+        col = create_backend(col_name).target_collection
         idxer = pindexer()
         cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}})
         cnt = idxer.index_bulk(cur)
@@ -35,8 +34,7 @@ def new_index_worker(col_name,ids,pindexer,batch_num):
 
 
 def merge_index_worker(col_name,ids,pindexer,batch_num):
-        tgt = mongo.get_target_db()
-        col = tgt[col_name]
+        col = create_backend(col_name).target_collection
         idxer = pindexer()
         upd_cnt = 0
         new_cnt = 0
@@ -222,8 +220,8 @@ class IndexerManager(BaseManager):
         """
         t0 = time.time()
         def indexed(f):
-            res = f.result()
             try:
+                res = f.result()
                 self.logger.info("Done indexing target '%s' to index '%s': %s" % (target_name,index_name,res))
             except Exception as e:
                 self.logger.exception("Error while running index job, %s" % e)
@@ -598,8 +596,14 @@ class Indexer(object):
 
         if "index" in steps:
             self.register_status("indexing",transient=True,init=True,job={"step":"index"})
-            _db = mongo.get_target_db()
-            target_collection = _db[target_name]
+            assert self.build_doc.get("backend_url")
+            if self.build_doc.get("backend_url"):
+                target_collection = create_backend(self.build_doc["backend_url"]).target_collection
+                backend_url = self.build_doc["backend_url"]
+            else:
+                _db = mongo.get_target_db()
+                target_collection = _db[target_name]
+                backend_url = target_name # ie. a collection in target db
             _mapping = self.get_mapping()
             _extra = self.get_index_creation_settings()
             _meta = {}
@@ -622,7 +626,13 @@ class Indexer(object):
                     raise IndexerException(msg)
 
             if not mode in ["resume","merge"]:
-                es_idxer.create_index({self.doc_type:_mapping},_extra)
+                try:
+                    es_idxer.create_index({self.doc_type:_mapping},_extra)
+                except Exception as e:
+                    self.logger.exception("Failed to create index")
+                    self.register_status("failed",job={"err": repr(e)})
+                    raise
+
 
             def clean_ids(ids):
                 # can't use a generator, it's going to be pickled
@@ -669,7 +679,7 @@ class Indexer(object):
                 job = yield from job_manager.defer_to_process(
                         pinfo,
                         partial(indexer_worker,
-                            self.target_name,
+                            backend_url,
                             ids,
                             partial_idxer,
                             bnum,
@@ -978,8 +988,8 @@ class ColdHotIndexer(Indexer):
                     # compute overall inserted/updated records
                     cnt = sum(res.values())
                     self.register_status("success",job={"step":"index"},index={"count":cnt})
-                    self.logger.info("index '%s' successfully created" % index_name,extra={"notify":true})
-                except exception as e:
+                    self.logger.info("index '%s' successfully created" % index_name,extra={"notify":True})
+                except Exception as e:
                     logging.exception("failed indexing cold/hot collections: %s" % e)
                     got_error = e
                     raise

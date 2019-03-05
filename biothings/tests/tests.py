@@ -4,7 +4,6 @@ Nose tests
 run as "nosetests tests"
     or "nosetests tests:test_main"
 '''
-import httplib2
 try:
     from urllib.parse import urlencode
 except ImportError:
@@ -18,19 +17,22 @@ try:
 except ImportError:
     from urllib import quote_plus
 import json
-import sys
 import os
 import re
-import requests
+import sys
 import unittest
+from functools import wraps
+
+import requests
+
+from biothings.tests.settings import BiothingTestSettings
+from biothings.tests.test_helper import (BiothingsTestCase,
+                                         parameterized, parameters)
+
 try:
     import msgpack
 except ImportError:
     sys.stderr.write("Warning: msgpack is not available.")
-from biothings.tests.settings import BiothingTestSettings
-from biothings.tests.test_helper import BiothingTestHelperMixin
-from biothings.tests.test_helper import parameters, parameterized
-from functools import wraps
 
 if sys.version_info.major >= 3:
     PY3 = True
@@ -52,7 +54,7 @@ except:
 PATTR = '%values'
 
 @parameterized
-class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
+class BiothingGenericTests(BiothingsTestCase):
     __test__ = False # don't run nosetests on this class directly
 
     # Make these class variables so that tornadorequesthelper plays nice.    
@@ -61,7 +63,6 @@ class BiothingTests(unittest.TestCase, BiothingTestHelperMixin):
         host = bts.NOSETEST_DEFAULT_URL
     host = host.rstrip('/')
     api = host + '/' + bts.API_VERSION
-    h = httplib2.Http()
 
     # Setup/tear down class for unittest
     @classmethod

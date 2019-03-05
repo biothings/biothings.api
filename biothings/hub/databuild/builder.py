@@ -14,9 +14,11 @@ import aiocron
 from .mapper import TransparentMapper
 from ..dataload.uploader import ResourceNotReady
 from .differ import set_pending_to_diff
-from ..databuild.backend import SourceDocMongoBackend, TargetDocMongoBackend
+from ..databuild.backend import SourceDocMongoBackend, TargetDocMongoBackend, \
+                                LinkTargetDocMongoBackend
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
-                                   dump, rmdashfr, loadobj, open_compressed_file
+                                   dump, rmdashfr, loadobj, open_compressed_file, \
+                                   get_class_from_classpath
 from biothings.utils.mongo import doc_feeder, id_feeder
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager, ManagerError
@@ -46,6 +48,8 @@ class DataBuilder(object):
         self.build_name = build_name
         self.sources = sources
         self.target_name = target_name
+        self._partial_source_backend = None
+        self._partial_target_backend = None
         if type(source_backend) == partial:
             self._partial_source_backend = source_backend
         else:
@@ -128,8 +132,10 @@ class DataBuilder(object):
             for k in self._state:
                 self._state[k] = state[k]
             return
-        self._state["source_backend"] = self._partial_source_backend()
-        self._state["target_backend"] = self._partial_target_backend()
+        if self._partial_source_backend:
+            self._state["source_backend"] = self._partial_source_backend()
+        if self._partial_target_backend:
+            self._state["target_backend"] = self._partial_target_backend()
         self.setup()
         self.setup_log()
         self.prepared = True
@@ -220,10 +226,13 @@ class DataBuilder(object):
         src_build_config = self.source_backend.build_config
         all_sources = self.build_config.get("sources",[])
         target_name = "%s" % self.target_backend.target_name
+        backend_url = self.target_backend.get_backend_url()
         build_info = {
                 '_id' : target_name,
+                # TODO: deprecate target_backend & target_name, use backed_url instead
                 'target_backend': self.target_backend.name,
                 'target_name': target_name,
+                'backend_url' : backend_url,
                 'build_config': self.build_config,
                 # these are all the sources required to build target
                 # (not just the ones being processed, those are registered in jobs
@@ -472,14 +481,14 @@ class DataBuilder(object):
         if target_name:
             self.target_backend.set_target_name(target_name)
         else:
-            target_name = self.target_backend.target_collection.name
+            target_name = self.target_backend.target_name
         self.target_name = target_name
 
         self.custom_metadata = {}
 
         self.clean_old_collections()
 
-        self.logger.info("Merging into target collection '%s'" % self.target_backend.target_collection.name)
+        self.logger.info("Merging into target collection '%s'" % self.target_backend.target_name)
         strargs = "[sources=%s,target_name=%s]" % (sources,target_name)
 
         try:
@@ -510,6 +519,7 @@ class DataBuilder(object):
                             src_build = self.source_backend.build
                             build = src_build.find_one({'_id': target_name})
                             _meta = {
+                                    "biothing_type" : build["build_config"]["doc_type"],
                                     "src_version" : self.src_versions,
                                     "src" : self.src_meta,
                                     "stats" : self.stats,
@@ -779,6 +789,23 @@ class DataBuilder(object):
         pass
 
 
+class LinkDataBuilder(DataBuilder):
+
+    def __init__(self, build_name, source_backend, target_backend, *args, **kwargs):
+
+        super().__init__(build_name, source_backend, 
+                         target_backend=partial(LinkTargetDocMongoBackend),*args, **kwargs)
+        conf = self.source_backend.get_build_configuration(self.build_name)
+        assert len(conf["sources"]) == 1, \
+                "Found more than one source to link, not allowed: %s" % conf["sources"]
+        assert hasattr(self.target_backend,"datasource_name")
+        self.target_backend.datasource_name = conf["sources"][0]
+
+    @asyncio.coroutine
+    def merge_source(self, src_name, *args, **kwargs):
+        total = self.source_backend[src_name].count()
+        return {"%s" % src_name : total}
+
 from biothings.utils.backend import DocMongoBackend
 
 def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,merger,batch_num):
@@ -861,6 +888,24 @@ class BuilderManager(BaseManager):
                         target_db=partial(mongo.get_target_db))
         return target_backend
 
+    def get_builder_class(self,build_config_name):
+        """
+        builder class can be specified different way (in order):
+        1. within the build_config document (so, per configuration)
+        2. or defined in the builder manager (so, per manager)
+        3. or default to DataBuilder
+        """
+        builder_class = None
+        conf = self.src_build_config.find_one({"_id":build_config_name})
+        if conf.get("builder_class"):
+            builder_class = get_class_from_classpath(conf["builder_class"])
+        elif self.builder_class:
+            builder_class = self.builder_class
+        else:
+            builder_class = DataBuilder
+
+        return builder_class
+
 
     def register_builder(self,build_name):
         # will use partial to postponse object creations and their db connection
@@ -871,7 +916,8 @@ class BuilderManager(BaseManager):
             # before actual call time
             from biothings import config
             # assemble the whole
-            klass = self.builder_class and self.builder_class or DataBuilder
+            klass = self.get_builder_class(build_name)
+            self.logger.info("Build config '%s' will use builder class %s",build_name,klass)
             bdr = klass(
                     build_name,
                     source_backend=self.source_backend,
@@ -887,7 +933,7 @@ class BuilderManager(BaseManager):
         if not doc:
             raise BuilderException("No such build named '%s'" % repr(col_name))
         assert "build_config" in doc, "Expecting build_config information"
-        klass = self.builder_class and self.builder_class or DataBuilder
+        klass = self.get_builder_class(doc["build_config"]["name"])
         bdr = klass(
                 doc["build_config"]["name"],
                 source_backend=self.source_backend,
@@ -1035,7 +1081,7 @@ class BuilderManager(BaseManager):
             # do this for all build configs
             dbbuildconfig = get_src_build_config()
             configs = {}
-            for d in dbbuildconfig.find():
+            for d in dbbuildconfig.find({"archived" : {"$exists" : 0}}):
                 try:
                     news = whatsnewcomparedto(d["_id"])
                     if news[d["_id"]]["sources"]:
