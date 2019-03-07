@@ -88,21 +88,8 @@ def track(func):
             exc = e
         finally:
             if pidfile and os.path.exists(pidfile):
-                pass
-                # move to "done" dir and register end of execution time 
-                os.rename(pidfile,os.path.join(config.RUN_DIR,"done",os.path.basename(pidfile)))
-                pidfile = os.path.join(config.RUN_DIR,"done",os.path.basename(pidfile))
-                worker = pickle.load(open(pidfile,"rb"))
-                worker["duration"] = timesofar(worker["job"]["started_at"])
-                worker["err"] = exc
-                worker["trace"] = trace
-                # try to keep original exception, but this may fail depending on
-                # what's in the exception. If we can't, keep the string representation
-                try:
-                    pickle.dump(worker,open(pidfile,"wb"))
-                except Exception:
-                    worker["err"] = str(exc)
-                    pickle.dump(worker,open(pidfile,"wb"))
+                logger.debug("Remove PID file '%s'" % pidfile)
+                os.unlink(pidfile)
         # now raise original exception
         if exc:
             raise exc
@@ -353,9 +340,6 @@ class JobManager(object):
         self.max_memory_usage = max_memory_usage
         self.avail_memory = int(psutil.virtual_memory().available)
         self._phub = None
-        donedir = os.path.join(config.RUN_DIR,"done")
-        if not os.path.exists(donedir):
-            os.makedirs(donedir)
         self.clean_staled()
         self.auto_recycle = auto_recycle # active
         self.auto_recycle_setting = auto_recycle # keep setting if we need to restore it its orig value
@@ -888,33 +872,6 @@ class JobManager(object):
 
         return "\n".join(out)
 
-
-    def get_dones(self, jobs=None, purge=True):
-        if jobs is None:
-            jobs = glob.glob(os.path.join(config.RUN_DIR,"done","*.pickle"))
-        if jobs:
-            jfiles_workers = [(jfile,pickle.load(open(jfile,"rb"))) for jfile in jobs]
-            # sort by start time
-            jfiles_workers = sorted(jfiles_workers,key=lambda e: e[1]["job"]["started_at"])
-            out = []
-            for jfile,worker in jfiles_workers:
-                info = self.extract_worker_info(worker)
-                # format start time
-                tt = datetime.datetime.fromtimestamp(info["started_at"]).timetuple()
-                info["started_at"] = time.strftime("%Y/%m/%d %H:%M:%S",tt)
-                # filling the gaps so we can display using the same code
-                info["mem"] = ""
-                info["cpu"] = ""
-                try:
-                    out.append(self.__class__.DATALINE.format(**info))
-                except (TypeError, KeyError) as e:
-                    out.append(e)
-                    out.append(pformat(info))
-                if purge:
-                    os.unlink(jfile)
-
-            return "\n".join(out)
-
     def top(self, action="summary"):
         pending = False
         done = False
@@ -936,8 +893,6 @@ class JobManager(object):
             return pworkers[child.pid]
         elif action == "pending":
             return self.show_pendings(running=len(pworkers))
-        elif action == "done":
-            return self.get_dones(done_jobs)
         elif action == "summary":
             res = self.get_summary()
             pworkers = dict([(pid,proc) for pid,proc in res["process"]["all"].items() if pid in res["process"]["running"]])

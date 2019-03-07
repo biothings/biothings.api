@@ -23,7 +23,6 @@ from biothings.utils.loggers import get_logger
 
 # useful variables to bring into hub namespace
 pending = "pending"
-done = "done"
 
 HUB_ENV = hasattr(config,"HUB_ENV") and config.HUB_ENV or "" # default: prod (or "normal")
 VERSIONS = HUB_ENV and "%s-versions" % HUB_ENV or "versions"
@@ -97,7 +96,7 @@ class HubShell(InteractiveShell):
                 else:
                     self.commands[name] = cmd
                     self.hidden[name] = hidden
-                # update original passed commands to caller knows what's been done therz
+                # update original passed commands to caller knows what's been done there
                 if not name in basic_commands:
                     basic_commands[name] = cmd
         # update with ssh server default commands
