@@ -6,7 +6,7 @@ import logging
 
 from biothings import config
 from biothings.utils.loggers import get_logger
-from biothings.utils.hub import HubShell, HubReloader, CommandDefinition, pending, done, \
+from biothings.utils.hub import HubShell, HubReloader, CommandDefinition, pending, \
                                 AlreadyRunningException, CommandError
 from biothings.utils.jsondiff import make as jsondiff
 
@@ -517,7 +517,6 @@ class HubServer(object):
         self.extra_commands["sch"] = CommandDefinition(command=partial(schedule,loop),tracked=False)
         # expose contant so no need to put quotes (eg. top(pending) instead of top("pending")
         self.extra_commands["pending"] = CommandDefinition(command=pending,tracked=False)
-        self.extra_commands["done"] = CommandDefinition(command=done,tracked=False)
         self.extra_commands["loop"] = CommandDefinition(command=loop,tracked=False)
 
         if self.managers.get("source_manager"):
