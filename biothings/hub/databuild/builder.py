@@ -1126,11 +1126,12 @@ class BuilderManager(BaseManager):
                     "source_backend" : {
                         "type" : builder.source_backend.__class__.__name__,
                         "source_db" : builder.source_backend.sources.client.address,
-                    },
+                        },
                     "target_backend" : {
                         "type" : builder.source_backend.__class__.__name__,
                         "target_db" : builder.target_backend.target_db.client.address
-                    }
+                        },
+                    "archived" : "archived" in builder.build_config
                     }
             res[name]["mapper"] = {}
             for mappername,mapper in builder.mappers.items():
