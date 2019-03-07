@@ -67,7 +67,7 @@ class ESQueryBuilder(object):
     :param userquery_dir: The directory containing user queries for this app
     :param default_scopes: A list representing the default Elasticsearch query scope(s) for this query'''
     def __init__(self, index, doc_type, options, es_options, scroll_options={}, 
-                       userquery_dir='', regex_list=[], default_scopes=['_id']):
+                       userquery_dir='', regex_list=[], default_scopes=['_id'], allow_random_query=False):
         self.index = index
         self.doc_type = doc_type
         self.options = options
@@ -77,6 +77,7 @@ class ESQueryBuilder(object):
         self.userquery_dir = userquery_dir
         self.default_scopes = default_scopes
         self.queries = ESQueries(es_options)
+        self.allow_random_query = allow_random_query
 
     def _return_query_kwargs(self, query_kwargs):
         _kwargs = {"index": self.index, "doc_type": self.doc_type}
@@ -218,7 +219,7 @@ class ESQueryBuilder(object):
             _query = self._user_query(q)
         elif self._is_match_all(q):
             _query = self._match_all(q)
-        elif self._is_random_query(q):
+        elif self._is_random_query(q) and self.allow_random_query:
             _query = self._random_query(q)
         else:
             _query = self._extra_query_types(q)
