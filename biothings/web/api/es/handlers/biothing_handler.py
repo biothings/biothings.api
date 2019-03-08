@@ -55,7 +55,11 @@ class BiothingHandler(BaseESRequestHandler):
         ###################################################
 
         # get kwargs from query and sanitize them
-        kwargs = self.get_query_params()
+        try:
+            kwargs = self.get_query_params()
+        except BiothingParameterTypeError as e:
+            self._return_data_and_track({'success': False, 'error': "{0}".format(e)}, ga_event_data={'qsize': 0}, status_code=400)
+            return
         
         ###################################################
         #           Split kwargs into categories    
