@@ -19,9 +19,13 @@
                     <i class="configure icon"></i>
                     <i class="huge corner add icon"></i>
                 </i>
-                <br>
-                <br>
                 <div>New configuration</div>
+            </a>
+            <a class="item" v-on:click="toggleShowArchivedConfigs">
+                <i class="big icons">
+                    <i class="archive icon"></i>
+                </i>
+                <div>{{include_archived_configs ? "Hide" : "Show"}}  archived configurations</div>
             </a>
         </div>
         <div class="pusher">
@@ -261,7 +265,8 @@ export default {
         return  {
             builds: [],
             sources : [],
-            build_configs: {},
+            all_build_configs: {}, // from API
+            build_configs: {}, // displayed
             errors: [],
             build_colors : {},
             // build colors for easy visual id
@@ -269,6 +274,7 @@ export default {
             color_idx : 0,
             conf_filter : "",
             only_archived : false,
+            include_archived_configs: false
         }
     },
     components: { Build, },
@@ -301,27 +307,34 @@ export default {
                 this.loaderror(err);
             })
         },
+        setBuildConfigs: function() {
+            this.build_configs = {};
+            // make sure we always give the same color for a given build config
+            var keys = Object.keys(this.all_build_configs);
+            for(var k in keys) {
+                if(!this.include_archived_configs && this.all_build_configs[keys[k]]["archived"])
+                    continue;
+                this.build_configs[keys[k]] = this.all_build_configs[keys[k]];
+            }
+        },
         getBuildConfigs: function() {
             var self = this;
             // reset colors (if configs haven't changed we should get the same colors
             // as we sort the build config by name)
-            self.color_idx = 0;
             self.build_colors = {};
+            self.color_idx = 0;
             this.loading();
             axios.get(axios.defaults.baseURL + '/build_manager')
             .then(response => {
-                self.build_configs = response.data.result;
-                // make sure we always give the same color for a given build config
-                var keys = Object.keys(self.build_configs);
-                console.log(keys);
-                keys.sort();
+                self.all_build_configs = response.data.result;
+                var keys = Object.keys(self.all_build_configs);
                 for(var k in keys) {
-                    console.log(keys[k]);
                     self.build_colors[keys[k]] = self.colors[self.color_idx++];
                     if(self.color_idx + 1 >= Object.keys(self.colors).length) {
                         self.color_idx = 0;
                     }
                 }
+                self.setBuildConfigs();
                 this.loaded();
             })
             .catch(err => {
@@ -514,6 +527,10 @@ export default {
             this.conf_filter = "";
             this.getBuilds();
         },
+        toggleShowArchivedConfigs: function() {
+            this.include_archived_configs = !this.include_archived_configs;
+            this.setBuildConfigs();
+        }
     }
 }
 </script>
