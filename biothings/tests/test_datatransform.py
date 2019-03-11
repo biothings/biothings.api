@@ -139,9 +139,14 @@ class TestDataTransform(unittest.TestCase):
 
         # Check for expected keys
         # There are 2 branches along the document path
-        self.assertEqual(res_lst[0]['_id'], 'c:1234')
-        self.assertEqual(res_lst[1]['_id'], 'c:01')
-        self.assertEqual(res_lst[2]['_id'], 'c:02')
+        answer_lst = []
+        answer_lst.append(res_lst[0]['_id'])
+        answer_lst.append(res_lst[1]['_id'])
+        answer_lst.append(res_lst[2]['_id'])
+
+        self.assertTrue('c:1234' in answer_lst)
+        self.assertTrue('c:01' in answer_lst)
+        self.assertTrue('c:02' in answer_lst)
 
     def test_input_types(self):
         """

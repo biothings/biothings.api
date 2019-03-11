@@ -48,20 +48,21 @@ class IDStruct(object):
             left = [left]
         if not type(right) in [list,tuple]:
             right = [right]
+        # These two blocks collapse duplicates in a list of keys
         if type(left) == list:
-            left = tuple(left)
+            left = set(left)
         if type(right) == list:
-            right = tuple(right)
+            right = set(right)
         for v in left:
             if v not in self.forward.keys():
                 self.forward[v] = right
             else:
-                self.forward[v] = self.forward[v] + right
+                self.forward[v] = self.forward[v] | right
         for v in right:
             if v not in self.inverse.keys():
                 self.inverse[v] = left
             else:
-                self.inverse[v] = self.inverse[v] + left
+                self.inverse[v] = self.inverse[v] | left
 
     def __iadd__(self, other):
         """object += additional, which combines lists"""
@@ -113,7 +114,7 @@ class IDStruct(object):
     def find(self,where,ids):
         if not ids:
             return
-        if not type(ids) in (list,tuple):
+        if not type(ids) in (set, list, tuple):
             ids = [ids]
         for id in ids:
             if id in where.keys():
@@ -137,6 +138,14 @@ class IDStruct(object):
             left = left.lower()
         if is_str(right):
             right = right.lower()
+        # remove duplicates in the debug structure
+        # - duplicates in the structure itself are
+        # - handled elsewhere
+        if isinstance(right, list):
+            right = list(set(right))
+            # if there is only one element in the list, collapse
+            if len(right) == 1:
+                right = right.pop()
         # capture the label if it is used
         if label:
             right = (label, right)
@@ -150,6 +159,8 @@ class IDStruct(object):
         if is_str(key):
             key = key.lower()
         # return debug information
+        if isinstance(key, list):
+            return 'type(list)'
         try:
             return self.debug[key]
         except KeyError:
