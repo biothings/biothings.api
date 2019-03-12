@@ -75,19 +75,7 @@ class BasicStorage(BaseStorage):
         t0 = time.time()
         total = 0
         for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=batch_size):
-            try:
-                self.temp_collection.insert_many(doc_li, ordered=False)
-            except BulkWriteError as bwe:
-                # TODO:  Write logic for reciprocal key matching
-                # - currently these should be considered serious errors
-                self.logger.error("BulkWriteError - likely duplicate key without reciprocal matching on insert.")
-                for we in bwe.details['writeErrors']:
-                    self.logger.error("BulkWriteError Duplicate Key:  {}".format(we['op']['_id']))
-                    # print the keylookup debug information if it is available
-                    if 'dt_debug' in we['op'].keys():
-                        self.logger.error("BulkWriteError KeyLookup Information:  {}".format(we['op']['dt_debug']))
-                # this is a serious error, so we raise
-                raise StorageException("BulkWriteError - likely duplicate key without reciprocal matching on insert.")
+            self.temp_collection.insert(doc_li, manipulate=False, check_keys=False)
             total += len(doc_li)
         self.logger.info('Done[%s]' % timesofar(t0))
 
