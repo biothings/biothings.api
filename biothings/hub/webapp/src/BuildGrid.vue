@@ -8,13 +8,13 @@
                 <div :class="['ui', build_colors[conf_name], 'empty circular label']"></div>
                 {{conf_name}}
                 <div class="ui inverted menu">
-                    <div class="item":conf-name="conf_name" @click="newBuild($event)"><i class="cube icon"></i> Create new build</div>
-                    <!--div class="item":conf-name="conf_name"><i class="edit outline icon"></i> Edit configuration</div-->
+                    <div class="item" :conf-name="conf_name" @click="newBuild($event)"><i class="cube icon"></i> Create new build</div>
+                    <div class="item" :conf-name="conf_name" @click="editConfiguration($event)"><i class="edit outline icon"></i> Edit configuration</div>
                     <div class="item" :conf-name="conf_name" @click="deleteConfiguration($event)"><i class="trash alternate outline icon"></i> Delete configuration</div>
                 </div>
             </a>
             <div class="item"><i>Other actions</i></div>
-            <a class="item"  v-on:click="createNewConfiguration">
+            <a class="item"  v-on:click="createConfiguration">
                 <i class="big icons">
                     <i class="configure icon"></i>
                     <i class="huge corner add icon"></i>
@@ -65,13 +65,13 @@
         </div>
 
         <!-- create new build configuration -->
-        <div class="ui basic newconfiguration modal">
+        <div class="ui basic buildconfiguration modal">
             <h3 class="ui icon">
                 <i class="configure icon"></i>
                 Create/edit build configuration
             </h3>
             <div class="content">
-                <div class="ui newconfiguration form">
+                <div class="ui buildconfiguration form">
                     <div class="ui centered grid">
                         <div class="eight wide column">
 
@@ -93,10 +93,17 @@
                             <br>
 
                             <label>Once sources are selected, choose sources providing root documents</label>
-                            <select class="ui fluid rootsources dropdown" multiple="">
+                            <select class="ui fluid rootsources dropdown" id="root_sources" multiple="">
                                 <option value="">Root sources</option>
                             </select>
                             <br>
+
+                            <label>Remove this configuration from list by default</label>
+                            <div><i>You can still access it by clicking on "show/hide archived configuration" in the menu on the side</i></div>
+                            <div class="ui checkbox">
+                              <input type="checkbox" name="archive_conf">
+                              <label class="white">Archive</label>
+                            </div>
 
 
                         </div>
@@ -201,9 +208,9 @@ export default {
         console.log("BuildGrid mounted");
         $('.ui.filterbuilds.dropdown').dropdown();
         $('.ui.buildconfigs.dropdown').dropdown();
+        $('.ui.rootsources.dropdown').dropdown();
         $('.ui.sources.dropdown').dropdown({
             onChange: function(addedValue, addedText, $addedChoice) {
-                console.log(addedValue);console.log(addedText);
                 var selected_sources = $('.ui.sources.dropdown').dropdown('get value');
                 var fmt = []
                 for(var i in selected_sources) {
@@ -211,6 +218,7 @@ export default {
                     var d = {"name":x,"text":x,"value":x};
                     fmt.push(d);
                 }
+                $('.ui.rootsources.dropdown').dropdown("clear");
                 $('.ui.rootsources.dropdown').dropdown("setup menu",{"values" : fmt}).dropdown("refresh");
             },
         });
@@ -233,7 +241,7 @@ export default {
         this.getSourceList();
         // builds & configs
         this.getBuildConfigs();
-        this.getBuilds();
+        //this.getBuilds();
         bus.$on('change_source',this.onSourceChanged);
         bus.$on('change_build',this.onBuildChanged);
         bus.$on('change_build_config',this.onBuildConfigChanged);
@@ -244,7 +252,7 @@ export default {
         // modal displayed when getting back to that page. https://github.com/Semantic-Org/Semantic-UI/issues/4049
         $('.ui.basic.deleteconf.modal').remove();
         $('.ui.basic.newbuild.modal').remove();
-        $('.ui.basic.newconfiguration.modal').remove();
+        $('.ui.basic.buildconfiguration.modal').remove();
         bus.$off('change_source',this.onSourceChanged);
         bus.$off('change_build',this.onBuildChanged);
         bus.$off('change_build_config',this.onBuildConfigChanged);
@@ -274,11 +282,25 @@ export default {
             color_idx : 0,
             conf_filter : "",
             only_archived : false,
-            include_archived_configs: false
+            include_archived_configs: false,
         }
+    },
+    computed: {
     },
     components: { Build, },
     methods: {
+        updateRootSources: function() {
+            var avail_roots = $(".ui.buildconfiguration.form").form('get field', "selected_sources").val();
+            $('#root_sources').dropdown("clear");
+            $('#root_sources').empty();
+            $.each(avail_roots, function(i) {
+                var val = avail_roots[i];
+                $('#root_sources').append(
+                    $('<option></option>').val(val).html(val)
+                );
+            });
+            $('#root_sources').dropdown().dropdown("refresh");
+        },
         getBuilds: function() {
             var filter = this.conf_filter == "" ? '' : `?conf_name=${this.conf_filter}`;
             // https://vuejs.org/v2/guide/list.html#Caveats:
@@ -312,7 +334,7 @@ export default {
             // make sure we always give the same color for a given build config
             var keys = Object.keys(this.all_build_configs);
             for(var k in keys) {
-                if(!this.include_archived_configs && this.all_build_configs[keys[k]]["archived"])
+                if(!this.include_archived_configs && this.all_build_configs[keys[k]].build_config["archived"])
                     continue;
                 this.build_configs[keys[k]] = this.all_build_configs[keys[k]];
             }
@@ -378,17 +400,14 @@ export default {
             this.getSourceList();
         },
         onBuildChanged: function(_id=null, op=null) {
-            //console.log(`_id ${_id} op ${op}`);
             if(_id == null) {
                 console.log("Refreshing builds");
                 this.getBuilds();
             } else {
                 if(this.buildExists(_id)) {
                     // there's an ID for an existing build, propagate
-                    //console.log(`emit build_updated for ${_id}`);
                     bus.$emit("build_updated",_id,op);
                 } else {
-                    //console.log(`_id ${_id} doesn't exist, get all`);
                     this.getBuilds();
                 }
             }
@@ -403,21 +422,41 @@ export default {
         },
         showBuildConfig: function(event) {
             var confname = $(event.currentTarget).html().trim();
-            console.log(this.build_configs[confname]);
+            //console.log(this.build_configs[confname]);
         },
-        createNewConfiguration: function() {
-            // force close sidebar
-            $('#builds .ui.sidebar').sidebar("hide");
+        clearConfigurationModal() {
+            $('#selected_sources').dropdown("clear");
+            $('#root_sources').empty();
+            $('#root_sources').dropdown("clear");
+            $(".ui.buildconfiguration.form").form('get field', "conf_name").val("");
+            $(".ui.buildconfiguration.form").form('get field', "doc_type").val("");
+            $(".ui.buildconfiguration.form").form('get field', "optionals").val("{}"); // json valid doc
+            $(".ui.buildconfiguration.form").form('get field', "archive_conf").prop("checked",false);
+        },
+        sendAPI: function(data,mode) {
+          var axiosfunc = (mode == "new" ? axios.post : axios.put);
+          var self = this;
+          axiosfunc(axios.defaults.baseURL + '/buildconf',data)
+          .then(response => {
+            self.loaded();
+            return true;
+          })
+          .catch(err => {
+            console.log(err);
+            console.log("Error creating build configuration: " + err.data.error);
+            self.loaderror(err);
+          })
+        },
+        showBuildConfigModal: function(mode) {
             var self = this;
-            $('.ui.basic.newconfiguration.modal')
+            $('.ui.basic.buildconfiguration.modal')
             .modal("setting", {
                 detachable : false,
                 onApprove: function () {
                     self.errors = [];
-                    var conf_name = $(".ui.newconfiguration.form").form('get field', "conf_name").val();
-                    var doc_type = $(".ui.newconfiguration.form").form('get field', "doc_type").val();
-                    var selected_sources = $(".ui.newconfiguration.form").form('get field', "selected_sources").val();
-                    console.log(optionals);
+                    var conf_name = $(".ui.buildconfiguration.form").form('get field', "conf_name").val();
+                    var doc_type = $(".ui.buildconfiguration.form").form('get field', "doc_type").val();
+                    var selected_sources = $(".ui.buildconfiguration.form").form('get field', "selected_sources").val();
                     var root_sources = [];
                     // form valid
                     if(!conf_name)
@@ -429,45 +468,58 @@ export default {
                     // semantic won't populate select.option when dynamically set values, but rather add "q" elements, 
                     // despite the use of refresh. How ugly...
                     $(".ui.rootsources.dropdown a").each(function(i,e) {root_sources.push($(e).text())});
-                    //var params = {};
-                    //$(optionals.split("\n")).each(function(i,line) {
-                    //    if(line) {
-                    //        var kv = line.split("=").map(x => x.trim());
-                    //        if(kv.length == 2) {
-                    //            params[kv[0]] = kv[1];
-                    //        } else {
-                    //            self.errors.push("Invalid parameter: " + line);
-                    //        }
-                    //    }
-                    //});
                     var optionals = {};
                     try {
-                        optionals = JSON.parse($(".ui.newconfiguration.form").form('get field','optionals').val());
+                        optionals = JSON.parse($(".ui.buildconfiguration.form").form('get field','optionals').val());
                     } catch(e) {
                         self.errors.push("Invalid optional parameter: " + e);
                     }
                     if(self.errors.length)
                         return false;
                     self.loading();
-                    axios.post(axios.defaults.baseURL + '/buildconf',
-                               {"name":conf_name,
-                                "doc_type": doc_type,
-                                "sources":selected_sources,
-                                "roots":root_sources,
-                                "params":optionals})
-                    .then(response => {
-                        console.log(response.data.result)
-                        self.loaded();
-                        return true;
-                    })
-                    .catch(err => {
-                        console.log(err);
-                        console.log("Error creating build configuration: " + err.data.error);
-                        self.loaderror(err);
-                    })
+                    var archived = $(".ui.buildconfiguration.form").form('get field', "archive_conf").prop("checked");
+                    var api_data = {
+                      "name":conf_name,
+                      "doc_type": doc_type,
+                      "sources":selected_sources,
+                      "roots":root_sources,
+                      "params":optionals,
+                      "archived":archived};
+                    self.sendAPI(api_data,mode);
                 }
             })
             .modal("show");
+        },
+        createConfiguration: function() {
+            // force close sidebar
+            $('#builds .ui.sidebar').sidebar("hide");
+            this.clearConfigurationModal();
+            this.showBuildConfigModal("new");
+        },
+        editConfiguration: function(event) {
+            // force close sidebar
+            var conf_name = $(event.currentTarget).attr("conf-name");
+            var conf = this.all_build_configs[conf_name];
+            if(!conf) {
+                console.log(`Unable to get configuration details for ${conf_name}`);
+                return;
+            }
+            this.clearConfigurationModal();
+            // restore values from existing config
+            $(".ui.buildconfiguration.form").form('get field', "conf_name").val(conf.build_config.name);
+            $(".ui.buildconfiguration.form").form('get field', "doc_type").val(conf.build_config.doc_type);
+            $(".ui.buildconfiguration.form").form('get field', "selected_sources").val(conf.build_config.sources).change();
+            this.updateRootSources();
+            $(".ui.buildconfiguration.form").form('get field', "root_sources").val(conf.build_config.root).change();
+            var optionals = {};
+            $.each(conf.build_config,function(k,v) {
+                if(["name","doc_type","sources","root","_id","archived"].indexOf(k) == -1) {
+                  optionals[k] = v;
+                }
+            });
+            $(".ui.buildconfiguration.form").form('get field', "optionals").val(JSON.stringify(optionals,null,4));
+            $(".ui.buildconfiguration.form").form('get field', "archive_conf").prop("checked",conf.build_config.archived);
+            this.showBuildConfigModal("edit");
         },
         deleteConfiguration : function(event) {
             // force close sidebar
@@ -541,5 +593,9 @@ export default {
 }
 .clearconffilter {
     margin-right:1em !important;
+}
+
+.white {
+  color: white !important;
 }
 </style>
