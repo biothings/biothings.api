@@ -973,9 +973,9 @@ class BuilderManager(BaseManager):
         self.delete_merged_data(merge_name)
 
     def get_query_for_list_merge(self,only_archived):
-        q = {"archived" : {"$exists" : 0}}
+        q = {"$or" : [{"archived" : {"$exists" : 0}}, {"archived" : False}]}
         if only_archived:
-            q = {"archived" : {"$exists" : 1}}
+            q = {"$and" : [{"archived" : {"$exists" : 1}}, {"archived" : True}]}
         return q
 
     def list_merge(self,build_config=None,only_archived=False):
@@ -1082,7 +1082,7 @@ class BuilderManager(BaseManager):
             # do this for all build configs
             dbbuildconfig = get_src_build_config()
             configs = {}
-            for d in dbbuildconfig.find({"archived" : {"$exists" : 0}}):
+            for d in dbbuildconfig.find({"$or" : [{"archived" : {"$exists" : 0}}, {"archived" : False}]}):
                 try:
                     news = whatsnewcomparedto(d["_id"])
                     if news[d["_id"]]["sources"]:
@@ -1192,16 +1192,27 @@ class BuilderManager(BaseManager):
         else:
             return res
 
-    def create_build_configuration(self,name,doc_type,sources,roots=[],params={}):
+    def upsert_build_conf(self,name,doc_type,sources,roots,params,archived):
+        col = get_src_build_config()
+        doc = {"_id" : name, "name" : name, "doc_type" : doc_type,
+               "sources" : sources, "root" : roots}
+        if archived:
+            doc["archived"] = True
+        else:
+            doc.pop("archived",None)
+        doc.update(params)
+        col.save(doc)
+        self.configure()
+
+    def create_build_configuration(self,name,doc_type,sources,roots=[],params={},archived=False):
         col = get_src_build_config()
         # check conf doesn't exist yet
         if [d for d in col.find({"_id":name})]:
             raise ValueError("Configuration named '%s' already exists" % name)
-        doc = {"_id" : name, "name" : name, "doc_type" : doc_type,
-               "sources" : sources, "root" : roots}
-        doc.update(params)
-        col.save(doc)
-        self.configure()
+        self.upsert_build_conf(name,doc_type,sources,roots,params,archivedn)
+
+    def update_build_configuration(self,name,doc_type,sources,roots=[],params={},archived=False):
+        self.upsert_build_conf(name,doc_type,sources,roots,params,archived)
 
     def delete_build_configuration(self,name):
         col = get_src_build_config()

@@ -539,6 +539,7 @@ class HubServer(object):
             self.extra_commands["build_config_info"] = CommandDefinition(command=self.managers["build_manager"].build_config_info,tracked=False)
             self.extra_commands["build_save_mapping"] = CommandDefinition(command=self.managers["build_manager"].save_mapping)
             self.extra_commands["create_build_conf"] = CommandDefinition(command=self.managers["build_manager"].create_build_configuration)
+            self.extra_commands["update_build_conf"] = CommandDefinition(command=self.managers["build_manager"].update_build_configuration)
             self.extra_commands["delete_build_conf"] = CommandDefinition(command=self.managers["build_manager"].delete_build_configuration)
         if self.managers.get("diff_manager"):
             self.extra_commands["dim"] = CommandDefinition(command=self.managers["diff_manager"],tracked=False)
@@ -606,7 +607,9 @@ class HubServer(object):
         if "jsondiff" in cmdnames: self.api_endpoints["jsondiff"] = EndpointDefinition(name="jsondiff",method="post",force_bodyargs=True)
         if "validate_mapping" in cmdnames: self.api_endpoints["mapping/validate"] = EndpointDefinition(name="validate_mapping",method="post",force_bodyargs=True)
         self.api_endpoints["buildconf"] = []
-        if "create_build_conf" in cmdnames: self.api_endpoints["buildconf"].append(EndpointDefinition(name="create_build_conf",method="post",force_bodyargs=True))
+        if "create_build_conf" in cmdnames:
+            self.api_endpoints["buildconf"].append(EndpointDefinition(name="create_build_conf",method="post",force_bodyargs=True))
+            self.api_endpoints["buildconf"].append(EndpointDefinition(name="update_build_conf",method="put",force_bodyargs=True))
         if "delete_build_conf" in cmdnames: self.api_endpoints["buildconf"].append(EndpointDefinition(name="delete_build_conf",method="delete",force_bodyargs=True))
         if not self.api_endpoints["buildconf"]:
             self.api_endpoints.pop("buildconf")
