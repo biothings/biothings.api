@@ -6,9 +6,10 @@
             <a class="ui buildconfigs dropdown item" v-for="(conf,conf_name) in build_configs">
                 <i class="dropdown icon"></i>
                 <div :class="['ui', build_colors[conf_name], 'empty circular label']"></div>
-                {{conf_name}}
+                <i v-if="conf.error" class="small red bell icon"></i>
+                  {{conf_name}}
                 <div class="ui inverted menu">
-                    <div class="item" :conf-name="conf_name" @click="newBuild($event)"><i class="cube icon"></i> Create new build</div>
+                    <div v-if="!conf.error" class="item" :conf-name="conf_name" @click="newBuild($event)"><i class="cube icon"></i> Create new build</div>
                     <div class="item" :conf-name="conf_name" @click="editConfiguration($event)"><i class="edit outline icon"></i> Edit configuration</div>
                     <div class="item" :conf-name="conf_name" @click="deleteConfiguration($event)"><i class="trash alternate outline icon"></i> Delete configuration</div>
                 </div>
@@ -75,6 +76,13 @@
                     <div class="ui centered grid">
                         <div class="eight wide column">
 
+                            <div v-if="buildconf_error" class="ui negative message">
+                              <div class="header">
+                                Error in build configuration
+                              </div>
+                              <p>{{buildconf_error}}</p>
+                            </div>
+
                             <label>Enter a build configuration name</label>
                             <input type="text" id="conf_name" placeholder="Configuration name" autofocus>
                             <br>
@@ -98,17 +106,17 @@
                             </select>
                             <br>
 
-                            <label>Remove this configuration from list by default</label>
-                            <div><i>You can still access it by clicking on "show/hide archived configuration" in the menu on the side</i></div>
-                            <div class="ui checkbox">
-                              <input type="checkbox" name="archive_conf">
-                              <label class="white">Archive</label>
+                            <label>Select a builder type</label>
+                            <select class="ui fluid builders dropdown" id="builders">
+                              <option v-for="b in builder_classes">{{b.path}}</option>
+                            </select>
+                            <div class="ui blue message">
+                              <div class="header">
+                                About this builder
+                              </div>
+                              <p id="builder_doc">{{builder_doc}}</p>
                             </div>
-
-
-                        </div>
-
-                        <div class="eight wide column">
+                            <br>
 
                             <p>Optional parameters can be added to the configuration (usefull to customize builder behavior). Enter a JSON object structure</p>
                             <textarea id="optionals">{}</textarea>
@@ -119,6 +127,14 @@
                                 documents previously exist with same IDs (documents coming from root sources). If not, data is discarded. Finally, if no root source
                                 is declared, any data sources can generate a new document in the merged data.
                             </div>
+
+                            <label>Remove this configuration from list by default</label>
+                            <div><i>You can still access it by clicking on "show/hide archived configuration" in the menu on the side</i></div>
+                            <div class="ui checkbox">
+                              <input type="checkbox" name="archive_conf">
+                              <label class="white">Archive</label>
+                            </div>
+
                         </div>
                     </div>
                 </div>
@@ -205,6 +221,7 @@ export default {
     name: 'build-grid',
     mixins: [ Loader, ],
     mounted () {
+        var self = this;
         console.log("BuildGrid mounted");
         $('.ui.filterbuilds.dropdown').dropdown();
         $('.ui.buildconfigs.dropdown').dropdown();
@@ -221,6 +238,12 @@ export default {
                 $('.ui.rootsources.dropdown').dropdown("clear");
                 $('.ui.rootsources.dropdown').dropdown("setup menu",{"values" : fmt}).dropdown("refresh");
             },
+        });
+
+        $('.ui.builders.dropdown').dropdown({
+          onChange: function(value, text) {
+            self.setBuilderDoc(value);
+          }
         });
         $('#builds .ui.sidebar')
         .sidebar({context:$('#builds')})
@@ -275,6 +298,9 @@ export default {
             sources : [],
             all_build_configs: {}, // from API
             build_configs: {}, // displayed
+            builder_classes: [],
+            builder_doc: "No documentation for this builder", // selected builder doc
+            buildconf_error: null,
             errors: [],
             build_colors : {},
             // build colors for easy visual id
@@ -289,6 +315,17 @@ export default {
     },
     components: { Build, },
     methods: {
+      setBuilderDoc: function(classpath) {
+        var self = this;
+        $.each(self.builder_classes, function(i) {
+          if(self.builder_classes[i].path == classpath) {
+            self.builder_doc = self.builder_classes[i].desc;
+            return false;
+          }
+        });
+        if(!self.builder_doc)
+          self.builder_doc = "No documentation for this builder";
+      },
         updateRootSources: function() {
             var avail_roots = $(".ui.buildconfiguration.form").form('get field', "selected_sources").val();
             $('#root_sources').dropdown("clear");
@@ -348,16 +385,25 @@ export default {
             this.loading();
             axios.get(axios.defaults.baseURL + '/build_manager')
             .then(response => {
+              // depending on API version, build configs are under "build_configs" key
+              // along with "builder_classes", or at the root (no builder_classes)
+              // TODO: version hub API and check version number there
+              if(response.data.result.build_configs) {
+                self.all_build_configs = response.data.result.build_configs;
+                self.builder_classes = response.data.result.builder_classes;
+              } else {
                 self.all_build_configs = response.data.result;
-                var keys = Object.keys(self.all_build_configs);
-                for(var k in keys) {
-                    self.build_colors[keys[k]] = self.colors[self.color_idx++];
-                    if(self.color_idx + 1 >= Object.keys(self.colors).length) {
-                        self.color_idx = 0;
-                    }
+                self.builder_classes = [];
+              }
+              var keys = Object.keys(self.all_build_configs);
+              for(var k in keys) {
+                self.build_colors[keys[k]] = self.colors[self.color_idx++];
+                if(self.color_idx + 1 >= Object.keys(self.colors).length) {
+                  self.color_idx = 0;
                 }
-                self.setBuildConfigs();
-                this.loaded();
+              }
+              self.setBuildConfigs();
+              this.loaded();
             })
             .catch(err => {
                 console.log("Error getting builds information: " + err);
@@ -448,6 +494,8 @@ export default {
           })
         },
         showBuildConfigModal: function(mode) {
+            // refresh doc label for current selected builder
+            this.setBuilderDoc($(".ui.buildconfiguration.form").form('get field', "builders").val());
             var self = this;
             $('.ui.basic.buildconfiguration.modal')
             .modal("setting", {
@@ -468,6 +516,7 @@ export default {
                     // semantic won't populate select.option when dynamically set values, but rather add "q" elements, 
                     // despite the use of refresh. How ugly...
                     $(".ui.rootsources.dropdown a").each(function(i,e) {root_sources.push($(e).text())});
+                    var bclass = $(".ui.buildconfiguration.form").form('get field', "builders").val();
                     var optionals = {};
                     try {
                         optionals = JSON.parse($(".ui.buildconfiguration.form").form('get field','optionals').val());
@@ -483,6 +532,7 @@ export default {
                       "doc_type": doc_type,
                       "sources":selected_sources,
                       "roots":root_sources,
+                      "builder_class": bclass,
                       "params":optionals,
                       "archived":archived};
                     self.sendAPI(api_data,mode);
@@ -504,6 +554,7 @@ export default {
                 console.log(`Unable to get configuration details for ${conf_name}`);
                 return;
             }
+            this.buildconf_error = conf.error;
             this.clearConfigurationModal();
             // restore values from existing config
             $(".ui.buildconfiguration.form").form('get field', "conf_name").val(conf.build_config.name);
@@ -512,8 +563,10 @@ export default {
             this.updateRootSources();
             $(".ui.buildconfiguration.form").form('get field', "root_sources").val(conf.build_config.root).change();
             var optionals = {};
+            // conf keys not properly organized, all at root levels, we need to identify which one are specifically dealt with
+            // in a specific form element so optionals only contain things not handled in the form
             $.each(conf.build_config,function(k,v) {
-                if(["name","doc_type","sources","root","_id","archived"].indexOf(k) == -1) {
+              if(["name","doc_type","sources","root","_id","archived","builder_class"].indexOf(k) == -1) {
                   optionals[k] = v;
                 }
             });
