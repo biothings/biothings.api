@@ -18,7 +18,7 @@ from ..databuild.backend import SourceDocMongoBackend, TargetDocMongoBackend, \
                                 LinkTargetDocMongoBackend
 from biothings.utils.common import timesofar, iter_n, get_timestamp, \
                                    dump, rmdashfr, loadobj, open_compressed_file, \
-                                   get_class_from_classpath
+                                   get_class_from_classpath, find_classes_subclassing
 from biothings.utils.mongo import doc_feeder, id_feeder
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager, ManagerError
@@ -39,6 +39,9 @@ class ResumeException(Exception):
 
 
 class DataBuilder(object):
+    """
+    Default data builder.
+    """
 
     keep_archive = 10 # number of archived collection to keep. Oldest get dropped first.
 
@@ -791,6 +794,13 @@ class DataBuilder(object):
 
 
 class LinkDataBuilder(DataBuilder):
+    """
+    LinkDataBuilder creates a link to the original datasource to be merged, without
+    actually copying the data (merged collection remains empty). This builder is 
+    only valid when using only one datasource (thus no real merge) is declared in
+    the list of sources to be merged, and is useful to prevent data duplication between
+    the datasource itself and the resulting merged collection.
+    """
 
     def __init__(self, build_name, source_backend, target_backend, *args, **kwargs):
 
@@ -1118,7 +1128,7 @@ class BuilderManager(BaseManager):
         return self.merge(doc["_id"])
 
     def build_config_info(self):
-        res = {}
+        configs = {}
         for name in self.register:
             builder = self[name]
             if issubclass(builder.target_backend.__class__,LinkTargetDocMongoBackend):
@@ -1127,7 +1137,7 @@ class BuilderManager(BaseManager):
                                  # implement more methods to return info about that
             else:
                 target_db = builder.target_backend.target_collection.database.client.address
-            res[name] = {
+            configs[name] = {
                     "class" : builder.__class__.__name__,
                     "build_config" : builder.build_config,
                     "source_backend" : {
@@ -1140,9 +1150,50 @@ class BuilderManager(BaseManager):
                         },
                     "archived" : "archived" in builder.build_config
                     }
-            res[name]["mapper"] = {}
+            configs[name]["mapper"] = {}
             for mappername,mapper in builder.mappers.items():
-                res[name]["mapper"][mappername] = mapper.__class__.__name__
+                configs[name]["mapper"][mappername] = mapper.__class__.__name__
+        res = {"build_configs" : configs}
+        # find all available build class:
+        # 1. default one in the manager
+        # 2. all subclassing DataBuilder in:
+        #   a. biothings.hub.databuilder.*
+        #   b. hub.databuilder.* (app-specific)
+        bclasses = {self.builder_class}
+        mods = [sys.modules[__name__]]
+        try:
+            import hub.databuild as m
+            mods.append(m)
+        except ImportError:
+            pass
+        logging.error(mods)
+        for klass in find_classes_subclassing(mods,DataBuilder):
+            bclasses.add(klass)
+        # make them printable
+        res["builder_classes"] = []
+        for klass in bclasses:
+            try:
+                obj = klass
+                if type(klass) == partial:
+                    assert type(klass.func) == type
+                    btype = "partial"
+                    obj = klass.func
+                elif type(klass) == type:
+                    btype = "class"
+                else:
+                    raise TypeError("Unknown type for builder %s" % repr(klass))
+                modstr = obj.__module__
+                classstr = obj.__name__
+                helpstr = " ".join(map(str.strip, obj.__doc__.splitlines()))
+                classpathstr = "%s.%s" % (modstr,classstr)
+                res["builder_classes"].append({
+                    "path" : classpathstr,
+                    "desc" : helpstr,
+                    "type" : btype}
+                )
+            except Exception as e:
+                logging.exception("Can't extract information from builder class %s: %s" % (repr(klass),e))
+
         return res
 
     def build_info(self,id=None,conf_name=None,fields=None,only_archived=False):
