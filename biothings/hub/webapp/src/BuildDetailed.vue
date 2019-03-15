@@ -111,7 +111,6 @@ export default {
             this.loading();
             axios.get(axios.defaults.baseURL + `/build/${this._id}`)
             .then(response => {
-                console.log(response.data.result)
                 self.build = response.data.result;
                 this.loaded();
             })

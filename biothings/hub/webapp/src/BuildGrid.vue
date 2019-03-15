@@ -6,11 +6,12 @@
             <a class="ui buildconfigs dropdown item" v-for="(conf,conf_name) in build_configs">
                 <i class="dropdown icon"></i>
                 <div :class="['ui', build_colors[conf_name], 'empty circular label']"></div>
-                <i v-if="conf.error" class="small red bell icon"></i>
-                  {{conf_name}}
+                {{conf_name}} <b v-if="conf.error" class="red"><i class="red bell icon"></i></b>
                 <div class="ui inverted menu">
                     <div v-if="!conf.error" class="item" :conf-name="conf_name" @click="newBuild($event)"><i class="cube icon"></i> Create new build</div>
-                    <div class="item" :conf-name="conf_name" @click="editConfiguration($event)"><i class="edit outline icon"></i> Edit configuration</div>
+                    <div class="item" :conf-name="conf_name" @click="editConfiguration($event)">
+                        <i class="edit outline icon"></i> Edit configuration <b v-if="conf.error" class="red"><i class="red bell icon"></i></b>
+                    </div>
                     <div class="item" :conf-name="conf_name" @click="deleteConfiguration($event)"><i class="trash alternate outline icon"></i> Delete configuration</div>
                 </div>
             </a>
@@ -50,207 +51,213 @@
                             </select>
                         </a>
                         <a class="item">
-                            <div class="ui includearchived checkbox">
-                                <input type="checkbox" name="includearchived" v-model="only_archived">
-                                <label>Show archived builds only</label>
-                            </div>
-                        </a>
-                      </div>
-                </div>
-                <div class="ui centered grid">
-                    <div class="ui five wide column" v-for="build in builds">
-                        <build v-bind:pbuild="build" v-bind:color="build_colors[build.build_config.name]"></build>
+                                <div class="ui includearchived checkbox">
+                                    <input type="checkbox" name="includearchived" v-model="only_archived">
+                                    <label>Show archived builds only</label>
+                                </div>
+                            </a>
+                          </div>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- create new build configuration -->
-        <div class="ui basic buildconfiguration modal">
-            <h3 class="ui icon">
-                <i class="configure icon"></i>
-                Create/edit build configuration
-            </h3>
-            <div class="content">
-                <div class="ui buildconfiguration form">
                     <div class="ui centered grid">
-                        <div class="eight wide column">
-
-                            <div v-if="buildconf_error" class="ui negative message">
-                              <div class="header">
-                                Error in build configuration
-                              </div>
-                              <p>{{buildconf_error}}</p>
-                            </div>
-
-                            <label>Enter a build configuration name</label>
-                            <input type="text" id="conf_name" placeholder="Configuration name" autofocus>
-                            <br>
-                            <br>
-
-                            <label>Enter a name for the type of stored documents ("gene", "variant", ...)</label>
-                            <input type="text" id="doc_type" placeholder="Document type" autofocus>
-                            <br>
-                            <br>
-
-                            <label>Select the sources used to create merged data</label>
-                            <select class="ui fluid sources dropdown" id="selected_sources" multiple="">
-                                <option value="">Available sources</option>
-                                <option v-for="_id in sources">{{_id}}</option>
-                            </select>
-                            <br>
-
-                            <label>Once sources are selected, choose sources providing root documents</label>
-                            <select class="ui fluid rootsources dropdown" id="root_sources" multiple="">
-                                <option value="">Root sources</option>
-                            </select>
-                            <br>
-
-                            <label>Select a builder type</label>
-                            <select class="ui fluid builders dropdown" id="builders">
-                              <option v-for="b in builder_classes">{{b.path}}</option>
-                            </select>
-                            <div class="ui blue message">
-                              <div class="header">
-                                About this builder
-                              </div>
-                              <p id="builder_doc">{{builder_doc}}</p>
-                            </div>
-                            <br>
-
-                            <p>Optional parameters can be added to the configuration (usefull to customize builder behavior). Enter a JSON object structure</p>
-                            <textarea id="optionals">{}</textarea>
-
-                            <div class="ui teal message">
-                                <b>Note</b>: sources providing root documents, or <i>root sources</i>, are sources allowed to
-                                create a new document in a build (merged data). If a root source is declared, data from other sources will only be merged <b>if</b>
-                                documents previously exist with same IDs (documents coming from root sources). If not, data is discarded. Finally, if no root source
-                                is declared, any data sources can generate a new document in the merged data.
-                            </div>
-
-                            <label>Remove this configuration from list by default</label>
-                            <div><i>You can still access it by clicking on "show/hide archived configuration" in the menu on the side</i></div>
-                            <div class="ui checkbox">
-                              <input type="checkbox" name="archive_conf">
-                              <label class="white">Archive</label>
-                            </div>
-
+                        <div class="ui five wide column" v-for="build in builds">
+                            <build v-bind:pbuild="build" v-bind:color="build_colors[build.build_config.name]"></build>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="ui error message" v-if="errors.length">
-                <ul class="ui list">
-                    <li v-for="err in errors">{{err}}</li>
-                </ul>
-            </div>
+            <!-- create new build configuration -->
+            <div class="ui basic buildconfiguration modal">
+                <h3 class="ui icon">
+                    <i class="configure icon"></i>
+                    Create/edit build configuration
+                </h3>
+                <div class="content">
+                    <div class="ui buildconfiguration form">
+                        <div class="ui centered grid">
+                            <div class="eight wide column">
 
-            <div class="actions">
-                <div class="ui red basic cancel inverted button">
-                    <i class="remove icon"></i>
-                    Cancel
-                </div>
-                <div class="ui green ok inverted button">
-                    <i class="checkmark icon"></i>
-                    OK
-                </div>
-            </div>
-        </div>
+                                <div v-if="buildconf_error" class="ui negative message">
+                                  <div class="header">
+                                    Error in build configuration
+                                  </div>
+                                  <p>{{buildconf_error}}</p>
+                                </div>
 
-        <div class="ui basic deleteconf modal">
-            <div class="ui icon header">
-                <i class="trash alternate icon"></i>
-                Delete configuration
-            </div>
-            <div class="content">
-                <p>Are you sure you want to delete this build configuration ?</p>
-            </div>
-            <div class="actions">
-                <div class="ui red basic cancel inverted button">
-                    <i class="remove icon"></i>
-                    No
-                </div>
-                <div class="ui green ok inverted button">
-                    <i class="checkmark icon"></i>
-                    Yes
-                </div>
-            </div>
-        </div>
+                                <label>Enter a build configuration name</label>
+                                <input type="text" id="conf_name" placeholder="Configuration name" autofocus>
+                                <br>
+                                <br>
 
-        <div class="ui basic newbuild modal">
-            <div class="ui icon header">
-                <i class="cube icon"></i>
-                Create new build
-            </div>
-            <div class="ui newbuild form">
-                <div class="ui centered grid">
-                    <div class="ten wide column">
-                        <p>Enter a name for the merged data collection or leave it empty to generate a random one</p>
-                        <input type="text" id="target_name" placeholder="Collection name" autofocus>
+                                <label>Enter a name for the type of stored documents ("gene", "variant", ...)</label>
+                                <input type="text" id="doc_type" placeholder="Document type" autofocus>
+                                <br>
+                                <br>
+
+                                <label>Select the sources used to create merged data</label>
+                                <select class="ui fluid sources dropdown" id="selected_sources" multiple="">
+                                    <option value="">Available sources</option>
+                                    <option v-for="_id in sources">{{_id}}</option>
+                                </select>
+                                <br>
+
+                                <label>Once sources are selected, choose sources providing root documents</label>
+                                <select class="ui fluid rootsources dropdown" id="root_sources" multiple="">
+                                    <option value="">Root sources</option>
+                                </select>
+                                <br>
+
+                                <label>Select a builder type</label>
+                                <select class="ui fluid builders dropdown" id="builders">
+                                  <option v-for="b in builder_classes">{{b.path}}</option>
+                                </select>
+                                <div class="ui blue message">
+                                  <div class="header">
+                                    About this builder
+                                  </div>
+                                  <p id="builder_doc">{{builder_doc}}</p>
+                                </div>
+                                <br>
+
+                                <p>Optional parameters can be added to the configuration (usefull to customize builder behavior). Enter a JSON object structure</p>
+                                <textarea id="optionals">{}</textarea>
+
+                                <div class="ui teal message">
+                                    <b>Note</b>: sources providing root documents, or <i>root sources</i>, are sources allowed to
+                                    create a new document in a build (merged data). If a root source is declared, data from other sources will only be merged <b>if</b>
+                                    documents previously exist with same IDs (documents coming from root sources). If not, data is discarded. Finally, if no root source
+                                    is declared, any data sources can generate a new document in the merged data.
+                                </div>
+
+                                <label>Remove this configuration from list by default</label>
+                                <div><i>You can still access it by clicking on "show/hide archived configuration" in the menu on the side</i></div>
+                                <div class="ui checkbox">
+                                  <input type="checkbox" name="archive_conf">
+                                  <label class="white">Archive</label>
+                                </div>
+
+                            </div>
+                        </div>
                     </div>
-                    <div class="six wide column">
+                </div>
+
+                <div class="ui error message" v-if="errors.length">
+                    <ul class="ui list">
+                        <li v-for="err in errors">{{err}}</li>
+                    </ul>
+                </div>
+
+                <div class="actions">
+                    <div class="ui red basic cancel inverted button">
+                        <i class="remove icon"></i>
+                        Cancel
+                    </div>
+                    <div class="ui green ok inverted button">
+                        <i class="checkmark icon"></i>
+                        OK
                     </div>
                 </div>
             </div>
-            <div class="actions">
-                <div class="ui red basic cancel inverted button">
-                    <i class="remove icon"></i>
-                    Cancel
+
+            <div class="ui basic deleteconf modal">
+                <div class="ui icon header">
+                    <i class="trash alternate icon"></i>
+                    Delete configuration
                 </div>
-                <div class="ui green ok inverted button">
-                    <i class="checkmark icon"></i>
-                    OK
+                <div class="content">
+                    <p>Are you sure you want to delete this build configuration ?</p>
+                </div>
+                <div class="actions">
+                    <div class="ui red basic cancel inverted button">
+                        <i class="remove icon"></i>
+                        No
+                    </div>
+                    <div class="ui green ok inverted button">
+                        <i class="checkmark icon"></i>
+                        Yes
+                    </div>
                 </div>
             </div>
+
+            <div class="ui basic newbuild modal">
+                <div class="ui icon header">
+                    <i class="cube icon"></i>
+                    Create new build
+                </div>
+                <div class="ui newbuild form">
+                    <div class="ui centered grid">
+                        <div class="ten wide column">
+                            <p>Enter a name for the merged data collection or leave it empty to generate a random one</p>
+                            <input type="text" id="target_name" placeholder="Collection name" autofocus>
+                            <div class="ui forcebuild checkbox">
+                                <br/>
+                                <input type="checkbox" name="force_build" id="force_build">
+                                <label class="white">Skip sanity checks and force build (not recommended)</label>
+                            </div>
+                        </div>
+                        <div class="six wide column">
+                        </div>
+                    </div>
+                </div>
+                <div class="actions">
+                    <div class="ui red basic cancel inverted button">
+                        <i class="remove icon"></i>
+                        Cancel
+                    </div>
+                    <div class="ui green ok inverted button">
+                        <i class="checkmark icon"></i>
+                        OK
+                    </div>
+                </div>
+            </div>
+
         </div>
 
-    </div>
+
+    </template>
+
+    <script>
+    import axios from 'axios'
+    import Build from './Build.vue'
+    import Loader from './Loader.vue'
+    import bus from './bus.js'
 
 
-</template>
+    export default {
+        name: 'build-grid',
+        mixins: [ Loader, ],
+        mounted () {
+            var self = this;
+            console.log("BuildGrid mounted");
+            $('.ui.filterbuilds.dropdown').dropdown();
+            $('.ui.buildconfigs.dropdown').dropdown();
+            $('.ui.rootsources.dropdown').dropdown();
+            $('.ui.sources.dropdown').dropdown({
+                onChange: function(addedValue, addedText, $addedChoice) {
+                    var selected_sources = $('.ui.sources.dropdown').dropdown('get value');
+                    var fmt = []
+                    for(var i in selected_sources) {
+                        var x = selected_sources[i];
+                        var d = {"name":x,"text":x,"value":x};
+                        fmt.push(d);
+                    }
+                    $('.ui.rootsources.dropdown').dropdown("clear");
+                    $('.ui.rootsources.dropdown').dropdown("setup menu",{"values" : fmt}).dropdown("refresh");
+                },
+            });
 
-<script>
-import axios from 'axios'
-import Build from './Build.vue'
-import Loader from './Loader.vue'
-import bus from './bus.js'
-
-
-export default {
-    name: 'build-grid',
-    mixins: [ Loader, ],
-    mounted () {
-        var self = this;
-        console.log("BuildGrid mounted");
-        $('.ui.filterbuilds.dropdown').dropdown();
-        $('.ui.buildconfigs.dropdown').dropdown();
-        $('.ui.rootsources.dropdown').dropdown();
-        $('.ui.sources.dropdown').dropdown({
-            onChange: function(addedValue, addedText, $addedChoice) {
-                var selected_sources = $('.ui.sources.dropdown').dropdown('get value');
-                var fmt = []
-                for(var i in selected_sources) {
-                    var x = selected_sources[i];
-                    var d = {"name":x,"text":x,"value":x};
-                    fmt.push(d);
-                }
-                $('.ui.rootsources.dropdown').dropdown("clear");
-                $('.ui.rootsources.dropdown').dropdown("setup menu",{"values" : fmt}).dropdown("refresh");
-            },
-        });
-
-        $('.ui.builders.dropdown').dropdown({
-          onChange: function(value, text) {
-            self.setBuilderDoc(value);
-          }
-        });
-        $('#builds .ui.sidebar')
-        .sidebar({context:$('#builds')})
-        .sidebar('setting', 'transition', 'overlay')
-        .sidebar('attach events', '#side_menu');
-        $('.ui.form').form();
-        $('.ui.includearchived.checkbox').checkbox();
+            $('.ui.builders.dropdown').dropdown({
+              onChange: function(value, text) {
+                self.setBuilderDoc(value);
+              }
+            });
+            $('#builds .ui.sidebar')
+            .sidebar({context:$('#builds')})
+            .sidebar('setting', 'transition', 'overlay')
+            .sidebar('attach events', '#side_menu');
+            $('.ui.form').form();
+            $('.ui.includearchived.checkbox').checkbox();
+            $(".ui.forcebuild.checkbox").checkbox();
     },
     updated() {
         // there's some kind of race-condition regarding dropdown init, if
@@ -264,7 +271,7 @@ export default {
         this.getSourceList();
         // builds & configs
         this.getBuildConfigs();
-        //this.getBuilds();
+        this.getBuilds();
         bus.$on('change_source',this.onSourceChanged);
         bus.$on('change_build',this.onBuildChanged);
         bus.$on('change_build_config',this.onBuildConfigChanged);
@@ -609,9 +616,10 @@ export default {
                 onApprove: function () {
                     self.loading();
                     var target_name = $(".ui.newbuild.modal #target_name").val();
+                    var force = $(".ui.forcebuild.checkbox #force_build").prop("checked");
                     if(target_name == "")
                         target_name = null;
-                    axios.put(axios.defaults.baseURL + `/build/${conf_name}/new`,{"target_name":target_name})
+                    axios.put(axios.defaults.baseURL + `/build/${conf_name}/new`,{"target_name":target_name,"force":force})
                     .then(response => {
                         console.log(response.data.result)
                         self.loaded();
@@ -650,5 +658,9 @@ export default {
 
 .white {
   color: white !important;
+}
+
+.red{
+  color: red !important;
 }
 </style>
