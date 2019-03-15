@@ -16,7 +16,7 @@ from ..dataload.uploader import ResourceNotReady
 from .differ import set_pending_to_diff
 from ..databuild.backend import SourceDocMongoBackend, TargetDocMongoBackend, \
                                 LinkTargetDocMongoBackend
-from biothings.utils.common import timesofar, iter_n, get_timestamp, \
+from biothings.utils.common import timesofar, iter_n, get_timestamp, dotdict, \
                                    dump, rmdashfr, loadobj, open_compressed_file, \
                                    get_class_from_classpath, find_classes_subclassing
 from biothings.utils.mongo import doc_feeder, id_feeder
@@ -40,7 +40,7 @@ class ResumeException(Exception):
 
 class DataBuilder(object):
     """
-    Default data builder.
+    Generic data builder.
     """
 
     keep_archive = 10 # number of archived collection to keep. Oldest get dropped first.
@@ -1129,30 +1129,46 @@ class BuilderManager(BaseManager):
 
     def build_config_info(self):
         configs = {}
+        err = None
         for name in self.register:
-            builder = self[name]
-            if issubclass(builder.target_backend.__class__,LinkTargetDocMongoBackend):
+            try:
+                builder = self[name]
+            except Exception as e:
+                conf = get_src_build_config().find_one({"_id":name})
+                if conf :
+                    builder = dotdict({"build_config": conf})
+                else:
+                    builder = None
+                err = str(e)
+
+            if not builder or issubclass(builder.target_backend.__class__,LinkTargetDocMongoBackend) or \
+                    issubclass(builder.__class__,dict): # fake builder obj
                 target_db = None # it's not a traditional target database, it's pointing to
                                  # somewhere else (TODO: maybe LinkTargetDocMongoBackend should
                                  # implement more methods to return info about that
             else:
                 target_db = builder.target_backend.target_collection.database.client.address
             configs[name] = {
-                    "class" : builder.__class__.__name__,
-                    "build_config" : builder.build_config,
-                    "source_backend" : {
-                        "type" : builder.source_backend.__class__.__name__,
-                        "source_db" : builder.source_backend.sources.client.address,
-                        },
-                    "target_backend" : {
-                        "type" : builder.target_backend.__class__.__name__,
-                        "target_db" : target_db
-                        },
-                    "archived" : "archived" in builder.build_config
+                    "class" : builder and builder.__class__.__name__,
+                    "build_config" : builder and builder.build_config,
+                    "archived" : "archived" in (builder and builder.build_config or [])
                     }
-            configs[name]["mapper"] = {}
-            for mappername,mapper in builder.mappers.items():
-                configs[name]["mapper"][mappername] = mapper.__class__.__name__
+            if builder and builder.source_backend:
+                configs[name]["source_backend"] = {
+                        "type" : builder and builder.source_backend.__class__.__name__,
+                        "source_db" : builder and builder.source_backend.sources.client.address,
+                        }
+            if builder and builder.target_backend:
+                configs[name]["target_backend"] = {
+                        "type" : builder and builder.target_backend.__class__.__name__,
+                        "target_db" : target_db
+                        }
+            if err:
+                configs[name]["error"] = err
+            if builder and builder.mappers:
+                configs[name]["mapper"] = {}
+                for mappername,mapper in builder.mappers.items():
+                    configs[name]["mapper"][mappername] = mapper.__class__.__name__
         res = {"build_configs" : configs}
         # find all available build class:
         # 1. default one in the manager
@@ -1243,10 +1259,12 @@ class BuilderManager(BaseManager):
         else:
             return res
 
-    def upsert_build_conf(self,name,doc_type,sources,roots,params,archived):
+    def upsert_build_conf(self, name, doc_type, sources, roots, builder_class, params, archived):
         col = get_src_build_config()
+        builder_class = builder_class or "%s.%s" % (self.builder_class.__module__,self.builder_class.__name__)
         doc = {"_id" : name, "name" : name, "doc_type" : doc_type,
-               "sources" : sources, "root" : roots}
+               "sources" : sources, "root" : roots,
+               "builder_class" : builder_class}
         if archived:
             doc["archived"] = True
         else:
@@ -1255,15 +1273,17 @@ class BuilderManager(BaseManager):
         col.save(doc)
         self.configure()
 
-    def create_build_configuration(self,name,doc_type,sources,roots=[],params={},archived=False):
+    def create_build_configuration(self,name,doc_type,sources,roots=[],builder_class=None,
+                                   params={},archived=False):
         col = get_src_build_config()
         # check conf doesn't exist yet
         if [d for d in col.find({"_id":name})]:
             raise ValueError("Configuration named '%s' already exists" % name)
-        self.upsert_build_conf(name,doc_type,sources,roots,params,archivedn)
+        self.upsert_build_conf(name,doc_type,sources,roots,builder_class,params,archived)
 
-    def update_build_configuration(self,name,doc_type,sources,roots=[],params={},archived=False):
-        self.upsert_build_conf(name,doc_type,sources,roots,params,archived)
+    def update_build_configuration(self,name,doc_type,sources,roots=[],builder_class=None,
+                                   params={},archived=False):
+        self.upsert_build_conf(name,doc_type,sources,roots,builder_class,params,archived)
 
     def delete_build_configuration(self,name):
         col = get_src_build_config()
