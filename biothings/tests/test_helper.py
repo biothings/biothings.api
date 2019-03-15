@@ -110,10 +110,11 @@ class BiothingsTestCase(unittest.TestCase):
         ''' Asserts server says GET is not allowed for the specified resource '''
         self.get_status_match(url, 405)
 
-    def post_status_match(self, url, params, status_code):
+    def post_status_match(self, url, params, status_code, add_headers=None):
         ''' Make a post request and asserts the response status code matches
             that of expectation, return the response content in bytes  '''
         headers = {'Content-type': 'application/x-www-form-urlencoded'}
+        headers.update(add_headers)
         res, con = self.request(url, 'POST', urlencode(
             self.encode_dict(params)), headers=headers)
         assert res.status_code == status_code, "status {} != {} for url: {}\nparams: {}".format(
