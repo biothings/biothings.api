@@ -25,11 +25,6 @@ try:
 except ImportError:
     sys.stderr.write("Warning: msgpack is not available.")
 
-if sys.version_info.major >= 3:
-    PY3 = True
-else:
-    PY3 = False
-
 bts = BiothingTestSettings(config_module='tests.test_config')
 
 _d = json.loads    # shorthand for json decode
