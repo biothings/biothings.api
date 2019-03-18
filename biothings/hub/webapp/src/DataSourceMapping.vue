@@ -6,7 +6,7 @@
                 Inspect data
             </button>
         </div>
-        <inspect-form v-bind:_id="_id" v-bind:select_data_provider="true">
+        <inspect-form v-bind:_id="_id">
         </inspect-form>
         <span v-if="maps">
             <!-- multiple sub-source -->

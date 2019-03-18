@@ -1,13 +1,13 @@
 <template v-if="maps">
     <span>
         <div class="ui fluid basic segment right aligned">
-            <button class="ui button mini" v-on:click="$parent.inspect">
+            <button class="ui button mini" v-on:click="inspect">
                 <i class="unhide icon"></i>
                 Inspect data
             </button>
         </div>
 
-        <inspect-form v-bind:_id="build._id" v-bind:select_data_provider="false">
+        <inspect-form v-bind:_id="build._id">
         </inspect-form>
 
         <p>
@@ -25,7 +25,7 @@
                 <li>When testing a mapping, an temporary index is created on the selection ElasticSearch environment. That index is then deleted.</li>
             </ul>
         </div>
-        <div class="ui segment">
+        <div class="ui segment" v-if="maps">
             <div class="ui grid">
                 <div class="center aligned sixteen wide column" v-if="maps['inspect_mapping'] && !maps['inspect_mapping']['errors'] && !maps['inspect_mapping']['pre-mapping']">
                     <button class="ui labeled mini icon button"
@@ -63,6 +63,15 @@
                 </div>
             </div>
         </div>
+        <div v-else class="ui segment">
+            No mapping found.
+            <button class="ui button mini" v-on:click="inspect">
+                <i class="unhide icon"></i>
+                Inspect data
+            </button>
+            to create one.
+        </div>
+
 
     </span>
 </template>
@@ -119,6 +128,9 @@ export default {
         displayError : function() {
             var errs = [];
             return errs.join("<br>");
+        },
+        inspect: function(event) {
+            bus.$emit("do_inspect",this.build._id);
         },
     },
 }

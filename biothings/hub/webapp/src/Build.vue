@@ -65,8 +65,8 @@
 
         <div class="extra content">
             <div class="ui icon buttons left floated mini">
-                <button class="ui button" v-on:click="inspect">
-                    <i class="unhide icon"></i>
+                <button class="ui button" :data-build_id="build._id" v-on:click="inspect">
+                    <i class="unhide icon" :data-build_id="build._id"></i>
                 </button>
             </div>
             <div class="ui icon buttons right floated mini">
@@ -130,7 +130,7 @@
             </div>
         </div>
 
-        <inspect-form v-bind:_id="build._id" v-bind:select_data_provider="false">
+        <inspect-form v-bind:_id="build._id">
         </inspect-form>
 
     </div>
