@@ -146,6 +146,10 @@ class InspectorManager(BaseManager):
                 if limit is None:
                     self.logger.info("Inspecting all the documents")
                 else:
+                    nonlocal batch_size
+                    # adjust batch_size so we inspect only "limit" docs if batch is smaller than the limit
+                    if batch_size > limit:
+                        batch_size = limit
                     self.logger.info("Inspecting only %s documents",limit)
                 # make it pickleable
                 if data_provider_type == "source":

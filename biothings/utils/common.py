@@ -20,6 +20,7 @@ import importlib
 import math, statistics
 import hashlib
 import asyncio
+import inspect, types
 from datetime import date, datetime, timezone
 
 if sys.version_info.major == 3:
@@ -594,6 +595,23 @@ def get_class_from_classpath(class_path):
     str_mod, str_klass = ".".join(class_path.split(".")[:-1]), class_path.split(".")[-1]
     mod = importlib.import_module(str_mod)
     return getattr(mod,str_klass)
+
+def find_classes_subclassing(mods, baseclass):
+    """
+    Given  a module or a list of modules, inspect and find all classes which are
+    a subclass of the given baseclass, inside those modules
+    """
+    # collect all modules found in given modules
+    if not isinstance(mods,list):
+        mods = [mods]
+    innner_mods = inspect.getmembers(mods,lambda obj: type(obj) == types.ModuleType)
+    mods.extend(innner_mods)
+    classes = []
+    for m in mods:
+        name_klasses = inspect.getmembers(m,lambda obj: type(obj) == type and issubclass(obj,baseclass))
+        if name_klasses:
+            [classes.append(klass) for name,klass in name_klasses]
+    return classes
 
 def sizeof_fmt(num, suffix='B'):
 	# http://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size

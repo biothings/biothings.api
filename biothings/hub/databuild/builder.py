@@ -16,9 +16,9 @@ from ..dataload.uploader import ResourceNotReady
 from .differ import set_pending_to_diff
 from ..databuild.backend import SourceDocMongoBackend, TargetDocMongoBackend, \
                                 LinkTargetDocMongoBackend
-from biothings.utils.common import timesofar, iter_n, get_timestamp, \
+from biothings.utils.common import timesofar, iter_n, get_timestamp, dotdict, \
                                    dump, rmdashfr, loadobj, open_compressed_file, \
-                                   get_class_from_classpath
+                                   get_class_from_classpath, find_classes_subclassing
 from biothings.utils.mongo import doc_feeder, id_feeder
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager, ManagerError
@@ -28,6 +28,7 @@ from biothings.utils.hub_db import get_source_fullname, get_src_build_config, \
                                    get_src_build, get_src_dump, get_src_master
 from biothings import config as btconfig
 from biothings.hub import UPLOADER_CATEGORY, BUILDER_CATEGORY
+from .backend import create_backend
 
 logging = btconfig.logger
 
@@ -38,6 +39,9 @@ class ResumeException(Exception):
 
 
 class DataBuilder(object):
+    """
+    Generic data builder.
+    """
 
     keep_archive = 10 # number of archived collection to keep. Oldest get dropped first.
 
@@ -790,6 +794,13 @@ class DataBuilder(object):
 
 
 class LinkDataBuilder(DataBuilder):
+    """
+    LinkDataBuilder creates a link to the original datasource to be merged, without
+    actually copying the data (merged collection remains empty). This builder is 
+    only valid when using only one datasource (thus no real merge) is declared in
+    the list of sources to be merged, and is useful to prevent data duplication between
+    the datasource itself and the resulting merged collection.
+    """
 
     def __init__(self, build_name, source_backend, target_backend, *args, **kwargs):
 
@@ -972,9 +983,9 @@ class BuilderManager(BaseManager):
         self.delete_merged_data(merge_name)
 
     def get_query_for_list_merge(self,only_archived):
-        q = {"archived" : {"$exists" : 0}}
+        q = {"$or" : [{"archived" : {"$exists" : 0}}, {"archived" : False}]}
         if only_archived:
-            q = {"archived" : {"$exists" : 1}}
+            q = {"$and" : [{"archived" : {"$exists" : 1}}, {"archived" : True}]}
         return q
 
     def list_merge(self,build_config=None,only_archived=False):
@@ -1081,7 +1092,7 @@ class BuilderManager(BaseManager):
             # do this for all build configs
             dbbuildconfig = get_src_build_config()
             configs = {}
-            for d in dbbuildconfig.find({"archived" : {"$exists" : 0}}):
+            for d in dbbuildconfig.find({"$or" : [{"archived" : {"$exists" : 0}}, {"archived" : False}]}):
                 try:
                     news = whatsnewcomparedto(d["_id"])
                     if news[d["_id"]]["sources"]:
@@ -1117,24 +1128,88 @@ class BuilderManager(BaseManager):
         return self.merge(doc["_id"])
 
     def build_config_info(self):
-        res = {}
+        configs = {}
+        err = None
         for name in self.register:
-            builder = self[name]
-            res[name] = {
-                    "class" : builder.__class__.__name__,
-                    "build_config" : builder.build_config,
-                    "source_backend" : {
-                        "type" : builder.source_backend.__class__.__name__,
-                        "source_db" : builder.source_backend.sources.client.address,
-                    },
-                    "target_backend" : {
-                        "type" : builder.source_backend.__class__.__name__,
-                        "target_db" : builder.target_backend.target_db.client.address
+            try:
+                builder = self[name]
+            except Exception as e:
+                conf = get_src_build_config().find_one({"_id":name})
+                if conf :
+                    builder = dotdict({"build_config": conf})
+                else:
+                    builder = None
+                err = str(e)
+
+            if not builder or issubclass(builder.target_backend.__class__,LinkTargetDocMongoBackend) or \
+                    issubclass(builder.__class__,dict): # fake builder obj
+                target_db = None # it's not a traditional target database, it's pointing to
+                                 # somewhere else (TODO: maybe LinkTargetDocMongoBackend should
+                                 # implement more methods to return info about that
+            else:
+                target_db = builder.target_backend.target_collection.database.client.address
+            configs[name] = {
+                    "class" : builder and builder.__class__.__name__,
+                    "build_config" : builder and builder.build_config,
+                    "archived" : "archived" in (builder and builder.build_config or [])
                     }
-                    }
-            res[name]["mapper"] = {}
-            for mappername,mapper in builder.mappers.items():
-                res[name]["mapper"][mappername] = mapper.__class__.__name__
+            if builder and builder.source_backend:
+                configs[name]["source_backend"] = {
+                        "type" : builder and builder.source_backend.__class__.__name__,
+                        "source_db" : builder and builder.source_backend.sources.client.address,
+                        }
+            if builder and builder.target_backend:
+                configs[name]["target_backend"] = {
+                        "type" : builder and builder.target_backend.__class__.__name__,
+                        "target_db" : target_db
+                        }
+            if err:
+                configs[name]["error"] = err
+            if builder and builder.mappers:
+                configs[name]["mapper"] = {}
+                for mappername,mapper in builder.mappers.items():
+                    configs[name]["mapper"][mappername] = mapper.__class__.__name__
+        res = {"build_configs" : configs}
+        # find all available build class:
+        # 1. default one in the manager
+        # 2. all subclassing DataBuilder in:
+        #   a. biothings.hub.databuilder.*
+        #   b. hub.databuilder.* (app-specific)
+        bclasses = {self.builder_class}
+        mods = [sys.modules[__name__]]
+        try:
+            import hub.databuild as m
+            mods.append(m)
+        except ImportError:
+            pass
+        logging.error(mods)
+        for klass in find_classes_subclassing(mods,DataBuilder):
+            bclasses.add(klass)
+        # make them printable
+        res["builder_classes"] = []
+        for klass in bclasses:
+            try:
+                obj = klass
+                if type(klass) == partial:
+                    assert type(klass.func) == type
+                    btype = "partial"
+                    obj = klass.func
+                elif type(klass) == type:
+                    btype = "class"
+                else:
+                    raise TypeError("Unknown type for builder %s" % repr(klass))
+                modstr = obj.__module__
+                classstr = obj.__name__
+                helpstr = " ".join(map(str.strip, obj.__doc__.splitlines()))
+                classpathstr = "%s.%s" % (modstr,classstr)
+                res["builder_classes"].append({
+                    "path" : classpathstr,
+                    "desc" : helpstr,
+                    "type" : btype}
+                )
+            except Exception as e:
+                logging.exception("Can't extract information from builder class %s: %s" % (repr(klass),e))
+
         return res
 
     def build_info(self,id=None,conf_name=None,fields=None,only_archived=False):
@@ -1161,16 +1236,20 @@ class BuilderManager(BaseManager):
         if not conf_name is None:
             q["build_config._id"] = conf_name
         builds = [b for b in get_src_build().find(q,fields)]
-        db = mongo.get_target_db()
         res = [b for b in sorted(builds, key=lambda e: str(e["started_at"]),reverse=True)]
         # set a global status (ie. latest job's status)
         # + get total #docs
+        db = mongo.get_target_db()
         for b in res:
             jobs = b.get("jobs",[])
             b["status"] = "unknown"
             if jobs:
                 b["status"] = jobs[-1]["status"]
-            b["count"] = db[b["_id"]].count()
+            try:
+                backend = create_backend(b["backend_url"])
+                b["count"] = backend.count()
+            except KeyError:
+                b["count"] = db[b["_id"]].count()
 
         if id:
             if res:
@@ -1180,16 +1259,31 @@ class BuilderManager(BaseManager):
         else:
             return res
 
-    def create_build_configuration(self,name,doc_type,sources,roots=[],params={}):
+    def upsert_build_conf(self, name, doc_type, sources, roots, builder_class, params, archived):
+        col = get_src_build_config()
+        builder_class = builder_class or "%s.%s" % (self.builder_class.__module__,self.builder_class.__name__)
+        doc = {"_id" : name, "name" : name, "doc_type" : doc_type,
+               "sources" : sources, "root" : roots,
+               "builder_class" : builder_class}
+        if archived:
+            doc["archived"] = True
+        else:
+            doc.pop("archived",None)
+        doc.update(params)
+        col.save(doc)
+        self.configure()
+
+    def create_build_configuration(self,name,doc_type,sources,roots=[],builder_class=None,
+                                   params={},archived=False):
         col = get_src_build_config()
         # check conf doesn't exist yet
         if [d for d in col.find({"_id":name})]:
             raise ValueError("Configuration named '%s' already exists" % name)
-        doc = {"_id" : name, "name" : name, "doc_type" : doc_type,
-               "sources" : sources, "root" : roots}
-        doc.update(params)
-        col.save(doc)
-        self.configure()
+        self.upsert_build_conf(name,doc_type,sources,roots,builder_class,params,archived)
+
+    def update_build_configuration(self,name,doc_type,sources,roots=[],builder_class=None,
+                                   params={},archived=False):
+        self.upsert_build_conf(name,doc_type,sources,roots,builder_class,params,archived)
 
     def delete_build_configuration(self,name):
         col = get_src_build_config()

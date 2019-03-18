@@ -6,22 +6,28 @@
             <a class="ui buildconfigs dropdown item" v-for="(conf,conf_name) in build_configs">
                 <i class="dropdown icon"></i>
                 <div :class="['ui', build_colors[conf_name], 'empty circular label']"></div>
-                {{conf_name}}
+                {{conf_name}} <b v-if="conf.error" class="red"><i class="red bell icon"></i></b>
                 <div class="ui inverted menu">
-                    <div class="item":conf-name="conf_name" @click="newBuild($event)"><i class="cube icon"></i> Create new build</div>
-                    <!--div class="item":conf-name="conf_name"><i class="edit outline icon"></i> Edit configuration</div-->
+                    <div v-if="!conf.error" class="item" :conf-name="conf_name" @click="newBuild($event)"><i class="cube icon"></i> Create new build</div>
+                    <div class="item" :conf-name="conf_name" @click="editConfiguration($event)">
+                        <i class="edit outline icon"></i> Edit configuration <b v-if="conf.error" class="red"><i class="red bell icon"></i></b>
+                    </div>
                     <div class="item" :conf-name="conf_name" @click="deleteConfiguration($event)"><i class="trash alternate outline icon"></i> Delete configuration</div>
                 </div>
             </a>
             <div class="item"><i>Other actions</i></div>
-            <a class="item"  v-on:click="createNewConfiguration">
+            <a class="item"  v-on:click="createConfiguration">
                 <i class="big icons">
                     <i class="configure icon"></i>
                     <i class="huge corner add icon"></i>
                 </i>
-                <br>
-                <br>
                 <div>New configuration</div>
+            </a>
+            <a class="item" v-on:click="toggleShowArchivedConfigs">
+                <i class="big icons">
+                    <i class="archive icon"></i>
+                </i>
+                <div>{{include_archived_configs ? "Hide" : "Show"}}  archived configurations</div>
             </a>
         </div>
         <div class="pusher">
@@ -45,177 +51,213 @@
                             </select>
                         </a>
                         <a class="item">
-                            <div class="ui includearchived checkbox">
-                                <input type="checkbox" name="includearchived" v-model="only_archived">
-                                <label>Show archived builds only</label>
-                            </div>
-                        </a>
-                      </div>
-                </div>
-                <div class="ui centered grid">
-                    <div class="ui five wide column" v-for="build in builds">
-                        <build v-bind:pbuild="build" v-bind:color="build_colors[build.build_config.name]"></build>
+                                <div class="ui includearchived checkbox">
+                                    <input type="checkbox" name="includearchived" v-model="only_archived">
+                                    <label>Show archived builds only</label>
+                                </div>
+                            </a>
+                          </div>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- create new build configuration -->
-        <div class="ui basic newconfiguration modal">
-            <h3 class="ui icon">
-                <i class="configure icon"></i>
-                Create/edit build configuration
-            </h3>
-            <div class="content">
-                <div class="ui newconfiguration form">
                     <div class="ui centered grid">
-                        <div class="eight wide column">
-
-                            <label>Enter a build configuration name</label>
-                            <input type="text" id="conf_name" placeholder="Configuration name" autofocus>
-                            <br>
-                            <br>
-
-                            <label>Enter a name for the type of stored documents ("gene", "variant", ...)</label>
-                            <input type="text" id="doc_type" placeholder="Document type" autofocus>
-                            <br>
-                            <br>
-
-                            <label>Select the sources used to create merged data</label>
-                            <select class="ui fluid sources dropdown" id="selected_sources" multiple="">
-                                <option value="">Available sources</option>
-                                <option v-for="_id in sources">{{_id}}</option>
-                            </select>
-                            <br>
-
-                            <label>Once sources are selected, choose sources providing root documents</label>
-                            <select class="ui fluid rootsources dropdown" multiple="">
-                                <option value="">Root sources</option>
-                            </select>
-                            <br>
-
-
+                        <div class="ui five wide column" v-for="build in builds">
+                            <build v-bind:pbuild="build" v-bind:color="build_colors[build.build_config.name]"></build>
                         </div>
+                    </div>
+                </div>
+            </div>
 
-                        <div class="eight wide column">
+            <!-- create new build configuration -->
+            <div class="ui basic buildconfiguration modal">
+                <h3 class="ui icon">
+                    <i class="configure icon"></i>
+                    Create/edit build configuration
+                </h3>
+                <div class="content">
+                    <div class="ui buildconfiguration form">
+                        <div class="ui centered grid">
+                            <div class="eight wide column">
 
-                            <p>Optional parameters can be added to the configuration (usefull to customize builder behavior). Enter a JSON object structure</p>
-                            <textarea id="optionals">{}</textarea>
+                                <div v-if="buildconf_error" class="ui negative message">
+                                  <div class="header">
+                                    Error in build configuration
+                                  </div>
+                                  <p>{{buildconf_error}}</p>
+                                </div>
 
-                            <div class="ui teal message">
-                                <b>Note</b>: sources providing root documents, or <i>root sources</i>, are sources allowed to
-                                create a new document in a build (merged data). If a root source is declared, data from other sources will only be merged <b>if</b>
-                                documents previously exist with same IDs (documents coming from root sources). If not, data is discarded. Finally, if no root source
-                                is declared, any data sources can generate a new document in the merged data.
+                                <label>Enter a build configuration name</label>
+                                <input type="text" id="conf_name" placeholder="Configuration name" autofocus>
+                                <br>
+                                <br>
+
+                                <label>Enter a name for the type of stored documents ("gene", "variant", ...)</label>
+                                <input type="text" id="doc_type" placeholder="Document type" autofocus>
+                                <br>
+                                <br>
+
+                                <label>Select the sources used to create merged data</label>
+                                <select class="ui fluid sources dropdown" id="selected_sources" multiple="">
+                                    <option value="">Available sources</option>
+                                    <option v-for="_id in sources">{{_id}}</option>
+                                </select>
+                                <br>
+
+                                <label>Once sources are selected, choose sources providing root documents</label>
+                                <select class="ui fluid rootsources dropdown" id="root_sources" multiple="">
+                                    <option value="">Root sources</option>
+                                </select>
+                                <br>
+
+                                <label>Select a builder type</label>
+                                <select class="ui fluid builders dropdown" id="builders">
+                                  <option v-for="b in builder_classes">{{b.path}}</option>
+                                </select>
+                                <div class="ui blue message">
+                                  <div class="header">
+                                    About this builder
+                                  </div>
+                                  <p id="builder_doc">{{builder_doc}}</p>
+                                </div>
+                                <br>
+
+                                <p>Optional parameters can be added to the configuration (usefull to customize builder behavior). Enter a JSON object structure</p>
+                                <textarea id="optionals">{}</textarea>
+
+                                <div class="ui teal message">
+                                    <b>Note</b>: sources providing root documents, or <i>root sources</i>, are sources allowed to
+                                    create a new document in a build (merged data). If a root source is declared, data from other sources will only be merged <b>if</b>
+                                    documents previously exist with same IDs (documents coming from root sources). If not, data is discarded. Finally, if no root source
+                                    is declared, any data sources can generate a new document in the merged data.
+                                </div>
+
+                                <label>Remove this configuration from list by default</label>
+                                <div><i>You can still access it by clicking on "show/hide archived configuration" in the menu on the side</i></div>
+                                <div class="ui checkbox">
+                                  <input type="checkbox" name="archive_conf">
+                                  <label class="white">Archive</label>
+                                </div>
+
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="ui error message" v-if="errors.length">
-                <ul class="ui list">
-                    <li v-for="err in errors">{{err}}</li>
-                </ul>
-            </div>
+                <div class="ui error message" v-if="errors.length">
+                    <ul class="ui list">
+                        <li v-for="err in errors">{{err}}</li>
+                    </ul>
+                </div>
 
-            <div class="actions">
-                <div class="ui red basic cancel inverted button">
-                    <i class="remove icon"></i>
-                    Cancel
-                </div>
-                <div class="ui green ok inverted button">
-                    <i class="checkmark icon"></i>
-                    OK
-                </div>
-            </div>
-        </div>
-
-        <div class="ui basic deleteconf modal">
-            <div class="ui icon header">
-                <i class="trash alternate icon"></i>
-                Delete configuration
-            </div>
-            <div class="content">
-                <p>Are you sure you want to delete this build configuration ?</p>
-            </div>
-            <div class="actions">
-                <div class="ui red basic cancel inverted button">
-                    <i class="remove icon"></i>
-                    No
-                </div>
-                <div class="ui green ok inverted button">
-                    <i class="checkmark icon"></i>
-                    Yes
-                </div>
-            </div>
-        </div>
-
-        <div class="ui basic newbuild modal">
-            <div class="ui icon header">
-                <i class="cube icon"></i>
-                Create new build
-            </div>
-            <div class="ui newbuild form">
-                <div class="ui centered grid">
-                    <div class="ten wide column">
-                        <p>Enter a name for the merged data collection or leave it empty to generate a random one</p>
-                        <input type="text" id="target_name" placeholder="Collection name" autofocus>
+                <div class="actions">
+                    <div class="ui red basic cancel inverted button">
+                        <i class="remove icon"></i>
+                        Cancel
                     </div>
-                    <div class="six wide column">
+                    <div class="ui green ok inverted button">
+                        <i class="checkmark icon"></i>
+                        OK
                     </div>
                 </div>
             </div>
-            <div class="actions">
-                <div class="ui red basic cancel inverted button">
-                    <i class="remove icon"></i>
-                    Cancel
+
+            <div class="ui basic deleteconf modal">
+                <div class="ui icon header">
+                    <i class="trash alternate icon"></i>
+                    Delete configuration
                 </div>
-                <div class="ui green ok inverted button">
-                    <i class="checkmark icon"></i>
-                    OK
+                <div class="content">
+                    <p>Are you sure you want to delete this build configuration ?</p>
+                </div>
+                <div class="actions">
+                    <div class="ui red basic cancel inverted button">
+                        <i class="remove icon"></i>
+                        No
+                    </div>
+                    <div class="ui green ok inverted button">
+                        <i class="checkmark icon"></i>
+                        Yes
+                    </div>
                 </div>
             </div>
+
+            <div class="ui basic newbuild modal">
+                <div class="ui icon header">
+                    <i class="cube icon"></i>
+                    Create new build
+                </div>
+                <div class="ui newbuild form">
+                    <div class="ui centered grid">
+                        <div class="ten wide column">
+                            <p>Enter a name for the merged data collection or leave it empty to generate a random one</p>
+                            <input type="text" id="target_name" placeholder="Collection name" autofocus>
+                            <div class="ui forcebuild checkbox">
+                                <br/>
+                                <input type="checkbox" name="force_build" id="force_build">
+                                <label class="white">Skip sanity checks and force build (not recommended)</label>
+                            </div>
+                        </div>
+                        <div class="six wide column">
+                        </div>
+                    </div>
+                </div>
+                <div class="actions">
+                    <div class="ui red basic cancel inverted button">
+                        <i class="remove icon"></i>
+                        Cancel
+                    </div>
+                    <div class="ui green ok inverted button">
+                        <i class="checkmark icon"></i>
+                        OK
+                    </div>
+                </div>
+            </div>
+
         </div>
 
-    </div>
+
+    </template>
+
+    <script>
+    import axios from 'axios'
+    import Build from './Build.vue'
+    import Loader from './Loader.vue'
+    import bus from './bus.js'
 
 
-</template>
+    export default {
+        name: 'build-grid',
+        mixins: [ Loader, ],
+        mounted () {
+            var self = this;
+            console.log("BuildGrid mounted");
+            $('.ui.filterbuilds.dropdown').dropdown();
+            $('.ui.buildconfigs.dropdown').dropdown();
+            $('.ui.rootsources.dropdown').dropdown();
+            $('.ui.sources.dropdown').dropdown({
+                onChange: function(addedValue, addedText, $addedChoice) {
+                    var selected_sources = $('.ui.sources.dropdown').dropdown('get value');
+                    var fmt = []
+                    for(var i in selected_sources) {
+                        var x = selected_sources[i];
+                        var d = {"name":x,"text":x,"value":x};
+                        fmt.push(d);
+                    }
+                    $('.ui.rootsources.dropdown').dropdown("clear");
+                    $('.ui.rootsources.dropdown').dropdown("setup menu",{"values" : fmt}).dropdown("refresh");
+                },
+            });
 
-<script>
-import axios from 'axios'
-import Build from './Build.vue'
-import Loader from './Loader.vue'
-import bus from './bus.js'
-
-
-export default {
-    name: 'build-grid',
-    mixins: [ Loader, ],
-    mounted () {
-        console.log("BuildGrid mounted");
-        $('.ui.filterbuilds.dropdown').dropdown();
-        $('.ui.buildconfigs.dropdown').dropdown();
-        $('.ui.sources.dropdown').dropdown({
-            onChange: function(addedValue, addedText, $addedChoice) {
-                console.log(addedValue);console.log(addedText);
-                var selected_sources = $('.ui.sources.dropdown').dropdown('get value');
-                var fmt = []
-                for(var i in selected_sources) {
-                    var x = selected_sources[i];
-                    var d = {"name":x,"text":x,"value":x};
-                    fmt.push(d);
-                }
-                $('.ui.rootsources.dropdown').dropdown("setup menu",{"values" : fmt}).dropdown("refresh");
-            },
-        });
-        $('#builds .ui.sidebar')
-        .sidebar({context:$('#builds')})
-        .sidebar('setting', 'transition', 'overlay')
-        .sidebar('attach events', '#side_menu');
-        $('.ui.form').form();
-        $('.ui.includearchived.checkbox').checkbox();
+            $('.ui.builders.dropdown').dropdown({
+              onChange: function(value, text) {
+                self.setBuilderDoc(value);
+              }
+            });
+            $('#builds .ui.sidebar')
+            .sidebar({context:$('#builds')})
+            .sidebar('setting', 'transition', 'overlay')
+            .sidebar('attach events', '#side_menu');
+            $('.ui.form').form();
+            $('.ui.includearchived.checkbox').checkbox();
+            $(".ui.forcebuild.checkbox").checkbox();
     },
     updated() {
         // there's some kind of race-condition regarding dropdown init, if
@@ -240,7 +282,7 @@ export default {
         // modal displayed when getting back to that page. https://github.com/Semantic-Org/Semantic-UI/issues/4049
         $('.ui.basic.deleteconf.modal').remove();
         $('.ui.basic.newbuild.modal').remove();
-        $('.ui.basic.newconfiguration.modal').remove();
+        $('.ui.basic.buildconfiguration.modal').remove();
         bus.$off('change_source',this.onSourceChanged);
         bus.$off('change_build',this.onBuildChanged);
         bus.$off('change_build_config',this.onBuildConfigChanged);
@@ -261,7 +303,11 @@ export default {
         return  {
             builds: [],
             sources : [],
-            build_configs: {},
+            all_build_configs: {}, // from API
+            build_configs: {}, // displayed
+            builder_classes: [],
+            builder_doc: "No documentation for this builder", // selected builder doc
+            buildconf_error: null,
             errors: [],
             build_colors : {},
             // build colors for easy visual id
@@ -269,10 +315,36 @@ export default {
             color_idx : 0,
             conf_filter : "",
             only_archived : false,
+            include_archived_configs: false,
         }
+    },
+    computed: {
     },
     components: { Build, },
     methods: {
+      setBuilderDoc: function(classpath) {
+        var self = this;
+        $.each(self.builder_classes, function(i) {
+          if(self.builder_classes[i].path == classpath) {
+            self.builder_doc = self.builder_classes[i].desc;
+            return false;
+          }
+        });
+        if(!self.builder_doc)
+          self.builder_doc = "No documentation for this builder";
+      },
+        updateRootSources: function() {
+            var avail_roots = $(".ui.buildconfiguration.form").form('get field', "selected_sources").val();
+            $('#root_sources').dropdown("clear");
+            $('#root_sources').empty();
+            $.each(avail_roots, function(i) {
+                var val = avail_roots[i];
+                $('#root_sources').append(
+                    $('<option></option>').val(val).html(val)
+                );
+            });
+            $('#root_sources').dropdown().dropdown("refresh");
+        },
         getBuilds: function() {
             var filter = this.conf_filter == "" ? '' : `?conf_name=${this.conf_filter}`;
             // https://vuejs.org/v2/guide/list.html#Caveats:
@@ -301,28 +373,44 @@ export default {
                 this.loaderror(err);
             })
         },
+        setBuildConfigs: function() {
+            this.build_configs = {};
+            // make sure we always give the same color for a given build config
+            var keys = Object.keys(this.all_build_configs);
+            for(var k in keys) {
+                if(!this.include_archived_configs && this.all_build_configs[keys[k]].build_config["archived"])
+                    continue;
+                this.build_configs[keys[k]] = this.all_build_configs[keys[k]];
+            }
+        },
         getBuildConfigs: function() {
             var self = this;
             // reset colors (if configs haven't changed we should get the same colors
             // as we sort the build config by name)
-            self.color_idx = 0;
             self.build_colors = {};
+            self.color_idx = 0;
             this.loading();
             axios.get(axios.defaults.baseURL + '/build_manager')
             .then(response => {
-                self.build_configs = response.data.result;
-                // make sure we always give the same color for a given build config
-                var keys = Object.keys(self.build_configs);
-                console.log(keys);
-                keys.sort();
-                for(var k in keys) {
-                    console.log(keys[k]);
-                    self.build_colors[keys[k]] = self.colors[self.color_idx++];
-                    if(self.color_idx + 1 >= Object.keys(self.colors).length) {
-                        self.color_idx = 0;
-                    }
+              // depending on API version, build configs are under "build_configs" key
+              // along with "builder_classes", or at the root (no builder_classes)
+              // TODO: version hub API and check version number there
+              if(response.data.result.build_configs) {
+                self.all_build_configs = response.data.result.build_configs;
+                self.builder_classes = response.data.result.builder_classes;
+              } else {
+                self.all_build_configs = response.data.result;
+                self.builder_classes = [];
+              }
+              var keys = Object.keys(self.all_build_configs);
+              for(var k in keys) {
+                self.build_colors[keys[k]] = self.colors[self.color_idx++];
+                if(self.color_idx + 1 >= Object.keys(self.colors).length) {
+                  self.color_idx = 0;
                 }
-                this.loaded();
+              }
+              self.setBuildConfigs();
+              this.loaded();
             })
             .catch(err => {
                 console.log("Error getting builds information: " + err);
@@ -365,17 +453,14 @@ export default {
             this.getSourceList();
         },
         onBuildChanged: function(_id=null, op=null) {
-            //console.log(`_id ${_id} op ${op}`);
             if(_id == null) {
                 console.log("Refreshing builds");
                 this.getBuilds();
             } else {
                 if(this.buildExists(_id)) {
                     // there's an ID for an existing build, propagate
-                    //console.log(`emit build_updated for ${_id}`);
                     bus.$emit("build_updated",_id,op);
                 } else {
-                    //console.log(`_id ${_id} doesn't exist, get all`);
                     this.getBuilds();
                 }
             }
@@ -390,21 +475,43 @@ export default {
         },
         showBuildConfig: function(event) {
             var confname = $(event.currentTarget).html().trim();
-            console.log(this.build_configs[confname]);
+            //console.log(this.build_configs[confname]);
         },
-        createNewConfiguration: function() {
-            // force close sidebar
-            $('#builds .ui.sidebar').sidebar("hide");
+        clearConfigurationModal() {
+            $('#selected_sources').dropdown("clear");
+            $('#root_sources').empty();
+            $('#root_sources').dropdown("clear");
+            $(".ui.buildconfiguration.form").form('get field', "conf_name").val("");
+            $(".ui.buildconfiguration.form").form('get field', "doc_type").val("");
+            $(".ui.buildconfiguration.form").form('get field', "optionals").val("{}"); // json valid doc
+            $(".ui.buildconfiguration.form").form('get field', "archive_conf").prop("checked",false);
+        },
+        sendAPI: function(data,mode) {
+          var axiosfunc = (mode == "new" ? axios.post : axios.put);
+          var self = this;
+          axiosfunc(axios.defaults.baseURL + '/buildconf',data)
+          .then(response => {
+            self.loaded();
+            return true;
+          })
+          .catch(err => {
+            console.log(err);
+            console.log("Error creating build configuration: " + err.data.error);
+            self.loaderror(err);
+          })
+        },
+        showBuildConfigModal: function(mode) {
+            // refresh doc label for current selected builder
+            this.setBuilderDoc($(".ui.buildconfiguration.form").form('get field', "builders").val());
             var self = this;
-            $('.ui.basic.newconfiguration.modal')
+            $('.ui.basic.buildconfiguration.modal')
             .modal("setting", {
                 detachable : false,
                 onApprove: function () {
                     self.errors = [];
-                    var conf_name = $(".ui.newconfiguration.form").form('get field', "conf_name").val();
-                    var doc_type = $(".ui.newconfiguration.form").form('get field', "doc_type").val();
-                    var selected_sources = $(".ui.newconfiguration.form").form('get field', "selected_sources").val();
-                    console.log(optionals);
+                    var conf_name = $(".ui.buildconfiguration.form").form('get field', "conf_name").val();
+                    var doc_type = $(".ui.buildconfiguration.form").form('get field', "doc_type").val();
+                    var selected_sources = $(".ui.buildconfiguration.form").form('get field', "selected_sources").val();
                     var root_sources = [];
                     // form valid
                     if(!conf_name)
@@ -416,45 +523,63 @@ export default {
                     // semantic won't populate select.option when dynamically set values, but rather add "q" elements, 
                     // despite the use of refresh. How ugly...
                     $(".ui.rootsources.dropdown a").each(function(i,e) {root_sources.push($(e).text())});
-                    //var params = {};
-                    //$(optionals.split("\n")).each(function(i,line) {
-                    //    if(line) {
-                    //        var kv = line.split("=").map(x => x.trim());
-                    //        if(kv.length == 2) {
-                    //            params[kv[0]] = kv[1];
-                    //        } else {
-                    //            self.errors.push("Invalid parameter: " + line);
-                    //        }
-                    //    }
-                    //});
+                    var bclass = $(".ui.buildconfiguration.form").form('get field', "builders").val();
                     var optionals = {};
                     try {
-                        optionals = JSON.parse($(".ui.newconfiguration.form").form('get field','optionals').val());
+                        optionals = JSON.parse($(".ui.buildconfiguration.form").form('get field','optionals').val());
                     } catch(e) {
                         self.errors.push("Invalid optional parameter: " + e);
                     }
                     if(self.errors.length)
                         return false;
                     self.loading();
-                    axios.post(axios.defaults.baseURL + '/buildconf',
-                               {"name":conf_name,
-                                "doc_type": doc_type,
-                                "sources":selected_sources,
-                                "roots":root_sources,
-                                "params":optionals})
-                    .then(response => {
-                        console.log(response.data.result)
-                        self.loaded();
-                        return true;
-                    })
-                    .catch(err => {
-                        console.log(err);
-                        console.log("Error creating build configuration: " + err.data.error);
-                        self.loaderror(err);
-                    })
+                    var archived = $(".ui.buildconfiguration.form").form('get field', "archive_conf").prop("checked");
+                    var api_data = {
+                      "name":conf_name,
+                      "doc_type": doc_type,
+                      "sources":selected_sources,
+                      "roots":root_sources,
+                      "builder_class": bclass,
+                      "params":optionals,
+                      "archived":archived};
+                    self.sendAPI(api_data,mode);
                 }
             })
             .modal("show");
+        },
+        createConfiguration: function() {
+            // force close sidebar
+            $('#builds .ui.sidebar').sidebar("hide");
+            this.clearConfigurationModal();
+            this.showBuildConfigModal("new");
+        },
+        editConfiguration: function(event) {
+            // force close sidebar
+            var conf_name = $(event.currentTarget).attr("conf-name");
+            var conf = this.all_build_configs[conf_name];
+            if(!conf) {
+                console.log(`Unable to get configuration details for ${conf_name}`);
+                return;
+            }
+            this.buildconf_error = conf.error;
+            this.clearConfigurationModal();
+            // restore values from existing config
+            $(".ui.buildconfiguration.form").form('get field', "conf_name").val(conf.build_config.name);
+            $(".ui.buildconfiguration.form").form('get field', "doc_type").val(conf.build_config.doc_type);
+            $(".ui.buildconfiguration.form").form('get field', "selected_sources").val(conf.build_config.sources).change();
+            this.updateRootSources();
+            $(".ui.buildconfiguration.form").form('get field', "root_sources").val(conf.build_config.root).change();
+            var optionals = {};
+            // conf keys not properly organized, all at root levels, we need to identify which one are specifically dealt with
+            // in a specific form element so optionals only contain things not handled in the form
+            $.each(conf.build_config,function(k,v) {
+              if(["name","doc_type","sources","root","_id","archived","builder_class"].indexOf(k) == -1) {
+                  optionals[k] = v;
+                }
+            });
+            $(".ui.buildconfiguration.form").form('get field', "optionals").val(JSON.stringify(optionals,null,4));
+            $(".ui.buildconfiguration.form").form('get field', "archive_conf").prop("checked",conf.build_config.archived);
+            this.showBuildConfigModal("edit");
         },
         deleteConfiguration : function(event) {
             // force close sidebar
@@ -491,9 +616,10 @@ export default {
                 onApprove: function () {
                     self.loading();
                     var target_name = $(".ui.newbuild.modal #target_name").val();
+                    var force = $(".ui.forcebuild.checkbox #force_build").prop("checked");
                     if(target_name == "")
                         target_name = null;
-                    axios.put(axios.defaults.baseURL + `/build/${conf_name}/new`,{"target_name":target_name})
+                    axios.put(axios.defaults.baseURL + `/build/${conf_name}/new`,{"target_name":target_name,"force":force})
                     .then(response => {
                         console.log(response.data.result)
                         self.loaded();
@@ -514,6 +640,10 @@ export default {
             this.conf_filter = "";
             this.getBuilds();
         },
+        toggleShowArchivedConfigs: function() {
+            this.include_archived_configs = !this.include_archived_configs;
+            this.setBuildConfigs();
+        }
     }
 }
 </script>
@@ -524,5 +654,13 @@ export default {
 }
 .clearconffilter {
     margin-right:1em !important;
+}
+
+.white {
+  color: white !important;
+}
+
+.red{
+  color: red !important;
 }
 </style>

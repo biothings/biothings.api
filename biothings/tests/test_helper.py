@@ -3,25 +3,14 @@
 '''
 import json
 import re
-import sys
 import unittest
 from functools import wraps
+from urllib.parse import urlencode, urlparse
 
 import msgpack
 import requests
-import six
 from tornado.testing import AsyncHTTPTestCase
-
-try:
-    from urllib.parse import urlencode
-except ImportError:
-    from urllib import urlencode
-try:
-    from urllib.parse import urlparse
-except ImportError:
-    from urlparse import urlparse
-
-PY3 = bool(sys.version_info.major >= 3)
+from tornado.escape import json_encode, json_decode
 
 
 class TornadoTestServerMixin(AsyncHTTPTestCase):
@@ -110,12 +99,17 @@ class BiothingsTestCase(unittest.TestCase):
         ''' Asserts server says GET is not allowed for the specified resource '''
         self.get_status_match(url, 405)
 
-    def post_status_match(self, url, params, status_code):
+    def post_status_match(self, url, params, status_code, add_headers=None):
         ''' Make a post request and asserts the response status code matches
-            that of expectation, return the response content in bytes  '''
-        headers = {'Content-type': 'application/x-www-form-urlencoded'}
-        res, con = self.request(url, 'POST', urlencode(
-            self.encode_dict(params)), headers=headers)
+            that of expectation, return the response content in bytes
+            automatically encode params according to its Content-Type '''
+        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        data = urlencode(params)
+        if add_headers:
+            headers.update(add_headers)
+        if headers['Content-Type'] == 'application/json':
+            data = json_encode(params)
+        res, con = self.request(url, 'POST', data, headers=headers)
         assert res.status_code == status_code, "status {} != {} for url: {}\nparams: {}".format(
             res.status_code, status_code, url, params)
         return con
@@ -123,12 +117,7 @@ class BiothingsTestCase(unittest.TestCase):
     def post_ok(self, url, params):
         ''' Asserts server says the POST request has succeeded and it responded
             with an entity describing or containing the result of the action '''
-        headers = {'Content-type': 'application/x-www-form-urlencoded'}
-        res, con = self.request(url, 'POST', urlencode(
-            self.encode_dict(params)), headers=headers)
-        assert res.status_code == 200, "status {} != 200 for url: {}\nparams: {}".format(
-            res.status, url, params)
-        return con
+        return self.post_status_match(url, params, 200)
 
     @staticmethod
     def parse_url(url, option):
@@ -143,20 +132,6 @@ class BiothingsTestCase(unittest.TestCase):
     # Data and Formats
 
     @staticmethod
-    def encode_dict(dic):
-        ''' urllib.urlencode (python 2.x) cannot take unicode string.
-            encode as utf-8 first to get it around.
-        '''
-        if PY3:
-            # no need to do anything
-            return dic
-
-        def smart_encode(string):
-            return string.encode('utf-8') if isinstance(string, six.text_type) else string
-
-        return {key: smart_encode(val) for key, val in dic.items()}
-
-    @staticmethod
     def truncate(string, limit):
         ''' Truncate a long string with a trailing ellipsis '''
         if len(string) <= limit:
@@ -165,12 +140,20 @@ class BiothingsTestCase(unittest.TestCase):
 
     @classmethod
     def json_ok(cls, byte_str, checkerror=True):
-        ''' Load utf-8 encoded json into a dict '''
-        dic = cls._d(byte_str.decode('utf-8'))
+        ''' Load encoded json into a dict '''
+        dic = json_decode(byte_str)
         if checkerror:
             assert not (isinstance(dic, dict)
                         and 'error' in dic), cls.truncate(str(dic), 100)
         return dic
+
+    def get_json_ok(self, url):
+        ''' shortcut for url -> get_ok -> json_ok -> dic '''
+        return self.json_ok(self.get_ok(url))
+
+    def post_json_ok(self, url, data=None):
+        ''' shortcut for (url, data) -> get_ok -> json_ok -> dic '''
+        return self.json_ok(self.post_ok(url, data))
 
     @classmethod
     def msgpack_ok(cls, packed_bytes, checkerror=True):
@@ -331,6 +314,13 @@ class BiothingsTestCase(unittest.TestCase):
             self.api + '/' + query_endpoint + '?q=' + param_q))
         assert dic.get('total', 0) > 0 and dic.get('hits', [])
         return dic
+
+    def query_missed(self, param_q, query_endpoint='query'):
+        ''' Query and asserts no hits '''
+        dic = self.json_ok(self.get_ok(
+            self.api + '/' + query_endpoint + '?q=' + param_q))
+        assert dic.get('total', 0) == 0
+
 
 #############################################
 # Decorators for easy parameterized testing

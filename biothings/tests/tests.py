@@ -4,18 +4,9 @@ Nose tests
 run as "nosetests tests"
     or "nosetests tests:test_main"
 '''
-try:
-    from urllib.parse import urlencode
-except ImportError:
-    from urllib import urlencode
-try:
-    from urllib.parse import urlparse
-except ImportError:
-    from urlparse import urlparse
-try:
-    from urllib.parse import quote_plus
-except ImportError:
-    from urllib import quote_plus
+from urllib.parse import urlencode
+from urllib.parse import urlparse
+from urllib.parse import quote_plus
 import json
 import os
 import re

@@ -153,7 +153,7 @@ class BaseSyncer(object):
 
     @asyncio.coroutine
     def sync_cols(self, diff_folder, batch_size=10000, mode=None, force=False,
-            target_backend=None,steps=["mapping","content","meta","post"]):
+            target_backend=None,steps=["mapping","content","meta","post"],debug=False):
         """
         Sync a collection with diff files located in diff_folder. This folder contains a metadata.json file which
         describes the different involved collection: "old" is the collection/index to be synced, "new" is the collecion
@@ -239,7 +239,7 @@ class BaseSyncer(object):
                 meta = copy.deepcopy(self._meta)
                 job = yield from self.job_manager.defer_to_process(pinfo,
                         partial(worker, diff_file, old_db_col_names, new_db_col_names, worker_args.get("batch_size") or batch_size, cnt,
-                            force, selfcontained, meta))
+                            force, selfcontained, meta, debug))
                 jobs.append(job)
             def synced(f):
                 try:
@@ -337,11 +337,11 @@ class BaseSyncer(object):
         return
 
     def sync(self, diff_folder=None, batch_size=10000, mode=None, target_backend=None,
-             steps=["mapping","content","meta","post"]):
+             steps=["mapping","content","meta","post"], debug=False):
         """wrapper over sync_cols() coroutine, return a task"""
         job = asyncio.ensure_future(self.sync_cols(
                     diff_folder=diff_folder, batch_size=batch_size, mode=mode,
-                    target_backend=target_backend,steps=steps))
+                    target_backend=target_backend,steps=steps,debug=debug))
         return job
 
 
@@ -399,7 +399,7 @@ class ThrottledESColdHotJsonDiffSelfContainedSyncer(ThrottlerSyncer,ESColdHotJso
 
 # TODO: refactor workers (see sync_es_...)
 def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, batch_size, cnt,
-        force=False, selfcontained=False, metadata={}):
+        force=False, selfcontained=False, metadata={}, debug=False):
     """Worker to sync data between a new and an old mongo collection"""
     # check if diff files was already synced
     res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
@@ -456,7 +456,7 @@ def sync_mongo_jsondiff_worker(diff_file, old_db_col_names, new_db_col_names, ba
 
 
 def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, cnt,
-        force=False, selfcontained=False, metadata={}):
+        force=False, selfcontained=False, metadata={}, debug=False):
     """Worker to sync data between a new mongo collection and an elasticsearch index"""
     res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
     # check if diff files was already synced
@@ -510,9 +510,16 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
                     import pickle
                     pickle.dump(errors,open("errors","wb"))
                     raise
+        except Exception as e:
+            if debug:
+                logging.error("From diff file '%s', following IDs couldn't be synced because: %s\n%s" % (diff_file,e,[d.get("_id") for d in docs]))
+                pickfile = "batch_%s_%s.pickle" % (cnt,os.path.basename(diff_file))
+                logging.error("Documents pickled in '%s'" % pickfile)
+                pickle.dump(docs,open(pickfile,"wb"))
+            raise
 
     # update: get doc from indexer and apply diff
-    sync_es_for_update(indexer,diff["update"],batch_size,res)
+    sync_es_for_update(diff_file,indexer,diff["update"],batch_size,res,debug)
 
     # delete: remove from "old"
     for ids in iter_n(diff["delete"],batch_size):
@@ -527,7 +534,7 @@ def sync_es_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, 
 
 
 def sync_es_coldhot_jsondiff_worker(diff_file, es_config, new_db_col_names, batch_size, cnt,
-        force=False, selfcontained=False, metadata={}):
+        force=False, selfcontained=False, metadata={}, debug=False):
     res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
     # check if diff files was already synced
     synced_file = "%s.synced" % diff_file
@@ -607,7 +614,7 @@ def sync_es_coldhot_jsondiff_worker(diff_file, es_config, new_db_col_names, batc
 
     # update: get doc from indexer and apply diff
     # note: it's the same process as for non-coldhot
-    sync_es_for_update(indexer,diff["update"],batch_size,res)
+    sync_es_for_update(diff_file,indexer,diff["update"],batch_size,res,debug)
 
     # delete: remove from "old"
     for ids in iter_n(diff["delete"],batch_size):
@@ -620,34 +627,42 @@ def sync_es_coldhot_jsondiff_worker(diff_file, es_config, new_db_col_names, batc
     os.rename(diff_file,synced_file)
     return res
 
-def sync_es_for_update(indexer, diffupdates, batch_size, res):
+def sync_es_for_update(diff_file, indexer, diffupdates, batch_size, res, debug):
     batch = []
     ids = [p["_id"] for p in diffupdates]
     iterids_bcnt = iter_n(ids,batch_size,True)
     for batchids,bcnt in iterids_bcnt:
-        for i,doc in enumerate(indexer.get_docs(batchids)):
-            # recompute correct index in diff["update"], since we split it in batches
-            diffidx = i + bcnt - len(batchids) # len(batchids) is not == batch_size for the last one...
-            try:
-                patch_info = diffupdates[diffidx] # same order as what's return by get_doc()...
-                assert patch_info["_id"] == doc["_id"],"%s != %s" % (patch_info["_id"],doc["_id"]) # ... but just make sure
-                newdoc = jsonpatch.apply_patch(doc,patch_info["patch"])
-                if newdoc == doc:
-                    # already applied
-                    logging.warning("_id '%s' already synced" % doc["_id"])
+        try:
+            for i,doc in enumerate(indexer.get_docs(batchids)):
+                # recompute correct index in diff["update"], since we split it in batches
+                diffidx = i + bcnt - len(batchids) # len(batchids) is not == batch_size for the last one...
+                try:
+                    patch_info = diffupdates[diffidx] # same order as what's return by get_doc()...
+                    assert patch_info["_id"] == doc["_id"],"%s != %s" % (patch_info["_id"],doc["_id"]) # ... but just make sure
+                    newdoc = jsonpatch.apply_patch(doc,patch_info["patch"])
+                    if newdoc == doc:
+                        # already applied
+                        logging.warning("_id '%s' already synced" % doc["_id"])
+                        res["skipped"] += 1
+                        continue
+                    batch.append(newdoc)
+                except jsonpatch.JsonPatchConflict as e:
+                    # assuming already applied
+                    logging.warning("_id '%s' already synced ? JsonPatchError: %s" % (doc["_id"],e))
                     res["skipped"] += 1
                     continue
-                batch.append(newdoc)
-            except jsonpatch.JsonPatchConflict as e:
-                # assuming already applied
-                logging.warning("_id '%s' already synced ? JsonPatchError: %s" % (doc["_id"],e))
-                res["skipped"] += 1
-                continue
-            if len(batch) >= batch_size:
+                if len(batch) >= batch_size:
+                    res["updated"] += indexer.index_bulk(batch,batch_size)[0]
+                    batch = []
+            if batch:
                 res["updated"] += indexer.index_bulk(batch,batch_size)[0]
-                batch = []
-        if batch:
-            res["updated"] += indexer.index_bulk(batch,batch_size)[0]
+        except Exception as e:
+            if debug:
+                logging.error("From diff file '%s', %d IDs couldn't be synced because: %s\n%s" % (diff_file,e,len(batchids)))
+                pickfile = "batch_sync_updater_%s_%s.pickle" % (bcnt,os.path.basename(diff_file))
+                logging.error("IDs pickled in '%s'" % pickfile)
+                pickle.dump(batchids,open(pickfile,"wb"))
+            raise
 
 
 class SyncerManager(BaseManager):
@@ -693,7 +708,8 @@ class SyncerManager(BaseManager):
         return pclass()
 
     def sync(self, backend_type, old_db_col_names, new_db_col_names, diff_folder=None, 
-                   batch_size=100000, mode=None, target_backend=None, steps=["mapping","content","meta","post"]):
+                   batch_size=100000, mode=None, target_backend=None,
+                   steps=["mapping","content","meta","post"], debug=False):
         if hasattr(btconfig,"SYNC_BATCH_SIZE"):
             batch_size = btconfig.SYNC_BATCH_SIZE
             self.logger.debug("Overriding sync batch_size default to %s" % batch_size)
@@ -720,7 +736,7 @@ class SyncerManager(BaseManager):
             syncer.old = create_backend(old_db_col_names)
             syncer.new = create_backend(new_db_col_names)
             job = syncer.sync(diff_folder,batch_size=batch_size,mode=mode,
-                    target_backend=target_backend,steps=steps)
+                    target_backend=target_backend,steps=steps,debug=debug)
             return job
         except KeyError as e:
             raise SyncerException("No such syncer (%s,%s) (error: %s)" % (diff_type,backend_type,e))

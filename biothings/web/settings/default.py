@@ -37,6 +37,9 @@ API_VERSION = 'v1'
 APP_LIST = []
 # for URLS that don't require settings in initialize
 UNINITIALIZED_APP_LIST = []
+# Allow the __any__ random doc retrieval
+ALLOW_RANDOM_QUERY = False
+
 
 # *****************************************************************************
 # Subclass of biothings.web.api.es.query_builder.ESQueryBuilder to build
