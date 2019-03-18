@@ -19,23 +19,9 @@ export default {
     computed: {
     },
     methods: {
-        inspect: function() {
-            var self = this;
-            $(`#inspect-${this.build._id}.ui.basic.inspect.modal`)
-            .modal("setting", {
-                onApprove: function () {
-                    var modes = $(`#inspect-${self.build._id}`).find("#select-mode").val();
-                    axios.put(axios.defaults.baseURL + '/inspect',
-                              {"data_provider" : self.build._id,"mode":modes})
-                    .then(response => {
-                        console.log(response.data.result)
-                    })
-                    .catch(err => {
-                        console.log("Error getting job manager information: " + err);
-                    })
-                }
-            })
-            .modal("show");
+        inspect: function(event) {
+            if($(event.target).attr("data-build_id") == this.build._id)
+                bus.$emit("do_inspect",this.build._id);
         },
     },
 }

@@ -648,7 +648,7 @@
 }
 </script>
 
-<style>
+<style scoped>
 .ui.sidebar {
     overflow: visible !important;
 }

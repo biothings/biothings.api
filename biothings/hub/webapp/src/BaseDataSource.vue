@@ -19,6 +19,12 @@ export default {
         bus.$off('change_source',this.onSourceChanged);
         $('.ui.basic.unregister.modal').remove();
     },
+    data () {
+        return {
+            limit_error: null,
+            sample_error: null,
+        }
+    },
     computed: {
         inspect_status: function() {
             return this.getStatus("inspect");
@@ -117,8 +123,6 @@ export default {
                 data["release"] = release
             if(force != null)
                 data["force"] = force
-            console.log("dump data");
-            console.log(data);
             axios.put(axios.defaults.baseURL + `/source/${this.source.name}/dump`,data)
             .then(response => {
                 console.log(response.data.result)
@@ -140,12 +144,10 @@ export default {
             })
         },
         unregister: function() {
-            console.log(`${this.source.name}.ui.basic.unregister.modal`);
             $(`.${this.source.name}.ui.basic.unregister.modal`)
             .modal("setting", {
                 onApprove: function () {
                     var url = $(this).find("input.plugin_url").val();
-                    console.log(url);
                     axios.delete(axios.defaults.baseURL + '/dataplugin/unregister_url',{"data" : {"url":url}})
                     .then(response => {
                         console.log(response.data.result)
@@ -160,38 +162,19 @@ export default {
             .modal("show");
         },
         inspect: function() {
-            var self = this;
-            $(`#inspect-${this.source._id}`)
-            .modal("setting", {
-                onApprove: function () {
-                    var modes = $(`#inspect-${self.source._id}`).find("#select-mode").val();
-                    var dp = $(`#inspect-${self.source._id}`).find("#select-data_provider").val();
-                    axios.put(axios.defaults.baseURL + '/inspect',
-                              {"data_provider" : [dp,self.source._id],"mode":modes})
-                    .then(response => {
-                        console.log(response.data.result)
-                    })
-                    .catch(err => {
-                        console.log("Error getting job manager information: " + err);
-                    })
-                }
-            })
-            .modal("show");
+            bus.$emit("do_inspect",["src",this.source._id]);
         },
         onSourceChanged(_id=null,op=null) {
             // this method acts as a dispatcher, reacting to change_source events, filtering
             // them for the proper source
             // _id null: event containing change about a source but we don't know which one
             if(_id == null || this.source._id != _id) {
-                //console.log(`I'm ${this.source._id} but they want ${_id}`);
                 return;
             } else {
-                console.log("_id was " + _id);
                 return this.getSource();
             };
         },
         getSource: function() {
-            console.log(`getSource ${this.source._id}`);
             var self = this;
             axios.get(axios.defaults.baseURL + '/source/' + this.source._id)
             .then(response => {
