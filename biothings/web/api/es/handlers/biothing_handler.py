@@ -43,7 +43,7 @@ class BiothingHandler(BaseESRequestHandler):
     def get(self, bid=None):
         ''' Handle a GET to the annotation lookup endpoint.'''
         if not bid:
-            self.return_json({'success': False, 'error': self.web_settings.ID_REQUIRED_MESSAGE}, status_code=404)
+            self.return_object({'success': False, 'error': self.web_settings.ID_REQUIRED_MESSAGE}, status_code=404)
             return
             
         # redirect this id
@@ -111,7 +111,7 @@ class BiothingHandler(BaseESRequestHandler):
             res = _backend.annotation_GET_query(_query)
         except Exception:
             self.log_exceptions("Error executing query")
-            self.return_json({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404, _format=options.control_kwargs.out_format)
+            self.return_object({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404, _format=options.control_kwargs.out_format)
             #raise HTTPError(404)
             return
         
@@ -133,13 +133,13 @@ class BiothingHandler(BaseESRequestHandler):
             res = _result_transformer.clean_annotation_GET_response(res)
         except Exception:
             self.log_exceptions("Error transforming result")
-            self.return_json({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404, _format=options.control_kwargs.out_format)
+            self.return_object({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404, _format=options.control_kwargs.out_format)
             #raise HTTPError(404)
             return
 
         # return result
         if not res:
-            self.return_json({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404, _format=options.control_kwargs.out_format)
+            self.return_object({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=bid)}, status_code=404, _format=options.control_kwargs.out_format)
             #raise HTTPError(404)
             return
 
