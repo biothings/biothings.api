@@ -216,8 +216,30 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         self.support_cors()
         self.write(ordered_dump(
             data=data, Dumper=yaml.SafeDumper, default_flow_style=False))
-        
-    def return_json(self, data, encode=True, indent=None, status_code=200, _format='json'):
+
+    def return_object(self, data, encode=True, indent=None, status_code=200, _format='json'):
+        '''Return passed data object as the proper response.
+            
+        :param data: object to return as JSON
+        :param encode: if encode is False, assumes input data is already a JSON encoded string.
+        :param indent: number of indents per level in JSON string
+        :param status_code: HTTP status code for response
+        :param _format: output format - currently supports "json", "html", "yaml", or "msgpack"
+        '''
+        if _format == 'html':
+            self.return_html(data=data, status_code=status_code)
+            return
+        elif  _format == 'yaml':
+            self.return_yaml(data=data, status_code=status_code)
+            return
+        elif SUPPORT_MSGPACK and self.web_settings.ENABLE_MSGPACK and _format == 'msgpack':
+            self.return_json(data=data, encode=encode, indent=indent, status_code=status_code, is_msgpack=True)
+            return
+        else:
+            self.return_json(data=data, encode=encode, indent=indent, status_code=status_code)
+
+ 
+    def return_json(self, data, encode=True, indent=None, status_code=200, is_msgpack=False):
         '''Return passed data object as JSON response.
         If **jsonp** parameter is set in the  request, return a valid 
         `JSONP <https://en.wikipedia.org/wiki/JSONP>`_ response.
@@ -226,17 +248,11 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         :param encode: if encode is False, assumes input data is already a JSON encoded string.
         :param indent: number of indents per level in JSON string
         :param status_code: HTTP status code for response
-        :param _format: output format - currently supports "json", "html" or "yaml"
+        :param is_msgpack: should this object be compressed before return?
         '''    
-        if _format == 'html':
-            self.return_html(data, status_code)
-            return
-        elif  _format == 'yaml':
-            self.return_yaml(data, status_code)
-            return            
         indent = indent or 2   # tmp settings
         self.set_status(status_code)
-        if SUPPORT_MSGPACK and self.web_settings.ENABLE_MSGPACK and getattr(self, 'use_msgpack', False):
+        if is_msgpack:
             _json_data = msgpack.packb(data, use_bin_type=True, default=msgpack_encode_datetime)
             self.set_header("Content-Type", "application/x-msgpack")
         else:

@@ -199,7 +199,7 @@ class QueryHandler(BaseESRequestHandler):
         res = self._pre_finish_GET_hook(options, res)
 
         # return and track
-        self.return_json(res, _format=options.control_kwargs.out_format)
+        self.return_object(res, _format=options.control_kwargs.out_format)
         if options.control_kwargs.fetch_all:
             self.ga_event_object_ret['action'] = 'fetch_all'
         self.ga_track(event=self.ga_event_object({'total': res.get('total', 0)}))
