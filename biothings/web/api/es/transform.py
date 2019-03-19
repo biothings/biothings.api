@@ -110,17 +110,17 @@ class ESResultTransformer(object):
 
         self._modify_doc(_doc)
         
-        if self.options.jsonld:
+        if self.options.jsonld and not self.options.dotfield:
             _d = OrderedDict([('@context', self.jsonld_context.get('@context', {})), 
                               ('@id', self.doc_url_function(_doc['_id']))])
             _d.update(self._flatten_doc(_doc))
             return _d
-        elif self.options.dotfield:
-            return self._flatten_doc(_doc)
         else:
             _doc = self._sort_and_annotate_doc(_doc, sort=self.options._sorted, data_src=self.options.datasource)
             for _field in self.options.allow_null:
                 _doc = exists_or_null(_doc, _field)
+            if self.options.dotfield:
+                return self._flatten_doc(_doc)
             return _doc
 
     def _modify_doc(self, doc):
