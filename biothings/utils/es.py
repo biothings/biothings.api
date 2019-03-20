@@ -781,7 +781,8 @@ class Database(IDatabase):
 
     def create_if_needed(self,colname):
         conn = self.get_conn()
-        idxcolname = "%s_%s" % (self.name,colname)
+        # add dot to make it a special index so it's hidden by default in ES gui
+        idxcolname = ".%s_%s" % (self.name,colname)
         # it's not usefull to scale internal hubdb
         body = {
             'settings': {
@@ -811,7 +812,7 @@ class Collection(object):
 
     @property
     def dbname(self):
-        return "%s_%s" % (self.db.name,self.colname)
+        return ".%s_%s" % (self.db.name,self.colname)
 
     @property
     def name(self):
