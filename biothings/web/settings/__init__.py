@@ -9,7 +9,6 @@ import logging
 import os, types
 import socket
 from importlib import import_module
-from biothings.utils.web.log import get_hipchat_logger
 import json
 
 # Error class
@@ -34,21 +33,6 @@ class BiothingWebSettings(object):
         if not (self._app_git_repo and os.path.exists(self._app_git_repo) and 
             os.path.isdir(self._app_git_repo) and os.path.exists(os.path.join(self._app_git_repo, '.git'))):
             self._app_git_repo = None
-        
-        # for logging exceptions to hipchat
-        if self.HIPCHAT_ROOM and self.HIPCHAT_AUTH_TOKEN:
-            try:
-                _socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                _socket.connect(self.HIPCHAT_AUTO_FROM_SOCKET_CONNECTION)  # set up socket
-                _from = _socket.getsockname()[0] # try to get local ip as the "from" key
-            except:
-                _from = None
-            self._hipchat_logger = get_hipchat_logger(hipchat_room=self.HIPCHAT_ROOM, 
-                hipchat_auth_token=self.HIPCHAT_AUTH_TOKEN, hipchat_msg_from=_from, 
-                hipchat_log_format=getattr(self, 'HIPCHAT_MESSAGE_FORMAT', None), 
-                hipchat_msg_color=self.HIPCHAT_MESSAGE_COLOR)
-        else:
-            self._hipchat_logger = None
 
         # validate these settings?
         self.validate()

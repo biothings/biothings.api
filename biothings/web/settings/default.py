@@ -268,15 +268,6 @@ DEFAULT_SCOPES = ['_id']
 # path to the git repository for the app-specific code, override
 APP_GIT_REPOSITORY = '../'
 
-# ***************************************************************
-# * For Hipchat exception logging
-# ***************************************************************
-HIPCHAT_ROOM=''
-HIPCHAT_AUTH_TOKEN=''
-HIPCHAT_MESSAGE_COLOR='yellow'
-HIPCHAT_AUTO_FROM_SOCKET_CONNECTION=('8.8.8.8', 53) # google DNS server
-HIPCHAT_MESSAGE_FORMAT=None
-
 # For format=html
 HTML_OUT_HEADER_IMG = "//:0"
 HTML_OUT_TITLE = "<p>MyBioThing.info</p>"

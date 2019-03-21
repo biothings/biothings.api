@@ -75,8 +75,6 @@ class APIManager(BaseManager):
         config_str = """
 from biothings.web.settings.default import *
 
-HIPCHAT_ROOM = {}
-
 ES_HOST = "%(es_host)s"
 ES_INDEX = "%(index)s"
 ES_DOC_TYPE = "%(doc_type)s"

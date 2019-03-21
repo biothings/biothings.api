@@ -69,13 +69,10 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         return "{msg}\n\nError message:\n{delim}\n{msg}\n\nRequest parameters:\n{delim}\n{req}\n\nTraceback:\n{delim}\n".format(msg=msg, delim=delim, req=self.request)
 
     def log_exceptions(self, exception_msg=''):
-        """ Logs the current exception in tornado logs and in hipchat room if available.
+        """ Logs the current exception in tornado logs.
             This must be called in an exception handler """
         _msg = self._format_log_exception_message(exception_msg)
-        if self.web_settings._hipchat_logger:
-            self.web_settings._hipchat_logger.exception(_msg)
-        else:
-            logging.exception(_msg)
+        logging.exception(_msg)
 
     def ga_event_object(self, data={}):
         ''' Create the data object for google analytics tracking. '''
