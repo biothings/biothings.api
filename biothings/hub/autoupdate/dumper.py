@@ -107,8 +107,9 @@ class BiothingsDumper(HTTPDumper):
             version = set(version)
             if version == set([None]):
                 raise DumperException("Remote data is too old and can't be handled with current app (%s not defined)" % version_field)
+            versionfromconf = re.sub("( \[.*\])","",getattr(btconfig,VERSION_FIELD))
             VERSION = set()
-            VERSION.add(getattr(btconfig,VERSION_FIELD))
+            VERSION.add(versionfromconf)
             found_compat_version = VERSION.intersection(version)
             assert found_compat_version, "Remote data requires %s to be %s, but current app is %s" % (version_field,version,VERSION)
             msg.append("%s=%s:OK" % (version_field,version))

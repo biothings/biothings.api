@@ -22,7 +22,7 @@ class BaseESRequestHandler(BaseHandler):
         if rawquery:
             self.return_raw_query_json(data, status_code=status_code, _format=_format)
         else:
-            self.return_json(data, status_code=status_code, _format=_format)
+            self.return_object(data, status_code=status_code, _format=_format)
         self.ga_track(event=self.ga_event_object(ga_event_data))
         self.self_track(data=self.ga_event_object_ret)
         return
@@ -32,9 +32,9 @@ class BaseESRequestHandler(BaseHandler):
         This is necessary as queries can span multiple lines (POST)'''
         _ret = query.get('body', {'GET': query.get('bid')})
         if is_str(_ret) and len(_ret.split('\n')) > 1:
-            self.return_json({'body': _ret}, status_code=status_code, _format=_format)
+            self.return_object({'body': _ret}, status_code=status_code, _format=_format)
         else:
-            self.return_json(_ret, status_code=status_code, _format=_format)
+            self.return_object(_ret, status_code=status_code, _format=_format)
 
     def _should_sanitize(self, param, kwargs):
         return ((param in kwargs) and (param in self.kwarg_settings))

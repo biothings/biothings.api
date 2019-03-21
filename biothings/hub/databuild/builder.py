@@ -1182,7 +1182,6 @@ class BuilderManager(BaseManager):
             mods.append(m)
         except ImportError:
             pass
-        logging.error(mods)
         for klass in find_classes_subclassing(mods,DataBuilder):
             bclasses.add(klass)
         # make them printable
@@ -1200,7 +1199,7 @@ class BuilderManager(BaseManager):
                     raise TypeError("Unknown type for builder %s" % repr(klass))
                 modstr = obj.__module__
                 classstr = obj.__name__
-                helpstr = " ".join(map(str.strip, obj.__doc__.splitlines()))
+                helpstr = obj.__doc__ and " ".join(map(str.strip, obj.__doc__.splitlines()))
                 classpathstr = "%s.%s" % (modstr,classstr)
                 res["builder_classes"].append({
                     "path" : classpathstr,
