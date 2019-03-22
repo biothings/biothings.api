@@ -73,6 +73,7 @@ class BaseDumper(object):
                 self.prepare_client()
             except Exception as e:
                 # if accessed but not ready, then just ignore and return invalid value for a client
+                logging.exception("Can't prepare client: %s" % e)
                 return None
         return self._state["client"]
     @property

@@ -109,7 +109,7 @@
 
                                 <label>Select a builder type</label>
                                 <select class="ui fluid builders dropdown" id="builders">
-                                  <option v-for="b in builder_classes">{{b.path}}</option>
+                                    <option v-for="val,classpath in builder_classes" :value="classpath">{{classpath}} <i v-if="val.default">(default)</i></option>
                                 </select>
                                 <div class="ui blue message">
                                   <div class="header">
@@ -305,7 +305,8 @@
             sources : [],
             all_build_configs: {}, // from API
             build_configs: {}, // displayed
-            builder_classes: [],
+            builder_classes: {},
+            default_builder_class: null,
             builder_doc: "No documentation for this builder", // selected builder doc
             buildconf_error: null,
             errors: [],
@@ -323,15 +324,12 @@
     components: { Build, },
     methods: {
       setBuilderDoc: function(classpath) {
-        var self = this;
-        $.each(self.builder_classes, function(i) {
-          if(self.builder_classes[i].path == classpath) {
-            self.builder_doc = self.builder_classes[i].desc;
-            return false;
-          }
-        });
-        if(!self.builder_doc)
-          self.builder_doc = "No documentation for this builder";
+        var bclass = this.builder_classes[classpath];
+        if(bclass) {
+            this.builder_doc = bclass["desc"];
+        }
+        if(!this.builder_doc)
+          this.builder_doc = "No documentation for this builder";
       },
         updateRootSources: function() {
             var avail_roots = $(".ui.buildconfiguration.form").form('get field', "selected_sources").val();
@@ -398,6 +396,10 @@
               if(response.data.result.build_configs) {
                 self.all_build_configs = response.data.result.build_configs;
                 self.builder_classes = response.data.result.builder_classes;
+                for(var k in self.builder_classes) {
+                    if(self.builder_classes[k]["default"])
+                        self.default_builder_class = k;
+                }
               } else {
                 self.all_build_configs = response.data.result;
                 self.builder_classes = [];
@@ -481,6 +483,7 @@
             $('#selected_sources').dropdown("clear");
             $('#root_sources').empty();
             $('#root_sources').dropdown("clear");
+            $('#builders').dropdown("clear");
             $(".ui.buildconfiguration.form").form('get field', "conf_name").val("");
             $(".ui.buildconfiguration.form").form('get field', "doc_type").val("");
             $(".ui.buildconfiguration.form").form('get field', "optionals").val("{}"); // json valid doc
@@ -569,6 +572,10 @@
             $(".ui.buildconfiguration.form").form('get field', "selected_sources").val(conf.build_config.sources).change();
             this.updateRootSources();
             $(".ui.buildconfiguration.form").form('get field', "root_sources").val(conf.build_config.root).change();
+            var bclass = conf.build_config.builder_class;
+            if(!bclass)
+                bclass = this.default_builder_class
+            $(".ui.buildconfiguration.form").form('get field', "builders").val(bclass).change();
             var optionals = {};
             // conf keys not properly organized, all at root levels, we need to identify which one are specifically dealt with
             // in a specific form element so optionals only contain things not handled in the form
