@@ -8,7 +8,7 @@ import inspect, importlib, textwrap
 import pip, subprocess
 from string import Template
 
-from biothings.utils.hub_db import get_data_plugin
+from biothings.utils.hub_db import get_data_plugin, get_src_dump
 from biothings.utils.common import timesofar, rmdashfr, uncompressall, \
                                    get_class_from_classpath
 from biothings.utils.loggers import get_logger
@@ -410,7 +410,8 @@ class AssistantManager(BaseSourceManager):
     ASSISTANT_CLASS = BaseAssistant
 
     def __init__(self, data_plugin_manager, dumper_manager, uploader_manager,
-                 keylookup=None, *args, **kwargs):
+                 keylookup=None, default_export_folder="hub/dataload/sources",
+                 *args, **kwargs):
         super(AssistantManager,self).__init__(*args,**kwargs)
         self.data_plugin_manager = data_plugin_manager
         self.dumper_manager = dumper_manager
@@ -418,6 +419,7 @@ class AssistantManager(BaseSourceManager):
         self.keylookup = keylookup
         if not os.path.exists(btconfig.DATA_PLUGIN_FOLDER):
             os.makedirs(btconfig.DATA_PLUGIN_FOLDER)
+        self.default_export_folder = default_export_folder
         # register data plugin folder in python path so we can import
         # plugins (sub-folders) as packages
         sys.path.insert(0,btconfig.DATA_PLUGIN_FOLDER)
@@ -453,12 +455,18 @@ class AssistantManager(BaseSourceManager):
                 return inst
         return None
 
-    def unregister_url(self, url):
-        url = url.strip()
+    def unregister_url(self, url=None, name=None):
         dp = get_data_plugin()
-        doc = dp.find_one({"plugin.url":url})
+        if url:
+            url = url.strip()
+            doc = dp.find_one({"plugin.url":url})
+        elif name:
+            doc = dp.find_one({"_id":name})
+            url = doc["plugin"]["url"]
+        else:
+            raise ValueError("Specify 'url' or 'name'")
         # should be only one but just in case
-        dp.remove({"plugin.url":url})
+        dp.remove({"_id": doc["_id"]})
         # delete plugin code so it won't be auto-register
         # by 'local' plugin assistant (issue studio #7)
         if doc.get("download",{}).get("data_folder"):
@@ -560,4 +568,130 @@ class AssistantManager(BaseSourceManager):
                 else:
                     self.logger.warning("Directory '%s' doesn't contain a plugin, skip it" % pdir)
                     continue
+
+    def export_dumper(self, plugin_name, folder):
+        res = {"dumper" : {"status" : None, "file" : None, "class" : None, "message" : None}}
+        try:
+            dclass = self.dumper_manager[plugin_name]
+            dumper_name = plugin_name.capitalize() + "Dumper"
+            self.logger.debug("Exporting dumper %s" % dumper_name)
+            assert len(dclass) == 1, "More than one dumper found: %s" % dclass
+            dclass = dclass[0]
+            assert hasattr(dclass,"python_code"), "No generated code found"
+            dinit = os.path.join(folder,"__init__.py")
+            dfile = os.path.join(folder,"dump.py")
+            # clear init, we'll append code
+            with open(dfile,"w") as fout:
+                fout.write(dclass.python_code)
+            with open(dinit,"a") as fout:
+                fout.write("from .dump import %s\n" % dumper_name)
+            res["dumper"]["status"] = "ok"
+            res["dumper"]["file"] = dfile
+            res["dumper"]["class"] = dumper_name
+        except KeyError:
+            res["dumper"]["message"] = "No dumper found for plugin '%s'" % plugin_name
+
+        return res
+
+    def export_uploader(self, plugin_name, folder):
+        res = {"uploader" : {"status" : None, "file" : None, "class" : None, "message" : None}}
+        try:
+            uclass = self.uploader_manager[plugin_name]
+            uploader_name = plugin_name.capitalize() + "Uploader"
+            self.logger.debug("Exporting uploader %s" % uploader_name)
+            assert len(uclass) == 1, "More than one uploader found: %s" % uclass
+            uclass = uclass[0]
+            assert hasattr(uclass,"python_code"), "No generated code found"
+            dinit = os.path.join(folder,"__init__.py")
+            ufile = os.path.join(folder,"upload.py")
+            with open(ufile,"w") as fout:
+                fout.write(uclass.python_code)
+            with open(dinit,"a") as fout:
+                fout.write("from .upload import %s\n" % uploader_name)
+            res["uploader"]["status"] = "ok"
+            res["uploader"]["file"] = ufile
+            res["uploader"]["class"] = uploader_name
+        except KeyError:
+            res["uploader"]["message"] = "No uploader found for plugin '%s'" % plugin_name
+
+        return res
+
+    def export_mapping(self, plugin_name, folder):
+        res = {"mapping" : {"status" : None, "file" : None, "message" : None}}
+        doc = get_src_dump().find_one({"_id":plugin_name})
+        assert doc, "Can't find src_dump document associated to plugin '%s'" % plugin_name
+        mapping = doc.get("inspect",{}).get("jobs",{}).get(plugin_name,{}).get("inspect",{}).\
+                      get("results",{}).get("mapping")
+        if not mapping:
+            res["mapping"]["status"] = "error"
+            res["mapping"]["message"] = "Can't find mapping"
+            return res
+        else:
+            ufile = os.path.join(folder,"upload.py")
+            with open(ufile,"a") as fout:
+                fout.write("""
+    @classmethod
+    def get_mapping(klass):
+        return %s\n""" % textwrap.indent(pprint.pformat(mapping),prefix="    "*2))
+        
+        res["mapping"]["file"] = ufile
+        res["mapping"]["status"] = "ok"
+
+        return res
+
+    def export(self, plugin_name, folder=None, what=["dumper","uploader","mapping"], purge=False):
+        """
+        Export generated code for a given plugin name, in given folder
+        (or use DEFAULT_EXPORT_FOLDER if None). Exported information can be:
+        - dumper: dumper class generated from the manifest
+        - uploader: uploader class generated from the manifest
+        - mapping: mapping generated from inspection or from the manifest
+        If "purge" is true, any existing folder/code will be deleted first, otherwise,
+        will raise an error if some folder/files already exist.
+        """
+        res = {}
+        # sanity checks
+        if type(what) == str:
+            what = [what]
+        folder = folder or self.default_export_folder
+        assert os.path.exists(folder), "Folder used to export code doesn't exist: %s" % os.path.abspath(folder)
+        assert plugin_name # avoid deleting the whole export folder when purge=True...
+        folder = os.path.join(folder,plugin_name)
+        if purge:
+            rmdashfr(folder)
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+        elif not purge:
+            raise FileExistsError("Folder '%s' already exists, use purge=True" % folder)
+        dinit = os.path.join(folder,"__init__.py")
+        with open(dinit,"w") as fout:
+            fout.write("")
+        if "dumper" in what:
+            res.update(self.export_dumper(plugin_name,folder))
+        if "uploader" in what:
+            res.update(self.export_uploader(plugin_name,folder))
+        if "mapping" in what:
+            assert "uploader" in what, "'uploader' needs to be exported too to export mapping"
+            res.update(self.export_mapping(plugin_name,folder))
+        # there's also at least a parser module, maybe a release module, and some more
+        # dependencies, indirect, not listed in the manifest. We'll just copy everything from
+        # the plugin folder to the export folder
+        plugin_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER,plugin_name)
+        for f in os.listdir(plugin_folder):
+            # useless or strictly plugin-machinery-specific, skip
+            if f in ["__pycache__","manifest.json", ".git"]:
+                continue
+            src = os.path.join(plugin_folder,f)
+            dst = os.path.join(folder,f)
+            self.logger.debug("Copying %s to %s" % (src,dst))
+            try:
+                with open(src) as fin:
+                    with open(dst,"w") as fout:
+                        fout.write(fin.read())
+            except IsADirectoryError:
+                self.logger.error("%s is a directory, expecting only files to copy" % src)
+                continue
+
+        return res
+
 

@@ -520,6 +520,7 @@ class HubServer(object):
         self.extra_commands["loop"] = CommandDefinition(command=loop,tracked=False)
 
         if self.managers.get("source_manager"):
+            self.extra_commands["sm"] = CommandDefinition(command=self.managers["source_manager"],tracked=False)
             self.extra_commands["sources"] = CommandDefinition(command=self.managers["source_manager"].get_sources,tracked=False)
             self.extra_commands["source_save_mapping"] = CommandDefinition(command=self.managers["source_manager"].save_mapping)
         if self.managers.get("dump_manager"):
@@ -546,7 +547,7 @@ class HubServer(object):
             self.extra_commands["diff_info"] = CommandDefinition(command=self.managers["diff_manager"].diff_info,tracked=False)
             self.extra_commands["jsondiff"] = CommandDefinition(command=jsondiff,tracked=False)
         if self.managers.get("sync_manager"):
-            self.extra_commands["sm"] = CommandDefinition(command=self.managers["sync_manager"],tracked=False)
+            self.extra_commands["sym"] = CommandDefinition(command=self.managers["sync_manager"],tracked=False)
         if self.managers.get("index_manager"):
             self.extra_commands["im"] = CommandDefinition(command=self.managers["index_manager"],tracked=False)
             self.extra_commands["index_info"] = CommandDefinition(command=self.managers["index_manager"].index_info,tracked=False)
