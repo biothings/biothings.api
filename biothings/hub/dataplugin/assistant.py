@@ -8,7 +8,7 @@ import inspect, importlib, textwrap
 import pip, subprocess
 from string import Template
 
-from biothings.utils.hub_db import get_data_plugin, get_src_dump
+from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.utils.common import timesofar, rmdashfr, uncompressall, \
                                    get_class_from_classpath
 from biothings.utils.loggers import get_logger
@@ -617,14 +617,21 @@ class AssistantManager(BaseSourceManager):
         return res
 
     def export_mapping(self, plugin_name, folder):
-        res = {"mapping" : {"status" : None, "file" : None, "message" : None}}
-        doc = get_src_dump().find_one({"_id":plugin_name})
-        assert doc, "Can't find src_dump document associated to plugin '%s'" % plugin_name
-        mapping = doc.get("inspect",{}).get("jobs",{}).get(plugin_name,{}).get("inspect",{}).\
-                      get("results",{}).get("mapping")
+        res = {"mapping" : {"status" : None, "file" : None, "message" : None, "origin": None}}
+        # first try to export mapping from src_master (official)
+        doc = get_src_master().find_one({"_id":plugin_name})
+        if doc:
+            mapping = doc.get("mapping")
+            res["mapping"]["origin"] = "registered"
+        else:
+            doc = get_src_dump().find_one({"_id":plugin_name})
+            mapping = doc and doc.get("inspect",{}).get("jobs",{}).get(plugin_name,{}).get("inspect",{}).\
+                          get("results",{}).get("mapping")
+            res["mapping"]["origin"] = "inspection"
         if not mapping:
+            res["mapping"]["origin"] = None
             res["mapping"]["status"] = "error"
-            res["mapping"]["message"] = "Can't find mapping"
+            res["mapping"]["message"] = "Can't find registered or generated (inspection) mapping"
             return res
         else:
             ufile = os.path.join(folder,"upload.py")
@@ -678,11 +685,12 @@ class AssistantManager(BaseSourceManager):
         # the plugin folder to the export folder
         plugin_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER,plugin_name)
         for f in os.listdir(plugin_folder):
-            # useless or strictly plugin-machinery-specific, skip
-            if f in ["__pycache__","manifest.json", ".git"]:
-                continue
             src = os.path.join(plugin_folder,f)
             dst = os.path.join(folder,f)
+            # useless or strictly plugin-machinery-specific, skip
+            if f in ["__pycache__","manifest.json", "__init__.py"] or f.startswith("."):
+                self.logger.debug("Skipping '%s', not necessary" % src)
+                continue
             self.logger.debug("Copying %s to %s" % (src,dst))
             try:
                 with open(src) as fin:
