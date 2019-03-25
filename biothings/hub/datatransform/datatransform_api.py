@@ -1,11 +1,14 @@
-import biothings_client
+"""
+DataTransforAPI - classes around API based key lookup.
+"""
+# pylint: disable=E0401, E0611
 import copy
-from itertools import islice, chain
-import logging
-import re
-from biothings.hub.datatransform.datatransform import DataTransform, DataTransformEdge, IDStruct, nested_lookup
+import biothings_client
+from biothings.hub.datatransform.datatransform import DataTransform
+from biothings.hub.datatransform.datatransform import DataTransformEdge
+from biothings.hub.datatransform.datatransform import IDStruct
+from biothings.hub.datatransform.datatransform import nested_lookup
 from biothings.utils.loggers import get_logger
-from biothings import config as btconfig
 
 
 class DataTransformAPI(DataTransform):
@@ -46,7 +49,8 @@ class DataTransformAPI(DataTransform):
         Initialize the IDLookupAPI object.
         """
         self._generate_return_fields()
-        super().__init__(input_types, output_types, skip_on_failure, skip_w_regex)
+        super(DataTransformAPI, self).__init__(
+            input_types, output_types, skip_on_failure, skip_w_regex)
 
         # default value of None for client
         self.client = None
@@ -54,7 +58,7 @@ class DataTransformAPI(DataTransform):
         # Keep track of one_to_many relationships
         self.one_to_many_cnt = 0
 
-        self.logger,_ = get_logger('keylookup_api')
+        self.logger, _ = get_logger('keylookup_api')
 
     def _valid_input_type(self, input_type):
         """
@@ -96,8 +100,8 @@ class DataTransformAPI(DataTransform):
 
         id_lst, doc_cache = self._build_cache(batchiter)
         self.logger.info("key_lookup_batch num. id_lst items:  {}".format(len(id_lst)))
-        qr = self._query_many(id_lst)
-        qm_struct = self._parse_querymany(qr)
+        query_res = self._query_many(id_lst)
+        qm_struct = self._parse_querymany(query_res)
         return self._replace_keys(qm_struct, doc_cache)
 
     def _build_cache(self, batchiter):
@@ -146,40 +150,44 @@ class DataTransformAPI(DataTransform):
                                 returnall=True,
                                 size=self.batch_size)
 
-    def _parse_querymany(self, qr):
+    def _parse_querymany(self, query_res):
         """
         Parse the querymany results from the biothings_client into a structure
         that will later be used for document key replacement.
-        :param qr: querymany results
+        :param query_res: querymany results
         :return:
         """
-        # self.logger.debug("QueryMany Structure:  {}".format(qr))
+        # self.logger.debug("QueryMany Structure:  {}".format(query_res))
         qm_struct = {}
-        for q in qr['out']:
-            query = q['query']
-            val = self._parse_h(q)
+        for q_out in query_res['out']:
+            query = q_out['query']
+            val = self._parse_h(q_out)
             if val:
                 if query not in qm_struct.keys():
                     qm_struct[query] = [val]
                 else:
                     self.one_to_many_cnt += 1
                     qm_struct[query] = qm_struct[query] + [val]
-        # self.logger.debug("parse_querymany num qm_struct keys: {}".format(len(qm_struct.keys())))
-        # self.logger.info("parse_querymany running one_to_many_cnt: {}".format(self.one_to_many_cnt))
-        # self.logger.debug("parse_querymany qm_struct: {}".format(qm_struct.keys()))
+        # self.logger.debug("parse_querymany num qm_struct keys: {}"\
+        #        .format(len(qm_struct.keys())))
+        # self.logger.info("parse_querymany running one_to_many_cnt: {}"\
+        #        .format(self.one_to_many_cnt))
+        # self.logger.debug("parse_querymany qm_struct: {}"\
+        #        .format(qm_struct.keys()))
         return qm_struct
 
-    def _parse_h(self, h):
+    def _parse_h(self, hit):
         """
         Parse a single hit from the API.
-        :param h:
+        :param hit:
         :return: dictionary of keys
         """
         for output_type in self.output_types:
             for doc_field in self._get_lookup_field(output_type):
-                val = DataTransformAPI._nested_lookup(h, doc_field)
+                val = DataTransformAPI._nested_lookup(hit, doc_field)
                 if val:
                     return val
+        return None
 
     def _replace_keys(self, qm_struct, doc_cache):
         """
@@ -195,22 +203,26 @@ class DataTransformAPI(DataTransform):
         for doc in doc_cache:
             new_doc = None
             for input_type in self.input_types:
-                # doc[input_type[1]] must be typed to a string because qm_struct.keys are always strings
-                if DataTransformAPI._nested_lookup(doc, input_type[1]) in qm_struct.keys():
-                    for key in qm_struct[DataTransformAPI._nested_lookup(doc, input_type[1])]:
+                # doc[input_type[1]] must be typed to a string because
+                # qm_struct.keys are always strings
+                val = DataTransformAPI._nested_lookup(doc, input_type[1])
+                if val in qm_struct.keys():
+                    for key in qm_struct[val]:
                         new_doc = copy.deepcopy(doc)
                         new_doc['_id'] = key
                         res_lst.append(new_doc)
                 # Break out if an input type was used.
                 if new_doc:
                     break
-            if not new_doc and ((self.skip_w_regex and self.skip_w_regex.match(doc['_id'])) or not self.skip_on_failure):
+            if not new_doc and \
+                ((self.skip_w_regex and self.skip_w_regex.match(doc['_id'])) \
+                or not self.skip_on_failure):
                 res_lst.append(doc)
 
         self.logger.info("_replace_keys:  Num of documents yielded:  {}".format(len(res_lst)))
         # Yield the results
-        for r in res_lst:
-            yield r
+        for res in res_lst:
+            yield res
 
     def _get_lookup_field(self, field):
         """
@@ -222,11 +234,15 @@ class DataTransformAPI(DataTransform):
             raise KeyError('provided field {} is not in self.lookup_fields'.format(field))
         if isinstance(self.lookup_fields[field], str):
             return [self.lookup_fields[field]]
-        else:
-            return self.lookup_fields[field]
+        return self.lookup_fields[field]
+
+    def _get_client(self):
+        """get biothings_client"""
+        raise NotImplementedError("_get_client not implemented in the super class")
 
 
 class DataTransformMyChemInfo(DataTransformAPI):
+    """Single key lookup for MyChemInfo"""
     lookup_fields = {
         'unii': 'unii.unii',
         'rxnorm': [
@@ -253,8 +269,10 @@ class DataTransformMyChemInfo(DataTransformAPI):
             'pubchem.inchi_key'
         ]
     }
-    # The order of output_types decides the priority of the key types we used to get _id value
-    output_types=['inchikey', 'unii', 'rxnorm', 'drugbank', 'chebi', 'chembl', 'pubchem', 'drugname'],
+    # The order of output_types decides the priority
+    # of the key types we used to get _id value
+    output_types = ['inchikey', 'unii', 'rxnorm', 'drugbank', \
+                    'chebi', 'chembl', 'pubchem', 'drugname'],
 
     def __init__(self, input_types,
                  output_types=None,
@@ -264,7 +282,8 @@ class DataTransformMyChemInfo(DataTransformAPI):
         Initialize the class by seting up the client object.
         """
         _output_types = output_types or self.output_types
-        super(DataTransformMyChemInfo, self).__init__(input_types, _output_types, skip_on_failure, skip_w_regex)
+        super(DataTransformMyChemInfo, self).__init__(
+            input_types, _output_types, skip_on_failure, skip_w_regex)
 
     def _get_client(self):
         """
@@ -287,7 +306,8 @@ class BiothingsAPIEdge(DataTransformEdge):
     client_name = None
 
     def __init__(self, lookup, fields, weight=1, label=None, url=None):
-        super().__init__(label)
+        # pylint: disable=R0913
+        super(BiothingsAPIEdge, self).__init__(label)
         self.init_state()
         if isinstance(lookup, str):
             self.scopes = [lookup]
@@ -305,6 +325,7 @@ class BiothingsAPIEdge(DataTransformEdge):
         self.url = url
 
     def init_state(self):
+        """initialize state - pickleable member variables"""
         self._state = {
             "client": None,
             "logger": None
@@ -312,10 +333,11 @@ class BiothingsAPIEdge(DataTransformEdge):
 
     @property
     def client(self):
+        """property getter for client"""
         if not self._state["client"]:
             try:
                 self.prepare_client()
-            except Exception as e:
+            except NotImplementedError:
                 # if accessed but not ready, then just ignore and return invalid value for a client
                 return None
         return self._state["client"]
@@ -344,11 +366,12 @@ class BiothingsAPIEdge(DataTransformEdge):
         :return:
         """
         # If no keys were passed return an empty idstruct_class
+        # pylint: disable=C1801
         if not len(id_strct):
             return keylookup_obj.idstruct_class()
         # query the api
-        qr = self._query_many(keylookup_obj, id_strct)
-        new_id_strct = self._parse_querymany(keylookup_obj, qr, id_strct, self.fields, debug)
+        query_res = self._query_many(keylookup_obj, id_strct)
+        new_id_strct = self._parse_querymany(keylookup_obj, query_res, id_strct, self.fields, debug)
         return new_id_strct
 
     def _query_many(self, keylookup_obj, id_strct):
@@ -361,8 +384,8 @@ class BiothingsAPIEdge(DataTransformEdge):
         if not isinstance(id_strct, IDStruct):
             raise TypeError("id_strct shouldb be of type IDStruct")
         id_lst = []
-        for id in id_strct.id_lst:
-            id_lst.append('"{}"'.format(id))
+        for key in id_strct.id_lst:
+            id_lst.append('"{}"'.format(key))
         return self.client.querymany(id_lst,
                                      scopes=self.scopes,
                                      fields=self.fields,
@@ -371,24 +394,26 @@ class BiothingsAPIEdge(DataTransformEdge):
                                      size=keylookup_obj.batch_size,
                                      verbose=False)
 
-    def _parse_querymany(self, keylookup_obj, qr, id_strct, fields, debug):
+    def _parse_querymany(self, keylookup_obj, query_res, id_strct, fields, debug):
+        # pylint: disable=R0913, W0613
         """
         Parse the querymany results from the biothings_client into a structure
         that will later be used for document key replacement.
-        :param qr: querymany results
+        :param query_res: querymany results
         :return:
         """
-        # self.logger.debug("QueryMany Structure:  {}".format(qr))
+        # self.logger.debug("QueryMany Structure:  {}".format(query_res))
         qm_struct = IDStruct()
 
         # Keep the old debug information
         if debug:
             qm_struct.import_debug(id_strct)
 
-        for q in qr['out']:
-            query = q['query']
+        # pylint: disable=R1702
+        for q_out in query_res['out']:
+            query = q_out['query']
             for field in fields:
-                val = nested_lookup(q, field)
+                val = nested_lookup(q_out, field)
                 if val:
                     for (orig_id, curr_id) in id_strct:
                         # query is always a string, so this check requires conversion
@@ -407,15 +432,18 @@ class MyChemInfoEdge(BiothingsAPIEdge):
     client_name = "drug"
 
     def __init__(self, lookup, field, weight=1, label=None, url=None):
+        # pylint: disable=R0913, W0235
         """
         :param lookup: The field in the API to search with the input identifier.
         :type lookup: str
         :param field: The field in the API to convert to.
         :type field: str
-        :param weight: Weights are used to prefer one path over another. The path with the lowest weight is preferred. The default weight is 1.
+        :param weight: Weights are used to prefer one path over another.
+                       The path with the lowest weight is preferred.
+                       The default weight is 1.
         :type weight: int
         """
-        super().__init__(lookup, field, weight, label, url)
+        super(MyChemInfoEdge, self).__init__(lookup, field, weight, label, url)
 
 
 class MyGeneInfoEdge(BiothingsAPIEdge):
@@ -425,20 +453,24 @@ class MyGeneInfoEdge(BiothingsAPIEdge):
     client_name = "gene"
 
     def __init__(self, lookup, field, weight=1, label=None, url=None):
+        # pylint: disable=R0913, W0235
         """
         :param lookup: The field in the API to search with the input identifier.
         :type lookup: str
         :param field: The field in the API to convert to.
         :type field: str
-        :param weight: Weights are used to prefer one path over another. The path with the lowest weight is preferred. The default weight is 1.
+        :param weight: Weights are used to prefer one path over another.
+                       The path with the lowest weight is preferred.
+                       The default weight is 1.
         :type weight: int
         """
-        super().__init__(lookup, field, weight, label, url)
+        super(MyGeneInfoEdge, self).__init__(lookup, field, weight, label, url)
 
 
 ####################
 
 class DataTransformMyGeneInfo(DataTransformAPI):
+    """deprecated"""
     lookup_fields = {
         'ensembl': 'ensembl.gene',
         'entrezgene': 'entrezgene',
@@ -450,10 +482,12 @@ class DataTransformMyGeneInfo(DataTransformAPI):
                  output_types=['entrezgene'],
                  skip_on_failure=False,
                  skip_w_regex=None):
+        # pylint: disable=W0102
         """
         Initialize the class by seting up the client object.
         """
-        super(DataTransformMyGeneInfo, self).__init__(input_types, output_types, skip_on_failure, skip_w_regex)
+        super(DataTransformMyGeneInfo, self).__init__(
+            input_types, output_types, skip_on_failure, skip_w_regex)
 
     def _get_client(self):
         """

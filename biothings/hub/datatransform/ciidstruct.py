@@ -1,3 +1,7 @@
+"""
+CIIDStruct - insenstive id matching data structure
+"""
+# pylint: disable=E0611
 from biothings.hub.datatransform import IDStruct
 
 
@@ -11,6 +15,7 @@ class CIIDStruct(IDStruct):
     """
 
     def add(self, left, right):
+        # pylint: disable=R0912
         """add a (original_id, current_id) pair to the list,
         All string values are typecast to lowercase"""
         if not left or not right:
@@ -18,42 +23,41 @@ class CIIDStruct(IDStruct):
         if self.lookup(left, right):
             return  # tuple already in the list
         # ensure it's hashable
-        if not type(left) in [list,tuple]:
+        if not isinstance(left, (list, tuple)):
             left = [left]
-        if not type(right) in [list,tuple]:
+        if not isinstance(right, (list, tuple)):
             right = [right]
-        if type(left) == list:
+        if isinstance(left, list):
             left = tuple(left)
-        if type(right) == list:
+        if isinstance(right, list):
             right = tuple(right)
-        for v in left:
+        for val in left:
             # After some thought, this data structure should be case insensitive
-            if isinstance(v, str):
-                v = v.lower()
-            if v not in self.forward.keys():
-                self.forward[v] = right
+            if isinstance(val, str):
+                val = val.lower()
+            if val not in self.forward.keys():
+                self.forward[val] = right
             else:
-                self.forward[v] = self.forward[v] + right
-        for v in right:
+                self.forward[val] = self.forward[val] + right
+        for val in right:
             # After some thought, this data structure should be case insensitive
-            if isinstance(v, str):
-                v = v.lower()
-            if v not in self.inverse.keys():
-                self.inverse[v] = left
+            if isinstance(val, str):
+                val = val.lower()
+            if val not in self.inverse.keys():
+                self.inverse[val] = left
             else:
-                self.inverse[v] = self.inverse[v] + left
+                self.inverse[val] = self.inverse[val] + left
 
-    def find(self,where,ids):
+    def find(self, where, ids):
         """Case insensitive lookup of ids"""
         if not ids:
             return
-        if not type(ids) in (list,tuple):
+        if not isinstance(ids, (list, tuple)):
             ids = [ids]
-        for id in ids:
+        for key in ids:
             # This find is case insensitive
-            if isinstance(id, str):
-                id = id.lower()
-            if id in where.keys():
-                for i in where[id]:
+            if isinstance(key, str):
+                key = key.lower()
+            if key in where.keys():
+                for i in where[key]:
                     yield i
-
