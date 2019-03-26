@@ -1,5 +1,5 @@
 """
-CIIDStruct - insenstive id matching data structure
+CIIDStruct - case insenstive id matching data structure
 """
 # pylint: disable=E0611
 from biothings.hub.datatransform import IDStruct
