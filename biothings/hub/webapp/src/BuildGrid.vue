@@ -510,6 +510,7 @@
             $('.ui.basic.buildconfiguration.modal')
             .modal("setting", {
                 detachable : false,
+                closable: false,
                 onApprove: function () {
                     self.errors = [];
                     var conf_name = $(".ui.buildconfiguration.form").form('get field', "conf_name").val();

@@ -70,13 +70,13 @@
                             <a class="red item" data-tab="mapping">Mapping</a>
                             <!--a class="red item" data-tab="inspect">Statistics</a-->
                         </div>
-                        <div class="ui bottom attached tab segment active" data-tab="dump" v-if="source.download">
+                        <div class="ui bottom attached tab segment " data-tab="dump" v-if="source.download">
                             <data-source-dump v-bind:source="source"></data-source-dump>
                         </div>
                         <div :class="['ui bottom attached tab segment', source.download == undefined ? 'active' : '']" data-tab="upload">
                             <data-source-upload v-bind:source="source"></data-source-upload>
                         </div>
-                        <div class="ui bottom attached tab segment" data-tab="plugin" v-if="source.data_plugin">
+                        <div class="ui bottom attached tab segment active" data-tab="plugin" v-if="source.data_plugin">
                             <data-source-plugin v-bind:source="source"></data-source-plugin>
                         </div>
                         <div class="ui bottom attached tab segment" data-tab="mapping">
