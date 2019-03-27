@@ -573,6 +573,10 @@ class AssistantManager(BaseSourceManager):
         res = {"dumper" : {"status" : None, "file" : None, "class" : None, "message" : None}}
         try:
             dclass = self.dumper_manager[plugin_name]
+        except KeyError:
+            res["dumper"]["status"] = "warning"
+            res["dumper"]["message"] = "No dumper found for plugin '%s'" % plugin_name
+        try:
             dumper_name = plugin_name.capitalize() + "Dumper"
             self.logger.debug("Exporting dumper %s" % dumper_name)
             assert len(dclass) == 1, "More than one dumper found: %s" % dclass
@@ -588,8 +592,10 @@ class AssistantManager(BaseSourceManager):
             res["dumper"]["status"] = "ok"
             res["dumper"]["file"] = dfile
             res["dumper"]["class"] = dumper_name
-        except KeyError:
-            res["dumper"]["message"] = "No dumper found for plugin '%s'" % plugin_name
+        except Exception as e:
+            res["dumper"]["status"] = "error"
+            res["dumper"]["message"] = "Error exporting dumper: %s" % e
+            return res
 
         return res
 
@@ -597,6 +603,11 @@ class AssistantManager(BaseSourceManager):
         res = {"uploader" : {"status" : None, "file" : None, "class" : None, "message" : None}}
         try:
             uclass = self.uploader_manager[plugin_name]
+        except KeyError:
+            res["uploader"]["status"] = "warning"
+            res["uploader"]["message"] = "No uploader found for plugin '%s'" % plugin_name
+            return res
+        try:
             uploader_name = plugin_name.capitalize() + "Uploader"
             self.logger.debug("Exporting uploader %s" % uploader_name)
             assert len(uclass) == 1, "More than one uploader found: %s" % uclass
@@ -611,8 +622,10 @@ class AssistantManager(BaseSourceManager):
             res["uploader"]["status"] = "ok"
             res["uploader"]["file"] = ufile
             res["uploader"]["class"] = uploader_name
-        except KeyError:
-            res["uploader"]["message"] = "No uploader found for plugin '%s'" % plugin_name
+        except Exception as e:
+            res["uploader"]["status"] = "error"
+            res["uploader"]["message"] = "Error exporting uploader: %s" % e
+            return res
 
         return res
 
@@ -630,7 +643,7 @@ class AssistantManager(BaseSourceManager):
             res["mapping"]["origin"] = "inspection"
         if not mapping:
             res["mapping"]["origin"] = None
-            res["mapping"]["status"] = "error"
+            res["mapping"]["status"] = "warning"
             res["mapping"]["message"] = "Can't find registered or generated (inspection) mapping"
             return res
         else:
