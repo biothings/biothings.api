@@ -32,12 +32,14 @@ class TornadoTestServerMixin(AsyncHTTPTestCase):
             `tornado.web.Application` or other `.HTTPServer` callback. """
         raise NotImplementedError()
 
-    def request(self, url, method="GET", body=None, headers=None):
-        ''' Overrides http request client with Tornado's
-            Function signature simulates httplib2.Http.request()'''
-        res = self.fetch(url, method=method, body=body, headers=headers)
-        res.status_code = res.code
-        return res, res.body
+    def request(self, path, method="GET", **kwargs):
+        ''' Override '''
+        if url.lower().startswith(("http://", "https://")):
+            url = path
+        else:
+            url = self.get_url(path)
+        res = requests.request(method, url, **kwargs)
+        return res, res.content
 
 
 class BiothingsTestCase(unittest.TestCase):
@@ -61,31 +63,46 @@ class BiothingsTestCase(unittest.TestCase):
     # HTTP Requests
 
     @staticmethod
-    def request(url, method="GET", body=None, headers=None):
-        ''' Function signature simulates httplib2.Http.request() '''
-        if method == 'GET':
-            res = requests.get(url, headers=headers)
-        elif method == 'POST':
-            res = requests.post(url, data=body, headers=headers)
-        elif method == 'HEAD':
-            res = requests.head(url, headers=headers)
+    def request(url, method="GET", **kwargs):
+        ''' Default '''
+        res = requests.request(method, url, **kwargs)
         return res, res.content
+
+    def request_status_match(self, url, method, status_code, **kwargs):
+        ''' Make a request and asserts the response status code matches
+            that of expectation, return the response content in bytes
+            automatically encode body according to its Content-Type 
+            :param params: encode in url
+            :param data: encode dict to post as application/x-www-form-urlencoded
+            :param json: encode dict to post as application/json
+            '''
+        headers = kwargs.get('headers', {})
+        if 'json' in kwargs:
+            assert isinstance(kwargs['json'], dict)
+            headers.update({'Content-Type': 'application/json'})
+            data = json_encode(kwargs['json'])
+        elif 'params' in kwargs:
+            assert isinstance(kwargs['params'], dict)
+            headers.update({'Content-Type': 'application/x-www-form-urlencoded'})
+            data = urlencode(kwargs['params'])
+        else:
+            assert isinstance(kwargs.get('data', ''), (str, bytes))
+            data = kwargs.get('data', None)
+        res, con = self.request(url, method, body=data, headers=headers)
+        assert res.status_code == status_code, "status {} != {} for {} {}\nbody: {}".format(
+            res.status_code, status_code, method, url, data)
+        return con
 
     def head_ok(self, url):
         ''' Send a HEAD request and asserts response status code indicates
         the entity-header fields corresponding to the requested resource
         are sent in the response without any message-body (status 200) '''
-        res, _ = self.request(url, 'HEAD')
-        assert res.status_code == 200, "status {} != 200 for HEAD to url: {}".format(
-            res.status_code, url)
+        self.request_status_match(url, 'HEAD', 200)
 
-    def get_status_match(self, url, status_code):
+    def get_status_match(self, url, status_code, **kwargs):
         ''' Make a get request and asserts the response status code matches
         that of expectation, returns response content in bytes '''
-        res, con = self.request(url)
-        assert res.status_code == status_code, "status {} != {} for GET to url: {}".format(
-            res.status_code, status_code, url)
-        return con
+        return self.request_status_match(url, 'GET', status_code, **kwargs)
 
     def get_ok(self, url):
         ''' Asserts server says the requested resource is sent, returns response body in bytes '''
@@ -99,25 +116,22 @@ class BiothingsTestCase(unittest.TestCase):
         ''' Asserts server says GET is not allowed for the specified resource '''
         self.get_status_match(url, 405)
 
-    def post_status_match(self, url, params, status_code, add_headers=None):
+    def post_status_match(self, url, status_code, **kwargs):
         ''' Make a post request and asserts the response status code matches
             that of expectation, return the response content in bytes
-            automatically encode params according to its Content-Type '''
-        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-        data = urlencode(params)
-        if add_headers:
-            headers.update(add_headers)
-        if headers['Content-Type'] == 'application/json':
-            data = json_encode(params)
-        res, con = self.request(url, 'POST', data, headers=headers)
-        assert res.status_code == status_code, "status {} != {} for url: {}\nparams: {}".format(
-            res.status_code, status_code, url, params)
-        return con
+            automatically encode body according to its Content-Type '''
+        return self.request_status_match(url, 'POST', status_code, **kwargs)
 
-    def post_ok(self, url, params):
+    def post_ok(self, url, **kwargs):
         ''' Asserts server says the POST request has succeeded and it responded
             with an entity describing or containing the result of the action '''
-        return self.post_status_match(url, params, 200)
+        return self.post_status_match(url, 200, **kwargs)
+
+    def put_status_match(self, url, status_code, **kwargs):
+        ''' Make a PUT request and asserts the response status code matches
+            that of expectation, return the response content in bytes
+            automatically encode body according to its Content-Type '''
+        return self.request_status_match(url, 'PUT', status_code, **kwargs)
 
     @staticmethod
     def parse_url(url, option):
@@ -148,12 +162,24 @@ class BiothingsTestCase(unittest.TestCase):
         return dic
 
     def get_json_ok(self, url):
-        ''' shortcut for url -> get_ok -> json_ok -> dic '''
+        ''' returns json dict '''
         return self.json_ok(self.get_ok(url))
 
-    def post_json_ok(self, url, data=None):
-        ''' shortcut for (url, data) -> get_ok -> json_ok -> dic '''
-        return self.json_ok(self.post_ok(url, data))
+    def post_json_ok(self, url, **kwargs):
+        ''' returns json dict '''
+        return self.json_ok(self.post_ok(url, **kwargs))
+
+    def post_json_status_match(self, url, status_code, **kwargs):
+        ''' returns json dict '''
+        return self.json_ok(self.post_status_match(url, status_code, **kwargs))
+
+    def put_json_ok(self, url, **kwargs):
+        ''' returns json dict '''
+        return self.json_ok(self.put_status_match(url, 200, **kwargs))
+
+    def put_json_status_match(self, url, status_code, **kwargs):
+        ''' returns json dict '''
+        return self.json_ok(self.put_status_match(url, status_code, **kwargs))
 
     @classmethod
     def msgpack_ok(cls, packed_bytes, checkerror=True):
