@@ -49,6 +49,8 @@ class ESResultTransformer(object):
                 for obj in d:
                     _recursion_helper(obj, ret, path, out)
             else:
+                if self.options.always_list and out in self.options.always_list:
+                    ret[out] = []
                 if out in ret:
                     if isinstance(ret[out], list):
                         ret[out].append(d)
@@ -116,19 +118,11 @@ class ESResultTransformer(object):
             _d.update(self._flatten_doc(_doc))
             return _d
         else:
-            logging.debug("_doc.keys: {}".format(_doc.keys()))
             _doc = self._sort_and_annotate_doc(_doc, sort=self.options._sorted, data_src=self.options.datasource)
-            logging.debug("_doc.keys: {}".format(_doc.keys()))
             for _field in self.options.allow_null:
                 _doc = exists_or_null(_doc, _field)
-            logging.debug("_doc.keys: {}".format(_doc.keys()))
-            logging.debug("self.options: {}".format(self.options))
             if self.options.dotfield:
-                logging.debug("doing the flattening")
-                logging.debug("_doc: {}".format(_doc))
-                #logging.debug("doc['drugbank']['enzymes']['actions']: {}".format(_doc['drugbank']['enzymes']['actions']))
                 _doc = self._flatten_doc(_doc)
-                logging.debug("doc['drugbank.enzymes.actions']: {}".format(_doc['drugbank.enzymes.actions']))
             return _doc
 
     def _modify_doc(self, doc):
@@ -186,18 +180,14 @@ class ESResultTransformer(object):
             res[facet]['missing'] = res[facet].pop('doc_count_error_upper_bound')
             count = 0
             for term in res[facet]['terms']:
-                for (agg_k, agg_v) in term.items():
-                    if agg_k == 'doc_count':
-                        term['count'] = agg_v
-                        count += agg_v
-                    elif agg_k == 'key':
-                        term['term'] = agg_v
-                    else:
-                        term[agg_k] = self._clean_aggregations_response(agg_v)
-                term.pop('doc_count')
-                term.pop('key')
+                term['count'] = term.pop('doc_count')
+                count += term['count']
+                term['term'] = term.pop('key')
+                for agg_k in list(term.keys()):
+                    if agg_k not in ['count', 'term']:
+                        term.update(self._clean_aggregations_response({agg_k: term[agg_k]}))
             res[facet]['total'] = count
-        return res 
+        return res
 
     def _clean_query_GET_response(self, res):
         if 'aggregations' in res:
