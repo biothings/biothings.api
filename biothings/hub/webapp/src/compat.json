@@ -3,7 +3,7 @@
     "when" : {
       "biothings_version" : {"branch" : "0.2.3", "commit" : null, "date" : ">2019-03-21"}
     },
-    "requires" : "this"
+    "requires" : "0.1f"
   },
   {
     "when" : {

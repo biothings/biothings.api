@@ -16,7 +16,8 @@
                 '<div style=\'width:30em;\'>' +
                 '<a>' + conn.url + '</a><br>' +
                     'App. version: <b>' + conn.app_version + '</b><br>' +
-                    'Biothings version: <b>' + conn.biothings_version + '</b><br></div>' 
+                    'Biothings version: <b>' + conn.biothings_version + '</b><br></div>' +
+                    'Studio version: <b>' + current_studio_version + '</b><br></div>'
                     " data-position="bottom center">{{conn.name}}</div>
             </div>
 
@@ -138,6 +139,8 @@
     Vue.use(VueRouter)
 
     import bus from './bus.js';
+
+    const STUDIO_VERSION = "0.1f";
 
     function timesofar(value) {
         let hours =  parseInt(Math.floor(value / 3600));
@@ -299,6 +302,7 @@
                 cancel_redirect: false,
                 redirect_url: null,
                 required_studio_version: null,
+                current_studio_version: STUDIO_VERSION,
                 compat_urls: [],
                 redirect_delay: 5000,
             }
@@ -395,7 +399,6 @@
                 if(conn != null) {
                     this.conn = conn;
                 }
-                console.log(window.location.hash);
                 // get connection setion anchor hash first
                 if(/\/connect=/.test(window.location.hash)) {
                     var url = window.location.hash.replace(/.*\/connect=/,"");
@@ -538,8 +541,7 @@
                 }
                 for(var idx in studio_roots) {
                      var root = studio_roots[idx];
-                     if(self.required_studio_version == "this") {
-                         // this is the current studio version according to local compat.js
+                     if(self.required_studio_version == this.current_studio_version) {
                          var uri = new URI(root);
                      } else {
                          var uri = new URI([root,self.required_studio_version].join("/"));
