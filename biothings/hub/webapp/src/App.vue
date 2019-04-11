@@ -395,9 +395,16 @@
                 if(conn != null) {
                     this.conn = conn;
                 }
-                var url = this.conn["url"].replace(/\/$/,"");
-                console.log(`Connecting to ${this.conn.name} (${url})`);
-                axios.defaults.baseURL = url;
+                console.log(window.location.hash);
+                // get connection setion anchor hash first
+                if(/\/connect=/.test(window.location.hash)) {
+                    var url = window.location.hash.replace(/.*\/connect=/,"");
+                    console.log(`Connect from anchor hash: ${url}`);
+                } else {
+                    var url = this.conn["url"].replace(/\/$/,"");
+                    console.log(`Connecting to ${this.conn.name} (${url})`);
+                    axios.defaults.baseURL = url;
+                }
                 this.refreshConnection(url);
                 Vue.localStorage.set('last_conn',JSON.stringify(this.conn));
                 this.setupSocket(redirect);
@@ -558,7 +565,7 @@
                     // loop occurence since it's async (fetch() will immediately return, moving the next loop)
                     // so we need to store "i" as "idx" on this function (like a clojure)
                     function doFetch(idx) {
-                        fetch(self.compat_urls[idx],{"mode":"no-cors"})
+                        fetch(self.compat_urls[idx])
                         .then(function(response) {
                             checked.push({"url" : self.compat_urls[idx], "valid": response.ok, "order":idx});
                         });
@@ -595,7 +602,6 @@
                         }
                         self.redirect_url = validsorted[0].url;
                         if(self.redirect_url) {
-                            console.log(current_host_port);
                             if(current_host_port.toString() == self.redirect_url) {
                                 console.log("Current Studio is compatible");
                                 return;
@@ -605,7 +611,7 @@
                                 detachable : false,
                                 closable: false,
                                 onApprove: function () {
-                                    window.location.replace(self.redirect_url);
+                                    window.location.replace(self.redirect_url + window.location.hash);
                                 },
                                 onDeny: function() {
                                     self.cancel_redirect = true;
@@ -615,7 +621,7 @@
                             function() {
                                 if(!self.cancel_redirect) {
                                     console.log(`Redirecting to ${self.compat_urls[i]}`);
-                                    window.location.replace(self.redirect_url);
+                                    window.location.replace(self.redirect_url + window.location.hash);
                                 }
                             }, self.redirect_delay);
                         }
@@ -697,10 +703,8 @@
             }
         },
         toggleCheckCompat(event) {
-            console.log("here");
             var skip = $("#skip_compat").prop("checked");
             Vue.localStorage.set("skip_studio_compat",skip.toString());
-            console.log(`skip ${skip}`);
 
         }
     }
