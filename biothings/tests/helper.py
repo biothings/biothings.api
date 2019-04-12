@@ -2,7 +2,6 @@
     Biothings Test Helper
 '''
 import json
-import os
 import re
 import sys
 import unittest
@@ -18,10 +17,6 @@ from tornado.web import Application
 
 from biothings.web.settings import BiothingESWebSettings
 
-SRC_PATH = os.path.dirname(sys.path[0])
-if SRC_PATH not in sys.path:
-    sys.path.insert(1, SRC_PATH)
-
 
 def equal(type_a, value_a, type_b, value_b):
     ''' Equality assertion with helpful diff messages '''
@@ -32,36 +27,40 @@ def equal(type_a, value_a, type_b, value_b):
                 for i in range(0, len(string), chars_per_line)]
 
     if not value_a == value_b:
-        str1 = str(value_a)
-        str2 = str(value_b)
-        lines1 = split(str1)
-        lines2 = split(str2)
-        differ = Differ()
-        result = list(differ.compare(lines1, lines2))
-        start_index = None  # inclusive
-        end_index = None  # exclusive
-        for index, result_line in enumerate(result):
-            if result_line.startswith('  '):
-                if start_index:
-                    end_index = index
-                    break
-                continue
-            if not start_index:
-                start_index = index
-            else:
-                end_index = index
-
-        if end_index - start_index > 8:  # show 2 mismatch lines max
-            end_index = start_index + 8
+        if isinstance(value_a, set) and isinstance(value_b, set):
+            print('Objects in', type_a, 'only:')
+            print(value_a - value_b)
+            print('Objects in', type_b, 'only:')
+            print(value_b - value_a)
         else:
-            end_index += 3  # show context unless diff is too long
-        start_index -= 3  # show context
-        if start_index < 0:
-            start_index = 0
-        if end_index > len(result):
-            end_index = len(result)
-        result[end_index-1] = result[end_index-1][:-1]  # remove trailing newline
-        sys.stdout.writelines(result[start_index:end_index])
+            lines1 = split(str(value_a))
+            lines2 = split(str(value_b))
+            differ = Differ()
+            result = list(differ.compare(lines1, lines2))
+            start_index = None  # inclusive
+            end_index = None  # exclusive
+            for index, result_line in enumerate(result):
+                if result_line.startswith('  '):  # common lines
+                    if start_index:
+                        end_index = index
+                        break
+                    continue
+                if not start_index:
+                    start_index = index
+                else:
+                    end_index = index
+
+            if end_index - start_index > 8:  # show 2 mismatch lines max
+                end_index = start_index + 8
+            else:
+                end_index += 3  # show context unless diff is too long
+            start_index -= 3  # show context
+            if start_index < 0:
+                start_index = 0
+            if end_index > len(result):
+                end_index = len(result)
+            result[end_index-1] = result[end_index-1][:-1]  # remove trailing newline
+            sys.stdout.writelines(result[start_index:end_index])
         raise AssertionError(type_a + ' != ' + type_b)
 
 
@@ -75,10 +74,13 @@ class TornadoTestServerMixin(AsyncHTTPTestCase):
 
     host = ''
 
+    def __new__(cls, *args, **kwargs):
+        if not getattr(cls, 'settings', None):
+            cls.settings = BiothingESWebSettings(config='config')
+        return super(TornadoTestServerMixin, cls).__new__(cls)
+
     # override
     def get_app(self):
-        if not getattr(self, 'settings', None):
-            self.settings = BiothingESWebSettings(config='config')
         app_list = self.settings.generate_app_list()
         static_path = self.settings.STATIC_PATH
         if getattr(self.settings, 'COOKIE_SECRET', None):
