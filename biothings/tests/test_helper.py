@@ -2,44 +2,105 @@
     Biothings Test Helper
 '''
 import json
+import os
 import re
+import sys
 import unittest
-from functools import wraps
-from urllib.parse import urlencode, urlparse
+from difflib import Differ
+from functools import partial, wraps
+from urllib.parse import urlparse
 
 import msgpack
 import requests
+from nose.tools import eq_
 from tornado.testing import AsyncHTTPTestCase
-from tornado.escape import json_encode, json_decode
+from tornado.web import Application
+
+from biothings.web.settings import BiothingESWebSettings
+
+SRC_PATH = os.path.dirname(sys.path[0])
+if SRC_PATH not in sys.path:
+    sys.path.insert(1, SRC_PATH)
+
+
+def equal(type_a, value_a, type_b, value_b):
+    ''' Equality assertion with helpful diff messages '''
+
+    def split(string):
+        chars_per_line = 68
+        return [string[i:i+chars_per_line]+'\n'
+                for i in range(0, len(string), chars_per_line)]
+
+    if not value_a == value_b:
+        str1 = str(value_a)
+        str2 = str(value_b)
+        lines1 = split(str1)
+        lines2 = split(str2)
+        differ = Differ()
+        result = list(differ.compare(lines1, lines2))
+        start_index = None  # inclusive
+        end_index = None  # exclusive
+        for index, result_line in enumerate(result):
+            if result_line.startswith('  '):
+                if start_index:
+                    end_index = index
+                    break
+                continue
+            if not start_index:
+                start_index = index
+            else:
+                end_index = index
+
+        if end_index - start_index > 8:  # show 2 mismatch lines max
+            end_index = start_index + 8
+        else:
+            end_index += 3  # show context unless diff is too long
+        start_index -= 3  # show context
+        if start_index < 0:
+            start_index = 0
+        if end_index > len(result):
+            end_index = len(result)
+        result[end_index-1] = result[end_index-1][:-1]  # remove trailing newline
+        sys.stdout.writelines(result[start_index:end_index])
+        raise AssertionError(type_a + ' != ' + type_b)
 
 
 class TornadoTestServerMixin(AsyncHTTPTestCase):
     '''
         Starts a tornado server to run tests on
-        Must appear first in inheritance list
+        Must appear first in subclass's inheritance list
+        May override with customzied 'settings'
     '''
     __test__ = False  # not to be used directly
 
-    def __init__(self, methodName):
-        super(TornadoTestServerMixin, self).__init__(methodName)
-        # remove host part (http://localhost:8000)
-        # as test client require URLs starting with "/..."
-        self.api = self.api.replace(self.host, '')
-        self.host = ''
+    host = ''
 
+    # override
     def get_app(self):
-        """ Should be overridden by subclasses to return a
-            `tornado.web.Application` or other `.HTTPServer` callback. """
-        raise NotImplementedError()
+        if not getattr(self, 'settings'):
+            self.settings = BiothingESWebSettings(config='config')
+        app_list = self.settings.generate_app_list()
+        static_path = self.settings.STATIC_PATH
+        if getattr(self.settings, 'COOKIE_SECRET', None):
+            return Application(app_list, static_path=static_path,
+                               cookie_secret=self.settings.COOKIE_SECRET)
+        return Application(app_list, static_path=static_path)
 
-    def request(self, path, method="GET", **kwargs):
-        ''' Override '''
-        if url.lower().startswith(("http://", "https://")):
-            url = path
-        else:
-            url = self.get_url(path)
-        res = requests.request(method, url, **kwargs)
-        return res, res.content
+    # override
+    def request(self, *args, **kwargs):
+        ''' Use requests.py instead of the built-in client
+            Override to make the requests non-blocking
+            param: path: network path to make request to
+            param: method: ('GET') http request method
+            param: expect_status: (200) check status code
+        '''
+
+        partial_func = partial(super(TornadoTestServerMixin, self).request, **kwargs)
+
+        async def call_blocking():
+            return await self.io_loop.run_in_executor(None, partial_func, *args)
+
+        return self.io_loop.run_sync(call_blocking, timeout=5)
 
 
 class BiothingsTestCase(unittest.TestCase):
@@ -50,11 +111,8 @@ class BiothingsTestCase(unittest.TestCase):
     __test__ = False  # not to be used directly
 
     # override in subclass
-    host = None
-    api = None
-
-    _d = staticmethod(json.loads)    # shorthand for json decode
-    _e = staticmethod(json.dumps)    # shorthand for json encode
+    host = None  # no trailing slash '/'
+    api = None  # do not include host, starts with '/'
 
     #############################################################
     # Helper functions                                          #
@@ -62,76 +120,59 @@ class BiothingsTestCase(unittest.TestCase):
 
     # HTTP Requests
 
-    @staticmethod
-    def request(url, method="GET", **kwargs):
-        ''' Default '''
-        res = requests.request(method, url, **kwargs)
-        return res, res.content
+    def request(self, path, method="GET", expect_status=200, **kwargs):
+        '''
+           Prefix path with api endpoint unless it specifies an absolute
+           or relative URL. Make a request according to the method specified.
+           Validate response status code and return the response object. '''
 
-    def request_status_match(self, url, method, status_code, **kwargs):
-        ''' Make a request and asserts the response status code matches
-            that of expectation, return the response content in bytes
-            automatically encode body according to its Content-Type 
-            :param params: encode in url
-            :param data: encode dict to post as application/x-www-form-urlencoded
-            :param json: encode dict to post as application/json
-            '''
-        headers = kwargs.get('headers', {})
-        if 'json' in kwargs:
-            assert isinstance(kwargs['json'], dict)
-            headers.update({'Content-Type': 'application/json'})
-            data = json_encode(kwargs['json'])
-        elif 'params' in kwargs:
-            assert isinstance(kwargs['params'], dict)
-            headers.update({'Content-Type': 'application/x-www-form-urlencoded'})
-            data = urlencode(kwargs['params'])
+        assert self.api is not None  # allow empty string
+        if not path:
+            url = self.get_url('/')
+        elif path.lower().startswith(("http://", "https://")):
+            url = path
+        elif path.startswith('/'):
+            url = self.get_url(path)
         else:
-            assert isinstance(kwargs.get('data', ''), (str, bytes))
-            data = kwargs.get('data', None)
-        res, con = self.request(url, method, body=data, headers=headers)
-        assert res.status_code == status_code, "status {} != {} for {} {}\nbody: {}".format(
-            res.status_code, status_code, method, url, data)
-        return con
+            url = self.get_url(self.api + '/' + path)
+        res = requests.request(method, url, timeout=5, **kwargs)
+        eq_(res.status_code, expect_status)
+        return res
 
-    def head_ok(self, url):
-        ''' Send a HEAD request and asserts response status code indicates
-        the entity-header fields corresponding to the requested resource
-        are sent in the response without any message-body (status 200) '''
-        self.request_status_match(url, 'HEAD', 200)
+    def get_url(self, path):
+        ''' Takes a relative path starting with '/'
+            Append it to host and return the full url
+            Need override for local tornado tests '''
 
-    def get_status_match(self, url, status_code, **kwargs):
-        ''' Make a get request and asserts the response status code matches
-        that of expectation, returns response content in bytes '''
-        return self.request_status_match(url, 'GET', status_code, **kwargs)
+        assert path.startswith('/')
+        return self.host + path
 
-    def get_ok(self, url):
-        ''' Asserts server says the requested resource is sent, returns response body in bytes '''
-        return self.get_status_match(url, 200)
+    def query(self, method='GET', endpoint='query', expect_hits=True, **kwargs):
+        ''' Make a query and assert positive hits by default.
+            Assert zero hit when expect_hits is set to False. '''
 
-    def get_404(self, url):
-        ''' Asserts server says the requested resource is not found '''
-        self.get_status_match(url, 404)
+        if method == 'GET':
+            dic = self.request(endpoint, params=kwargs).json()
+            if expect_hits:
+                assert dic.get('hits', [])
+            else:
+                assert dic.get('hits', None) == []
+            return dic
 
-    def get_405(self, url):
-        ''' Asserts server says GET is not allowed for the specified resource '''
-        self.get_status_match(url, 405)
+        if method == 'POST':
+            lst = self.request(endpoint, method=method, data=kwargs).json()
+            hits = False
+            for item in lst:
+                if "_id" in item:
+                    hits = True
+                    break
+            if expect_hits:
+                assert hits
+            else:
+                assert not hits
+            return lst
 
-    def post_status_match(self, url, status_code, **kwargs):
-        ''' Make a post request and asserts the response status code matches
-            that of expectation, return the response content in bytes
-            automatically encode body according to its Content-Type '''
-        return self.request_status_match(url, 'POST', status_code, **kwargs)
-
-    def post_ok(self, url, **kwargs):
-        ''' Asserts server says the POST request has succeeded and it responded
-            with an entity describing or containing the result of the action '''
-        return self.post_status_match(url, 200, **kwargs)
-
-    def put_status_match(self, url, status_code, **kwargs):
-        ''' Make a PUT request and asserts the response status code matches
-            that of expectation, return the response content in bytes
-            automatically encode body according to its Content-Type '''
-        return self.request_status_match(url, 'PUT', status_code, **kwargs)
+        raise ValueError(f'Query method {method} is not supported.')
 
     @staticmethod
     def parse_url(url, option):
@@ -143,7 +184,7 @@ class BiothingsTestCase(unittest.TestCase):
                 return opt.split('=')[1]
         return ''
 
-    # Data and Formats
+    # Data Formats
 
     @staticmethod
     def truncate(string, limit):
@@ -151,35 +192,6 @@ class BiothingsTestCase(unittest.TestCase):
         if len(string) <= limit:
             return string
         return string[:limit] + '...'
-
-    @classmethod
-    def json_ok(cls, byte_str, checkerror=True):
-        ''' Load encoded json into a dict '''
-        dic = json_decode(byte_str)
-        if checkerror:
-            assert not (isinstance(dic, dict)
-                        and 'error' in dic), cls.truncate(str(dic), 100)
-        return dic
-
-    def get_json_ok(self, url):
-        ''' returns json dict '''
-        return self.json_ok(self.get_ok(url))
-
-    def post_json_ok(self, url, **kwargs):
-        ''' returns json dict '''
-        return self.json_ok(self.post_ok(url, **kwargs))
-
-    def post_json_status_match(self, url, status_code, **kwargs):
-        ''' returns json dict '''
-        return self.json_ok(self.post_status_match(url, status_code, **kwargs))
-
-    def put_json_ok(self, url, **kwargs):
-        ''' returns json dict '''
-        return self.json_ok(self.put_status_match(url, 200, **kwargs))
-
-    def put_json_status_match(self, url, status_code, **kwargs):
-        ''' returns json dict '''
-        return self.json_ok(self.put_status_match(url, status_code, **kwargs))
 
     @classmethod
     def msgpack_ok(cls, packed_bytes, checkerror=True):
@@ -255,7 +267,7 @@ class BiothingsTestCase(unittest.TestCase):
             Given a base query (with callback), the corresponding escaped GET url,
             test the response and return the JSON object inside
         '''
-        res_text = self.get_ok(base_url).decode('utf-8')
+        res_text = self.request(base_url).text()
         callback = self.parse_url(base_url, 'callback')
         res_text = re.sub('\n', '', res_text)
         pattern = r'^(?P<callback>' + callback + r'\()(?P<res>\{.*\})\)$'
@@ -263,9 +275,7 @@ class BiothingsTestCase(unittest.TestCase):
         assert match, 'JSONP object malformed'
         result = match.groupdict()
         # get the json object out of the callback so we can test it
-        return self._d(result['res'])
-
-    # Biothings
+        return json.loads(result['res'])
 
     @staticmethod
     def check_fields(res, res_all, fields, additionals=None):
@@ -333,19 +343,6 @@ class BiothingsTestCase(unittest.TestCase):
         assert fields_res.issubset(fields_all), \
             "The returned keys of object {} have extra keys than expected, the offending keys \
             are: {}".format(res['_id'], fields_res.difference(fields_all))
-
-    def query_has_hits(self, param_q, query_endpoint='query'):
-        ''' Query and asserts positive hits, return the search result '''
-        dic = self.json_ok(self.get_ok(
-            self.api + '/' + query_endpoint + '?q=' + param_q))
-        assert dic.get('total', 0) > 0 and dic.get('hits', [])
-        return dic
-
-    def query_missed(self, param_q, query_endpoint='query'):
-        ''' Query and asserts no hits '''
-        dic = self.json_ok(self.get_ok(
-            self.api + '/' + query_endpoint + '?q=' + param_q))
-        assert dic.get('total', 0) == 0
 
 
 #############################################
