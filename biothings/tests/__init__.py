@@ -1,2 +1,2 @@
 ''' Biothings Test Utility '''
-from .test_helper import BiothingsTestCase, TornadoTestServerMixin
+from .helper import BiothingsTestCase, TornadoTestServerMixin
