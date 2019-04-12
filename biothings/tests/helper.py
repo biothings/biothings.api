@@ -77,7 +77,7 @@ class TornadoTestServerMixin(AsyncHTTPTestCase):
 
     # override
     def get_app(self):
-        if not getattr(self, 'settings'):
+        if not getattr(self, 'settings', None):
             self.settings = BiothingESWebSettings(config='config')
         app_list = self.settings.generate_app_list()
         static_path = self.settings.STATIC_PATH
