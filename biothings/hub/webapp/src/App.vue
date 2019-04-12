@@ -270,6 +270,7 @@
                 this.conn = JSON.parse(last);
             }
             this.setupConnection();
+            this.skip_studio_compat = Vue.localStorage.get("skip_studio_compat");
         },
         created () {
             console.log("App created");
@@ -705,8 +706,10 @@
             }
         },
         toggleCheckCompat(event) {
+            console.log("in toggleCheckCompat");
             var skip = $("#skip_compat").prop("checked");
             Vue.localStorage.set("skip_studio_compat",skip.toString());
+            this.skip_studio_compat = skip;
 
         }
     }
