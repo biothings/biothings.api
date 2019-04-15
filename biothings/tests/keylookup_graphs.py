@@ -2,7 +2,7 @@ import biothings_client
 import networkx as nx
 
 from biothings.hub.datatransform.datatransform_api import MyChemInfoEdge, MyGeneInfoEdge
-from biothings.hub.datatransform.datatransform_networkx import MongoDBEdge
+from biothings.hub.datatransform.datatransform_mdb import MongoDBEdge, CIMongoDBEdge
 from biothings.hub.datatransform.datatransform import RegExEdge
 
 ###############################################################################
@@ -17,7 +17,7 @@ graph_simple.add_node('d')
 graph_simple.add_node('e')
 
 graph_simple.add_edge('a', 'b',
-                      object=MongoDBEdge('b', 'a_id', 'b_id'))
+                      object=MongoDBEdge('b', 'a_id', 'b_id', label="a_to_b"))
 graph_simple.add_edge('b', 'c',
                       object=MongoDBEdge('c', 'b_id', 'c_id'))
 # Test Loop
@@ -125,3 +125,36 @@ graph_regex.add_node('bregex')
 
 graph_regex.add_edge('a', 'b', object=MongoDBEdge('b', 'a_id', 'b_id'))
 graph_regex.add_edge('b', 'bregex', object=RegExEdge('b:', 'bregex:'))
+
+###############################################################################
+# PubChem API Graph for Testing
+###############################################################################
+
+graph_pubchem = nx.DiGraph()
+
+graph_pubchem.add_node('inchi')
+graph_pubchem.add_node('pubchem')
+graph_pubchem.add_node('inchikey')
+
+inchikey_fields = [
+    'pubchem.inchi_key',
+    'drugbank.inchi_key',
+    'chembl.inchi_key'
+]
+
+graph_pubchem.add_edge('inchi', 'pubchem',
+                      object=MyChemInfoEdge('pubchem.inchi', 'pubchem.cid'))
+graph_pubchem.add_edge('pubchem', 'inchikey',
+                      object=MyChemInfoEdge('pubchem.cid', inchikey_fields))
+
+###############################################################################
+# Case Insensitive Graph for Testing
+###############################################################################
+graph_ci = nx.DiGraph()
+
+graph_ci.add_node('a')
+graph_ci.add_node('b')
+
+graph_ci.add_edge('a', 'b',
+                  object=CIMongoDBEdge('b', 'a_id', 'b_id', label="a_to_b"))
+
