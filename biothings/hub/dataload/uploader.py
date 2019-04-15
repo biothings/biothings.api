@@ -60,11 +60,10 @@ def upload_worker(name, storage_class, loaddata_func, col_name,
                          "loaddata_func" : loaddata_func,
                          "col_name" : col_name,
                          "batch_size" : batch_size,
-                         "data" : [d for d in data],
                          "args" : args},open(pickfile,"wb"))
         except TypeError as ie:
             logger.warning("Could not pickle batch errors: %s" % ie)
-        raise
+        raise e
 
 
 class BaseSourceUploader(object):

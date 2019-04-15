@@ -112,6 +112,7 @@ export default {
             $('.ui.basic.newdatasource.modal')
             .modal("setting", {
                 detachable : false,
+                closable: false,
                 onApprove: function () {
                     var url = $(".ui.newdataplugin.form").form('get field', "repo_url").val();
                     axios.post(axios.defaults.baseURL + '/dataplugin/register_url',{"url":url})

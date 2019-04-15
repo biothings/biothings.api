@@ -877,7 +877,8 @@ class BuilderManager(BaseManager):
         self.src_build_config = get_src_build_config()
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
-        self.builder_class = builder_class
+        self.default_builder_class = builder_class
+        self.builder_classes = {}
         self.poll_schedule = poll_schedule
         self.setup_log()
 
@@ -909,9 +910,9 @@ class BuilderManager(BaseManager):
         builder_class = None
         conf = self.src_build_config.find_one({"_id":build_config_name})
         if conf.get("builder_class"):
-            builder_class = get_class_from_classpath(conf["builder_class"])
-        elif self.builder_class:
-            builder_class = self.builder_class
+            builder_class = self.builder_classes[conf["builder_class"]]["class"]
+        elif self.default_builder_class:
+            builder_class = self.default_builder_class
         else:
             builder_class = DataBuilder
 
@@ -1016,8 +1017,52 @@ class BuilderManager(BaseManager):
     def configure(self):
         """Sync with src_build_config and register all build config"""
         self.register = {}
+        self.builder_classes = {}
         for conf in self.src_build_config.find():
             self.register_builder(conf["_id"])
+        self.find_builder_classes()
+
+    def find_builder_classes(self):
+        """
+        Find all available build class:
+         1. default one in the manager
+         2. all subclassing DataBuilder in:
+           a. biothings.hub.databuilder.*
+           b. hub.databuilder.* (app-specific)
+        """
+        bclasses = {self.default_builder_class}
+        mods = [sys.modules[__name__]]
+        try:
+            import hub.databuild as m
+            mods.append(m)
+        except ImportError:
+            pass
+        for klass in find_classes_subclassing(mods,DataBuilder):
+            bclasses.add(klass)
+        for klass in bclasses:
+            try:
+                obj = klass
+                if type(klass) == partial:
+                    assert type(klass.func) == type
+                    btype = "partial"
+                    obj = klass.func
+                elif type(klass) == type:
+                    btype = "class"
+                else:
+                    raise TypeError("Unknown type for builder %s" % repr(klass))
+                modstr = obj.__module__
+                classstr = obj.__name__
+                helpstr = obj.__doc__ and " ".join(map(str.strip, obj.__doc__.splitlines()))
+                classpathstr = "%s.%s" % (modstr,classstr)
+                self.builder_classes[classpathstr] = {
+                    "desc" : helpstr,
+                    "type" : btype,
+                    "class" : klass,
+                    "default" : klass == self.default_builder_class,
+                    }
+            except Exception as e:
+                logging.exception("Can't extract information from builder class %s: %s" % (repr(klass),e))
+
 
     def merge(self, build_name, sources=None, target_name=None, **kwargs):
         """
@@ -1149,7 +1194,6 @@ class BuilderManager(BaseManager):
             else:
                 target_db = builder.target_backend.target_collection.database.client.address
             configs[name] = {
-                    "class" : builder and builder.__class__.__name__,
                     "build_config" : builder and builder.build_config,
                     "archived" : "archived" in (builder and builder.build_config or [])
                     }
@@ -1170,45 +1214,11 @@ class BuilderManager(BaseManager):
                 for mappername,mapper in builder.mappers.items():
                     configs[name]["mapper"][mappername] = mapper.__class__.__name__
         res = {"build_configs" : configs}
-        # find all available build class:
-        # 1. default one in the manager
-        # 2. all subclassing DataBuilder in:
-        #   a. biothings.hub.databuilder.*
-        #   b. hub.databuilder.* (app-specific)
-        bclasses = {self.builder_class}
-        mods = [sys.modules[__name__]]
-        try:
-            import hub.databuild as m
-            mods.append(m)
-        except ImportError:
-            pass
-        for klass in find_classes_subclassing(mods,DataBuilder):
-            bclasses.add(klass)
-        # make them printable
-        res["builder_classes"] = []
-        for klass in bclasses:
-            try:
-                obj = klass
-                if type(klass) == partial:
-                    assert type(klass.func) == type
-                    btype = "partial"
-                    obj = klass.func
-                elif type(klass) == type:
-                    btype = "class"
-                else:
-                    raise TypeError("Unknown type for builder %s" % repr(klass))
-                modstr = obj.__module__
-                classstr = obj.__name__
-                helpstr = obj.__doc__ and " ".join(map(str.strip, obj.__doc__.splitlines()))
-                classpathstr = "%s.%s" % (modstr,classstr)
-                res["builder_classes"].append({
-                    "path" : classpathstr,
-                    "desc" : helpstr,
-                    "type" : btype}
-                )
-            except Exception as e:
-                logging.exception("Can't extract information from builder class %s: %s" % (repr(klass),e))
-
+        # dict contains an actual class, non-serializable, so adjust:
+        bclasses = copy.deepcopy(self.builder_classes)
+        for k,v in bclasses.items():
+            v.pop("class")
+        res["builder_classes"] = bclasses
         return res
 
     def build_info(self,id=None,conf_name=None,fields=None,only_archived=False):
@@ -1260,7 +1270,7 @@ class BuilderManager(BaseManager):
 
     def upsert_build_conf(self, name, doc_type, sources, roots, builder_class, params, archived):
         col = get_src_build_config()
-        builder_class = builder_class or "%s.%s" % (self.builder_class.__module__,self.builder_class.__name__)
+        builder_class = builder_class or "%s.%s" % (self.default_builder_class.__module__,self.default_builder_class.__name__)
         doc = {"_id" : name, "name" : name, "doc_type" : doc_type,
                "sources" : sources, "root" : roots,
                "builder_class" : builder_class}

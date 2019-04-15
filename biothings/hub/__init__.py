@@ -24,8 +24,6 @@ INSPECTOR_CATEGORY = "inspector"
 
 HUB_REFRESH_COMMANDS = hasattr(config,"HUB_REFRESH_COMMANDS") and config.HUB_REFRESH_COMMANDS or "* * * * * *" # every sec
 
-__version__ = "0.2"
-
 
 class JobRenderer(object):
 
@@ -500,6 +498,7 @@ class HubServer(object):
         if self.managers.get("assistant_manager"):
             self.commands["register_url"] = partial(self.managers["assistant_manager"].register_url)
             self.commands["unregister_url"] = partial(self.managers["assistant_manager"].unregister_url)
+            self.commands["export_plugin"] = partial(self.managers["assistant_manager"].export)
         if self.managers.get("dataplugin_manager"):
             self.commands["dump_plugin"] = self.managers["dataplugin_manager"].dump_src
 
@@ -520,6 +519,7 @@ class HubServer(object):
         self.extra_commands["loop"] = CommandDefinition(command=loop,tracked=False)
 
         if self.managers.get("source_manager"):
+            self.extra_commands["sm"] = CommandDefinition(command=self.managers["source_manager"],tracked=False)
             self.extra_commands["sources"] = CommandDefinition(command=self.managers["source_manager"].get_sources,tracked=False)
             self.extra_commands["source_save_mapping"] = CommandDefinition(command=self.managers["source_manager"].save_mapping)
         if self.managers.get("dump_manager"):
@@ -546,7 +546,7 @@ class HubServer(object):
             self.extra_commands["diff_info"] = CommandDefinition(command=self.managers["diff_manager"].diff_info,tracked=False)
             self.extra_commands["jsondiff"] = CommandDefinition(command=jsondiff,tracked=False)
         if self.managers.get("sync_manager"):
-            self.extra_commands["sm"] = CommandDefinition(command=self.managers["sync_manager"],tracked=False)
+            self.extra_commands["sym"] = CommandDefinition(command=self.managers["sync_manager"],tracked=False)
         if self.managers.get("index_manager"):
             self.extra_commands["im"] = CommandDefinition(command=self.managers["index_manager"],tracked=False)
             self.extra_commands["index_info"] = CommandDefinition(command=self.managers["index_manager"].index_info,tracked=False)
@@ -603,7 +603,11 @@ class HubServer(object):
         if "inspect" in cmdnames: self.api_endpoints["inspect"] = EndpointDefinition(name="inspect",method="put",force_bodyargs=True)
         if "register_url" in cmdnames: self.api_endpoints["dataplugin/register_url"] = EndpointDefinition(name="register_url",method="post",force_bodyargs=True)
         if "unregister_url" in cmdnames: self.api_endpoints["dataplugin/unregister_url"] = EndpointDefinition(name="unregister_url",method="delete",force_bodyargs=True)
-        if "dump_plugin" in cmdnames: self.api_endpoints["dataplugin"] = [EndpointDefinition(name="dump_plugin",method="put",suffix="dump")]
+        self.api_endpoints["dataplugin"] = []
+        if "dump_plugin" in cmdnames: self.api_endpoints["dataplugin"].append(EndpointDefinition(name="dump_plugin",method="put",suffix="dump"))
+        if "export_plugin" in cmdnames: self.api_endpoints["dataplugin"].append(EndpointDefinition(name="export_plugin",method="put",suffix="export"))
+        if not self.api_endpoints["dataplugin"]:
+            self.api_endpoints.pop("dataplugin")
         if "jsondiff" in cmdnames: self.api_endpoints["jsondiff"] = EndpointDefinition(name="jsondiff",method="post",force_bodyargs=True)
         if "validate_mapping" in cmdnames: self.api_endpoints["mapping/validate"] = EndpointDefinition(name="validate_mapping",method="post",force_bodyargs=True)
         self.api_endpoints["buildconf"] = []

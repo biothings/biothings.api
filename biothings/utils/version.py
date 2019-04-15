@@ -104,14 +104,20 @@ def set_versions(config, app_folder):
         repo = Repo(app_folder)  # app dir (mygene, myvariant, ...)
         try:
             commit = repo.head.object.hexsha[:6]
+            commitdate = repo.head.object.committed_datetime.isoformat()
         except Exception as e:
             logging.warning("Can't determine app commit hash: %s" % e)
             commit = "unknown"
+            commitdate = "unknown"
         try:
+<<<<<<< HEAD
             config.APP_VERSION = "%s [%s]" % (repo.active_branch.name, commit)
+=======
+            config.APP_VERSION = "%s [%s] [%s]" % (repo.active_branch.name,commit,commitdate)
+>>>>>>> up/master
         except Exception as e:
             logging.warning("Can't determine app version, defaulting to 'master': %s" % e)
-            config.APP_VERSION = "master [%s]" % commit
+            config.APP_VERSION = "master [%s] [%s]" % (commit,commitdate)
     else:
         logging.info("app_version '%s' forced in configuration file" % config.APP_VERSION)
 
@@ -124,14 +130,20 @@ def set_versions(config, app_folder):
         repo = Repo(bt_folder)  # app dir (mygene, myvariant, ...)
         try:
             commit = repo.head.object.hexsha[:6]
+            commitdate = repo.head.object.committed_datetime.isoformat()
         except Exception as e:
             logging.warning("Can't determine biothings commit hash: %s" % e)
             commit = "unknown"
+            commitdate = "unknown"
         try:
+<<<<<<< HEAD
             config.BIOTHINGS_VERSION = "%s [%s]" % (repo.active_branch.name, commit)
+=======
+            config.BIOTHINGS_VERSION = "%s [%s] [%s]" % (repo.active_branch.name,commit,commitdate)
+>>>>>>> up/master
         except Exception as e:
             logging.warning("Can't determine biothings version, defaulting to 'master': %s" % e)
-            config.BIOTHINGS_VERSION = "master [%s]" % commit
+            config.BIOTHINGS_VERSION = "master [%s] [%s]" % (commit,commitdate)
     else:
         logging.info("biothings_version '%s' forced in configuration file" %
                      config.BIOTHINGS_VERSION)

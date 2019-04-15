@@ -49,6 +49,8 @@ class ESResultTransformer(object):
                 for obj in d:
                     _recursion_helper(obj, ret, path, out)
             else:
+                if self.options.always_list and out in self.options.always_list:
+                    ret[out] = []
                 if out in ret:
                     if isinstance(ret[out], list):
                         ret[out].append(d)
@@ -120,7 +122,7 @@ class ESResultTransformer(object):
             for _field in self.options.allow_null:
                 _doc = exists_or_null(_doc, _field)
             if self.options.dotfield:
-                return self._flatten_doc(_doc)
+                _doc = self._flatten_doc(_doc)
             return _doc
 
     def _modify_doc(self, doc):
@@ -170,21 +172,27 @@ class ESResultTransformer(object):
     def _clean_annotation_POST_response(self, bid_list, res, single_hit=False):
         return self._clean_common_POST_response(_list=bid_list, res=res, single_hit=single_hit, score=False)
 
+    def _clean_aggregations_response(self, res):
+        for facet in res:
+            res[facet]['_type'] = 'terms'
+            res[facet]['terms'] = res[facet].pop('buckets')
+            res[facet]['other'] = res[facet].pop('sum_other_doc_count')
+            res[facet]['missing'] = res[facet].pop('doc_count_error_upper_bound')
+            count = 0
+            for term in res[facet]['terms']:
+                term['count'] = term.pop('doc_count')
+                count += term['count']
+                term['term'] = term.pop('key')
+                for agg_k in list(term.keys()):
+                    if agg_k not in ['count', 'term']:
+                        term.update(self._clean_aggregations_response({agg_k: term[agg_k]}))
+            res[facet]['total'] = count
+        return res
+
     def _clean_query_GET_response(self, res):
         if 'aggregations' in res:
             res['facets'] = res.pop('aggregations')
-            for facet in res['facets']:
-                res['facets'][facet]['_type'] = 'terms'
-                res['facets'][facet]['terms'] = res['facets'][facet].pop('buckets')
-                res["facets"][facet]["other"] = res["facets"][facet].pop("sum_other_doc_count")
-                res["facets"][facet]["missing"] = res["facets"][facet].pop("doc_count_error_upper_bound")
-                count = 0
-                for term in res["facets"][facet]["terms"]:
-                    # modif in-place
-                    term["count"] = term.pop("doc_count")
-                    term["term"] = term.pop("key")
-                    count += term["count"]
-                res["facets"][facet]["total"] = count
+            res['facets'] = self._clean_aggregations_response(res['facets'])
 
         _res = res['hits']
         for attr in ['took', 'facets', '_scroll_id']:

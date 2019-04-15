@@ -61,12 +61,25 @@ class BaseESRequestHandler(BaseHandler):
                 self.web_settings.ES_SIZE_CAP) else self.web_settings.ES_SIZE_CAP
         return kwargs
 
+    def _parse_nested_aggs(self, field, facet_size):
+        ''' parse nested aggs '''
+        if re.search(r'\(.*\)', field):
+            return {re.sub(r'\(.*\)', '', field): {'terms': {"field": re.sub(r'\(.*\)', '', field), 'size': facet_size}, "aggs": self._parse_nested_aggs(re.sub(r'^.*?\(','', field)[:-1], facet_size)}}
+        else:
+            return {field: {'terms': {"field": field, 'size': facet_size}}}
+
     def _sanitize_aggs_param(self, kwargs):
         if self._should_sanitize('aggs', kwargs):
             kwargs['facet_size'] = kwargs.get('facet_size', self.kwarg_settings['facet_size']['default']) 
             if (kwargs['facet_size'] > self.kwarg_settings['facet_size'].get('max', 1000)):
                  kwargs['facet_size'] = self.kwarg_settings['facet_size'].get('max', 1000)
-            kwargs['aggs'] = dict([(field, {"terms": {"field": field, "size": kwargs['facet_size']}}) for field in kwargs['aggs']])
+            aggs_dict = {}
+            for field in kwargs['aggs']:
+                if self.web_settings.ALLOW_NESTED_AGGS and re.search(r'\(.*\)', field):
+                    aggs_dict.update(self._parse_nested_aggs(field, kwargs['facet_size']))
+                else:
+                    aggs_dict.update({field: {"terms": {"field": field, "size": kwargs["facet_size"]}}})
+            kwargs['aggs'] = aggs_dict
         return kwargs
 
     def _sanitize_from_param(self, kwargs):
