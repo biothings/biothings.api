@@ -24,8 +24,6 @@ INSPECTOR_CATEGORY = "inspector"
 
 HUB_REFRESH_COMMANDS = hasattr(config,"HUB_REFRESH_COMMANDS") and config.HUB_REFRESH_COMMANDS or "* * * * * *" # every sec
 
-__version__ = "0.2"
-
 
 class JobRenderer(object):
 
