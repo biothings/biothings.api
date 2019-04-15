@@ -4,9 +4,7 @@ from biothings.web.api.es.transform import ScrollIterationDone
 from biothings.web.api.es.query import BiothingScrollError, BiothingSearchError
 from biothings.web.api.helper import BiothingParameterTypeError
 from biothings.utils.web import sum_arg_dicts
-from biothings.utils.loggers import get_logger
 import logging
-
 
 class QueryHandler(BaseESRequestHandler):
     ''' Request handlers for requests to the query endpoint '''
@@ -32,14 +30,9 @@ class QueryHandler(BaseESRequestHandler):
             pass
         self.kwarg_settings = sum_arg_dicts(self.control_kwargs, self.es_kwargs, 
                                              self.esqb_kwargs, self.transform_kwargs)
-
-        # setup logging
-        self.logger,_ = get_logger('QueryHandler')
-        # disable logging temporarily for the class
-        self.logger.setLevel(logging.WARNING)
-        self.logger.debug("QueryHandler - {}".format(self.request.method))
-        self.logger.debug("Google Analytics Base object: {}".format(self.ga_event_object_ret))
-        self.logger.debug("Kwarg Settings: {}".format(self.kwarg_settings))
+        logging.debug("QueryHandler - {}".format(self.request.method))
+        logging.debug("Google Analytics Base object: {}".format(self.ga_event_object_ret))
+        logging.debug("Kwarg Settings: {}".format(self.kwarg_settings))
     
     def _pre_scroll_transform_GET_hook(self, options, res):
         ''' Override me. '''
@@ -67,8 +60,8 @@ class QueryHandler(BaseESRequestHandler):
         
         options = self.get_cleaned_options(kwargs)
 
-        self.logger.debug("Request kwargs: {}".format(kwargs))
-        self.logger.debug("Request options: {}".format(options))
+        logging.debug("Request kwargs: {}".format(kwargs))
+        logging.debug("Request options: {}".format(options))
 
         if not options.control_kwargs.q and not options.control_kwargs.scroll_id:
             self._return_data_and_track({'success': False, 'error': "Missing required parameters."},
@@ -233,8 +226,8 @@ class QueryHandler(BaseESRequestHandler):
 
         options = self.get_cleaned_options(kwargs)
 
-        self.logger.debug("Request kwargs: {}".format(kwargs))
-        self.logger.debug("Request options: {}".format(options))
+        logging.debug("Request kwargs: {}".format(kwargs))
+        logging.debug("Request options: {}".format(options))
 
         if not options.control_kwargs.q:
             self._return_data_and_track({'success': False, 'error': "Missing required parameters."},
@@ -290,7 +283,7 @@ class QueryHandler(BaseESRequestHandler):
         #    self._return_data_and_track({'success': False, 'error': 'Error executing query'}, ga_event_data={'qsize': len(options.control_kwargs.q)})
         #    return
 
-        # logging.debug("Raw query result: {}".format(res))
+        logging.debug("Raw query result: {}".format(res))
 
         # return raw result if requested
         if options.control_kwargs.raw:
