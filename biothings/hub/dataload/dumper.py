@@ -1166,7 +1166,8 @@ class DumperManager(BaseSourceManager):
             src.setdefault("download",{})
             src["download"]["dumper"] = {
                     "name": "%s.%s" % (inspect.getmodule(dumper).__name__,dumper.__name__),
-                    "bases": ["%s.%s" % (inspect.getmodule(k).__name__,k.__name__) for k in dumper.__bases__],
+                    "bases": ["%s.%s" % (inspect.getmodule(k).__name__,k.__name__) for k in dumper.__bases__ \
+                        if inspect.getmodule(k)],
                     "manual" : issubclass(dumper,ManualDumper),
                     }
             src["name"] = _id

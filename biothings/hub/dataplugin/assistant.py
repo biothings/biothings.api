@@ -233,10 +233,11 @@ class BaseAssistant(object):
                 if uploader_section.get("ignore_duplicates"):
                     raise AssistantException("'ignore_duplicates' key not supported anymore, " +
                                              "use 'on_duplicates' : 'error|ignore|merge'")
+                confdict["STORAGE_CLASS"] = storage_class
                 # default is not ID conversion at all
                 confdict["IMPORT_IDCONVERTER_FUNC"] = ""
                 confdict["IDCONVERTER_FUNC"] = None
-                confdict["CALL_PARSER_FUNC"] = "return parser_func(data_folder)"
+                confdict["CALL_PARSER_FUNC"] = "parser_func(data_folder)"
                 if uploader_section.get("keylookup"):
                     assert self.__class__.keylookup, "Plugin %s needs _id conversion " % self.plugin_name + \
                                                      "but no keylookup instance was found"
