@@ -70,7 +70,8 @@ hub_requires = [
     'networkx>=2.1',
     'jsonschema>=2.6.0',
     'pip',              # auto-install requirements from plugins
-    'pandas' # json with inf/nan and more to come
+    'pandas', # json with inf/nan and more to come
+    'yapf', # code reformatter, better results than autopep8
 ]
 
 # extra requirements for building docs

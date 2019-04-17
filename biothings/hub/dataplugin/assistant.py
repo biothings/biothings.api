@@ -7,6 +7,8 @@ from functools import partial
 import inspect, importlib, textwrap
 import pip, subprocess
 from string import Template
+from yapf.yapflib import yapf_api
+
 
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.utils.common import timesofar, rmdashfr, uncompressall, \
@@ -585,8 +587,11 @@ class AssistantManager(BaseSourceManager):
             dinit = os.path.join(folder,"__init__.py")
             dfile = os.path.join(folder,"dump.py")
             # clear init, we'll append code
+            # we use yapf (from Google) as autopep8 (for instance) doesn't give
+            # good results in term in indentation (input_type list for keylookup for instance)
+            beauty,_ = yapf_api.FormatCode(dclass.python_code)
             with open(dfile,"w") as fout:
-                fout.write(dclass.python_code)
+                fout.write(beauty)
             with open(dinit,"a") as fout:
                 fout.write("from .dump import %s\n" % dumper_name)
             res["dumper"]["status"] = "ok"
@@ -615,8 +620,9 @@ class AssistantManager(BaseSourceManager):
             assert hasattr(uclass,"python_code"), "No generated code found"
             dinit = os.path.join(folder,"__init__.py")
             ufile = os.path.join(folder,"upload.py")
+            beauty,_ = yapf_api.FormatCode(uclass.python_code)
             with open(ufile,"w") as fout:
-                fout.write(uclass.python_code)
+                fout.write(beauty)
             with open(dinit,"a") as fout:
                 fout.write("from .upload import %s\n" % uploader_name)
             res["uploader"]["status"] = "ok"
@@ -648,11 +654,12 @@ class AssistantManager(BaseSourceManager):
             return res
         else:
             ufile = os.path.join(folder,"upload.py")
+            strmap,_ = yapf_api.FormatCode(pprint.pformat(mapping))
             with open(ufile,"a") as fout:
                 fout.write("""
     @classmethod
     def get_mapping(klass):
-        return %s\n""" % textwrap.indent(pprint.pformat(mapping),prefix="    "*2))
+        return %s\n""" % textwrap.indent((strmap),prefix="    "*2))
         
         res["mapping"]["file"] = ufile
         res["mapping"]["status"] = "ok"
