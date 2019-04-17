@@ -18,7 +18,7 @@
                     'App. version: <b>' + conn.app_version + '</b><br>' +
                     'Biothings version: <b>' + conn.biothings_version + '</b><br></div>' +
                     'Studio version: <b>' + current_studio_version + '</b><br></div>'
-                    " data-position="bottom center">{{conn.name}}</div>
+                    " data-position="bottom center">{{conn.name || "John Doe"}}</div>
             </div>
 
             <a class="clickable item">
