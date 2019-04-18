@@ -22,7 +22,7 @@ class MongoDBEdge(DataTransformEdge):
     a collection. The output identifier values are read out of that
     collection:
     """
-    def __init__(self, collection_name, lookup, field, weight=1, label=None):
+    def __init__(self, collection_name, lookup, field, weight=1, label=None, check_index=True):
         # pylint: disable=R0913
         """
         :param collection_name: The name of the MongoDB collection.
@@ -44,6 +44,18 @@ class MongoDBEdge(DataTransformEdge):
         self.lookup = lookup
         self.field = field
         self.weight = weight
+        if check_index:
+            avail_idxs = {}
+            for idx in self.collection.list_indexes():
+                keys = idx["key"]
+                # this could be a composite index, multiple keys being part of the index
+                # we'll consider them as individually accessible, but I'm not sure how
+                # MongoDB deals with that => TODO check
+                for k in keys:
+                    avail_idxs[k] = True
+            if not self.lookup in avail_idxs:
+                raise ValueError("Field '%s' isn't indexed, this would " % self.lookup + \
+                        "result in very long datatransform process")
 
     def init_state(self):
         self._state = {
