@@ -175,7 +175,11 @@ class BaseAssistant(object):
                 confdict["SET_RELEASE_FUNC"] = ""
 
             dklass = None
+            pnregex = "^[A-z_][\w\d]+$"
+            assert re.compile(pnregex).match(self.plugin_name), \
+                "Incorrect plugin name '%s' (doesn't match regex '%s'" % (self.plugin_name,pnregex)
             dumper_name = self.plugin_name.capitalize() + "Dumper"
+            '%s'
             try:
                 if hasattr(btconfig,"DUMPER_TEMPLATE"):
                     tpl_file = btconfig.DUMPER_TEMPLATE
@@ -207,6 +211,7 @@ class BaseAssistant(object):
 
             except Exception as e:
                 self.logger.exception("Can't generate dumper code for '%s'" % self.plugin_name)
+                raise
         else:
             raise AssistantException("Invalid manifest, expecting 'data_url' key in 'dumper' section")
 
@@ -293,9 +298,9 @@ class BaseAssistant(object):
                 code = compile(pystr,"<string>","exec")
                 mod = imp.new_module(self.plugin_name)
                 exec(code,mod.__dict__,mod.__dict__)
-                dklass = getattr(mod,uploader_name)
+                uklass = getattr(mod,uploader_name)
                 # we need to inherit from a class here in this file so it can be pickled
-                assisted_uploader_class = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,dklass,),{})
+                assisted_uploader_class = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,uklass,),{})
                 assisted_uploader_class.python_code = pystr
 
                 return assisted_uploader_class
