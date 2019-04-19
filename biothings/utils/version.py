@@ -2,7 +2,7 @@
 from subprocess import check_output, DEVNULL
 from io import StringIO
 from contextlib import redirect_stdout
-#import pip
+# import pip
 import os
 import sys
 import logging
@@ -110,11 +110,7 @@ def set_versions(config, app_folder):
             commit = "unknown"
             commitdate = "unknown"
         try:
-<<<<<<< HEAD
             config.APP_VERSION = "%s [%s] [%s]" % (repo.active_branch.name, commit, commitdate)
-=======
-            config.APP_VERSION = "%s [%s] [%s]" % (repo.active_branch.name,commit,commitdate)
->>>>>>> 124540fc563f96b9254c4af623e2777a0eca15e9
         except Exception as e:
             logging.warning("Can't determine app version, defaulting to 'master': %s" % e)
             config.APP_VERSION = "master [%s] [%s]" % (commit, commitdate)
@@ -136,12 +132,8 @@ def set_versions(config, app_folder):
             commit = "unknown"
             commitdate = "unknown"
         try:
-<<<<<<< HEAD
             config.BIOTHINGS_VERSION = "%s [%s] [%s]" % (
                 repo.active_branch.name, commit, commitdate)
-=======
-            config.BIOTHINGS_VERSION = "%s [%s] [%s]" % (repo.active_branch.name,commit,commitdate)
->>>>>>> 124540fc563f96b9254c4af623e2777a0eca15e9
         except Exception as e:
             logging.warning("Can't determine biothings version, defaulting to 'master': %s" % e)
             config.BIOTHINGS_VERSION = "master [%s] [%s]" % (commit, commitdate)
