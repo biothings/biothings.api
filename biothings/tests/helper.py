@@ -9,8 +9,8 @@ from difflib import Differ
 from functools import partial, wraps
 from urllib.parse import urlparse
 
-import msgpack
 import requests
+from nose import SkipTest
 from nose.tools import eq_
 from tornado.testing import AsyncHTTPTestCase
 from tornado.web import Application
@@ -198,6 +198,11 @@ class BiothingsTestCase(unittest.TestCase):
     @classmethod
     def msgpack_ok(cls, packed_bytes, checkerror=True):
         ''' Load msgpack into a dict '''
+        try:
+            import msgpack
+        except ImportError:
+            raise SkipTest('Msgpack is not installed.')
+
         dic = msgpack.unpackb(packed_bytes)
         if checkerror:
             assert not (isinstance(dic, dict)
