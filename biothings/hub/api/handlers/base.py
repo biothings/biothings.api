@@ -2,9 +2,7 @@ import asyncio
 from tornado.web import RequestHandler
 from tornado import escape
 import logging, datetime
-
-from biothings.utils.common import json_encode
-escape.json_encode = json_encode
+import pandas.io.json as pdjson
 
 from biothings import config
 
@@ -19,8 +17,12 @@ class DefaultHandler(RequestHandler):
 
     def write(self,result):
         super(DefaultHandler,self).write(
-                {"result":result,
-                 "status" : "ok"})
+                pdjson.dumps(
+                    {"result":result,
+                    "status" : "ok"},
+                    iso_dates=True
+                    )
+                )
 
     def write_error(self,status_code, **kwargs):
         self.set_status(status_code)

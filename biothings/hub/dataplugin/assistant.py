@@ -7,6 +7,8 @@ from functools import partial
 import inspect, importlib, textwrap
 import pip, subprocess
 from string import Template
+from yapf.yapflib import yapf_api
+
 
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.utils.common import timesofar, rmdashfr, uncompressall, \
@@ -173,7 +175,11 @@ class BaseAssistant(object):
                 confdict["SET_RELEASE_FUNC"] = ""
 
             dklass = None
+            pnregex = "^[A-z_][\w\d]+$"
+            assert re.compile(pnregex).match(self.plugin_name), \
+                "Incorrect plugin name '%s' (doesn't match regex '%s'" % (self.plugin_name,pnregex)
             dumper_name = self.plugin_name.capitalize() + "Dumper"
+            '%s'
             try:
                 if hasattr(btconfig,"DUMPER_TEMPLATE"):
                     tpl_file = btconfig.DUMPER_TEMPLATE
@@ -205,6 +211,7 @@ class BaseAssistant(object):
 
             except Exception as e:
                 self.logger.exception("Can't generate dumper code for '%s'" % self.plugin_name)
+                raise
         else:
             raise AssistantException("Invalid manifest, expecting 'data_url' key in 'dumper' section")
 
@@ -231,10 +238,11 @@ class BaseAssistant(object):
                 if uploader_section.get("ignore_duplicates"):
                     raise AssistantException("'ignore_duplicates' key not supported anymore, " +
                                              "use 'on_duplicates' : 'error|ignore|merge'")
+                confdict["STORAGE_CLASS"] = storage_class
                 # default is not ID conversion at all
                 confdict["IMPORT_IDCONVERTER_FUNC"] = ""
                 confdict["IDCONVERTER_FUNC"] = None
-                confdict["CALL_PARSER_FUNC"] = "return parser_func(data_folder)"
+                confdict["CALL_PARSER_FUNC"] = "parser_func(data_folder)"
                 if uploader_section.get("keylookup"):
                     assert self.__class__.keylookup, "Plugin %s needs _id conversion " % self.plugin_name + \
                                                      "but no keylookup instance was found"
@@ -290,9 +298,9 @@ class BaseAssistant(object):
                 code = compile(pystr,"<string>","exec")
                 mod = imp.new_module(self.plugin_name)
                 exec(code,mod.__dict__,mod.__dict__)
-                dklass = getattr(mod,uploader_name)
+                uklass = getattr(mod,uploader_name)
                 # we need to inherit from a class here in this file so it can be pickled
-                assisted_uploader_class = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,dklass,),{})
+                assisted_uploader_class = type("AssistedUploader_%s" % self.plugin_name,(AssistedUploader,uklass,),{})
                 assisted_uploader_class.python_code = pystr
 
                 return assisted_uploader_class
@@ -585,8 +593,11 @@ class AssistantManager(BaseSourceManager):
             dinit = os.path.join(folder,"__init__.py")
             dfile = os.path.join(folder,"dump.py")
             # clear init, we'll append code
+            # we use yapf (from Google) as autopep8 (for instance) doesn't give
+            # good results in term in indentation (input_type list for keylookup for instance)
+            beauty,_ = yapf_api.FormatCode(dclass.python_code)
             with open(dfile,"w") as fout:
-                fout.write(dclass.python_code)
+                fout.write(beauty)
             with open(dinit,"a") as fout:
                 fout.write("from .dump import %s\n" % dumper_name)
             res["dumper"]["status"] = "ok"
@@ -615,8 +626,9 @@ class AssistantManager(BaseSourceManager):
             assert hasattr(uclass,"python_code"), "No generated code found"
             dinit = os.path.join(folder,"__init__.py")
             ufile = os.path.join(folder,"upload.py")
+            beauty,_ = yapf_api.FormatCode(uclass.python_code)
             with open(ufile,"w") as fout:
-                fout.write(uclass.python_code)
+                fout.write(beauty)
             with open(dinit,"a") as fout:
                 fout.write("from .upload import %s\n" % uploader_name)
             res["uploader"]["status"] = "ok"
@@ -648,11 +660,12 @@ class AssistantManager(BaseSourceManager):
             return res
         else:
             ufile = os.path.join(folder,"upload.py")
+            strmap,_ = yapf_api.FormatCode(pprint.pformat(mapping))
             with open(ufile,"a") as fout:
                 fout.write("""
     @classmethod
     def get_mapping(klass):
-        return %s\n""" % textwrap.indent(pprint.pformat(mapping),prefix="    "*2))
+        return %s\n""" % textwrap.indent((strmap),prefix="    "*2))
         
         res["mapping"]["file"] = ufile
         res["mapping"]["status"] = "ok"

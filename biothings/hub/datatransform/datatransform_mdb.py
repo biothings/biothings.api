@@ -1,8 +1,12 @@
+"""
+DataTransform MDB module - class for performing key lookup
+using conversions described in a networkx graph.
+"""
+# pylint: disable=E0401, E0611
 import copy
-import re
 
 from networkx import all_simple_paths, all_shortest_paths, nx
-from biothings.utils.common import iter_n
+from pymongo.collation import Collation
 from biothings.hub.datatransform import DataTransform
 from biothings.hub.datatransform import DataTransformEdge
 from biothings.hub.datatransform import IDStruct
@@ -18,7 +22,8 @@ class MongoDBEdge(DataTransformEdge):
     a collection. The output identifier values are read out of that
     collection:
     """
-    def __init__(self, collection_name, lookup, field, weight=1):
+    def __init__(self, collection_name, lookup, field, weight=1, label=None, check_index=True):
+        # pylint: disable=R0913
         """
         :param collection_name: The name of the MongoDB collection.
         :type collection_name: str
@@ -26,17 +31,31 @@ class MongoDBEdge(DataTransformEdge):
         :type lookup: str
         :param field: The output identifier field that will be read out of matching documents.
         :type field: str
-        :param weight: Weights are used to prefer one path over another. The path with the lowest weight is preferred. The default weight is 1.
+        :param weight: Weights are used to prefer one path over another.
+                       The path with the lowest weight is preferred.
+                       The default weight is 1.
         :type weight: int
         """
 
-        super().__init__()
+        super(MongoDBEdge, self).__init__(label)
         # unpickleable attributes, grouped
         self.init_state()
         self.collection_name = collection_name
         self.lookup = lookup
         self.field = field
         self.weight = weight
+        if check_index:
+            avail_idxs = {}
+            for idx in self.collection.list_indexes():
+                keys = idx["key"]
+                # this could be a composite index, multiple keys being part of the index
+                # we'll consider them as individually accessible, but I'm not sure how
+                # MongoDB deals with that => TODO check
+                for k in keys:
+                    avail_idxs[k] = True
+            if not self.lookup in avail_idxs:
+                raise ValueError("Field '%s' isn't indexed, this would " % self.lookup + \
+                        "result in very long datatransform process")
 
     def init_state(self):
         self._state = {
@@ -46,11 +65,14 @@ class MongoDBEdge(DataTransformEdge):
 
     @property
     def collection(self):
+        """getting for collection member variable"""
         if not self._state["collection"]:
             try:
                 self.prepare_collection()
-            except Exception as e:
-                # if accessed but not ready, then just ignore and return invalid value for a client
+            # pylint: disable=W0703
+            except Exception:
+                # if accessed but not ready, then just ignore and return invalid
+                # value for a client
                 return None
         return self._state["collection"]
 
@@ -62,7 +84,7 @@ class MongoDBEdge(DataTransformEdge):
         self._state["collection"] = mongo.get_src_db()[self.collection_name]
         self.logger.info("Registering collection:  {}".format(self.collection_name))
 
-    def edge_lookup(self, keylookup_obj, id_strct):
+    def edge_lookup(self, keylookup_obj, id_strct, debug=False):
         """
         Follow an edge given a key.
 
@@ -78,14 +100,43 @@ class MongoDBEdge(DataTransformEdge):
         # Build up a new_id_strct from the results
         res_id_strct = IDStruct()
 
-        id_lst = id_strct.id_lst
-        if len(id_lst):
-            find_lst = self.collection.find({self.lookup: {"$in": id_lst}}, {self.lookup: 1, self.field: 1})
+        # Keep the old debug information
+        if debug:
+            res_id_strct.import_debug(id_strct)
 
-            for d in find_lst:
-                for orig_id in id_strct.find_right(nested_lookup(d, self.lookup)):
-                    res_id_strct.add(orig_id, nested_lookup(d, self.field))
+        id_lst = id_strct.id_lst
+        if id_lst:
+            find_lst = self.collection_find(id_lst, self.lookup, self.field)
+
+            for doc in find_lst:
+                for orig_id in id_strct.find_right(nested_lookup(doc, self.lookup)):
+                    res_id_strct.add(orig_id, nested_lookup(doc, self.field))
+                    if debug:
+                        res_id_strct.set_debug(orig_id, self.label, nested_lookup(doc, self.field))
         return res_id_strct
+
+    def collection_find(self, id_lst, lookup, field):
+        """
+        Abstract out (as one line) the call to collection.find
+        """
+        return self.collection.find({lookup: {"$in": id_lst}}, {lookup: 1, field: 1})
+
+
+class CIMongoDBEdge(MongoDBEdge):
+    """
+    Case-insensitive MongoDBEdge
+    """
+    def __init__(self, collection_name, lookup, field, weight=1, label=None):
+        # pylint: disable=R0913, W0235
+        super(CIMongoDBEdge, self).__init__(collection_name, lookup, field, weight, label)
+
+    def collection_find(self, id_lst, lookup, field):
+        """
+        Abstract out (as one line) the call to collection.find
+        and use a case-insensitive collation
+        """
+        return self.collection.find({lookup: {"$in": id_lst}}, {lookup: 1, field: 1})\
+            .collation(Collation(locale='en', strength=2))
 
 
 class DataTransformMDB(DataTransform):
@@ -96,58 +147,73 @@ class DataTransformMDB(DataTransform):
     batch_size = 1000
     default_source = '_id'
 
-    def __init__(self, G, *args, **kwargs):
+    def __init__(self, graph, *args, **kwargs):
         """
-        The DataTransform MDB module was written as a decorator class
+        The DataTransformNetworkX module was written as a decorator class
         which should be applied to the load_data function of a
         Biothings Uploader.  The load_data function yields documents,
         which are then post processed by call and the 'id' key
         conversion is performed.
 
-        :param G: nx.DiGraph (networkx 2.1) configuration graph
-        :param input_types: A list of input types for the form (identifier, field) where identifier matches a node and field is an optional dotstring field for where the identifier should be read from (the default is ‘_id’).
-        :param output_types: A priority list of identifiers to convert to. These identifiers should match nodes in the graph.
+        :param graph: nx.DiGraph (networkx 2.1) configuration graph
+        :param input_types: A list of input types for the form (identifier, field) where
+                            identifier matches a node and field is an optional dotstring
+                            field for where the identifier should be read from
+                            (the default is '_id').
+        :param output_types: A priority list of identifiers to convert to. These
+                             identifiers should match nodes in the graph.
         :type output_types: list(str)
-        :param skip_on_failure: If True, documents where identifier conversion fails will be skipped in the final document list.
+        :param id_priority_list: A priority list of identifiers to to sort input
+                                 and output types by.
+        :type id_priority_list: list(str)
+        :param skip_on_failure: If True, documents where identifier conversion fails
+                                will be skipped in the final document list.
         :type skip_on_failure: bool
-        :param skip_w_regex: Do not perform conversion if the identifier matches the regular expression provided to this argument. By default, this option is disabled.
+        :param skip_w_regex: Do not perform conversion if the identifier matches
+                             the regular expression provided to this argument. By default,
+                             this option is disabled.
         :type skip_w_regex: bool
-        :param idstruct_class: Override an internal data structure used by the this module (advanced usage)
+        :param idstruct_class: Override an internal data structure used by the this
+                               module (advanced usage)
         :type idstruct_class: class
-        :param copy_from_doc: If true then an identifier is copied from the input source document regardless as to weather it matches an edge or not. (advanced usage)
+        :param copy_from_doc: If true then an identifier is copied from the input
+                              source document regardless as to weather it matches an
+                              edge or not. (advanced usage)
         :type copy_from_doc: bool
         """
-        if not isinstance(G, nx.DiGraph):
-            raise ValueError("key_lookup configuration error:  G must be of type nx.DiGraph")
-        self._validate_graph(G)
-        self.G = G
-        self.logger,_ = get_logger('datatransform')
+        if not isinstance(graph, nx.DiGraph):
+            raise ValueError("key_lookup configuration error:  graph must be of type nx.DiGraph")
+        self._validate_graph(graph)
+        self.graph = graph
+        self.logger, _ = get_logger('datatransform')
 
-        super().__init__(*args,**kwargs)
+        super(DataTransformMDB, self).__init__(*args, **kwargs)
         self._precompute_paths()
 
     def _valid_input_type(self, input_type):
-        return input_type.lower() in self.G.nodes()
+        return input_type.lower() in self.graph.nodes()
 
     def _valid_output_type(self, output_type):
-        return output_type.lower() in self.G.nodes()
+        return output_type.lower() in self.graph.nodes()
 
-    def _validate_graph(self, G):
+    @staticmethod
+    def _validate_graph(graph):
         """
-        Check if the input configuration graph G has a valid structure.
-        :param G: key_lookup configuration graph
+        Check if the input configuration graph graph has a valid structure.
+        :param graph: key_lookup configuration graph
         :return:
         """
         # all node names should be lowercase
-        for n in G.nodes():
-            if n != n.lower():
-                raise ValueError("node object {} is not lowercase".format(n))
-        for (v1, v2) in G.edges():
-            if 'object' not in G.edges[v1, v2].keys():
-                raise ValueError("edge_object for ({}, {}) is missing".format(v1, v2))
-            edge_object = G.edges[v1, v2]['object']
+        for node in graph.nodes():
+            if node != node.lower():
+                raise ValueError("node object {} is not lowercase".format(node))
+        for (vert1, vert2) in graph.edges():
+            if 'object' not in graph.edges[vert1, vert2].keys():
+                raise ValueError("edge_object for ({}, {}) is missing".format(vert1, vert2))
+            edge_object = graph.edges[vert1, vert2]['object']
             if not isinstance(edge_object, DataTransformEdge):
-                raise ValueError("edge_object for ({}, {}) is of the wrong type".format(v1, v2))
+                raise ValueError("edge_object for ({}, {}) is of the wrong type".\
+                    format(vert1, vert2))
 
     def _precompute_paths(self):
         """
@@ -158,15 +224,19 @@ class DataTransformMDB(DataTransform):
         self.paths = {}
         for output_type in self.output_types:
             for input_type in self.input_types:
-                paths = [p for p in all_simple_paths(self.G, input_type[0], output_type)]
+                paths = [p for p in all_simple_paths(self.graph, input_type[0], output_type)]
                 if not paths:
                     try:
                         # this will try to find self-loops. all_shortest_paths() return one element,
                         # the self-lopped node, but we need an tuple so the "*2"
                         # also make sure those self-loops actually are defined in the graph
                         try:
-                            self.G.edges[input_type[0],output_type] # this will raise a keyerror is edge for self-loop p-to-p isn't defined
-                            paths = [p*2 for p in all_shortest_paths(self.G, input_type[0], output_type)]
+                            # this will raise a keyerror is edge for self-loop
+                            # p-to-p isn't defined
+                            # pylint: disable=W0104
+                            self.graph.edges[input_type[0], output_type]
+                            paths = [p*2 for p in all_shortest_paths(
+                                self.graph, input_type[0], output_type)]
                         except KeyError:
                             pass
                     except nx.NetworkXNoPath:
@@ -174,9 +244,10 @@ class DataTransformMDB(DataTransform):
                 # Sort by path length - try the shortest paths first
                 paths = sorted(paths, key=self._compute_path_weight)
                 self.paths[(input_type[0], output_type)] = paths
-        self.logger.debug("All Pre-Computed DataTransform Paths:  {}".format(self.paths))
+        # self.logger.debug("All Pre-Computed DataTransform Paths:  {}".format(self.paths))
 
     def key_lookup_batch(self, batchiter):
+        # pylint: disable=R0912
         """
         Look up all keys for ids given in the batch iterator (1 block)
         :param batchiter:  1 lock of records to look up keys for
@@ -184,8 +255,17 @@ class DataTransformMDB(DataTransform):
         """
         doc_lst = []
         for doc in batchiter:
-            doc_lst.append(doc)
+            # in debug mode, skip all documents not in the debug list
+            if self.debug:
+                # pylint: disable=C0121
+                if self.debug == True or doc['_id'] in self.debug:
+                    # set debug information
+                    doc['dt_debug'] = {'orig_id': doc['_id']}
+                    doc_lst.append(doc)
+            else:
+                doc_lst.append(doc)
 
+        hit_lst = []
         miss_lst = []
         for doc in doc_lst:
             if self.skip_w_regex and self.skip_w_regex.match(doc['_id']):
@@ -193,17 +273,21 @@ class DataTransformMDB(DataTransform):
             else:
                 miss_lst.append(doc)
 
+        # Attempt to reach each destination in order...
         for output_type in self.output_types:
+            # Starting with each input_type
             for input_type in self.input_types:
+                # self.logger.debug("Attempt Lookup:  from '{}' To '{}'"\
+                # .format(input_type[0], output_type))
                 if output_type == input_type[0]:
-                    # the doc itself has the correct ID, 
+                    # the doc itself has the correct ID,
                     # so either there's a self-loop avail to check this ID is valid
-                    if self.G.has_edge(output_type,output_type):
+                    if self.graph.has_edge(output_type, output_type):
                         (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
                     # or if copy is allowed, we get the value from the doc
                     elif self.copy_from_doc:
                         (hit_lst, miss_lst) = self._copy(input_type, miss_lst)
-                else:    
+                else:
                     (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
 
                 for doc in hit_lst:
@@ -224,8 +308,13 @@ class DataTransformMDB(DataTransform):
                 # ensure _id is always a str
                 doc['_id'] = str(val)
                 hit_lst.append(doc)
+                # retain debug information if available (assumed dt_debug already in place)
+                if self.debug:
+                    doc['dt_debug']['copy_from'] = (input_type[1], val)
             else:
                 miss_lst.append(doc)
+        # Keep a record of IDs copied
+        self.histogram.update_io(input_type, input_type, len(hit_lst))
         return (hit_lst, miss_lst)
 
     def _compute_path_weight(self, path):
@@ -235,13 +324,14 @@ class DataTransformMDB(DataTransform):
         :return: computed weight
         """
         weight = 0
-        for p in map(nx.utils.pairwise, [path]):
-            for (v1, v2) in p:
-                edge = self.G.edges[v1, v2]['object']
+        for path_var in map(nx.utils.pairwise, [path]):
+            for (vert1, vert2) in path_var:
+                edge = self.graph.edges[vert1, vert2]['object']
                 weight = weight + edge.weight
         return weight
 
     def travel(self, input_type, target, doc_lst):
+        # pylint: disable=R0914
         """
         Traverse a graph from a start key type to a target key type using
         precomputed paths.
@@ -259,7 +349,7 @@ class DataTransformMDB(DataTransform):
             """
             return self.idstruct_class(input_type[1], doc_lst)
 
-        def _build_hit_miss_lsts(doc_lst, id_strct):
+        def _build_hit_miss_lsts(doc_lst, id_strct, debug):
             """
             Return a list of documents that have had their identifiers replaced
             also return a list of documents that were not changed
@@ -269,17 +359,21 @@ class DataTransformMDB(DataTransform):
             """
             hit_lst = []
             miss_lst = []
-            for d in doc_lst:
+            for doc in doc_lst:
                 hit_flag = False
-                value = nested_lookup(d, input_type[1])
+                value = nested_lookup(doc, input_type[1])
                 for lookup_id in id_strct.find_left(value):
-                    new_doc = copy.deepcopy(d)
+                    new_doc = copy.deepcopy(doc)
                     # ensure _id is always a str
                     new_doc['_id'] = str(lookup_id)
+                    # capture debug information
+                    if debug:
+                        new_doc['dt_debug']['start_field'] = input_type[1]
+                        new_doc['dt_debug']['debug'] = id_strct.get_debug(value)
                     hit_lst.append(new_doc)
                     hit_flag = True
                 if not hit_flag:
-                    miss_lst.append(d)
+                    miss_lst.append(doc)
             return hit_lst, miss_lst
 
         #self.logger.debug("Travel From '{}' To '{}'".format(input_type[0], target))
@@ -291,16 +385,17 @@ class DataTransformMDB(DataTransform):
         path_strct = _build_path_strct(input_type, doc_lst)
 
         for path in map(nx.utils.misc.pairwise, self.paths[(input_type[0], target)]):
-            for (v1, v2) in path:
-                edge = self.G.edges[v1, v2]['object']
+            for (vert1, vert2) in path:
+                edge = self.graph.edges[vert1, vert2]['object']
                 num_input_ids = len(path_strct)
                 path_strct = self._edge_lookup(edge, path_strct)
                 num_output_ids = len(path_strct)
                 if num_input_ids:
-                    # self.logger.debug("Edge {} - {}, {} searched returned {}".format(v1, v2, num_input_ids, num_output_ids))
-                    self.histogram.update_edge(v1, v2, num_output_ids)
+                    # self.logger.debug("Edge {} - {}, {} searched returned {}"\
+                    #        .format(vert1, vert2, num_input_ids, num_output_ids))
+                    self.histogram.update_edge(vert1, vert2, num_output_ids)
 
-            if len(path_strct):
+            if path_strct:
                 saved_hits += path_strct
 
             # reset the state to lookup misses
@@ -313,8 +408,8 @@ class DataTransformMDB(DataTransform):
 
         # Return a list of documents that have had their identifiers replaced
         # also return a list of documents that were not changed
-        hit_lst, miss_lst = _build_hit_miss_lsts(doc_lst, saved_hits)
-        self.histogram.update_io(input_type,target,len(hit_lst))
+        hit_lst, miss_lst = _build_hit_miss_lsts(doc_lst, saved_hits, self.debug)
+        self.histogram.update_io(input_type, target, len(hit_lst))
         return hit_lst, miss_lst
 
     def _edge_lookup(self, edge_obj, id_strct):
@@ -325,4 +420,4 @@ class DataTransformMDB(DataTransform):
         to find one key to another key using one of
         several types of lookup functions.
         """
-        return edge_obj.edge_lookup(self, id_strct)
+        return edge_obj.edge_lookup(self, id_strct, self.debug)
