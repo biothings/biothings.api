@@ -202,8 +202,10 @@ class BiothingsTestCase(unittest.TestCase):
             import msgpack
         except ImportError:
             raise SkipTest('Msgpack is not installed.')
-
-        dic = msgpack.unpackb(packed_bytes)
+        try:
+            dic = msgpack.unpackb(packed_bytes)
+        except:  # pylint: disable=bare-except
+            assert False, 'Not a valid Msgpack binary.'
         if checkerror:
             assert not (isinstance(dic, dict)
                         and 'error' in dic), cls.truncate(str(dic), 100)
