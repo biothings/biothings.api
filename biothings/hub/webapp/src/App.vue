@@ -15,8 +15,8 @@
             <div id="conn" :data-html="
                 '<div style=\'width:30em;\'>' +
                 '<a>' + conn.url + '</a><br>' +
-                    'App. version: <b>' + conn.app_version + '</b><br>' +
-                    'Biothings version: <b>' + conn.biothings_version + '</b><br></div>' +
+                    'App. version: <b>' + str_app_version + '</b><br>' +
+                    'Biothings version: <b>' + str_biothings_version + '</b><br></div>' +
                     'Studio version: <b>' + current_studio_version + '</b><br></div>'
                     " data-position="bottom center">{{conn.name || "John Doe"}}</div>
             </div>
@@ -309,6 +309,12 @@
             }
         },
         computed : {
+             str_app_version: function () {
+                 return this.getVersionAsString(this.conn.app_version);
+             },
+             str_biothings_version: function () {
+                 return this.getVersionAsString(this.conn.biothings_version);
+             },
         },
         watch: {
             latency_value: function (newv, oldv) {
@@ -326,6 +332,18 @@
             }
         },
         methods: {
+            getVersionAsString(obj) {
+                 try {
+                     if(typeof obj == "object") {
+                         return `${obj.branch} [${obj.commit}] [${obj.date}]`;
+                     } else {
+                         return obj;
+                     }
+                 } catch(e) {
+                     // not ready yet ?
+                     return null;
+                 }
+            },
             getCompatList () {
                 try {
                 var compat = require('./compat.json');

@@ -2,7 +2,7 @@
     <span>
         <div class="choosehub ui floating dropdown mini icon button">
             <i class="caret square down icon"></i>
-            <div class="menu">
+            <div class="menu largechoose">
                 <div class="item" data-value="new">
                     <i class="plus circle icon"></i>
                     <b>Create new connection</b>
@@ -13,8 +13,10 @@
                 </div>
                 <div class="scrolling menu" v-if="Object.keys(existings).length">
                     <div class="item" :data-value="v.name" v-for="v in existings">
-                        <img class="hubicon" :src="v.icon"></img>
-                        <b>{{v.name}}</b> <a class="bluelink">{{v.url}}</a>
+                          <img class="hubicon" :src="v.icon"></img>
+                          <b>{{v.name}}</b> <a class="bluelink">{{v.url}}</a>
+                          <i class="grey trash alternate outline icon right floated" @click="deleteConnection($event,v)"></i>
+                      </div>
                     </div>
                 </div>
             </div>
@@ -61,19 +63,19 @@ export default {
         this.getExistings();
         var self = this;
         $('.choosehub.ui.floating.dropdown').dropdown({
-			onChange: function(value, text, $selectedItem) {
-                if(value == "new") {
-                    self.newConnection();
-                } else {
-                    var conn = self.existings[value];
-                    var url = conn["url"].replace(/\/$/,"");
-                    self.refreshConnection(url);
-                    if(conn)
-                        bus.$emit("connect",conn,"/");
-                    else
-                        console.log(`Can't find connection details for ${value}`);
-                }
-            },
+          onChange: function(value, text, $selectedItem) {
+            if(value == "new") {
+              self.newConnection();
+            } else {
+              var conn = self.existings[value];
+              var url = conn["url"].replace(/\/$/,"");
+              self.refreshConnection(url);
+              if(conn)
+                  bus.$emit("connect",conn,"/");
+              else
+                  console.log(`Can't find connection details for ${value}`);
+            }
+          },
         });
     },
     created() {
@@ -98,6 +100,7 @@ export default {
             if(!previous)
                 previous = {};
             else
+                //previous = JSON.parse(JSON.parse(previous));
                 previous = JSON.parse(previous);
             this.existings = previous;
         },
@@ -138,6 +141,16 @@ export default {
                 }
             })
             .modal("show");
+        },
+        deleteConnection(event,conn) {
+          // avoid onChange to be triggered
+          event.stopPropagation();
+          console.log(event);
+          console.log(`Delete connection named "${conn.name}"`);
+          delete this.existings[conn.name];
+          Vue.localStorage.set('hub_connections',JSON.stringify(this.existings));
+          console.log(this.existings);
+          this.getExistings();
         }
     },
 }
@@ -163,5 +176,6 @@ export default {
     }
 
   .hubicon { width:2.5em !important;}
+  .largechoose {width:30em;}
 
 </style>
