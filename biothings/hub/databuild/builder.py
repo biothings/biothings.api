@@ -82,7 +82,6 @@ class DataBuilder(object):
         self.mappers = {}
         self.timestamp = datetime.now()
         self.merge_stats = {} # keep track of cnt per source, etc...
-        self.src_versions = {} # versions involved in this build (soon to be remove)
         self.src_meta = {} # sources involved in this build (includes versions)
         self.stats = {} # can be customized
         self.mapping = {} # ES mapping (merged from src_master's docs)
@@ -392,9 +391,6 @@ class DataBuilder(object):
     def store_metadata(self,res,sources,job_manager):
         self.target_backend.post_merge()
         self.src_meta = self.source_backend.get_src_metadata()
-        # TODO: backward compatible src_version key, should be removed
-        # eventually as all informations are avail in src_meta
-        self.src_versions = self.src_meta.pop("src_version")
         # now that we have merge stats (count/srcs) + all src involved
         # we can propagate stats
         self.update_src_meta_stats()
@@ -514,8 +510,8 @@ class DataBuilder(object):
                             nonlocal res
                             if res:
                                 res = f.result() # consume to trigger exceptions if any
-                            strargs = "[sources=%s,stats=%s,versions=%s]" % \
-                                    (sources,self.merge_stats,self.src_versions)
+                            strargs = "[sources=%s,stats=%s]" % \
+                                    (sources,self.merge_stats)
                             build_version = self.get_build_version()
                             if "." in build_version:
                                 raise BuilderException("Can't use '.' in build version '%s', it's reserved for minor versions" % build_version)
@@ -524,7 +520,6 @@ class DataBuilder(object):
                             build = src_build.find_one({'_id': target_name})
                             _meta = {
                                     "biothing_type" : build["build_config"]["doc_type"],
-                                    "src_version" : self.src_versions,
                                     "src" : self.src_meta,
                                     "stats" : self.stats,
                                     "build_version" : build_version,
@@ -588,7 +583,6 @@ class DataBuilder(object):
         do_post_merge = "post" in steps
         total_docs = 0
         self.merge_stats = {}
-        self.src_versions = {}
         self.stats = {}
         self.mapping = {}
         # try to identify root document sources amongst the list to first
