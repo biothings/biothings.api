@@ -110,10 +110,14 @@ def set_versions(config, app_folder):
             commit = "unknown"
             commitdate = "unknown"
         try:
-            config.APP_VERSION = "%s [%s] [%s]" % (repo.active_branch.name, commit, commitdate)
+            config.APP_VERSION = {"branch" : repo.active_branch.name,
+                                  "commit" : commit,
+                                  "date" : commitdate}
         except Exception as e:
             logging.warning("Can't determine app version, defaulting to 'master': %s" % e)
-            config.APP_VERSION = "master [%s] [%s]" % (commit, commitdate)
+            config.APP_VERSION = {"branch" : "master",
+                                  "commit" : commit,
+                                  "date" : commitdate}
     else:
         logging.info("app_version '%s' forced in configuration file" % config.APP_VERSION)
 
@@ -132,11 +136,14 @@ def set_versions(config, app_folder):
             commit = "unknown"
             commitdate = "unknown"
         try:
-            config.BIOTHINGS_VERSION = "%s [%s] [%s]" % (
-                repo.active_branch.name, commit, commitdate)
+            config.BIOTHINGS_VERSION = {"branch" : repo.active_branch.name,
+                                        "commit" : commit,
+                                        "date" : commitdate}
         except Exception as e:
             logging.warning("Can't determine biothings version, defaulting to 'master': %s" % e)
-            config.BIOTHINGS_VERSION = "master [%s] [%s]" % (commit, commitdate)
+            config.BIOTHINGS_VERSION = {"branch" : "master",
+                                        "commit" : commit,
+                                        "date" : commitdate}
     else:
         logging.info("biothings_version '%s' forced in configuration file" %
                      config.BIOTHINGS_VERSION)
