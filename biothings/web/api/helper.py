@@ -85,7 +85,6 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
     def _sanitize_params(self, args):
         ''' Subclass to implement custom parameter sanitization '''
         self.jsonp = args.pop(self.web_settings.JSONP_PARAMETER, None)
-        self.use_msgpack = args.pop('msgpack', False) if SUPPORT_MSGPACK else False
         return args
 
     def _typify(self, arg, argval, json_list_input=False):
