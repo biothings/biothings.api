@@ -39,17 +39,16 @@ if commit_hash or num_commits:
 
 # very minimal requirement for running biothings.web
 install_requires = [
-    'requests>=2.8.1',
+    'requests>=2.21.0',
     'tornado==5.1.1',
-    'elasticsearch==6.1.1',
-    'urllib3==1.22',    # set to 1.22 to satisfy both requests and elasticsearch requirements for urllib3
+    'elasticsearch==6.3.1',
     'gitpython==2.1.11'
 ]
 
 # extra requirements for biothings.web
 web_extra_requires = [
-    'msgpack>=0.6.0',   # support format=msgpack
-    'PyYAML>=3.13'      # support format=yaml
+    'msgpack>=0.6.1',   # support format=msgpack
+    'PyYAML>=5.1'       # support format=yaml
 ]
 
 # extra requirements to run biothings.hub
