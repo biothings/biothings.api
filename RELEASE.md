@@ -56,5 +56,5 @@
     ```
     MAJOR_VER=0
     MINOR_VER=4
-    MICRO_VER=dev
+    MICRO_VER="dev"
     ```
