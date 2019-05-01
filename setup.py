@@ -42,6 +42,7 @@ install_requires = [
     'requests>=2.8.1',
     'tornado==5.1.1',
     'elasticsearch==6.1.1',
+    'urllib3==1.22',    # set to 1.22 to satisfy both requests and elasticsearch requirements for urllib3
     'gitpython==2.1.11'
 ]
 
