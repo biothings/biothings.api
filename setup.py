@@ -81,6 +81,11 @@ docs_requires = [
     'sphinx_rtd_theme'
 ]
 
+# extra requirements for nosetests
+test_requires = [
+    "nose>=1.3.7"
+]
+
 setup(
     name="biothings",
     version=version,
@@ -116,6 +121,6 @@ setup(
     extras_require={
         'web_extra': web_extra_requires,
         'hub': hub_requires,
-        'dev':  web_extra_requires + hub_requires + docs_requires
+        'dev':  web_extra_requires + hub_requires + docs_requires + test_requires
     },
 )
