@@ -1,2 +1,14 @@
+v0.4.0 (2019/04/30):
+    Support Elasticsearch 6.x as the backend, Elasticsearch 2.x is no longer supported.
+    Removed httplib2 dependencies.
+    Changed "msgpack=1" query parameter to "format=msgpack".
+    Support "format=yaml" return format.
+    Support "format=html" return format (useful for demo purpose).
+    Support always_list and allow_null query parameters.
+    Other accumulated improvements at https://github.com/biothings/biothings.api/commits/v0.4.0
+
+v0.2.x - v0.3.x
+    Not been released to PyPI.
+
 v0.1.0 (2017/07/22):
     initial release

@@ -83,7 +83,7 @@ docs_requires = [
 setup(
     name="biothings",
     version=version,
-    author="Cyrus Afrasiabi, Sebastien Lelong, Chunlei Wu",
+    author="Cyrus Afrasiabi, Sebastien Lelong, Xinghua Zhou, Chunlei Wu",
     author_email="cwu@scripps.edu",
     description="a toolkit for building high-performance data APIs in biology",
     license="Apache License, Version 2.0",
@@ -99,6 +99,7 @@ setup(
         "Programming Language :: Python :: 3.4",
         "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
         "Development Status :: 4 - Beta",
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",

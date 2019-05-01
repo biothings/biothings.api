@@ -7,6 +7,8 @@
 *.egg-info
 *.egg
 .*.swp
+__pycache__
+.DS_Store
 
 # temp files
 docs/_build
