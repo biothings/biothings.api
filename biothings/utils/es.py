@@ -1,12 +1,14 @@
-import time, copy, re
+import time
+import copy
+import re
 import json
+import itertools
 from elasticsearch import Elasticsearch, NotFoundError, RequestError, TransportError
 from elasticsearch import helpers
-import logging
-import itertools
-from pprint import pprint, pformat
 
-from biothings.utils.common import iter_n, timesofar, ask, splitstr
+# from pprint import pprint, pformat
+
+from biothings.utils.common import iter_n, splitstr
 from biothings.utils.dataload import dict_walk
 
 # setup ES logging
@@ -24,12 +26,12 @@ ch = logging.StreamHandler()
 ch.setFormatter(formatter)
 es_tracer.addHandler(ch)
 
-def verify_ids(doc_iter, index, doc_type, step=100000, ):
+def verify_ids(doc_iter, es_host, index, doc_type=None, step=100000, ):
     '''verify how many docs from input interator/list overlapping with existing docs.'''
 
     index = index
     doc_type = doc_type
-    es = get_es()
+    es = get_es(es_host)
     q = {'query': {'ids': {"values": []}}}
     total_cnt = 0
     found_cnt = 0
@@ -64,13 +66,14 @@ def wrapper(func):
     return outter_fn
 
 
-class IndexerException(Exception): pass
+class IndexerException(Exception):
+    pass
 
 class ESIndexer():
     def __init__(self, index, doc_type, es_host, step=10000,
-                 number_of_shards=10, number_of_replicas=0,**kwargs):
+                 number_of_shards=10, number_of_replicas=0, **kwargs):
         self.es_host = es_host
-        self._es = get_es(es_host,**kwargs)
+        self._es = get_es(es_host, **kwargs)
         # if index is actually an alias, resolve the alias to
         # the real underlying index
         try:
@@ -91,7 +94,7 @@ class ESIndexer():
                 assert len(m) == 1, "Expected only one doc type, got: %s" % m.keys()
                 self._doc_type = list(m).pop()
             except Exception as e:
-                logging.info("Failed to guess doc_type: %s" % e)
+                logging.info("Failed to guess doc_type: %s", e)
         self.number_of_shards = number_of_shards # set number_of_shards when create_index
         self.number_of_replicas = int(number_of_replicas) # set number_of_replicas when create_index
         self.step = step  # the bulk size when doing bulk operation.
@@ -154,7 +157,7 @@ class ESIndexer():
         return cnt_d
 
     @wrapper
-    def create_index(self, mapping=None, extra_settings={}):
+    def create_index(self, mapping=None, extra_settings=None):
         if not self._es.indices.exists(self._index):
             body = {
                 'settings': {
@@ -162,6 +165,7 @@ class ESIndexer():
                     "number_of_replicas": self.number_of_replicas,
                 }
             }
+            extra_settings = extra_settings or {}
             body["settings"].update(extra_settings)
             if mapping:
                 mapping = {"mappings": mapping}
@@ -276,10 +280,10 @@ class ESIndexer():
         if isinstance(meta, dict) and len(set(meta) - allowed_keys) == 0:
             body = {self._doc_type: meta}
             return self._es.indices.put_mapping(
-                    doc_type=self._doc_type,
-                    body=body,
-                    index=self._index
-                )
+                doc_type=self._doc_type,
+                body=body,
+                index=self._index
+            )
         else:
             raise ValueError('Input "meta" should have and only have "_meta" field.')
 
@@ -413,7 +417,7 @@ class ESIndexer():
             if not dryrun:
                 self._es.bulk(body=_li)
 
-        return {"total": cnt, "updated": cnt - cnt_orphan_doc, "deleted": cnt_orphan_doc} 
+        return {"total": cnt, "updated": cnt - cnt_orphan_doc, "deleted": cnt_orphan_doc}
 
     @wrapper
     def doc_feeder_using_helper(self, step=None, verbose=True, query=None, scroll='10m', **kwargs):
@@ -421,7 +425,7 @@ class ESIndexer():
         step = step or self.step
         q = query if query else {'query': {'match_all': {}}}
         for rawdoc in helpers.scan(client=self._es, query=q, scroll=scroll, index=self._index,
-                        doc_type=self._doc_type,  **kwargs): 
+                                   doc_type=self._doc_type, **kwargs):
             if rawdoc.get('_source', False):
                 doc = rawdoc['_source']
                 doc["_id"] = rawdoc["_id"]
@@ -448,13 +452,15 @@ class ESIndexer():
         res = self._es.search(self._index, self._doc_type, body=q,
                               size=_size, search_type='scan', scroll=scroll, **kwargs)
         # double check initial scroll request returns no hits
-        assert len(res['hits']['hits']) == 0
+        # assert len(res['hits']['hits']) == 0
+        assert not res['hits']['hits']
 
         while 1:
             if verbose:
                 t1 = time.time()
             res = self._es.scroll(res['_scroll_id'], scroll=scroll)
-            if len(res['hits']['hits']) == 0:
+            # if len(res['hits']['hits']) == 0:
+            if not res['hits']['hits']:
                 break
             else:
                 for rawdoc in res['hits']['hits']:
@@ -483,7 +489,7 @@ class ESIndexer():
         # chunkify
         step = step or self.step
         for chunk in iter_n(ids, step):
-            chunk_res = self._es.mget(body={"ids": chunk}, index=self._index, 
+            chunk_res = self._es.mget(body={"ids": chunk}, index=self._index,
                                       doc_type=self._doc_type, **mget_args)
             for rawdoc in chunk_res['docs']:
                 if (('found' not in rawdoc) or (('found' in rawdoc) and not rawdoc['found'])):
@@ -509,22 +515,22 @@ class ESIndexer():
                     else:
                         return (cnt, q)
 
-    def snapshot(self,repo,snapshot,mode=None,**params):
+    def snapshot(self, repo, snapshot, mode=None, **params):
         body = {"indices": self._index}
         if mode == "purge":
             try:
-                snp = self._es.snapshot.get(repo,snapshot)
+                self._es.snapshot.get(repo, snapshot)
                 # if we can get it, we have to delete it
-                self._es.snapshot.delete(repo,snapshot)
+                self._es.snapshot.delete(repo, snapshot)
             except NotFoundError:
                 # ok, nothing to delete/purge
                 pass
         try:
-            return self._es.snapshot.create(repo,snapshot,body=body,params=params)
+            return self._es.snapshot.create(repo, snapshot, body=body, params=params)
         except RequestError as e:
-            raise IndexerException("Can't snapshot '%s' (if already exists, use mode='purge'): %s" % (self._index,e))
+            raise IndexerException("Can't snapshot '%s' (if already exists, use mode='purge'): %s" % (self._index, e))
 
-    def restore(self,repo_name,snapshot_name,index_name=None,purge=False,body=None):
+    def restore(self, repo_name, snapshot_name, index_name=None, purge=False, body=None):
         index_name = index_name or snapshot_name
         if purge:
             try:
@@ -537,33 +543,33 @@ class ESIndexer():
         try:
             # this is just about renaming index within snapshot to index_name
             body = {
-                    "indices": snapshot_name, # snaphost name is the same as index in snapshot
-                    "rename_replacement": index_name,
-                    "ignore_unavailable": True,
-                    "rename_pattern": "(.+)",
-                    "include_global_state": True
-                    }
-            return self._es.snapshot.restore(repo_name,snapshot_name,body=body)
+                "indices": snapshot_name, # snaphost name is the same as index in snapshot
+                "rename_replacement": index_name,
+                "ignore_unavailable": True,
+                "rename_pattern": "(.+)",
+                "include_global_state": True
+            }
+            return self._es.snapshot.restore(repo_name, snapshot_name, body=body)
         except TransportError as e:
             raise IndexerException("Can't restore snapshot '%s' (does index '%s' already exist ?): %s" % \
-                    (snapshot_name,index_name,e))
+                    (snapshot_name, index_name, e))
 
-    def get_repository(self,repo_name):
+    def get_repository(self, repo_name):
         try:
             return self._es.snapshot.get_repository(repo_name)
         except NotFoundError:
             raise IndexerException("Repository '%s' doesn't exist" % repo_name)
 
-    def create_repository(self,repo_name,settings):
+    def create_repository(self, repo_name, settings):
         try:
-            self._es.snapshot.create_repository(repo_name,settings)
+            self._es.snapshot.create_repository(repo_name, settings)
         except TransportError as e:
-            raise IndexerException("Can't create snapshot repository '%s': %s" % (repo_name,e))
+            raise IndexerException("Can't create snapshot repository '%s': %s" % (repo_name, e))
 
-    def get_snapshot_status(self,repo,snapshot):
-        return self._es.snapshot.status(repo,snapshot)
+    def get_snapshot_status(self, repo, snapshot):
+        return self._es.snapshot.status(repo, snapshot)
 
-    def get_restore_status(self,index_name=None):
+    def get_restore_status(self, index_name=None):
         index_name = index_name or self._index
         recov = self._es.indices.recovery(index_name)
         if not index_name in recov:
@@ -578,24 +584,25 @@ class ESIndexer():
             return {"status" : "IN_PROGRESS", "progress": "%.2f%%" % (done/len(shards_status)*100)}
 
 
-class MappingError(Exception): pass
+class MappingError(Exception):
+    pass
 
-def generate_es_mapping(inspect_doc,init=True,level=0):
-    """Generate an ES mapping according to "inspect_doc", which is 
+def generate_es_mapping(inspect_doc, init=True, level=0):
+    """Generate an ES mapping according to "inspect_doc", which is
     produced by biothings.utils.inspect module"""
-    map_tpl= {
-            int: {"type": "integer"},
-            bool: {"type": "boolean"},
-            float: {"type": "float"},
-            str: {"type": "keyword", "normalizer": "keyword_lowercase_normalizer"}, # not splittable (like an ID for instance)
-            splitstr: {"type": "text"},
-            }
+    map_tpl = {
+        int: {"type": "integer"},
+        bool: {"type": "boolean"},
+        float: {"type": "float"},
+        str: {"type": "keyword", "normalizer": "keyword_lowercase_normalizer"}, # not splittable (like an ID for instance)
+        splitstr: {"type": "text"},
+    }
     # inspect_doc, if it's been jsonified, contains keys with type as string,
     # such as "<class 'str'>". This is not a real type and we need to convert them
     # back to actual types. This is transparent if inspect_doc isalready in proper format
-    pat = re.compile("<class '(\w+)'>")
+    pat = re.compile(r"<class '(\w+)'>")
     def str2type(k):
-        if type(k) == str:
+        if isinstance(k, str):
             mat = pat.findall(k)
             if mat:
                 return eval(mat[0]) # actual type
@@ -603,11 +610,11 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
                 return k
         else:
             return k
-    inspect_doc = dict_walk(inspect_doc,str2type)
+    inspect_doc = dict_walk(inspect_doc, str2type)
 
     mapping = {}
     errors = []
-    if init and not "_id" in inspect_doc:
+    if init and "_id" not in inspect_doc:
         errors.append("No _id key found, document won't be indexed. (doc: %s)" % inspect_doc)
     for rootk in inspect_doc:
         if rootk == "_id":
@@ -624,7 +631,7 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             # value can be null, just skip it
             continue
         # some inspect report have True as value, others have dict (will all have dict eventually)
-        if inspect_doc[rootk] == True:
+        if inspect_doc[rootk]:  # inspect_doc[rootk] == True:
             inspect_doc[rootk] = {}
         keys = list(inspect_doc[rootk].keys())
         # if dict, it can be a dict containing the type (no explore needed) or a dict
@@ -640,28 +647,28 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
             if len(toexplore) > 1:
                 # we want to make sure that, whatever the structure, the types involved were the same
                 # Exception: None is allowed with other types (translates to 'null' in ES)
-                other_types = set([k for k in toexplore.keys() if k != list and type(k) == type and not k is type(None)])
+                other_types = set([k for k in toexplore.keys() if k != list and isinstance(k, type) and not k is type(None)])
                 # some mixes are allowed by ES
-                if {int,float}.issubset(other_types):
+                if {int, float}.issubset(other_types):
                     other_types.discard(int) # float > int
                     toexplore.pop(int)
                 if len(other_types) > 1:
-                    raise Exception("Mixing types for key '%s': %s" % (rootk,other_types))
-            res = generate_es_mapping(toexplore,init=False,level=level+1)
-            # is it the only key or do we have more ? (ie. some docs have data as "x", some 
+                    raise Exception("Mixing types for key '%s': %s" % (rootk, other_types))
+            res = generate_es_mapping(toexplore, init=False, level=level+1)
+            # is it the only key or do we have more ? (ie. some docs have data as "x", some
             # others have list("x")
             # list was either a list of values (end of tree) or a list of dict. Depending
             # on that, we add "properties" (when list of dict) or not (when list of values)
-            if type in set(map(type,inspect_doc[rootk][list])):
+            if type in set(map(type, inspect_doc[rootk][list])):
                 mapping[rootk] = res
             else:
                 mapping[rootk] = {"properties" : {}}
                 mapping[rootk]["properties"] = res
-        elif set(map(type,keys)) == {type}:
+        elif set(map(type, keys)) == {type}:
             # it's a type declaration, no explore
-            typs = list(map(type,[k for k in keys if not k is type(None)]))
+            typs = list(map(type, [k for k in keys if not k is type(None)]))
             if len(typs) > 1:
-                errors.append("More than one type (key:%s,types:%s)" % (repr(rootk),repr(keys)))
+                errors.append("More than one type (key:%s,types:%s)" % (repr(rootk), repr(keys)))
             try:
                 typ = list(inspect_doc[rootk].keys())
                 # ther can still be more than one type, if we have a None combined with
@@ -673,15 +680,15 @@ def generate_es_mapping(inspect_doc,init=True,level=0):
                     typ = [t for t in typ if not t is type(None)][0]
                 mapping[rootk] = map_tpl[typ]
             except Exception as e:
-                errors.append("Can't find map type %s for key %s" % (inspect_doc[rootk],rootk))
+                errors.append("Can't find map type %s for key %s", inspect_doc[rootk], rootk)
         elif inspect_doc[rootk] == {}:
             typ = rootk
             return map_tpl[typ]
         else:
             mapping[rootk] = {"properties" : {}}
-            mapping[rootk]["properties"] = generate_es_mapping(inspect_doc[rootk],init=False,level=level+1)
+            mapping[rootk]["properties"] = generate_es_mapping(inspect_doc[rootk], init=False, level=level+1)
     if errors:
-        raise MappingError("Error while generating mapping",errors)
+        raise MappingError("Error while generating mapping", errors)
     return mapping
 
 ######################@#
@@ -737,7 +744,7 @@ def get_source_fullname(col_name):
 def get_last_command():
     conn = get_hub_db_conn().get_conn()
     cmd = get_cmd()
-    res = conn.search(cmd.dbname,cmd.colname,{
+    res = conn.search(cmd.dbname, cmd.colname, {
         "query": {
             "match_all": {}
         },
@@ -761,7 +768,7 @@ class Database(IDatabase):
     CONFIG = None # will be set by bt.utils.hub_db.setup()
 
     def __init__(self):
-        super(Database,self).__init__()
+        super(Database, self).__init__()
         self.name = self.CONFIG.DATA_HUB_DB_DATABASE
         self.es_host = self.CONFIG.HUB_DB_BACKEND["host"]
         self.cols = {}
@@ -776,13 +783,13 @@ class Database(IDatabase):
     def get_conn(self):
         return get_es(self.es_host)
 
-    def create_collection(self,colname):
+    def create_collection(self, colname):
         return self[colname]
 
-    def create_if_needed(self,colname):
+    def create_if_needed(self, colname):
         conn = self.get_conn()
         # add dot to make it a special index so it's hidden by default in ES gui
-        idxcolname = ".%s_%s" % (self.name,colname)
+        idxcolname = ".%s_%s" % (self.name, colname)
         # it's not usefull to scale internal hubdb
         body = {
             'settings': {
@@ -791,13 +798,13 @@ class Database(IDatabase):
             }
         }
         if not conn.indices.exists(idxcolname):
-            conn.indices.create(idxcolname,body=body)
-            conn.indices.put_mapping(colname,{"dynamic":True},index=idxcolname)
+            conn.indices.create(idxcolname, body=body)
+            conn.indices.put_mapping(colname, {"dynamic":True}, index=idxcolname)
 
     def __getitem__(self, colname):
         if not colname in self.cols:
             self.create_if_needed(colname)
-            self.cols[colname] = Collection(colname,self)
+            self.cols[colname] = Collection(colname, self)
         return self.cols[colname]
 
 
@@ -808,11 +815,11 @@ class Collection(object):
         self.db = db
 
     def get_conn(self):
-        return self.db.get_conn() 
+        return self.db.get_conn()
 
     @property
     def dbname(self):
-        return ".%s_%s" % (self.db.name,self.colname)
+        return ".%s_%s" % (self.db.name, self.colname)
 
     @property
     def name(self):
@@ -822,16 +829,16 @@ class Collection(object):
     def database(self):
         return self.db
 
-    def find_one(self,*args,**kwargs):
-        return self.find(*args,find_one=True)
+    def find_one(self, *args, **kwargs):
+        return self.find(*args, find_one=True)
 
-    def find(self,*args,**kwargs):
+    def find(self, *args, **kwargs):
         results = []
         query = {}
-        if args and len(args) == 1 and type(args[0]) == dict and len(args[0]) > 0:
+        if args and len(args) == 1 and isinstance(args[0], dict) and len(args[0]) > 0:
             query = {"query":{"match":args[0]}}
         # it's key/value search, let's iterate
-        res = self.get_conn().search(self.dbname,self.colname,query)
+        res = self.get_conn().search(self.dbname, self.colname, query)
         for _src in res["hits"]["hits"]:
             doc = {"_id":_src["_id"]}
             doc.update(_src["_source"])
@@ -844,14 +851,14 @@ class Collection(object):
             return None
         return results
 
-    def insert_one(self,doc,check_unique=True):
+    def insert_one(self, doc, check_unique=True):
         assert "_id" in doc
         _id = doc.pop("_id")
-        res = self.get_conn().index(self.dbname,self.colname,doc,id=_id,refresh=True)
+        res = self.get_conn().index(self.dbname, self.colname, doc, id=_id, refresh=True)
         if check_unique and not res["result"] == "created":
             raise Exception("Couldn't insert document '%s'" % doc)
 
-    def update_one(self,query,what):
+    def update_one(self, query, what):
         assert len(what) == 1 and ("$set" in what or \
                 "$unset" in what or "$push" in what), "$set/$unset/$push operators not found"
         doc = self.find_one(query)
@@ -859,41 +866,40 @@ class Collection(object):
             if "$set" in what:
                 # parse_dot_fields uses json.dumps internally, we can to make
                 # sure everything is serializable first
-                what = json.loads(json.dumps(what,default=json_serial))
+                what = json.loads(json.dumps(what, default=json_serial))
                 what = parse_dot_fields(what["$set"])
-                doc = update_dict_recur(doc,what)
+                doc = update_dict_recur(doc, what)
             elif "$unset" in what:
                 for keytounset in what["$unset"].keys():
-                    doc.pop(keytounset,None)
+                    doc.pop(keytounset, None)
             elif "$push" in what:
-                for listkey,elem in what["$push"].items():
+                for listkey, elem in what["$push"].items():
                     assert not "." in listkey, "$push not supported for nested keys: %s" % listkey
-                    doc.setdefault(listkey,[]).append(elem)
+                    doc.setdefault(listkey, []).append(elem)
 
             self.save(doc)
 
-    def update(self,query,what):
+    def update(self, query, what):
         docs = self.find(query)
         for doc in docs:
-            self.update_one({"_id":doc["_id"]},what)
+            self.update_one({"_id":doc["_id"]}, what)
 
-    def save(self,doc):
-        return self.insert_one(doc,check_unique=False)
+    def save(self, doc):
+        return self.insert_one(doc, check_unique=False)
 
-    def replace_one(self,query,doc,*args,**kwargs):
+    def replace_one(self, query, doc, *args, **kwargs):
         orig = self.find_one(query)
         if orig:
-            self.insert_one(doc,check_unique=False)
+            self.insert_one(doc, check_unique=False)
 
-    def remove(self,query):
+    def remove(self, query):
         docs = self.find(query)
         conn = self.get_conn()
         for doc in docs:
-            conn.delete(self.dbname,self.colname,id=doc["_id"],refresh=True)
+            conn.delete(self.dbname, self.colname, id=doc["_id"], refresh=True)
 
     def count(self):
-        return self.get_conn().count(self.dbname,self.colname)["count"]
+        return self.get_conn().count(self.dbname, self.colname)["count"]
 
     def __getitem__(self, _id):
         return self.find_one({"_id":_id})
-
