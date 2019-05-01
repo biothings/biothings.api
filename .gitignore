@@ -15,3 +15,6 @@ tests/.noseids
 
 # IDEs
 .vscode
+
+# runtime files
+biothings/.git-info
