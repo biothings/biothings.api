@@ -2,8 +2,8 @@
 Utils to compare two list of gene documents
 '''
 import os
-import time
 import os.path
+import time
 from .common import timesofar, dump, get_timestamp, filter_dict
 from .backend import DocMongoDBBackend
 from ..hub.databuild.backend import create_backend
@@ -16,8 +16,8 @@ def diff_doc(doc_1, doc_2, exclude_attrs=['_timestamp']):
               'delete': [],
               'add': {}}
     if exclude_attrs:
-        doc_1 = filter_dict(doc_1,exclude_attrs)
-        doc_2 = filter_dict(doc_2,exclude_attrs)
+        doc_1 = filter_dict(doc_1, exclude_attrs)
+        doc_2 = filter_dict(doc_2, exclude_attrs)
     for attr in set(doc_1) | set(doc_2):
         if exclude_attrs and attr in exclude_attrs:
             continue
@@ -39,8 +39,8 @@ def full_diff_doc(doc_1, doc_2, exclude_attrs=['_timestamp']):
               'delete': [],
               'add': {}}
     if exclude_attrs:
-        doc_1 = filter_dict(doc_1,exclude_attrs)
-        doc_2 = filter_dict(doc_2,exclude_attrs)
+        doc_1 = filter_dict(doc_1, exclude_attrs)
+        doc_2 = filter_dict(doc_2, exclude_attrs)
     for attr in set(doc_1) | set(doc_2):
         if exclude_attrs and attr in exclude_attrs:
             continue
@@ -135,8 +135,8 @@ def diff_docs_jsonpatch(b1, b2, ids, fastdiff=False, exclude_attrs=[]):
         assert doc1['_id'] == doc2['_id'], "Different ids: '%s' != '%s'" % \
                 (doc1['_id'], doc2['_id'])
         if exclude_attrs:
-            doc1 = filter_dict(doc1,exclude_attrs)
-            doc2 = filter_dict(doc2,exclude_attrs)
+            doc1 = filter_dict(doc1, exclude_attrs)
+            doc2 = filter_dict(doc2, exclude_attrs)
         if fastdiff:
             if doc1 != doc2:
                 _updates.append(doc1['_id'])
@@ -161,11 +161,11 @@ def get_mongodb_uri(backend):
     uri = "mongodb://"
     if username:
         if password:
-            uri += "%s:%s@" % (username,password)
+            uri += "%s:%s@" % (username, password)
         else:
             uri += "%s@" % username
-    host,port = backend.target_collection.database.client.address
-    uri += "%s:%s" % (host,port)
+    host, port = backend.target_collection.database.client.address
+    uri += "%s:%s" % (host, port)
     uri += "/%s" % (dbase or backend.target_collection.database.name)
     #uri += "/%s" % backend.target_collection.name
     print("uri: %s" % uri)
@@ -231,7 +231,7 @@ def diff_collections(b1, b2, use_parallel=True, step=10000):
 
 def get_backend(uri, db, col, bk_type):
     if bk_type != "mongodb":
-        raise NotImplemented("Backend type '%s' not supported" % bk_type)
+        raise NotImplementedError("Backend type '%s' not supported" % bk_type)
     from biothings.utils.mongo import MongoClient
     colobj = MongoClient(uri)[db][col]
     return DocMongoDBBackend(colobj)
@@ -293,4 +293,3 @@ def diff_collections_batches(b1, b2, result_dir, step=10000):
     print("Finished calculating diff for the old collection. Total number of docs deleted: {}".format(cnt_delete))
     print("="*100)
     print("Summary: (Updated: {}, Added: {}, Deleted: {})".format(cnt_update, cnt_add, cnt_delete))
-
