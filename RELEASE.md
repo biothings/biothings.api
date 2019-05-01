@@ -22,7 +22,7 @@
     ```
     pip install dist/biothings-0.3.0-py3-none-any.whl
     ```
-    
+
    And run any local test as needed (e.g. run nosetests on a local BioThings API instance).
 
 6. Prepare github repo for the release:
@@ -41,7 +41,16 @@
         ```
         git push --tags
         ```
-7. `master` branch is our dev branch. After a successful release, update major and/or minor version to the next release version, and update micro as "dev". Here is an example after "v0.3.0" release:
+
+7. Upload to PyPI:
+
+    ```
+    twine upload dist/*
+    ```
+
+    Note: for now, this step needs to be done by @newgene under ["newgene" PyPI account](https://pypi.org/user/newgene/).
+
+8. `master` branch is our dev branch. After a successful release, update major and/or minor version to the next release version, and update micro as "dev". Here is an example after "v0.3.0" release:
 
     ```
     MAJOR_VER=0
