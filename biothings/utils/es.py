@@ -57,10 +57,10 @@ def wrapper(func):
     '''this wrapper allows passing index and doc_type from wrapped method.'''
     def outter_fn(*args, **kwargs):
         self = args[0]
-        index = kwargs.pop('index', self._index)
-        doc_type = kwargs.pop('doc_type', self._doc_type)
-        self._index = index
-        self._doc_type = doc_type
+        index = kwargs.pop('index', self._index)             # pylint: disable=protected-access
+        doc_type = kwargs.pop('doc_type', self._doc_type)    # pylint: disable=protected-access
+        self._index = index                                  # pylint: disable=protected-access
+        self._doc_type = doc_type                            # pylint: disable=protected-access
         return func(*args, **kwargs)
     outter_fn.__doc__ = func.__doc__
     return outter_fn
@@ -93,7 +93,7 @@ class ESIndexer():
                 m = self.get_mapping()
                 assert len(m) == 1, "Expected only one doc type, got: %s" % m.keys()
                 self._doc_type = list(m).pop()
-            except Exception as e:
+            except Exception as e:       # pylint: disable=broad-except
                 logging.info("Failed to guess doc_type: %s", e)
         self.number_of_shards = number_of_shards # set number_of_shards when create_index
         self.number_of_replicas = int(number_of_replicas) # set number_of_replicas when create_index
@@ -176,7 +176,7 @@ class ESIndexer():
     def exists_index(self):
         return self._es.indices.exists(self._index)
 
-    def index(self, doc, id=None, action="index"):
+    def index(self, doc, id=None, action="index"):       # pylint: disable=redefined-builtin
         '''add a doc to the index. If id is not None, the existing doc will be
            updated.
         '''
@@ -199,7 +199,7 @@ class ESIndexer():
         actions = (_get_bulk(doc) for doc in docs)
         return helpers.bulk(self._es, actions, chunk_size=step)
 
-    def delete_doc(self, id):
+    def delete_doc(self, id):                # pylint: disable=redefined-builtin
         '''delete a doc from the index based on passed id.'''
         return self._es.delete(self._index, self._doc_type, id)
 
@@ -223,7 +223,7 @@ class ESIndexer():
     def delete_index(self):
         self._es.indices.delete(self._index)
 
-    def update(self, id, extra_doc, upsert=True):
+    def update(self, id, extra_doc, upsert=True):          # pylint: disable=redefined-builtin
         '''update an existing doc with extra_doc.
            allow to set upsert=True, to insert new docs.
         '''
@@ -277,7 +277,8 @@ class ESIndexer():
 
     def update_mapping_meta(self, meta):
         allowed_keys = set(['_meta', '_timestamp'])
-        if isinstance(meta, dict) and len(set(meta) - allowed_keys) == 0:
+        # if isinstance(meta, dict) and len(set(meta) - allowed_keys) == 0:
+        if isinstance(meta, dict) and not set(meta) - allowed_keys:
             body = {self._doc_type: meta}
             return self._es.indices.put_mapping(
                 doc_type=self._doc_type,
@@ -297,9 +298,9 @@ class ESIndexer():
                 "auto_expand_replicas": "0-all",
             }
         }
-        res = self._es.indices.put_settings(body, index_name)
+        self._es.indices.put_settings(body, index_name)
         try:
-            cnt = self._build_index_sequential(collection, verbose, query=query, bulk=bulk, update=update, allow_upsert=True)
+            self._build_index_sequential(collection, verbose, query=query, bulk=bulk, update=update, allow_upsert=True)
         finally:
             # restore some settings after bulk indexing is done.
             body = {
@@ -310,9 +311,9 @@ class ESIndexer():
             self._es.indices.put_settings(body, index_name)
 
             try:
-                res = self._es.indices.flush()
-                res = self._es.indices.refresh()
-            except:
+                self._es.indices.flush()
+                self._es.indices.refresh()
+            except:          # pylint: disable=bare-except
                 pass
 
             time.sleep(1)
@@ -344,7 +345,8 @@ class ESIndexer():
             else:
                 # input doc will overwrite existing one
                 res = self.index_bulk(src_docs)
-            if len(res[1]) > 0:
+            # if len(res[1]) > 0:
+            if res[1]:
                 raise IndexerException("Error: {} docs failed indexing.".format(len(res[1])))
             return res[0]
 
@@ -445,9 +447,9 @@ class ESIndexer():
         _size = int(step / n_shards)
         assert _size * n_shards == step
         cnt = 0
-        t0 = time.time()
-        if verbose:
-            t1 = time.time()
+        # t0 = time.time()
+        # if verbose:
+            # t1 = time.time()
 
         res = self._es.search(self._index, self._doc_type, body=q,
                               size=_size, search_type='scan', scroll=scroll, **kwargs)
@@ -456,8 +458,8 @@ class ESIndexer():
         assert not res['hits']['hits']
 
         while 1:
-            if verbose:
-                t1 = time.time()
+            # if verbose:
+            #     t1 = time.time()
             res = self._es.scroll(res['_scroll_id'], scroll=scroll)
             # if len(res['hits']['hits']) == 0:
             if not res['hits']['hits']:
@@ -501,7 +503,7 @@ class ESIndexer():
                     doc["_id"] = rawdoc["_id"]
                     yield doc
 
-    def find_biggest_doc(self, fields_li, min=5, return_doc=False):
+    def find_biggest_doc(self, fields_li, min=5, return_doc=False):     # pylint: disable=redefined-builtin
         """return the doc with the max number of fields from fields_li."""
         for n in range(len(fields_li), min - 1, -1):
             for field_set in itertools.combinations(fields_li, n):
@@ -679,7 +681,7 @@ def generate_es_mapping(inspect_doc, init=True, level=0):
                 else:
                     typ = [t for t in typ if not t is type(None)][0]
                 mapping[rootk] = map_tpl[typ]
-            except Exception as e:
+            except Exception:              # pylint: disable=broad-except
                 errors.append("Can't find map type %s for key %s", inspect_doc[rootk], rootk)
         elif inspect_doc[rootk] == {}:
             typ = rootk
@@ -835,7 +837,8 @@ class Collection(object):
     def find(self, *args, **kwargs):
         results = []
         query = {}
-        if args and len(args) == 1 and isinstance(args[0], dict) and len(args[0]) > 0:
+        # if args and len(args) == 1 and isinstance(args[0], dict) and len(args[0]) > 0:
+        if args and len(args) == 1 and isinstance(args[0], dict) and args[0]:
             query = {"query":{"match":args[0]}}
         # it's key/value search, let's iterate
         res = self.get_conn().search(self.dbname, self.colname, query)
