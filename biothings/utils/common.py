@@ -4,6 +4,7 @@ In general, do not include utils depending on any third-party modules.
 """
 import base64
 import os
+import os.path
 import io
 import random
 import string
@@ -11,24 +12,21 @@ import sys
 import time
 from itertools import islice
 from contextlib import contextmanager
-import os.path
 from shlex import shlex
 import pickle
 import json
 import logging
 import importlib
-import math, statistics
+# import math
+# import statistics
 import hashlib
 import asyncio
-import inspect, types
+import inspect
+import types
+import gzip
+import glob
 from datetime import date, datetime, timezone
-
-if sys.version_info.major == 3:
-    str_types = str
-    import pickle       # noqa
-else:
-    str_types = (str, unicode)    # noqa
-    import cPickle as pickle
+from functools import partial
 
 
 # ===============================================================================
@@ -67,7 +65,7 @@ def is_int(s):
     try:
         int(s)
         return True
-    except (ValueError,TypeError):
+    except (ValueError, TypeError):
         return False
 
 
@@ -75,7 +73,7 @@ def is_str(s):
     """return True or False if input is a string or not.
         python3 compatible.
     """
-    return isinstance(s, str_types)
+    return isinstance(s, str)
 
 
 def is_seq(li):
@@ -90,7 +88,7 @@ def is_float(f):
     return isinstance(f, float)
 
 def is_scalar(f):
-    return type(f) in (int,str,bool,float,bytes) or f is None or is_int(f) or is_float(f) or is_str(f)
+    return type(f) in (int, str, bool, float, bytes) or f is None or is_int(f) or is_float(f) or is_str(f)
 
 def iter_n(iterable, n, with_cnt=False):
     '''
@@ -163,14 +161,14 @@ def anyfile(infile, mode='r'):
         rawfile = os.path.splitext(infile)[0]
     filetype = os.path.splitext(infile)[1].lower()
     if filetype == '.gz':
-        import gzip
+        # import gzip
         in_f = io.TextIOWrapper(gzip.GzipFile(infile, mode))
     elif filetype == '.zip':
         import zipfile
         in_f = io.TextIOWrapper(zipfile.ZipFile(infile, mode).open(rawfile, mode))
     elif filetype == '.xz':
         import lzma
-        in_f = io.TextIOWrapper(lzma.LZMAFile(infile,mode))
+        in_f = io.TextIOWrapper(lzma.LZMAFile(infile, mode))
     else:
         in_f = open(infile, mode)
     return in_f
@@ -232,7 +230,7 @@ class dotdict(dict):
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 
-def get_dotfield_value(dotfield,d):
+def get_dotfield_value(dotfield, d):
     """
     Explore dictionary d using dotfield notation and return value.
     Ex: d = {"a":{"b":1}}.
@@ -243,7 +241,7 @@ def get_dotfield_value(dotfield,d):
         return d[fields[0]]
     else:
         first = fields[0]
-        return get_dotfield_value(".".join(fields[1:]),d[first])
+        return get_dotfield_value(".".join(fields[1:]), d[first])
 
 def split_ids(q):
     '''split input query string into list of ids.
@@ -280,7 +278,7 @@ def get_compressed_outfile(filename, compress='gzip'):
        currently support gzip/bz2/lzma, lzma only available in py3
     '''
     if compress == "gzip":
-        import gzip
+        # import gzip
         out_f = gzip.GzipFile(filename, 'wb')
     elif compress == 'bz2':
         import bz2
@@ -288,7 +286,7 @@ def get_compressed_outfile(filename, compress='gzip'):
     elif compress == 'lzma' or compress == 'xz':
         import lzma
         out_f = lzma.LZMAFile(filename, 'wb')
-    elif compress == None:
+    elif compress is None:
         out_f = open(filename, 'wb')
     else:
         raise ValueError("Invalid compress parameter.")
@@ -304,7 +302,7 @@ def open_compressed_file(filename):
     in_f.close()
     if sig[:3] == b'\x1f\x8b\x08':
         # this is a gzip file
-        import gzip
+        # import gzip
         fobj = gzip.GzipFile(filename, 'rb')
     elif sig[:3] == b'BZh':
         # this is a bz2 file
@@ -316,30 +314,32 @@ def open_compressed_file(filename):
         fobj = lzma.LZMAFile(filename, 'r')
     else:
         # assuming uncompressed ?
-        fobj = open(filename,'rb')
+        fobj = open(filename, 'rb')
     return fobj
 
 
-def dump(obj, filename, bin=2, compress='gzip'):
+def dump(obj, filename, protocol=2, compress='gzip'):
     '''Saves a compressed object to disk
        binary protocol 2 is compatible with py2, 3 and 4 are for py3
     '''
+    # TODO: in py3, protocol=3 is the default, and also support protocol=4
+    #       for py>=3.4. We should check which one works best for us.
     out_f = get_compressed_outfile(filename, compress=compress)
-    pickle.dump(obj, out_f, protocol=bin)
+    pickle.dump(obj, out_f, protocol=protocol)
     out_f.close()
 
 
-def dump2gridfs(object, filename, db, bin=2):
+def dump2gridfs(obj, filename, db, protocol=2):
     '''Save a compressed (support gzip only) object to MongoDB gridfs.'''
     import gridfs
-    import gzip
+    # import gzip
     fs = gridfs.GridFS(db)
     if fs.exists(_id=filename):
         fs.delete(filename)
     fobj = fs.new_file(filename=filename, _id=filename)
     try:
         gzfobj = gzip.GzipFile(filename=filename, mode='wb', fileobj=fobj)
-        pickle.dump(object, gzfobj, protocol=bin)
+        pickle.dump(obj, gzfobj, protocol=protocol)
     finally:
         gzfobj.close()
         fobj.close()
@@ -352,7 +352,7 @@ def loadobj(filename, mode='file'):
 
            obj = loadobj(('data.pyobj', mongo_db), mode='gridfs')
     '''
-    import gzip
+    # import gzip
     if mode == 'gridfs':
         import gridfs
         filename, db = filename   # input is a tuple of (filename, mongo_db)
@@ -405,25 +405,25 @@ def list2dict(a_list, keyitem, alwayslist=False):
             _dict[key] = current_value
     return _dict
 
-def filter_dict(d,keys):
+def filter_dict(d, keys):
     """
     Remove keys from dict "d". "keys" is a list
     of string, dotfield notation can be used to
     express nested keys. If key to remove doesn't
     exist, silently ignore it
     """
-    if type(keys) == str:
+    if isinstance(keys, str):
         keys = [keys]
     for key in keys:
         if "." in key:
             innerkey = ".".join(key.split(".")[1:])
             rkey = key.split(".")[0]
             if rkey in d:
-                d[rkey] = filter_dict(d[rkey],innerkey)
+                d[rkey] = filter_dict(d[rkey], innerkey)
             else:
                 continue
         else:
-            d.pop(key,None)
+            d.pop(key, None)
     return d
 
 def get_random_string():
@@ -481,16 +481,16 @@ def find_doc(k, keys):
     n = len(keys)
     for i in range(n):
         # if k is a dictionary, then directly get its value
-        if type(k) == dict:
+        if isinstance(k, dict):
             k = k[keys[i]]
         # if k is a list, then loop through k
-        elif type(k) == list:
+        elif isinstance(k, list):
             tmp = []
             for item in k:
                 try:
-                    if type(item[keys[i]]) == dict:
+                    if isinstance(item[keys[i]], dict):
                         tmp.append(item[keys[i]])
-                    elif type(item[keys[i]]) == list:
+                    elif isinstance(item[keys[i]], list):
                         for _item in item[keys[i]]:
                             tmp.append(_item)
                 except:
@@ -541,22 +541,22 @@ def file_newer(source, target):
     '''return True if source file is newer than target file.'''
     return os.stat(source)[-2] > os.stat(target)[-2]
 
-def newer(t0, t1, format='%Y%m%d'):
+def newer(t0, t1, fmt='%Y%m%d'):
     '''t0 and t1 are string of timestamps matching "format" pattern.
        Return True if t1 is newer than t0.
     '''
-    return datetime.strptime(t0, format) < datetime.strptime(t1, format)
+    return datetime.strptime(t0, fmt) < datetime.strptime(t1, fmt)
 
 
 class DateTimeJSONEncoder(json.JSONEncoder):
     '''A class to dump Python Datetime object.
         json.dumps(data, cls=DateTimeJSONEncoder, indent=indent)
     '''
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
+    def default(self, o):
+        if isinstance(o, datetime):
+            return o.isoformat()
         else:
-            return super(DateTimeJSONEncoder, self).default(obj)
+            return super(DateTimeJSONEncoder, self).default(o)
 
 
 # https://stackoverflow.com/questions/11875770/how-to-overcome-datetime-datetime-not-json-serializable
@@ -568,13 +568,13 @@ def json_serial(obj):
             obj = obj.replace(tzinfo=timezone.utc)
         serial = obj.isoformat()
         return serial
-    raise TypeError ("Type %s not serializable" % type(obj))
+    raise TypeError("Type %s not serializable" % type(obj))
 
 
 def json_encode(obj):
     """Tornado-aimed json encoder, it does the same job as tornado.escape.json_encode
     but also deals with datetime encoding"""
-    return json.dumps(obj,default=json_serial).replace("</", "<\/")
+    return json.dumps(obj, default=json_serial).replace("</", r"<\/")
 
 
 def rmdashfr(top):
@@ -582,9 +582,9 @@ def rmdashfr(top):
     assert top # prevent rm -fr * ... (let's be explicit there)
     for root, dirs, files in os.walk(top, topdown=False):
         for name in files:
-            os.remove(os.path.join(root,name))
+            os.remove(os.path.join(root, name))
         for name in dirs:
-            os.rmdir(os.path.join(root,name))
+            os.rmdir(os.path.join(root, name))
     try:
         os.rmdir(top)
     except FileNotFoundError:
@@ -594,7 +594,7 @@ def rmdashfr(top):
 def get_class_from_classpath(class_path):
     str_mod, str_klass = ".".join(class_path.split(".")[:-1]), class_path.split(".")[-1]
     mod = importlib.import_module(str_mod)
-    return getattr(mod,str_klass)
+    return getattr(mod, str_klass)
 
 def find_classes_subclassing(mods, baseclass):
     """
@@ -602,94 +602,99 @@ def find_classes_subclassing(mods, baseclass):
     a subclass of the given baseclass, inside those modules
     """
     # collect all modules found in given modules
-    if not isinstance(mods,list):
+    if not isinstance(mods, list):
         mods = [mods]
-    innner_mods = inspect.getmembers(mods,lambda obj: type(obj) == types.ModuleType)
+    innner_mods = inspect.getmembers(mods, lambda obj: isinstance(obj, types.ModuleType))
     mods.extend(innner_mods)
     classes = []
     for m in mods:
-        name_klasses = inspect.getmembers(m,lambda obj: type(obj) == type and issubclass(obj,baseclass))
+        name_klasses = inspect.getmembers(m, lambda obj: isinstance(obj, type) and issubclass(obj, baseclass))
         if name_klasses:
-            [classes.append(klass) for name,klass in name_klasses]
+            for name, klass in name_klasses:
+                del name
+                classes.append(klass)
     return classes
 
 def sizeof_fmt(num, suffix='B'):
 	# http://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
-    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+    for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
         if abs(num) < 1024.0:
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Yi', suffix)
 
-import zipfile, glob
-def unzipall(folder,pattern="*.zip"):
+
+def unzipall(folder, pattern="*.zip"):
     '''
     unzip all zip files in "folder", in "folder"
     '''
-    for zfile in glob.glob(os.path.join(folder,pattern)):
+    import zipfile
+    for zfile in glob.glob(os.path.join(folder, pattern)):
         zf = zipfile.ZipFile(zfile)
-        logging.info("unzipping '%s'" % zf.filename)
+        logging.info("unzipping '%s'", zf.filename)
         zf.extractall(folder)
-        logging.info("done unzipping '%s'" % zf.filename)
+        logging.info("done unzipping '%s'", zf.filename)
 
-import tarfile, gzip
-def untargzall(folder,pattern="*.tar.gz"):
+def untargzall(folder, pattern="*.tar.gz"):
     '''
     gunzip and untar all *.tar.gz files in "folder"
     '''
-
-    for tgz in glob.glob(os.path.join(folder,pattern)):
+    import tarfile
+    for tgz in glob.glob(os.path.join(folder, pattern)):
         gz = gzip.GzipFile(tgz)
         tf = tarfile.TarFile(fileobj=gz)
-        logging.info("untargz '%s'" % tf.name)
+        logging.info("untargz '%s'", tf.name)
         tf.extractall(folder)
-        logging.info("done untargz '%s'" % tf.name)
+        logging.info("done untargz '%s'", tf.name)
 
-def gunzipall(folder,pattern="*.gz"):
+
+def gunzipall(folder, pattern="*.gz"):
     '''
     gunzip all *.gz files in "folder"
     '''
-    for f in glob.glob(os.path.join(folder,pattern)):
+    for f in glob.glob(os.path.join(folder, pattern)):
         # build uncompress filename from gz file and pattern
-        # pattern is used to select/filter files, but it may not 
+        # pattern is used to select/filter files, but it may not
         # match the gzip file suffix (usually ".gz"), so assuming it's the last
         # bit after "."
         suffix = ".%s" % pattern.split(".")[1]
-        gunzip(f,suffix)
+        gunzip(f, suffix)
 
-def gunzip(f,pattern="*.gz"):
+
+def gunzip(f, pattern="*.gz"):
     # build uncompress filename from gz file and pattern
-    destf = f.replace(pattern.replace("*",""),"")
-    fout = open(destf,"wb")
+    destf = f.replace(pattern.replace("*", ""), "")
+    fout = open(destf, "wb")
     with gzip.GzipFile(f) as gz:
-        logging.info("gunzip '%s'" % gz.name)
+        logging.info("gunzip '%s'", gz.name)
         for line in gz:
             fout.write(line)
-        logging.info("Done gunzip '%s'" % gz.name)
+        logging.info("Done gunzip '%s'", gz.name)
     fout.close()
 
 @asyncio.coroutine
 def aiogunzipall(folder, pattern, job_manager, pinfo):
     """
     Gunzip all files in folder matching pattern. job_manager is used
-    for parallelisation, and pinfo is a pre-filled dict used by 
+    for parallelisation, and pinfo is a pre-filled dict used by
     job_manager to report jobs in the hub (see bt.utils.manager.JobManager)
     """
     jobs = []
     got_error = None
-    logging.info("Unzipping files in '%s'" % folder)
-    for f in glob.glob(os.path.join(folder,pattern)):
+    logging.info("Unzipping files in '%s'", folder)
+    for f in glob.glob(os.path.join(folder, pattern)):
         pinfo["description"] = os.path.basename(f)
-        suffix = pattern.replace("*","")
-        job = yield from job_manager.defer_to_process(pinfo, partial(gunzip,f,suffix=suffix))
-        def gunzipped(fut,inf):
+        suffix = pattern.replace("*", "")
+        job = yield from job_manager.defer_to_process(pinfo, partial(gunzip, f, suffix=suffix))
+        def gunzipped(fut, inf):
             try:
-                res = fut.result()
+                # res = fut.result()
+                fut.result()
             except Exception as e:
-                logging.error("Failed to gunzip file %s: %s" % (inf,e))
+                logging.error("Failed to gunzip file %s: %s", inf, e)
                 nonlocal got_error
                 got_error = e
-        job.add_done_callback(partial(gunzipped,inf=f))
+        job.add_done_callback(partial(gunzipped, inf=f))
         jobs.append(job)
         if got_error:
             raise got_error
@@ -711,4 +716,5 @@ def md5sum(fname):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
-class splitstr(str): pass
+class splitstr(str):
+    pass
