@@ -313,6 +313,9 @@ class JobManager(object):
 
     def __init__(self, loop, process_queue=None, thread_queue=None, max_memory_usage=None,
             num_workers=None,num_threads=None,default_executor="thread",auto_recycle=True):
+        if not os.path.exists(config.RUN_DIR):
+            logger.info("Creating RUN_DIR directory '%s'" % config.RUN_DIR)
+            os.makedirs(config.RUN_DIR)
         self.loop = loop
         self.num_workers = num_workers
         if self.num_workers == 0:
