@@ -124,13 +124,19 @@ class MergerStorage(BasicStorage):
                 for err in e.details["writeErrors"]:
                     errdoc = err["op"]
                     existing = hdocs[errdoc["_id"]]
+                    if errdoc is existing:
+                        # if the same document has been yielded twice,
+                        # they could be the same, so we ignore it but
+                        # count it as processed (see assert below)
+                        nbinsert += 1
+                        continue
                     assert "_id" in existing
                     _id = errdoc.pop("_id")
                     merged = self.__class__.merge_func(errdoc, existing, aslistofdict=aslistofdict)
-                    bob2.find({"_id" : _id}).update_one({"$set" : merged})
                     # update previously fetched doc. if several errors are about the same doc id,
                     # we would't merged things properly without an updated document
                     assert "_id" in merged
+                    bob2.find({"_id" : _id}).update_one({"$set" : merged})
                     hdocs[_id] = merged
                     nbinsert += 1
                 
