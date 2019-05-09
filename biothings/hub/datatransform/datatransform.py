@@ -5,6 +5,7 @@ DataTransform Module
 """
 # pylint: disable=E0401, E0611
 import re
+from functools import wraps
 from biothings.utils.common import iter_n
 from biothings.utils.common import is_str
 from biothings.utils.loggers import get_logger
@@ -332,6 +333,7 @@ class DataTransform(object):
             self.logger.debug("DataTransform Debug Mode:  {}".format(debug))
             self.debug = debug
 
+        @wraps(func)
         def wrapped_f(*args):
             """This is a wrapped function which will be called by the decorator method."""
             input_docs = func(*args)
