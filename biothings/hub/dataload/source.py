@@ -83,7 +83,7 @@ class SourceManager(BaseSourceManager):
             try:
                 importlib.import_module(s)
             except Exception as e:
-                logging.debug("Failed to discover source '%s': %s" % (s,e))
+                logging.error("Failed to discover source '%s': %s" % (s,e))
                 sources.remove(s)
 
         logging.info("Found sources: %s" % sorted(sources))
