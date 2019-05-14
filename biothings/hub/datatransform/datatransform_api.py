@@ -36,21 +36,18 @@ class DataTransformAPI(DataTransform):
         - 'type'
         - ['type1', 'type2']
 
-    Additional Options:
-    - skip_on_failure:  Do not include a document where key lookup fails in the results
-    - skip_w_regex:  skip key lookup if the provided regex matches
+    Additional Options: see DataTransform class
     """
     batch_size = 10
     default_source = '_id'
     lookup_fields = {}
 
-    def __init__(self, input_types, output_types, skip_on_failure=False, skip_w_regex=None):
+    def __init__(self, input_types, output_types, *args, **kwargs):
         """
         Initialize the IDLookupAPI object.
         """
         self._generate_return_fields()
-        super(DataTransformAPI, self).__init__(
-            input_types, output_types, skip_on_failure, skip_w_regex)
+        super(DataTransformAPI, self).__init__(input_types, output_types, *args, **kwargs)
 
         # default value of None for client
         self.client = None
