@@ -633,7 +633,7 @@ def generate_es_mapping(inspect_doc, init=True, level=0):
             # value can be null, just skip it
             continue
         # some inspect report have True as value, others have dict (will all have dict eventually)
-        if inspect_doc[rootk]:  # inspect_doc[rootk] == True:
+        if inspect_doc[rootk] == True:
             inspect_doc[rootk] = {}
         keys = list(inspect_doc[rootk].keys())
         # if dict, it can be a dict containing the type (no explore needed) or a dict
