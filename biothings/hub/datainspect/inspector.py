@@ -107,7 +107,8 @@ class InspectorManager(BaseManager):
                     self.logger.debug("Multiple uploaders found, running inspector for each of them: %s" % ups)
                     res = []
                     for up in ups:
-                        r = self.inspect((data_provider[0],"%s" % up.name),mode=mode, batch_size=batch_size,**kwargs)
+                        r = self.inspect((data_provider[0],"%s" % up.name),mode=mode, batch_size=batch_size,
+                                limit=limit, sample=sample, **kwargs)
                         res.append(r)
                     return res
 
