@@ -939,3 +939,19 @@ def dict_walk(dictionary, key_func):
         return dictionary
     return dict((key_func(k), dict_walk(v, key_func))
             for k, v in dictionary.items())
+
+
+def dict_traverse(d,func):
+    """
+    Recursively traverse dictionary d, calling func(k,v)
+    for each key/value found. func must return a
+    tuple(new_key,new_value)
+    """
+    for k,v in sorted(d.items(),key=lambda x: x[0]):
+        if isinstance(v, dict):
+            dict_traverse(v,func)
+        else:
+            newk,newv = func(k,v)
+            d.pop(k)
+            d[newk] = newv
+

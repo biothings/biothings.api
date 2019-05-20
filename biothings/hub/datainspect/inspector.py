@@ -6,10 +6,11 @@ from functools import partial
 import inspect
 import subprocess
 import random
+import math
 
 from biothings.utils.hub_db import get_src_dump, get_src_build, get_source_fullname
 from biothings.utils.common import timesofar
-from biothings.utils.dataload import dict_walk
+from biothings.utils.dataload import dict_walk, dict_traverse
 from biothings.utils.mongo import id_feeder, doc_feeder
 from biothings.utils.loggers import get_logger
 from biothings.hub import INSPECTOR_CATEGORY
@@ -228,6 +229,15 @@ class InspectorManager(BaseManager):
                         _map["data_provider"] = repr(data_provider)
                         _map["started_at"] = started_at
                         _map["duration"] = timesofar(t0)
+                        # when inspecting with "stats" mode, we can get huge number but mongo
+                        # can't store more than 2^64, make sure to get rid of big nums there
+                        def clean_big_nums(k,v):
+                            # TODO: same with float/double? seems mongo handles more there ?
+                            if isinstance(v,int) and v > 2**64:
+                                return k,math.nan
+                            else:
+                                return k,v
+                        dict_traverse(_map,clean_big_nums)
                         # register begin of inspection (differ slightly depending on type)
                         if "mapping" in mode and "errors" in res["mapping"] and "pre-mapping" in res["mapping"]:
                             registerer_obj.register_status("failed",subkey="inspect",inspect=_map)
