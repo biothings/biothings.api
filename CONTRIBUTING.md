@@ -25,6 +25,8 @@ In addition to the standards outlined in PEP 8, we have a few guidelines:
   The only exception is `import logging`, where we often need to add logging settings immediately after import.
   We recommend to put this `logging` block at the end of the imports.
 
+  See [this code](biothings/utils/es.py) as an example.
+
 * Inline comments
 
   When you have multiple inline comments, try to align them by groups:
@@ -43,8 +45,6 @@ In addition to the standards outlined in PEP 8, we have a few guidelines:
         self.step = step    # the bulk size when doing bulk operation.
         self.s = None    # number of records to skip, useful to continue indexing after an error.
 
-  See [this code](biothings/utils/es.py) as an example.
-
 In some particular cases, the style guidelines may not be suitable. Use your own best judgment,
 and also raise the issue with the team members for their opinions. Read more about when to ignore a
 particular guideline from [PEP8 doc](https://pep8.org/#a-foolish-consistency-is-the-hobgoblin-of-little-minds).
@@ -60,6 +60,8 @@ You can use this as your [flake8](http://flake8.pycqa.org) [config file](http://
     [flake8]
     ignore=E226,E265,E302,E402,E731,F821,W503
     max-line-length=160
+
+There are project-level [flake8](http://flake8.pycqa.org) settings provided in this top-level [setup.cfg](setup.cfg) file, so you can just run `flake8 <your file>` to check your code, or explicitly `flake8 --config ./setup.cfg <your file>`.
 
 
 In VSCode, you can add this to settings.json:
