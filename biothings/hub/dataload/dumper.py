@@ -457,6 +457,8 @@ class FTPDumper(BaseDumper):
     def download(self,remotefile,localfile):
         self.prepare_local_folders(localfile)
         self.logger.debug("Downloading '%s' as '%s'" % (remotefile,localfile))
+        if self.need_prepare():
+            self.prepare_client()
         try:
             with open(localfile,"wb") as out_f:
                 self.client.retrbinary('RETR %s' % remotefile, out_f.write)
