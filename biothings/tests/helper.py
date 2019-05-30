@@ -109,7 +109,6 @@ class BiothingsTestCase(unittest.TestCase):
         Contains common functions to help facilitate testing.
         Assumes that .host .api are set in the subclass
     '''
-    __test__ = False  # not to be used directly
 
     # override in subclass
     host = None  # no trailing slash '/'
@@ -316,8 +315,8 @@ class BiothingsTestCase(unittest.TestCase):
             if requested_fields[0] == 'all':
                 return all_fields
             for field in requested_fields:
-                possible_fields += [s for s in all_fields if s ==
-                                    field or s.startswith(field + '.')]
+                possible_fields += [s for s in all_fields if s
+                                    == field or s.startswith(field + '.')]
             # Go through and add parent nodes, which must be in the object....
             pfs = set(possible_fields)
             for fld in possible_fields:
