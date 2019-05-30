@@ -15,9 +15,6 @@ from biothings.utils.mongo import get_src_conn
 from biothings.utils.common import timesofar, get_random_string, sizeof_fmt
 from biothings.utils.hub_db import get_src_dump, get_src_build
 
-# see psutil cpu_percent() recommandation
-# this is in seconds, and provokes a blocking call, so keep it low
-CPU_PERCENT_WAIT_DELAY = 0.1
 
 def track(func):
     @wraps(func)
@@ -343,10 +340,11 @@ class JobManager(object):
         self.max_memory_usage = max_memory_usage
         self.avail_memory = int(psutil.virtual_memory().available)
         self._phub = None
-        self.clean_staled()
         self.auto_recycle = auto_recycle # active
         self.auto_recycle_setting = auto_recycle # keep setting if we need to restore it its orig value
         self.jobs = {} # all active jobs (thread/process)
+        self._pchildren = []
+        self.clean_staled()
 
     def stop(self,force=False,recycling=False,wait=1):
         @asyncio.coroutine
@@ -382,7 +380,7 @@ class JobManager(object):
             logger.warning("Wait %s seconds before killing queue processes" % wait)
             yield from asyncio.sleep(wait)
             logger.warning("Can't wait anymore, killing running processed in the queue !")
-            for proc in self.hub_process.children():
+            for proc in self.pchildren:
                 logger.warning("Killing %s" % proc)
                 proc.kill()
 
@@ -396,7 +394,7 @@ class JobManager(object):
 
     def clean_staled(self):
         # clean old/staled files
-        children_pids = [p.pid for p in self.hub_process.children()]
+        children_pids = [p.pid for p in self.pchildren]
         active_tids = [t.getName() for t in self.thread_queue._threads]
         pid_pat = re.compile(".*/(\d+)_.*\.pickle") # see track() for filename format
         for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
@@ -621,8 +619,14 @@ class JobManager(object):
         return self._phub
 
     @property
+    def pchildren(self):
+        if not self._pchildren:
+            self._pchildren = self.hub_process.children()
+        return self._pchildren
+
+    @property
     def hub_memory(self):
-        procs = [self.hub_process] + self.hub_process.children()
+        procs = [self.hub_process] + self.pchildren
         total_mem = 0
         for proc in procs:
             total_mem += proc.memory_info().rss
@@ -632,8 +636,7 @@ class JobManager(object):
         pids = {}
         try:
             pat = re.compile(".*/(\d+)_.*\.pickle") # see track() for filename format
-            pchildren = self.hub_process.children()
-            children_pids = [p.pid for p in pchildren]
+            children_pids = [p.pid for p in self.pchildren]
             for fn in glob.glob(os.path.join(config.RUN_DIR,"*.pickle")):
                 try:
                     pid = int(pat.findall(fn)[0].split("_")[0])
@@ -645,11 +648,11 @@ class JobManager(object):
                             # doesn't exist anymore (process is done and file was unlinked)
                             # just ignore go to next one
                             continue
-                        proc = pchildren[children_pids.index(pid)]
+                        proc = self.pchildren[children_pids.index(pid)]
 
                         worker["process"] = {
                                 "mem" : proc.memory_info().rss,
-                                "cpu" : proc.cpu_percent(CPU_PERCENT_WAIT_DELAY)
+                                "cpu" : proc.cpu_percent()
                                 }
                         pids[pid] = worker
                 except IndexError:
@@ -753,12 +756,19 @@ class JobManager(object):
 
     def get_process_summary(self):
         running_pids = self.get_pid_files()
-        pchildren = self.hub_process.children()
         res = {}
-        for child in pchildren:
+        for child in self.pchildren:
             mem = child.memory_info().rss
             pio = child.io_counters()
-            cpu = child.cpu_percent(CPU_PERCENT_WAIT_DELAY)
+            # TODO: cpu as reported here isn't reliable, the only to get something
+            # consistent to call cpu_percent() with a waiting time argument to integrate
+            # CPU activity over this time, but this is a blocking call and freeze the hub
+            # (an async implementation might possible though). Currently, pchildren is list
+            # set at init time where process object are stored, so subsequent cpu_percent()
+            # calls should report CPU activity since last call (between /job_manager & top()
+            # calls), but it constently return CPU > 100% even when no thread running (that
+            # could have been the explination but it's not).
+            cpu = child.cpu_percent()
             res[child.pid] = {
                     "memory" : {
                         "size" : child.memory_info().rss,
