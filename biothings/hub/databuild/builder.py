@@ -1112,7 +1112,7 @@ class BuilderManager(BaseManager):
                         if len(srels) != 1:
                             raise ValueError("Found different releases in sub-sources, expected only one common: %s" % repr(rels))
                         rel = rels[0]
-                        if rel != data["version"]:
+                        if data.get("version") and rel != data["version"]:
                             new["sources"][src_name] = {
                                     "old": {"version" : data["version"]},
                                     "new": {"version" : rel}
