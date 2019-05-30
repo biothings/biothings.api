@@ -13,8 +13,6 @@ class QueryTests(BiothingsTestCase):
     ''' Test against server specified in environment variable BT_HOST
         and BT_API or MyGene.info production server V3 by default '''
 
-    __test__ = True
-
     host = os.getenv("BT_HOST", "http://mygene.info")
     api = os.getenv("BT_API", "/v3")
 
@@ -36,6 +34,11 @@ class QueryTests(BiothingsTestCase):
         ''' KWARGS CTRL Format Msgpack '''
         res = self.request('query?q=__all__&size=1&format=msgpack').content
         self.msgpack_ok(res)
+
+    def test_11(self):
+        ''' HANDLE Unmatched Quotes'''
+        # TODO example:   "U2AF...
+        # self.query('"U2AF...', expect_hits=False)
 
 
 if __name__ == '__main__':

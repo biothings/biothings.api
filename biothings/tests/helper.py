@@ -70,7 +70,6 @@ class TornadoTestServerMixin(AsyncHTTPTestCase):
         Must appear first in subclass's inheritance list
         May override with customzied 'settings'
     '''
-    __test__ = False  # not to be used directly
 
     host = ''
 
@@ -102,7 +101,7 @@ class TornadoTestServerMixin(AsyncHTTPTestCase):
         async def call_blocking():
             return await self.io_loop.run_in_executor(None, partial_func, *args)
 
-        return self.io_loop.run_sync(call_blocking, timeout=5)
+        return self.io_loop.run_sync(call_blocking)
 
 
 class BiothingsTestCase(unittest.TestCase):
@@ -156,9 +155,9 @@ class BiothingsTestCase(unittest.TestCase):
         if method == 'GET':
             dic = self.request(endpoint, params=kwargs).json()
             if expect_hits:
-                assert dic.get('hits', [])
+                assert dic.get('hits', []), "No Hits"
             else:
-                assert dic.get('hits', None) == []
+                assert dic.get('hits', None) == [], f"Get {dic.get('hits')} instead."
             return dic
 
         if method == 'POST':
