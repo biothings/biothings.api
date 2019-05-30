@@ -41,8 +41,7 @@ if commit_hash or num_commits:
 install_requires = [
     'requests>=2.8.1',
     'tornado==5.1.1',
-    'elasticsearch==6.1.1',
-    'urllib3==1.22',    # set to 1.22 to satisfy both requests and elasticsearch requirements for urllib3
+    'elasticsearch==6.3.1',
     'gitpython==2.1.11'
 ]
 
@@ -71,8 +70,8 @@ hub_requires = [
     'networkx>=2.1',
     'jsonschema>=2.6.0',
     'pip',              # auto-install requirements from plugins
-    'pandas', # json with inf/nan and more to come
-    'yapf', # code reformatter, better results than autopep8
+    'pandas',  # json with inf/nan and more to come
+    'yapf',  # code reformatter, better results than autopep8
 ]
 
 # extra requirements for building docs
