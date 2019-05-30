@@ -1,5 +1,6 @@
-import requests, json, os, re
-from functools import wraps
+import json
+
+import requests
 
 
 def slack_msg(webhook, msg, color='warning'):
@@ -11,13 +12,10 @@ def slack_msg(webhook, msg, color='warning'):
             break
     # we use attachments so we can add colors
     params = {
-            "attachments": [
-                {
-                    "text": msg,
-                    "color" : color,
-                    }
-                ]
-            }
-    res = requests.post(webhook,json.dumps(params), headers=headers)
+        "attachments": [{
+            "text": msg,
+            "color" : color,
+        }]
+    }
+    res = requests.post(webhook, json.dumps(params), headers=headers)
     res.raise_for_status()
-

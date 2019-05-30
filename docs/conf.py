@@ -50,7 +50,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'BioThings SDK'
-copyright = u'2017, BioThings'
+copyright = u'2019, BioThings'
 author = u'BioThings team'
 
 # The version info for the project you're documenting, acts as replacement for

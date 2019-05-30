@@ -457,6 +457,8 @@ class FTPDumper(BaseDumper):
     def download(self,remotefile,localfile):
         self.prepare_local_folders(localfile)
         self.logger.debug("Downloading '%s' as '%s'" % (remotefile,localfile))
+        if self.need_prepare():
+            self.prepare_client()
         try:
             with open(localfile,"wb") as out_f:
                 self.client.retrbinary('RETR %s' % remotefile, out_f.write)
@@ -740,11 +742,12 @@ class FilesystemDumper(BaseDumper):
     This dumpers works locally and copy (or move) files to datasource folder
     """
 
-    FS_OP = "cp" # or 'mv' if file needs to be delete from original folder
+    FS_OP = "cp" # or 'mv' if file needs to be delete from original folder,
+                 # or 'ln' is a symlink should be created
 
     def prepare_client(self):
         """Check if 'cp' and 'mv' executable exists..."""
-        for cmd in ["cp","mv"]:
+        for cmd in ["cp","mv","ln"]:
             ret = os.system("type %s 2>&1 > /dev/null" % cmd)
             if not ret == 0:
                 raise DumperException("Can't find '%s' executable" % cmd)
@@ -767,7 +770,10 @@ class FilesystemDumper(BaseDumper):
 
     def download(self,remotefile,localfile):
         self.prepare_local_folders(localfile)
-        cmdline = "%s -f %s %s" % (self.__class__.FS_OP,remotefile, localfile)
+        if self.__class__.FS_OP == "ln":
+            cmdline = "rm -f %s && ln -s %s %s" % (localfile,remotefile, localfile)
+        else:
+            cmdline = "%s -f %s %s" % (self.__class__.FS_OP,remotefile, localfile)
         return_code = os.system(cmdline)
         if return_code == 0:
             self.logger.info("Success.")

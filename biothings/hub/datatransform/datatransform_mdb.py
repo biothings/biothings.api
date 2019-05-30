@@ -173,6 +173,9 @@ class DataTransformMDB(DataTransform):
                              the regular expression provided to this argument. By default,
                              this option is disabled.
         :type skip_w_regex: bool
+        :param skip_on_success: If True, documents where identifier conversion succeeds
+                                will be skipped in the final document list.
+        :type skip_on_success: bool
         :param idstruct_class: Override an internal data structure used by the this
                                module (advanced usage)
         :type idstruct_class: class
@@ -290,8 +293,9 @@ class DataTransformMDB(DataTransform):
                 else:
                     (hit_lst, miss_lst) = self.travel(input_type, output_type, miss_lst)
 
-                for doc in hit_lst:
-                    yield doc
+                if not self.skip_on_success:
+                    for doc in hit_lst:
+                        yield doc
 
         # Keep the misses if we do not skip on failure
         if not self.skip_on_failure:

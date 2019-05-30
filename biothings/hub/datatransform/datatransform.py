@@ -5,6 +5,7 @@ DataTransform Module
 """
 # pylint: disable=E0401, E0611
 import re
+from functools import wraps
 from biothings.utils.common import iter_n
 from biothings.utils.common import is_str
 from biothings.utils.loggers import get_logger
@@ -208,8 +209,8 @@ class DataTransform(object):
     debug = False
 
     def __init__(self, input_types, output_types, id_priority_list=[],
-                 skip_on_failure=False, skip_w_regex=None, idstruct_class=IDStruct,
-                 copy_from_doc=False, debug=False):
+                 skip_on_failure=False, skip_w_regex=None, skip_on_success=False,
+                 idstruct_class=IDStruct, copy_from_doc=False, debug=False):
         # pylint: disable=R0913, W0102
         """
         Initialize the keylookup object and precompute paths from the
@@ -240,9 +241,8 @@ class DataTransform(object):
         self.output_types = self._parse_output_types(output_types)
         self.id_priority_list = id_priority_list
 
-        if not isinstance(skip_on_failure, bool):
-            raise ValueError("skip_on_failure should be of type bool")
         self.skip_on_failure = skip_on_failure
+        self.skip_on_success = skip_on_success
 
         if skip_w_regex and not isinstance(skip_w_regex, str):
             raise ValueError('skip_w_regex must be a string')
@@ -332,6 +332,7 @@ class DataTransform(object):
             self.logger.debug("DataTransform Debug Mode:  {}".format(debug))
             self.debug = debug
 
+        @wraps(func)
         def wrapped_f(*args):
             """This is a wrapped function which will be called by the decorator method."""
             input_docs = func(*args)

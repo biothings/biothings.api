@@ -29,13 +29,14 @@
 
    * Create a version branch (no need for every micro versions):
         ```
-        git branch v0.3.x
+        git checkout -b 0.3.x
+        git push -u origin "0.3.x"
         ```
      Note: future version-specific bug-fixes (with increased micro versions) will go to this branch (possibly cherry-picked from `master` branch).
 
-   * Create a tag for each released version:
+   * Create a tag for each released version (with "v" prefix):
         ```
-        git tag -a "v0.3.0"
+        git tag -a "v0.3.0" -m "tagging v0.3.0 for release"
         ```
    * If everything looks good, push to the remote:
         ```
@@ -55,5 +56,5 @@
     ```
     MAJOR_VER=0
     MINOR_VER=4
-    MICRO_VER=dev
+    MICRO_VER="dev"
     ```

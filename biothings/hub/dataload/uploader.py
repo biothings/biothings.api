@@ -93,10 +93,9 @@ class BaseSourceUploader(object):
 
     keep_archive = 10 # number of archived collection to keep. Oldest get dropped first.
 
-    def __init__(self, db_conn_info, data_root, collection_name=None, log_folder=None, *args, **kwargs):
+    def __init__(self, db_conn_info, collection_name=None, log_folder=None, *args, **kwargs):
         """db_conn_info is a database connection info tuple (host,port) to fetch/store 
-        information about the datasource's state data_root is the root folder containing
-        all resources. It will generate its own data folder from this point"""
+        information about the datasource's state."""
         # non-pickable attributes (see __getattr__, prepare() and unprepare())
         self.init_state()
         self.db_conn_info = db_conn_info
@@ -107,7 +106,6 @@ class BaseSourceUploader(object):
         # note: "name" is always defined at class level so pickle knows
         # how to restore it
         self.main_source = self.__class__.main_source or self.__class__.name
-        self.src_root_folder=os.path.join(data_root, self.main_source)
         self.log_folder = log_folder or config.LOG_FOLDER
         self.logfile = None
         self.temp_collection_name = None
@@ -125,7 +123,7 @@ class BaseSourceUploader(object):
         return name
 
     @classmethod
-    def create(klass, db_conn_info, data_root, *args, **kwargs):
+    def create(klass, db_conn_info, *args, **kwargs):
         """
         Factory-like method, just return an instance of this uploader
         (used by SourceManager, may be overridden in sub-class to generate
@@ -136,7 +134,7 @@ class BaseSourceUploader(object):
         Instead of having actual class for each split collection, factory
         will generate them on-the-fly.
         """
-        return klass(db_conn_info, data_root, *args, **kwargs)
+        return klass(db_conn_info, *args, **kwargs)
 
     def init_state(self):
         self._state = {
@@ -229,8 +227,8 @@ class BaseSourceUploader(object):
             raise ResourceNotReady("No data folder found for resource '%s'" % self.name)
         if not force and not self.src_doc.get("download",{}).get("status") == "success":
             raise ResourceNotReady("No successful download found for resource '%s'" % self.name)
-        if not os.path.exists(self.src_root_folder):
-            raise ResourceNotReady("Data folder '%s' doesn't exist for resource '%s'" % (self.src_root_folder,self.name))
+        if not os.path.exists(self.data_folder):
+            raise ResourceNotReady("Data folder '%s' doesn't exist for resource '%s'" % (self.data_folder,self.name))
         job = self.src_doc.get("upload",{}).get("job",{}).get(self.name)
         if not force and job:
             raise ResourceNotReady("Resource '%s' is already being uploaded (job: %s)" % (self.name,job))
@@ -648,7 +646,7 @@ class UploaderManager(BaseSourceManager):
             return klass
 
     def create_instance(self,klass):
-        res = klass.create(db_conn_info=self.conn.address,data_root=config.DATA_ARCHIVE_ROOT)
+        res = klass.create(db_conn_info=self.conn.address)
         return res
 
     def register_classes(self,klasses):
