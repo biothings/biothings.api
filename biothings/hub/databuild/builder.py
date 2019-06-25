@@ -871,7 +871,7 @@ class BuilderManager(BaseManager):
         self.src_build_config = get_src_build_config()
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
-        self.default_builder_class = builder_class
+        self.default_builder_class = builder_class or DataBuilder
         self.builder_classes = {}
         self.poll_schedule = poll_schedule
         self.setup_log()
