@@ -45,17 +45,20 @@ class MongoDBEdge(DataTransformEdge):
         self.field = field
         self.weight = weight
         if check_index:
-            avail_idxs = {}
-            for idx in self.collection.list_indexes():
-                keys = idx["key"]
-                # this could be a composite index, multiple keys being part of the index
-                # we'll consider them as individually accessible, but I'm not sure how
-                # MongoDB deals with that => TODO check
-                for k in keys:
-                    avail_idxs[k] = True
-            if not self.lookup in avail_idxs:
-                raise ValueError("Field '%s' isn't indexed, this would " % self.lookup + \
-                        "result in very long datatransform process")
+            if self.collection_name in self.collection.database.collection_names():
+                avail_idxs = {}
+                for idx in self.collection.list_indexes():
+                    keys = idx["key"]
+                    # this could be a composite index, multiple keys being part of the index
+                    # we'll consider them as individually accessible, but I'm not sure how
+                    # MongoDB deals with that => TODO check
+                    for k in keys:
+                        avail_idxs[k] = True
+                if not self.lookup in avail_idxs:
+                    raise ValueError("Field '%s' isn't indexed, this would " % self.lookup + \
+                            "result in very long datatransform process")
+            else:
+                self.logger.warning("Collection '%s' doesn't exist, can't check indices" % self.collection_name)
 
     def init_state(self):
         self._state = {
