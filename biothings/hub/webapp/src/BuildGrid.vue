@@ -422,6 +422,7 @@
         getSourceList: function() {
             var self = this;
             this.loading();
+            self.sources = [];
             axios.get(axios.defaults.baseURL + '/sources')
             .then(response => {
                 $(response.data.result).each(function(i,e) {
