@@ -37,8 +37,11 @@ class QueryTests(BiothingsTestCase):
 
     def test_11(self):
         ''' HANDLE Unmatched Quotes'''
-        # TODO example:   "U2AF...
-        # self.query('"U2AF...', expect_hits=False)
+        # Sentry
+        # Issue 529121368
+        # Event 922fc99638cb4987bccbfd30c914ff03
+        _q = 'query?q=c("ZNF398", "U2AF...'
+        self.request(_q, expect_status=400)
 
 
 if __name__ == '__main__':
