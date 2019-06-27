@@ -75,9 +75,9 @@ Once downloaded, the image can be loaded into the server:
   $ docker image load < biothings_studio_latest.docker
   $ docker image list
   REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
-  biothings_studio    0.1e                742a8c502280        2 months ago        1.81 GB
+  biothings_studio    0.1f                742a8c502280        2 months ago        1.81 GB
 
-Notice the value for *TAG*, we'll need it to run the container (here, ``0.1e``)
+Notice the value for *TAG*, we'll need it to run the container (here, ``0.1f``)
 
 A **BioThings Studio** instance expose several services on different ports:
 
@@ -94,15 +94,16 @@ having to enter the container:
 
 .. code:: bash
 
-  $ docker run --name studio -p 8080:8080 -p 7022:7022 -p 7080:7080 -p 9200:9200 -p 27017:27017 -p 8000:8000 -p 9000:9000 -d biothings_studio:0.1e
+  $ docker run --name studio -p 8080:8080 -p 7022:7022 -p 7080:7080 -p 9200:9200 -p 27017:27017 -p 8000:8000 -p 9000:9000 -d biothings_studio:0.1f
 
-.. note:: we need to add the release number after the image name: biothings_studio:**0.1e**. Should you use another release (including unstable releases,
+.. note:: we need to add the release number after the image name: biothings_studio:**0.1f**. Should you use another release (including unstable releases,
    tagged as ``master``) you would need to adjust this parameter accordingly.
 
 .. note:: Biothings Studio and the Hub are not designed to be publicly accessible. Those ports should **not** be exposed. When
    accessing the Studio and any of these ports, SSH tunneling can be used to safely access the services from outside.
-   Ex: ``ssh -L 7080:localhost:7080 -L 8080:localhost:8080 user@mydockerserver`` will expose the web application and
-   the REST API ports to your computer, so you can access the webapp using http://localhost:8080 and the API using http://localhost:7080.
+   Ex: ``ssh -L 7080:localhost:7080 -L 8080:localhost:8080 user@mydockerserver`` will expose the web application,
+   the REST API, Hub SSH and Cerebro app ports  to your computer, so you can access the webapp using http://localhost:8080, the API using http://localhost:7080,
+   http://localhost:9000 for Cerebro, and directly type ``ssh -p 7022 biothings@localhost`` to access Hub's internals via the console.
    See https://www.howtogeek.com/168145/how-to-use-ssh-tunneling for more
 
 We can follow the starting sequence using ``docker logs`` command:
@@ -114,6 +115,8 @@ We can follow the starting sequence using ``docker logs`` command:
   tcp        0      0 127.0.0.1:27017         0.0.0.0:*               LISTEN      -
   * Starting Elasticsearch Server
   ...
+  Waiting for cerebro
+  ...
   now run webapp
   not interactive
 
@@ -121,7 +124,7 @@ Please refer `Filesystem overview <studio_guide.html#filesystem-overview>`_ and 
 more details about Studio's internals.
 
 By default, the studio will auto-update its source code to the latest available and install all required dependencies. This behavior can be skipped
-by adding ``no-update`` at the end of the command line.
+by adding ``no-update`` at the end of the command line of ``docker run ...``.
 
 We can now access **BioThings Studio** using the dedicated web application (see `webapp overview <studio_guide.html#overview-of-biothings-studio-web-application>`_).
 
@@ -182,8 +185,8 @@ This folder must be located in the plugins directory (by default ``/data/biothin
 reloads itself accordingly to register data plugins. Another way to declare such plugin is to register a github repository,
 containing everything useful for the datasource. This is what we'll do in the following section.
 
-.. note:: whether the plugin comes from a github repository or directly found in the plugins directory doesn't really matter. In the end, the code
-   will be found that same plugins directory, whether it comes from a ``git clone`` command while registeting the github URL or whether it comes
+.. note:: Whether the plugin comes from a github repository or directly found in the plugins directory doesn't really matter. In the end, the code
+   will be found in that same ``plugins`` directory, whether it comes from a ``git clone`` command while registering the github URL or whether it comes
    from folder and files manually created in that location. It's however easier, when developing a plugin, to directly work on local files first
    so we don't have to regurlarly update the plugin code (``git pull``) from the webapp, to fetch the latest code. That said, since the plugin
    is already defined in github in our case, we'll use the github repo registration method.
@@ -313,8 +316,22 @@ In order to do so, click on `Mapping` tab, then click on |inspectlabelicon|.
 .. |inspectlabelicon| image:: ../_static/inspectlabelicon.png
    :width: 75px
 
-We're asked where the **Hub** can find the data to inspect. Since we successfully uploaded the data, we now have a Mongo collection so we can
-directly use this. Click on "OK" to let the **Hub** work and generate a mapping for us.
+We can inspect the data for different purposes:
+
+ * **Mode**
+   - ``type``: inspection will report any types found in the collection, giving detailed information about the structure
+     of documents coming from the parser. Note results aren't available from the webapp, only in MongoDB.
+   - ``stats``: same as type but gives numbers (count) for each structures and types found. Same as previous, results aren't available
+     in the webapp yet.
+   - ``mapping``: inspect the date types and suggest an ElasticSearch mapping. Will report any error or types incompatible with ES.
+
+Here we'll stick to mode ``mapping`` to generate that mapping. There are other options used to explore the data to inspect:
+
+ * **Limit**: limit the inspected documents.
+ * **Sample**: randomize the documents to inspect (1.0 = consider all documents, 0.0 = skip all documents, 0.5 = consider every other documents)
+
+The last two options can be used to reduce the inspection time of huge data collection, or you're absolutely sure the same structure is returned
+for any documents output from the parser.
 
 .. image:: ../_static/inspectmenu.png
    :width: 100%
@@ -327,7 +344,8 @@ Since the collection is very small, inspection is fast, you should have a mappin
 .. _fieldbydefault:
 
 For each field highlighted in blue, you can decide whether you want the field to be searchable or not, and whether the field should be searched
-by default when querying the API. Let's click on "gene" field and make it searched by default.
+by default when querying the API. You can also change the type for that field, or even switch to "advanced mode" and specify your own set of indexing rules.
+Let's click on "gene" field and make it searched by default.
 
 .. image:: ../_static/genefield.png
    :width: 100%

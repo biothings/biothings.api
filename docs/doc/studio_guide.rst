@@ -152,8 +152,23 @@ shows a summary of current data recent updates. For now, it's pretty quiet since
 
 .. image:: ../_static/homeempty.png
 
-Let's have a quick overview of the different elements accessible through the webapp. At the top, different tabs give
-access to the main steps involved in building a BioThings API. We'll get into those in more details while we create our
+Let's have a quick overview of the different elements accessible through the webapp. On the top left is the connection widget.
+By default, **BioThings Studio** webapp will connect to the hub API through port 7080, the one running with docker. But the webapp
+is a static web page so you can access any other Hub API by configuring a new connection:
+
+.. image:: ../_static/connectionlist.png
+
+Enter the Hub API URL, ``http://<host>:<port>`` (you can omit ``http://``, the webapp will use that scheme by default)
+
+.. image:: ../_static/connectioncreate.png
+
+The new connection is now listed and can be accessed quickly later simply by selecting it. Note the connection can be deleted with the "trash" icon,
+but cannot be edited.
+
+.. image:: ../_static/connectionlist2.png
+
+Following are several tabs giving access to the main steps involved in building a BioThings API.
+We'll get into those in more details while we create our
 new API. On the right, we have different information about jobs and resources:
 
 .. figure:: ../_static/commands.png
@@ -286,5 +301,10 @@ take an filename as input, it should select the file(s) to parse.
     - ``ignore`` will skip any duplicates, only the first one found will be store
     - ``merge`` will merge existing document with the duplicated one. Refer to ``biothings.hub.dataload.storage.MergerStorage`` class for more.
 
-.. note:: a fully implemented data plugin is available at https://github.com/sirloon/mvcgi as an example.
+  * *parallelizer* points to a ``module:function_name`` that can be used when the uploader can be parallelized. If multiple input files exist, using the
+    exact same parser, the uploader can be parallelized using that option. The parser should take an input file as parameter, not a path to a folder. The parallizer
+    function should return a list of tuples, where each tuple corresponds to the list of input parameters for the parser.
+
+.. note:: Please see https://github.com/sirloon/mvcgi for a simple plugin definition. https://github.com/sirloon/gwascatalog will show how to use
+the ``release`` key and https://github.com/sirloon/FIRE will demonstrate the parallelization in the uploader section.
 
