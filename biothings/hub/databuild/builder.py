@@ -1016,6 +1016,27 @@ class BuilderManager(BaseManager):
             self.register_builder(conf["_id"])
         self.find_builder_classes()
 
+    def resolve_builder_class(self,klass):
+        """
+        Resolve class/partial definition to (obj,"type","mod.class")
+        where names (class name, module, docstring, etc...) can
+        directly be accessed whether it's a standard class or not
+        """
+        obj = klass
+        if type(klass) == partial:
+            assert type(klass.func) == type
+            btype = "partial"
+            obj = klass.func
+        elif type(klass) == type:
+            btype = "class"
+        else:
+            raise TypeError("Unknown type for builder %s" % repr(klass))
+        modstr = obj.__module__
+        classstr = obj.__name__
+        classpathstr = "%s.%s" % (modstr,classstr)
+
+        return (obj,btype,classpathstr)
+
     def find_builder_classes(self):
         """
         Find all available build class:
@@ -1033,21 +1054,11 @@ class BuilderManager(BaseManager):
             pass
         for klass in find_classes_subclassing(mods,DataBuilder):
             bclasses.add(klass)
+
         for klass in bclasses:
             try:
-                obj = klass
-                if type(klass) == partial:
-                    assert type(klass.func) == type
-                    btype = "partial"
-                    obj = klass.func
-                elif type(klass) == type:
-                    btype = "class"
-                else:
-                    raise TypeError("Unknown type for builder %s" % repr(klass))
-                modstr = obj.__module__
-                classstr = obj.__name__
+                obj,btype,classpathstr = self.resolve_builder_class(klass)
                 helpstr = obj.__doc__ and " ".join(map(str.strip, obj.__doc__.splitlines()))
-                classpathstr = "%s.%s" % (modstr,classstr)
                 self.builder_classes[classpathstr] = {
                     "desc" : helpstr,
                     "type" : btype,
@@ -1264,7 +1275,7 @@ class BuilderManager(BaseManager):
 
     def upsert_build_conf(self, name, doc_type, sources, roots, builder_class, params, archived):
         col = get_src_build_config()
-        builder_class = builder_class or "%s.%s" % (self.default_builder_class.__module__,self.default_builder_class.__name__)
+        builder_class = builder_class or self.resolve_builder_class(self.default_builder_class)[2] # class path string
         doc = {"_id" : name, "name" : name, "doc_type" : doc_type,
                "sources" : sources, "root" : roots,
                "builder_class" : builder_class}
