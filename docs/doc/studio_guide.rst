@@ -157,6 +157,7 @@ By default, **BioThings Studio** webapp will connect to the hub API through port
 is a static web page so you can access any other Hub API by configuring a new connection:
 
 .. image:: ../_static/connectionlist.png
+   :width: 250px
 
 Enter the Hub API URL, ``http://<host>:<port>`` (you can omit ``http://``, the webapp will use that scheme by default)
 
