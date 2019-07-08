@@ -32,6 +32,8 @@ class BaseDumper(object):
 
     # Max parallel downloads (None = no limit).
     MAX_PARALLEL_DUMP = None
+    # waiting time between download (0.0 = no waiting)
+    SLEEP_BETWEEN_DOWNLOAD = 0.0
 
     # keep all release (True) or keep only the latest ?
     ARCHIVE = True
@@ -378,6 +380,7 @@ class BaseDumper(object):
         self.logger.info("%d file(s) to download" % len(self.to_dump))
         # should downloads be throttled ?
         max_dump = self.__class__.MAX_PARALLEL_DUMP and asyncio.Semaphore(self.__class__.MAX_PARALLEL_DUMP)
+        courtesy_wait = self.__class__.SLEEP_BETWEEN_DOWNLOAD
         got_error = None
         jobs = []
         state = self.unprepare()
@@ -401,7 +404,8 @@ class BaseDumper(object):
             pinfo["description"] = remote
             if max_dump:
                 yield from max_dump.acquire()
-                #self.logger.info("Throttling parallelized downloads: %s" % max_dump)
+            if courtesy_wait:
+                yield from asyncio.sleep(courtesy_wait)
             job = yield from job_manager.defer_to_process(pinfo, partial(self.download,remote,local))
             job.add_done_callback(done)
             jobs.append(job)
