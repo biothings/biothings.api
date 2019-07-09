@@ -100,9 +100,13 @@ class BiothingsDumper(HTTPDumper):
         for version_field in ["app_version","standalone_version","biothings_version"]:
             VERSION_FIELD = version_field.upper()
             version = build_meta.get(version_field)
+            # some releases use dict (most recent) some use string
+            if isinstance(version,dict):
+                version = version["branch"]
             if type(version) != list:
                 version = [version]
-            # remove hash from versions
+            # remove hash from versions (only useful when version is a string,
+            # not a dict, see above
             version = [re.sub("( \[.*\])","",v) for v in version]
             version = set(version)
             if version == set([None]):
