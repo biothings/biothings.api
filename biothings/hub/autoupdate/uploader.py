@@ -47,6 +47,10 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         return self._syncer_func
 
     @asyncio.coroutine
+    def load(self, *args, **kwargs):
+        return super().load(steps=["data"],*args,**kwargs)
+
+    @asyncio.coroutine
     def update_data(self, batch_size, job_manager):
         """
         Look in data_folder and either restore a snapshot to ES
