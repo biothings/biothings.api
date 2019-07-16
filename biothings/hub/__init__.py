@@ -158,6 +158,15 @@ def start_ssh_server(loop,name,passwords,keys=['bin/ssh_host_key'],shell=None,
                                  server_host_keys=keys)
 
 
+class HubCommands(OrderedDict):
+
+    def __setitem__(self,k,v):
+        logging.error("k %s" % k)
+        if k in self:
+            raise ValueError("Command '%s' already defined" % k)
+        super().__setitem__(k,v)
+
+
 class HubServer(object):
 
     DEFAULT_FEATURES = ["job","dump","upload","dataplugin","source",
@@ -456,7 +465,7 @@ class HubServer(object):
         Configure hub commands according to available managers
         """
         assert self.managers, "No managers configured"
-        self.commands = OrderedDict()
+        self.commands = HubCommands()
         self.commands["status"] = CommandDefinition(command=partial(status,self.managers),tracked=False)
         # getting info
         if self.managers.get("source_manager"):
@@ -635,8 +644,6 @@ class HubServer(object):
 
 class HubSSHServer(asyncssh.SSHServer):
 
-    COMMANDS = OrderedDict() # public hub commands
-    EXTRA_NS = {} # extra commands, kind-of of hidden/private
     PASSWORDS = {}
     SHELL = None
 
