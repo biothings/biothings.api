@@ -119,6 +119,32 @@
 
         <event-alert></event-alert>
 
+        <div class="ui mini grey bottom fixed inverted menu">
+            <div class="left menu">
+              <a class="clickable terminal item">
+                  <i class="terminal icon"></i>
+                  Terminal
+              </a>
+            </div>
+            <div class="right menu">
+              <a class="clickable logs item">
+                  <i class="bell outline icon"></i>
+                  Logs
+              </a>
+          </div>
+
+          <div class="ui terminal popup top left transition hidden" style="width:50%;">
+              <div class="ui inverted segment">
+                  terminal
+              </div>
+          </div>
+
+          <div class="ui logs popup top transition hidden">
+              <log-viewer></log-viewer>
+          </div>
+
+      </div>
+
       </div>
     </template>
 
@@ -142,7 +168,7 @@
     import _ from 'lodash';
 
 
-    const STUDIO_VERSION = "0.1f";
+    const STUDIO_VERSION = "0.2a";
 
     function timesofar(value) {
         let hours =  parseInt(Math.floor(value / 3600));
@@ -235,6 +261,7 @@
     import EventMessages from './EventMessages.vue';
     import EventAlert from './EventAlert.vue';
     import ChooseHub from './ChooseHub.vue';
+    import LogViewer from './LogViewer.vue';
 
     const routes = [
         { path: '/', component: Status },
@@ -254,7 +281,7 @@
     export default {
         name: 'app',
         router: router,
-        components: { JobSummary, EventMessages, EventAlert, ChooseHub, Loader},
+        components: { JobSummary, EventMessages, EventAlert, ChooseHub, Loader, LogViewer},
         mounted () {
             $('#conn')
             .popup({
@@ -264,13 +291,29 @@
             $('.ui.sticky')
             .sticky({
                 context: '#page_content'
-            })
-            ;
+            });
+            $('.ui.utilssticky')
+            .sticky({
+                context: '#app'
+            });
             var last = Vue.localStorage.get('last_conn');
             this.conn = this.default_conn;
             if(last) {
                 this.conn = JSON.parse(last);
             }
+            $('.terminal.item').popup({
+                popup: $('.terminal.popup'),
+                on: 'click' ,
+                closable: false,
+                position: 'top left',
+            });
+            $('.logs.item').popup({
+                popup: $('.logs.popup'),
+                on: 'click' ,
+                closable: false,
+                position: 'top left',
+							  lastResort: 'top right',
+            });
             this.setupConnection();
             this.skip_studio_compat = Vue.localStorage.get("skip_studio_compat");
         },
@@ -357,7 +400,10 @@
                 return compat;
             },
             dispatchEvent(evt) {
-                if(evt.obj) {
+                if(evt.op == "log") {
+                    bus.$emit("log",evt);
+                }
+                else if(evt.obj) {
                     // is it a structured event (jsonifiable) or a standard string event
                     var invalid_json = false;
                     if(evt.data && evt.data.msg.startsWith("{") && evt.data.msg.endsWith("}")) {
@@ -661,6 +707,7 @@
             var self = this;
             axios.get(url)
             .then(response => {
+                console.log(response.data.result);
                 this.checkCompat(response.data.result);
                 this.conn = response.data.result;
                 this.conn["url"] = url;
@@ -736,6 +783,17 @@
             Vue.localStorage.set("skip_studio_compat",skip.toString());
             this.skip_studio_compat = skip;
 
+        },
+        showTerminal(event) {
+            console.log(event);
+            $('.terminal.icon').popup({
+                popup: $('.terminal.popup'),
+                on: 'click' ,
+                lastResort: 'top right',
+            });
+        },
+        showLogs(event) {
+            console.log(event);
         }
     }
 }
@@ -826,5 +884,4 @@
         margin-left: 1em !important;
         margin-right: 2em !important;
     }
-
 </style>
