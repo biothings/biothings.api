@@ -478,7 +478,12 @@
                     var when = compat[i]["when"];
                     for(var k in when) {
                         if(data[k]) {
-                            var vers = data[k].split(" ").map(function(e) { var r = /\[(.*)\]/.exec(e); return r && r[1] || e });
+                            try {
+                                var vers = data[k].split(" ").map(function(e) { var r = /\[(.*)\]/.exec(e); return r && r[1] || e });
+                            } catch (e) {
+                                // object-like
+                                var vers = [data[k]["branch"],data[k]["commit"],data[k]["date"]];
+                            }
                             var branch = vers[0];
                             switch(vers.length) {
                                 case 2:

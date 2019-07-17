@@ -15,6 +15,6 @@
     "when" : {
       "biothings_version" : {"branch" : "master"}
     },
-    "requires" : null
+    "requires" : "0.2a"
   }
 ]
