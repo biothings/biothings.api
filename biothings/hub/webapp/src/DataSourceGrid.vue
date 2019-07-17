@@ -17,7 +17,7 @@
                     </div>
                 </div>
                 <div id="data-source-grid" class="ui grid">
-                    <div class="four wide column" v-for="source in orderBy(sources, 'name')">
+                    <div class="four wide column" v-for="source in orderedSources">
                         <data-source v-bind:psource="source"></data-source>
                     </div>
                 </div>
@@ -90,6 +90,11 @@ export default {
         return  {
             sources: [],
             errors: [],
+        }
+    },
+    computed: {
+        orderedSources: function() {
+            return _.orderBy(this.sources,'name');
         }
     },
     components: { DataSource, },

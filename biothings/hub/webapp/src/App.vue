@@ -139,6 +139,8 @@
     Vue.use(VueRouter)
 
     import bus from './bus.js';
+    import _ from 'lodash';
+
 
     const STUDIO_VERSION = "0.1f";
 

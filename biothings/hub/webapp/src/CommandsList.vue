@@ -7,7 +7,7 @@
             </div>
         </div>
         <table class="ui compact celled table" v-if="Object.keys(commands).length">
-            <tr v-for="command in orderBy(Object.values(commands),'id',-1)"
+            <tr v-for="command in orderedCommands"
                 v-bind:class="[ command.is_done & command.failed ? 'negative' : '', command.is_done & !command.failed ? 'positive': '' ,'nowrap']"
                 >
                 <td>
@@ -52,6 +52,11 @@ export default {
     return  {
         allcmds : false,
         commands : {},
+    }
+  },
+  computed: {
+    orderedCommands: function() {
+      return _.orderBy(Object.values(this.commands),'id',-1);
     }
   },
   watch: {
