@@ -1,8 +1,8 @@
 <template>
     <tr class="record">
-        <td class="ts">{{ts}}</td>
-        <td class="logger">{{record.logger}}</td>
         <td :class="level">{{record.msg}}</td>
+        <td class="logger">{{record.logger}}</td>
+        <td class="ts">{{ts}}</td>
     </tr>
 </template>
 
@@ -29,6 +29,6 @@ export default {
 .logger {color:bisque;}
 .level-info {color: white;}
 .level-debug {color: lightgrey;}
-.level-warn {color: orange;}
+.level-warning {color: orange;}
 .level-error {color: red;}
 </style>

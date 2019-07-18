@@ -135,7 +135,7 @@
 
           <div class="ui terminal popup top left transition hidden" style="width:50%;">
               <div class="ui inverted segment">
-                  terminal
+                  <terminal></terminal>
               </div>
           </div>
 
@@ -262,6 +262,7 @@
     import EventAlert from './EventAlert.vue';
     import ChooseHub from './ChooseHub.vue';
     import LogViewer from './LogViewer.vue';
+    import Terminal from './Terminal.vue';
 
     const routes = [
         { path: '/', component: Status },
@@ -281,7 +282,8 @@
     export default {
         name: 'app',
         router: router,
-        components: { JobSummary, EventMessages, EventAlert, ChooseHub, Loader, LogViewer},
+        components: { JobSummary, EventMessages, EventAlert,
+                      ChooseHub, Loader, LogViewer, Terminal},
         mounted () {
             $('#conn')
             .popup({
@@ -304,6 +306,10 @@
             $('.terminal.item').popup({
                 popup: $('.terminal.popup'),
                 on: 'click' ,
+                // ready to type a command
+                onVisible: function() {
+                    $("#termcommand").focus();
+                },
                 closable: false,
                 position: 'top left',
             });
@@ -402,6 +408,9 @@
             dispatchEvent(evt) {
                 if(evt.op == "log") {
                     bus.$emit("log",evt);
+                }
+                else if(evt.op == "shell") {
+                    bus.$emit("shell",evt);
                 }
                 else if(evt.obj) {
                     // is it a structured event (jsonifiable) or a standard string event

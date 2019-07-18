@@ -1,8 +1,10 @@
 <template>
-    <div id="logviewer" class="ui inverted segment" style="overflow: auto; width: 50vw; max-height: 33vh; max-width: 50vw;">
+    <div id="logviewer" class="ui inverted segment" style="overflow: auto; width: 45vw; max-height: 33vh; max-width: 45vw;">
         <table class="ui single line super compact inverted table" v-if="records.length">
             <tbody>
                 <log-record v-for="record of records" v-bind:record="record"></log-record>
+                <!-- empty record to move real ones above scrollbar -->
+                <log-record v-bind:record="{'msg':'','logger':'','ts':'','level':''}"></log-record>
             </tbody>
         </table>
         <div v-else>
