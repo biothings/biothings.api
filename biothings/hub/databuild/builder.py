@@ -1135,7 +1135,7 @@ class BuilderManager(BaseManager):
                                         "downloaded_at" : srcd["download"].get("started_at")}
                                 }
                 except Exception as e:
-                    self.logger.exception("Can't check what's new for source '%s': %s" % (src_name,e))
+                    self.logger.warning("Can't check what's new for source '%s': %s" % (src_name,e))
             return {build_name : new}
 
         if old is None and build_name is None:

@@ -19,7 +19,7 @@ from biothings.utils.common import timesofar, sizeof_fmt
 import biothings.utils.aws as aws
 from biothings.utils.hub_db import get_cmd, get_src_dump, get_src_build, get_src_build_config, \
                                    get_last_command, backup, restore
-from biothings.utils.loggers import get_logger
+from biothings.utils.loggers import get_logger, ShellLogger
 
 # useful variables to bring into hub namespace
 pending = "pending"
@@ -60,6 +60,7 @@ class HubShell(InteractiveShell):
         self.hidden = {} # not returned by help()
         self.origout = sys.stdout
         self.buf = io.StringIO()
+        self.shellog = ShellLogger(name="shell")
         # there should be only one shell instance (todo: singleton)
         self.__class__.cmd = get_cmd()
         self.__class__.set_command_counter()
@@ -291,6 +292,7 @@ class HubShell(InteractiveShell):
 
     def eval(self, line, return_cmdinfo=False):
         line = line.strip()
+        self.shellog.input(line)
         origline = line # keep what's been originally entered
         # poor man's singleton...
         if line in [j["cmd"] for j in self.__class__.launched_commands.values() if not j.get("is_done")]:

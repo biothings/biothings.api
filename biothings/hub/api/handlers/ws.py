@@ -15,18 +15,21 @@ class WebSocketConnection(sockjs.tornado.SockJSConnection):
 
     clients = set()
 
-    def __init__(self,session,listener):
+    def __init__(self,session,listeners):
         """
         SockJSConnection.__init__() takes only a session as argument, and there's
         no way to pass custom settings. In order to use that class, we need to use partial
-        to partially init the instance with 'listener' and let the rest use the 'session'
+        to partially init the instance with 'listeners' and let the rest use the 'session'
         parameter:
-          pconn = partial(WebSocketConnection,listener=listener)
+          pconn = partial(WebSocketConnection,listeners=listeners)
           ws_router = sockjs.tornado.SockJSRouter(pconn,"/path")
         """
-        self.listener = listener
-        # propagate connection so listener can access it and trigger message sending
-        self.listener.socket = self
+        if type(listeners) != list:
+            listeners = [listeners]
+        self.listeners = listeners
+        # propagate connection so listeners can access it and trigger message sending
+        for listener in self.listeners:
+            listener.socket = self
         super(WebSocketConnection,self).__init__(session)
 
     def publish(self, message):
@@ -73,4 +76,31 @@ class HubDBListener(ChangeListener):
     def read(self, event):
         # self.socket is set while initalizing the websocket connection
         self.socket.publish(event)
+
+
+class LogListener(ChangeListener):
+    # IMPORTANT: no logging calls here, or infinite loop
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.socket = None
+    def read(self,event):
+        if self.socket:
+            # make sure there's a loop in current thread
+            try:
+                logging.disable(logging.CRITICAL)
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            finally:
+                logging.disable(logging.NOTSET)
+        
+            try:
+                self.socket.publish(event)
+            except Exception as e:
+                # can't log anything there, but we don't want a problem with
+                # issuing the log statements through the websocket to cause
+                # any error in the caller
+                print(e)
+                pass
 

@@ -5,7 +5,7 @@ from functools import partial
 import logging
 
 from biothings import config
-from biothings.utils.loggers import get_logger
+from biothings.utils.loggers import get_logger, WSLogHandler, WSShellHandler, ShellLogger
 from biothings.utils.hub import HubShell, HubReloader, CommandDefinition, pending, \
                                 AlreadyRunningException, CommandError
 from biothings.utils.jsondiff import make as jsondiff
@@ -170,7 +170,8 @@ class HubCommands(OrderedDict):
 class HubServer(object):
 
     DEFAULT_FEATURES = ["job","dump","upload","dataplugin","source",
-                        "build","diff","index","inspect","sync","api"]
+                        "build","diff","index","inspect","sync","api",
+                        "terminal"]
     DEFAULT_MANAGERS_ARGS = {"upload" : {"poll_schedule" : "* * * * * */10"}}
     DEFAULT_RELOADER_CONFIG = {"folders": None, # will use default one
                                "managers" : ["source_manager","assistant_manager"],
@@ -271,11 +272,25 @@ class HubServer(object):
             import biothings.hub.api.handlers.ws as ws
             import sockjs.tornado
             from biothings.utils.hub_db import ChangeWatcher
-            listener = ws.HubDBListener()
-            ChangeWatcher.add(listener)
+            # monitor change in database to report activity in webapp
+            self.db_listener = ws.HubDBListener()
+            ChangeWatcher.add(self.db_listener)
             ChangeWatcher.publish()
-            self.logger.info("Starting SockJS router")
-            ws_router = sockjs.tornado.SockJSRouter(partial(ws.WebSocketConnection,listener=listener), '/ws')
+            self.log_listener = ws.LogListener()
+            # push log statements to the webapp
+            root_logger = logging.getLogger() # careful, asyncio logger will trigger log statement while in the handler
+                                              # (ie. infinite loop), root logger not recommended) 
+            root_logger.addHandler(WSLogHandler(self.log_listener))
+            listeners = [self.db_listener,self.log_listener]
+
+            if "terminal" in self.features:
+                shell_listener = self.configure_terminal()
+                listeners.append(shell_listener)
+
+            ws_router = sockjs.tornado.SockJSRouter(
+                    partial(ws.WebSocketConnection,
+                        listeners=listeners),
+                    '/ws')
             self.routes.extend(ws_router.urls)
 
         if self.reloader_config != False:
@@ -329,6 +344,17 @@ class HubServer(object):
         # mix remaining
         args.update(self.managers_custom_args.get(feat,{}))
         return args
+
+    def configure_terminal_manager(self):
+        pass # placeholder, there's no manager for this feature
+    def configure_terminal(self):
+        # shell logger/listener to communicate between webapp and hub ssh console
+        import biothings.hub.api.handlers.ws as ws
+        shell_listener = ws.LogListener()
+        shell_logger = logging.getLogger("shell")
+        assert isinstance(shell_logger,ShellLogger), "shell_logger isn't properly set"
+        shell_logger.addHandler(WSShellHandler(shell_listener))
+        return shell_listener
 
     def configure_job_manager(self):
         import asyncio
@@ -697,8 +723,12 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         return True
 
     def session_started(self):
-        self._chan.write('\nWelcome to %s, %s!\n' % (self.name,self._chan.get_extra_info('username')))
-        self._chan.write('hub> ')
+        welcome = ('\nWelcome to %s, %s!\n' % (self.name,self._chan.get_extra_info('username')))
+        self.shell.shellog.output(welcome)
+        self._chan.write(welcome)
+        prompt = 'hub> '
+        self.shell.shellog.output(prompt)
+        self._chan.write(prompt)
 
     def data_received(self, data, datatype):
         self._input += data
@@ -710,7 +740,9 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
                 outs = [out for out in self.shell.eval(line) if out]
                 # trailing \n if not already there
                 if outs:
-                    self._chan.write("\n".join(outs).strip("\n") + "\n")
+                    strout = "\n".join(outs).strip("\n") + "\n"
+                    self._chan.write(strout)
+                    self.shell.shellog.output(strout)
             except AlreadyRunningException as e:
                 self._chan.write("AlreadyRunningException: %s" % e)
             except CommandError as e:

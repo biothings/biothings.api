@@ -126,3 +126,69 @@ class EventRecorder(logging.StreamHandler):
                 logging.error("Couldn't record event: %s" % e)
 
 
+class WSLogHandler(logging.StreamHandler):
+    """
+    when listener is a bt.hub.api.handlers.ws.LogListener instance,
+    log statements are propagated through existing websocket
+    """
+
+    def __init__(self,listener):
+        super().__init__()
+        self.listener = listener
+        self.count = 0
+
+    def payload(self, record):
+        msg = self.format(record)
+        return {
+                "_id" : self.count,
+                "op" : "log",
+                "msg" : msg,
+                "logger" : record.name,
+                "level" : record.levelname,
+                "ts" : datetime.datetime.now().isoformat(),
+                }
+
+    def emit(self,record):
+        self.count += 1
+        self.listener.read(self.payload(record))
+
+class WSShellHandler(WSLogHandler):
+    """
+    when listener is a bt.hub.api.handlers.ws.LogListener instance,
+    log statements are propagated through existing websocket
+    """
+
+    def payload(self, record):
+        print("onela %s" % dir(record))
+        types = {
+            ShellLogger.INPUT : "input",
+            ShellLogger.OUTPUT : "output"
+        }
+        return  {
+                "_id" : self.count,
+                "op" : "shell",
+                "cmd" : record.msg,
+                "type" : types.get(record.levelno,"unknown"),
+                "ts" : datetime.datetime.now().isoformat(),
+                }
+
+
+class ShellLogger(logging.Logger):
+    """
+    Custom "levels" for input going to the shell
+    and output coming from it (just for naming)
+    """
+
+    OUTPUT = 1000 
+    INPUT = 1001
+
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.manager.loggerDict[self.name] = self
+
+    def input(self, msg, *args, **kwargs):
+        self._log(self.__class__.INPUT, msg, args, **kwargs)
+
+    def output(self, msg, *args, **kwargs):
+        self._log(self.__class__.OUTPUT, msg, args, **kwargs)
+
