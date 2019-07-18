@@ -208,12 +208,13 @@ def backup(folder=".",archive=None):
     dumpobj(dump,path)
     return path
 
-def restore(db,archive,drop=False):
+def restore(archive,drop=False):
     """Restore database from given archive. If drop is True, then delete existing collections"""
     data = loadobj(archive)
+    db = get_src_dump().database
     for colname in data:
         docs = data[colname]
-        col = b[colname]
+        col = db[colname]
         if drop:
             # we don't have a drop command but we can remove all docs
             col.remove({})
