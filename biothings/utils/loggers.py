@@ -159,7 +159,6 @@ class WSShellHandler(WSLogHandler):
     """
 
     def payload(self, record):
-        print("onela %s" % dir(record))
         types = {
             ShellLogger.INPUT : "input",
             ShellLogger.OUTPUT : "output"

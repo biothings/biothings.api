@@ -40,6 +40,8 @@ def jsonreadify(cmd):
 
 class AlreadyRunningException(Exception):pass
 class CommandError(Exception):pass
+class NoSuchCommand(Exception):pass
+class CommandNotAllowed(Exception):pass
 
 class CommandInformation(dict): pass
 class CommandDefinition(dict): pass
@@ -290,7 +292,7 @@ class HubShell(InteractiveShell):
             cmdinfo["duration"] = "0s"
             return result
 
-    def eval(self, line, return_cmdinfo=False):
+    def eval(self, line, return_cmdinfo=False, secure=False):
         line = line.strip()
         self.shellog.input(line)
         origline = line # keep what's been originally entered
@@ -298,12 +300,28 @@ class HubShell(InteractiveShell):
         if line in [j["cmd"] for j in self.__class__.launched_commands.values() if not j.get("is_done")]:
             raise AlreadyRunningException("Command '%s' is already running\n" % repr(line))
         # is it a hub command, in which case, intercept and run the actual declared cmd
-        m = re.match("(.*)\(.*\)",line)
+        # IMPORTANT !!! this is where we allow the command or not when secure=True IMPORTANT !!!
+        # the logic is following:
+        # - what's before parenthesis must exactly match a command
+        # - parenthesis are mandatory
+        # - no '&&' operator allowed
+        if secure:
+            # command must be alpha only, argument with "," and "=", or no arg at all
+            pat = r'^([A-Za-z]+)\(["\'\w\s=,.]*\)$'
+        else:
+            pat = r'(.*)\(.*\)' # more permissive
+        m = re.match(pat,line) 
         if m:
             cmd = m.groups()[0].strip()
+            if secure and not cmd in self.commands:
+                #  match regex rule but not a valid/existing command, discard it
+                raise NoSuchCommand(cmd)
             if cmd in self.commands and \
                     isinstance(self.commands[cmd],CompositeCommand):
                 line = self.commands[cmd]
+        elif line != "" and secure:
+            # we have something entered, it doesn't match our regex rule, discard it
+            raise CommandNotAllowed(line)
         # cmdline is the actual command sent to shell, line is the one displayed
         # they can be different if there's a preprocessing
         cmdline = line
@@ -323,7 +341,6 @@ class HubShell(InteractiveShell):
                 cmdline = "_and(%s)" % ",".join(strcmds)
             else:
                 raise CommandError("Using '&&' operator required two operands\n")
-        logging.info("Run: %s " % repr(cmdline))
         r = self.run_cell(cmdline,store_history=True)
         outputs = []
         if not r.success:

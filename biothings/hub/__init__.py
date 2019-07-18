@@ -284,8 +284,14 @@ class HubServer(object):
             listeners = [self.db_listener,self.log_listener]
 
             if "terminal" in self.features:
-                shell_listener = self.configure_terminal()
+                shell_logger, shell_listener = self.configure_terminal()
                 listeners.append(shell_listener)
+                # webapp terminal to hub shell connection through /shell endpoint
+                from biothings.hub.api.handlers.shell import ShellHandler
+                shell_endpoint = ("/shell",ShellHandler,
+                        {"shell":self.shell,"shellog":shell_logger})
+                self.routes.append(shell_endpoint)
+
 
             ws_router = sockjs.tornado.SockJSRouter(
                     partial(ws.WebSocketConnection,
@@ -354,7 +360,7 @@ class HubServer(object):
         shell_logger = logging.getLogger("shell")
         assert isinstance(shell_logger,ShellLogger), "shell_logger isn't properly set"
         shell_logger.addHandler(WSShellHandler(shell_listener))
-        return shell_listener
+        return shell_logger, shell_listener
 
     def configure_job_manager(self):
         import asyncio
