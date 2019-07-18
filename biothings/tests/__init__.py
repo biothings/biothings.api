@@ -3,7 +3,7 @@
 import os
 import sys
 
-from .helper import BiothingsTestCase, TornadoTestServerMixin
+from .web.helper import BiothingsTestCase, TornadoTestServerMixin
 
 # Add Project Folder to PYTHONPATH
 SRC_PATH = os.path.dirname(sys.path[0])

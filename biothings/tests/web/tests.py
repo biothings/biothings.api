@@ -17,8 +17,8 @@ from functools import wraps
 import requests
 
 from biothings.tests import BiothingsTestCase
-from biothings.tests.settings import BiothingTestSettings
-from biothings.tests.helper import parameterized, parameters
+from biothings.tests.web.settings import BiothingTestSettings
+from biothings.tests.web.helper import parameterized, parameters
 
 try:
     import msgpack
@@ -33,7 +33,7 @@ _q = quote_plus     # shorthand for url encoding
 
 try:
     jsonld_context = requests.get(bts.JSONLD_CONTEXT_URL).json()
-except:
+except BaseException:
     sys.stderr.write("Couldn't load JSON-LD context.\n")
     jsonld_context = {}
 
@@ -96,7 +96,12 @@ class BiothingGenericTests(BiothingsTestCase):
 
     def test_annotation_GET_unicode(self):
         ''' Test that the annotation GET endpoint handles unicode string inputs correctly. '''
-        self.request('' + bts.ANNOTATION_ENDPOINT + '/' + bts.UNICODE_TEST_STRING, expect_status=404)
+        self.request(
+            ''
+            + bts.ANNOTATION_ENDPOINT
+            + '/'
+            + bts.UNICODE_TEST_STRING,
+            expect_status=404)
 
     @parameters(bts.ANNOTATION_GET_FIELDS)
     def test_annotation_GET_fields(self, bid):
@@ -163,10 +168,12 @@ class BiothingGenericTests(BiothingsTestCase):
         res_t.pop('took', None)
         res_msgpack.pop('took', None)
         self.assertDictEqual(
-            res_t, res_msgpack, "msgpacked results and non-msgpacked results differ for query: {}".format(url))
-    """ 
+            res_t,
+            res_msgpack,
+            "msgpacked results and non-msgpacked results differ for query: {}".format(url))
+    """
     def test_annotation_GET(self):
-        ''' Function to test GETs to the annotation endpoint. 
+        ''' Function to test GETs to the annotation endpoint.
 
             Currently supports automatic testing of:
                 fields
@@ -184,11 +191,11 @@ class BiothingGenericTests(BiothingsTestCase):
                 res = self.extract_results_from_callback(get_url)
             else:
                 res = self.request(get_url).json()
-            # Check that the returned ID matches 
+            # Check that the returned ID matches
             eq_(res['_id'], bid.split('?')[0])
             # Is this a jsonld query?
             if self.check_boolean_url_option(base_url, 'jsonld') and 'root' in jsonld_context:
-                self.check_jsonld(res, '', jsonld_context) 
+                self.check_jsonld(res, '', jsonld_context)
             if 'fields' in bid or 'filter' in bid:
                 # This is a filter query, test it appropriately.  First get a list of fields the user specified
                 if 'fields' in bid:
@@ -200,27 +207,27 @@ class BiothingGenericTests(BiothingsTestCase):
                 res_total = self.request(total_url).json()
                 # Check the fields
                 self.check_fields(res, res_total, true_fields, ns.additional_fields_for_check_fields_subset)
-            
+
             # override to add more tests
             self._extra_annotation_GET(bid, res)
-        
+
         # insert non ascii characters
         self.request('' + ns.annotation_endpoint + '/' + '\xef\xbf\xbd\xef\xbf\xbd', expect_status=404)
-        
+
         # test msgpack on first ID
         self.check_msgpack(self.api + '/' + ns.annotation_endpoint + '/' + _q(ns.annotation_GET[0].split('?')[0]))
 
         # test unicode string handling
         self.request('' + ns.annotation_endpoint + '/' + ns.unicode_test_string, expect_status=404)
 
-        # test empties 
+        # test empties
         self.request('' + ns.annotation_endpoint, expect_status=404)
         self.request('' + ns.annotation_endpoint + '/', expect_status=404)
 
-    
+
         def test_annotation_POST(self):
         ''' Function to test POSTs to the annotation endpoint.
-            
+
             Currently supports automatic testing of:
                 ids
                 fields
@@ -240,7 +247,7 @@ class BiothingGenericTests(BiothingsTestCase):
                 if 'jsonld' in ddict and ddict['jsonld'].lower() in ['true', 1]:
                     self.check_jsonld(hit, '', jsonld_context=jsonld_context)
                 # If its a filtered query, check the return objects fields
-                if 'filter' in ddict or 'fields' in ddict: 
+                if 'filter' in ddict or 'fields' in ddict:
                     true_fields = []
                     if 'fields' in ddict:
                         true_fields = [f.strip() for f in ddict.get('fields').split(',')]
@@ -263,7 +270,7 @@ class BiothingGenericTests(BiothingsTestCase):
         ''' Function to test GETs to the query endpoint.
 
             Automatically tested parameters:
-            
+
             fields
             filters
             size
@@ -274,7 +281,7 @@ class BiothingGenericTests(BiothingsTestCase):
             Separately tested:
 
             from
-        ''' 
+        '''
         # Test some simple GETs to the query endpoint, first check some queries to make sure they return some hits
         for (test_number, q) in enumerate(ns.query_GET):
             base_url = ns.query_endpoint + '?q=' + q
@@ -328,11 +335,11 @@ class BiothingGenericTests(BiothingsTestCase):
                         self.check_fields(hit, res_total, true_fields, ns.additional_fields_for_check_fields_subset)
             # extra tests
             self._extra_query_GET(q, res)
-        
+
         # test non-ascii characters
         res_f = self.request(self.api + '/' + ns.query_endpoint + '?q=' + '\xef\xbf\xbd\xef\xbf\xbd').json()
         assert res_f['hits'] == [], 'Query with non ASCII characters injected failed'
-        
+
         # test msgpack on first query only
         self.check_msgpack(self.api + '/' + ns.query_endpoint + '?q=' + ns.query_GET[0])
 
@@ -343,9 +350,9 @@ class BiothingGenericTests(BiothingsTestCase):
         # test empty/error
         res = self.request(self.api + '/' + ns.query_endpoint), checkerror=False)
         assert 'error' in res, "GET to query endpoint failed with empty query"
-    
+
     def test_query_POST(self):
-        ''' 
+        '''
             Test POSTS to the query endpoint.
 
         '''
@@ -363,7 +370,7 @@ class BiothingGenericTests(BiothingsTestCase):
                 if 'jsonld' in ddict and ddict['jsonld'].lower() in ['true', 1]:
                     self.check_jsonld(hit, '', jsonld_context)
                 # If its a filtered query, check the return objects fields
-                if 'filter' in ddict or 'fields' in ddict: 
+                if 'filter' in ddict or 'fields' in ddict:
                     true_fields = []
                     if 'fields' in ddict:
                         true_fields = [f.strip() for f in ddict.get('fields').split(',')]
@@ -379,7 +386,7 @@ class BiothingGenericTests(BiothingsTestCase):
         res = self.json_ok(self.post_ok(base_url, {'q': ns.unicode_test_string, 'scopes': ns.query_POST[0]['scopes']}), checkerror=False)
         assert (len(res) == 1) and (res[0]['notfound']), "POST to query endpoint failed with unicode test string"
 
-        res = self.json_ok(self.post_ok(base_url, {'q': ns.query_POST[0]['q'].split(',')[0] + ',' + 
+        res = self.json_ok(self.post_ok(base_url, {'q': ns.query_POST[0]['q'].split(',')[0] + ',' +
                                 ns.unicode_test_string, 'scopes': ns.query_POST[0]['scopes']}), checkerror=False)
         assert (len(res) == 2) and (res[1]['notfound']), "POST to query endpoint failed with unicode test string"
 
@@ -400,7 +407,9 @@ class BiothingGenericTests(BiothingsTestCase):
 
         for field in bts.TEST_FIELDS_GET_FIELDS_ENDPOINT:
             self.assertIn(
-                field, res, '"{}" expected in response from /metadata/fields, but not found'.format(field))
+                field,
+                res,
+                '"{}" expected in response from /metadata/fields, but not found'.format(field))
 
     def test_status_endpoint(self):
         self.request('/status')
