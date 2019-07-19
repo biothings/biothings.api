@@ -1081,6 +1081,8 @@ class BuilderManager(BaseManager):
             return job
         except KeyError as e:
             raise BuilderException("No such builder for '%s'" % build_name)
+        except ResourceNotReady as e:
+            raise BuilderException("Some datasources aren't ready for the merge: %s" % e)
 
     def list_sources(self,build_name):
         """

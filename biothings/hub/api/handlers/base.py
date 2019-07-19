@@ -66,6 +66,9 @@ class GenericHandler(DefaultHandler):
 
 class RootHandler(DefaultHandler):
 
+    def initialize(self, features, **kwargs):
+        self.features = features
+
     @asyncio.coroutine
     def get(self):
         self.write({
@@ -74,4 +77,5 @@ class RootHandler(DefaultHandler):
                 "app_version" : getattr(config,"APP_VERSION",None),
                 "icon" : getattr(config,"HUB_ICON",None),
                 "now": datetime.datetime.now(),
+                "features": self.features,
                 })

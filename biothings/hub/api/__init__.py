@@ -223,7 +223,7 @@ def create_handlers(shell, command_defs):
 
 def generate_api_routes(shell, commands, settings={}):
     routes = create_handlers(shell,commands)
-    routes.append(("/",RootHandler))
+    routes.append(("/",RootHandler,{"features" : shell.server.DEFAULT_FEATURES}))
     return routes
 
 def start_api(app, port, check=True, wait=5, retry=5, settings={}):
