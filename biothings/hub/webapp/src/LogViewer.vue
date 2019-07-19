@@ -10,6 +10,9 @@
         <div v-else>
             No logs yet...
         </div>
+        <div v-if="!ws_connected" class="ui small orange label">
+            WebSockect disconnected, can't receive logs
+        </div>
     </div>
 </template>
 
@@ -30,15 +33,18 @@ export default {
   },
   created() {
       bus.$on('log',this.onLog);
+      bus.$on('ws_connected',this.onWSConnected);
   },
   beforeDestroy() {
       bus.$off('log',this.onLog);
+      bus.$off('ws_connected',this.onWSConnected);
   },
   ready() {
   },
   data () {
     return  {
         records: [],
+        ws_connected: false,
     }
   },
   watch: {
@@ -52,6 +58,9 @@ export default {
           var d = $('#logviewer');
           d.scrollTop(d.prop("scrollHeight"));
       },
+      onWSConnected(state) {
+          this.ws_connected = state;
+      }
   },
 }
 </script>

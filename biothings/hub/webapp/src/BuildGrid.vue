@@ -636,7 +636,6 @@
                     })
                     .catch(err => {
                         console.log(err);
-                        console.log("Error lauching new build: " + err ? err.data.error : 'unknown error');
                         self.loaderror(err);
                     })
                 },

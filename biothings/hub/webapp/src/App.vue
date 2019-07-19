@@ -49,8 +49,10 @@
 
             <div class="ui item">
                 <loader></loader>
-                <div id="connected" v-if="socket && socket.readyState == 1" :data-tooltip="'Quality: unknown'" data-position="bottom center">
-                    <i class="inverted circular signal icon"></i>
+                <div id="settings">
+                    <button class="mini circular ui icon button" @click="openSettings">
+                        <i class="cog icon"></i>
+                    </button>
                 </div>
                 <div v-if="socket && socket.readyState == 1" :data-tooltip="'Connection: ' + socket.protocol" data-position="bottom center">
                     <button class="mini circular ui icon button" @click="closeConnection">
@@ -121,7 +123,7 @@
 
         <div class="ui mini grey bottom fixed inverted menu">
             <div class="left menu">
-              <a class="clickable terminal item">
+              <a class="clickable terminal item"  v-if="has_feature('terminal')">
                   <i class="terminal icon"></i>
                   Terminal
               </a>
@@ -134,7 +136,7 @@
           </div>
 
           <div class="ui terminal popup top left transition hidden" style="width:50%;">
-              <div class="ui inverted segment">
+              <div class="ui inverted segment" v-if="has_feature('terminal')">
                   <terminal></terminal>
               </div>
           </div>
@@ -148,7 +150,11 @@
       </div>
     </template>
 
-    <script>
+<script>
+
+    const STUDIO_VERSION = "0.2a";
+
+    import Vue from 'vue';
     import axios from 'axios';
     import URI from 'urijs';
     import regeneratorRuntime from "regenerator-runtime"; // await/async support
@@ -159,7 +165,6 @@
 
     import Vue2Filters from 'vue2-filters';
     import VueRouter from 'vue-router';
-    import Vue from 'vue';
     Vue.use(Vue2Filters);
     Vue.use(require('vue-moment'));
     Vue.use(VueRouter)
@@ -167,8 +172,6 @@
     import bus from './bus.js';
     import _ from 'lodash';
 
-
-    const STUDIO_VERSION = "0.2a";
 
     function timesofar(value) {
         let hours =  parseInt(Math.floor(value / 3600));
@@ -187,7 +190,6 @@
         return res;
     };
     Vue.filter('timesofar',timesofar);
-
 
     var UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
     var STEP = 1024;
@@ -241,8 +243,6 @@
     });
     numeral.locale('mine');
 
-
-
     Vue.filter("formatNumber", function (value) {
         return numeral(value).format("0.00 a");
     });
@@ -263,6 +263,7 @@
     import ChooseHub from './ChooseHub.vue';
     import LogViewer from './LogViewer.vue';
     import Terminal from './Terminal.vue';
+    import FeatureChecker from './FeatureChecker.vue';
 
     const routes = [
         { path: '/', component: Status },
@@ -282,6 +283,7 @@
     export default {
         name: 'app',
         router: router,
+        mixins: [ FeatureChecker, ],
         components: { JobSummary, EventMessages, EventAlert,
                       ChooseHub, Loader, LogViewer, Terminal},
         mounted () {
@@ -303,16 +305,6 @@
             if(last) {
                 this.conn = JSON.parse(last);
             }
-            $('.terminal.item').popup({
-                popup: $('.terminal.popup'),
-                on: 'click' ,
-                // ready to type a command
-                onVisible: function() {
-                    $("#termcommand").focus();
-                },
-                closable: false,
-                position: 'top left',
-            });
             $('.logs.item').popup({
                 popup: $('.logs.popup'),
                 on: 'click' ,
@@ -327,12 +319,14 @@
             console.log("App created");
             bus.$on("reconnect",this.setupConnection);
             bus.$on("connect",this.setupConnection,null,"/");
+            bus.$on("feature_terminal",this.setupTerminal);
             // connect to default one to start
             this.conn = this.default_conn;
         },
         beforeDestroy() {
             bus.$off("reconnect",this.setupConnection);
             bus.$off("connect",this.setupConnection);
+            bus.$off("feature_terminal",this.setupTerminal);
         },
         data() {
             return {
@@ -465,8 +459,9 @@
                 }
                 var oldinfo = getInfo(oldv);
                 var newinfo = getInfo(newv);
-                $("#connected i").removeClass("grey brown red orange yellow olive green").addClass(newinfo.color);
-                $("#connected").attr("data-tooltip",'Quality: ' + newinfo.quality);
+            },
+            openSettings() {
+                console.log("TODO...");
             },
             openConnection() {
                 this.setupConnection(null,false);
@@ -720,6 +715,7 @@
                 this.checkCompat(response.data.result);
                 this.conn = response.data.result;
                 this.conn["url"] = url;
+                Vue.config.hub_features = response.data.result.features;
             })
             .catch(err => {
                 console.log(err);
@@ -743,6 +739,7 @@
                     if(redirect) {
                         window.location.assign(redirect)
                     }
+                    bus.$emit("ws_connected",true);
                 };
                 this.socket.onmessage = function (evt) {
                     var newts = Date.now();
@@ -771,6 +768,7 @@
             this.connected = false;
             this.socket.close();
             this.msg_timestamp = null;
+            bus.$emit("ws_connected",false);
         },
         pingServer() {
             // check if we got a reply before, it not, we have a connection issue
@@ -787,18 +785,21 @@
             }
         },
         toggleCheckCompat(event) {
-            console.log("in toggleCheckCompat");
             var skip = $("#skip_compat").prop("checked");
             Vue.localStorage.set("skip_studio_compat",skip.toString());
             this.skip_studio_compat = skip;
 
         },
-        showTerminal(event) {
-            console.log(event);
-            $('.terminal.icon').popup({
+        setupTerminal() {
+            $('.terminal.item').popup({
                 popup: $('.terminal.popup'),
                 on: 'click' ,
-                lastResort: 'top right',
+                // ready to type a command
+                onVisible: function() {
+                    $("#termcommand").focus();
+                },
+                closable: false,
+                position: 'top left',
             });
         },
         showLogs(event) {

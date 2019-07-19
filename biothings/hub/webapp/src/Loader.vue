@@ -1,6 +1,6 @@
 <template>
     <div id="loader" :data-html="'<div>Page loaded</div>'" data-position="bottom center">
-            <i id="loading" class="big circle icon studiogrey"></i>
+        <i id="loading" class="big circle icon studiogrey"></i>
     </div>
 
 </template>

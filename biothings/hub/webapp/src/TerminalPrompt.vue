@@ -11,7 +11,6 @@
 </template>
 
 <script>
-
 import axios from 'axios'
 
 export default {
@@ -44,6 +43,13 @@ export default {
               var d = $('#terminal');
               d.scrollTop(d.prop("scrollHeight"));
           })
+          .catch(err => {
+              if(err.message) {
+                  self.$parent.error = err.message;
+              } else {
+                  self.$parent.error = "Unknown error";
+              }
+          });
       }
   }
 }
