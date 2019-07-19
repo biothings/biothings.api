@@ -1,5 +1,5 @@
 from pprint import pprint, pformat
-import asyncio, asyncssh, crypt, aiocron, os, sys, types, time
+import asyncio, asyncssh, crypt, aiocron, os, sys, types, time, copy
 from collections import OrderedDict
 from functools import partial
 import logging
@@ -161,7 +161,6 @@ def start_ssh_server(loop,name,passwords,keys=['bin/ssh_host_key'],shell=None,
 class HubCommands(OrderedDict):
 
     def __setitem__(self,k,v):
-        logging.error("k %s" % k)
         if k in self:
             raise ValueError("Command '%s' already defined" % k)
         super().__setitem__(k,v)
@@ -171,7 +170,7 @@ class HubServer(object):
 
     DEFAULT_FEATURES = ["job","dump","upload","dataplugin","source",
                         "build","diff","index","inspect","sync","api",
-                        "terminal"]
+                        "terminal","reloader","dataupload","ws"]
     DEFAULT_MANAGERS_ARGS = {"upload" : {"poll_schedule" : "* * * * * */10"}}
     DEFAULT_RELOADER_CONFIG = {"folders": None, # will use default one
                                "managers" : ["source_manager","assistant_manager"],
@@ -209,26 +208,11 @@ class HubServer(object):
         self._passed_managers_custom_args = managers_custom_args
         self.features = features or self.DEFAULT_FEATURES
         self.managers_custom_args = managers_custom_args
-        if reloader_config == False:
-            self.logger.debug("Reloader deactivated")
-            self.reloader_config = False
-        else:
-            self.reloader_config = reloader_config or self.DEFAULT_RELOADER_CONFIG
-        if dataupload_config == False:
-            self.logger.debug("Data upload deactivated")
-            self.dataupload_config = False
-        else:
-            self.dataupload_config = dataupload_config or self.DEFAULT_DATAUPLOAD_CONFIG
-        if websocket_config == False:
-            self.logger.debug("Websocket deactivated")
-            self.websocket_config = False
-        else:
-            self.websocket_config = websocket_config or self.DEFAULT_WEBSOCKET_CONFIG
-        if api_config == False:
-            self.logger.debug("API deactivated")
-            self.api_config = False
-        else:
-            self.api_config = api_config or self.DEFAULT_API_CONFIG
+        self.reloader_config = reloader_config or self.DEFAULT_RELOADER_CONFIG
+        self.dataupload_config = dataupload_config or self.DEFAULT_DATAUPLOAD_CONFIG
+        self.websocket_config = websocket_config or self.DEFAULT_WEBSOCKET_CONFIG
+        self.ws_listeners = [] # collect listeners that should be connected (push data through) to websocket
+        self.api_config = api_config or self.DEFAULT_API_CONFIG
         # set during configure()
         self.managers = None
         self.api_endpoints = None
@@ -239,11 +223,16 @@ class HubServer(object):
         # flag "do we need to configure?"
         self.configured = False
 
-    def configure_ioloop(self):
-        import tornado.platform.asyncio
-        tornado.platform.asyncio.AsyncIOMainLoop().install()
+    def before_configure(self):
+        """
+        Hook triggered before configure(),
+        used eg. to adjust features list
+        """
+        pass
 
     def configure(self):
+        self.before_configure()
+        self.remaining_features = copy.deepcopy(self.features) # keep track of what's been configured
         self.configure_ioloop()
         self.configure_managers()
         self.configure_commands()
@@ -251,6 +240,7 @@ class HubServer(object):
         # setup the shell
         self.shell = HubShell(self.managers["job_manager"])
         self.shell.register_managers(self.managers)
+        self.configure_remaining_features()
         self.shell.set_commands(self.commands,self.extra_commands)
         self.shell.server = self # propagate server instance in shell
                                  # so it's accessible from the console if needed
@@ -259,55 +249,14 @@ class HubServer(object):
             self.configure_api_endpoints() # after shell setup as it adds some default commands
                                            # we want to expose throught the api
             from biothings.hub.api import generate_api_routes
-            self.routes = generate_api_routes(self.shell, self.api_endpoints)
-
-        if self.dataupload_config != False:
-            # this one is not bound to a specific command
-            from biothings.hub.api.handlers.upload import UploadHandler
-            # tuple type = interpreted as a route handler
-            self.routes.append(("/dataupload/([\w\.-]+)?",UploadHandler,self.dataupload_config))
-
-        if self.websocket_config != False:
-            # add websocket endpoint
-            import biothings.hub.api.handlers.ws as ws
-            import sockjs.tornado
-            from biothings.utils.hub_db import ChangeWatcher
-            # monitor change in database to report activity in webapp
-            self.db_listener = ws.HubDBListener()
-            ChangeWatcher.add(self.db_listener)
-            ChangeWatcher.publish()
-            self.log_listener = ws.LogListener()
-            # push log statements to the webapp
-            root_logger = logging.getLogger() # careful, asyncio logger will trigger log statement while in the handler
-                                              # (ie. infinite loop), root logger not recommended) 
-            root_logger.addHandler(WSLogHandler(self.log_listener))
-            listeners = [self.db_listener,self.log_listener]
-
-            if "terminal" in self.features:
-                shell_logger, shell_listener = self.configure_terminal()
-                listeners.append(shell_listener)
-                # webapp terminal to hub shell connection through /shell endpoint
-                from biothings.hub.api.handlers.shell import ShellHandler
-                shell_endpoint = ("/shell",ShellHandler,
-                        {"shell":self.shell,"shellog":shell_logger})
-                self.routes.append(shell_endpoint)
-
-
-            ws_router = sockjs.tornado.SockJSRouter(
-                    partial(ws.WebSocketConnection,
-                        listeners=listeners),
-                    '/ws')
-            self.routes.extend(ws_router.urls)
-
-        if self.reloader_config != False:
-            monitored_folders = self.reloader_config["folders"] or ["hub/dataload/sources",getattr(config,"DATA_PLUGIN_FOLDER",None)]
-            reload_managers = [self.managers[m] for m in self.reloader_config["managers"] if m in self.managers]
-            reload_func = self.reloader_config["reload_func"] or partial(self.shell.restart,force=True)
-            reloader = HubReloader(monitored_folders, reload_managers, reload_func=reload_func)
-            reloader.monitor()
+            self.routes.extend(generate_api_routes(self.shell, self.api_endpoints))
 
         # done
         self.configured = True
+
+    def configure_ioloop(self):
+        import tornado.platform.asyncio
+        tornado.platform.asyncio.AsyncIOMainLoop().install()
 
     def before_start(self):
         pass
@@ -320,8 +269,8 @@ class HubServer(object):
         # another instance of aio loop, take it from job_manager to make sure
         # we share the same one
         loop = self.managers["job_manager"].loop
-
         if self.routes:
+            self.logger.info(self.routes)
             self.logger.info("Starting Hub API server")
             import tornado.web
             # register app into current event loop
@@ -331,10 +280,8 @@ class HubServer(object):
             api_server = start_api(api,config.HUB_API_PORT,settings=getattr(config,"TORNADO_SETTINGS",{}))
         else:
             self.logger.info("No route defined, API server won't start")
-
         # at this point, everything is ready/set, last call for customizations
         self.before_start()
-
         self.ssh_server = start_ssh_server(loop,self.name,passwords=config.HUB_PASSWD,
                               port=config.HUB_SSH_PORT,shell=self.shell)
         try:
@@ -350,17 +297,6 @@ class HubServer(object):
         # mix remaining
         args.update(self.managers_custom_args.get(feat,{}))
         return args
-
-    def configure_terminal_manager(self):
-        pass # placeholder, there's no manager for this feature
-    def configure_terminal(self):
-        # shell logger/listener to communicate between webapp and hub ssh console
-        import biothings.hub.api.handlers.ws as ws
-        shell_listener = ws.LogListener()
-        shell_logger = logging.getLogger("shell")
-        assert isinstance(shell_logger,ShellLogger), "shell_logger isn't properly set"
-        shell_logger.addHandler(WSShellHandler(shell_listener))
-        return shell_logger, shell_listener
 
     def configure_job_manager(self):
         import asyncio
@@ -470,7 +406,6 @@ class HubServer(object):
             self.managers["assistant_manager"].load()
 
     def configure_managers(self):
-
         if not self.managers is None:
             raise Exception("Managers have already been configured")
         self.managers = {}
@@ -487,11 +422,78 @@ class HubServer(object):
         for feat in self.features:
             if hasattr(self,"configure_%s_manager" % feat):
                 getattr(self,"configure_%s_manager" % feat)()
+                self.remaining_features.remove(feat)
+            elif hasattr(self,"configure_%s_feature" % feat):
+                pass # this is configured after managers but should not produce an error
             else:
-                raise AttributeError("Feature '%s' listed but no 'configure_%s_manager' method found" % (feat,feat))
+                raise AttributeError("Feature '%s' listed but no 'configure_%s_{manager|feature}' method found" % (feat,feat))
 
         self.logger.info("Active manager(s): %s" % pformat(self.managers))
 
+    def configure_ws_feature(self):
+        # add websocket endpoint
+        import biothings.hub.api.handlers.ws as ws
+        import sockjs.tornado
+        from biothings.utils.hub_db import ChangeWatcher
+        # monitor change in database to report activity in webapp
+        self.db_listener = ws.HubDBListener()
+        ChangeWatcher.add(self.db_listener)
+        ChangeWatcher.publish()
+        self.log_listener = ws.LogListener()
+        # push log statements to the webapp
+        root_logger = logging.getLogger() # careful, asyncio logger will trigger log statement while in the handler
+                                          # (ie. infinite loop), root logger not recommended) 
+        root_logger.addHandler(WSLogHandler(self.log_listener))
+        self.ws_listeners.extend([self.db_listener,self.log_listener])
+
+        ws_router = sockjs.tornado.SockJSRouter(
+                partial(ws.WebSocketConnection,
+                    listeners=self.ws_listeners),
+                '/ws')
+        self.routes.extend(ws_router.urls)
+
+    def configure_terminal_feature(self):
+        assert "ws" in self.features, "'terminal' feature requires 'ws'"
+        assert "ws" in self.remaining_features, "'terminal' feature should configured before 'ws'"
+        # shell logger/listener to communicate between webapp and hub ssh console
+        import biothings.hub.api.handlers.ws as ws
+        shell_listener = ws.LogListener()
+        shell_logger = logging.getLogger("shell")
+        assert isinstance(shell_logger,ShellLogger), "shell_logger isn't properly set"
+        shell_logger.addHandler(WSShellHandler(shell_listener))
+        self.ws_listeners.append(shell_listener)
+        # webapp terminal to hub shell connection through /shell endpoint
+        from biothings.hub.api.handlers.shell import ShellHandler
+        shell_endpoint = ("/shell",ShellHandler,
+                {"shell":self.shell,"shellog":shell_logger})
+        self.routes.append(shell_endpoint)
+
+    def configure_dataupload_feature(self):
+        assert "ws" in self.features, "'dataupload' feature requires 'ws'"
+        assert "ws" in self.remaining_features, "'dataupload' feature should configured before 'ws'"
+        # this one is not bound to a specific command
+        from biothings.hub.api.handlers.upload import UploadHandler
+        # tuple type = interpreted as a route handler
+        self.routes.append(("/dataupload/([\w\.-]+)?",UploadHandler,self.dataupload_config))
+
+    def configure_reloader_feature(self):
+        monitored_folders = self.reloader_config["folders"] or ["hub/dataload/sources",getattr(config,"DATA_PLUGIN_FOLDER",None)]
+        reload_managers = [self.managers[m] for m in self.reloader_config["managers"] if m in self.managers]
+        reload_func = self.reloader_config["reload_func"] or partial(self.shell.restart,force=True)
+        reloader = HubReloader(monitored_folders, reload_managers, reload_func=reload_func)
+        reloader.monitor()
+
+    def configure_remaining_features(self):
+        self.logger.info("Setting up remaining features: %s" % self.remaining_features)
+        # specific order, eg. job_manager is used by all managers
+        for feat in copy.deepcopy(self.remaining_features):
+            if hasattr(self,"configure_%s_feature" % feat):
+                getattr(self,"configure_%s_feature" % feat)()
+                self.remaining_features.remove(feat)
+                pass # this is configured after managers but should not produce an error
+            else:
+                raise AttributeError("Feature '%s' listed but no 'configure_%s_feature' method found" % (feat,feat))
+        
     def configure_commands(self):
         """
         Configure hub commands according to available managers
