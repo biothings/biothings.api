@@ -670,7 +670,7 @@ class Indexer(object):
                     descprogress = 0.0
                 pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,descprogress)
                 self.logger.info("Creating indexer job #%d/%d, to index '%s' %d/%d (%.1f%%)" % \
-                        (bnum,btotal,target_name,cnt,total,descprogress))
+                        (bnum,btotal,backend_url,cnt,total,descprogress))
                 job = yield from job_manager.defer_to_process(
                         pinfo,
                         partial(indexer_worker,
@@ -698,7 +698,7 @@ class Indexer(object):
             def done(f):
                 nonlocal got_error
                 if None in f.result():
-                    got_error = Exception("Some batches failed")
+                    got_error = None#Exception("Some batches failed")
                     return
                 # compute overall inserted/updated records
                 # returned values looks like [(num,[]),(num,[]),...]
@@ -963,8 +963,11 @@ class ColdHotIndexer(Indexer):
             # selectively index cold then hot collections, using default index method
             # but specifically 'index' step to prevent any post-process before end of
             # index creation
+            # Note: copy backend values as there are some references values between cold/hot and build_doc
+            hot_backend_url = self.hot_build_doc["backend_url"]
+            cold_backend_url = self.cold_build_doc["backend_url"]
             # target collection is taken from backend_url field, temporarily override.
-            self.build_doc["backend_url"] = self.cold_build_doc["backend_url"]
+            self.build_doc["backend_url"] = cold_backend_url
             cold_task = super(ColdHotIndexer,self).index(self.cold_target_name,
                                                          self.index_name,steps="index",
                                                          job_manager=job_manager,
@@ -973,7 +976,7 @@ class ColdHotIndexer(Indexer):
             yield from cold_task
             # use updating indexer worker for hot to merge in index
             # back to hot collection
-            self.build_doc["backend_url"] = self.hot_build_doc["backend_url"]
+            self.build_doc["backend_url"] = hot_backend_url
             hot_task = super(ColdHotIndexer,self).index(self.hot_target_name,
                                                          self.index_name,steps="index",
                                                          job_manager=job_manager,
