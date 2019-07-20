@@ -597,13 +597,8 @@ class Indexer(object):
         if "index" in steps:
             self.register_status("indexing",transient=True,init=True,job={"step":"index"})
             assert self.build_doc.get("backend_url")
-            if self.build_doc.get("backend_url"):
-                target_collection = create_backend(self.build_doc["backend_url"]).target_collection
-                backend_url = self.build_doc["backend_url"]
-            else:
-                _db = mongo.get_target_db()
-                target_collection = _db[target_name]
-                backend_url = target_name # ie. a collection in target db
+            target_collection = create_backend(self.build_doc["backend_url"]).target_collection
+            backend_url = self.build_doc["backend_url"]
             _mapping = self.get_mapping()
             _extra = self.get_index_creation_settings()
             _meta = {}
@@ -955,8 +950,8 @@ class ColdHotIndexer(Indexer):
         if type(steps) == str:
             steps = [steps]
         self.hot_target_name = hot_name
-        self.load_build()
         self.setup_log()
+        self.load_build()
         if type(index_name) == list:
             # values are coming from target names, use the cold
             self.index_name = self.hot_target_name
@@ -968,6 +963,8 @@ class ColdHotIndexer(Indexer):
             # selectively index cold then hot collections, using default index method
             # but specifically 'index' step to prevent any post-process before end of
             # index creation
+            # target collection is taken from backend_url field, temporarily override.
+            self.build_doc["backend_url"] = self.cold_build_doc["backend_url"]
             cold_task = super(ColdHotIndexer,self).index(self.cold_target_name,
                                                          self.index_name,steps="index",
                                                          job_manager=job_manager,
@@ -975,6 +972,8 @@ class ColdHotIndexer(Indexer):
             # wait until cold is fully indexed
             yield from cold_task
             # use updating indexer worker for hot to merge in index
+            # back to hot collection
+            self.build_doc["backend_url"] = self.hot_build_doc["backend_url"]
             hot_task = super(ColdHotIndexer,self).index(self.hot_target_name,
                                                          self.index_name,steps="index",
                                                          job_manager=job_manager,
@@ -1062,6 +1061,12 @@ class ColdHotIndexer(Indexer):
         Index settings are the one declared in the hot build doc.
         """
         src_build = get_src_build()
+        # we don't want to reload build docs if they are already loaded
+        # so we can temporarily override values when dealing with cold/hot collection
+        # (kind of a hack, not really clean, but...)
+        if self.hot_build_doc and self.cold_build_doc and self.build_doc:
+            self.logger.debug("Build documents already loaded")
+            return
         self.hot_build_doc = src_build.find_one({'_id': self.hot_target_name})
         # search the cold collection definition
         assert "build_config" in self.hot_build_doc and "cold_collection" in self.hot_build_doc["build_config"], \
