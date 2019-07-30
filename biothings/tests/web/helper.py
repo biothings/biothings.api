@@ -135,7 +135,7 @@ class BiothingsTestCase(unittest.TestCase):
             url = self.get_url(path)
         else:
             url = self.get_url(self.api + '/' + path)
-        res = requests.request(method, url, timeout=5, **kwargs)
+        res = requests.request(method, url, **kwargs)
         eq_(res.status_code, expect_status)
         return res
 
