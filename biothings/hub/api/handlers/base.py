@@ -13,7 +13,7 @@ class DefaultHandler(RequestHandler):
         self.set_header('Content-Type', 'application/json')
         # part of pre-flight requests
         self.set_header('Access-Control-Allow-Methods','PUT, DELETE, POST, GET, OPTIONS')
-        self.set_header('Access-Control-Allow-Headers','Content-Type')
+        self.set_header('Access-Control-Allow-Headers','Content-Type,X-BioThings-API,X-Biothings-Access-Token')
 
     def write(self,result):
         super(DefaultHandler,self).write(
