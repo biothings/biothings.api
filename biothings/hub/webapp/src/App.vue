@@ -54,9 +54,14 @@
                         <i class="cog icon"></i>
                     </button>
                 </div>
-                <div v-if="socket && socket.readyState == 1" :data-tooltip="'Connection: ' + socket.protocol" data-position="bottom center">
+                <div v-if="socket && socket.readyState == 1" :data-tooltip="'Connection: ' + socket.transport" data-position="bottom center">
                     <button class="mini circular ui icon button" @click="closeConnection">
                         <i class="green power off icon"></i>
+                    </button>
+                </div>
+                <div v-else-if="ws_connection == 'connecting'" data-tooltip="Connecting" data-position="bottom center">
+                    <button class="mini circular ui icon button" @click="closeConnection">
+                        <i class="pulsing grey circle icon"></i>
                     </button>
                 </div>
                 <div v-else>
@@ -170,8 +175,9 @@
     Vue.use(VueRouter)
 
     import bus from './bus.js';
-    import _ from 'lodash';
+    import hubapi from './hubapi.js'
 
+    import _ from 'lodash';
 
     function timesofar(value) {
         let hours =  parseInt(Math.floor(value / 3600));
@@ -283,7 +289,7 @@
     export default {
         name: 'app',
         router: router,
-        mixins: [ FeatureChecker, ],
+        mixins: [ FeatureChecker, Loader, ],
         components: { JobSummary, EventMessages, EventAlert,
                       ChooseHub, Loader, LogViewer, Terminal},
         mounted () {
@@ -330,7 +336,7 @@
         },
         data() {
             return {
-                connected: false,
+                ws_connection: "disconnected",
                 socket_msg: '',
                 socket : null,
                 msg_timestamp : null,
@@ -477,7 +483,7 @@
                 } else {
                     var url = this.conn["url"].replace(/\/$/,"");
                     console.log(`Connecting to ${this.conn.name} (${url})`);
-                    axios.defaults.baseURL = url;
+                    hubapi.base(url);
                 }
                 this.refreshConnection(url);
                 Vue.localStorage.set('last_conn',JSON.stringify(this.conn));
@@ -709,6 +715,7 @@
         },
         refreshConnection: function(url) {
             var self = this;
+            self.loading();
             axios.get(url)
             .then(response => {
                 console.log(response.data.result);
@@ -716,24 +723,28 @@
                 this.conn = response.data.result;
                 this.conn["url"] = url;
                 Vue.config.hub_features = response.data.result.features;
+                self.loaded();
             })
             .catch(err => {
-                console.log(err);
-                console.log("Error creating new connection: " + err.data.error);
+                console.log(`Error connecting to ${url}`);
+                console.log(JSON.stringify(err));
+                this.loaderror(err);
+                bus.$emit("connection_failed",url,err);
             })
         },
         setupSocket(redirect=false) {
             var self = this;
-            var transports = null;//["websocket","xhr-polling"];
+            var transports = null;//["jsonp-polling"];//["websocket","xhr-polling"];
             // re-init timestamp so we can monitor it again
             this.msg_timestamp = null;
             // first check we can access a websocket
-            axios.get(axios.defaults.baseURL + '/ws/info')
+            hubapi.get('/ws/info')
             .then(response => {
+                self.ws_connection = "connecting";
                 console.log("WebSocket available");
-                this.socket = new SockJS(axios.defaults.baseURL + '/ws', transports);
+                this.socket = new SockJS(axios.defaults.baseURL + '/ws?token=' + hubapi.getAccessToken(), transports);
                 this.socket.onopen = function() {
-                    self.connected = true;
+                    self.ws_connection = "connected";
                     this.ping_interval = PING_INTERVAL_MS;
                     self.pingServer();
                     if(redirect) {
@@ -760,12 +771,13 @@
             })
             .catch(err => {
                 console.log("Can't connect using websocket");
+                console.log(err);
                 // invalidate connection and use default
                 this.conn = this.default_conn;
             });
         },
         closeConnection() {
-            this.connected = false;
+            this.ws_connection = "disconnected";
             this.socket.close();
             this.msg_timestamp = null;
             bus.$emit("ws_connected",false);
@@ -779,7 +791,7 @@
             // Send the "pingServer" event to the server.
             this.msg_timestamp = Date.now();
             this.socket.send(JSON.stringify({'op': 'ping'}));
-            if(this.connected) {
+            if(this.ws_connection == "connected") {
                 setTimeout(this.pingServer,this.ping_interval);
                 this.ping_interval = Math.min(this.ping_interval * 1.2,PING_INTERVAL_MS * 6);
             }
@@ -871,6 +883,30 @@
     .pulsing {
       animation: pulse 1s linear infinite;
     }
+
+    @keyframes rotating {
+  from {
+    -ms-transform: rotate(0deg);
+    -moz-transform: rotate(0deg);
+    -webkit-transform: rotate(0deg);
+    -o-transform: rotate(0deg);
+    transform: rotate(0deg);
+  }
+  to {
+    -ms-transform: rotate(360deg);
+    -moz-transform: rotate(360deg);
+    -webkit-transform: rotate(360deg);
+    -o-transform: rotate(360deg);
+    transform: rotate(360deg);
+  }
+}
+.rotating {
+  -webkit-animation: rotating 2s linear infinite;
+  -moz-animation: rotating 2s linear infinite;
+  -ms-animation: rotating 2s linear infinite;
+  -o-animation: rotating 2s linear infinite;
+  animation: rotating 2s linear infinite;
+}
 
     html,
     body,

@@ -34,6 +34,28 @@
                         <input type="text" id="huburl" placeholder="Hub address" autofocus>
                     </div>
                 </div>
+                <div v-if="connection_error" class="connectionerror ui orange label" v-html="connection_error"></div>
+            </div>
+            <br>
+            <div class="ui inverted accordion advanced">
+                <div class="title active">
+                    <i class="dropdown icon"></i>
+                    Advanced
+                </div>
+                <div class="content active">
+                    <div v-if="logged_username">Currently logged as {{logged_username}}</div>
+                    <form class="ui inverted form login" method="post" v-else>
+                        <div class="field">
+                            <label>Username</label>
+                            <input type="text" name="username" placeholder="Email">
+                        </div>
+                        <div class="field">
+                            <label>Password</label>
+                            <input type="text" name="password" placeholder="********">
+                        </div>
+                        <button class="ui button" type="submit">Login</button>
+                    </form>
+                </div>
             </div>
             <div class="actions">
                 <div class="ui red basic cancel inverted button">
@@ -51,15 +73,21 @@
 </template>
 
 <script>
-import axios from 'axios'
+import axios from 'axios';
 import bus from './bus.js'
+import auth from './auth.js'
+import hubapi from './hubapi.js'
 import Vue from 'vue';
+
+import Loader from './Loader.vue'
 
 export default {
     name: 'choose-hub',
     props: [],
+    mixins: [ Loader, ],
     mounted() {
         console.log("ChooseHub mounted");
+        var self = this;
         this.getExistings();
         var self = this;
         $('.choosehub.ui.floating.dropdown').dropdown({
@@ -77,18 +105,32 @@ export default {
             }
           },
         });
+        $('.ui.accordion.advanced').accordion();
+        $('.ui.form.login').submit(function() {
+            console.log("subsmubt mec");
+            self.doLogin();
+            return false;
+        });
     },
     created() {
+        bus.$on("connection_failed",this.failedConnection);
+        bus.$on("logged",this.logged);
+        bus.$on("logerror",this.logerror);
     },
     beforeDestroy() {
         $('.ui.basic.newhuburl.modal').remove();
+        bus.$off("connection_failed",this.failedConnection);
     },
     data() {
         return {
-            existings : {}
+            existings : {},
+            connection_error: null,
+            logged_username: null,
+            tokens: {},
+            log_error: null,
+            log_error_reason: null,
         };
     },
-    mixins: [ ],
     components: { },
     computed: {
     },
@@ -109,6 +151,8 @@ export default {
             if(!url.startsWith("http")) {
                 url = `http://${url}`;
             }
+            self.loading();
+            hubapi.base(url);
             axios.get(url)
             .then(response => {
                 var data = response.data.result;
@@ -121,17 +165,26 @@ export default {
                 self.existings[data["name"]] = data;
                 Vue.localStorage.set('hub_connections',JSON.stringify(self.existings));
                 // update base URL for all API calls
-                axios.defaults.baseURL = url;
                 // auto-connect to newly created connection, and redirect to home
                 bus.$emit("connect",data,"/");
+                self.connection_error = null;
+                self.loaded();
             })
             .catch(err => {
-                console.log(err);
-                console.log("Error creating new connection: " + err.data.error);
+                self.loaderror(err);
+                this.failedConnection(url,err);
             })
         },
-        newConnection: function() {
+        failedConnection: function(url, error) {
+            var errmsg = this.extractError(error);
+            this.connection_error = errmsg;
+            this.newConnection(url);
+        },
+        newConnection: function(url=null) {
             var self = this;
+            if(url) {
+                $(".ui.newhuburl.form").form('get field', "huburl").val(url);
+            }
             $('.ui.basic.newhuburl.modal')
             .modal("setting", {
                 detachable : false,
@@ -151,6 +204,29 @@ export default {
           Vue.localStorage.set('hub_connections',JSON.stringify(this.existings));
           console.log(this.existings);
           this.getExistings();
+        },
+        doLogin() {
+            const username = $(".ui.form.login").form("get field","username").val();
+            const password = $(".ui.form.login").form("get field","password").val();
+            auth.signIn(username,password);
+            return false;
+        },
+        logged: function(username,tokens) {
+            this.logged_username = username;
+            this.tokens = tokens; // TODO: use Secure Cookie
+            document.cookie = "biothings-access-token=" + tokens.accessToken.jwtToken;
+            document.cookie = "biothings-id-token=" + tokens.idToken.jwtToken;
+            document.cookie = "biothings-refresh-token=" + tokens.refreshToken.token;
+            // reset errors
+            this.log_error = null;
+            this.log_error_reason = null;
+        },
+        logerror: function(user,error,reason) {
+            this.log_error = error;
+            this.log_error_reason = reason;
+            // not logged anymore
+            this.logger_user = null;
+            this.tokens = {}
         }
     },
 }
