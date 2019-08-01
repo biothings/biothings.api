@@ -343,7 +343,7 @@
                 latency_value : null,
                 ping_interval : PING_INTERVAL_MS, // adjustable delay
                 default_conn: {
-                    "icon" : "/dist/biothings-studio-color.svg",
+                    "icon" : "assets/biothings-studio-color.svg",
                     "name" : "BioThings Studio",
                     "app_version" : null,
                     "biothings_version" : null,
