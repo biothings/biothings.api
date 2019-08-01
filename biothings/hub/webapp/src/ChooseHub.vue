@@ -51,7 +51,7 @@
                         </div>
                         <div class="field">
                             <label>Password</label>
-                            <input type="text" name="password" placeholder="********">
+                            <input type="password" name="password" placeholder="Password">
                         </div>
                         <button class="ui button" type="submit">Login</button>
                     </form>

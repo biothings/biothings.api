@@ -773,6 +773,7 @@
                 console.log("Can't connect using websocket");
                 console.log(err);
                 // invalidate connection and use default
+                self.ws_connection = "disconnected";
                 this.conn = this.default_conn;
             });
         },
