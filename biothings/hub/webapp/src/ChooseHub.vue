@@ -57,7 +57,11 @@
                         <input type="text" id="huburl" placeholder="Hub address" autofocus>
                     </div>
                 </div>
-                <div v-if="connection_error" class="connectionerror ui orange label" v-html="connection_error"></div>
+                <div v-if="connection_error" class="connectionerror ui red basic label">
+                    <div>Unable to connect to Hub API because:</div>
+                    <pre v-html="connection_error"></pre>
+
+                </div>
             </div>
             <br>
             <div class="ui inverted accordion advanced">
@@ -66,11 +70,13 @@
                     Advanced
                 </div>
                 <div class="content">
+                    <div v-if="signin_error" class="ui red basic label signin-error" v-html="signin_error"></div>
                     <span v-if="logged_username">
                         <div>
                             <span>Currently logged as <b class="logged-user">{{logged_username}}</b></span>
                             <a class="signout" @click="signOut">Sign out</a>
                         </div>
+                        <br>
                     </span>
                 <form class="ui inverted form login" method="post" v-else onsubmit="return false">
                     <div class="field">
@@ -81,7 +87,7 @@
                         <label>Password</label>
                         <input type="password" name="password" placeholder="Password">
                     </div>
-                    <button class="ui button" type="submit" @click="doLogin">Login</button>
+                    <button class="ui button" type="submit" @click="signIn">Login</button>
                 </form>
             </div>
         </div>
@@ -152,10 +158,9 @@ data() {
     return {
         existings : {},
         connection_error: null,
+        signin_error: null,
         logged_username: null,
         tokens: {},
-        log_error: null,
-        log_error_reason: null,
     };
 },
 components: { },
@@ -203,8 +208,7 @@ methods: {
             })
         },
         failedConnection: function(url, error) {
-            var errmsg = this.extractError(error);
-            this.connection_error = errmsg;
+            this.connection_error = this.extractError(error);
             this.newConnection(url);
         },
         newConnection: function(url=null) {
@@ -212,6 +216,10 @@ methods: {
             if(url) {
                 $(".ui.newhuburl.form").form('get field', "huburl").val(url);
             }
+            // reset errors
+            self.signin_error = null;
+            self.connection_error = null;
+
             $('.ui.basic.newhuburl.modal')
             .modal("setting", {
                 detachable : false,
@@ -239,7 +247,8 @@ methods: {
           console.log(event);
           this.newConnection(conn.url);
         },
-        doLogin() {
+        signIn() {
+            this.signin_error = null;
             const username = $(".ui.form.login").form("get field","username").val();
             const password = $(".ui.form.login").form("get field","password").val();
             auth.signIn(username,password);
@@ -253,12 +262,12 @@ methods: {
             document.cookie = "biothings-current-user=" + username;
             this.setLoggedUser(username);
             // reset errors
-            this.log_error = null;
-            this.log_error_reason = null;
+            this.signin_error = null;
         },
         logerror: function(user,error,reason) {
-            this.log_error = error;
-            this.log_error_reason = reason;
+            this.signin_error = error;
+            if(reason)
+                this.signin_error += ": " + reason;
             // not logged anymore
             this.logger_user = null;
             this.tokens = {}
@@ -267,14 +276,8 @@ methods: {
             this.logged_username = username;
         },
         signOut: function() {
-            auth.signOut( err => {
-                if (err) {
-                    console.log("err");
-                } else {
-                    hubapi.clearLoggedUser();
-                }
-            });
-            return false;
+            auth.signOut();
+            hubapi.clearLoggedUser();
         },
     },
 }
@@ -307,5 +310,6 @@ methods: {
   .tdhubicon {padding: 0.3em 1em 0.3em 0.3em !important;}
   .signout {font-weight: bold; cursor: pointer; padding-left: 1em;}
   .logged-user {color:lightgrey;}
+  .signin-error {margin-bottom: 1em;}
 
 </style>

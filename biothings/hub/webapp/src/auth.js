@@ -18,6 +18,7 @@ const userPool = new CognitoUserPool(POOL_DATA);
 
 
 class AuthService {
+
   signIn(username, password) {
     // cognito boiler place code
     const authData = {
@@ -40,14 +41,15 @@ class AuthService {
         bus.$emit("logerror",username,err.name,err.message);
       }
     });
-    console.log(`about to loig ${username}`);
   }
 
-  signOut(callback) {
+  signOut() {
     userPool.client.request('GlobalSignOut', {
       AccessToken: hubapi.getAccessToken(),
     }, err => {
-      callback(err);
+      if(err) {
+        bus.$emit("logerror",err.name,err.message);
+      }
     });
 
   }
