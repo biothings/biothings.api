@@ -66,32 +66,37 @@
                     Advanced
                 </div>
                 <div class="content">
-                    <div v-if="logged_username">Currently logged as {{logged_username}}</div>
-                    <form class="ui inverted form login" method="post" v-else>
-                        <div class="field">
-                            <label>Username</label>
-                            <input type="text" name="username" placeholder="Email">
+                    <span v-if="logged_username">
+                        <div>
+                            <span>Currently logged as <b class="logged-user">{{logged_username}}</b></span>
+                            <a class="signout" @click="signOut">Sign out</a>
                         </div>
-                        <div class="field">
-                            <label>Password</label>
-                            <input type="password" name="password" placeholder="Password">
-                        </div>
-                        <button class="ui button" type="submit">Login</button>
-                    </form>
-                </div>
-            </div>
-            <div class="actions">
-                <div class="ui red basic cancel inverted button">
-                    <i class="remove icon"></i>
-                    Cancel
-                </div>
-                <div class="ui green ok inverted button">
-                    <i class="checkmark icon"></i>
-                    OK
-                </div>
+                    </span>
+                <form class="ui inverted form login" method="post" v-else onsubmit="return false">
+                    <div class="field">
+                        <label>Username</label>
+                        <input type="text" name="username" placeholder="Email">
+                    </div>
+                    <div class="field">
+                        <label>Password</label>
+                        <input type="password" name="password" placeholder="Password">
+                    </div>
+                    <button class="ui button" type="submit" @click="doLogin">Login</button>
+                </form>
             </div>
         </div>
-    </span>
+        <div class="actions">
+            <div class="ui red basic cancel inverted button">
+                <i class="remove icon"></i>
+                Cancel
+            </div>
+            <div class="ui green ok inverted button">
+                <i class="checkmark icon"></i>
+                OK
+            </div>
+        </div>
+    </div>
+</span>
 
 </template>
 
@@ -105,80 +110,79 @@ import Vue from 'vue';
 import Loader from './Loader.vue'
 
 export default {
-    name: 'choose-hub',
-    props: [],
-    mixins: [ Loader, ],
-    mounted() {
-        console.log("ChooseHub mounted");
+name: 'choose-hub',
+props: [],
+mixins: [ Loader, ],
+mounted() {
+    console.log("ChooseHub mounted");
+    var self = this;
+    this.getExistings();
+    var self = this;
+    $('.choosehub.ui.floating.dropdown').dropdown({
+      onChange: function(value, text, $selectedItem) {
+        if(value == "new") {
+          self.newConnection();
+        } else {
+          var conn = self.existings[value];
+          var url = conn["url"].replace(/\/$/,"");
+          self.refreshConnection(url);
+          if(conn)
+              bus.$emit("connect",conn,"/");
+          else
+              console.log(`Can't find connection details for ${value}`);
+        }
+      },
+    });
+    $('.ui.accordion.advanced').accordion();
+},
+created() {
+    bus.$on("connection_failed",this.failedConnection);
+    bus.$on("logged",this.logged);
+    bus.$on("logerror",this.logerror);
+    bus.$on("logged_user",this.setLoggedUser);
+},
+beforeDestroy() {
+    $('.ui.basic.newhuburl.modal').remove();
+    bus.$off("connection_failed",this.failedConnection);
+    bus.$off("logged",this.logged);
+    bus.$off("logerror",this.logerror);
+    bus.$off("logged_user",this.setLoggedUser);
+},
+data() {
+    return {
+        existings : {},
+        connection_error: null,
+        logged_username: null,
+        tokens: {},
+        log_error: null,
+        log_error_reason: null,
+    };
+},
+components: { },
+computed: {
+},
+methods: {
+    buildConnections: function() {
+    },
+    getExistings: function() {
+        var previous = Vue.localStorage.get('hub_connections');
+        if(!previous)
+            previous = {};
+        else
+            //previous = JSON.parse(JSON.parse(previous));
+            previous = JSON.parse(previous);
+        this.existings = previous;
+    },
+    refreshConnection: function(url) {
         var self = this;
-        this.getExistings();
-        var self = this;
-        $('.choosehub.ui.floating.dropdown').dropdown({
-          onChange: function(value, text, $selectedItem) {
-            if(value == "new") {
-              self.newConnection();
-            } else {
-              var conn = self.existings[value];
-              var url = conn["url"].replace(/\/$/,"");
-              self.refreshConnection(url);
-              if(conn)
-                  bus.$emit("connect",conn,"/");
-              else
-                  console.log(`Can't find connection details for ${value}`);
-            }
-          },
-        });
-        $('.ui.accordion.advanced').accordion();
-        $('.ui.form.login').submit(function() {
-            console.log("subsmubt mec");
-            self.doLogin();
-            return false;
-        });
-    },
-    created() {
-        bus.$on("connection_failed",this.failedConnection);
-        bus.$on("logged",this.logged);
-        bus.$on("logerror",this.logerror);
-    },
-    beforeDestroy() {
-        $('.ui.basic.newhuburl.modal').remove();
-        bus.$off("connection_failed",this.failedConnection);
-    },
-    data() {
-        return {
-            existings : {},
-            connection_error: null,
-            logged_username: null,
-            tokens: {},
-            log_error: null,
-            log_error_reason: null,
-        };
-    },
-    components: { },
-    computed: {
-    },
-    methods: {
-        buildConnections: function() {
-        },
-        getExistings: function() {
-            var previous = Vue.localStorage.get('hub_connections');
-            if(!previous)
-                previous = {};
-            else
-                //previous = JSON.parse(JSON.parse(previous));
-                previous = JSON.parse(previous);
-            this.existings = previous;
-        },
-        refreshConnection: function(url) {
-            var self = this;
-            if(!url.startsWith("http")) {
-                url = `http://${url}`;
-            }
-            self.loading();
-            hubapi.base(url);
-            axios.get(url)
-            .then(response => {
-                var data = response.data.result;
+        if(!url.startsWith("http")) {
+            url = `http://${url}`;
+        }
+        self.loading();
+        hubapi.base(url);
+        axios.get(url)
+        .then(response => {
+            var data = response.data.result;
                 self.getExistings();
                 data["url"] = url.replace(/\/$/,"");
                 if(!data["name"])
@@ -242,11 +246,12 @@ export default {
             return false;
         },
         logged: function(username,tokens) {
-            this.logged_username = username;
             this.tokens = tokens; // TODO: use Secure Cookie
             document.cookie = "biothings-access-token=" + tokens.accessToken.jwtToken;
             document.cookie = "biothings-id-token=" + tokens.idToken.jwtToken;
             document.cookie = "biothings-refresh-token=" + tokens.refreshToken.token;
+            document.cookie = "biothings-current-user=" + username;
+            this.setLoggedUser(username);
             // reset errors
             this.log_error = null;
             this.log_error_reason = null;
@@ -257,7 +262,20 @@ export default {
             // not logged anymore
             this.logger_user = null;
             this.tokens = {}
-        }
+        },
+        setLoggedUser(username) {
+            this.logged_username = username;
+        },
+        signOut: function() {
+            auth.signOut( err => {
+                if (err) {
+                    console.log("err");
+                } else {
+                    hubapi.clearLoggedUser();
+                }
+            });
+            return false;
+        },
     },
 }
 </script>
@@ -287,5 +305,7 @@ export default {
   .ui.menu .ui.dropdown .menu>.item.hubconnect {padding: 0 !important;}
   .ui.compact.table.hubconnect td {padding: .3em .0em .0em 0em;}
   .tdhubicon {padding: 0.3em 1em 0.3em 0.3em !important;}
+  .signout {font-weight: bold; cursor: pointer; padding-left: 1em;}
+  .logged-user {color:lightgrey;}
 
 </style>

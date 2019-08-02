@@ -1,4 +1,5 @@
 import bus from './bus.js'
+import hubapi from './hubapi.js'
 
 import { CognitoUserPool,
          CognitoUserAttribute,
@@ -22,13 +23,13 @@ class AuthService {
     const authData = {
         UserName: username,
         Password: password,
-        Storage: new CookieStorage({"domain":"localhost"})
+        Storage: new CookieStorage({"domain":"http://localhost:8080"})
     }
     const authDetails = new AuthenticationDetails(authData);
     const userData = {
         Username: username,
         Pool: userPool,
-        Storage: new CookieStorage({"domain":"localhost"})
+        Storage: new CookieStorage({"domain":"http://localhost:8080"})
     }
     const cognitoUser = new CognitoUser(userData);
     cognitoUser.authenticateUser(authDetails, {
@@ -40,6 +41,15 @@ class AuthService {
       }
     });
     console.log(`about to loig ${username}`);
+  }
+
+  signOut(callback) {
+    userPool.client.request('GlobalSignOut', {
+      AccessToken: hubapi.getAccessToken(),
+    }, err => {
+      callback(err);
+    });
+
   }
 }
 
