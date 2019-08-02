@@ -12,14 +12,37 @@
                     Existing connections
                 </div>
                 <div class="scrolling menu" v-if="Object.keys(existings).length">
-                    <div class="item" :data-value="v.name" v-for="v in existings">
-                          <img class="hubicon" :src="v.icon"></img>
-                          <b>{{v.name}}</b> <a class="bluelink">{{v.url}}</a>
-                          <i class="grey trash alternate outline icon right floated" @click="deleteConnection($event,v)"></i>
-                      </div>
+                    <div class="item hubconnect" :data-value="v.name" v-for="v in existings">
+                        <table class="ui small compact table hubconnect">
+                            <tbody>
+                                <tr>
+                                    <td class="collapsing tdhubicon">
+                                        <img class="hubicon" :src="v.icon"></img>
+                                    </td>
+                                    <td class="collapsing twelve wide">
+                                        <b>{{v.name}}</b>
+                                    </td>
+                                    <td class="collapsing hubconnect">
+                                        <a :href="v.url">
+                                            <i class="external alternate icon">
+                                            </i>
+                                        </a>
+                                    </td>
+                                    <td class="collapsing hubconnect">
+                                        <button class="ui small icon button" @click="editConnection($event,v)">
+                                            <i class="grey edit icon right floated"></i>
+                                        </button>
+                                    </td>
+                                    <td class="collapsing hubconnect">
+                                        <button class="ui small icon button" @click="deleteConnection($event,v)">
+                                            <i class="grey trash alternate outline icon right floated"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-            </div>
             </div>
         </div>
 
@@ -38,11 +61,11 @@
             </div>
             <br>
             <div class="ui inverted accordion advanced">
-                <div class="title active">
+                <div class="title">
                     <i class="dropdown icon"></i>
                     Advanced
                 </div>
-                <div class="content active">
+                <div class="content">
                     <div v-if="logged_username">Currently logged as {{logged_username}}</div>
                     <form class="ui inverted form login" method="post" v-else>
                         <div class="field">
@@ -188,6 +211,7 @@ export default {
             $('.ui.basic.newhuburl.modal')
             .modal("setting", {
                 detachable : false,
+                closable: false,
                 onApprove: function () {
                     var url = $(".ui.newhuburl.form").form('get field', "huburl").val();
                     self.refreshConnection(url);
@@ -204,6 +228,12 @@ export default {
           Vue.localStorage.set('hub_connections',JSON.stringify(this.existings));
           console.log(this.existings);
           this.getExistings();
+        },
+        editConnection(event,conn) {
+          // avoid onChange to be triggered
+          event.stopPropagation();
+          console.log(event);
+          this.newConnection(conn.url);
         },
         doLogin() {
             const username = $(".ui.form.login").form("get field","username").val();
@@ -253,5 +283,9 @@ export default {
 
   .hubicon { width:2.5em !important;}
   .largechoose {width:30em;}
+  .ui.table.hubconnect {border: 0px !important;}
+  .ui.menu .ui.dropdown .menu>.item.hubconnect {padding: 0 !important;}
+  .ui.compact.table.hubconnect td {padding: .3em .0em .0em 0em;}
+  .tdhubicon {padding: 0.3em 1em 0.3em 0.3em !important;}
 
 </style>
