@@ -307,7 +307,7 @@ class HubShell(InteractiveShell):
         # - no '&&' operator allowed
         if secure:
             # command must be alpha only, argument with "," and "=", or no arg at all
-            pat = r'^([A-Za-z]+)\(["\'\w\s=,.]*\)$'
+            pat = r'^([A-Za-z_]+)\(["\'\w\s=,.-]*\)$'
         else:
             pat = r'(.*)\(.*\)' # more permissive
         m = re.match(pat,line) 
@@ -341,6 +341,7 @@ class HubShell(InteractiveShell):
                 cmdline = "_and(%s)" % ",".join(strcmds)
             else:
                 raise CommandError("Using '&&' operator required two operands\n")
+        print("cmdline: %s" % repr(cmdline))
         r = self.run_cell(cmdline,store_history=True)
         outputs = []
         if not r.success:
