@@ -218,13 +218,13 @@ methods: {
             }
             // reset errors
             self.signin_error = null;
-            self.connection_error = null;
 
             $('.ui.basic.newhuburl.modal')
             .modal("setting", {
                 detachable : false,
                 closable: false,
                 onApprove: function () {
+                    self.connection_error = null;
                     var url = $(".ui.newhuburl.form").form('get field', "huburl").val();
                     self.refreshConnection(url);
                 }
