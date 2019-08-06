@@ -74,7 +74,6 @@ class BaseDiffer(object):
 
     def register_status(self,status,transient=False,init=False,**extra):
         src_build = get_src_build()
-        logging.error("in; %s" % extra)
         job_info = {
                 'status': status,
                 'step_started_at': datetime.now(),
