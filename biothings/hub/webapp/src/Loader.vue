@@ -41,16 +41,24 @@ export default {
             $("#loading").removeClass("studiogrey");
             $("#loader").attr("data-html",'<div>Loading</div>');
         },
-        loaderror: function(err) {
-            var msg = "<div><b>Error while loading page</b><br>";
+        extractError: function(err) {
             console.log(err);
+            var msg = "";
             if(err.status != undefined)
                 msg += "XHR code: " + err.status + "<br>";
             if(err.data != undefined && err.data.error != undefined)
                 msg += "Error: " + err.data.error + "<br>";
             if(err.config) {
-                msg += "Request: " + err.config.method.toUpperCase() + " <a href='" + err.config.url + "'>" + err.config.url + "</a>";
+                msg += err.config.method.toUpperCase() + " <a href='" + err.config.url + "'>" + err.config.url + "</a>";
             }
+            if(err.message) {
+                msg += "<br>" + err.message;
+            }
+            return msg;
+        },
+        loaderror: function(err) {
+            var msg = "<div><b>Error while loading page</b><br>";
+            msg += this.extractError(err);
             msg += "</div>";
             this.loaded();
             $("#loading").removeClass("studiogrey");
