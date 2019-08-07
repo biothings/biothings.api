@@ -134,7 +134,7 @@ class SourceDocMongoBackend(SourceDocBackendBase):
         """
         src_version = {}
         # what's registered in each uploader, from src_master.
-        # also includes versions and "src_version" key as a temp duplicate
+        # also includes versions
         src_meta = {}
         srcs = []
         if self.sources_accessed:
@@ -198,8 +198,6 @@ class SourceDocMongoBackend(SourceDocBackendBase):
                 version = subsrc_versions[0]["version"]
                 src_version[src['_id']] = version
                 src_meta.setdefault(src["_id"],{}).setdefault("version",version)
-        # backward compatibility
-        src_meta["src_version"] = src_version
         return src_meta
 
 
