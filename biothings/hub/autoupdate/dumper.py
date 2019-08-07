@@ -195,6 +195,66 @@ class BiothingsDumper(HTTPDumper):
         # - when incremental, it's always old_version.new_version
         return max(versions,key=lambda e: e["build_version"])
 
+    def find_update_path(self, version, backend_version=None):
+        """
+        Explore available versions and find the path to update the hub up to "version",
+        starting from given backend_version (typically current version found in ES index).
+        If backend_version is None (typically no index yet), a complete path will be returned,
+        from the last compatible "full" release up-to the latest "diff" update.
+        Returned is a list of dict, where each dict is a build metadata element containing
+        information about each update (see versions.json), the order of the list describes
+        the order the updates should be performed.
+        """
+        versions_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_S3_FOLDER,VERSIONS)
+        avail_versions = self.load_remote_json(versions_url)
+        assert avail_versions["format"] == "1.0", "versions.json format has changed: %s" % avail_versions["format"]
+        if version == LATEST:
+            version = avail_versions["versions"][-1]["build_version"]
+            self.logger.info("Asking for latest version, ie. '%s'" % version)
+        self.logger.info("Find update path to bring data from version '%s' up-to version '%s'" % (backend_version,version))
+        file_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_S3_FOLDER,version)
+        build_meta = self.load_remote_json(file_url)
+        self.check_compat(build_meta)
+        if not build_meta:
+            raise Exception("Can't get remote build information about version '%s' (url was '%s')" % \
+                             (version,file_url))
+
+        if build_meta["target_version"] == backend_version:
+            self.logger.info("Backend is up-to-date, version '%s'" % backend_version)
+            return []
+
+        # from older to older, each required_version being compatible with the next target_version
+        # except when version is a full update, ie. no previous version required (end of the path)
+        path = [build_meta]
+
+        # latest points to a new version, 2 options there:
+        # - update is a full snapshot: nothing to download, but we need to trigger a restore
+        # - update is an incremental, we need to check if the incremental is compatible with current version
+        if build_meta["type"] == "incremental":
+            # require_version contains the compatible version for which we can apply the diff
+            # let's compare...
+            if backend_version == build_meta["require_version"]:
+                self.logger.info("Diff update '%s' requires version '%s', which is compatible with current backend version, download update" % \
+                        (build_meta["build_version"],build_meta["require_version"]))
+            else:
+                self.logger.info("Diff '%s' update requires version '%s'" % (build_meta["build_version"],build_meta["require_version"]))
+                self.logger.info("Now looking for a compatible version")
+                # by default we'll check directly the required version
+                required_version = build_meta["require_version"]
+                compatibles = [v for v in avail_versions["versions"] if v["target_version"] == version.split(".")[0]]
+                self.logger.info("Compatible versions from which we can apply this update: %s" % compatibles)
+                best_version = self.choose_best_version(compatibles)
+                self.logger.info("Best version found: '%s'" % best_version)
+                required_version = best_version
+                # keep this version as part of the update path
+                # fill the path from older to newer (no extend or append)
+                path = self.find_update_path(best_version["build_version"], backend_version) + path
+        else:
+            # full, just keep it as-is, it's a full (and it's already part of path during init, see above
+            pass
+
+        return path
+
     def create_todump_list(self, force=False, version=LATEST, url=None):
         assert self.__class__.BIOTHINGS_S3_FOLDER, "BIOTHINGS_S3_FOLDER class attribute is not set"
         self.logger.info("Dumping version '%s'" % version)
@@ -227,50 +287,8 @@ class BiothingsDumper(HTTPDumper):
             self.check_compat(build_meta)
             if not build_meta:
                 raise Exception("Can't get remote build information about version '%s' (url was '%s')" % \
-                        (version,file_url))
-            # latest poins to a new version, 2 options there:
-            # - update is a full snapshot: nothing to download, but we need to trigger a restore
-            # - update is an incremental: 
-            #   * we first need to check if the incremental is compatible with current version
-            #     if not, we need to find the previous update (full or incremental) compatible
-            #   * if compatible, we need to download metadata file which contains the list of files
-            #     we need to download and then trigger a sync using those diff files
+                                (version,file_url))
             if build_meta["type"] == "incremental":
-                # require_version contains the compatible version for which we can apply the diff
-                # let's compare...
-                if self.target_backend.version == build_meta["require_version"]:
-                    self.logger.info("Diff update version '%s' is compatible with current version, download update" % \
-                            build_meta["require_version"])
-                else:
-                    self.logger.info("Diff update requires version '%s' but target_backend is '%s'" % \
-                            (build_meta["require_version"],self.target_backend.version))
-                    # TODO: we could keep track of what's needed to update, recursively. But
-                    # note sure if it's a good idea because we'd need to mix dumper and
-                    # uploader processes together, orchestrate them which can be tricky.
-                    # If we just let dumper and uploader works on their own, and
-                    # kind of force dumper to check more regularly when we know we have more than
-                    # one update to go through, we would respect dumper/uploade decoupling and things
-                    # we would keep things simple (it'd be a little bit longer though)
-                    # keep track on this version, we'll need to apply it later
-                    self.logger.info("Now looking for a compatible version")
-                    # by default we'll check directly the required version
-                    required_version = build_meta["require_version"]
-                    versions_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_S3_FOLDER,VERSIONS)
-                    avail_versions = self.load_remote_json(versions_url)
-                    assert avail_versions["format"] == "1.0", "versions.json format has changed: %s" % avail_versions["format"]
-                    if not avail_versions:
-                        self.logger.error("Can't find versions information from URL %s, will try '%s'" % \
-                                (versions_url,required_version))
-                    else:
-                        # if any of available versions end with "require_version", then it means it's compatible
-                        compatibles = [v for v in avail_versions["versions"] if v["require_version"] == self.target_backend.version] #v["target_version"] == build_meta["require_version"]]
-                        self.logger.info("Compatible versions from which we can apply this update: %s" % compatibles)
-                        best_version = self.choose_best_version(compatibles)
-                        self.logger.info("Best version found: '%s'" % best_version)
-                        required_version = best_version
-                    # let's get what we need
-                    return self.create_todump_list(force=force,
-                            version=required_version["build_version"],url=required_version["url"])
                 self.release = build_meta["build_version"]
                 # ok, now we can use download()
                 # we will download it again during the normal process so we can then compare
