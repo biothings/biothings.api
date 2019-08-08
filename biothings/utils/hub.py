@@ -341,7 +341,6 @@ class HubShell(InteractiveShell):
                 cmdline = "_and(%s)" % ",".join(strcmds)
             else:
                 raise CommandError("Using '&&' operator required two operands\n")
-        print("cmdline: %s" % repr(cmdline))
         r = self.run_cell(cmdline,store_history=True)
         outputs = []
         if not r.success:
