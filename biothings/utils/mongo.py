@@ -125,6 +125,11 @@ def get_event(conn=None):
     return conn[config.DATA_HUB_DB_DATABASE][config.EVENT_COLLECTION]
 
 @requires_config
+def get_hub_config(conn=None):
+    conn = conn or get_hub_db_conn()
+    return conn[config.DATA_HUB_DB_DATABASE][getattr(config,"HUB_CONFIG_COLLECTION","hub_config")]
+
+@requires_config
 def get_last_command(conn=None):
     cmd = get_cmd(conn)
     cur = cmd.find({},{"_id":1}).sort("_id",DESCENDING).limit(1)

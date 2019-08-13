@@ -401,7 +401,7 @@ class DataBuilder(object):
         # also search for _meta in build_config
         bmeta = self.build_config.get("_meta")
         if bmeta:
-            self.logger.info("Found _meta in build_config, merging: %s" % pformat(bmeta)
+            self.logger.info("Found _meta in build_config, merging: %s" % pformat(bmeta))
             self.build_metadata.update(self.build_config.get("_meta",{}))
 
     def update_src_meta_stats(self):

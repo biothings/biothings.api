@@ -745,6 +745,10 @@ def get_event():
     db = Database()
     return db[db.CONFIG.EVENT_COLLECTION]
 
+def get_hub_config():
+    db = Database()
+    return db[getattr(db.CONFIG,"HUB_CONFIG_COLLECTION","hub_config")]
+
 def get_source_fullname(col_name):
     pass
 

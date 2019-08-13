@@ -58,6 +58,10 @@ def get_event():
     """Return a Collection instance for events collection/table"""
     raise NotImplementedError()
 
+def get_hub_config():
+    """Return a Collection instance storing configuration values"""
+    raise NotImplementedError()
+
 def get_last_command():
     """Return the latest cmd document (according to _id)"""
     raise NotImplementedError()
@@ -318,6 +322,7 @@ def setup(config):
     global get_api
     global get_cmd
     global get_event
+    global get_hub_config
     global get_source_fullname
     global get_last_command
     get_hub_db_conn = config.hub_db.get_hub_db_conn
@@ -330,6 +335,7 @@ def setup(config):
     get_api = ChangeWatcher.wrap(config.hub_db.get_api)
     get_cmd = ChangeWatcher.wrap(config.hub_db.get_cmd)
     get_event = ChangeWatcher.wrap(config.hub_db.get_event)
+    get_hub_config = ChangeWatcher.wrap(config.hub_db.get_hub_config)
     get_source_fullname = config.hub_db.get_source_fullname
     get_last_command = config.hub_db.get_last_command
     # propagate config module to classes
