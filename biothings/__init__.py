@@ -22,7 +22,7 @@ class ConfigurationValue(object):
     code will also be executed through exec() *if* eval() raised a syntax error. This
     would happen when code contains statements, not just expression. In that case,
     a variable should be created in these statements (named the same as the original
-    config variable) so the proper value can be through ConfigWrapper.
+    config variable) so the proper value can be through ConfigurationManager.
     """
     def __init__(self,code):
         self.code = code
@@ -38,14 +38,22 @@ def check_config(config_mod):
             raise ConfigurationError("%s: %s" % (attr,str(getattr(config_mod,attr))))
 
 
-class ConfigWrapper(types.ModuleType):
+class ConfigurationManager(types.ModuleType):
+    """
+    Wraps and manages configuration access and edit. A singleton
+    instance is available throughout all hub apps using biothings.config
+    after biothings.config_for_app(conf_mod) as been called.
+    In addition to providing config value access, either from config files
+    or database, config manager can supersede atrributes of a class or instance
+    with values coming from the database, allowing dynamic configuration of hub's
+    elements.
+    """
 
     def __init__(self, conf):
         self.conf = conf
         self.hub_config = None # set when wrapped, see config_for_app()
-        self.dbvals = {} # caching values from hub db
-        self.rootvals = {} # for dotfield notation, all config names starting with
-                           # first elem
+        self.bykeys = {} # caching values from hub db
+        self.byroots = {} # for dotfield notation, all config names starting with first elem
 
     def __getattr__(self, name):
         # first try value from Hub DB, they have precedence
@@ -58,11 +66,11 @@ class ConfigWrapper(types.ModuleType):
         return self.__getattr__(name)
 
     def reset_cache(self):
-        self.dbvals = {}
-        self.rootvals = {}
+        self.bykeys = {}
+        self.byroots = {}
 
     def get_path_from_db(self, name):
-        return self.rootvals.get(name,[])
+        return self.byroots.get(name,[])
 
     def merge_with_path_from_db(self, name, val):
         roots = self.get_path_from_db(name)
@@ -71,17 +79,28 @@ class ConfigWrapper(types.ModuleType):
             val = merge_object({name:val},make_object(dotfieldname,value))
         return val
 
-    def store_value_to_db(self, name, value):
+    def store_value_to_db(self, name, value, scope="config"):
+        """
+        Stores a configuration "value" named "name" in hub_config.
+        "scope" defines what the configuration value applies on:
+        - 'config': a config value which could be find in config*.py files
+        - 'class': applied to a class (supersedes class attributes)
+        - 'instance': appliced to an instance (supersedes instance props)
+        """
         assert self.hub_config, "No hub_config collection set"
         res = self.hub_config.update_one({"_id" : name},
-                                         {"$set" : { "value": value}},
+                                         {"$set" : {
+                                             "scope" : scope,
+                                             "value": value,
+                                             }
+                                         },
                                          upsert=True) 
         return res.upserted_id
 
-    def get_value_from_db(self, name):
+    def get_value_from_db(self, name, scope="config"):
         if self.hub_config:
             # cache on first call
-            if not self.dbvals:
+            if not self.bykeys:
                 for d in self.hub_config.find():
                     # tricky: get it from file to cast to correct type
                     val = d["value"]
@@ -92,11 +111,14 @@ class ConfigWrapper(types.ModuleType):
                     except AttributeError:
                         # only exists in db
                         pass
-                    self.dbvals[d["_id"]] = val
+                    # fill in cache, by scope then by config key
+                    scope = d.get("scope","config")
+                    self.bykeys.setdefault(scope,{})
+                    self.bykeys[scope][d["_id"]] = val
                     elems = d["_id"].split(".")
                     if len(elems) > 1: # we have a dotfield notation there
-                        self.rootvals.setdefault(elems[0],[]).append({"_id" : d["_id"], "value": val})
-            return self.dbvals.get(name)
+                        self.byroots.setdefault(elems[0],[]).append({"_id" : d["_id"], "value": val})
+            return self.bykeys.get(scope,{}).get(name)
 
     def get_value_from_file(self, name):
         # if "name" corresponds to a dict, we may have
@@ -119,6 +141,53 @@ class ConfigWrapper(types.ModuleType):
                 return val.default
         else:
             return val
+
+    def patch(self, something, confvals):
+        for confval in confvals:
+            print(confval)
+            key = confval["_id"]
+            value = confval["value"]
+            # key looks like dotfield notation, with first elem being "something"'s name
+            # we can remove that first elem as it represents "something"
+            # TODO: sanity check ? first elem must match "something" to make sure we patch what
+            # we think we should patch ?
+            attrs = ".".join(key.split(".")[1:])
+            # we need to set attributes to "something" with "value", in recursive way, moving
+            # in depth in "something" to find attributes to patch. Note: all attrs must exists.
+            def set(what, name, value):
+                if "." in name:
+                    # need to go deeper
+                    set(getattr(what,name.split(".")[0]),".".join(name.split(".")[1:]),value)
+                else:
+                    setattr(what,name,value)
+            set(something,attrs,value)
+
+    def supersede(self, something):
+        # find config values with scope corresponding to something's type
+        # Note: any conf key will look like a dotfield notation, eg. MyClass.myattr
+        # so we search 1st by root (MyClass) to see if we have a config key in DB, 
+        # then we fetch all 
+        scope = None
+        if isinstance(something,type):
+            scope = "class"
+        elif isinstance(something,object):
+            # it's an instance. conf key looks the same as when it's a class but scope is different
+            # (because classes have a name, but instances don't)
+            scope = "instance"
+        else:
+            raise TypeError("Don't know how to supersede type '%s'" % type(something))
+
+        assert scope
+        # it's a class, get by roots using string repr
+        confvals = self.byroots.get(something.__name__,[])
+        # check/filter by scope
+        valids = []
+        for conf in confvals:
+            match = self.get_value_from_db(conf["_id"],scope=scope)
+            if match:
+                # we actually have a conf key/value matching that scope, keep it
+                valids.append(conf)
+        self.patch(something,valids)
 
     def __repr__(self):
         return "<%s over %s>" % (self.__class__.__name__,self.conf.__name__)
@@ -215,7 +284,7 @@ def config_for_app(config_mod, check=True):
     # this will create a "biothings.config" module
     # so "from biothings from config" will get app config at lib level
     # (but "import biothings.config" won't b/c not a real module within biothings
-    wrapper = ConfigWrapper(config_mod)
+    wrapper = ConfigurationManager(config_mod)
     globals()["config"] = wrapper
     config.APP_PATH = app_path
     if not hasattr(config_mod,"HUB_DB_BACKEND"):
