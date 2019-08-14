@@ -646,11 +646,13 @@ class UploaderManager(BaseSourceManager):
             return klass
 
     def create_instance(self,klass):
-        res = klass.create(db_conn_info=self.conn.address)
-        return res
+        inst = klass.create(db_conn_info=self.conn.address)
+        config.supersede(inst) # monkey-patch from DB
+        return inst
 
     def register_classes(self,klasses):
         for klass in klasses:
+            config.supersede(klass) # monkey-patch from DB
             if klass.main_source:
                 self.register.setdefault(klass.main_source,[]).append(klass)
             else:

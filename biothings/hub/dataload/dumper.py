@@ -10,10 +10,11 @@ from biothings.utils.hub_db import get_src_dump, get_data_plugin
 from biothings.utils.common import timesofar, rmdashfr
 from biothings.utils.loggers import get_logger
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
-from config import logger as logging, LOG_FOLDER
-
+from biothings import config as btconfig
 from biothings.utils.manager import BaseSourceManager, ResourceError
 from biothings.hub.dataload.uploader import set_pending_to_upload
+
+logging = btconfig.logger
 
 
 class DumperException(Exception):
@@ -45,7 +46,7 @@ class BaseDumper(object):
         self.init_state()
         self.src_name = src_name or self.SRC_NAME
         self.src_root_folder = src_root_folder or self.SRC_ROOT_FOLDER
-        self.log_folder = log_folder or LOG_FOLDER
+        self.log_folder = log_folder or btconfig.LOG_FOLDER
         self.archive = archive or self.ARCHIVE
         self.to_dump = []
         self.release = None
@@ -1058,10 +1059,14 @@ class DumperManager(BaseSourceManager):
 
     def create_instance(self,klass):
         logging.debug("Creating new %s instance" % klass.__name__)
-        return klass()
+        inst = klass()
+        btconfig.supersede(inst) # supersede/monkey-patch from DB
+        return inst
 
     def register_classes(self,klasses):
         for klass in klasses:
+            # supersede/monkey-patch klass with potiential existing conf values from DB
+            btconfig.supersede(klass)
             if klass.SRC_NAME:
                 if len(self.register.get(klass.SRC_NAME,[])) >= 1:
                         raise ResourceError("Can't register %s for source '%s', dumper already registered: %s" % \

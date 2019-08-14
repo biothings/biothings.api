@@ -65,7 +65,7 @@ class ConfigurationManager(types.ModuleType):
         # for dotfield notation
         return self.__getattr__(name)
 
-    def reset_cache(self):
+    def clear_cache(self):
         self.bykeys = {}
         self.byroots = {}
 
@@ -76,7 +76,7 @@ class ConfigurationManager(types.ModuleType):
         roots = self.get_path_from_db(name)
         for root in roots:
             dotfieldname,value = root["_id"],root["value"]
-            val = merge_object({name:val},make_object(dotfieldname,value))
+            val = merge_object(val,make_object(dotfieldname,value)[dotfieldname.split(".")[0]])
         return val
 
     def store_value_to_db(self, name, value, scope="config"):
@@ -117,7 +117,15 @@ class ConfigurationManager(types.ModuleType):
                     self.bykeys[scope][d["_id"]] = val
                     elems = d["_id"].split(".")
                     if len(elems) > 1: # we have a dotfield notation there
-                        self.byroots.setdefault(elems[0],[]).append({"_id" : d["_id"], "value": val})
+                        # tricky; read the comments below, extracting the root has a different meaning depending on the scope
+                        if scope == "config":
+                            # first elem in the path a config variable, the rest is a path inside that variable (which
+                            # is a dict)
+                            self.byroots.setdefault(elems[0],[]).append({"_id" : d["_id"], "value": val})
+                        else:
+                            # the root is everything up to the last element in the path, that is, the full path
+                            # of the class/instance, etc... The last element is the attribute to set.
+                            self.byroots.setdefault(".".join(elems[:-1]),[]).append({"_id" : d["_id"], "value": val})
             return self.bykeys.get(scope,{}).get(name)
 
     def get_value_from_file(self, name):
@@ -142,25 +150,14 @@ class ConfigurationManager(types.ModuleType):
         else:
             return val
 
-    def patch(self, something, confvals):
+    def patch(self, something, confvals, scope):
         for confval in confvals:
-            print(confval)
             key = confval["_id"]
             value = confval["value"]
-            # key looks like dotfield notation, with first elem being "something"'s name
-            # we can remove that first elem as it represents "something"
-            # TODO: sanity check ? first elem must match "something" to make sure we patch what
-            # we think we should patch ?
-            attrs = ".".join(key.split(".")[1:])
-            # we need to set attributes to "something" with "value", in recursive way, moving
-            # in depth in "something" to find attributes to patch. Note: all attrs must exists.
-            def set(what, name, value):
-                if "." in name:
-                    # need to go deeper
-                    set(getattr(what,name.split(".")[0]),".".join(name.split(".")[1:]),value)
-                else:
-                    setattr(what,name,value)
-            set(something,attrs,value)
+            # key looks like dotfield notation, last elem is the attribute, and what's before
+            # is path to the "something" object (eg. hub.dataload.sources.mysrc.dump.Dumper)
+            attr = key.split(".")[-1]
+            setattr(something,attr,value)
 
     def supersede(self, something):
         # find config values with scope corresponding to something's type
@@ -169,17 +166,19 @@ class ConfigurationManager(types.ModuleType):
         # then we fetch all 
         scope = None
         if isinstance(something,type):
+            fullname = "%s.%s" % (something.__module__,something.__name__)
             scope = "class"
         elif isinstance(something,object):
             # it's an instance. conf key looks the same as when it's a class but scope is different
             # (because classes have a name, but instances don't)
+            fullname = "%s.%s" % (something.__module__,something.__class__.__name__)
             scope = "instance"
         else:
             raise TypeError("Don't know how to supersede type '%s'" % type(something))
 
         assert scope
         # it's a class, get by roots using string repr
-        confvals = self.byroots.get(something.__name__,[])
+        confvals = self.byroots.get(fullname,[])
         # check/filter by scope
         valids = []
         for conf in confvals:
@@ -187,7 +186,7 @@ class ConfigurationManager(types.ModuleType):
             if match:
                 # we actually have a conf key/value matching that scope, keep it
                 valids.append(conf)
-        self.patch(something,valids)
+            self.patch(something,valids,scope)
 
     def __repr__(self):
         return "<%s over %s>" % (self.__class__.__name__,self.conf.__name__)
