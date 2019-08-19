@@ -168,7 +168,7 @@ class HubCommands(OrderedDict):
 
 class HubServer(object):
 
-    DEFAULT_FEATURES = ["job","dump","upload","dataplugin","source",
+    DEFAULT_FEATURES = ["config","job","dump","upload","dataplugin","source",
                         "build","diff","index","inspect","sync","api",
                         "terminal","reloader","dataupload","ws"]
     DEFAULT_MANAGERS_ARGS = {"upload" : {"poll_schedule" : "* * * * * */10"}}
@@ -431,6 +431,13 @@ class HubServer(object):
 
         self.logger.info("Active manager(s): %s" % pformat(self.managers))
 
+    def configure_config_feature(self):
+        can_edit = False
+        if hasattr(config,"CONFIG_READONLY"):
+            can_edit = not config.CONFIG_READONLY
+            delattr(config,"CONFIG_READONLY")
+        config.editable(can_edit)
+
     def configure_ws_feature(self):
         # add websocket endpoint
         import biothings.hub.api.handlers.ws as ws
@@ -502,6 +509,10 @@ class HubServer(object):
         assert self.managers, "No managers configured"
         self.commands = HubCommands()
         self.commands["status"] = CommandDefinition(command=partial(status,self.managers),tracked=False)
+        if "config" in self.features:
+            self.commands["config"] = config.show
+            self.commands["setconf"] = config.store_value_to_db
+            self.commands["resetconf"] = config.reset
         # getting info
         if self.managers.get("source_manager"):
             self.commands["source_info"] = CommandDefinition(command=self.managers["source_manager"].get_source,tracked=False)
@@ -618,6 +629,13 @@ class HubServer(object):
             cmdnames.extend(list(self.extra_commands.keys()))
         from biothings.hub.api import EndpointDefinition
         self.api_endpoints = {}
+        self.api_endpoints["config"] = []
+        if "config" in cmdnames:
+            self.api_endpoints["config"].append(EndpointDefinition(name="config",method="get"))
+            self.api_endpoints["config"].append(EndpointDefinition(name="setconf",method="put",force_bodyargs=True))
+            self.api_endpoints["config"].append(EndpointDefinition(name="resetconf",method="delete",force_bodyargs=True))
+        if not self.api_endpoints["config"]:
+            self.api_endpoints.pop("config")
         if "builds" in cmdnames: self.api_endpoints["builds"] = EndpointDefinition(name="builds",method="get")
         self.api_endpoints["build"] = []
         if "build" in cmdnames: self.api_endpoints["build"].append(EndpointDefinition(method="get",name="build"))

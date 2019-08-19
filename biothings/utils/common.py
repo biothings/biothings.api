@@ -27,6 +27,8 @@ import gzip
 import glob
 from datetime import date, datetime, timezone
 from functools import partial
+# from json serial, catching special type
+import _sre
 
 
 # ===============================================================================
@@ -570,6 +572,12 @@ def json_serial(obj):
             obj = obj.replace(tzinfo=timezone.utc)
         serial = obj.isoformat()
         return serial
+    elif isinstance(obj,type):
+        return str(obj)
+    elif "SRE_Pattern" in type(obj).__name__: # can't find the class
+        return obj.pattern
+    elif isinstance(obj,types.FunctionType):
+        return "__function__"
     raise TypeError("Type %s not serializable" % type(obj))
 
 

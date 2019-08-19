@@ -1,9 +1,10 @@
-import sys, os, asyncio, types
+import sys, os, asyncio, types, copy
 import inspect, importlib, re
 import logging
 import concurrent.futures
 from .version import MAJOR_VER, MINOR_VER, MICRO_VER
 from .utils.dotfield import merge_object, make_object
+from .utils.jsondiff import make as jsondiff
 
 def get_version():
     return '{}.{}.{}'.format(MAJOR_VER, MINOR_VER, MICRO_VER)
@@ -44,16 +45,18 @@ class ConfigurationManager(types.ModuleType):
     instance is available throughout all hub apps using biothings.config
     after biothings.config_for_app(conf_mod) as been called.
     In addition to providing config value access, either from config files
-    or database, config manager can supersede atrributes of a class or instance
-    with values coming from the database, allowing dynamic configuration of hub's
-    elements.
+    or database, config manager can supersede attributes of a class with values
+    coming from the database, allowing dynamic configuration of hub's elements.
     """
 
     def __init__(self, conf):
         self.conf = conf
-        self.hub_config = None # set when wrapped, see config_for_app()
+        self.conf_parser = ConfigParser(conf)
+        self.hub_config = None # collection containing config value, set when wrapped, see config_for_app()
         self.bykeys = {} # caching values from hub db
         self.byroots = {} # for dotfield notation, all config names starting with first elem
+        self.allow_edits = False
+        self.dirty = False # gets dirty (needs reload) when config is changed in db
 
     def __getattr__(self, name):
         # first try value from Hub DB, they have precedence
@@ -61,9 +64,37 @@ class ConfigurationManager(types.ModuleType):
         val = self.get_value_from_db(name) or self.get_value_from_file(name)
         return val
 
+    def __delattr__(self, name):
+        delattr(self.conf,name)
+
     def __getitem__(self, name):
         # for dotfield notation
         return self.__getattr__(name)
+
+    def editable(self, allow):
+        self.allow_edits = bool(allow)
+
+    def show(self):
+        # get all information from config files
+        original_params = self.get_config_params()
+        byscopes = {"scope" : {}}
+        # some of these could have been superseded by values from DB
+        for key,info in original_params.items():
+            # search whether param named "key" has been superseded
+            # using a dotfield notation (inside a dict) or if it's
+            # a simple config param (value = scalar)
+            if key in self.byroots or key in self.bykeys.get("config",{}):
+                # it's been superseded
+                newvalue = getattr(self,key)
+                diff = jsondiff(info["value"],newvalue)
+                original_params[key]["superseded"] = {"value" : newvalue, "diff" : diff}
+        byscopes["scope"]["config"] = original_params
+        byscopes["scope"]["class"] = self.bykeys.get("class",{})
+
+        # set a flag to indicate if config is dirty and the hub needs to reload
+        # (something's changed but not taken yet into account)
+        byscopes["_dirty"] = self.dirty
+        return byscopes
 
     def clear_cache(self):
         self.bykeys = {}
@@ -79,15 +110,26 @@ class ConfigurationManager(types.ModuleType):
             val = merge_object(val,make_object(dotfieldname,value)[dotfieldname.split(".")[0]])
         return val
 
+    def check_editable(self, name):
+        assert not name == "CONFIG_READONLY", "I won't allow to store/supersede that parameter. Nice try though..."
+        assert self.allow_edits, "Configuration is read-only"
+        assert self.hub_config, "No hub_config collection set"
+
+    def reset(self, name, scope="config"):
+        self.check_editable(name)
+        res = self.hub_config.delete_one({"_id" : name,
+                                          "scope" : "config"})
+        self.dirty = True # may need a reload
+        return res.acknowledged
+
     def store_value_to_db(self, name, value, scope="config"):
         """
         Stores a configuration "value" named "name" in hub_config.
         "scope" defines what the configuration value applies on:
         - 'config': a config value which could be find in config*.py files
         - 'class': applied to a class (supersedes class attributes)
-        - 'instance': appliced to an instance (supersedes instance props)
         """
-        assert self.hub_config, "No hub_config collection set"
+        self.check_editable(name)
         res = self.hub_config.update_one({"_id" : name},
                                          {"$set" : {
                                              "scope" : scope,
@@ -95,6 +137,7 @@ class ConfigurationManager(types.ModuleType):
                                              }
                                          },
                                          upsert=True) 
+        self.dirty = True # may need a reload
         return res.upserted_id
 
     def get_value_from_db(self, name, scope="config"):
@@ -124,7 +167,7 @@ class ConfigurationManager(types.ModuleType):
                             self.byroots.setdefault(elems[0],[]).append({"_id" : d["_id"], "value": val})
                         else:
                             # the root is everything up to the last element in the path, that is, the full path
-                            # of the class/instance, etc... The last element is the attribute to set.
+                            # of the class, etc... The last element is the attribute to set.
                             self.byroots.setdefault(".".join(elems[:-1]),[]).append({"_id" : d["_id"], "value": val})
             return self.bykeys.get(scope,{}).get(name)
 
@@ -133,22 +176,30 @@ class ConfigurationManager(types.ModuleType):
         # dotfield paths in DB overridiing some of the content
         # we'd need to merge that path with 
         val = getattr(self.conf,name)
-        val = self.merge_with_path_from_db(name,val)
-        if isinstance(val,ConfigurationDefault):
-            if isinstance(val.default,ConfigurationValue):
+        try:
+            copiedval = copy.deepcopy(val) # we want to keep original value (if it's a dict)
+                                 # as this will be merged with value from db
+        except TypeError as e:
+            # it can't be copied, it probably means it can't even be stored in db
+            # so no risk of overriding original value
+            copiedval = val
+            pass
+        copiedval = self.merge_with_path_from_db(name,copiedval)
+        if isinstance(copiedval,ConfigurationDefault):
+            if isinstance(copiedval.default,ConfigurationValue):
                 try:
-                    return eval(val.default.code,self.conf.__dict__)
+                    return eval(copiedval.default.code,self.conf.__dict__)
                 except SyntaxError:
                     # try exec, maybe it's a statement (not just an expression).
                     # in that case, it eeans user really knows what he's doing...
-                    exec(val.default.code,self.conf.__dict__)
+                    exec(copiedval.default.code,self.conf.__dict__)
                     # there must be a variable named the same same, in that dict,
                     # coming from code's statements
                     return self.conf.__dict__[name]
             else:
-                return val.default
+                return copiedval.default
         else:
-            return val
+            return copiedval
 
     def patch(self, something, confvals, scope):
         for confval in confvals:
@@ -159,6 +210,31 @@ class ConfigurationManager(types.ModuleType):
             attr = key.split(".")[-1]
             setattr(something,attr,value)
 
+    def get_config_params(self):
+        """
+        Return all configuration parameters with their description, by section"
+        """
+        params = {}
+        for attrname in self.conf_parser.list():
+            value = getattr(self,attrname)
+            info = self.conf_parser.find_information(attrname)
+            if info:
+                section, desc, hide, novalue = info
+                if hide:
+                    continue
+                params[attrname] = {
+                        "value" : novalue and "********" or value,
+                        "section" : section,
+                        "desc" : desc}
+            else:
+                params[attrname] = {
+                        "value" : value,
+                        "desc" : None,
+                        "section" : None
+                        }
+
+        return params
+
     def supersede(self, something):
         # find config values with scope corresponding to something's type
         # Note: any conf key will look like a dotfield notation, eg. MyClass.myattr
@@ -168,11 +244,6 @@ class ConfigurationManager(types.ModuleType):
         if isinstance(something,type):
             fullname = "%s.%s" % (something.__module__,something.__name__)
             scope = "class"
-        elif isinstance(something,object):
-            # it's an instance. conf key looks the same as when it's a class but scope is different
-            # (because classes have a name, but instances don't)
-            fullname = "%s.%s" % (something.__module__,something.__class__.__name__)
-            scope = "instance"
         else:
             raise TypeError("Don't know how to supersede type '%s'" % type(something))
 
@@ -201,15 +272,48 @@ class ConfigParser(object):
        from the instance doc.
     2. the documentation can be specified as an inline comment
     3. the documentation can be specified as comments above
+
     If the configuration module also import another (or more) config modules, those
     modules will be searched as well, if nothing could be found in the main module.
     As soon as a documentation is found, the search stops (importance of module imports order)
+    
+    There are several special comment formats used to organize and manager params:
+    - all comments above a param are considered as documentation/description for the parameter,
+      until a empty line or a non-comment line is found.
+    - to be considered as documentation, comments also need to have a space after "#". So:
+            # my comment
+      will be kepts as documentation, but:
+            #my comment
+      will just be ignored (so python code can be commented that way, without then being part
+      of the documentation)
+    - A section title can be added to organize parameters. A section title looks like this:
+            #* my section title *#
+      It can be added for each parameters, or the first section found above is the section
+      the parameter will be associated to. An empty section title can be used to reset the
+      section title and associate the current parameter to default one:
+            #* *#
+      If no section is found, all parameters are part of the default one (None).
+    - some parameters needs to be kept secret (like passwords for instance):
+            #- hide -#
+      will hide the parameter, including the name, value, description, from the configuration
+            #- no-value -#
+      will keep the parameter in the configuration displayed to users, but its value will be omitted
     """
 
     def __init__(self, config_mod):
         self.config = config_mod
         self.lines = inspect.getsourcelines(self.config)[0]
         self.find_base_config()
+
+    def list(self):
+        """
+        Return a list of all config parameters' names found in config file
+        (including base config files)
+        """
+        upcaps = re.compile("^([A-Z]+).*$")
+        for attrname in dir(self.config):
+            if upcaps.match(attrname):
+                yield attrname
 
     def find_base_config(self):
         self.config_bases = []
@@ -221,58 +325,102 @@ class ConfigParser(object):
                 base_mod = importlib.import_module(base)
                 self.config_bases.append(base_mod)
 
-    def find_docstring(self, field):
+    def find_information(self, field):
         for conf in [self.config] + self.config_bases:
-            doc = self.find_docstring_in_config(conf, field)
-            if doc:
-                return doc
+            info = self.find_docstring_in_config(conf, field)
+            if info:
+                return info
 
     def find_docstring_in_config(self, config, field):
         field = field.strip()
         if "." in field:
             # dotfield notiation, explore a dict
-            raise ValueError("no fot")
+            raise NotImplementedError("docstring no supported in dict")
             pass
         if not hasattr(config,field):
             return None
         confval = getattr(config,field)
+        desc = None
+        section = None
+        hide = None
+        novalue = None
         if isinstance(confval,ConfigurationDefault):
-            return confval.desc
+            desc = confval.desc
         if isinstance(confval,ConfigurationError):
             # it's an Exception, just take the text
-            return confval.args[0]
-        else:
-            found_field = False
-            for i,l in enumerate(self.lines):
-                if l.startswith(field):
-                    found_field = True
-                    break
-            if found_field:
-                return self.find_comment(field,i)
+            desc = confval.args[0]
 
-    def find_comment(self,field,lineno):
-        pat = re.compile(".*\s*#\s*(.*)$")
+        found_field = False
+        lines = inspect.getsourcelines(config)[0]
+        for i,l in enumerate(lines):
+            if l.startswith(field):
+                found_field = True
+                break
+        if found_field:
+            if not desc:
+                # no desc previously found in ConfigurationDefault or ConfigurationError
+                desc = self.find_comment(field,lines,i)
+                section = self.find_section(field,lines,i)
+                hide = self.is_hidden(field,lines,i)
+                novalue = self.no_value(field,lines,i)
+        if section or desc or hide or novalue:
+            return section, desc, hide, novalue
+
+    def find_comment(self, field, lines, lineno):
+        descpat = re.compile(".*\s*#\s*(.*)$")
         # inline comment
-        line = self.lines[lineno]
-        m = pat.match(line)
+        line = lines[lineno]
+        m = descpat.match(line)
         if m:
             return m.groups()[0].strip()
         else:
             # comment above
-            docs = []
+            cmts = []
             i = lineno
             while i > 0:
                 i -= 1
-                l = self.lines[i]
+                l = lines[i]
                 if l.startswith("\n"):
                     break
                 else:
-                    m = pat.match(l)
+                    m = descpat.match(l)
                     if m:
-                        docs.insert(0,m.groups()[0])
+                        cmts.insert(0,m.groups()[0])
                     else:
                         break
-            return "\n".join(docs)
+            return "\n".join(cmts)
+
+    def find_special_comment(self, pattern, field, lines, lineno):
+        pat = re.compile(pattern)
+        i = lineno
+        while i > 0:
+            i -= 1
+            l = lines[i]
+            m = pat.match(l)
+            if m:
+                return m
+
+    def find_section(self, field, lines, lineno):
+        match = self.find_special_comment("^#\*\s*(.*)\s*\*#$",field,lines,lineno)
+        if match:
+            section = match.groups()[0]
+            if not section: # if we have "#* *#" it's a section breaker
+                section = None # back to None if empty string
+            return section
+
+    def is_hidden(self, field, lines, lineno):
+        match = self.find_special_comment("^#-\s*hide\s*-#$",field,lines,lineno)
+        if match:
+            return True
+        else:
+            return False
+
+    def no_value(self, field, lines, lineno):
+        match = self.find_special_comment("^#-\s*no-value\s*-#$",field,lines,lineno)
+        if match:
+            return True
+        else:
+            return False
 
 
 def config_for_app(config_mod, check=True):
