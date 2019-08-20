@@ -647,7 +647,6 @@ class UploaderManager(BaseSourceManager):
 
     def create_instance(self,klass):
         inst = klass.create(db_conn_info=self.conn.address)
-        config.supersede(inst) # monkey-patch from DB
         return inst
 
     def register_classes(self,klasses):

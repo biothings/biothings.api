@@ -416,20 +416,20 @@ class ConfigParser(object):
                         break
             return "\n".join(cmts)
 
-    def find_special_comment(self, pattern, field, lines, lineno):
+    def find_special_comment(self, pattern, field, lines, lineno, stop_on_eol=True):
         pat = re.compile(pattern)
         i = lineno
         while i > 0:
             i -= 1
             l = lines[i]
-            if l.startswith("\n"):
+            if stop_on_eol and l.startswith("\n"):
                 break
             m = pat.match(l)
             if m:
                 return m
 
     def find_section(self, field, lines, lineno):
-        match = self.find_special_comment("^#\*\s*(.*)\s*\*#$",field,lines,lineno)
+        match = self.find_special_comment("^#\*\s*(.*)\s*\*#$",field,lines,lineno,stop_on_eol=False)
         if match:
             section = match.groups()[0]
             if not section: # if we have "#* *#" it's a section breaker

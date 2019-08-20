@@ -1060,7 +1060,6 @@ class DumperManager(BaseSourceManager):
     def create_instance(self,klass):
         logging.debug("Creating new %s instance" % klass.__name__)
         inst = klass()
-        btconfig.supersede(inst) # supersede/monkey-patch from DB
         return inst
 
     def register_classes(self,klasses):
