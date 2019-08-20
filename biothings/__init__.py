@@ -57,6 +57,13 @@ class ConfigurationManager(types.ModuleType):
         self.byroots = {} # for dotfield notation, all config names starting with first elem
         self.allow_edits = False
         self.dirty = False # gets dirty (needs reload) when config is changed in db
+        self._original_params = {} # cache config params as defined in config files
+
+    @property
+    def original_params(self):
+        if not self._original_params:
+            self._original_params = self.get_config_params()
+        return self._original_params
 
     def __getattr__(self, name):
         # first try value from Hub DB, they have precedence
@@ -75,11 +82,10 @@ class ConfigurationManager(types.ModuleType):
         self.allow_edits = bool(allow)
 
     def show(self):
-        # get all information from config files
-        original_params = self.get_config_params()
+        origparams = copy.deepcopy(self.original_params)
         byscopes = {"scope" : {}}
         # some of these could have been superseded by values from DB
-        for key,info in original_params.items():
+        for key,info in origparams.items():
             # search whether param named "key" has been superseded
             # using a dotfield notation (inside a dict) or if it's
             # a simple config param (value = scalar)
@@ -87,8 +93,8 @@ class ConfigurationManager(types.ModuleType):
                 # it's been superseded
                 newvalue = getattr(self,key)
                 diff = jsondiff(info["value"],newvalue)
-                original_params[key]["superseded"] = {"value" : newvalue, "diff" : diff}
-        byscopes["scope"]["config"] = original_params
+                origparams[key]["superseded"] = {"value" : newvalue, "diff" : diff}
+        byscopes["scope"]["config"] = origparams
         byscopes["scope"]["class"] = self.bykeys.get("class",{})
 
         # set a flag to indicate if config is dirty and the hub needs to reload
@@ -110,13 +116,20 @@ class ConfigurationManager(types.ModuleType):
             val = merge_object(val,make_object(dotfieldname,value)[dotfieldname.split(".")[0]])
         return val
 
-    def check_editable(self, name):
-        assert not name == "CONFIG_READONLY", "I won't allow to store/supersede that parameter. Nice try though..."
+    def check_editable(self, name, scope):
         assert self.allow_edits, "Configuration is read-only"
         assert self.hub_config, "No hub_config collection set"
+        assert not name == "CONFIG_READONLY", "I won't allow to store/supersede that parameter. Nice try though..."
+        # check if param is invisble
+        # (and even if using dotfield notation, if a dict is "invisible"
+        # then any of its keys are also invisible)
+        if scope == "config":
+            name = name.split(".")[0]
+            assert name in self.original_params, "Unknown configuration parameter"
+            assert not self.original_params[name].get("readonly"), "This parameter is not editable"
 
     def reset(self, name, scope="config"):
-        self.check_editable(name)
+        self.check_editable(name,scope)
         res = self.hub_config.delete_one({"_id" : name,
                                           "scope" : "config"})
         self.dirty = True # may need a reload
@@ -129,7 +142,7 @@ class ConfigurationManager(types.ModuleType):
         - 'config': a config value which could be find in config*.py files
         - 'class': applied to a class (supersedes class attributes)
         """
-        self.check_editable(name)
+        self.check_editable(name,scope)
         res = self.hub_config.update_one({"_id" : name},
                                          {"$set" : {
                                              "scope" : scope,
@@ -219,13 +232,17 @@ class ConfigurationManager(types.ModuleType):
             value = getattr(self,attrname)
             info = self.conf_parser.find_information(attrname)
             if info:
-                section, desc, hide, novalue = info
-                if hide:
+                section, desc, invisible, hidden, readonly = info
+                if invisible:
                     continue
                 params[attrname] = {
-                        "value" : novalue and "********" or value,
+                        "value" : hidden and "********" or value,
                         "section" : section,
                         "desc" : desc}
+                if hidden:
+                    params[attrname]["hidden"] = True
+                if readonly:
+                    params[attrname]["readonly"] = True
             else:
                 params[attrname] = {
                         "value" : value,
@@ -294,10 +311,17 @@ class ConfigParser(object):
             #* *#
       If no section is found, all parameters are part of the default one (None).
     - some parameters needs to be kept secret (like passwords for instance):
-            #- hide -#
+            #- invisible -#
       will hide the parameter, including the name, value, description, from the configuration
-            #- no-value -#
+            #- hidden -#
       will keep the parameter in the configuration displayed to users, but its value will be omitted
+            #- readonly -#
+      will allow the parameter to shown, but not editable
+
+      Note: special comments can stacked:
+            #- readonly -#
+            #- hidden -#
+      will make the parameter read-only, and its value won't be displayed
     """
 
     def __init__(self, config_mod):
@@ -342,8 +366,9 @@ class ConfigParser(object):
         confval = getattr(config,field)
         desc = None
         section = None
-        hide = None
-        novalue = None
+        invisible = None
+        hidden = None
+        readonly = None
         if isinstance(confval,ConfigurationDefault):
             desc = confval.desc
         if isinstance(confval,ConfigurationError):
@@ -361,10 +386,11 @@ class ConfigParser(object):
                 # no desc previously found in ConfigurationDefault or ConfigurationError
                 desc = self.find_comment(field,lines,i)
                 section = self.find_section(field,lines,i)
-                hide = self.is_hidden(field,lines,i)
-                novalue = self.no_value(field,lines,i)
-        if section or desc or hide or novalue:
-            return section, desc, hide, novalue
+                invisible = self.is_invisible(field,lines,i)
+                hidden = self.is_hidden(field,lines,i)
+                readonly = self.is_readonly(field,lines,i)
+        if section or desc or invisible or hidden or readonly:
+            return section, desc, invisible, hidden, readonly
 
     def find_comment(self, field, lines, lineno):
         descpat = re.compile(".*\s*#\s*(.*)$")
@@ -396,6 +422,8 @@ class ConfigParser(object):
         while i > 0:
             i -= 1
             l = lines[i]
+            if l.startswith("\n"):
+                break
             m = pat.match(l)
             if m:
                 return m
@@ -408,6 +436,13 @@ class ConfigParser(object):
                 section = None # back to None if empty string
             return section
 
+    def is_invisible(self, field, lines, lineno):
+        match = self.find_special_comment("^#-\s*invisible\s*-#$",field,lines,lineno)
+        if match:
+            return True
+        else:
+            return False
+
     def is_hidden(self, field, lines, lineno):
         match = self.find_special_comment("^#-\s*hide\s*-#$",field,lines,lineno)
         if match:
@@ -415,8 +450,8 @@ class ConfigParser(object):
         else:
             return False
 
-    def no_value(self, field, lines, lineno):
-        match = self.find_special_comment("^#-\s*no-value\s*-#$",field,lines,lineno)
+    def is_readonly(self, field, lines, lineno):
+        match = self.find_special_comment("^#-\s*readonly\s*-#$",field,lines,lineno)
         if match:
             return True
         else:
