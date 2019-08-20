@@ -131,6 +131,9 @@ export default {
                         console.log("Error registering repository URL: " + err.data.error);
                         self.loaderror(err);
                     })
+                },
+                onDeny: function() {
+                    self.loaded();
                 }
             })
             .modal("show");
