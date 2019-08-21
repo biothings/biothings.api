@@ -50,7 +50,7 @@
             <div class="ui item">
                 <loader></loader>
                 <div id="settings">
-                    <button class="mini circular ui icon button" @click="openSettings">
+                    <button class="mini circular ui icon button" @click="openConfig">
                         <i class="cog icon"></i>
                     </button>
                 </div>
@@ -118,6 +118,27 @@
                     Validate
                 </div>
             </div>
+        </div>
+
+        <div class="ui basic config modal">
+            <h3 class="ui icon">
+                <i class="cog icon"></i>
+                Hub Configuration
+            </h3>
+            <div class="content">
+                <hub-config></hub-config>
+            </div>
+            <div class="actions">
+                <div class="ui red basic cancel inverted button">
+                    <i class="remove icon"></i>
+                    Cancel
+                </div>
+                <div class="ui green ok inverted button">
+                    <i class="checkmark icon"></i>
+                    OK
+                </div>
+            </div>
+
         </div>
 
         <div id="page_content" class="clickable ui active tab segment">
@@ -267,6 +288,7 @@
     import EventMessages from './EventMessages.vue';
     import EventAlert from './EventAlert.vue';
     import ChooseHub from './ChooseHub.vue';
+    import HubConfig from './HubConfig.vue';
     import LogViewer from './LogViewer.vue';
     import Terminal from './Terminal.vue';
     import FeatureChecker from './FeatureChecker.vue';
@@ -291,7 +313,8 @@
         router: router,
         mixins: [ FeatureChecker, Loader, ],
         components: { JobSummary, EventMessages, EventAlert,
-                      ChooseHub, Loader, LogViewer, Terminal},
+                      ChooseHub, HubConfig, Loader, LogViewer,
+                      Terminal},
         mounted () {
             $('#conn')
             .popup({
@@ -466,8 +489,23 @@
                 var oldinfo = getInfo(oldv);
                 var newinfo = getInfo(newv);
             },
-            openSettings() {
-                console.log("TODO...");
+            openConfig() {
+                this.loading();
+                var self = this;
+                $('.ui.basic.config.modal')
+                .modal("setting", {
+                    detachable : false,
+                    closable: false,
+                    onApprove: function () {
+                        self.loaded();
+                    },
+                    onDeny: function() {
+                        self.loaded();
+                    }
+                })
+                .modal("show");
+            },
+            saveConfigParameter() {
             },
             openConnection() {
                 this.setupConnection(null,false);
