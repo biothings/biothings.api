@@ -201,13 +201,14 @@ def backup(folder=".",archive=None):
     db_name = get_src_dump().database.name
     dump = {}
     for getter in [get_src_dump,get_src_master,get_src_build,
-            get_src_build_config,get_data_plugin,get_api]:
+                   get_src_build_config,get_data_plugin,get_api,
+                   get_cmd, get_event, get_hub_config]:
         col = getter()
         dump[col.name] = []
         for doc in col.find():
             dump[col.name].append(doc)
     if not archive:
-        archive = "%s_dump_%s_%s.pyobj" % (db_name,get_timestamp(),get_random_string())
+        archive = "backup_%s_%s.pyobj" % (get_timestamp(),get_random_string())
     path = os.path.join(folder,archive)
     dumpobj(dump,path)
     return path
@@ -215,6 +216,7 @@ def backup(folder=".",archive=None):
 def restore(archive,drop=False):
     """Restore database from given archive. If drop is True, then delete existing collections"""
     data = loadobj(archive)
+    # use src_dump collection which always exists to get the database object
     db = get_src_dump().database
     for colname in data:
         docs = data[colname]
