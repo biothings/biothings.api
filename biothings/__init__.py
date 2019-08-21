@@ -334,7 +334,7 @@ class ConfigParser(object):
         Return a list of all config parameters' names found in config file
         (including base config files)
         """
-        upcaps = re.compile("^([A-Z]+).*$")
+        upcaps = re.compile("^([A-Z_]+)$")
         for attrname in dir(self.config):
             if upcaps.match(attrname):
                 yield attrname
@@ -384,7 +384,7 @@ class ConfigParser(object):
         if found_field:
             if not desc:
                 # no desc previously found in ConfigurationDefault or ConfigurationError
-                desc = self.find_comment(field,lines,i)
+                desc = self.find_description(field,lines,i)
                 section = self.find_section(field,lines,i)
                 invisible = self.is_invisible(field,lines,i)
                 hidden = self.is_hidden(field,lines,i)
@@ -392,8 +392,9 @@ class ConfigParser(object):
         if section or desc or invisible or hidden or readonly:
             return section, desc, invisible, hidden, readonly
 
-    def find_comment(self, field, lines, lineno):
-        descpat = re.compile(".*\s*#\s*(.*)$")
+    def find_description(self, field, lines, lineno):
+        # at least one space after # to consider this a description
+        descpat = re.compile(".*\s*#\s+(.*)$")
         # inline comment
         line = lines[lineno]
         m = descpat.match(line)
