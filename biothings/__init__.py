@@ -5,10 +5,15 @@ import concurrent.futures
 from .version import MAJOR_VER, MINOR_VER, MICRO_VER
 from .utils.dotfield import merge_object, make_object
 from .utils.jsondiff import make as jsondiff
+from .utils.common import is_scalar
 
 def get_version():
     return '{}.{}.{}'.format(MAJOR_VER, MINOR_VER, MICRO_VER)
 
+
+# re pattern to find config param
+# (by convention, all upper caps, _ allowed, that's all)
+PARAM_PAT = re.compile("^([A-Z_]+)$")
 
 class ConfigurationError(Exception):
     pass
@@ -231,24 +236,30 @@ class ConfigurationManager(types.ModuleType):
         for attrname in self.conf_parser.list():
             value = getattr(self,attrname)
             info = self.conf_parser.find_information(attrname)
-            if info:
-                section, desc, invisible, hidden, readonly = info
-                if invisible:
-                    continue
-                params[attrname] = {
-                        "value" : hidden and "********" or value,
-                        "section" : section,
-                        "desc" : desc}
-                if hidden:
-                    params[attrname]["hidden"] = True
-                if readonly:
-                    params[attrname]["readonly"] = True
-            else:
+            if info is None:
+                # if no information could be found, not even the field,
+                # (if field was found in a config file but without any information,
+                # we would have had a {"found" : True}), it means the parameter (field)
+                # as been set dynamically somewhere in the code. It's not coming from 
+                # config files, we need to tag it as-is, and make it readonly
+                # (we don't want to allow config changes other than those specified in
+                # config files)
                 params[attrname] = {
                         "value" : value,
-                        "desc" : None,
-                        "section" : None
+                        "dynamic" : True,
+                        "readonly" : True
                         }
+            else:
+                if info["invisible"]:
+                    continue
+                params[attrname] = {
+                        "value" : info["hidden"] and "********" or value,
+                        "section" : info["section"],
+                        "desc" : info["desc"]}
+                if info["hidden"]:
+                    params[attrname]["hidden"] = True
+                if info["readonly"]:
+                    params[attrname]["readonly"] = True
 
         return params
 
@@ -334,9 +345,8 @@ class ConfigParser(object):
         Return a list of all config parameters' names found in config file
         (including base config files)
         """
-        upcaps = re.compile("^([A-Z_]+)$")
         for attrname in dir(self.config):
-            if upcaps.match(attrname):
+            if PARAM_PAT.match(attrname):
                 yield attrname
 
     def find_base_config(self):
@@ -350,10 +360,29 @@ class ConfigParser(object):
                 self.config_bases.append(base_mod)
 
     def find_information(self, field):
+        # search all config files, trying to get max infor
+        # (field can be set in a base config file containing the description
+        # and re-defined in main config without description)
+        infos = []
         for conf in [self.config] + self.config_bases:
             info = self.find_docstring_in_config(conf, field)
-            if info:
-                return info
+            if info["found"]:
+                infos.insert(0,info)
+
+        if infos:
+            # merge everything we have about the field, in the order
+            # so most recent config in import history has precedence
+            master = infos[0]
+            for info in infos[1:]:
+                for k,v in info.items():
+                    if v:
+                        master[k] = v
+            return master
+
+        # if we get there, it means field couldn't be found in any config files
+        return None
+
+
 
     def find_docstring_in_config(self, config, field):
         field = field.strip()
@@ -362,7 +391,7 @@ class ConfigParser(object):
             raise NotImplementedError("docstring no supported in dict")
             pass
         if not hasattr(config,field):
-            return None
+            return {"found" : False}
         confval = getattr(config,field)
         desc = None
         section = None
@@ -389,8 +418,12 @@ class ConfigParser(object):
                 invisible = self.is_invisible(field,lines,i)
                 hidden = self.is_hidden(field,lines,i)
                 readonly = self.is_readonly(field,lines,i)
-        if section or desc or invisible or hidden or readonly:
-            return section, desc, invisible, hidden, readonly
+        return {"found" : found_field,
+                "section" : section,
+                "desc" : desc,
+                "invisible" : invisible,
+                "hidden" : hidden,
+                "readonly" : readonly}
 
     def find_description(self, field, lines, lineno):
         # at least one space after # to consider this a description
