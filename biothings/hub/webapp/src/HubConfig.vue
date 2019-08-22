@@ -14,6 +14,20 @@
                 </div>
             </div>
             <div class="content">
+
+                <div class="configmenu">
+                    <div class="ui secondary small menu">
+                        <a class="right aligned item">
+                            <a class="item">
+                                <button class="ui red labeled icon button" @click="restartHub">
+                                    <i class="sync alternate icon"></i>
+                                    Restart
+                                </button>
+                            </a>
+                        </a>
+                    </div>
+                </div>
+
                 <p>
                     <div class="ui top attached pointing menu">
                         <a class="red item " :data-tab="section" v-if="config" v-for="section in Object.keys(config)">{{ section }} </a>
@@ -24,6 +38,31 @@
                 </p>
             </div>
 
+        </div>
+
+        <div class="ui basic restart modal">
+            <div class="ui icon header">
+                <i class="sync alternate icon"></i>
+                Restart Hub ?
+            </div>
+            <div class="content">
+                <p>Are you sure you want to restart the Hub ?</p>
+                <div class="ui warning message">
+                    Note: Hub will wait until all jobs are finished before restarting.
+                    While restarting you will loose connection. Please allow some time before
+                    being able to connect again.
+                </div>
+            </div>
+            <div class="actions">
+                <div class="ui red basic cancel inverted button">
+                    <i class="remove icon"></i>
+                    No
+                </div>
+                <div class="ui green ok inverted button">
+                    <i class="checkmark icon"></i>
+                    Yes
+                </div>
+            </div>
         </div>
     </div>
 </template>
@@ -94,6 +133,29 @@ export default {
                 this.loaderror(err);
             })
         },
+        restartHub: function() {
+            var self = this;
+            this.loading();
+            $(`.ui.basic.restart.modal`)
+            .modal("setting", {
+                onApprove: function () {
+                    axios.put(axios.defaults.baseURL + "/restart")
+                    .then(response => {
+                        console.log(response.data.result)
+                        self.loaded();
+                        return true;
+                    })
+                    .catch(err => {
+                        console.log(err);
+                        self.loaderr(err);
+                    })
+                },
+                onDeny: function () {
+                    self.loaded();
+                },
+            })
+            .modal("show");
+        },
     },
 }
 </script>
@@ -101,5 +163,16 @@ export default {
 <style scoped>
 .ui.config.segment {
     color: black;
+}
+.configmenu {
+    padding: 0;
+}
+
+.configmenu .right.item {
+    padding: 0;
+}
+
+.configmenu .right.item .item {
+    padding: 0;
 }
 </style>
