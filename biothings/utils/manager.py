@@ -324,6 +324,9 @@ class JobManager(object):
         else:
             self.loop.set_default_executor(self.process_queue)
         self.ok_to_run = asyncio.Semaphore()
+        # auto-creata RUN_DIR
+        if not os.path.exists(config.RUN_DIR):
+            os.makedirs(config.RUN_DIR)
 
         if max_memory_usage == "auto":
             # try to find a nice limit...
