@@ -17,6 +17,7 @@
 
                 <div class="configmenu">
                     <div class="ui secondary small menu">
+                        <div class="ui mini yellow compact message right floated" v-if="dirty">Hub needs to restart to reflect changes</div>
                         <a class="right aligned item">
                             <a class="item">
                                 <button class="ui red labeled icon button" @click="restartHub">
@@ -83,12 +84,14 @@ export default {
         this.loadData();
     },
     created() {
+        bus.$on('change_config',this.onConfigChanged);
     },
     updated() {
         $('.menu .item').tab();
         $('.menu .item').tab('change tab', 'General')
     },
     beforeDestroy() {
+        bus.$off('change_source',this.onConfigChanged);
     },
     data () {
         return {
@@ -102,12 +105,14 @@ export default {
     },
     methods: {
         loadData () {
+            console.log("loaddata");
             var self = this;
             this.loading();
             axios.get(axios.defaults.baseURL + `/config`)
             .then(response => {
                 try {
                     var conf = response.data.result.scope.config; // shorten...
+                    self.dirty = response.data.result._dirty;
                     // re-organize by section
                     var bysections = {};
                     for(var param in conf) {
@@ -155,6 +160,9 @@ export default {
                 },
             })
             .modal("show");
+        },
+        onConfigChanged: function() {
+            this.loadData();
         },
     },
 }

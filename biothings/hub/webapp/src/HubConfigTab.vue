@@ -1,18 +1,11 @@
 <template>
     <div>
-            <table class="ui basic table">
-                <tbody>
-                    <tr v-for="param in params">
-                        <td class="six wide">
-                            <div class="param-name">{{ param.name }}</div>
-                            <div class="param-desc">{{ param.desc }}</div>
-                        </td>
-                        <td class="ten wide">
-                            <hub-config-param v-bind:param="param" v-bind:readonly="param.readonly"></hub-config-param>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="ui info message">All values must be in JSON format</div>
+        <table class="ui basic table">
+            <tbody>
+                <hub-config-param v-bind:param="param" v-for="param in params"></hub-config-param>
+            </tbody>
+        </table>
     </div>
 </template>
 
@@ -50,14 +43,4 @@ export default {
 </script>
 
 <style scoped>
-.param-name {
-    font-family: monospace;
-    font-weight: bold;
-}
-
-.param-desc {
-    color: grey;
-    word-wrap: break-word;
-    hyphens: auto;
-}
 </style>
