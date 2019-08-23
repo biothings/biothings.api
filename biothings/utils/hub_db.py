@@ -250,6 +250,7 @@ class ChangeWatcher(object):
             "src_build_config" : "build_config",
             "src_master" : "master",
             "cmd" : "command",
+            "hub_config" : "config",
             }
 
     @classmethod

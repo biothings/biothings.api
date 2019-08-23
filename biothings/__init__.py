@@ -1,5 +1,5 @@
 import sys, os, asyncio, types, copy
-import inspect, importlib, re
+import inspect, importlib, re, json
 import logging
 import concurrent.futures
 from .version import MAJOR_VER, MINOR_VER, MICRO_VER
@@ -92,13 +92,9 @@ class ConfigurationManager(types.ModuleType):
         # some of these could have been superseded by values from DB
         for key,info in origparams.items():
             # search whether param named "key" has been superseded
-            # using a dotfield notation (inside a dict) or if it's
-            # a simple config param (value = scalar)
-            if key in self.byroots or key in self.bykeys.get("config",{}):
-                # it's been superseded
-                newvalue = getattr(self,key)
-                diff = jsondiff(info["value"],newvalue)
-                origparams[key]["superseded"] = {"value" : newvalue, "diff" : diff}
+            if info["default"] != info["value"]:
+                diff = jsondiff(info["default"],info["value"])
+                origparams[key]["diff"] = diff
         byscopes["scope"]["config"] = origparams
         byscopes["scope"]["class"] = self.bykeys.get("class",{})
 
@@ -110,6 +106,7 @@ class ConfigurationManager(types.ModuleType):
     def clear_cache(self):
         self.bykeys = {}
         self.byroots = {}
+        self._original_params = {}
 
     def get_path_from_db(self, name):
         return self.byroots.get(name,[])
@@ -135,10 +132,10 @@ class ConfigurationManager(types.ModuleType):
 
     def reset(self, name, scope="config"):
         self.check_editable(name,scope)
-        res = self.hub_config.delete_one({"_id" : name,
-                                          "scope" : "config"})
+        res = self.hub_config.remove({"_id" : name})
         self.dirty = True # may need a reload
-        return res.acknowledged
+        self.clear_cache() # will force reload everything to get up-to-date values
+        return res["ok"]
 
     def store_value_to_db(self, name, value, scope="config"):
         """
@@ -151,11 +148,12 @@ class ConfigurationManager(types.ModuleType):
         res = self.hub_config.update_one({"_id" : name},
                                          {"$set" : {
                                              "scope" : scope,
-                                             "value": value,
+                                             "value": json.loads(value),
                                              }
                                          },
                                          upsert=True) 
         self.dirty = True # may need a reload
+        self.clear_cache()
         return res.upserted_id
 
     def get_value_from_db(self, name, scope="config"):
@@ -247,15 +245,19 @@ class ConfigurationManager(types.ModuleType):
                 params[attrname] = {
                         "value" : value,
                         "dynamic" : True,
-                        "readonly" : True
+                        "readonly" : True,
+                        "default" : value # for compatibilty
                         }
             else:
                 if info["invisible"]:
                     continue
+                origvalue = getattr(info["confmod"],attrname)
                 params[attrname] = {
                         "value" : info["hidden"] and "********" or value,
                         "section" : info["section"],
-                        "desc" : info["desc"]}
+                        "desc" : info["desc"],
+                        "default" : info["hidden"] and "********" or origvalue
+                        }
                 if info["hidden"]:
                     params[attrname]["hidden"] = True
                 if info["readonly"]:
@@ -367,6 +369,7 @@ class ConfigParser(object):
         for conf in [self.config] + self.config_bases:
             info = self.find_docstring_in_config(conf, field)
             if info["found"]:
+                info["confmod"] = conf
                 infos.insert(0,info)
 
         if infos:
