@@ -451,7 +451,12 @@ class ConfigParser(object):
                         cmts.insert(0,m.groups()[0])
                     else:
                         break
-            return "\n".join(cmts)
+            # filter out empty lines
+            cmts = [c for c in cmts if c]
+            if cmts:
+                return "\n".join(cmts)
+            else:
+                return None
 
     def find_special_comment(self, pattern, field, lines, lineno, stop_on_eol=True):
         pat = re.compile(pattern)
@@ -471,6 +476,8 @@ class ConfigParser(object):
             section = match.groups()[0]
             if not section: # if we have "#* *#" it's a section breaker
                 section = None # back to None if empty string
+            else:
+                section = section.strip()
             return section
 
     def is_invisible(self, field, lines, lineno):

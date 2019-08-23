@@ -122,7 +122,7 @@ def get_cmd(conn=None):
 @requires_config
 def get_event(conn=None):
     conn = conn or get_hub_db_conn()
-    return conn[config.DATA_HUB_DB_DATABASE][config.EVENT_COLLECTION]
+    return conn[config.DATA_HUB_DB_DATABASE][getattr(config,"EVENT_COLLECTION","event")]
 
 @requires_config
 def get_hub_config(conn=None):
