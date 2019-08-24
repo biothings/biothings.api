@@ -432,11 +432,8 @@ class HubServer(object):
         self.logger.info("Active manager(s): %s" % pformat(self.managers))
 
     def configure_config_feature(self):
-        can_edit = False
-        if hasattr(config,"CONFIG_READONLY"):
-            can_edit = not config.CONFIG_READONLY
-            delattr(config,"CONFIG_READONLY")
-        config.editable(can_edit)
+        # just a placeholder
+        pass
 
     def configure_ws_feature(self):
         # add websocket endpoint

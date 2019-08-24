@@ -63,6 +63,7 @@ class ConfigurationManager(types.ModuleType):
         self.allow_edits = False
         self.dirty = False # gets dirty (needs reload) when config is changed in db
         self._original_params = {} # cache config params as defined in config files
+        self.setup()
 
     @property
     def original_params(self):
@@ -83,8 +84,12 @@ class ConfigurationManager(types.ModuleType):
         # for dotfield notation
         return self.__getattr__(name)
 
-    def editable(self, allow):
-        self.allow_edits = bool(allow)
+    def setup(self):
+        can_edit = False
+        if hasattr(self.conf,"CONFIG_READONLY"):
+            can_edit = not self.conf.CONFIG_READONLY
+            delattr(self.conf,"CONFIG_READONLY")
+        self.allow_edits = bool(can_edit)
 
     def show(self):
         origparams = copy.deepcopy(self.original_params)
