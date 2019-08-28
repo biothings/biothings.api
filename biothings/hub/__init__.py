@@ -17,6 +17,7 @@ UPLOADER_CATEGORY = "uploader"
 BUILDER_CATEGORY = "builder"
 INDEXER_CATEGORY = "indexer"
 INDEXMANAGER_CATEGORY = "indexmanager"
+RELEASEMANAGER_CATEGORY = "releasemanager"
 DIFFER_CATEGORY = "differ"
 DIFFMANAGER_CATEGORY = "diffmanager"
 SYNCER_CATEGORY = "syncer"
@@ -169,7 +170,7 @@ class HubCommands(OrderedDict):
 class HubServer(object):
 
     DEFAULT_FEATURES = ["config","job","dump","upload","dataplugin","source",
-                        "build","diff","index","inspect","sync","api",
+                        "build","diff","index","release","inspect","sync","api",
                         "terminal","reloader","dataupload","ws"]
     DEFAULT_MANAGERS_ARGS = {"upload" : {"poll_schedule" : "* * * * * */10"}}
     DEFAULT_RELOADER_CONFIG = {"folders": None, # will use default one
@@ -346,15 +347,27 @@ class HubServer(object):
                                      poll_schedule="* * * * * */10",**args)
         diff_manager.configure([SelfContainedJsonDiffer,])
         diff_manager.poll("diff",lambda doc: diff_manager.diff("jsondiff-selfcontained",old=None,new=doc["_id"]))
-        diff_manager.poll("release_note",lambda doc: diff_manager.release_note(old=None,new=doc["_id"]))
         self.managers["diff_manager"] = diff_manager
 
     def configure_index_manager(self):
-        from biothings.hub.dataindex.indexer import IndexerManager
+        from biothings.hub.dataindex.indexer import IndexManager
         args = self.mixargs("index")
-        index_manager = IndexerManager(job_manager=self.managers["job_manager"],**args)
+        index_manager = IndexManager(job_manager=self.managers["job_manager"],**args)
         index_manager.configure(config.ES_CONFIG)
         self.managers["index_manager"] = index_manager
+
+    def configure_release_manager(self):
+        assert "diff" in self.features, "'release' feature requires 'diff'"
+        assert "index" in self.features, "'release' feature requires 'index'"
+        from biothings.hub.datarelease.releaser import ReleaseManager
+        args = self.mixargs("release")
+        release_manager = ReleaseManager(job_manager=self.managers["job_manager"],
+                                         poll_schedule="* * * * * */10",**args)
+        release_manager.configure(config.RELEASE_CONFIG,
+                                  diff_manager=self.managers["diff_manager"],
+                                  index_manager=self.managers["index_manager"])
+        release_manager.poll("release_note",lambda doc: release_manager.release_note(old=None,new=doc["_id"]))
+        self.managers["release_manager"] = release_manager
 
     def configure_sync_manager(self):
         from biothings.hub.databuild.syncer import SyncerManager
@@ -534,13 +547,15 @@ class HubServer(object):
         if self.managers.get("diff_manager"):
             self.commands["diff"] = self.managers["diff_manager"].diff
             self.commands["report"] = self.managers["diff_manager"].diff_report
-            self.commands["release_note"] = self.managers["diff_manager"].release_note
-            self.commands["publish_diff"] = self.managers["diff_manager"].publish_diff
         # indexing commands
         if self.managers.get("index_manager"):
             self.commands["index"] = self.managers["index_manager"].index
-            self.commands["snapshot"] = self.managers["index_manager"].snapshot
-            self.commands["publish_snapshot"] = self.managers["index_manager"].publish_snapshot
+        # data release commands
+        if self.managers.get("release_manager"):
+            self.commands["release_note"] = self.managers["release_manager"].release_note
+            self.commands["publish_diff"] = self.managers["release_manager"].publish_diff
+            self.commands["snapshot"] = self.managers["release_manager"].snapshot
+            self.commands["publish_snapshot"] = self.managers["release_manager"].publish_snapshot
         if self.managers.get("sync_manager"):
             self.commands["sync"] = CommandDefinition(command=self.managers["sync_manager"].sync)
         # inspector
@@ -608,6 +623,8 @@ class HubServer(object):
             self.extra_commands["jm"] = CommandDefinition(command=self.managers["job_manager"],tracked=False)
             self.extra_commands["top"] = CommandDefinition(command=self.managers["job_manager"].top,tracked=False)
             self.extra_commands["job_info"] = CommandDefinition(command=self.managers["job_manager"].job_info,tracked=False)
+        if self.managers.get("release_manager"):
+            self.extra_commands["rm"] = CommandDefinition(command=self.managers["release_manager"],tracked=False)
         if self.managers.get("inspect_manager"):
             self.extra_commands["ism"] = CommandDefinition(command=self.managers["inspect_manager"],tracked=False)
         if self.managers.get("api_manager"):

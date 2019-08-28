@@ -197,7 +197,6 @@ class BaseAssistant(object):
                 confdict["SCHEDULE"] = schedule
                 confdict["UNCOMPRESS"] = dumper_section.get("uncompress") or False
                 pystr = tpl.substitute(confdict)
-                self.logger.debug(pystr)
                 import imp
                 code = compile(pystr,"<string>","exec")
                 mod = imp.new_module(self.plugin_name)
@@ -293,7 +292,6 @@ class BaseAssistant(object):
                     confdict["JOBS_FUNC"] = ""
 
                 pystr = tpl.substitute(confdict)
-                self.logger.debug(pystr)
                 import imp
                 code = compile(pystr,"<string>","exec")
                 mod = imp.new_module(self.plugin_name)

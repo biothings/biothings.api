@@ -14,7 +14,7 @@ from biothings.utils.common import timesofar, get_random_string, iter_n, \
                                    get_class_from_classpath, get_dotfield_value
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
-from biothings.utils.es import ESIndexer
+from biothings.utils.es import ESIndexer, IndexerException as ESIndexerException
 from biothings.utils.backend import DocESBackend
 from biothings import config as btconfig
 from biothings.utils.mongo import doc_feeder, id_feeder
@@ -87,442 +87,6 @@ def indexer_worker(col_name,ids,pindexer,batch_num,mode="index",
 class IndexerException(Exception):
     pass
 
-
-class IndexerManager(BaseManager):
-
-    def __init__(self, *args, **kwargs):
-        super(IndexerManager,self).__init__(*args, **kwargs)
-        self.src_build = get_src_build()
-        self.indexers = {}
-        self.es_config = {}
-        self.t0 = time.time()
-        self.prepared = False
-        self.log_folder = LOG_FOLDER
-        self.timestamp = datetime.now()
-        self.setup()
-
-    def setup(self):
-        self.setup_log()
-
-    def setup_log(self):
-        self.logger, self.logfile = get_logger('indexmanager',self.log_folder)
-
-    def get_predicates(self):
-        def no_other_indexmanager_step_running(job_manager):
-            """IndexManager deals with snapshot, publishing,
-            none of them should run more than one at a time"""
-            return len([j for j in job_manager.jobs.values() if j["category"] == INDEXMANAGER_CATEGORY]) == 0
-        return [no_other_indexmanager_step_running]
-
-    def get_pinfo(self):
-        """
-        Return dict containing information about the current process
-        (used to report in the hub)
-        """
-        pinfo = {"category" : INDEXMANAGER_CATEGORY,
-                "source" : "",
-                "step" : "",
-                "description" : ""}
-        preds = self.get_predicates()
-        if preds:
-            pinfo["__predicates__"] = preds
-        return pinfo
-
-    def __getitem__(self,conf_name):
-        """
-        Return an instance of an indexer for the build configuration named 'conf_name'
-        Note: each call returns a different instance (factory call behind the scene...)
-        """
-        kwargs = BaseManager.__getitem__(self,conf_name)
-        return kwargs
-
-    def configure_from_list(self,indexers_kwargs):
-        for dindex in indexers_kwargs:
-            assert len(dindex) == 1, "Invalid indexer registration data: %s" % dindex
-            env,idxkwargs = list(dindex.items())[0]
-            self.register[env] = idxkwargs
-
-    def configure_from_dict(self,confdict):
-        self.es_config = copy.deepcopy(confdict)
-        self.indexers.update(confdict.get("indexer_select",{}))
-        indexers_kwargs = []
-        for env,conf in confdict["env"].items():
-            idxkwargs = dict(**conf["indexer"]["args"])
-            # propagate ES host to indexer's kwargs
-            idxkwargs["es_host"] = self.es_config["env"][env]["host"]
-            indexers_kwargs.append({env:idxkwargs})
-        self.configure_from_list(indexers_kwargs)
-
-    def configure(self,indexer_defs):
-        """
-        Register indexers with:
-        - a list of dict as:
-            [{"indexer_type_name": partial},{....}]
-        - a dict containing all indexer definitions:
-            {"env" : {
-                "env1" : {
-                    "host": "localhost:9200",
-                    "timeout": ..., "retry":...,
-                    "indexer" : "path.to.ClassIndexer",
-                },
-                ...
-            }
-        Partial is used to instantiate an indexer, without args
-        """
-        if type(indexer_defs) == list:
-            self.configure_from_list(indexer_defs)
-        elif type(indexer_defs) == dict:
-            self.configure_from_dict(indexer_defs)
-        else:
-            raise ValueError("Unknown indexer definitions type (expecting a list or a dict")
-        self.logger.info(self.indexers)
-        self.logger.info(self.register)
-
-    def find_indexer(self, target_name):
-        """
-        Return indexer class required to index target_name.
-        Rules depend on what's inside the corresponding src_build doc
-        and the indexers definitions
-        """
-        doc = self.src_build.find_one({"_id":target_name})
-        if not self.indexers or not doc:
-            return Indexer # default one
-        klass = None
-        for path_in_doc in self.indexers:
-            if klass is None and path_in_doc is None:
-                # couldn't find a klass yet and we found a default declated, keep it
-                strklass = self.indexers[path_in_doc]
-                klass = get_class_from_classpath(strklass)
-            else:
-                try:
-                    val = get_dotfield_value(path_in_doc,doc)
-                    strklass = self.indexers[path_in_doc]
-                    klass = get_class_from_classpath(strklass)
-                    self.logger.info("Found special indexer '%s' required to index '%s'" % (klass,target_name))
-                    # the first to match wins
-                    break
-                except KeyError:
-                    pass
-        if klass is None:
-            self.logger.debug("Using default indexer")
-            return Indexer
-        else:
-            # either we return a default declared in config or
-            # a specific one found according to the doc
-            self.logger.debug("Using custom indexer %s" % klass)
-            return klass
-
-    def index(self, indexer_env, target_name=None, index_name=None, ids=None, **kwargs):
-        """
-        Trigger an index creation to index the collection target_name and create an 
-        index named index_name (or target_name if None). Optional list of IDs can be
-        passed to index specific documents.
-        """
-        t0 = time.time()
-        def indexed(f):
-            try:
-                res = f.result()
-                self.logger.info("Done indexing target '%s' to index '%s': %s" % (target_name,index_name,res))
-            except Exception as e:
-                self.logger.exception("Error while running index job, %s" % e)
-                raise
-        idxklass = self.find_indexer(target_name)
-        idxkwargs = self[indexer_env]
-        idx = idxklass(**idxkwargs)
-        idx.env = indexer_env
-        idx.target_name = target_name
-        index_name = index_name or target_name
-        job = idx.index(target_name, index_name, ids=ids, job_manager=self.job_manager, **kwargs)
-        job = asyncio.ensure_future(job)
-        job.add_done_callback(indexed)
-
-        return job
-
-    def snapshot(self, indexer_env, index, snapshot=None, mode=None, steps=["snapshot"], repository=btconfig.SNAPSHOT_REPOSITORY):
-        # check what to do
-        if type(steps) == str:
-            steps = [steps]
-        snapshot = snapshot or index
-        idxklass = self.find_indexer(index)
-        idxkwargs = self[indexer_env]
-        idxr = idxklass(**idxkwargs)
-        es_idxr = ESIndexer(index=index,doc_type=idxr.doc_type,es_host=idxr.host)
-        # will hold the overall result
-        fut = asyncio.Future()
-
-        def get_status():
-            try:
-                res = es_idxr.get_snapshot_status(repository, snapshot)
-                assert "snapshots" in res, "Can't find snapshot '%s' in repository '%s'" % (snapshot,repository)
-                # assuming only one index in the snapshot, so only check first elem
-                state = res["snapshots"][0].get("state")
-                assert state, "Can't find state in snapshot '%s'" % snapshot
-                return state
-            except Exception as e:
-                # somethng went wrong, report as failure
-                return "FAILED"
-
-        @asyncio.coroutine
-        def do(index):
-            def snapshot_launched(f):
-                try:
-                    self.logger.info("Snapshot launched: %s" % f.result())
-                except Exception as e:
-                    self.logger.error("Error while lauching snapshot: %s" % e)
-                    fut.set_exception(e)
-            if "snapshot" in steps:
-                pinfo = self.get_pinfo()
-                pinfo["source"] = index
-                pinfo["step"] = "snapshot"
-                pinfo["description"] = idxr.host
-                self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,idxr.host,repository))
-                job = yield from self.job_manager.defer_to_thread(pinfo,
-                        partial(es_idxr.snapshot,repository,snapshot, mode=mode))
-                job.add_done_callback(snapshot_launched)
-                yield from job
-                while True:
-                    state = get_status()
-                    if state in ["INIT","IN_PROGRESS","STARTED"]:
-                        yield from asyncio.sleep(getattr(btconfig,"MONITOR_SNAPSHOT_DELAY",60))
-                    else:
-                        if state == "SUCCESS":
-                            fut.set_result(state)
-                            self.logger.info("Snapshot '%s' successfully created (host: '%s', repository: '%s')" % \
-                                    (snapshot,idxr.host,repository),extra={"notify":True})
-                        else:
-                            e = IndexerException("Snapshot '%s' failed: %s" % (snapshot,state))
-                            fut.set_exception(e)
-                            self.logger.error("Failed creating snapshot '%s' (host: %s, repository: %s), state: %s" % \
-                                    (snapshot,idxr.host,repository,state),extra={"notify":True})
-                            raise e
-                        break
-
-        task = asyncio.ensure_future(do(index))
-        return fut
-
-    def publish_snapshot(self, indexer_env, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
-                         repository=btconfig.SNAPSHOT_REPOSITORY, steps=["meta","post"]):
-        """
-        Publish snapshot metadata (not the actal snapshot, but the metadata, release notes, etc... associated to it) to S3,
-        and then register that version to it's available to auto-updating hub.
-
-        Though snapshots don't need any previous version to be applied on, a release note with significant changes
-        between current snapshot and a previous version could have been generated. In that case, 
-
-        'prev' and 'snaphost' must be defined (as strings, should match merged collections names) to generate
-        a release folder, or directly release_folder (if it's required to find release notes).
-        If all 3 are None, no release note will be referenced in snapshot metadata.
-
-        'snapshot' and actual underlying index can have different names, if so, 'index' can be specified.
-        'index' is mainly used to get the build_version from metadata as this information isn't part of snapshot
-        information. It means in order to publish a snaphost, both the snapshot *and* the index must exist.
-        """
-        if type(steps) == str:
-            steps = [steps]
-        assert getattr(btconfig,"BIOTHINGS_ROLE",None) == "master","Hub needs to be master to publish metadata about snapshots"
-        # keep passed values if any, otherwise derive them
-        index = index or snapshot
-        snapshot = snapshot or index
-        # TODO: merged collection name can be != index name which can be != snapshot name...
-        if prev and index and not release_folder:
-            release_folder = generate_folder(btconfig.RELEASE_PATH,prev,index)
-
-        @asyncio.coroutine
-        def do():
-            jobs = []
-            pinfo = self.get_pinfo()
-            pinfo["step"] = "publish"
-            pinfo["source"] = snapshot
-            if "meta" in steps:
-                # TODO: this is a clocking call
-                # snapshot at this point can be totally different than original
-                # target_name but we still use it to potentially custom indexed
-                # (anyway, it's just to access some snapshot info so default indexer 
-                # will work)
-                idxklass = self.find_indexer(snapshot) 
-                idxkwargs = self[indexer_env]
-                idxr = idxklass(**idxkwargs)
-                es_idxr = ESIndexer(index=index,doc_type=idxr.doc_type,es_host=idxr.host)
-                esb = DocESBackend(es_idxr)
-                assert esb.version, "Can't retrieve a version from index '%s'" % index
-                self.logger.info("Generating JSON metadata for full release '%s'" % esb.version)
-                repo = es_idxr._es.snapshot.get_repository(repository)
-                release_note = "release_%s" % esb.version
-                # generate json metadata about this diff release
-                assert snapshot, "Missing snapshot name information"
-                if getattr(btconfig,"SKIP_CHECK_VERSIONS",None):
-                    self.logger.info("SKIP_CHECK_VERSIONS %s, no version check will be performed on diff metadata" % repr(btconfig.SKIP_CHECK_VERSION))
-                else:
-                    assert getattr(btconfig,"BIOTHINGS_VERSION","master") != "master", "I won't publish data refering BIOTHINGS_VERSION='master'"
-                    assert getattr(btconfig,"APP_VERSION","master") != "master", "I won't publish data refering APP_VERSION='master'"
-                    assert getattr(btconfig,"STANDALONE_VERSION",None), "STANDALONE_VERSION not defined"
-                full_meta = {
-                        "type": "full",
-                        "build_version": esb.version,
-                        "target_version": esb.version,
-                        "release_date" : datetime.now().isoformat(),
-                        "app_version": btconfig.APP_VERSION,
-                        "biothings_version": btconfig.BIOTHINGS_VERSION,
-                        "standalone_version": btconfig.STANDALONE_VERSION,
-                        "metadata" : {"repository" : repo,
-                                      "snapshot_name" : snapshot}
-                        }
-                if release_folder and os.path.exists(release_folder):
-                    # ok, we have something in that folder, just pick the release note files
-                    # (we can generate diff + snaphost at the same time, so there could be diff files in that folder
-                    # from a diff process done before. release notes will be the same though)
-                    s3basedir = os.path.join(s3_folder,esb.version)
-                    notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
-                    self.logger.info("Uploading release notes from '%s' to s3 folder '%s'" % (notes,s3basedir))
-                    for note in notes:
-                        if os.path.exists(note):
-                            s3key = os.path.join(s3basedir,os.path.basename(note))
-                            aws.send_s3_file(note,s3key,
-                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                                    s3_bucket=btconfig.S3_RELEASE_BUCKET,overwrite=True)
-                    # specify release note URLs in metadata
-                    rel_txt_url = aws.get_s3_url(os.path.join(s3basedir,"%s.txt" % release_note),
-                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
-                    rel_json_url = aws.get_s3_url(os.path.join(s3basedir,"%s.json" % release_note),
-                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
-                    if rel_txt_url:
-                        full_meta.setdefault("changes",{})
-                        full_meta["changes"]["txt"] = {"url" : rel_txt_url}
-                    if rel_json_url:
-                        full_meta.setdefault("changes",{})
-                        full_meta["changes"]["json"] = {"url" : rel_json_url}
-                else:
-                    self.logger.info("No release_folder found, no release notes will be part of the publishing")
-
-                # now dump that metadata
-                build_info = "%s.json" % esb.version
-                build_info_path = os.path.join(btconfig.DIFF_PATH,build_info)
-                json.dump(full_meta,open(build_info_path,"w"))
-                # override lastmodified header with our own timestamp
-                local_ts = dtparse(es_idxr.get_mapping_meta()["_meta"]["build_date"])
-                utc_epoch = int(time.mktime(local_ts.timetuple()))
-                utc_ts = datetime.fromtimestamp(time.mktime(time.gmtime(utc_epoch)))
-                str_utc_epoch = str(utc_epoch)
-                # it's a full release, but all build info metadata (full, incremental) all go
-                # to the diff bucket (this is the main entry)
-                s3key = os.path.join(s3_folder,build_info)
-                aws.send_s3_file(build_info_path,s3key,
-                        aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                        s3_bucket=btconfig.S3_RELEASE_BUCKET,metadata={"lastmodified":str_utc_epoch},
-                         overwrite=True)
-                url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                        s3_bucket=btconfig.S3_RELEASE_BUCKET)
-                self.logger.info("Full release metadata published for version: '%s'" % url)
-                full_info = {"build_version":full_meta["build_version"],
-                        "require_version":None,
-                        "target_version":full_meta["target_version"],
-                        "type":full_meta["type"],
-                        "release_date":full_meta["release_date"],
-                        "url":url}
-                publish_data_version(s3_folder,full_info)
-                self.logger.info("Registered version '%s'" % (esb.version))
-
-            if "post" in steps:
-                # then we upload all the folder content
-                pinfo["step"] = "post"
-                self.logger.info("Runnig post-publish step")
-                job = yield from self.job_manager.defer_to_thread(pinfo,partial(self.post_publish,
-                            indexer_env=indexer_env, s3_folder=s3_folder, prev=prev, snapshot=snapshot,
-                            release_folder=release_folder, index=index,
-                            repository=repository, steps=steps))
-                yield from job
-                jobs.append(job)
-
-            def published(f):
-                try:
-                    res = f.result()
-                    self.logger.info("Snapshot '%s' uploaded to S3: %s" % (snapshot,res),extra={"notify":True})
-                except Exception as e:
-                    self.logger.error("Failed to upload snapshot '%s' uploaded to S3: %s" % (snapshot,e),extra={"notify":True})
-
-            if jobs:
-                yield from asyncio.wait(jobs)
-                task = asyncio.gather(*jobs)
-                task.add_done_callback(published)
-                yield from task
-
-        return asyncio.ensure_future(do())
-
-    def post_publish(self, indexer_env, s3_folder, prev, snapshot, release_folder, index,
-                         repository, steps, *args, **kwargs):
-        """Post-publish hook, can be implemented in sub-class"""
-        return
-
-    def update_metadata(self, indexer_env, index_name, build_name=None,_meta=None):
-        """
-        Update _meta for index_name, based on build_name (_meta directly
-        taken from the src_build document) or _meta
-        """
-        idxkwargs = self[indexer_env]
-        # 1st pass we get the doc_type (don't want to ask that on the signature...)
-        indexer = create_backend((idxkwargs["es_host"],index_name,None)).target_esidxer
-        m = indexer._es.indices.get_mapping(index_name)
-        assert len(m[index_name]["mappings"]) == 1, "Found more than one doc_type: " + \
-                    "%s" % m[index_name]["mappings"].keys()
-        doc_type = list(m[index_name]["mappings"].keys())[0]
-        # 2nd pass to re-create correct indexer
-        indexer = create_backend((idxkwargs["es_host"],index_name,doc_type)).target_esidxer
-        if build_name:
-            build = get_src_build().find_one({"_id":build_name})
-            assert build, "No such build named '%s'" % build_name
-            _meta = build.get("_meta")
-        assert not _meta is None, "No _meta found"
-        return indexer.update_mapping_meta({"_meta" : _meta})
-
-    def index_info(self, env=None, remote=False):
-        res = copy.deepcopy(self.es_config)
-        for kenv in self.es_config["env"]:
-            if env and env != kenv:
-                continue
-            if remote:
-                # lost all indices, remotely
-                try:
-                    cl = Elasticsearch(res["env"][kenv]["host"],timeout=1,max_retries=0)
-                    indices = [{"index":k,
-                        "doc_type":list(v["mappings"].keys())[0],
-                        "aliases":list(v["aliases"].keys())}
-                        for k,v in cl.indices.get("*").items()]
-                    # for now, we just consider
-                    if type(res["env"][kenv]["index"]) == dict:
-                        # we don't where to put those indices because we don't
-                        # have that information, so we just put those in a default category
-                        # TODO: put that info in metadata ?
-                        res["env"][kenv]["index"].setdefault(None,[]).extend(indices)
-                    else:
-                        assert type(res["env"][kenv]["index"]) == list
-                        res["env"][kenv]["index"].extend(indices)
-                except Exception as e:
-                    self.logger.warning("Can't load remote indices: %s" % e)
-                    continue
-        return res
-
-    def validate_mapping(self, mapping, env):
-        idxkwargs = self[env]
-        # just get the default indexer (target_name doesn't exist, return default one)
-        idxklass = self.find_indexer(target_name="__placeholder_name__%s" % get_random_string())
-        idxr_obj = idxklass(**idxkwargs)
-        settings = idxr_obj.get_index_creation_settings()
-        # generate a random index, it'll be deleted at the end
-        index_name = ("hub_tmp_%s" % get_random_string()).lower()
-        idxr = ESIndexer(index=index_name,es_host=idxr_obj.host,doc_type=None)
-        self.logger.info("Testing mapping by creating index '%s' on host '%s' (settings: %s)" % \
-                (index_name,idxr_obj.host,settings))
-        try:
-            res = idxr.create_index(mapping,settings)
-            return res
-        except Exception as e:
-            self.logger.exception(e)
-            raise e
-        finally:
-            try:
-                idxr.delete_index()
-            except Exception as e:
-                pass
 
 class Indexer(object):
     """
@@ -1095,4 +659,231 @@ class ColdHotIndexer(Indexer):
         else:
             raise ValueError("Cannot find build config associated to '%s' or '%s'" % (self.hot_target_name,self.cold_target_name))
         return (self.cold_cfg,self.hot_cfg)
+
+
+class IndexManager(BaseManager):
+    
+    DEFAULT_INDEXER = Indexer
+
+    def __init__(self, *args, **kwargs):
+        super(IndexManager,self).__init__(*args, **kwargs)
+        self.src_build = get_src_build()
+        self.indexers = {}
+        self.es_config = {}
+        self.t0 = time.time()
+        self.prepared = False
+        self.log_folder = LOG_FOLDER
+        self.timestamp = datetime.now()
+        self.setup()
+
+    def setup(self):
+        self.setup_log()
+
+    def setup_log(self):
+        self.logger, self.logfile = get_logger('indexmanager',self.log_folder)
+
+    def get_predicates(self):
+        def no_other_indexmanager_step_running(job_manager):
+            """IndexManager deals with snapshot, publishing,
+            none of them should run more than one at a time"""
+            return len([j for j in job_manager.jobs.values() if j["category"] == INDEXMANAGER_CATEGORY]) == 0
+        return [no_other_indexmanager_step_running]
+
+    def get_pinfo(self):
+        """
+        Return dict containing information about the current process
+        (used to report in the hub)
+        """
+        pinfo = {"category" : INDEXMANAGER_CATEGORY,
+                "source" : "",
+                "step" : "",
+                "description" : ""}
+        preds = self.get_predicates()
+        if preds:
+            pinfo["__predicates__"] = preds
+        return pinfo
+
+    def __getitem__(self,conf_name):
+        """
+        Return an instance of an indexer for the build configuration named 'conf_name'
+        Note: each call returns a different instance (factory call behind the scene...)
+        """
+        kwargs = BaseManager.__getitem__(self,conf_name)
+        return kwargs
+
+    def configure_from_list(self,indexers_kwargs):
+        for dindex in indexers_kwargs:
+            assert len(dindex) == 1, "Invalid indexer registration data: %s" % dindex
+            env,idxkwargs = list(dindex.items())[0]
+            self.register[env] = idxkwargs
+
+    def configure_from_dict(self,confdict):
+        self.es_config = copy.deepcopy(confdict)
+        self.indexers.update(confdict.get("indexer_select",{}))
+        indexers_kwargs = []
+        for env,conf in confdict["env"].items():
+            idxkwargs = dict(**conf["indexer"]["args"])
+            # propagate ES host to indexer's kwargs
+            idxkwargs["es_host"] = self.es_config["env"][env]["host"]
+            indexers_kwargs.append({env:idxkwargs})
+        self.configure_from_list(indexers_kwargs)
+
+    def configure(self,indexer_defs):
+        """
+        Register indexers with:
+        - a list of dict as:
+            [{"indexer_type_name": partial},{....}]
+        - a dict containing all indexer definitions:
+            {"env" : {
+                "env1" : {
+                    "host": "localhost:9200",
+                    "timeout": ..., "retry":...,
+                    "indexer" : "path.to.ClassIndexer",
+                },
+                ...
+            }
+        Partial is used to instantiate an indexer, without args
+        """
+        if type(indexer_defs) == list:
+            self.configure_from_list(indexer_defs)
+        elif type(indexer_defs) == dict:
+            self.configure_from_dict(indexer_defs)
+        else:
+            raise ValueError("Unknown indexer definitions type (expecting a list or a dict")
+        self.logger.info(self.indexers)
+        self.logger.info(self.register)
+
+    def find_indexer(self, target_name):
+        """
+        Return indexer class required to index target_name.
+        Rules depend on what's inside the corresponding src_build doc
+        and the indexers definitions
+        """
+        doc = self.src_build.find_one({"_id":target_name})
+        if not self.indexers or not doc:
+            return self.__class__.DEFAULT_INDEXER
+        klass = None
+        for path_in_doc in self.indexers:
+            if klass is None and (
+                    path_in_doc is None or \
+                    path_in_doc == "default" or \
+                    path_in_doc == ""):
+                # couldn't find a klass yet and we found a default declated, keep it
+                strklass = self.indexers[path_in_doc]
+                klass = get_class_from_classpath(strklass)
+            else:
+                try:
+                    val = get_dotfield_value(path_in_doc,doc)
+                    strklass = self.indexers[path_in_doc]
+                    klass = get_class_from_classpath(strklass)
+                    self.logger.info("Found special indexer '%s' required to index '%s'" % (klass,target_name))
+                    # the first to match wins
+                    break
+                except KeyError:
+                    pass
+        if klass is None:
+            self.logger.debug("Using default indexer")
+            return self.__class__.DEFAULT_INDEXER
+        else:
+            # either we return a default declared in config or
+            # a specific one found according to the doc
+            self.logger.debug("Using custom indexer %s" % klass)
+            return klass
+
+    def index(self, indexer_env, target_name=None, index_name=None, ids=None, **kwargs):
+        """
+        Trigger an index creation to index the collection target_name and create an 
+        index named index_name (or target_name if None). Optional list of IDs can be
+        passed to index specific documents.
+        """
+        t0 = time.time()
+        def indexed(f):
+            try:
+                res = f.result()
+                self.logger.info("Done indexing target '%s' to index '%s': %s" % (target_name,index_name,res))
+            except Exception as e:
+                self.logger.exception("Error while running index job, %s" % e)
+                raise
+        idxklass = self.find_indexer(target_name)
+        idxkwargs = self[indexer_env]
+        idx = idxklass(**idxkwargs)
+        idx.env = indexer_env
+        idx.target_name = target_name
+        index_name = index_name or target_name
+        job = idx.index(target_name, index_name, ids=ids, job_manager=self.job_manager, **kwargs)
+        job = asyncio.ensure_future(job)
+        job.add_done_callback(indexed)
+
+        return job
+
+    def update_metadata(self, indexer_env, index_name, build_name=None,_meta=None):
+        """
+        Update _meta for index_name, based on build_name (_meta directly
+        taken from the src_build document) or _meta
+        """
+        idxkwargs = self[indexer_env]
+        # 1st pass we get the doc_type (don't want to ask that on the signature...)
+        indexer = create_backend((idxkwargs["es_host"],index_name,None)).target_esidxer
+        m = indexer._es.indices.get_mapping(index_name)
+        assert len(m[index_name]["mappings"]) == 1, "Found more than one doc_type: " + \
+                    "%s" % m[index_name]["mappings"].keys()
+        doc_type = list(m[index_name]["mappings"].keys())[0]
+        # 2nd pass to re-create correct indexer
+        indexer = create_backend((idxkwargs["es_host"],index_name,doc_type)).target_esidxer
+        if build_name:
+            build = get_src_build().find_one({"_id":build_name})
+            assert build, "No such build named '%s'" % build_name
+            _meta = build.get("_meta")
+        assert not _meta is None, "No _meta found"
+        return indexer.update_mapping_meta({"_meta" : _meta})
+
+    def index_info(self, env=None, remote=False):
+        res = copy.deepcopy(self.es_config)
+        for kenv in self.es_config["env"]:
+            if env and env != kenv:
+                continue
+            if remote:
+                # lost all indices, remotely
+                try:
+                    cl = Elasticsearch(res["env"][kenv]["host"],timeout=1,max_retries=0)
+                    indices = [{"index":k,
+                        "doc_type":list(v["mappings"].keys())[0],
+                        "aliases":list(v["aliases"].keys())}
+                        for k,v in cl.indices.get("*").items()]
+                    # for now, we just consider
+                    if type(res["env"][kenv]["index"]) == dict:
+                        # we don't where to put those indices because we don't
+                        # have that information, so we just put those in a default category
+                        # TODO: put that info in metadata ?
+                        res["env"][kenv]["index"].setdefault(None,[]).extend(indices)
+                    else:
+                        assert type(res["env"][kenv]["index"]) == list
+                        res["env"][kenv]["index"].extend(indices)
+                except Exception as e:
+                    self.logger.warning("Can't load remote indices: %s" % e)
+                    continue
+        return res
+
+    def validate_mapping(self, mapping, env):
+        idxkwargs = self[env]
+        # just get the default indexer (target_name doesn't exist, return default one)
+        idxklass = self.find_indexer(target_name="__placeholder_name__%s" % get_random_string())
+        idxr_obj = idxklass(**idxkwargs)
+        settings = idxr_obj.get_index_creation_settings()
+        # generate a random index, it'll be deleted at the end
+        index_name = ("hub_tmp_%s" % get_random_string()).lower()
+        idxr = ESIndexer(index=index_name,es_host=idxr_obj.host,doc_type=None)
+        self.logger.info("Testing mapping by creating index '%s' on host '%s' (settings: %s)" % \
+                (index_name,idxr_obj.host,settings))
+        try:
+            res = idxr.create_index(mapping,settings)
+            return res
+        except Exception as e:
+            self.logger.exception(e)
+            raise e
+        finally:
+            try:
+                idxr.delete_index()
+            except Exception as e:
+                pass
 
