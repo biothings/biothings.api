@@ -3,6 +3,8 @@ import logging
 from urllib.parse import urlparse
 
 from boto import connect_s3
+import boto3
+import botocore.exceptions
 
 try:
     from biothings import config
@@ -110,3 +112,23 @@ def get_s3_url(s3key, aws_key=None, aws_secret=None, s3_bucket=None):
     # as the bucket is public anyway and want "clean" url
     url = k.generate_url(expires_in=0) # never (and whatever, we
     return urlparse(url)._replace(query="").geturl()
+
+
+def create_bucket(name, region=None, aws_key=None, aws_secret=None, acl=None,
+                  ignore_already_exists=False):
+    """Create a S3 bucket "name" in optional "region". If aws_key and aws_secret
+    are set, S3 client will these, otherwise it'll use default system-wide setting.
+    "acl" defines permissions on the bucket: "private" (default), "public-read",
+    "public-read-write" and "authenticated-read"
+    """
+    client = boto3.client("s3",aws_access_key_id=aws_key,aws_secret_access_key=aws_secret)
+    acl = acl or "private"
+    kwargs = {"ACL" : acl, "Bucket" : name}
+    if region:
+        kwargs["CreateBucketConfiguration"] = {"LocationConstraint" : region}
+    try:
+        client.create_bucket(**kwargs)
+    except botocore.exceptions.ClientError as e:
+        if e.response["Error"]["Code"] == "BucketAlreadyOwnedByYou" and not ignore_already_exists:
+            raise
+
