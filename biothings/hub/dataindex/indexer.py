@@ -192,7 +192,6 @@ class Indexer(object):
                     self.register_status("failed",job={"err": repr(e)})
                     raise
 
-
             def clean_ids(ids):
                 # can't use a generator, it's going to be pickled
                 cleaned = []

@@ -5,6 +5,7 @@ import pickle, json
 from pprint import pformat
 import asyncio
 from functools import partial
+import subprocess
 
 from biothings.utils.mongo import get_previous_collection
 from biothings.utils.hub_db import get_src_build
@@ -35,17 +36,18 @@ class ReleaseManager(BaseManager):
         self.timestamp = datetime.now()
         self.release_config = {}
         self.poll_schedule = poll_schedule
+        self.es_backups_folder = btconfig.ES_BACKUPS_FOLDER
         self.setup()
 
     def setup(self):
         self.setup_log()
-
+    
     def setup_log(self):
         self.logger, self.logfile = get_logger(RELEASEMANAGER_CATEGORY,self.log_folder)
-
+    
     def get_predicates(self):
         return []
-
+    
     def get_pinfo(self):
         """
         Return dict containing information about the current process
@@ -59,17 +61,17 @@ class ReleaseManager(BaseManager):
         if preds:
             pinfo["__predicates__"] = preds
         return pinfo
-
+    
     def __getitem__(self,env):
         """
         Return an instance of a releaser for the release environment named "env"
         """
         kwargs = BaseManager.__getitem__(self,env)
         return kwargs
-
+    
     def poll(self,state,func):
         super().poll(state,func,col=get_src_build())
-
+    
     def configure(self, confdict, diff_manager, index_manager):
         """
         Configure manager with release "confdict". See config_hub.py in API
@@ -85,15 +87,19 @@ class ReleaseManager(BaseManager):
                 self.register[env] = conf
             except Exception as e:
                 self.logger.error("Couldn't setup release environment '%s' because: %s" % (env,e))
-
-
+    
+    def register_status(self):
+        """TODO"""
+        pass
+    
+    
     def publish_release(self):#, releaser_env, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
                          #repository=btconfig.SNAPSHOT_REPOSITORY, steps=["meta","post"]):
-        """
-        TODO
-        """
-        pass
-
+            """
+            TODO
+            """
+            pass
+    
     # from indexer
     def post_publish(self):#, releaser_env, s3_folder, prev, snapshot, release_folder, index,
                          #repository, steps, *args, **kwargs):
@@ -128,7 +134,7 @@ class ReleaseManager(BaseManager):
 
         return es_idxr
 
-    def snapshot(self, releaser_env, index, snapshot=None, steps=["snapshot"]):
+    def snapshot(self, releaser_env, index, snapshot=None, steps=["snapshot","post"]):
         """
         Create a snapshot named "snapshot" (or, by default, same name as the index) from "index"
         according to environment definition (repository, etc...) "releaser_env".
@@ -144,7 +150,8 @@ class ReleaseManager(BaseManager):
         es_idxr = self.get_es_idxr(envconf,index)
         # create repo if needed
         index_meta = es_idxr.get_mapping_meta()["_meta"] # read from index
-        repo_name = self.create_repository(envconf, index_meta)
+        repo_conf = self.create_repository(envconf, index_meta)
+        repo_name = repo_conf["name"]
         monitor_delay = envconf["snapshot"]["monitor_delay"]
         # will hold the overall result
         fut = asyncio.Future()
@@ -163,46 +170,70 @@ class ReleaseManager(BaseManager):
 
         @asyncio.coroutine
         def do(index):
-            def snapshot_launched(f):
-                try:
-                    self.logger.info("Snapshot launched: %s" % f.result())
-                except Exception as e:
-                    self.logger.error("Error while lauching snapshot: %s" % e)
-                    fut.set_exception(e)
-            if "snapshot" in steps:
-                pinfo = self.get_pinfo()
-                pinfo["source"] = index
-                pinfo["step"] = "snapshot"
-                pinfo["description"] = es_idxr.es_host
-                self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,es_idxr.es_host,repo_name))
-                job = yield from self.job_manager.defer_to_thread(pinfo,
-                        partial(es_idxr.snapshot,repo_name,snapshot))#, mode=mode))
-                job.add_done_callback(snapshot_launched)
-                yield from job
-                while True:
-                    info = get_status()
-                    state = info["state"]
-                    failed_shards = info["shards_stats"]["failed"]
-                    if state in ["INIT","IN_PROGRESS","STARTED"]:
-                        yield from asyncio.sleep(monitor_delay)
-                    else:
-                        if state == "SUCCESS" and failed_shards == 0:
-                            fut.set_result(state)
-                            self.logger.info("Snapshot '%s' successfully created (host: '%s', repository: '%s')" % \
-                                    (snapshot,es_idxr.es_host,repo_name),extra={"notify":True})
+            try:
+                global_state = None
+
+                def snapshot_launched(f):
+                    try:
+                        self.logger.info("Snapshot launched: %s" % f.result())
+                    except Exception as e:
+                        self.logger.error("Error while lauching snapshot: %s" % e)
+
+                if "pre" in steps:
+                    self.run_pre_snapshot(envconf,repo_conf,index_meta)
+                    
+                if "snapshot" in steps:
+                    pinfo = self.get_pinfo()
+                    pinfo["source"] = index
+                    pinfo["step"] = "snapshot"
+                    pinfo["description"] = es_idxr.es_host
+                    self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,es_idxr.es_host,repo_name))
+                    job = yield from self.job_manager.defer_to_thread(pinfo,
+                            partial(es_idxr.snapshot,repo_name,snapshot))#, mode=mode))
+                    job.add_done_callback(snapshot_launched)
+                    yield from job
+                    while True:
+                        info = get_status()
+                        state = info["state"]
+                        failed_shards = info["shards_stats"]["failed"]
+                        if state in ["INIT","IN_PROGRESS","STARTED"]:
+                            yield from asyncio.sleep(monitor_delay)
                         else:
-                            if state == "SUCCESS":
-                                e = IndexerException("Snapshot '%s' partially failed: state is %s but %s shards failed" % (snapshot,state,failed_shards))
+                            if state == "SUCCESS" and failed_shards == 0:
+                                global_state = state
+                                self.logger.info("Snapshot '%s' successfully created (host: '%s', repository: '%s')" % \
+                                        (snapshot,es_idxr.es_host,repo_name),extra={"notify":True})
                             else:
-                                e = IndexerException("Snapshot '%s' failed: state is %s" % (snapshot,state))
-                            fut.set_exception(e)
-                            self.logger.error("Failed creating snapshot '%s' (host: %s, repository: %s), state: %s" % \
-                                    (snapshot,es_idxr.es_host,repo_name,state),extra={"notify":True})
-                            raise e
-                        break
+                                if state == "SUCCESS":
+                                    e = IndexerException("Snapshot '%s' partially failed: state is %s but %s shards failed" % (snapshot,state,failed_shards))
+                                else:
+                                    e = IndexerException("Snapshot '%s' failed: state is %s" % (snapshot,state))
+                                self.logger.error("Failed creating snapshot '%s' (host: %s, repository: %s), state: %s" % \
+                                        (snapshot,es_idxr.es_host,repo_name,state),extra={"notify":True})
+                                raise e
+                            break
+
+                if "post" in steps:
+                    self.run_post_snapshot(envconf, repo_conf, index_meta)
+
+                # if  we get there all is fine
+                fut.set_result(global_state)
+
+            except Exception as e:
+                self.logger.exception(e)
+                fut.set_exception(e)
 
         task = asyncio.ensure_future(do(index))
         return fut
+
+    def run_post_snapshot(self, envconf, repo_conf, index_meta):
+        return self.run_pre_post("snapshot","post",envconf,repo_conf,index_meta)
+
+    def run_pre_snapshot(self, envconf, repo_conf, index_meta):
+        return self.run_pre_post("snapshot","pre",envconf,repo_conf,index_meta)
+
+    def run_pre_publish_snapshot(self, envconf, repo_conf, index_meta):
+        return self.run_pre_post("snapshot","pre",envconf,repo_conf,index_meta)
 
     def publish_snapshot(self, releaser_env, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
                          repository=btconfig.SNAPSHOT_REPOSITORY, steps=["meta","post"]):
@@ -351,6 +382,9 @@ class ReleaseManager(BaseManager):
 
         return asyncio.ensure_future(do())
 
+    def run_post_publish_snapshot(self, envconf, repo_conf, index_meta):
+        return self.run_pre_post("snapshot","post",envconf,repo_conf,index_meta)
+
     def get_repository_config(self, repo_conf, index_meta):
         """
         Search repo values for special values (template)
@@ -394,7 +428,7 @@ class ReleaseManager(BaseManager):
             self.logger.info("Create repository named '%s': %s" % (repository,pformat(settings)))
             es_idxr.create_repository(repository,settings=settings)
 
-        return repository
+        return repo_conf
 
     ############################
     # Incremental data-release #
@@ -564,6 +598,90 @@ class ReleaseManager(BaseManager):
             yield from task
 
         return asyncio.ensure_future(do())
+
+    def run_pre_post(self, key, stage, envconf, repo_conf, index_meta):
+        """
+        Run pre- and post- steps for given stage (eg. "snapshot", "publish").
+        These steps are defined in config file.
+        """
+        # start pipeline with repo config from "snapshot" step
+        previous_result = repo_conf
+        steps = envconf[key].get(stage,[])
+        assert isinstance(steps,list), "'%s' stage must be a list, got: %s" % (stage,repr(steps))
+        for step_conf in steps:
+            try:
+                action = step_conf["action"]
+                # first try user-defined methods
+                # it can be named (first to match is picked):
+                # see list below
+                found = False
+                for tpl in [
+                        "step_%(stage)s_%(key)s_%(action)s",
+                        "step_%(key)s_%(action)s",
+                        "step_%(stage)s_%(action)s"]:
+                    methname = tpl % {"stage" : stage,
+                                      "key" : key,
+                                      "action" : action}
+                    if hasattr(self,methname):
+                        found = True
+                        previous_result = getattr(self,methname)(envconf,step_conf,index_meta,previous_result)
+                        break
+                if not found:
+                    # default to generic one
+                    previous_result = getattr(self,"step_%s" % action)(envconf,step_conf,index_meta,previous_result)
+                pass
+            except AttributeError as e:
+                raise ValueError("No such %s-%s step '%s'" % (stage,key,action))
+
+    def step_archive(self, envconf, step_conf, index_meta, previous):
+        archive_file = os.path.join(self.es_backups_folder,step_conf["name"] % index_meta)
+        self.logger.info("archive_file: %s" % archive_file)
+        if step_conf["format"] == "tar.xz":
+            # -J is for "xz"
+            tarcmd = ["tar","cJf",
+                      archive_file,
+                      "-C",self.es_backups_folder,
+                      previous["settings"]["location"],
+                      ]
+            out = subprocess.check_output(tarcmd)
+            self.logger.info("Archive: %s" % archive_file)
+            return archive_file
+        else:
+            raise ValueError("Only 'tar.xz' format supported for now, got %s" % repr(step_conf["format"]))
+
+    def step_upload(self, envconf, step_conf, index_meta, previous):
+        if step_conf["type"] == "s3":
+            return self.step_upload_s3(envconf, step_conf, index_meta, previous)
+        else:
+            raise ValueError("Only 's3' upload type supported for now, got %s" % repr(step_conf["type"]))
+
+    def step_upload_s3(self, envconf, step_conf, index_meta, previous):
+        print(pformat(envconf))
+        aws_key=envconf.get("cloud",{}).get("access_key")
+        aws_secret=envconf.get("cloud",{}).get("secret_key")
+        # create bucket if needed
+        aws.create_bucket(
+                name=step_conf["bucket"],
+                region=step_conf["region"],
+                aws_key=aws_key,aws_secret=aws_secret,
+                acl=step_conf["acl"],
+                ignore_already_exists=True)
+        if step_conf.get("file"):
+            basename = step_conf["file"] % index_meta
+            uploadfunc = aws.send_s3_file
+        elif step_conf.get("folder"):
+            basename = step_conf["folder"] % index_meta
+            uploadfunc = aws.send_s3_folder
+        else:
+            raise ValueError("Can't find 'file' or 'folder' key, don't know what to upload")
+        archive_path = os.path.join(self.es_backups_folder,basename)
+        self.logger.info("Uploading: %s" % archive_path)
+        uploadfunc(archive_path,
+                os.path.join(step_conf["base_path"],basename),
+                overwrite=step_conf.get("overwrite",False),
+                aws_key=aws_key,
+                aws_secret=aws_secret,
+                s3_bucket=step_conf["bucket"])
 
     def reset_synced(self,diff_folder,backend=None):
         """
