@@ -70,19 +70,21 @@ class IndexerException(Exception):
 
 class ESIndexer():
     def __init__(self, index, doc_type, es_host, step=10000,
-                 number_of_shards=10, number_of_replicas=0, **kwargs):
+                 number_of_shards=10, number_of_replicas=0, 
+                 check_index=True, **kwargs):
         self.es_host = es_host
         self._es = get_es(es_host, **kwargs)
-        # if index is actually an alias, resolve the alias to
-        # the real underlying index
-        try:
-            res = self._es.indices.get_alias(index)
-            # this was an alias
-            assert len(res) == 1, "Expecing '%s' to be an alias, but got nothing..." % index
-            self._index = list(res.keys())[0]
-        except NotFoundError:
-            # this was a real index name
-            self._index = index
+        if check_index:
+            # if index is actually an alias, resolve the alias to
+            # the real underlying index
+            try:
+                res = self._es.indices.get_alias(index)
+                # this was an alias
+                assert len(res) == 1, "Expecing '%s' to be an alias, but got nothing..." % index
+                self._index = list(res.keys())[0]
+            except NotFoundError:
+                # this was a real index name
+                self._index = index
         self._doc_type = None
         if doc_type:
             self._doc_type = doc_type
@@ -93,7 +95,8 @@ class ESIndexer():
                 assert len(m) == 1, "Expected only one doc type, got: %s" % m.keys()
                 self._doc_type = list(m).pop()
             except Exception as e:       # pylint: disable=broad-except
-                logging.info("Failed to guess doc_type: %s", e)
+                if check_index:
+                    logging.info("Failed to guess doc_type: %s", e)
         self.number_of_shards = number_of_shards            # set number_of_shards when create_index
         self.number_of_replicas = int(number_of_replicas)   # set number_of_replicas when create_index
         self.step = step   # the bulk size when doing bulk operation.
