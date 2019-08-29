@@ -27,6 +27,32 @@ from biothings.hub import RELEASEMANAGER_CATEGORY
 logging = btconfig.logger
 
 
+def template_out(field,confdict):
+    """
+    Return field as a templated-out filed,
+    substituting some "%(...)s" part with confdict,
+    as well as replacing "$(...)" with a timestamp
+    following specified format.
+    Ex:
+        confdict = {"a":"one"}
+        field = "%(a)s_two_three_$(%Y%m)"
+        => "one_two_three_201908" # assuming we're in August 2019
+    """
+    # first deal with timestamp
+    pat = re.compile(".*(\$\((.*?)\)).*")
+    m = pat.match(field)
+    if m:
+        tosub,fmt = m.groups()
+        ts = datetime.now().strftime(fmt)
+        field.replace(tosub,ts)
+    # then use dict to sub keys
+    field = field % confdict
+
+    return field
+
+
+class ReleaseException(Exception): pass
+
 class ReleaseManager(BaseManager):
 
     def __init__(self, poll_schedule=None, *args, **kwargs):
@@ -178,18 +204,30 @@ class ReleaseManager(BaseManager):
                         self.logger.info("Snapshot launched: %s" % f.result())
                     except Exception as e:
                         self.logger.error("Error while lauching snapshot: %s" % e)
+                
+                def done(f,step):
+                    try:
+                        self.logger.info("%s-snapshot done: %s" % f.result())
+                    except Exception as e:
+                        self.logger.error("Error while running pre-snapshot: %s" % e)
+
+                pinfo = self.get_pinfo()
+                pinfo["source"] = index
 
                 if "pre" in steps:
-                    self.run_pre_snapshot(envconf,repo_conf,index_meta)
+                    pinfo["step"] = "pre-snapshot"
+                    pinfo.pop("description",None)
+                    job = yield from self.job_manager.defer_to_thread(pinfo,
+                            partial(self.run_pre_snapshot,envconf,repo_conf,index_meta))
+                    job.add_done_callback(partial(done,step="pre"))
+                    yield from job
                     
                 if "snapshot" in steps:
-                    pinfo = self.get_pinfo()
-                    pinfo["source"] = index
                     pinfo["step"] = "snapshot"
                     pinfo["description"] = es_idxr.es_host
                     self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,es_idxr.es_host,repo_name))
                     job = yield from self.job_manager.defer_to_thread(pinfo,
-                            partial(es_idxr.snapshot,repo_name,snapshot))#, mode=mode))
+                            partial(es_idxr.snapshot,repo_name,snapshot))
                     job.add_done_callback(snapshot_launched)
                     yield from job
                     while True:
@@ -214,7 +252,12 @@ class ReleaseManager(BaseManager):
                             break
 
                 if "post" in steps:
-                    self.run_post_snapshot(envconf, repo_conf, index_meta)
+                    pinfo["step"] = "post-snapshot"
+                    pinfo.pop("description",None)
+                    job = yield from self.job_manager.defer_to_thread(pinfo,
+                            partial(self.run_post_snapshot,envconf,repo_conf,index_meta))
+                    job.add_done_callback(partial(done,step="post"))
+                    yield from job
 
                 # if  we get there all is fine
                 fut.set_result(global_state)
@@ -395,9 +438,9 @@ class ReleaseManager(BaseManager):
         In other words, such repo config are dynamic and potentially change
         for each index/snapshot created.
         """
-        repo_conf["name"] = repo_conf["name"] % index_meta
+        repo_conf["name"] = template_out(repo_conf["name"],index_meta)
         for setting in repo_conf["settings"]:
-            repo_conf["settings"][setting] = repo_conf["settings"][setting] % index_meta
+            repo_conf["settings"][setting] = template_out(repo_conf["settings"][setting],index_meta)
 
         return repo_conf
 
@@ -611,6 +654,7 @@ class ReleaseManager(BaseManager):
         for step_conf in steps:
             try:
                 action = step_conf["action"]
+                self.logger.info("Processing stage '%s-%s': %s" % (stage,key,action))
                 # first try user-defined methods
                 # it can be named (first to match is picked):
                 # see list below
@@ -634,18 +678,49 @@ class ReleaseManager(BaseManager):
                 raise ValueError("No such %s-%s step '%s'" % (stage,key,action))
 
     def step_archive(self, envconf, step_conf, index_meta, previous):
-        archive_file = os.path.join(self.es_backups_folder,step_conf["name"] % index_meta)
-        self.logger.info("archive_file: %s" % archive_file)
+        archive_file = os.path.join(self.es_backups_folder,template_out(step_conf["name"],index_meta))
         if step_conf["format"] == "tar.xz":
             # -J is for "xz"
-            tarcmd = ["tar","cJf",
-                      archive_file,
-                      "-C",self.es_backups_folder,
+            tarcmd = ["tar",
+                      "cJf",
+                      archive_file, # could be replaced if "split"
+                      "-C",
+                      self.es_backups_folder,
                       previous["settings"]["location"],
                       ]
-            out = subprocess.check_output(tarcmd)
-            self.logger.info("Archive: %s" % archive_file)
-            return archive_file
+            if step_conf.get("split"):
+                part = "%s.part." % archive_file
+                tarcmd[2] = "-"
+                tarps = subprocess.Popen(tarcmd,stdout=subprocess.PIPE)
+                splitcmd = ["split",
+                            "-",
+                            "-b",
+                            step_conf["split"],
+                            "-d",
+                            part]
+                ps = subprocess.Popen(splitcmd,stdin=tarps.stdin)
+                ret_code = ps.wait()
+                if ret_code != 0:
+                    raise ReleaseException("Archiving failed, code: %s" % ret_code)
+                else:
+                    flist = glob.glob("%s.*" % part)
+                    if len(flist) == 1:
+                        # no even split, go back to single archive file
+                        os.rename(flist[0],archive_file)
+                        self.logger.info("Tried to split archive, but only one part was produced," + \
+                                         "returning single archive file: %s" % archive_file)
+                        return archive_file
+                    else:
+                        # produce a json file with metadata about the splits
+                        jsonfile = "%s.json" % outfile
+                        json.dump({"filename" : outfile,"parts" : flist},
+                                  open(jsonfile,"w"))
+                        self.logger.info("Archive split into %d parts, metadata stored in: %s" % (len(flist),jsonfile))
+                        return jsonfile
+            else:
+                out = subprocess.check_output(tarcmd)
+                self.logger.info("Archive: %s" % archive_file)
+                return archive_file
         else:
             raise ValueError("Only 'tar.xz' format supported for now, got %s" % repr(step_conf["format"]))
 
@@ -667,10 +742,10 @@ class ReleaseManager(BaseManager):
                 acl=step_conf["acl"],
                 ignore_already_exists=True)
         if step_conf.get("file"):
-            basename = step_conf["file"] % index_meta
-            uploadfunc = aws.send_s3_file
+            basename = template_out(step_conf["file"],index_meta)
+            uploadfunc = aws.send_s3_big_file
         elif step_conf.get("folder"):
-            basename = step_conf["folder"] % index_meta
+            basename = template_out(step_conf["folder"],index_meta)
             uploadfunc = aws.send_s3_folder
         else:
             raise ValueError("Can't find 'file' or 'folder' key, don't know what to upload")
