@@ -522,6 +522,7 @@ class ESIndexer():
     def snapshot(self, repo, snapshot, mode=None, **params):
         body = {"indices": self._index}
         if mode == "purge":
+            # Note: this works, just for small one when deletion is done instantly
             try:
                 self._es.snapshot.get(repo, snapshot)
                 # if we can get it, we have to delete it
@@ -532,7 +533,7 @@ class ESIndexer():
         try:
             return self._es.snapshot.create(repo, snapshot, body=body, params=params)
         except RequestError as e:
-            raise IndexerException("Can't snapshot '%s' (if already exists, use mode='purge'): %s" % (self._index, e))
+            raise IndexerException("Can't snapshot '%s': %s" % (self._index, e))
 
     def restore(self, repo_name, snapshot_name, index_name=None, purge=False, body=None):
         index_name = index_name or snapshot_name

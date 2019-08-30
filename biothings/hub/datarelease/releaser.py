@@ -63,6 +63,7 @@ class ReleaseManager(BaseManager):
         self.release_config = {}
         self.poll_schedule = poll_schedule
         self.es_backups_folder = btconfig.ES_BACKUPS_FOLDER
+        self.ti = time.time()
         self.setup()
 
     def setup(self):
@@ -113,10 +114,92 @@ class ReleaseManager(BaseManager):
                 self.register[env] = conf
             except Exception as e:
                 self.logger.error("Couldn't setup release environment '%s' because: %s" % (env,e))
+
+    def find_build(self, name, ktype):
+        '''
+        Load build info from src_build collection, either from an index name (ktype="index")
+        or snaphost name (ktype="snapshot"), not a build_name. In most cases,
+        build=index=snapshot names so first search accordingly. If none could be found,
+        iterate over all build docs looking for matching inner keys. (no complex query as
+        hub db interface doesn't handle complex ones - for ES, SQLite, etc... backends,
+        see bt.utils.hub_db for more).
+        '''
+        src_build = get_src_build()
+        build_doc = src_build.find_one({'_id': name})
+        if not build_doc:
+            bdocs = src_build.find()
+            for doc in bdoc:
+                if name in doc.get(ktype,{}):
+                    build_doc = doc
+                    break
+        assert build_doc, "Can't find build document with %s named '%s'" % (ktype,name)
+        return build_doc
     
-    def register_status(self):
-        """TODO"""
-        pass
+    def register_status(self,status,transient=False,init=False,**extra):
+        src_build = get_src_build()
+        job_info = {
+                'status': status,
+                'step_started_at': datetime.now(),
+                'logfile': self.logfile,
+                }
+        release_info = {}
+        stage = None
+        stage_key = None
+        # register status can be about different stages:
+        if "snapshot" in extra:
+            stage = "snapshot"
+            release_info.setdefault("snapshot",{}).update(extra["snapshot"])
+        if "publish" in extra:
+            stage = "publish"
+            release_info.setdefault("publish",{}).update(extra["publish"])
+        assert stage, "Unknown stage '%s' to register status with" % stage
+        stage_key  = list(extra[stage].keys())
+        assert len(stage_key) == 1, stage_key
+        stage_key = stage_key.pop()
+        if transient:
+            # record some "in-progress" information
+            job_info['pid'] = os.getpid()
+        else:
+            # only register time when it's a final state
+            job_info["time"] = timesofar(self.ti)
+            t1 = round(time.time() - self.ti, 0)
+            job_info["time_in_s"] = t1
+            ####release_info["created_at"] = datetime.now()
+            release_info.setdefault("snapshot",{}).setdefault(stage_key,{}).update({"created_at" : datetime.now()})
+        if "release" in extra:
+            release_info["release"].update(extra["release"])
+        if "job" in extra:
+            job_info.update(extra["job"])
+        # since the base is the merged collection, we register info there
+        build = self.find_build(stage_key,stage)
+        if init:
+            # init timer for this step
+            self.ti = time.time()
+            src_build.update({'_id': build["_id"]}, {"$push": {'jobs': job_info}})
+            # now refresh/sync
+            build = src_build.find_one({'_id': build["_id"]})
+        else:
+            # merge extra at root level
+            build["jobs"] and build["jobs"].append(job_info)
+            def merge_index_info(target,d):
+                if "__REPLACE__" in d.keys():
+                    d.pop("__REPLACE__")
+                    target = d
+                else:
+                    for k,v in d.items():
+                        if type(v) == dict:
+                            if k in target:
+                                target[k] = merge_index_info(target[k],v) 
+                            else:
+                                v.pop("__REPLACE__",None)
+                                # merge v with "nothing" just to make sure to remove any "__REPLACE__"
+                                v = merge_index_info({},v)
+                                target[k] = v
+                        else:
+                            target[k] = v
+                return target
+            build = merge_index_info(build,release_info)
+            src_build.replace_one({"_id" : build["_id"]}, build)
     
     
     def publish_release(self):#, releaser_env, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
@@ -160,7 +243,7 @@ class ReleaseManager(BaseManager):
 
         return es_idxr
 
-    def snapshot(self, releaser_env, index, snapshot=None, steps=["snapshot","post"]):
+    def snapshot(self, releaser_env, index, snapshot=None, steps=["pre","snapshot","post"]):
         """
         Create a snapshot named "snapshot" (or, by default, same name as the index) from "index"
         according to environment definition (repository, etc...) "releaser_env".
@@ -172,7 +255,7 @@ class ReleaseManager(BaseManager):
         # check what to do
         if type(steps) == str:
             steps = [steps]
-        snapshot = snapshot or index
+        snapshot_name = snapshot or index
         es_idxr = self.get_es_idxr(envconf,index)
         # create repo if needed
         index_meta = es_idxr.get_mapping_meta()["_meta"] # read from index
@@ -184,11 +267,11 @@ class ReleaseManager(BaseManager):
 
         def get_status():
             try:
-                res = es_idxr.get_snapshot_status(repo_name, snapshot)
-                assert "snapshots" in res, "Can't find snapshot '%s' in repository '%s'" % (snapshot,repo_name)
+                res = es_idxr.get_snapshot_status(repo_name, snapshot_name)
+                assert "snapshots" in res, "Can't find snapshot '%s' in repository '%s'" % (snapshot_name,repo_name)
                 # assuming only one index in the snapshot, so only check first elem
                 info = res["snapshots"][0]
-                assert info.get("state"), "Can't find state in snapshot '%s'" % snapshot
+                assert info.get("state"), "Can't find state in snapshot '%s'" % snapshot_name
                 return info
             except Exception as e:
                 # somethng went wrong, report as failure
@@ -198,38 +281,77 @@ class ReleaseManager(BaseManager):
         def do(index):
             try:
                 global_state = None
+                got_error = None
 
                 def snapshot_launched(f):
                     try:
                         self.logger.info("Snapshot launched: %s" % f.result())
                     except Exception as e:
                         self.logger.error("Error while lauching snapshot: %s" % e)
+                        nonlocal got_error
+                        got_error = e
                 
                 def done(f,step):
                     try:
-                        self.logger.info("%s-snapshot done: %s" % f.result())
+                        action_done = f.result()
+                        self.register_status("success",
+                                job={
+                                    "step":"%s-snapshot" % step,
+                                    "actions" : [a["name"] for a in action_done],
+                                    },
+                                snapshot={
+                                    snapshot_name : {
+                                        "env" : releaser_env,
+                                        step : action_done
+                                        }
+                                    }
+                                )
+                        self.logger.info("%s-snapshot done: %s" % (step,action_done))
                     except Exception as e:
-                        self.logger.error("Error while running pre-snapshot: %s" % e)
+                        nonlocal got_error
+                        got_error = e
+                        self.register_status("failed",
+                                job={
+                                    "step":"%s-snapshot" % step,
+                                    "err" : str(e)
+                                    },
+                                snapshot={
+                                    snapshot_name : {
+                                        "env" : releaser_env,
+                                        step : None,
+                                        }
+                                    }
+                                )
+                        self.logger.exception("Error while running pre-snapshot: %s" % e)
 
                 pinfo = self.get_pinfo()
                 pinfo["source"] = index
 
                 if "pre" in steps:
+                    self.register_status("snapshotting",transient=True,init=True,
+                                         job={"step":"pre-snapshot"},snapshot={snapshot_name:{}})
                     pinfo["step"] = "pre-snapshot"
                     pinfo.pop("description",None)
                     job = yield from self.job_manager.defer_to_thread(pinfo,
                             partial(self.run_pre_snapshot,envconf,repo_conf,index_meta))
                     job.add_done_callback(partial(done,step="pre"))
                     yield from job
+                    if got_error:
+                        fut.set_exception(got_error)
+                        return
                     
                 if "snapshot" in steps:
+                    self.register_status("snapshotting",transient=True,init=True,
+                                         job={"step":"snapshot"},snapshot={snapshot_name:{}})
                     pinfo["step"] = "snapshot"
                     pinfo["description"] = es_idxr.es_host
                     self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,es_idxr.es_host,repo_name))
                     job = yield from self.job_manager.defer_to_thread(pinfo,
-                            partial(es_idxr.snapshot,repo_name,snapshot))
+                            partial(es_idxr.snapshot,repo_name,snapshot_name))
                     job.add_done_callback(snapshot_launched)
                     yield from job
+
+                    # launched, so now monitor completion
                     while True:
                         info = get_status()
                         state = info["state"]
@@ -238,26 +360,61 @@ class ReleaseManager(BaseManager):
                             yield from asyncio.sleep(monitor_delay)
                         else:
                             if state == "SUCCESS" and failed_shards == 0:
-                                global_state = state
+                                global_state = state.lower()
                                 self.logger.info("Snapshot '%s' successfully created (host: '%s', repository: '%s')" % \
-                                        (snapshot,es_idxr.es_host,repo_name),extra={"notify":True})
+                                        (snapshot_name,es_idxr.es_host,repo_name),extra={"notify":True})
                             else:
                                 if state == "SUCCESS":
-                                    e = IndexerException("Snapshot '%s' partially failed: state is %s but %s shards failed" % (snapshot,state,failed_shards))
+                                    e = IndexerException("Snapshot '%s' partially failed: state is %s but %s shards failed" % (snapshot_name,state,failed_shards))
                                 else:
-                                    e = IndexerException("Snapshot '%s' failed: state is %s" % (snapshot,state))
+                                    e = IndexerException("Snapshot '%s' failed: state is %s" % (snapshot_name,state))
                                 self.logger.error("Failed creating snapshot '%s' (host: %s, repository: %s), state: %s" % \
-                                        (snapshot,es_idxr.es_host,repo_name,state),extra={"notify":True})
-                                raise e
+                                        (snapshot_name,es_idxr.es_host,repo_name,state),extra={"notify":True})
+                                got_error = e
                             break
 
+                    if got_error:
+                        self.register_status("failed",
+                                job={
+                                    "step":"snapshot",
+                                    "err" : str(got_error)
+                                    },
+                                snapshot={
+                                    snapshot_name : {
+                                        "env" : releaser_env,
+                                        "snapshot": None,
+                                        }
+                                    }
+                                )
+                        fut.set_exception(got_error)
+                        return
+
+                    else:
+                        self.register_status("success",
+                                job={
+                                    "step" : "snapshot",
+                                    "status" : global_state,
+                                    },
+                                snapshot={
+                                    snapshot_name : {
+                                        "env" : releaser_env,
+                                        "snapshot": repo_conf,
+                                        }
+                                    }
+                                )
+
                 if "post" in steps:
+                    self.register_status("snapshotting",transient=True,init=True,
+                                         job={"step":"post-snapshot"},snapshot={snapshot_name:{}})
                     pinfo["step"] = "post-snapshot"
                     pinfo.pop("description",None)
                     job = yield from self.job_manager.defer_to_thread(pinfo,
                             partial(self.run_post_snapshot,envconf,repo_conf,index_meta))
                     job.add_done_callback(partial(done,step="post"))
                     yield from job
+                    if got_error:
+                        fut.set_exception(got_error)
+                        return
 
                 # if  we get there all is fine
                 fut.set_result(global_state)
@@ -651,6 +808,7 @@ class ReleaseManager(BaseManager):
         previous_result = repo_conf
         steps = envconf[key].get(stage,[])
         assert isinstance(steps,list), "'%s' stage must be a list, got: %s" % (stage,repr(steps))
+        action_done = []
         for step_conf in steps:
             try:
                 action = step_conf["action"]
@@ -673,9 +831,13 @@ class ReleaseManager(BaseManager):
                 if not found:
                     # default to generic one
                     previous_result = getattr(self,"step_%s" % action)(envconf,step_conf,index_meta,previous_result)
-                pass
+
+                action_done.append({"name" : action, "result" : previous_result})
+
             except AttributeError as e:
                 raise ValueError("No such %s-%s step '%s'" % (stage,key,action))
+
+        return action_done
 
     def step_archive(self, envconf, step_conf, index_meta, previous):
         archive_file = os.path.join(self.es_backups_folder,template_out(step_conf["name"],index_meta))
@@ -731,7 +893,6 @@ class ReleaseManager(BaseManager):
             raise ValueError("Only 's3' upload type supported for now, got %s" % repr(step_conf["type"]))
 
     def step_upload_s3(self, envconf, step_conf, index_meta, previous):
-        print(pformat(envconf))
         aws_key=envconf.get("cloud",{}).get("access_key")
         aws_secret=envconf.get("cloud",{}).get("secret_key")
         # create bucket if needed
@@ -757,6 +918,9 @@ class ReleaseManager(BaseManager):
                 aws_key=aws_key,
                 aws_secret=aws_secret,
                 s3_bucket=step_conf["bucket"])
+        return {"type" : "s3",
+                "key" : basename,
+                "bucket" : step_conf["bucket"]}
 
     def reset_synced(self,diff_folder,backend=None):
         """
