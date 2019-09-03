@@ -17,61 +17,28 @@ from biothings.utils.manager import BaseManager
 from biothings.utils.es import ESIndexer
 from biothings.utils.backend import DocESBackend
 from biothings import config as btconfig
-from biothings.utils.hub import publish_data_version
+from biothings.utils.hub import publish_data_version, template_out
 from biothings.hub.databuild.backend import generate_folder, create_backend, \
                                             merge_src_build_metadata
 from biothings.hub.dataindex.indexer import ESIndexerException
-from biothings.hub import RELEASEMANAGER_CATEGORY
+from biothings.hub import RELEASEMANAGER_CATEGORY, SNAPSHOOTER_CATEGORY, RELEASER_CATEGORY
 
 # default from config
 logging = btconfig.logger
 
 
-def template_out(field,confdict):
-    """
-    Return field as a templated-out filed,
-    substituting some "%(...)s" part with confdict,
-    as well as replacing "$(...)" with a timestamp
-    following specified format.
-    Ex:
-        confdict = {"a":"one"}
-        field = "%(a)s_two_three_$(%Y%m)"
-        => "one_two_three_201908" # assuming we're in August 2019
-    """
-    # first deal with timestamp
-    pat = re.compile(".*(\$\((.*?)\)).*")
-    m = pat.match(field)
-    if m:
-        tosub,fmt = m.groups()
-        ts = datetime.now().strftime(fmt)
-        field.replace(tosub,ts)
-    # then use dict to sub keys
-    field = field % confdict
-
-    return field
-
 
 class ReleaseException(Exception): pass
 
-class ReleaseManager(BaseManager):
 
-    def __init__(self, poll_schedule=None, *args, **kwargs):
-        super(ReleaseManager,self).__init__(*args, **kwargs)
-        self.t0 = time.time()
-        self.log_folder = btconfig.LOG_FOLDER
-        self.timestamp = datetime.now()
-        self.release_config = {}
-        self.poll_schedule = poll_schedule
-        self.es_backups_folder = btconfig.ES_BACKUPS_FOLDER
-        self.ti = time.time()
-        self.setup()
+class DataReleaseHelper(object):
 
     def setup(self):
         self.setup_log()
     
     def setup_log(self):
-        self.logger, self.logfile = get_logger(RELEASEMANAGER_CATEGORY,self.log_folder)
-    
+        self.logger, self.logfile = get_logger(RELEASER_CATEGORY,self.log_folder)
+
     def get_predicates(self):
         return []
     
@@ -88,120 +55,385 @@ class ReleaseManager(BaseManager):
         if preds:
             pinfo["__predicates__"] = preds
         return pinfo
-    
-    def __getitem__(self,env):
-        """
-        Return an instance of a releaser for the release environment named "env"
-        """
-        kwargs = BaseManager.__getitem__(self,env)
-        return kwargs
-    
-    def poll(self,state,func):
-        super().poll(state,func,col=get_src_build())
-    
-    def configure(self, confdict, diff_manager, index_manager):
-        """
-        Configure manager with release "confdict". See config_hub.py in API
-        for the format.
-        """
-        self.release_config = copy.deepcopy(confdict)
-        self.diff_manager = diff_manager
-        self.index_manager = index_manager
-        for env, conf in self.release_config.get("env",{}).items():
-            try:
-                assert conf.get("cloud") and conf["cloud"]["type"] == "aws", \
-                       "Only Amazon AWS cloud is supported at the moment"
-                self.register[env] = conf
-            except Exception as e:
-                self.logger.error("Couldn't setup release environment '%s' because: %s" % (env,e))
 
-    def find_build(self, name, ktype):
+    def load_build(self, key_name, stage):
         '''
-        Load build info from src_build collection, either from an index name (ktype="index")
-        or snaphost name (ktype="snapshot"), not a build_name. In most cases,
+        Load build info from src_build collection, either from an index name (stage="index")
+        or snaphost name (stage="snapshot"), not a build_name. In most cases,
         build=index=snapshot names so first search accordingly. If none could be found,
         iterate over all build docs looking for matching inner keys. (no complex query as
         hub db interface doesn't handle complex ones - for ES, SQLite, etc... backends,
         see bt.utils.hub_db for more).
         '''
         src_build = get_src_build()
-        build_doc = src_build.find_one({'_id': name})
+        build_doc = src_build.find_one({'_id': key_name})
         if not build_doc:
             bdocs = src_build.find()
-            for doc in bdoc:
-                if name in doc.get(ktype,{}):
+            for doc in bdocs:
+                if key_name in doc.get(stage,{}):
                     build_doc = doc
                     break
-        assert build_doc, "Can't find build document with %s named '%s'" % (ktype,name)
-        return build_doc
-    
-    def register_status(self,status,transient=False,init=False,**extra):
-        src_build = get_src_build()
-        job_info = {
-                'status': status,
-                'step_started_at': datetime.now(),
-                'logfile': self.logfile,
-                }
-        release_info = {}
-        stage = None
-        stage_key = None
-        # register status can be about different stages:
-        if "snapshot" in extra:
-            stage = "snapshot"
-            release_info.setdefault("snapshot",{}).update(extra["snapshot"])
-        if "publish" in extra:
-            stage = "publish"
-            release_info.setdefault("publish",{}).update(extra["publish"])
-        assert stage, "Unknown stage '%s' to register status with" % stage
-        stage_key  = list(extra[stage].keys())
-        assert len(stage_key) == 1, stage_key
-        stage_key = stage_key.pop()
-        if transient:
-            # record some "in-progress" information
-            job_info['pid'] = os.getpid()
-        else:
-            # only register time when it's a final state
-            job_info["time"] = timesofar(self.ti)
-            t1 = round(time.time() - self.ti, 0)
-            job_info["time_in_s"] = t1
-            ####release_info["created_at"] = datetime.now()
-            release_info.setdefault("snapshot",{}).setdefault(stage_key,{}).update({"created_at" : datetime.now()})
-        if "release" in extra:
-            release_info["release"].update(extra["release"])
-        if "job" in extra:
-            job_info.update(extra["job"])
-        # since the base is the merged collection, we register info there
-        build = self.find_build(stage_key,stage)
-        if init:
-            # init timer for this step
-            self.ti = time.time()
-            src_build.update({'_id': build["_id"]}, {"$push": {'jobs': job_info}})
-            # now refresh/sync
-            build = src_build.find_one({'_id': build["_id"]})
-        else:
-            # merge extra at root level
-            build["jobs"] and build["jobs"].append(job_info)
-            def merge_index_info(target,d):
-                if "__REPLACE__" in d.keys():
-                    d.pop("__REPLACE__")
-                    target = d
+        # it's mandatory, releaser/publisher work based on a build document
+        assert build_doc, "No build document could be found" 
+        self.build_doc = build_doc
+
+    def run_pre_post(self, key, stage, envconf, repo_conf, index_meta):
+        """
+        Run pre- and post- steps for given stage (eg. "snapshot", "publish").
+        These steps are defined in config file.
+        """
+        # start pipeline with repo config from "snapshot" step
+        previous_result = repo_conf
+        steps = envconf[key].get(stage,[])
+        assert isinstance(steps,list), "'%s' stage must be a list, got: %s" % (stage,repr(steps))
+        action_done = []
+        for step_conf in steps:
+            try:
+                action = step_conf["action"]
+                self.logger.info("Processing stage '%s-%s': %s" % (stage,key,action))
+                # first try user-defined methods
+                # it can be named (first to match is picked):
+                # see list below
+                found = False
+                for tpl in [
+                        "step_%(stage)s_%(key)s_%(action)s",
+                        "step_%(key)s_%(action)s",
+                        "step_%(stage)s_%(action)s"]:
+                    methname = tpl % {"stage" : stage,
+                                      "key" : key,
+                                      "action" : action}
+                    if hasattr(self,methname):
+                        found = True
+                        previous_result = getattr(self,methname)(envconf,step_conf,index_meta,previous_result)
+                        break
+                if not found:
+                    # default to generic one
+                    previous_result = getattr(self,"step_%s" % action)(envconf,step_conf,index_meta,previous_result)
+
+                action_done.append({"name" : action, "result" : previous_result})
+
+            except AttributeError as e:
+                raise ValueError("No such %s-%s step '%s'" % (stage,key,action))
+
+        return action_done
+
+    def run_post_snapshot(self, envconf, repo_conf, index_meta):
+        return self.run_pre_post("snapshot","post",envconf,repo_conf,index_meta)
+
+    def run_pre_snapshot(self, envconf, repo_conf, index_meta):
+        return self.run_pre_post("snapshot","pre",envconf,repo_conf,index_meta)
+
+    def step_archive(self, envconf, step_conf, index_meta, previous):
+        archive_file = os.path.join(self.es_backups_folder,template_out(step_conf["name"],index_meta))
+        if step_conf["format"] == "tar.xz":
+            # -J is for "xz"
+            tarcmd = ["tar",
+                      "cJf",
+                      archive_file, # could be replaced if "split"
+                      "-C",
+                      self.es_backups_folder,
+                      previous["settings"]["location"],
+                      ]
+            if step_conf.get("split"):
+                part = "%s.part." % archive_file
+                tarcmd[2] = "-"
+                tarps = subprocess.Popen(tarcmd,stdout=subprocess.PIPE)
+                splitcmd = ["split",
+                            "-",
+                            "-b",
+                            step_conf["split"],
+                            "-d",
+                            part]
+                ps = subprocess.Popen(splitcmd,stdin=tarps.stdin)
+                ret_code = ps.wait()
+                if ret_code != 0:
+                    raise ReleaseException("Archiving failed, code: %s" % ret_code)
                 else:
-                    for k,v in d.items():
-                        if type(v) == dict:
-                            if k in target:
-                                target[k] = merge_index_info(target[k],v) 
-                            else:
-                                v.pop("__REPLACE__",None)
-                                # merge v with "nothing" just to make sure to remove any "__REPLACE__"
-                                v = merge_index_info({},v)
-                                target[k] = v
-                        else:
-                            target[k] = v
-                return target
-            build = merge_index_info(build,release_info)
-            src_build.replace_one({"_id" : build["_id"]}, build)
+                    flist = glob.glob("%s.*" % part)
+                    if len(flist) == 1:
+                        # no even split, go back to single archive file
+                        os.rename(flist[0],archive_file)
+                        self.logger.info("Tried to split archive, but only one part was produced," + \
+                                         "returning single archive file: %s" % archive_file)
+                        return archive_file
+                    else:
+                        # produce a json file with metadata about the splits
+                        jsonfile = "%s.json" % outfile
+                        json.dump({"filename" : outfile,"parts" : flist},
+                                  open(jsonfile,"w"))
+                        self.logger.info("Archive split into %d parts, metadata stored in: %s" % (len(flist),jsonfile))
+                        return jsonfile
+            else:
+                out = subprocess.check_output(tarcmd)
+                self.logger.info("Archive: %s" % archive_file)
+                return archive_file
+        else:
+            raise ValueError("Only 'tar.xz' format supported for now, got %s" % repr(step_conf["format"]))
+
+    def step_upload(self, envconf, step_conf, index_meta, previous):
+        if step_conf["type"] == "s3":
+            return self.step_upload_s3(envconf, step_conf, index_meta, previous)
+        else:
+            raise ValueError("Only 's3' upload type supported for now, got %s" % repr(step_conf["type"]))
+
+    def step_upload_s3(self, envconf, step_conf, index_meta, previous):
+        aws_key=envconf.get("cloud",{}).get("access_key")
+        aws_secret=envconf.get("cloud",{}).get("secret_key")
+        # create bucket if needed
+        aws.create_bucket(
+                name=step_conf["bucket"],
+                region=step_conf["region"],
+                aws_key=aws_key,aws_secret=aws_secret,
+                acl=step_conf["acl"],
+                ignore_already_exists=True)
+        if step_conf.get("file"):
+            basename = template_out(step_conf["file"],index_meta)
+            uploadfunc = aws.send_s3_big_file
+        elif step_conf.get("folder"):
+            basename = template_out(step_conf["folder"],index_meta)
+            uploadfunc = aws.send_s3_folder
+        else:
+            raise ValueError("Can't find 'file' or 'folder' key, don't know what to upload")
+        archive_path = os.path.join(self.es_backups_folder,basename)
+        self.logger.info("Uploading: %s" % archive_path)
+        uploadfunc(archive_path,
+                os.path.join(step_conf["base_path"],basename),
+                overwrite=step_conf.get("overwrite",False),
+                aws_key=aws_key,
+                aws_secret=aws_secret,
+                s3_bucket=step_conf["bucket"])
+        return {"type" : "s3",
+                "key" : basename,
+                "bucket" : step_conf["bucket"]}
+
+
+
+class Releaser(DataReleaseHelper):
+
+    def register_status(self, status,transient=False,init=False,**extra):
+        super().register_status("publish",status,transient=False,init=False,**extra)
+
+    def reset_synced(self,diff_folder,backend=None):
+        """
+        Remove "synced" flag from any pyobj file in diff_folder
+        """
+        synced_files = glob.glob(os.path.join(diff_folder,"*.pyobj.synced"))
+        for synced in synced_files:
+            diff_file = re.sub("\.pyobj\.synced$",".pyobj",synced)
+            os.rename(synced,diff_file)
+
+    ################
+    # Release note #
+    ################
+    def trigger_release_note(self,doc,**kwargs):
+        """
+        Launch a release note generation given a src_build document. In order to 
+        know the first collection to compare with, get_previous_collection()
+        method is used. release_note() method will get **kwargs for more optional
+        parameters.
+        """
+        new_db_col_names = doc["_id"]
+        old_db_col_names = get_previous_collection(new_db_col_names)
+        self.release_note(old_db_col_names, new_db_col_names, **kwargs)
+
+    def release_note(self, old, new, filename=None, note=None, format="txt"):
+        """
+        Generate release note files, in TXT and JSON format, containing significant changes
+        summary between target collections old and new. Output files
+        are stored in a diff folder using generate_folder(old,new).
+
+        'filename' can optionally be specified, though it's not recommended as the publishing pipeline,
+        using these files, expects a filenaming convention.
+
+        'note' is an optional free text that can be added to the release note, at the end.
+
+        txt 'format' is the only one supported for now.
+        """
+        old = old or get_previous_collection(new)
+        release_folder = generate_folder(btconfig.RELEASE_PATH,old,new)
+        if not os.path.exists(release_folder):
+            os.makedirs(release_folder)
+        filepath = None
+
+        def do():
+            changes = self.build_release_note(old,new,note=note)
+            nonlocal filepath
+            nonlocal filename
+            assert format == "txt", "Only 'txt' format supported for now"
+            filename = filename or "release_%s.%s" % (changes["new"]["_version"],format)
+            filepath = os.path.join(release_folder,filename)
+            render = ReleaseNoteTxt(changes)
+            txt = render.save(filepath)
+            filename = filename.replace(".%s" % format,".json")
+            filepath = os.path.join(release_folder,filename)
+            json.dump(changes,open(filepath,"w"),indent=True)
+            return txt
+
+        @asyncio.coroutine
+        def main(release_folder):
+            got_error = False
+            pinfo = self.get_pinfo()
+            pinfo["step"] = "release_note"
+            pinfo["source"] = release_folder
+            pinfo["description"] = filename
+            job = yield from self.job_manager.defer_to_thread(pinfo,do)
+            def reported(f):
+                nonlocal got_error
+                try:
+                    res = f.result()
+                    assert filepath, "No filename defined for generated report, can't attach"
+                    self.logger.info("Release note ready, saved in %s: %s" % (release_folder,res),extra={"notify":True})
+                    set_pending_to_publish(new)
+                except Exception as e:
+                    got_error = e
+            job.add_done_callback(reported)
+            yield from job
+            if got_error:
+                self.logger.exception("Failed to create release note: %s" % got_error,extra={"notify":True})
+                raise got_error
+
+        job = asyncio.ensure_future(main(release_folder))
+        return job
     
-    
+    def build_release_note(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None, note=None):
+        """
+        Build a release note containing most significant changes between old_db_col_names and new_db_col_names
+        collection (they have to be target collections, coming from a merging process). "diff_folder" can
+        alternatively be passed instead of old/new_db_col_names.
+
+        If diff_folder already contains information about a diff (metadata.json), the release note will be 
+        enriched by such information. Otherwise, release note will be generated only with data coming from src_build.
+        In other words, release note can still be generated without diff information.
+
+        Return a dictionnary containing significant changes.
+        """
+        def get_counts(dstats):
+            stats = {}
+            for subsrc,count in dstats.items():
+                try:
+                    src_sub = get_source_fullname(subsrc).split(".")
+                except AttributeError:
+                    # not a merge stats coming from a source
+                    # (could be custom field stats, eg. total_* in mygene)
+                    src_sub = [subsrc]
+                if len(src_sub) > 1:
+                    # we have sub-sources we need to split the count
+                    src,sub = src_sub
+                    stats.setdefault(src,{})
+                    stats[src][sub] = {"_count" : count}
+                else:
+                    src = src_sub[0]
+                    stats[src] = {"_count" : count}
+            return stats
+
+        def get_versions(doc):
+            try:
+                versions = dict((k,{"_version" :v["version"]}) for k,v in \
+                        doc.get("_meta",{}).get("src",{}).items() if "version" in v)
+            except KeyError:
+                # previous version format
+                versions = dict((k,{"_version" : v}) for k,v in doc.get("_meta",{}).get("src_version",{}).items())
+            return versions
+
+        if old_db_col_names is None and new_db_col_names is None:
+            assert diff_folder, "Need at least diff_folder parameter"
+        else:
+            diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
+        try:
+            metafile = os.path.join(diff_folder,"metadata.json")
+            metadata = json.load(open(metafile))
+            old_db_col_names = metadata["old"]["backend"]
+            new_db_col_names = metadata["new"]["backend"]
+            diff_stats = metadata["diff"]["stats"]
+        except FileNotFoundError:
+            # we're generating a release note without diff information
+            self.logger.info("No metadata.json file found, this release note won't have diff stats included")
+            diff_stats = {}
+
+        new = create_backend(new_db_col_names)
+        old = create_backend(old_db_col_names)
+        assert isinstance(old,DocMongoBackend) and isinstance(new,DocMongoBackend), \
+                "Only MongoDB backend types are allowed when generating a release note"
+        assert old.target_collection.database.name == btconfig.DATA_TARGET_DATABASE and \
+                new.target_collection.database.name == btconfig.DATA_TARGET_DATABASE, \
+                "Target databases must match current DATA_TARGET_DATABASE setting"
+        new_doc = get_src_build().find_one({"_id":new.target_collection.name})
+        if not new_doc:
+            raise DifferException("Collection '%s' has no corresponding build document" % \
+                    new.target_collection.name)
+        # old_doc doesn't have to exist (but new_doc has) in case we build a initial release note
+        # compared against nothing
+        old_doc = get_src_build().find_one({"_id":old.target_collection.name}) or {}
+        tgt_db = get_target_db()
+        old_total = tgt_db[old.target_collection.name].count()
+        new_total = tgt_db[new.target_collection.name].count()
+        changes = {
+                "old" : {
+                    "_version" : old.version,
+                    "_count" : old_total,
+                    },
+                "new" : {
+                    "_version" : new.version,
+                    "_count" : new_total,
+                    "_fields" : {},
+                    "_summary" : diff_stats,
+                    },
+                "stats" : {
+                    "added" : {},
+                    "deleted" : {},
+                    "updated" : {},
+                    },
+                "note" : note,
+                "generated_on": str(datetime.now()),
+                "sources" : {
+                    "added" : {},
+                    "deleted" : {},
+                    "updated" : {},
+                    }
+                }
+        # for later use
+        new_versions = get_versions(new_doc)
+        old_versions = get_versions(old_doc)
+        # now deal with stats/counts. Counts are related to uploader, ie. sub-sources
+        new_merge_stats = get_counts(new_doc.get("merge_stats",{}))
+        old_merge_stats = get_counts(old_doc.get("merge_stats",{}))
+        new_stats = get_counts(new_doc.get("_meta",{}).get("stats",{}))
+        old_stats = get_counts(old_doc.get("_meta",{}).get("stats",{}))
+        new_info = update_dict_recur(new_versions,new_merge_stats)
+        old_info = update_dict_recur(old_versions,old_merge_stats)
+
+        def analyze_diff(ops,destdict,old,new):
+            for op in ops:
+                # get main source / main field
+                key = op["path"].strip("/").split("/")[0]
+                if op["op"] == "add":
+                    destdict["added"][key] = new[key]
+                elif op["op"] == "remove":
+                    destdict["deleted"][key] = old[key]
+                elif op["op"] == "replace":
+                    destdict["updated"][key] = {
+                            "new" : new[key],
+                            "old" : old[key]}
+                else:
+                    raise ValueError("Unknown operation '%s' while computing changes" % op["op"])
+
+        # diff source info
+        # this only works on main source information: if there's a difference in a
+        # sub-source, it won't be shown but considered as if it was the main-source
+        ops = jsondiff(old_info,new_info)
+        analyze_diff(ops,changes["sources"],old_info,new_info)
+
+        ops = jsondiff(old_stats,new_stats)
+        analyze_diff(ops,changes["stats"],old_stats,new_stats)
+
+        # mapping diff: we re-compute them and don't use any mapping.pyobj because that file
+        # only allows "add" operation as a safety rule (can't delete fields in ES mapping once indexed)
+        ops = jsondiff(old_doc.get("mapping",{}),new_doc["mapping"])
+        for op in ops:
+            changes["new"]["_fields"].setdefault(op["op"],[]).append(op["path"].strip("/").replace("/","."))
+
+        return changes
+
     def publish_release(self):#, releaser_env, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
                          #repository=btconfig.SNAPSHOT_REPOSITORY, steps=["meta","post"]):
             """
@@ -219,218 +451,6 @@ class ReleaseManager(BaseManager):
                      #steps, s3_bucket, *args, **kwargs):
         """Post-publish hook, can be implemented in sub-class"""
         return
-
-
-    def release_info(self, env=None, remote=False):
-        pass
-
-    #####################
-    # Full data-release #
-    #####################
-    def get_es_idxr(self, envconf, index=None):
-        if envconf["snapshot"]["es"].get("env"):
-            # we should take indexer params from ES_CONFIG, ie. index_manager
-            idxklass = self.index_manager.find_indexer(index)
-            idxkwargs = self.index_manager[envconf["snapshot"]["es"]["env"]]
-        else:
-            idxklass = self.index_manager.DEFAULT_INDEXER
-            es_host = envconf["snapshot"]["es"]["host"]
-            idxkwargs = envconf["snapshot"]["es"]["host"]["args"]
-        idxr = idxklass(**idxkwargs)
-        es_idxr = ESIndexer(index=index,doc_type=idxr.doc_type,
-                            es_host=idxr.host,
-                            check_index=not index is None)
-
-        return es_idxr
-
-    def snapshot(self, releaser_env, index, snapshot=None, steps=["pre","snapshot","post"]):
-        """
-        Create a snapshot named "snapshot" (or, by default, same name as the index) from "index"
-        according to environment definition (repository, etc...) "releaser_env".
-
-        """
-        if not releaser_env in self.release_config.get("env",{}):
-            raise ValueError("Unknonw release environment '%s'" % releaser_env)
-        envconf = self.release_config["env"][releaser_env]
-        # check what to do
-        if type(steps) == str:
-            steps = [steps]
-        snapshot_name = snapshot or index
-        es_idxr = self.get_es_idxr(envconf,index)
-        # create repo if needed
-        index_meta = es_idxr.get_mapping_meta()["_meta"] # read from index
-        repo_conf = self.create_repository(envconf, index_meta)
-        repo_name = repo_conf["name"]
-        monitor_delay = envconf["snapshot"]["monitor_delay"]
-        # will hold the overall result
-        fut = asyncio.Future()
-
-        def get_status():
-            try:
-                res = es_idxr.get_snapshot_status(repo_name, snapshot_name)
-                assert "snapshots" in res, "Can't find snapshot '%s' in repository '%s'" % (snapshot_name,repo_name)
-                # assuming only one index in the snapshot, so only check first elem
-                info = res["snapshots"][0]
-                assert info.get("state"), "Can't find state in snapshot '%s'" % snapshot_name
-                return info
-            except Exception as e:
-                # somethng went wrong, report as failure
-                return "FAILED"
-
-        @asyncio.coroutine
-        def do(index):
-            try:
-                global_state = None
-                got_error = None
-
-                def snapshot_launched(f):
-                    try:
-                        self.logger.info("Snapshot launched: %s" % f.result())
-                    except Exception as e:
-                        self.logger.error("Error while lauching snapshot: %s" % e)
-                        nonlocal got_error
-                        got_error = e
-                
-                def done(f,step):
-                    try:
-                        action_done = f.result()
-                        self.register_status("success",
-                                job={
-                                    "step":"%s-snapshot" % step,
-                                    "actions" : [a["name"] for a in action_done],
-                                    },
-                                snapshot={
-                                    snapshot_name : {
-                                        "env" : releaser_env,
-                                        step : action_done
-                                        }
-                                    }
-                                )
-                        self.logger.info("%s-snapshot done: %s" % (step,action_done))
-                    except Exception as e:
-                        nonlocal got_error
-                        got_error = e
-                        self.register_status("failed",
-                                job={
-                                    "step":"%s-snapshot" % step,
-                                    "err" : str(e)
-                                    },
-                                snapshot={
-                                    snapshot_name : {
-                                        "env" : releaser_env,
-                                        step : None,
-                                        }
-                                    }
-                                )
-                        self.logger.exception("Error while running pre-snapshot: %s" % e)
-
-                pinfo = self.get_pinfo()
-                pinfo["source"] = index
-
-                if "pre" in steps:
-                    self.register_status("snapshotting",transient=True,init=True,
-                                         job={"step":"pre-snapshot"},snapshot={snapshot_name:{}})
-                    pinfo["step"] = "pre-snapshot"
-                    pinfo.pop("description",None)
-                    job = yield from self.job_manager.defer_to_thread(pinfo,
-                            partial(self.run_pre_snapshot,envconf,repo_conf,index_meta))
-                    job.add_done_callback(partial(done,step="pre"))
-                    yield from job
-                    if got_error:
-                        fut.set_exception(got_error)
-                        return
-                    
-                if "snapshot" in steps:
-                    self.register_status("snapshotting",transient=True,init=True,
-                                         job={"step":"snapshot"},snapshot={snapshot_name:{}})
-                    pinfo["step"] = "snapshot"
-                    pinfo["description"] = es_idxr.es_host
-                    self.logger.info("Creating snapshot for index '%s' on host '%s', repository '%s'" % (index,es_idxr.es_host,repo_name))
-                    job = yield from self.job_manager.defer_to_thread(pinfo,
-                            partial(es_idxr.snapshot,repo_name,snapshot_name))
-                    job.add_done_callback(snapshot_launched)
-                    yield from job
-
-                    # launched, so now monitor completion
-                    while True:
-                        info = get_status()
-                        state = info["state"]
-                        failed_shards = info["shards_stats"]["failed"]
-                        if state in ["INIT","IN_PROGRESS","STARTED"]:
-                            yield from asyncio.sleep(monitor_delay)
-                        else:
-                            if state == "SUCCESS" and failed_shards == 0:
-                                global_state = state.lower()
-                                self.logger.info("Snapshot '%s' successfully created (host: '%s', repository: '%s')" % \
-                                        (snapshot_name,es_idxr.es_host,repo_name),extra={"notify":True})
-                            else:
-                                if state == "SUCCESS":
-                                    e = IndexerException("Snapshot '%s' partially failed: state is %s but %s shards failed" % (snapshot_name,state,failed_shards))
-                                else:
-                                    e = IndexerException("Snapshot '%s' failed: state is %s" % (snapshot_name,state))
-                                self.logger.error("Failed creating snapshot '%s' (host: %s, repository: %s), state: %s" % \
-                                        (snapshot_name,es_idxr.es_host,repo_name,state),extra={"notify":True})
-                                got_error = e
-                            break
-
-                    if got_error:
-                        self.register_status("failed",
-                                job={
-                                    "step":"snapshot",
-                                    "err" : str(got_error)
-                                    },
-                                snapshot={
-                                    snapshot_name : {
-                                        "env" : releaser_env,
-                                        "snapshot": None,
-                                        }
-                                    }
-                                )
-                        fut.set_exception(got_error)
-                        return
-
-                    else:
-                        self.register_status("success",
-                                job={
-                                    "step" : "snapshot",
-                                    "status" : global_state,
-                                    },
-                                snapshot={
-                                    snapshot_name : {
-                                        "env" : releaser_env,
-                                        "snapshot": repo_conf,
-                                        }
-                                    }
-                                )
-
-                if "post" in steps:
-                    self.register_status("snapshotting",transient=True,init=True,
-                                         job={"step":"post-snapshot"},snapshot={snapshot_name:{}})
-                    pinfo["step"] = "post-snapshot"
-                    pinfo.pop("description",None)
-                    job = yield from self.job_manager.defer_to_thread(pinfo,
-                            partial(self.run_post_snapshot,envconf,repo_conf,index_meta))
-                    job.add_done_callback(partial(done,step="post"))
-                    yield from job
-                    if got_error:
-                        fut.set_exception(got_error)
-                        return
-
-                # if  we get there all is fine
-                fut.set_result(global_state)
-
-            except Exception as e:
-                self.logger.exception(e)
-                fut.set_exception(e)
-
-        task = asyncio.ensure_future(do(index))
-        return fut
-
-    def run_post_snapshot(self, envconf, repo_conf, index_meta):
-        return self.run_pre_post("snapshot","post",envconf,repo_conf,index_meta)
-
-    def run_pre_snapshot(self, envconf, repo_conf, index_meta):
-        return self.run_pre_post("snapshot","pre",envconf,repo_conf,index_meta)
 
     def run_pre_publish_snapshot(self, envconf, repo_conf, index_meta):
         return self.run_pre_post("snapshot","pre",envconf,repo_conf,index_meta)
@@ -474,8 +494,8 @@ class ReleaseManager(BaseManager):
                 # target_name but we still use it to potentially custom indexed
                 # (anyway, it's just to access some snapshot info so default indexer 
                 # will work)
-                idxklass = self.find_indexer(snapshot) 
-                idxkwargs = self[releaser_env]
+                idxklass = self.find_indexer(snapshot)
+                idxkwargs = self[("publisher",releaser_env)]
                 es_idxr = self.get_es_idxr(confenv)
                 esb = DocESBackend(es_idxr)
                 assert esb.version, "Can't retrieve a version from index '%s'" % index
@@ -584,51 +604,6 @@ class ReleaseManager(BaseManager):
 
     def run_post_publish_snapshot(self, envconf, repo_conf, index_meta):
         return self.run_pre_post("snapshot","post",envconf,repo_conf,index_meta)
-
-    def get_repository_config(self, repo_conf, index_meta):
-        """
-        Search repo values for special values (template)
-        and return a repo conf instantiated with values from idxr.
-        Templated values can look like:
-            "base_path" : "onefolder/%(build_version)s"
-        where "build_version" value is taken from index_meta dictionary.
-        In other words, such repo config are dynamic and potentially change
-        for each index/snapshot created.
-        """
-        repo_conf["name"] = template_out(repo_conf["name"],index_meta)
-        for setting in repo_conf["settings"]:
-            repo_conf["settings"][setting] = template_out(repo_conf["settings"][setting],index_meta)
-
-        return repo_conf
-
-    def create_repository(self, envconf, index_meta={}):
-        aws_key=envconf.get("cloud",{}).get("access_key")
-        aws_secret=envconf.get("cloud",{}).get("secret_key")
-        repo_conf = self.get_repository_config(envconf["snapshot"]["repository"],index_meta)
-        self.logger.info("Repository config: %s" % repo_conf)
-        repository = repo_conf["name"]
-        settings = repo_conf["settings"]
-        repo_type = repo_conf["type"]
-        es_idxr = self.get_es_idxr(envconf)
-        try:
-            es_idxr.get_repository(repository)
-        except ESIndexerException:
-            # need to create that repo
-            if repo_type == "s3":
-                acl = repo_conf.get("acl",None) # let aws.create_bucket default it
-                # first make sure bucket exists
-                aws.create_bucket(
-                        name=settings["bucket"],
-                        region=settings["region"],
-                        aws_key=aws_key,aws_secret=aws_secret,
-                        acl=acl,
-                        ignore_already_exists=True)
-            settings = {"type" : repo_type,
-                        "settings" : settings}
-            self.logger.info("Create repository named '%s': %s" % (repository,pformat(settings)))
-            es_idxr.create_repository(repository,settings=settings)
-
-        return repo_conf
 
     ############################
     # Incremental data-release #
@@ -799,351 +774,72 @@ class ReleaseManager(BaseManager):
 
         return asyncio.ensure_future(do())
 
-    def run_pre_post(self, key, stage, envconf, repo_conf, index_meta):
+
+class ReleaseManager(BaseManager):
+
+    DEFAULT_RELEASER_CLASS = Releaser
+
+    def __init__(self, diff_manager, snapshot_manager, poll_schedule=None, *args, **kwargs):
+        super(ReleaseManager,self).__init__(*args, **kwargs)
+        self.diff_manager = diff_manager
+        self.snapshot_manager = snapshot_manager
+        self.t0 = time.time()
+        self.log_folder = btconfig.LOG_FOLDER
+        self.timestamp = datetime.now()
+        self.release_config = {}
+        self.poll_schedule = poll_schedule
+        self.es_backups_folder = btconfig.ES_BACKUPS_FOLDER
+        self.setup()
+
+    def setup(self):
+        self.setup_log()
+    
+    def setup_log(self):
+        self.logger, self.logfile = get_logger(RELEASEMANAGER_CATEGORY,self.log_folder)
+    
+    def poll(self,state,func):
+        super().poll(state,func,col=get_src_build())
+    
+    def __getitem__(self,env):
         """
-        Run pre- and post- steps for given stage (eg. "snapshot", "publish").
-        These steps are defined in config file.
+        Return an instance of a releaser for the release environment named "env"
         """
-        # start pipeline with repo config from "snapshot" step
-        previous_result = repo_conf
-        steps = envconf[key].get(stage,[])
-        assert isinstance(steps,list), "'%s' stage must be a list, got: %s" % (stage,repr(steps))
-        action_done = []
-        for step_conf in steps:
+        d = self.register[env]
+        envconf = self.release_config["env"][env]
+        return d["class"](
+                diff_manager=d["diff_manager"],
+                snapshot_manager=d["snapshot_manager"],
+                job_manager=d["job_manager"],
+                envconf=envconf,log_folder=self.log_folder)
+
+    def configure(self, release_confdict):
+        """
+        Configure manager with release "confdict". See config_hub.py in API
+        for the format.
+        """
+        self.release_config = copy.deepcopy(release_confdict)
+        for env, envconf in self.release_config.get("env",{}).items():
             try:
-                action = step_conf["action"]
-                self.logger.info("Processing stage '%s-%s': %s" % (stage,key,action))
-                # first try user-defined methods
-                # it can be named (first to match is picked):
-                # see list below
-                found = False
-                for tpl in [
-                        "step_%(stage)s_%(key)s_%(action)s",
-                        "step_%(key)s_%(action)s",
-                        "step_%(stage)s_%(action)s"]:
-                    methname = tpl % {"stage" : stage,
-                                      "key" : key,
-                                      "action" : action}
-                    if hasattr(self,methname):
-                        found = True
-                        previous_result = getattr(self,methname)(envconf,step_conf,index_meta,previous_result)
-                        break
-                if not found:
-                    # default to generic one
-                    previous_result = getattr(self,"step_%s" % action)(envconf,step_conf,index_meta,previous_result)
-
-                action_done.append({"name" : action, "result" : previous_result})
-
-            except AttributeError as e:
-                raise ValueError("No such %s-%s step '%s'" % (stage,key,action))
-
-        return action_done
-
-    def step_archive(self, envconf, step_conf, index_meta, previous):
-        archive_file = os.path.join(self.es_backups_folder,template_out(step_conf["name"],index_meta))
-        if step_conf["format"] == "tar.xz":
-            # -J is for "xz"
-            tarcmd = ["tar",
-                      "cJf",
-                      archive_file, # could be replaced if "split"
-                      "-C",
-                      self.es_backups_folder,
-                      previous["settings"]["location"],
-                      ]
-            if step_conf.get("split"):
-                part = "%s.part." % archive_file
-                tarcmd[2] = "-"
-                tarps = subprocess.Popen(tarcmd,stdout=subprocess.PIPE)
-                splitcmd = ["split",
-                            "-",
-                            "-b",
-                            step_conf["split"],
-                            "-d",
-                            part]
-                ps = subprocess.Popen(splitcmd,stdin=tarps.stdin)
-                ret_code = ps.wait()
-                if ret_code != 0:
-                    raise ReleaseException("Archiving failed, code: %s" % ret_code)
-                else:
-                    flist = glob.glob("%s.*" % part)
-                    if len(flist) == 1:
-                        # no even split, go back to single archive file
-                        os.rename(flist[0],archive_file)
-                        self.logger.info("Tried to split archive, but only one part was produced," + \
-                                         "returning single archive file: %s" % archive_file)
-                        return archive_file
-                    else:
-                        # produce a json file with metadata about the splits
-                        jsonfile = "%s.json" % outfile
-                        json.dump({"filename" : outfile,"parts" : flist},
-                                  open(jsonfile,"w"))
-                        self.logger.info("Archive split into %d parts, metadata stored in: %s" % (len(flist),jsonfile))
-                        return jsonfile
-            else:
-                out = subprocess.check_output(tarcmd)
-                self.logger.info("Archive: %s" % archive_file)
-                return archive_file
-        else:
-            raise ValueError("Only 'tar.xz' format supported for now, got %s" % repr(step_conf["format"]))
-
-    def step_upload(self, envconf, step_conf, index_meta, previous):
-        if step_conf["type"] == "s3":
-            return self.step_upload_s3(envconf, step_conf, index_meta, previous)
-        else:
-            raise ValueError("Only 's3' upload type supported for now, got %s" % repr(step_conf["type"]))
-
-    def step_upload_s3(self, envconf, step_conf, index_meta, previous):
-        aws_key=envconf.get("cloud",{}).get("access_key")
-        aws_secret=envconf.get("cloud",{}).get("secret_key")
-        # create bucket if needed
-        aws.create_bucket(
-                name=step_conf["bucket"],
-                region=step_conf["region"],
-                aws_key=aws_key,aws_secret=aws_secret,
-                acl=step_conf["acl"],
-                ignore_already_exists=True)
-        if step_conf.get("file"):
-            basename = template_out(step_conf["file"],index_meta)
-            uploadfunc = aws.send_s3_big_file
-        elif step_conf.get("folder"):
-            basename = template_out(step_conf["folder"],index_meta)
-            uploadfunc = aws.send_s3_folder
-        else:
-            raise ValueError("Can't find 'file' or 'folder' key, don't know what to upload")
-        archive_path = os.path.join(self.es_backups_folder,basename)
-        self.logger.info("Uploading: %s" % archive_path)
-        uploadfunc(archive_path,
-                os.path.join(step_conf["base_path"],basename),
-                overwrite=step_conf.get("overwrite",False),
-                aws_key=aws_key,
-                aws_secret=aws_secret,
-                s3_bucket=step_conf["bucket"])
-        return {"type" : "s3",
-                "key" : basename,
-                "bucket" : step_conf["bucket"]}
-
-    def reset_synced(self,diff_folder,backend=None):
-        """
-        Remove "synced" flag from any pyobj file in diff_folder
-        """
-        synced_files = glob.glob(os.path.join(diff_folder,"*.pyobj.synced"))
-        for synced in synced_files:
-            diff_file = re.sub("\.pyobj\.synced$",".pyobj",synced)
-            os.rename(synced,diff_file)
-
-    ################
-    # Release note #
-    ################
-    def trigger_release_note(self,doc,**kwargs):
-        """
-        Launch a release note generation given a src_build document. In order to 
-        know the first collection to compare with, get_previous_collection()
-        method is used. release_note() method will get **kwargs for more optional
-        parameters.
-        """
-        new_db_col_names = doc["_id"]
-        old_db_col_names = get_previous_collection(new_db_col_names)
-        self.release_note(old_db_col_names, new_db_col_names, **kwargs)
+                if envconf.get("cloud"):
+                    assert envconf["cloud"]["type"] == "aws", \
+                            "Only Amazon AWS cloud is supported at the moment"
+                self.register[env] = {
+                        "class" : self.DEFAULT_RELEASER_CLASS,
+                        "conf" : envconf,
+                        "job_manager" : self.job_manager,
+                        "snapshot_manager" : self.snapshot_manager,
+                        "diff_manager" : self.diff_manager,
+                        }
+            except Exception as e:
+                self.logger.exception("Couldn't setup release environment '%s' because: %s" % (env,e))
 
     def release_note(self, old, new, filename=None, note=None, format="txt"):
-        """
-        Generate release note files, in TXT and JSON format, containing significant changes
-        summary between target collections old and new. Output files
-        are stored in a diff folder using generate_folder(old,new).
+        raise NotImplementedError("release_note")
 
-        'filename' can optionally be specified, though it's not recommended as the publishing pipeline,
-        using these files, expects a filenaming convention.
+    def publish_diff(self, s3_folder, old_db_col_names=None, new_db_col_names=None,
+            diff_folder=None, release_folder=None, steps=["reset","upload","meta","post"], s3_bucket=None):
+        raise NotImplementedError("publish_diff")
 
-        'note' is an optional free text that can be added to the release note, at the end.
-
-        txt 'format' is the only one supported for now.
-        """
-        old = old or get_previous_collection(new)
-        release_folder = generate_folder(btconfig.RELEASE_PATH,old,new)
-        if not os.path.exists(release_folder):
-            os.makedirs(release_folder)
-        filepath = None
-
-        def do():
-            changes = self.build_release_note(old,new,note=note)
-            nonlocal filepath
-            nonlocal filename
-            assert format == "txt", "Only 'txt' format supported for now"
-            filename = filename or "release_%s.%s" % (changes["new"]["_version"],format)
-            filepath = os.path.join(release_folder,filename)
-            render = ReleaseNoteTxt(changes)
-            txt = render.save(filepath)
-            filename = filename.replace(".%s" % format,".json")
-            filepath = os.path.join(release_folder,filename)
-            json.dump(changes,open(filepath,"w"),indent=True)
-            return txt
-
-        @asyncio.coroutine
-        def main(release_folder):
-            got_error = False
-            pinfo = self.get_pinfo()
-            pinfo["step"] = "release_note"
-            pinfo["source"] = release_folder
-            pinfo["description"] = filename
-            job = yield from self.job_manager.defer_to_thread(pinfo,do)
-            def reported(f):
-                nonlocal got_error
-                try:
-                    res = f.result()
-                    assert filepath, "No filename defined for generated report, can't attach"
-                    self.logger.info("Release note ready, saved in %s: %s" % (release_folder,res),extra={"notify":True})
-                    set_pending_to_publish(new)
-                except Exception as e:
-                    got_error = e
-            job.add_done_callback(reported)
-            yield from job
-            if got_error:
-                self.logger.exception("Failed to create release note: %s" % got_error,extra={"notify":True})
-                raise got_error
-
-        job = asyncio.ensure_future(main(release_folder))
-        return job
-
-    def build_release_note(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None, note=None):
-        """
-        Build a release note containing most significant changes between old_db_col_names and new_db_col_names
-        collection (they have to be target collections, coming from a merging process). "diff_folder" can
-        alternatively be passed instead of old/new_db_col_names.
-
-        If diff_folder already contains information about a diff (metadata.json), the release note will be 
-        enriched by such information. Otherwise, release note will be generated only with data coming from src_build.
-        In other words, release note can still be generated without diff information.
-
-        Return a dictionnary containing significant changes.
-        """
-        def get_counts(dstats):
-            stats = {}
-            for subsrc,count in dstats.items():
-                try:
-                    src_sub = get_source_fullname(subsrc).split(".")
-                except AttributeError:
-                    # not a merge stats coming from a source
-                    # (could be custom field stats, eg. total_* in mygene)
-                    src_sub = [subsrc]
-                if len(src_sub) > 1:
-                    # we have sub-sources we need to split the count
-                    src,sub = src_sub
-                    stats.setdefault(src,{})
-                    stats[src][sub] = {"_count" : count}
-                else:
-                    src = src_sub[0]
-                    stats[src] = {"_count" : count}
-            return stats
-
-        def get_versions(doc):
-            try:
-                versions = dict((k,{"_version" :v["version"]}) for k,v in \
-                        doc.get("_meta",{}).get("src",{}).items() if "version" in v)
-            except KeyError:
-                # previous version format
-                versions = dict((k,{"_version" : v}) for k,v in doc.get("_meta",{}).get("src_version",{}).items())
-            return versions
-
-        if old_db_col_names is None and new_db_col_names is None:
-            assert diff_folder, "Need at least diff_folder parameter"
-        else:
-            diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
-        try:
-            metafile = os.path.join(diff_folder,"metadata.json")
-            metadata = json.load(open(metafile))
-            old_db_col_names = metadata["old"]["backend"]
-            new_db_col_names = metadata["new"]["backend"]
-            diff_stats = metadata["diff"]["stats"]
-        except FileNotFoundError:
-            # we're generating a release note without diff information
-            self.logger.info("No metadata.json file found, this release note won't have diff stats included")
-            diff_stats = {}
-
-        new = create_backend(new_db_col_names)
-        old = create_backend(old_db_col_names)
-        assert isinstance(old,DocMongoBackend) and isinstance(new,DocMongoBackend), \
-                "Only MongoDB backend types are allowed when generating a release note"
-        assert old.target_collection.database.name == btconfig.DATA_TARGET_DATABASE and \
-                new.target_collection.database.name == btconfig.DATA_TARGET_DATABASE, \
-                "Target databases must match current DATA_TARGET_DATABASE setting"
-        new_doc = get_src_build().find_one({"_id":new.target_collection.name})
-        if not new_doc:
-            raise DifferException("Collection '%s' has no corresponding build document" % \
-                    new.target_collection.name)
-        # old_doc doesn't have to exist (but new_doc has) in case we build a initial release note
-        # compared against nothing
-        old_doc = get_src_build().find_one({"_id":old.target_collection.name}) or {}
-        tgt_db = get_target_db()
-        old_total = tgt_db[old.target_collection.name].count()
-        new_total = tgt_db[new.target_collection.name].count()
-        changes = {
-                "old" : {
-                    "_version" : old.version,
-                    "_count" : old_total,
-                    },
-                "new" : {
-                    "_version" : new.version,
-                    "_count" : new_total,
-                    "_fields" : {},
-                    "_summary" : diff_stats,
-                    },
-                "stats" : {
-                    "added" : {},
-                    "deleted" : {},
-                    "updated" : {},
-                    },
-                "note" : note,
-                "generated_on": str(datetime.now()),
-                "sources" : {
-                    "added" : {},
-                    "deleted" : {},
-                    "updated" : {},
-                    }
-                }
-        # for later use
-        new_versions = get_versions(new_doc)
-        old_versions = get_versions(old_doc)
-        # now deal with stats/counts. Counts are related to uploader, ie. sub-sources
-        new_merge_stats = get_counts(new_doc.get("merge_stats",{}))
-        old_merge_stats = get_counts(old_doc.get("merge_stats",{}))
-        new_stats = get_counts(new_doc.get("_meta",{}).get("stats",{}))
-        old_stats = get_counts(old_doc.get("_meta",{}).get("stats",{}))
-        new_info = update_dict_recur(new_versions,new_merge_stats)
-        old_info = update_dict_recur(old_versions,old_merge_stats)
-        #print("old_stats")
-        #pprint(old_stats)
-        #print("new_stats")
-        #pprint(new_stats)
-
-        def analyze_diff(ops,destdict,old,new):
-            for op in ops:
-                # get main source / main field
-                key = op["path"].strip("/").split("/")[0]
-                if op["op"] == "add":
-                    destdict["added"][key] = new[key]
-                elif op["op"] == "remove":
-                    destdict["deleted"][key] = old[key]
-                elif op["op"] == "replace":
-                    destdict["updated"][key] = {
-                            "new" : new[key],
-                            "old" : old[key]}
-                else:
-                    raise ValueError("Unknown operation '%s' while computing changes" % op["op"])
-
-        # diff source info
-        # this only works on main source information: if there's a difference in a
-        # sub-source, it won't be shown but considered as if it was the main-source
-        ops = jsondiff(old_info,new_info)
-        analyze_diff(ops,changes["sources"],old_info,new_info)
-
-        ops = jsondiff(old_stats,new_stats)
-        analyze_diff(ops,changes["stats"],old_stats,new_stats)
-
-        # mapping diff: we re-compute them and don't use any mapping.pyobj because that file
-        # only allows "add" operation as a safety rule (can't delete fields in ES mapping once indexed)
-        ops = jsondiff(old_doc.get("mapping",{}),new_doc["mapping"])
-        for op in ops:
-            changes["new"]["_fields"].setdefault(op["op"],[]).append(op["path"].strip("/").replace("/","."))
-
-        return changes
-
+    def publish_snapshot(self, releaser_env, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
+                         repository=btconfig.SNAPSHOT_REPOSITORY, steps=["meta","post"]):
+        raise NotImplementedError("publish_snapshot")

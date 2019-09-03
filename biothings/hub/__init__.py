@@ -18,6 +18,9 @@ BUILDER_CATEGORY = "builder"
 INDEXER_CATEGORY = "indexer"
 INDEXMANAGER_CATEGORY = "indexmanager"
 RELEASEMANAGER_CATEGORY = "releasemanager"
+RELEASER_CATEGORY = "releaser"
+SNAPSHOTMANAGER_CATEGORY = "snapshotmanager"
+SNAPSHOOTER_CATEGORY = "snapshooter"
 DIFFER_CATEGORY = "differ"
 DIFFMANAGER_CATEGORY = "diffmanager"
 SYNCER_CATEGORY = "syncer"
@@ -170,7 +173,7 @@ class HubCommands(OrderedDict):
 class HubServer(object):
 
     DEFAULT_FEATURES = ["config","job","dump","upload","dataplugin","source",
-                        "build","diff","index","release","inspect","sync","api",
+                        "build","diff","index","snapshot","release","inspect","sync","api",
                         "terminal","reloader","dataupload","ws"]
     DEFAULT_MANAGERS_ARGS = {"upload" : {"poll_schedule" : "* * * * * */10"}}
     DEFAULT_RELOADER_CONFIG = {"folders": None, # will use default one
@@ -353,19 +356,32 @@ class HubServer(object):
         from biothings.hub.dataindex.indexer import IndexManager
         args = self.mixargs("index")
         index_manager = IndexManager(job_manager=self.managers["job_manager"],**args)
-        index_manager.configure(config.ES_CONFIG)
+        index_manager.configure(config.INDEX_CONFIG)
         self.managers["index_manager"] = index_manager
+
+    def configure_snapshot_manager(self):
+        assert "index" in self.features, "'snapshot' feature requires 'index'"
+        from biothings.hub.dataindex.snapshooter import SnapshotManager
+        args = self.mixargs("snapshot")
+        snapshot_manager = SnapshotManager(
+                index_manager=self.managers["index_manager"],
+                job_manager=self.managers["job_manager"],
+                **args)
+        snapshot_manager.configure(config.SNAPSHOT_CONFIG)
+        #snapshot_manager.poll("snapshot",lambda doc: snapshot_manager.snapshot(snapshot_env=???,index=doc["_id"]))
+        self.managers["snapshot_manager"] = snapshot_manager
 
     def configure_release_manager(self):
         assert "diff" in self.features, "'release' feature requires 'diff'"
-        assert "index" in self.features, "'release' feature requires 'index'"
+        assert "snapshot" in self.features, "'release' feature requires 'snapshot'"
         from biothings.hub.datarelease.releaser import ReleaseManager
         args = self.mixargs("release")
-        release_manager = ReleaseManager(job_manager=self.managers["job_manager"],
-                                         poll_schedule="* * * * * */10",**args)
-        release_manager.configure(config.RELEASE_CONFIG,
-                                  diff_manager=self.managers["diff_manager"],
-                                  index_manager=self.managers["index_manager"])
+        release_manager = ReleaseManager(
+                diff_manager=self.managers["diff_manager"],
+                snapshot_manager=self.managers["snapshot_manager"],
+                job_manager=self.managers["job_manager"],
+                poll_schedule="* * * * * */10",**args)
+        release_manager.configure(config.RELEASE_CONFIG)
         release_manager.poll("release_note",lambda doc: release_manager.release_note(old=None,new=doc["_id"]))
         self.managers["release_manager"] = release_manager
 
@@ -541,8 +557,12 @@ class HubServer(object):
             self.commands["rmmerge"] = self.managers["build_manager"].delete_merge
             self.commands["merge"] = self.managers["build_manager"].merge
             self.commands["archive"] = self.managers["build_manager"].archive_merge
-        if hasattr(config,"ES_CONFIG"):
-            self.commands["es_config"] = config.ES_CONFIG
+        if hasattr(config,"INDEX_CONFIG"):
+            self.commands["index_config"] = config.INDEX_CONFIG
+        if hasattr(config,"SNAPSHOT_CONFIG"):
+            self.commands["snapshot_config"] = config.SNAPSHOT_CONFIG
+        if hasattr(config,"PUBLISH_CONFIG"):
+            self.commands["publish_config"] = config.PUBLISH_CONFIG
         # diff
         if self.managers.get("diff_manager"):
             self.commands["diff"] = self.managers["diff_manager"].diff
@@ -550,11 +570,12 @@ class HubServer(object):
         # indexing commands
         if self.managers.get("index_manager"):
             self.commands["index"] = self.managers["index_manager"].index
+        if self.managers.get("snapshot_manager"):
+            self.commands["snapshot"] = self.managers["snapshot_manager"].snapshot
         # data release commands
         if self.managers.get("release_manager"):
             self.commands["release_note"] = self.managers["release_manager"].release_note
             self.commands["publish_diff"] = self.managers["release_manager"].publish_diff
-            self.commands["snapshot"] = self.managers["release_manager"].snapshot
             self.commands["publish_snapshot"] = self.managers["release_manager"].publish_snapshot
         if self.managers.get("sync_manager"):
             self.commands["sync"] = CommandDefinition(command=self.managers["sync_manager"].sync)
@@ -694,6 +715,7 @@ class HubServer(object):
         if not self.api_endpoints["buildconf"]:
             self.api_endpoints.pop("buildconf")
         if "index" in cmdnames: self.api_endpoints["index"] = EndpointDefinition(name="index",method="put",force_bodyargs=True)
+        if "snapshot" in cmdnames: self.api_endpoints["snapshot"] = EndpointDefinition(name="snapshot",method="put",force_bodyargs=True)
         if "sync" in cmdnames: self.api_endpoints["sync"] = EndpointDefinition(name="sync",method="post",force_bodyargs=True)
         if "whatsnew" in cmdnames: self.api_endpoints["whatsnew"] = EndpointDefinition(name="whatsnew",method="get")
         if "status" in cmdnames: self.api_endpoints["status"] = EndpointDefinition(name="status",method="get")

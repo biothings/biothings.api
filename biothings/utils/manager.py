@@ -184,6 +184,89 @@ class BaseManager(object):
                 start=True, loop=self.job_manager.loop)
 
 
+class BaseStatusRegisterer(object):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args,**kwargs)
+        self._doc = None
+
+    @property
+    def doc(self):
+        """
+        Return the document to register the status in
+        """
+        # self._doc should be set in sub-class
+        return self._doc
+
+    @doc.setter
+    def doc(self, d):
+        self._doc = d
+
+    @property
+    def collection(self):
+        """
+        Return collection object used to store self.doc
+        """
+        raise NotImplementedError("implement me in sub-class")
+
+    def register_status(self, stage, status,transient=False,init=False,**extra):
+        assert self.doc, "No document set"
+        assert self.collection, "No collection set"
+        # stage: "snapshot", "publish", etc... depending on the what's being done
+        job_info = {
+                'status': status,
+                'step_started_at': datetime.datetime.now(),
+                'logfile': self.logfile,
+                }
+        stage_info = {}
+        stage_key = None
+        # register status can be about different stages:
+        stage_info.setdefault(stage,{}).update(extra[stage])
+        stage_key  = list(extra[stage].keys())
+        assert len(stage_key) == 1, stage_key
+        stage_key = stage_key.pop()
+        if transient:
+            # record some "in-progress" information
+            job_info['pid'] = os.getpid()
+        else:
+            # only register time when it's a final state
+            job_info["time"] = timesofar(self.ti)
+            t1 = round(time.time() - self.ti, 0)
+            job_info["time_in_s"] = t1
+            stage_info.setdefault(stage,{}).setdefault(stage_key,{}).update({"created_at" : datetime.datetime.now()})
+        if "job" in extra:
+            job_info.update(extra["job"])
+        # since the base is the merged collection, we register info there
+        if init:
+            # init timer for this step
+            self.ti = time.time()
+            self.collection.update({'_id': build["_id"]}, {"$push": {'jobs': job_info}})
+            # now refresh/sync
+            self.doc = self.collection.find_one({'_id': build["_id"]})
+        else:
+            # merge extra at root level
+            self.doc["jobs"] and self.doc["jobs"].append(job_info)
+            def merge_index_info(target,d):
+                if "__REPLACE__" in d.keys():
+                    d.pop("__REPLACE__")
+                    target = d
+                else:
+                    for k,v in d.items():
+                        if type(v) == dict:
+                            if k in target:
+                                target[k] = merge_index_info(target[k],v) 
+                            else:
+                                v.pop("__REPLACE__",None)
+                                # merge v with "nothing" just to make sure to remove any "__REPLACE__"
+                                v = merge_index_info({},v)
+                                target[k] = v
+                        else:
+                            target[k] = v
+                return target
+            self.doc = merge_index_info(self.doc,stage_info)
+            self.collection.replace_one({"_id" : self.doc["_id"]},self.doc)
+
+
 class BaseSourceManager(BaseManager):
     """
     Base class to provide source management: discovery, registration

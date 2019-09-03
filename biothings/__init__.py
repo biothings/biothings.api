@@ -6,6 +6,7 @@ from .version import MAJOR_VER, MINOR_VER, MICRO_VER
 from .utils.dotfield import merge_object, make_object
 from .utils.jsondiff import make as jsondiff
 from .utils.common import is_scalar
+from .utils.dataload import dict_traverse
 
 def get_version():
     return '{}.{}.{}'.format(MAJOR_VER, MINOR_VER, MICRO_VER)
@@ -32,6 +33,21 @@ class ConfigurationValue(object):
     """
     def __init__(self,code):
         self.code = code
+
+    def get_value(self, name, conf):
+        """
+        Return value by eval'ing code in self.code, in the context of given configuration
+        dict (namespace), for given config parameter name.
+        """
+        try:
+            return eval(self.code,conf.__dict__)
+        except SyntaxError:
+            # try exec, maybe it's a statement (not just an expression).
+            # in that case, it eeans user really knows what he's doing...
+            exec(self.code,conf.__dict__)
+            # there must be a variable named the same same, in that dict,
+            # coming from code's statements
+            return conf.__dict__[name]
 
 class ConfigurationDefault(object):
     def __init__(self,default,desc):
@@ -206,21 +222,28 @@ class ConfigurationManager(types.ModuleType):
             copiedval = val
             pass
         copiedval = self.merge_with_path_from_db(name,copiedval)
-        if isinstance(copiedval,ConfigurationDefault):
-            if isinstance(copiedval.default,ConfigurationValue):
-                try:
-                    return eval(copiedval.default.code,self.conf.__dict__)
-                except SyntaxError:
-                    # try exec, maybe it's a statement (not just an expression).
-                    # in that case, it eeans user really knows what he's doing...
-                    exec(copiedval.default.code,self.conf.__dict__)
-                    # there must be a variable named the same same, in that dict,
-                    # coming from code's statements
-                    return self.conf.__dict__[name]
+
+        def eval_default_value(k,v):
+            if isinstance(v,ConfigurationDefault):
+                if isinstance(v.default,ConfigurationValue): 
+                    return (k,v.default.get_value(name,self.conf))
+                else:
+                    return (k,v.default)
+            elif isinstance(v,ConfigurationValue):
+                return (k,v.get_value(k,self.conf))
             else:
-                return copiedval.default
+                return (k,v)
+
+        if isinstance(copiedval,dict):
+            # walk the dict and instantiate values when special
+            dict_traverse(copiedval,eval_default_value)
         else:
-            return copiedval
+            # just use the same func but ignore "k" key, not a dict
+            # pass unhashable "k" to make sure we'd raise an error
+            # while dict traversing  if we're not supposed to be here
+            _,copiedval = eval_default_value({},copiedval)
+
+        return copiedval
 
     def patch(self, something, confvals, scope):
         for confval in confvals:

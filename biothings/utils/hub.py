@@ -467,6 +467,30 @@ def stats(src_dump):
     pass
 
 
+def template_out(field,confdict):
+    """
+    Return field as a templated-out filed,
+    substituting some "%(...)s" part with confdict,
+    as well as replacing "$(...)" with a timestamp
+    following specified format.
+    Ex:
+        confdict = {"a":"one"}
+        field = "%(a)s_two_three_$(%Y%m)"
+        => "one_two_three_201908" # assuming we're in August 2019
+    """
+    # first deal with timestamp
+    pat = re.compile(".*(\$\((.*?)\)).*")
+    m = pat.match(field)
+    if m:
+        tosub,fmt = m.groups()
+        ts = datetime.now().strftime(fmt)
+        field.replace(tosub,ts)
+    # then use dict to sub keys
+    field = field % confdict
+
+    return field
+
+
 def publish_data_version(s3_folder,version_info,env=None,update_latest=True):
     """
     Update remote files:
