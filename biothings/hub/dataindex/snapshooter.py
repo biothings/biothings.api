@@ -66,26 +66,8 @@ class Snapshooter(BaseStatusRegisterer):
             pinfo["__predicates__"] = preds
         return pinfo
 
-    def load_build(self, key_name):
-        '''
-        Load build info from src_build collection, either from an index name. In most cases,
-        build=index names so first search accordingly.
-        '''
-        stage = "index"
-        src_build = get_src_build()
-        build_doc = src_build.find_one({'_id': key_name})
-        if not build_doc:
-            # If none could be found, iterate over all build docs looking for matching
-            # inner keys. (no complex query as hub db interface doesn't handle
-            # complex ones - for ES, SQLite, etc... backends, see bt.utils.hub_db for more).
-            bdocs = src_build.find()
-            for doc in bdocs:
-                if key_name in doc.get(stage,{}):
-                    build_doc = doc
-                    break
-        # it's mandatory, releaser/publisher work based on a build document
-        assert build_doc, "No build document could be found" 
-        self._doc = build_doc
+    def load_build(self, index_name):
+        return self.load_doc(index_name,"index")
 
     def register_status(self, status,transient=False,init=False,**extra):
         super().register_status("snapshot",status,transient=False,init=False,**extra)
@@ -112,7 +94,6 @@ class Snapshooter(BaseStatusRegisterer):
 
     def snapshot(self, index, snapshot=None, steps=["pre","snapshot","post"]):
         self.load_build(index)
-        print("lmmmmmmmmm %s" % self.doc)
         envconf = self.envconf
         # check what to do
         if type(steps) == str:

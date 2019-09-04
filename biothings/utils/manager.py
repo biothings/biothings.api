@@ -187,15 +187,37 @@ class BaseManager(object):
 class BaseStatusRegisterer(object):
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args,**kwargs)
+        super().__init__()
         self._doc = None
+
+    def load_doc(self, key_name, stage):
+        """
+        Find document using key_name and stage, stage being a 
+        key within the document matching a specific process name:
+        Ex: {"_id":"123","snapshot":"abc"}
+            load_doc("abc","snapshot")
+        will return the document. Note key_name is first used to
+        find the doc by its _id.
+        Ex: with another doc {"_id" : "abc", "snapshot" : "somethingelse"}
+            load_doc{"abc","snapshot")
+        will return doc with _id="abc", not "123"
+        """
+        build_doc = self.collection.find_one({'_id': key_name})
+        if not build_doc:
+            bdocs = self.collection.find()
+            for doc in bdocs:
+                if key_name in doc.get(stage,{}):
+                    build_doc = doc
+                    break
+        # it's mandatory, releaser/publisher work based on a build document
+        assert build_doc, "No build document could be found" 
+        self._doc = build_doc
 
     @property
     def doc(self):
         """
         Return the document to register the status in
         """
-        # self._doc should be set in sub-class
         return self._doc
 
     @doc.setter

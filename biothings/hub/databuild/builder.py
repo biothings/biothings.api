@@ -994,7 +994,7 @@ class BuilderManager(BaseManager):
         docs = get_src_build().find(q)
         by_confs = {}
         for d in docs:
-            by_confs.setdefault(d["build_config"]["name"],[]).append(d["_id"])
+            by_confs.setdefault(d.get("build_config",{}).get("name",None),[]).append(d["_id"])
         if build_config:
             return sorted(by_confs.get(build_config,[]))
         else:

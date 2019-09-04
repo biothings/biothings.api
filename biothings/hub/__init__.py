@@ -374,7 +374,7 @@ class HubServer(object):
     def configure_release_manager(self):
         assert "diff" in self.features, "'release' feature requires 'diff'"
         assert "snapshot" in self.features, "'release' feature requires 'snapshot'"
-        from biothings.hub.datarelease.releaser import ReleaseManager
+        from biothings.hub.datarelease.publisher import ReleaseManager
         args = self.mixargs("release")
         release_manager = ReleaseManager(
                 diff_manager=self.managers["diff_manager"],

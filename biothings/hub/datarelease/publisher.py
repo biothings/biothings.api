@@ -7,37 +7,44 @@ import asyncio
 from functools import partial
 import subprocess
 
-from biothings.utils.mongo import get_previous_collection
-from biothings.utils.hub_db import get_src_build
+from biothings.utils.mongo import get_previous_collection, get_target_db
+from biothings.utils.hub_db import get_src_build, get_source_fullname
 import biothings.utils.aws as aws
 from biothings.utils.common import timesofar, get_random_string, iter_n, \
                                    get_class_from_classpath, get_dotfield_value
+from biothings.utils.dataload import update_dict_recur
+from biothings.utils.jsondiff import make as jsondiff
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseManager
+from biothings.utils.manager import BaseManager, BaseStatusRegisterer
 from biothings.utils.es import ESIndexer
-from biothings.utils.backend import DocESBackend
+from biothings.utils.backend import DocESBackend, DocMongoBackend
 from biothings import config as btconfig
 from biothings.utils.hub import publish_data_version, template_out
 from biothings.hub.databuild.backend import generate_folder, create_backend, \
                                             merge_src_build_metadata
 from biothings.hub.dataindex.indexer import ESIndexerException
 from biothings.hub import RELEASEMANAGER_CATEGORY, SNAPSHOOTER_CATEGORY, RELEASER_CATEGORY
+from biothings.hub.datarelease.releasenote import ReleaseNoteTxt
+from biothings.hub.datarelease import set_pending_to_publish
 
 # default from config
 logging = btconfig.logger
 
 
+class PublisherException(Exception): pass
 
-class ReleaseException(Exception): pass
 
+class BasePublisher(BaseStatusRegisterer):
 
-class DataReleaseHelper(object):
+    @property
+    def category(self):
+        raise NotImplementedError()
 
     def setup(self):
         self.setup_log()
     
     def setup_log(self):
-        self.logger, self.logfile = get_logger(RELEASER_CATEGORY,self.log_folder)
+        self.logger, self.logfile = get_logger(self.category,self.log_folder)
 
     def get_predicates(self):
         return []
@@ -47,7 +54,7 @@ class DataReleaseHelper(object):
         Return dict containing information about the current process
         (used to report in the hub)
         """
-        pinfo = {"category" : RELEASEMANAGER_CATEGORY,
+        pinfo = {"category" : self.category,
                 "source" : "",
                 "step" : "",
                 "description" : ""}
@@ -56,26 +63,26 @@ class DataReleaseHelper(object):
             pinfo["__predicates__"] = preds
         return pinfo
 
-    def load_build(self, key_name, stage):
-        '''
-        Load build info from src_build collection, either from an index name (stage="index")
-        or snaphost name (stage="snapshot"), not a build_name. In most cases,
-        build=index=snapshot names so first search accordingly. If none could be found,
-        iterate over all build docs looking for matching inner keys. (no complex query as
-        hub db interface doesn't handle complex ones - for ES, SQLite, etc... backends,
-        see bt.utils.hub_db for more).
-        '''
-        src_build = get_src_build()
-        build_doc = src_build.find_one({'_id': key_name})
-        if not build_doc:
-            bdocs = src_build.find()
-            for doc in bdocs:
-                if key_name in doc.get(stage,{}):
-                    build_doc = doc
-                    break
-        # it's mandatory, releaser/publisher work based on a build document
-        assert build_doc, "No build document could be found" 
-        self.build_doc = build_doc
+    def register_status(self, status,transient=False,init=False,**extra):
+        super().register_status("publish",status,transient=False,init=False,**extra)
+
+    def load_build(self, key_name, stage=None):
+        if stage is None:
+            # picke build doc searching for snapshot then diff key if not found
+            return self.load_doc(key_name,"snapshot") or self.load_doc(key_name,"diff")
+        else:
+            return self.load_doc(key_name,stage)
+
+    def trigger_release_note(self,doc,**kwargs):
+        """
+        Launch a release note generation given a src_build document. In order to 
+        know the first collection to compare with, get_previous_collection()
+        method is used. release_note() method will get **kwargs for more optional
+        parameters.
+        """
+        new_db_col_names = doc["_id"]
+        old_db_col_names = get_previous_collection(new_db_col_names)
+        self.release_note(old_db_col_names, new_db_col_names, **kwargs)
 
     def run_pre_post(self, key, stage, envconf, repo_conf, index_meta):
         """
@@ -147,7 +154,7 @@ class DataReleaseHelper(object):
                 ps = subprocess.Popen(splitcmd,stdin=tarps.stdin)
                 ret_code = ps.wait()
                 if ret_code != 0:
-                    raise ReleaseException("Archiving failed, code: %s" % ret_code)
+                    raise PublisherException("Archiving failed, code: %s" % ret_code)
                 else:
                     flist = glob.glob("%s.*" % part)
                     if len(flist) == 1:
@@ -207,280 +214,30 @@ class DataReleaseHelper(object):
                 "bucket" : step_conf["bucket"]}
 
 
-
-class Releaser(DataReleaseHelper):
-
-    def register_status(self, status,transient=False,init=False,**extra):
-        super().register_status("publish",status,transient=False,init=False,**extra)
-
-    def reset_synced(self,diff_folder,backend=None):
-        """
-        Remove "synced" flag from any pyobj file in diff_folder
-        """
-        synced_files = glob.glob(os.path.join(diff_folder,"*.pyobj.synced"))
-        for synced in synced_files:
-            diff_file = re.sub("\.pyobj\.synced$",".pyobj",synced)
-            os.rename(synced,diff_file)
-
-    ################
-    # Release note #
-    ################
-    def trigger_release_note(self,doc,**kwargs):
-        """
-        Launch a release note generation given a src_build document. In order to 
-        know the first collection to compare with, get_previous_collection()
-        method is used. release_note() method will get **kwargs for more optional
-        parameters.
-        """
-        new_db_col_names = doc["_id"]
-        old_db_col_names = get_previous_collection(new_db_col_names)
-        self.release_note(old_db_col_names, new_db_col_names, **kwargs)
-
-    def release_note(self, old, new, filename=None, note=None, format="txt"):
-        """
-        Generate release note files, in TXT and JSON format, containing significant changes
-        summary between target collections old and new. Output files
-        are stored in a diff folder using generate_folder(old,new).
-
-        'filename' can optionally be specified, though it's not recommended as the publishing pipeline,
-        using these files, expects a filenaming convention.
-
-        'note' is an optional free text that can be added to the release note, at the end.
-
-        txt 'format' is the only one supported for now.
-        """
-        old = old or get_previous_collection(new)
-        release_folder = generate_folder(btconfig.RELEASE_PATH,old,new)
-        if not os.path.exists(release_folder):
-            os.makedirs(release_folder)
-        filepath = None
-
-        def do():
-            changes = self.build_release_note(old,new,note=note)
-            nonlocal filepath
-            nonlocal filename
-            assert format == "txt", "Only 'txt' format supported for now"
-            filename = filename or "release_%s.%s" % (changes["new"]["_version"],format)
-            filepath = os.path.join(release_folder,filename)
-            render = ReleaseNoteTxt(changes)
-            txt = render.save(filepath)
-            filename = filename.replace(".%s" % format,".json")
-            filepath = os.path.join(release_folder,filename)
-            json.dump(changes,open(filepath,"w"),indent=True)
-            return txt
-
-        @asyncio.coroutine
-        def main(release_folder):
-            got_error = False
-            pinfo = self.get_pinfo()
-            pinfo["step"] = "release_note"
-            pinfo["source"] = release_folder
-            pinfo["description"] = filename
-            job = yield from self.job_manager.defer_to_thread(pinfo,do)
-            def reported(f):
-                nonlocal got_error
-                try:
-                    res = f.result()
-                    assert filepath, "No filename defined for generated report, can't attach"
-                    self.logger.info("Release note ready, saved in %s: %s" % (release_folder,res),extra={"notify":True})
-                    set_pending_to_publish(new)
-                except Exception as e:
-                    got_error = e
-            job.add_done_callback(reported)
-            yield from job
-            if got_error:
-                self.logger.exception("Failed to create release note: %s" % got_error,extra={"notify":True})
-                raise got_error
-
-        job = asyncio.ensure_future(main(release_folder))
-        return job
-    
-    def build_release_note(self, old_db_col_names=None, new_db_col_names=None, diff_folder=None, note=None):
-        """
-        Build a release note containing most significant changes between old_db_col_names and new_db_col_names
-        collection (they have to be target collections, coming from a merging process). "diff_folder" can
-        alternatively be passed instead of old/new_db_col_names.
-
-        If diff_folder already contains information about a diff (metadata.json), the release note will be 
-        enriched by such information. Otherwise, release note will be generated only with data coming from src_build.
-        In other words, release note can still be generated without diff information.
-
-        Return a dictionnary containing significant changes.
-        """
-        def get_counts(dstats):
-            stats = {}
-            for subsrc,count in dstats.items():
-                try:
-                    src_sub = get_source_fullname(subsrc).split(".")
-                except AttributeError:
-                    # not a merge stats coming from a source
-                    # (could be custom field stats, eg. total_* in mygene)
-                    src_sub = [subsrc]
-                if len(src_sub) > 1:
-                    # we have sub-sources we need to split the count
-                    src,sub = src_sub
-                    stats.setdefault(src,{})
-                    stats[src][sub] = {"_count" : count}
-                else:
-                    src = src_sub[0]
-                    stats[src] = {"_count" : count}
-            return stats
-
-        def get_versions(doc):
-            try:
-                versions = dict((k,{"_version" :v["version"]}) for k,v in \
-                        doc.get("_meta",{}).get("src",{}).items() if "version" in v)
-            except KeyError:
-                # previous version format
-                versions = dict((k,{"_version" : v}) for k,v in doc.get("_meta",{}).get("src_version",{}).items())
-            return versions
-
-        if old_db_col_names is None and new_db_col_names is None:
-            assert diff_folder, "Need at least diff_folder parameter"
-        else:
-            diff_folder = generate_folder(btconfig.DIFF_PATH,old_db_col_names,new_db_col_names)
-        try:
-            metafile = os.path.join(diff_folder,"metadata.json")
-            metadata = json.load(open(metafile))
-            old_db_col_names = metadata["old"]["backend"]
-            new_db_col_names = metadata["new"]["backend"]
-            diff_stats = metadata["diff"]["stats"]
-        except FileNotFoundError:
-            # we're generating a release note without diff information
-            self.logger.info("No metadata.json file found, this release note won't have diff stats included")
-            diff_stats = {}
-
-        new = create_backend(new_db_col_names)
-        old = create_backend(old_db_col_names)
-        assert isinstance(old,DocMongoBackend) and isinstance(new,DocMongoBackend), \
-                "Only MongoDB backend types are allowed when generating a release note"
-        assert old.target_collection.database.name == btconfig.DATA_TARGET_DATABASE and \
-                new.target_collection.database.name == btconfig.DATA_TARGET_DATABASE, \
-                "Target databases must match current DATA_TARGET_DATABASE setting"
-        new_doc = get_src_build().find_one({"_id":new.target_collection.name})
-        if not new_doc:
-            raise DifferException("Collection '%s' has no corresponding build document" % \
-                    new.target_collection.name)
-        # old_doc doesn't have to exist (but new_doc has) in case we build a initial release note
-        # compared against nothing
-        old_doc = get_src_build().find_one({"_id":old.target_collection.name}) or {}
-        tgt_db = get_target_db()
-        old_total = tgt_db[old.target_collection.name].count()
-        new_total = tgt_db[new.target_collection.name].count()
-        changes = {
-                "old" : {
-                    "_version" : old.version,
-                    "_count" : old_total,
-                    },
-                "new" : {
-                    "_version" : new.version,
-                    "_count" : new_total,
-                    "_fields" : {},
-                    "_summary" : diff_stats,
-                    },
-                "stats" : {
-                    "added" : {},
-                    "deleted" : {},
-                    "updated" : {},
-                    },
-                "note" : note,
-                "generated_on": str(datetime.now()),
-                "sources" : {
-                    "added" : {},
-                    "deleted" : {},
-                    "updated" : {},
-                    }
-                }
-        # for later use
-        new_versions = get_versions(new_doc)
-        old_versions = get_versions(old_doc)
-        # now deal with stats/counts. Counts are related to uploader, ie. sub-sources
-        new_merge_stats = get_counts(new_doc.get("merge_stats",{}))
-        old_merge_stats = get_counts(old_doc.get("merge_stats",{}))
-        new_stats = get_counts(new_doc.get("_meta",{}).get("stats",{}))
-        old_stats = get_counts(old_doc.get("_meta",{}).get("stats",{}))
-        new_info = update_dict_recur(new_versions,new_merge_stats)
-        old_info = update_dict_recur(old_versions,old_merge_stats)
-
-        def analyze_diff(ops,destdict,old,new):
-            for op in ops:
-                # get main source / main field
-                key = op["path"].strip("/").split("/")[0]
-                if op["op"] == "add":
-                    destdict["added"][key] = new[key]
-                elif op["op"] == "remove":
-                    destdict["deleted"][key] = old[key]
-                elif op["op"] == "replace":
-                    destdict["updated"][key] = {
-                            "new" : new[key],
-                            "old" : old[key]}
-                else:
-                    raise ValueError("Unknown operation '%s' while computing changes" % op["op"])
-
-        # diff source info
-        # this only works on main source information: if there's a difference in a
-        # sub-source, it won't be shown but considered as if it was the main-source
-        ops = jsondiff(old_info,new_info)
-        analyze_diff(ops,changes["sources"],old_info,new_info)
-
-        ops = jsondiff(old_stats,new_stats)
-        analyze_diff(ops,changes["stats"],old_stats,new_stats)
-
-        # mapping diff: we re-compute them and don't use any mapping.pyobj because that file
-        # only allows "add" operation as a safety rule (can't delete fields in ES mapping once indexed)
-        ops = jsondiff(old_doc.get("mapping",{}),new_doc["mapping"])
-        for op in ops:
-            changes["new"]["_fields"].setdefault(op["op"],[]).append(op["path"].strip("/").replace("/","."))
-
-        return changes
-
-    def publish_release(self):#, releaser_env, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
-                         #repository=btconfig.SNAPSHOT_REPOSITORY, steps=["meta","post"]):
-            """
-            TODO
-            """
-            pass
-    
-    # from indexer
-    def post_publish(self):#, releaser_env, s3_folder, prev, snapshot, release_folder, index,
-                         #repository, steps, *args, **kwargs):
-        """Post-publish hook, can be implemented in sub-class"""
-        return
-    # from differ
-    def post_publish(self):#, s3_folder, old_db_col_names, new_db_col_names, diff_folder, release_folder,
-                     #steps, s3_bucket, *args, **kwargs):
-        """Post-publish hook, can be implemented in sub-class"""
-        return
+class SnapshotPublisher(BasePublisher):
 
     def run_pre_publish_snapshot(self, envconf, repo_conf, index_meta):
         return self.run_pre_post("snapshot","pre",envconf,repo_conf,index_meta)
 
-    def publish_snapshot(self, releaser_env, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
-                         repository=btconfig.SNAPSHOT_REPOSITORY, steps=["meta","post"]):
+    def publish(self, snapshot, steps=["pre","meta","post"]):
         """
-        Publish snapshot metadata (not the actal snapshot, but the metadata, release notes, etc... associated to it) to S3,
-        and then register that version to it's available to auto-updating hub.
+        Publish snapshot metadata to S3. If snapshot repository is of type "s3", data isn't actually
+        uploaded/published since it's already there on s3. If type "fs", some "pre" steps can be added
+        to the RELEASE_CONFIG paramater to archive and upload it to s3. Metadata about the snapshot,
+        release note, etc... is then uploaded in correct buckets as defined in config, and "post"
+        steps can be run afterward.
 
         Though snapshots don't need any previous version to be applied on, a release note with significant changes
-        between current snapshot and a previous version could have been generated. In that case, 
-
-        'prev' and 'snaphost' must be defined (as strings, should match merged collections names) to generate
-        a release folder, or directly release_folder (if it's required to find release notes).
-        If all 3 are None, no release note will be referenced in snapshot metadata.
-
-        'snapshot' and actual underlying index can have different names, if so, 'index' can be specified.
-        'index' is mainly used to get the build_version from metadata as this information isn't part of snapshot
-        information. It means in order to publish a snaphost, both the snapshot *and* the index must exist.
+        between current snapshot and a previous version could have been generated. By default, snapshot name is
+        used to pick one single build document and from the document, get the release note information.
         """
         if type(steps) == str:
             steps = [steps]
-        assert getattr(btconfig,"BIOTHINGS_ROLE",None) == "master","Hub needs to be master to publish metadata about snapshots"
-        # keep passed values if any, otherwise derive them
-        index = index or snapshot
-        snapshot = snapshot or index
-        # TODO: merged collection name can be != index name which can be != snapshot name...
-        if prev and index and not release_folder:
-            release_folder = generate_folder(btconfig.RELEASE_PATH,prev,index)
+        self.load_build(snapshot,"snapshot")
+        if not self.doc:
+            raise PublisherException("No build document found with a snapshot name '%s' associated to it" % snapshot)
+
+        release_folder = doc["release_note"][snapshot]#generate_folder(btconfig.RELEASE_PATH,prev,index)
 
         @asyncio.coroutine
         def do():
@@ -495,7 +252,7 @@ class Releaser(DataReleaseHelper):
                 # (anyway, it's just to access some snapshot info so default indexer 
                 # will work)
                 idxklass = self.find_indexer(snapshot)
-                idxkwargs = self[("publisher",releaser_env)]
+                idxkwargs = self[("publisher",publisher_env)]
                 es_idxr = self.get_es_idxr(confenv)
                 esb = DocESBackend(es_idxr)
                 assert esb.version, "Can't retrieve a version from index '%s'" % index
@@ -581,7 +338,7 @@ class Releaser(DataReleaseHelper):
                 pinfo["step"] = "post"
                 self.logger.info("Runnig post-publish step")
                 job = yield from self.job_manager.defer_to_thread(pinfo,partial(self.post_publish,
-                            releaser_env=releaser_env, s3_folder=s3_folder, prev=prev, snapshot=snapshot,
+                            publisher_env=publisher_env, s3_folder=s3_folder, prev=prev, snapshot=snapshot,
                             release_folder=release_folder, index=index,
                             repository=repository, steps=steps))
                 yield from job
@@ -605,9 +362,22 @@ class Releaser(DataReleaseHelper):
     def run_post_publish_snapshot(self, envconf, repo_conf, index_meta):
         return self.run_pre_post("snapshot","post",envconf,repo_conf,index_meta)
 
-    ############################
-    # Incremental data-release #
-    ############################
+    def post_publish(self):#, publisher_env, s3_folder, prev, snapshot, release_folder, index,
+                         #repository, steps, *args, **kwargs):
+        """Post-publish hook, can be implemented in sub-class"""
+        return
+
+class DiffPublisher(BasePublisher):
+
+    def reset_synced(self,diff_folder,backend=None):
+        """
+        Remove "synced" flag from any pyobj file in diff_folder
+        """
+        synced_files = glob.glob(os.path.join(diff_folder,"*.pyobj.synced"))
+        for synced in synced_files:
+            diff_file = re.sub("\.pyobj\.synced$",".pyobj",synced)
+            os.rename(synced,diff_file)
+
     def publish_diff(self, s3_folder, old_db_col_names=None, new_db_col_names=None,
             diff_folder=None, release_folder=None, steps=["reset","upload","meta","post"], s3_bucket=None):
         """
@@ -774,10 +544,16 @@ class Releaser(DataReleaseHelper):
 
         return asyncio.ensure_future(do())
 
+    def post_publish(self):#, s3_folder, old_db_col_names, new_db_col_names, diff_folder, release_folder,
+                     #steps, s3_bucket, *args, **kwargs):
+        """Post-publish hook, can be implemented in sub-class"""
+        return
+
 
 class ReleaseManager(BaseManager):
 
-    DEFAULT_RELEASER_CLASS = Releaser
+    DEFAULT_SNAPSHOT_PUBLISHER_CLASS = SnapshotPublisher
+    DEFAULT_DIFF_PUBLISHER_CLASS = DiffPublisher
 
     def __init__(self, diff_manager, snapshot_manager, poll_schedule=None, *args, **kwargs):
         super(ReleaseManager,self).__init__(*args, **kwargs)
@@ -800,17 +576,17 @@ class ReleaseManager(BaseManager):
     def poll(self,state,func):
         super().poll(state,func,col=get_src_build())
     
-    def __getitem__(self,env):
+    def __getitem__(self,stage_env):
         """
         Return an instance of a releaser for the release environment named "env"
         """
-        d = self.register[env]
+        d = self.register[stage_env]
+        stage,env = stage_env
         envconf = self.release_config["env"][env]
-        return d["class"](
-                diff_manager=d["diff_manager"],
-                snapshot_manager=d["snapshot_manager"],
-                job_manager=d["job_manager"],
-                envconf=envconf,log_folder=self.log_folder)
+        return d["class"](diff_manager=self.diff_manager,
+                          snapshot_manager=self.snapshot_manager,
+                          job_manager=self.job_manager,
+                          envconf=envconf,log_folder=self.log_folder)
 
     def configure(self, release_confdict):
         """
@@ -823,23 +599,236 @@ class ReleaseManager(BaseManager):
                 if envconf.get("cloud"):
                     assert envconf["cloud"]["type"] == "aws", \
                             "Only Amazon AWS cloud is supported at the moment"
-                self.register[env] = {
-                        "class" : self.DEFAULT_RELEASER_CLASS,
+                self.register[("snapshot",env)] = {
+                        "class" : self.DEFAULT_SNAPSHOT_PUBLISHER_CLASS,
                         "conf" : envconf,
                         "job_manager" : self.job_manager,
                         "snapshot_manager" : self.snapshot_manager,
+                        }
+                self.register[("diff",env)] = {
+                        "class" : self.DEFAULT_DIFF_PUBLISHER_CLASS,
+                        "conf" : envconf,
+                        "job_manager" : self.job_manager,
                         "diff_manager" : self.diff_manager,
                         }
             except Exception as e:
                 self.logger.exception("Couldn't setup release environment '%s' because: %s" % (env,e))
 
-    def release_note(self, old, new, filename=None, note=None, format="txt"):
-        raise NotImplementedError("release_note")
+    def get_predicates(self):
+        return []
+    
+    def get_pinfo(self):
+        """
+        Return dict containing information about the current process
+        (used to report in the hub)
+        """
+        pinfo = {"category" : RELEASEMANAGER_CATEGORY,
+                "source" : "",
+                "step" : "",
+                "description" : ""}
+        preds = self.get_predicates()
+        if preds:
+            pinfo["__predicates__"] = preds
+        return pinfo
 
     def publish_diff(self, s3_folder, old_db_col_names=None, new_db_col_names=None,
             diff_folder=None, release_folder=None, steps=["reset","upload","meta","post"], s3_bucket=None):
         raise NotImplementedError("publish_diff")
 
-    def publish_snapshot(self, releaser_env, s3_folder, prev=None, snapshot=None, release_folder=None, index=None,
-                         repository=btconfig.SNAPSHOT_REPOSITORY, steps=["meta","post"]):
-        raise NotImplementedError("publish_snapshot")
+    def publish_snapshot(self, publisher_env, snapshot=None, steps=["meta","post"]):
+        if not publisher_env in self.release_config.get("env",{}):
+            raise ValueError("Unknonw release environment '%s'" % publisher_env)
+        publisher = self[("snapshot",publisher_env)]
+        return publisher.publish(snapshot=snapshot, steps=steps)
+
+    def release_note(self, old, new, filename=None, note=None, format="txt"):
+        """
+        Generate release note files, in TXT and JSON format, containing significant changes
+        summary between target collections old and new. Output files
+        are stored in a diff folder using generate_folder(old,new).
+
+        'filename' can optionally be specified, though it's not recommended as the publishing pipeline,
+        using these files, expects a filenaming convention.
+
+        'note' is an optional free text that can be added to the release note, at the end.
+
+        txt 'format' is the only one supported for now.
+        """
+        old = old or get_previous_collection(new)
+        release_folder = generate_folder(btconfig.RELEASE_PATH,old,new)
+        if not os.path.exists(release_folder):
+            os.makedirs(release_folder)
+        filepath = None
+
+        def do():
+            changes = self.build_release_note(old,new,note=note)
+            nonlocal filepath
+            nonlocal filename
+            assert format == "txt", "Only 'txt' format supported for now"
+            filename = filename or "release_%s.%s" % (changes["new"]["_version"],format)
+            filepath = os.path.join(release_folder,filename)
+            render = ReleaseNoteTxt(changes)
+            txt = render.save(filepath)
+            filename = filename.replace(".%s" % format,".json")
+            filepath = os.path.join(release_folder,filename)
+            json.dump(changes,open(filepath,"w"),indent=True)
+            return txt
+
+        @asyncio.coroutine
+        def main(release_folder):
+            got_error = False
+            pinfo = self.get_pinfo()
+            pinfo["step"] = "release_note"
+            pinfo["source"] = release_folder
+            pinfo["description"] = filename
+            job = yield from self.job_manager.defer_to_thread(pinfo,do)
+            def reported(f):
+                nonlocal got_error
+                try:
+                    res = f.result()
+                    assert filepath, "No filename defined for generated report, can't attach"
+                    self.logger.info("Release note ready, saved in %s: %s" % (release_folder,res),extra={"notify":True})
+                    set_pending_to_publish(new)
+                except Exception as e:
+                    got_error = e
+            job.add_done_callback(reported)
+            yield from job
+            if got_error:
+                self.logger.exception("Failed to create release note: %s" % got_error,extra={"notify":True})
+                raise got_error
+
+        job = asyncio.ensure_future(main(release_folder))
+        return job
+
+
+    def build_release_note(self, old_colname, new_colname, note=None):
+        """
+        Build a release note containing most significant changes between build names "old_colname" and "new_colname".
+        An optional end note can be added to bring more specific information about the release.
+
+        Return a dictionnary containing significant changes.
+        """
+        def get_counts(dstats):
+            stats = {}
+            for subsrc,count in dstats.items():
+                try:
+                    src_sub = get_source_fullname(subsrc).split(".")
+                except AttributeError:
+                    # not a merge stats coming from a source
+                    # (could be custom field stats, eg. total_* in mygene)
+                    src_sub = [subsrc]
+                if len(src_sub) > 1:
+                    # we have sub-sources we need to split the count
+                    src,sub = src_sub
+                    stats.setdefault(src,{})
+                    stats[src][sub] = {"_count" : count}
+                else:
+                    src = src_sub[0]
+                    stats[src] = {"_count" : count}
+            return stats
+
+        def get_versions(doc):
+            try:
+                versions = dict((k,{"_version" :v["version"]}) for k,v in \
+                        doc.get("_meta",{}).get("src",{}).items() if "version" in v)
+            except KeyError:
+                # previous version format
+                versions = dict((k,{"_version" : v}) for k,v in doc.get("_meta",{}).get("src_version",{}).items())
+            return versions
+
+        diff_folder = generate_folder(btconfig.DIFF_PATH,old_colname,new_colname)
+        try:
+            metafile = os.path.join(diff_folder,"metadata.json")
+            metadata = json.load(open(metafile))
+            old_colname = metadata["old"]["backend"]
+            new_colname = metadata["new"]["backend"]
+            diff_stats = metadata["diff"]["stats"]
+        except FileNotFoundError:
+            # we're generating a release note without diff information
+            self.logger.info("No metadata.json file found, this release note won't have diff stats included")
+            diff_stats = {}
+
+        new = create_backend(new_colname)
+        old = create_backend(old_colname)
+        assert isinstance(old,DocMongoBackend) and isinstance(new,DocMongoBackend), \
+                "Only MongoDB backend types are allowed when generating a release note"
+        assert old.target_collection.database.name == btconfig.DATA_TARGET_DATABASE and \
+                new.target_collection.database.name == btconfig.DATA_TARGET_DATABASE, \
+                "Target databases must match current DATA_TARGET_DATABASE setting"
+        new_doc = get_src_build().find_one({"_id":new.target_collection.name})
+        if not new_doc:
+            raise DifferException("Collection '%s' has no corresponding build document" % \
+                    new.target_collection.name)
+        # old_doc doesn't have to exist (but new_doc has) in case we build a initial release note
+        # compared against nothing
+        old_doc = get_src_build().find_one({"_id":old.target_collection.name}) or {}
+        tgt_db = get_target_db()
+        old_total = tgt_db[old.target_collection.name].count()
+        new_total = tgt_db[new.target_collection.name].count()
+        changes = {
+                "old" : {
+                    "_version" : old.version,
+                    "_count" : old_total,
+                    },
+                "new" : {
+                    "_version" : new.version,
+                    "_count" : new_total,
+                    "_fields" : {},
+                    "_summary" : diff_stats,
+                    },
+                "stats" : {
+                    "added" : {},
+                    "deleted" : {},
+                    "updated" : {},
+                    },
+                "note" : note,
+                "generated_on": str(datetime.now()),
+                "sources" : {
+                    "added" : {},
+                    "deleted" : {},
+                    "updated" : {},
+                    }
+                }
+        # for later use
+        new_versions = get_versions(new_doc)
+        old_versions = get_versions(old_doc)
+        # now deal with stats/counts. Counts are related to uploader, ie. sub-sources
+        new_merge_stats = get_counts(new_doc.get("merge_stats",{}))
+        old_merge_stats = get_counts(old_doc.get("merge_stats",{}))
+        new_stats = get_counts(new_doc.get("_meta",{}).get("stats",{}))
+        old_stats = get_counts(old_doc.get("_meta",{}).get("stats",{}))
+        new_info = update_dict_recur(new_versions,new_merge_stats)
+        old_info = update_dict_recur(old_versions,old_merge_stats)
+
+        def analyze_diff(ops,destdict,old,new):
+            for op in ops:
+                # get main source / main field
+                key = op["path"].strip("/").split("/")[0]
+                if op["op"] == "add":
+                    destdict["added"][key] = new[key]
+                elif op["op"] == "remove":
+                    destdict["deleted"][key] = old[key]
+                elif op["op"] == "replace":
+                    destdict["updated"][key] = {
+                            "new" : new[key],
+                            "old" : old[key]}
+                else:
+                    raise ValueError("Unknown operation '%s' while computing changes" % op["op"])
+
+        # diff source info
+        # this only works on main source information: if there's a difference in a
+        # sub-source, it won't be shown but considered as if it was the main-source
+        ops = jsondiff(old_info,new_info)
+        analyze_diff(ops,changes["sources"],old_info,new_info)
+
+        ops = jsondiff(old_stats,new_stats)
+        analyze_diff(ops,changes["stats"],old_stats,new_stats)
+
+        # mapping diff: we re-compute them and don't use any mapping.pyobj because that file
+        # only allows "add" operation as a safety rule (can't delete fields in ES mapping once indexed)
+        ops = jsondiff(old_doc.get("mapping",{}),new_doc["mapping"])
+        for op in ops:
+            changes["new"]["_fields"].setdefault(op["op"],[]).append(op["path"].strip("/").replace("/","."))
+
+        return changes
+
