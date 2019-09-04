@@ -186,10 +186,6 @@ class BaseManager(object):
 
 class BaseStatusRegisterer(object):
 
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self._doc = None
-
     def load_doc(self, key_name, stage):
         """
         Find document using key_name and stage, stage being a 
@@ -202,27 +198,16 @@ class BaseStatusRegisterer(object):
             load_doc{"abc","snapshot")
         will return doc with _id="abc", not "123"
         """
-        build_doc = self.collection.find_one({'_id': key_name})
-        if not build_doc:
+        doc = self.collection.find_one({'_id': key_name})
+        if not doc:
             bdocs = self.collection.find()
-            for doc in bdocs:
-                if key_name in doc.get(stage,{}):
-                    build_doc = doc
+            for adoc in bdocs:
+                if key_name in adoc.get(stage,{}):
+                    doc = adoc
                     break
         # it's mandatory, releaser/publisher work based on a build document
-        assert build_doc, "No build document could be found" 
-        self._doc = build_doc
-
-    @property
-    def doc(self):
-        """
-        Return the document to register the status in
-        """
-        return self._doc
-
-    @doc.setter
-    def doc(self, d):
-        self._doc = d
+        assert doc, "No document could be found" 
+        return doc
 
     @property
     def collection(self):
@@ -231,8 +216,7 @@ class BaseStatusRegisterer(object):
         """
         raise NotImplementedError("implement me in sub-class")
 
-    def register_status(self, stage, status,transient=False,init=False,**extra):
-        assert self.doc, "No document set"
+    def register_status(self, doc, stage, status,transient=False,init=False,**extra):
         assert self.collection, "No collection set"
         # stage: "snapshot", "publish", etc... depending on the what's being done
         job_info = {
@@ -262,12 +246,12 @@ class BaseStatusRegisterer(object):
         if init:
             # init timer for this step
             self.ti = time.time()
-            self.collection.update({'_id': build["_id"]}, {"$push": {'jobs': job_info}})
+            self.collection.update({'_id': doc["_id"]}, {"$push": {'jobs': job_info}})
             # now refresh/sync
-            self.doc = self.collection.find_one({'_id': build["_id"]})
+            self.doc = self.collection.find_one({'_id': doc["_id"]})
         else:
             # merge extra at root level
-            self.doc["jobs"] and self.doc["jobs"].append(job_info)
+            doc["jobs"] and doc["jobs"].append(job_info)
             def merge_index_info(target,d):
                 if "__REPLACE__" in d.keys():
                     d.pop("__REPLACE__")
@@ -285,8 +269,8 @@ class BaseStatusRegisterer(object):
                         else:
                             target[k] = v
                 return target
-            self.doc = merge_index_info(self.doc,stage_info)
-            self.collection.replace_one({"_id" : self.doc["_id"]},self.doc)
+            doc = merge_index_info(self.doc,stage_info)
+            self.collection.replace_one({"_id" : doc["_id"]},doc)
 
 
 class BaseSourceManager(BaseManager):

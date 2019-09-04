@@ -63,8 +63,8 @@ class BasePublisher(BaseStatusRegisterer):
             pinfo["__predicates__"] = preds
         return pinfo
 
-    def register_status(self, status,transient=False,init=False,**extra):
-        super().register_status("publish",status,transient=False,init=False,**extra)
+    def register_status(self, bdoc, status,transient=False,init=False,**extra):
+        super().register_status(bdoc,"publish",status,transient=transient,init=init,**extra)
 
     def load_build(self, key_name, stage=None):
         if stage is None:
@@ -233,7 +233,7 @@ class SnapshotPublisher(BasePublisher):
         """
         if type(steps) == str:
             steps = [steps]
-        self.load_build(snapshot,"snapshot")
+        bdoc = self.load_build(snapshot,"snapshot")
         if not self.doc:
             raise PublisherException("No build document found with a snapshot name '%s' associated to it" % snapshot)
 
@@ -550,13 +550,13 @@ class DiffPublisher(BasePublisher):
         return
 
 
-class ReleaseManager(BaseManager):
+class ReleaseManager(BaseManager, BaseStatusRegisterer):
 
     DEFAULT_SNAPSHOT_PUBLISHER_CLASS = SnapshotPublisher
     DEFAULT_DIFF_PUBLISHER_CLASS = DiffPublisher
 
     def __init__(self, diff_manager, snapshot_manager, poll_schedule=None, *args, **kwargs):
-        super(ReleaseManager,self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.diff_manager = diff_manager
         self.snapshot_manager = snapshot_manager
         self.t0 = time.time()
@@ -631,6 +631,20 @@ class ReleaseManager(BaseManager):
             pinfo["__predicates__"] = preds
         return pinfo
 
+    @property
+    def collection(self):
+        return get_src_build()
+    
+    def register_status(self, bdoc, stage, status,transient=False,init=False,**extra):
+        super().register_status(bdoc,stage,status,transient=transient,init=init,**extra)
+
+    def load_build(self, key_name, stage=None):
+        if stage is None:
+            # picke build doc searching for snapshot then diff key if not found
+            return self.load_doc(key_name,"snapshot") or self.load_doc(key_name,"diff")
+        else:
+            return self.load_doc(key_name,stage)
+
     def publish_diff(self, s3_folder, old_db_col_names=None, new_db_col_names=None,
             diff_folder=None, release_folder=None, steps=["reset","upload","meta","post"], s3_bucket=None):
         raise NotImplementedError("publish_diff")
@@ -654,6 +668,7 @@ class ReleaseManager(BaseManager):
 
         txt 'format' is the only one supported for now.
         """
+        bdoc = self.load_build(new)
         old = old or get_previous_collection(new)
         release_folder = generate_folder(btconfig.RELEASE_PATH,old,new)
         if not os.path.exists(release_folder):
@@ -672,7 +687,7 @@ class ReleaseManager(BaseManager):
             filename = filename.replace(".%s" % format,".json")
             filepath = os.path.join(release_folder,filename)
             json.dump(changes,open(filepath,"w"),indent=True)
-            return txt
+            return {"txt" : txt, "changes" : changes}
 
         @asyncio.coroutine
         def main(release_folder):
@@ -681,25 +696,35 @@ class ReleaseManager(BaseManager):
             pinfo["step"] = "release_note"
             pinfo["source"] = release_folder
             pinfo["description"] = filename
+            self.register_status(bdoc,"release_note","generating",transient=True,init=True,
+                                 job={"step":"release_note"},release_note={old:{}})
             job = yield from self.job_manager.defer_to_thread(pinfo,do)
             def reported(f):
                 nonlocal got_error
                 try:
                     res = f.result()
-                    assert filepath, "No filename defined for generated report, can't attach"
-                    self.logger.info("Release note ready, saved in %s: %s" % (release_folder,res),extra={"notify":True})
+                    self.register_status(
+                            bdoc,"release_note","success",
+                            job={"step":"release_note"},
+                            release_note={
+                                old:{"changes" : res["changes"]}
+                                }
+                            )
+                    self.logger.info("Release note ready, saved in %s: %s" % (release_folder,res["txt"]),extra={"notify":True})
                     set_pending_to_publish(new)
                 except Exception as e:
+                    self.logger.exception(e)
                     got_error = e
             job.add_done_callback(reported)
             yield from job
             if got_error:
                 self.logger.exception("Failed to create release note: %s" % got_error,extra={"notify":True})
+                self.register_status(bdoc,"release_note","failed",job={"step":"release_note","err":str(e)},
+                                     release_note={old:{}})
                 raise got_error
 
         job = asyncio.ensure_future(main(release_folder))
         return job
-
 
     def build_release_note(self, old_colname, new_colname, note=None):
         """

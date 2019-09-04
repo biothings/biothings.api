@@ -69,8 +69,8 @@ class Snapshooter(BaseStatusRegisterer):
     def load_build(self, index_name):
         return self.load_doc(index_name,"index")
 
-    def register_status(self, status,transient=False,init=False,**extra):
-        super().register_status("snapshot",status,transient=False,init=False,**extra)
+    def register_status(self, bdoc, status,transient=False,init=False,**extra):
+        super().register_status(bdoc,"snapshot",status,transient=transient,init=init,**extra)
 
     def get_es_idxr(self, envconf, index=None):
         print(envconf)
@@ -93,7 +93,7 @@ class Snapshooter(BaseStatusRegisterer):
         pass
 
     def snapshot(self, index, snapshot=None, steps=["pre","snapshot","post"]):
-        self.load_build(index)
+        bdoc = self.load_build(index)
         envconf = self.envconf
         # check what to do
         if type(steps) == str:
@@ -137,7 +137,9 @@ class Snapshooter(BaseStatusRegisterer):
                 def done(f,step):
                     try:
                         res = f.result()
-                        self.register_status("success",
+                        self.register_status(
+                                bdoc,
+                                "success",
                                 job={
                                     "step":"%s-snapshot" % step,
                                     "result" : res,
@@ -153,7 +155,9 @@ class Snapshooter(BaseStatusRegisterer):
                     except Exception as e:
                         nonlocal got_error
                         got_error = e
-                        self.register_status("failed",
+                        self.register_status(
+                                bdoc,
+                                "failed",
                                 job={
                                     "step":"%s-snapshot" % step,
                                     "err" : str(e)
@@ -171,7 +175,7 @@ class Snapshooter(BaseStatusRegisterer):
                 pinfo["source"] = index
 
                 if "pre" in steps:
-                    self.register_status("pre-snapshotting",transient=True,init=True,
+                    self.register_status(bdoc,"pre-snapshotting",transient=True,init=True,
                                          job={"step":"pre-snapshot"},snapshot={snapshot_name:{}})
                     pinfo["step"] = "pre-snapshot"
                     pinfo.pop("description",None)
@@ -184,7 +188,7 @@ class Snapshooter(BaseStatusRegisterer):
                         return
                     
                 if "snapshot" in steps:
-                    self.register_status("snapshotting",transient=True,init=True,
+                    self.register_status(bdoc,"snapshotting",transient=True,init=True,
                                          job={"step":"snapshot"},snapshot={snapshot_name:{}})
                     pinfo["step"] = "snapshot"
                     pinfo["description"] = es_idxr.es_host
@@ -217,7 +221,9 @@ class Snapshooter(BaseStatusRegisterer):
                             break
 
                     if got_error:
-                        self.register_status("failed",
+                        self.register_status(
+                                bdoc,
+                                "failed",
                                 job={
                                     "step":"snapshot",
                                     "err" : str(got_error)
@@ -233,7 +239,9 @@ class Snapshooter(BaseStatusRegisterer):
                         return
 
                     else:
-                        self.register_status("success",
+                        self.register_status(
+                                bdoc,
+                                "success",
                                 job={
                                     "step" : "snapshot",
                                     "status" : global_state,
@@ -247,7 +255,7 @@ class Snapshooter(BaseStatusRegisterer):
                                 )
 
                 if "post" in steps:
-                    self.register_status("post-snapshotting",transient=True,init=True,
+                    self.register_status(bdoc,"post-snapshotting",transient=True,init=True,
                                          job={"step":"post-snapshot"},snapshot={snapshot_name:{}})
                     pinfo["step"] = "post-snapshot"
                     pinfo.pop("description",None)
