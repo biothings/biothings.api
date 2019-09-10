@@ -200,12 +200,15 @@ class BaseStatusRegisterer(object):
         """
         doc = self.collection.find_one({'_id': key_name})
         if not doc:
+            doc = []
             bdocs = self.collection.find()
             for adoc in bdocs:
                 if key_name in adoc.get(stage,{}):
-                    doc = adoc
-                    break
-        # it's mandatory, releaser/publisher work based on a build document
+                    doc.append(adoc)
+            if len(doc) == 1:
+                # we'll just return the single doc
+                # otherwise it's up to the caller to do something with that
+                doc = doc.pop()
         assert doc, "No document could be found" 
         return doc
 

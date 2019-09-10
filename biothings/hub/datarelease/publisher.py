@@ -17,7 +17,7 @@ from biothings.utils.jsondiff import make as jsondiff
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager, BaseStatusRegisterer
 from biothings.utils.es import ESIndexer
-from biothings.utils.backend import DocESBackend, DocMongoBackend
+from biothings.utils.backend import DocMongoBackend
 from biothings import config as btconfig
 from biothings.utils.hub import publish_data_version, template_out
 from biothings.hub.databuild.backend import generate_folder, create_backend, \
@@ -34,11 +34,21 @@ logging = btconfig.logger
 class PublisherException(Exception): pass
 
 
-class BasePublisher(BaseStatusRegisterer):
+class BasePublisher(BaseManager,BaseStatusRegisterer):
+
+    def __init__(self, envconf, log_folder, es_backups_folder, *args, **kwargs):
+        super().__init__(*args,**kwargs)
+        self.envconf = envconf
+        self.log_folder = log_folder
+        self.es_backups_folder = es_backups_folder
 
     @property
     def category(self):
         raise NotImplementedError()
+
+    @property
+    def collection(self):
+        return get_src_build()
 
     def setup(self):
         self.setup_log()
@@ -73,6 +83,17 @@ class BasePublisher(BaseStatusRegisterer):
         else:
             return self.load_doc(key_name,stage)
 
+    def create_bucket(self, bucket_conf, credentials):
+        aws_key = credentials.get("access_key")
+        aws_secret = credentials.get("secret_key")
+        # create bucket if needed
+        aws.create_bucket(
+                name=bucket_conf["bucket"],
+                region=bucket_conf["region"],
+                aws_key=aws_key,aws_secret=aws_secret,
+                acl=bucket_conf.get("acl"),
+                ignore_already_exists=True)
+
     def trigger_release_note(self,doc,**kwargs):
         """
         Launch a release note generation given a src_build document. In order to 
@@ -84,14 +105,17 @@ class BasePublisher(BaseStatusRegisterer):
         old_db_col_names = get_previous_collection(new_db_col_names)
         self.release_note(old_db_col_names, new_db_col_names, **kwargs)
 
-    def run_pre_post(self, key, stage, envconf, repo_conf, index_meta):
+    def run_pre_post(self, key, stage, snapshot_name, repo_conf, build_doc):
         """
         Run pre- and post- steps for given stage (eg. "snapshot", "publish").
         These steps are defined in config file.
         """
+        print(build_doc.keys())
+        index_meta = build_doc["_meta"]
         # start pipeline with repo config from "snapshot" step
-        previous_result = repo_conf
-        steps = envconf[key].get(stage,[])
+        repo_name = list(build_doc["snapshot"][snapshot_name]["repository"].keys())[0]
+        previous_result = build_doc["snapshot"][snapshot_name]["repository"][repo_name]
+        steps = repo_conf[key].get(stage,[])
         assert isinstance(steps,list), "'%s' stage must be a list, got: %s" % (stage,repr(steps))
         action_done = []
         for step_conf in steps:
@@ -111,11 +135,11 @@ class BasePublisher(BaseStatusRegisterer):
                                       "action" : action}
                     if hasattr(self,methname):
                         found = True
-                        previous_result = getattr(self,methname)(envconf,step_conf,index_meta,previous_result)
+                        previous_result = getattr(self,methname)(step_conf,build_doc,previous_result)
                         break
                 if not found:
                     # default to generic one
-                    previous_result = getattr(self,"step_%s" % action)(envconf,step_conf,index_meta,previous_result)
+                    previous_result = getattr(self,"step_%s" % action)(step_conf,build_doc,previous_result)
 
                 action_done.append({"name" : action, "result" : previous_result})
 
@@ -124,13 +148,8 @@ class BasePublisher(BaseStatusRegisterer):
 
         return action_done
 
-    def run_post_snapshot(self, envconf, repo_conf, index_meta):
-        return self.run_pre_post("snapshot","post",envconf,repo_conf,index_meta)
-
-    def run_pre_snapshot(self, envconf, repo_conf, index_meta):
-        return self.run_pre_post("snapshot","pre",envconf,repo_conf,index_meta)
-
-    def step_archive(self, envconf, step_conf, index_meta, previous):
+    def step_archive(self, step_conf, build_doc, previous):
+        index_meta = build_doc["_meta"]
         archive_file = os.path.join(self.es_backups_folder,template_out(step_conf["name"],index_meta))
         if step_conf["format"] == "tar.xz":
             # -J is for "xz"
@@ -177,22 +196,22 @@ class BasePublisher(BaseStatusRegisterer):
         else:
             raise ValueError("Only 'tar.xz' format supported for now, got %s" % repr(step_conf["format"]))
 
-    def step_upload(self, envconf, step_conf, index_meta, previous):
+    def step_upload(self, step_conf, build_doc, previous):
         if step_conf["type"] == "s3":
-            return self.step_upload_s3(envconf, step_conf, index_meta, previous)
+            return self.step_upload_s3(step_conf,build_doc,previous)
         else:
             raise ValueError("Only 's3' upload type supported for now, got %s" % repr(step_conf["type"]))
 
-    def step_upload_s3(self, envconf, step_conf, index_meta, previous):
-        aws_key=envconf.get("cloud",{}).get("access_key")
-        aws_secret=envconf.get("cloud",{}).get("secret_key")
+    def step_upload_s3(self, step_conf, build_doc, previous):
+        index_meta = build_doc["_meta"]
+        aws_key=self.envconf.get("cloud",{}).get("access_key")
+        aws_secret=self.envconf.get("cloud",{}).get("secret_key")
+        # template out for special values
+        for k in step_conf:
+            v = step_conf[k]
+            step_conf[k] = template_out(step_conf[k],index_meta)
         # create bucket if needed
-        aws.create_bucket(
-                name=step_conf["bucket"],
-                region=step_conf["region"],
-                aws_key=aws_key,aws_secret=aws_secret,
-                acl=step_conf["acl"],
-                ignore_already_exists=True)
+        self.create_bucket(bucket_conf=step_conf,credentials=self.envconf.get("cloud",{}))
         if step_conf.get("file"):
             basename = template_out(step_conf["file"],index_meta)
             uploadfunc = aws.send_s3_big_file
@@ -216,10 +235,19 @@ class BasePublisher(BaseStatusRegisterer):
 
 class SnapshotPublisher(BasePublisher):
 
-    def run_pre_publish_snapshot(self, envconf, repo_conf, index_meta):
-        return self.run_pre_post("snapshot","pre",envconf,repo_conf,index_meta)
+    def __init__(self, snapshot_manager, *args, **kwargs):
+        super().__init__(*args,**kwargs)
+        self.snapshot_manager = snapshot_manager
+        self.setup()
 
-    def publish(self, snapshot, steps=["pre","meta","post"]):
+    @property
+    def category(self):
+        return RELEASER_CATEGORY
+
+    def run_pre_publish_snapshot(self, snapshot_name, repo_conf, build_doc):
+        return self.run_pre_post("publish","pre",snapshot_name,repo_conf,build_doc)
+
+    def publish(self, snapshot, build_name=None, previous_build=None, steps=["pre","meta","post"]):
         """
         Publish snapshot metadata to S3. If snapshot repository is of type "s3", data isn't actually
         uploaded/published since it's already there on s3. If type "fs", some "pre" steps can be added
@@ -231,13 +259,38 @@ class SnapshotPublisher(BasePublisher):
         between current snapshot and a previous version could have been generated. By default, snapshot name is
         used to pick one single build document and from the document, get the release note information.
         """
+        try:
+            if build_name:
+                bdoc = self.load_build(build_name)
+            else:
+                bdoc = self.load_build(snapshot,"snapshot")
+        except Exception as e:
+            self.exception("Error loading build document using snapshot named '%s': %s" % (snapshot,e))
+            raise
+        if isinstance(bdoc,list):
+            raise PublisherException("Snapshot '%s' found in more than one builds: %s." % (snapshot,
+                [d["_id"] for d in bdoc]) + " Specify which one with 'build_name'")
         if type(steps) == str:
             steps = [steps]
-        bdoc = self.load_build(snapshot,"snapshot")
-        if not self.doc:
+        if not bdoc:
             raise PublisherException("No build document found with a snapshot name '%s' associated to it" % snapshot)
 
-        release_folder = doc["release_note"][snapshot]#generate_folder(btconfig.RELEASE_PATH,prev,index)
+        # check if a release note is associated to the build document
+        release_folder = None
+        if previous_build is None and "release_note" in bdoc:
+            previous_build = list(bdoc["release_note"].keys())
+            if len(previous_build) != 1:
+                raise PublisherException("More than one release note found, " + \
+                        "generated with following builds: %s" % previous_build)
+            else:
+                previous_build = previous_build.pop()
+
+            assert previous_build, "Couldn't find previous build %s" % bdoc.keys()
+            release_folder = generate_folder(btconfig.RELEASE_PATH,previous_build,bdoc["_id"])
+
+        s3_release_folder = self.envconf["release"]["folder"]
+        s3_release_bucket = self.envconf["release"]["bucket"]
+        self.create_bucket(bucket_conf=self.envconf["release"],credentials=self.envconf.get("cloud",{}))
 
         @asyncio.coroutine
         def do():
@@ -245,20 +298,28 @@ class SnapshotPublisher(BasePublisher):
             pinfo = self.get_pinfo()
             pinfo["step"] = "publish"
             pinfo["source"] = snapshot
+            if "pre" in steps:
+                # then we upload all the folder content
+                pinfo["step"] = "pre"
+                self.logger.info("Running pre-publish step")
+                job = yield from self.job_manager.defer_to_thread(pinfo,partial(
+                                            self.pre_publish,
+                                            snapshot,
+                                            self.envconf,
+                                            bdoc))
+                yield from job
+                jobs.append(job)
             if "meta" in steps:
-                # TODO: this is a clocking call
+                # TODO: this is a blocking call
                 # snapshot at this point can be totally different than original
                 # target_name but we still use it to potentially custom indexed
                 # (anyway, it's just to access some snapshot info so default indexer 
                 # will work)
-                idxklass = self.find_indexer(snapshot)
-                idxkwargs = self[("publisher",publisher_env)]
-                es_idxr = self.get_es_idxr(confenv)
-                esb = DocESBackend(es_idxr)
-                assert esb.version, "Can't retrieve a version from index '%s'" % index
-                self.logger.info("Generating JSON metadata for full release '%s'" % esb.version)
-                repo = es_idxr._es.snapshot.get_repository(repository)
-                release_note = "release_%s" % esb.version
+                if not "_meta" in bdoc:
+                    raise PublisherException("No metadata (_meta) found in build document")
+                build_version = bdoc["_meta"]["build_version"]
+                self.logger.info("Generating JSON metadata for full release '%s'" % build_version)
+                release_note = "release_%s" % build_version
                 # generate json metadata about this diff release
                 assert snapshot, "Missing snapshot name information"
                 if getattr(btconfig,"SKIP_CHECK_VERSIONS",None):
@@ -269,33 +330,38 @@ class SnapshotPublisher(BasePublisher):
                     assert getattr(btconfig,"STANDALONE_VERSION",None), "STANDALONE_VERSION not defined"
                 full_meta = {
                         "type": "full",
-                        "build_version": esb.version,
-                        "target_version": esb.version,
+                        "build_version": build_version,
+                        "target_version": build_version,
                         "release_date" : datetime.now().isoformat(),
                         "app_version": btconfig.APP_VERSION,
                         "biothings_version": btconfig.BIOTHINGS_VERSION,
                         "standalone_version": btconfig.STANDALONE_VERSION,
-                        "metadata" : {"repository" : repo,
-                                      "snapshot_name" : snapshot}
+                        "metadata" : {"repository" : bdoc["snapshot"][snapshot]["repository"]}
                         }
                 if release_folder and os.path.exists(release_folder):
                     # ok, we have something in that folder, just pick the release note files
                     # (we can generate diff + snaphost at the same time, so there could be diff files in that folder
                     # from a diff process done before. release notes will be the same though)
-                    s3basedir = os.path.join(s3_folder,esb.version)
+                    s3basedir = os.path.join(s3_release_folder,build_version)
                     notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
                     self.logger.info("Uploading release notes from '%s' to s3 folder '%s'" % (notes,s3basedir))
                     for note in notes:
                         if os.path.exists(note):
                             s3key = os.path.join(s3basedir,os.path.basename(note))
                             aws.send_s3_file(note,s3key,
-                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                                    s3_bucket=btconfig.S3_RELEASE_BUCKET,overwrite=True)
+                                    aws_key=self.envconf.get("cloud",{}).get("access_key"),
+                                    aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
+                                    s3_bucket=s3_release_bucket,
+                                    overwrite=True)
                     # specify release note URLs in metadata
                     rel_txt_url = aws.get_s3_url(os.path.join(s3basedir,"%s.txt" % release_note),
-                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
+                                    aws_key=self.envconf.get("cloud",{}).get("access_key"),
+                                    aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
+                                    s3_bucket=s3_release_bucket)
                     rel_json_url = aws.get_s3_url(os.path.join(s3basedir,"%s.json" % release_note),
-                                    aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,s3_bucket=btconfig.S3_RELEASE_BUCKET)
+                                    aws_key=self.envconf.get("cloud",{}).get("access_key"),
+                                    aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
+                                    s3_bucket=s3_release_bucket)
                     if rel_txt_url:
                         full_meta.setdefault("changes",{})
                         full_meta["changes"]["txt"] = {"url" : rel_txt_url}
@@ -304,25 +370,31 @@ class SnapshotPublisher(BasePublisher):
                         full_meta["changes"]["json"] = {"url" : rel_json_url}
                 else:
                     self.logger.info("No release_folder found, no release notes will be part of the publishing")
+                    # yet create the folder so we can dump metadata json file in there later
+                    os.makedirs(release_folder)
 
                 # now dump that metadata
-                build_info = "%s.json" % esb.version
-                build_info_path = os.path.join(btconfig.DIFF_PATH,build_info)
+                build_info = "%s.json" % build_version
+                build_info_path = os.path.join(btconfig.RELEASE_PATH,build_info)
                 json.dump(full_meta,open(build_info_path,"w"))
                 # override lastmodified header with our own timestamp
-                local_ts = dtparse(es_idxr.get_mapping_meta()["_meta"]["build_date"])
+                local_ts = dtparse(bdoc["_meta"]["build_date"])
                 utc_epoch = int(time.mktime(local_ts.timetuple()))
                 utc_ts = datetime.fromtimestamp(time.mktime(time.gmtime(utc_epoch)))
                 str_utc_epoch = str(utc_epoch)
                 # it's a full release, but all build info metadata (full, incremental) all go
                 # to the diff bucket (this is the main entry)
-                s3key = os.path.join(s3_folder,build_info)
+                s3key = os.path.join(s3_release_folder,build_info)
                 aws.send_s3_file(build_info_path,s3key,
-                        aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                        s3_bucket=btconfig.S3_RELEASE_BUCKET,metadata={"lastmodified":str_utc_epoch},
-                         overwrite=True)
-                url = aws.get_s3_url(s3key,aws_key=btconfig.AWS_KEY,aws_secret=btconfig.AWS_SECRET,
-                        s3_bucket=btconfig.S3_RELEASE_BUCKET)
+                        aws_key=self.envconf.get("cloud",{}).get("access_key"),
+                        aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
+                        s3_bucket=s3_release_bucket,
+                        metadata={"lastmodified":str_utc_epoch},
+                        overwrite=True)
+                url = aws.get_s3_url(s3key,
+                        aws_key=self.envconf.get("cloud",{}).get("access_key"),
+                        aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
+                        s3_bucket=s3_release_bucket)
                 self.logger.info("Full release metadata published for version: '%s'" % url)
                 full_info = {"build_version":full_meta["build_version"],
                         "require_version":None,
@@ -330,17 +402,20 @@ class SnapshotPublisher(BasePublisher):
                         "type":full_meta["type"],
                         "release_date":full_meta["release_date"],
                         "url":url}
-                publish_data_version(s3_folder,full_info)
-                self.logger.info("Registered version '%s'" % (esb.version))
+                publish_data_version(s3_release_bucket,s3_release_folder,full_info,
+                        aws_key=self.envconf.get("cloud",{}).get("access_key"),
+                        aws_secret=self.envconf.get("cloud",{}).get("secret_key"))
+                self.logger.info("Registered version '%s'" % (build_version))
 
             if "post" in steps:
                 # then we upload all the folder content
                 pinfo["step"] = "post"
                 self.logger.info("Runnig post-publish step")
-                job = yield from self.job_manager.defer_to_thread(pinfo,partial(self.post_publish,
-                            publisher_env=publisher_env, s3_folder=s3_folder, prev=prev, snapshot=snapshot,
-                            release_folder=release_folder, index=index,
-                            repository=repository, steps=steps))
+                job = yield from self.job_manager.defer_to_thread(pinfo,partial(
+                                            self.post_publish,
+                                            snapshot,
+                                            self.envconf,
+                                            bdoc))
                 yield from job
                 jobs.append(job)
 
@@ -349,7 +424,7 @@ class SnapshotPublisher(BasePublisher):
                     res = f.result()
                     self.logger.info("Snapshot '%s' uploaded to S3: %s" % (snapshot,res),extra={"notify":True})
                 except Exception as e:
-                    self.logger.error("Failed to upload snapshot '%s' uploaded to S3: %s" % (snapshot,e),extra={"notify":True})
+                    self.logger.exception("Failed to upload snapshot '%s' uploaded to S3: %s" % (snapshot,e),extra={"notify":True})
 
             if jobs:
                 yield from asyncio.wait(jobs)
@@ -359,13 +434,23 @@ class SnapshotPublisher(BasePublisher):
 
         return asyncio.ensure_future(do())
 
-    def run_post_publish_snapshot(self, envconf, repo_conf, index_meta):
-        return self.run_pre_post("snapshot","post",envconf,repo_conf,index_meta)
+    def run_post_publish_snapshot(self, snapshot_name, repo_conf, build_doc):
+        return self.run_pre_post("publish","post",snapshot_name,repo_conf,build_doc)
 
-    def post_publish(self):#, publisher_env, s3_folder, prev, snapshot, release_folder, index,
-                         #repository, steps, *args, **kwargs):
-        """Post-publish hook, can be implemented in sub-class"""
-        return
+    def post_publish(self, snapshot_name, repo_conf, build_doc):
+        """
+        Post-publish hook, running steps declared in config,
+        but also whatever would be defined in a sub-class
+        """
+        return self.run_post_publish_snapshot(snapshot_name,repo_conf,build_doc)
+
+    def pre_publish(self, snapshot_name, repo_conf, build_doc):
+        """
+        Pre-publish hook, running steps declared in config,
+        but also whatever would be defined in a sub-class
+        """
+        return self.run_pre_publish_snapshot(snapshot_name,repo_conf,build_doc)
+
 
 class DiffPublisher(BasePublisher):
 
@@ -535,7 +620,7 @@ class DiffPublisher(BasePublisher):
                     res = f.result()
                     self.logger.info("Diff folder '%s' uploaded to S3: %s" % (diff_folder,res),extra={"notify":True})
                 except Exception as e:
-                    self.logger.error("Failed to upload diff folder '%s' uploaded to S3: %s" % (diff_folder,e),extra={"notify":True})
+                    self.logger.exception("Failed to upload diff folder '%s' uploaded to S3: %s" % (diff_folder,e),extra={"notify":True})
 
             yield from asyncio.wait(jobs)
             task = asyncio.gather(*jobs)
@@ -580,13 +665,10 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         """
         Return an instance of a releaser for the release environment named "env"
         """
-        d = self.register[stage_env]
         stage,env = stage_env
-        envconf = self.release_config["env"][env]
-        return d["class"](diff_manager=self.diff_manager,
-                          snapshot_manager=self.snapshot_manager,
-                          job_manager=self.job_manager,
-                          envconf=envconf,log_folder=self.log_folder)
+        kwargs = copy.copy(self.register[stage_env])
+        klass = kwargs.pop("class")
+        return klass(**kwargs)
 
     def configure(self, release_confdict):
         """
@@ -599,17 +681,22 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                 if envconf.get("cloud"):
                     assert envconf["cloud"]["type"] == "aws", \
                             "Only Amazon AWS cloud is supported at the moment"
+                # here we register publisher class and args passed during init
+                # which are common to the manager
                 self.register[("snapshot",env)] = {
                         "class" : self.DEFAULT_SNAPSHOT_PUBLISHER_CLASS,
-                        "conf" : envconf,
+                        "envconf" : envconf,
                         "job_manager" : self.job_manager,
                         "snapshot_manager" : self.snapshot_manager,
+                        "log_folder" : self.log_folder,
+                        "es_backups_folder" : self.es_backups_folder,
                         }
                 self.register[("diff",env)] = {
                         "class" : self.DEFAULT_DIFF_PUBLISHER_CLASS,
                         "conf" : envconf,
                         "job_manager" : self.job_manager,
                         "diff_manager" : self.diff_manager,
+                        "log_folder" : self.log_folder,
                         }
             except Exception as e:
                 self.logger.exception("Couldn't setup release environment '%s' because: %s" % (env,e))
@@ -649,11 +736,11 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
             diff_folder=None, release_folder=None, steps=["reset","upload","meta","post"], s3_bucket=None):
         raise NotImplementedError("publish_diff")
 
-    def publish_snapshot(self, publisher_env, snapshot=None, steps=["meta","post"]):
+    def publish_snapshot(self, publisher_env, snapshot, build_name=None, previous_build=None, steps=["pre","meta","post"]):
         if not publisher_env in self.release_config.get("env",{}):
             raise ValueError("Unknonw release environment '%s'" % publisher_env)
         publisher = self[("snapshot",publisher_env)]
-        return publisher.publish(snapshot=snapshot, steps=steps)
+        return publisher.publish(snapshot=snapshot, build_name=build_name, previous_build=previous_build, steps=steps)
 
     def release_note(self, old, new, filename=None, note=None, format="txt"):
         """

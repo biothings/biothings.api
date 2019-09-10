@@ -74,14 +74,14 @@ class Snapshooter(BaseStatusRegisterer):
 
     def get_es_idxr(self, envconf, index=None):
         print(envconf)
-        if envconf["es"].get("env"):
+        if envconf["indexer"].get("env"):
             # we should take indexer params from ES_CONFIG, ie. index_manager
             idxklass = self.index_manager.find_indexer(index)
-            idxkwargs = self.index_manager[envconf["es"]["env"]]
+            idxkwargs = self.index_manager[envconf["indexer"]["env"]]
         else:
             idxklass = self.index_manager.DEFAULT_INDEXER
-            es_host = envconf["es"]["host"]
-            idxkwargs = envconf["es"]["host"]["args"]
+            es_host = envconf["indexer"]["host"]
+            idxkwargs = envconf["indexer"]["host"]["args"]
         idxr = idxklass(**idxkwargs)
         es_idxr = ESIndexer(index=index,doc_type=idxr.doc_type,
                             es_host=idxr.host,
@@ -102,8 +102,7 @@ class Snapshooter(BaseStatusRegisterer):
         es_idxr = self.get_es_idxr(envconf,index)
         # create repo if needed
         index_meta = es_idxr.get_mapping_meta()["_meta"] # read from index
-        repo_conf = self.create_repository(envconf, index_meta)
-        repo_name = repo_conf["name"]
+        repo_name, repo_conf = self.create_repository(envconf, index_meta)
         monitor_delay = envconf["monitor_delay"]
         # will hold the overall result
         fut = asyncio.Future()
@@ -231,7 +230,7 @@ class Snapshooter(BaseStatusRegisterer):
                                 snapshot={
                                     snapshot_name : {
                                         "env" : self.envconf,
-                                        "snapshot": None,
+                                        "repository": None,
                                         }
                                     }
                                 )
@@ -249,7 +248,7 @@ class Snapshooter(BaseStatusRegisterer):
                                 snapshot={
                                     snapshot_name : {
                                         "env" : self.envconf,
-                                        "snapshot": repo_conf,
+                                        "repository": {repo_name : repo_conf}
                                         }
                                     }
                                 )
@@ -290,23 +289,24 @@ class Snapshooter(BaseStatusRegisterer):
         In other words, such repo config are dynamic and potentially change
         for each index/snapshot created.
         """
-        repo_conf["name"] = template_out(repo_conf["name"],index_meta)
+        repo_name = template_out(repo_conf["name"],index_meta)
+        repo_type = template_out(repo_conf["type"],index_meta)
+        repo_settings = {}
         for setting in repo_conf["settings"]:
-            repo_conf["settings"][setting] = template_out(repo_conf["settings"][setting],index_meta)
+            repo_settings[setting] = template_out(repo_conf["settings"][setting],index_meta)
 
-        return repo_conf
+        return repo_name, {"type" : repo_type,"settings" : repo_settings}
 
     def create_repository(self, envconf, index_meta={}):
         aws_key=envconf.get("cloud",{}).get("access_key")
         aws_secret=envconf.get("cloud",{}).get("secret_key")
-        repo_conf = self.get_repository_config(envconf["repository"],index_meta)
+        repo_name, repo_conf = self.get_repository_config(envconf["repository"],index_meta)
         self.logger.info("Repository config: %s" % repo_conf)
-        repository = repo_conf["name"]
         settings = repo_conf["settings"]
         repo_type = repo_conf["type"]
         es_idxr = self.get_es_idxr(envconf)
         try:
-            es_idxr.get_repository(repository)
+            es_idxr.get_repository(repo_name)
         except ESIndexerException:
             # need to create that repo
             if repo_type == "s3":
@@ -320,10 +320,10 @@ class Snapshooter(BaseStatusRegisterer):
                         ignore_already_exists=True)
             settings = {"type" : repo_type,
                         "settings" : settings}
-            self.logger.info("Create repository named '%s': %s" % (repository,pformat(settings)))
-            es_idxr.create_repository(repository,settings=settings)
+            self.logger.info("Create repository named '%s': %s" % (repo_name,pformat(settings)))
+            es_idxr.create_repository(repo_name,settings=settings)
 
-        return repo_conf
+        return repo_name,repo_conf
 
 
 class SnapshotManager(BaseManager):

@@ -236,7 +236,7 @@ class ConfigurationManager(types.ModuleType):
 
         if isinstance(copiedval,dict):
             # walk the dict and instantiate values when special
-            dict_traverse(copiedval,eval_default_value)
+            dict_traverse(copiedval,eval_default_value,traverse_list=True)
         else:
             # just use the same func but ignore "k" key, not a dict
             # pass unhashable "k" to make sure we'd raise an error
