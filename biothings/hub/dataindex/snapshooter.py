@@ -73,7 +73,6 @@ class Snapshooter(BaseStatusRegisterer):
         super().register_status(bdoc,"snapshot",status,transient=transient,init=init,**extra)
 
     def get_es_idxr(self, envconf, index=None):
-        print(envconf)
         if envconf["indexer"].get("env"):
             # we should take indexer params from ES_CONFIG, ie. index_manager
             idxklass = self.index_manager.find_indexer(index)
@@ -136,38 +135,16 @@ class Snapshooter(BaseStatusRegisterer):
                 def done(f,step):
                     try:
                         res = f.result()
-                        self.register_status(
-                                bdoc,
-                                "success",
-                                job={
-                                    "step":"%s-snapshot" % step,
-                                    "result" : res,
-                                    },
-                                snapshot={
-                                    snapshot_name : {
-                                        "env" : self.envconf,
-                                        step : res
-                                        }
-                                    }
-                                )
+                        self.register_status(bdoc,"success",
+                                job={"step":"%s-snapshot" % step,"result" : res},
+                                snapshot={snapshot_name : {"env" : self.envconf,step : res}})
                         self.logger.info("%s-snapshot done: %s" % (step,res))
                     except Exception as e:
                         nonlocal got_error
                         got_error = e
-                        self.register_status(
-                                bdoc,
-                                "failed",
-                                job={
-                                    "step":"%s-snapshot" % step,
-                                    "err" : str(e)
-                                    },
-                                snapshot={
-                                    snapshot_name : {
-                                        "env" : self.envconf,
-                                        step : None,
-                                        }
-                                    }
-                                )
+                        self.register_status(bdoc,"failed",
+                                job={"step":"%s-snapshot" % step,"err" : str(e)},
+                                snapshot={snapshot_name : {"env" : self.envconf,step : None}})
                         self.logger.exception("Error while running pre-snapshot: %s" % e)
 
                 pinfo = self.get_pinfo()

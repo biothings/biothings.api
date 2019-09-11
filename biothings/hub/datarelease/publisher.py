@@ -41,6 +41,8 @@ class BasePublisher(BaseManager,BaseStatusRegisterer):
         self.envconf = envconf
         self.log_folder = log_folder
         self.es_backups_folder = es_backups_folder
+        self.ti = time.time()
+        self.setup()
 
     @property
     def category(self):
@@ -74,7 +76,7 @@ class BasePublisher(BaseManager,BaseStatusRegisterer):
         return pinfo
 
     def register_status(self, bdoc, status,transient=False,init=False,**extra):
-        super().register_status(bdoc,"publish",status,transient=transient,init=init,**extra)
+        BaseStatusRegisterer.register_status(self,bdoc,"publish",status,transient=transient,init=init,**extra)
 
     def load_build(self, key_name, stage=None):
         if stage is None:
@@ -110,7 +112,6 @@ class BasePublisher(BaseManager,BaseStatusRegisterer):
         Run pre- and post- steps for given stage (eg. "snapshot", "publish").
         These steps are defined in config file.
         """
-        print(build_doc.keys())
         index_meta = build_doc["_meta"]
         # start pipeline with repo config from "snapshot" step
         repo_name = list(build_doc["snapshot"][snapshot_name]["repository"].keys())[0]
@@ -230,6 +231,7 @@ class BasePublisher(BaseManager,BaseStatusRegisterer):
                 s3_bucket=step_conf["bucket"])
         return {"type" : "s3",
                 "key" : basename,
+                "base_path" : step_conf["base_path"],
                 "bucket" : step_conf["bucket"]}
 
 
@@ -292,31 +294,56 @@ class SnapshotPublisher(BasePublisher):
         s3_release_bucket = self.envconf["release"]["bucket"]
         self.create_bucket(bucket_conf=self.envconf["release"],credentials=self.envconf.get("cloud",{}))
 
+        # hold error/exception on each step
+        got_error = None
+
         @asyncio.coroutine
         def do():
             jobs = []
             pinfo = self.get_pinfo()
             pinfo["step"] = "publish"
             pinfo["source"] = snapshot
+
+            def done(f,step):
+                try:
+                    res = f.result()
+                    self.register_status(bdoc,"success",
+                            job={"step":"%s-publish" % step,"result" : res},
+                            publish={snapshot : {"env" : self.envconf,step : res}})
+                except Exception as e:
+                    nonlocal got_error
+                    got_error = e
+                    self.register_status(bdoc,"failed",
+                            job={"step":"%s-publish" % step,"err" : str(e)},
+                            publish={snapshot : {
+                                "env" : self.envconf,
+                                step : {"err" : str(e)}
+                                }})
+                    self.logger.exception("Error while running pre-publish: %s" % got_error)
+
+            if not "_meta" in bdoc:
+                raise PublisherException("No metadata (_meta) found in build document")
+
             if "pre" in steps:
                 # then we upload all the folder content
                 pinfo["step"] = "pre"
                 self.logger.info("Running pre-publish step")
-                job = yield from self.job_manager.defer_to_thread(pinfo,partial(
-                                            self.pre_publish,
-                                            snapshot,
-                                            self.envconf,
-                                            bdoc))
+                self.register_status(bdoc,"pre-publishing",transient=True,init=True,
+                        job={"step":"pre-publish"},publish={snapshot:{}})
+                job = yield from self.job_manager.defer_to_thread(pinfo,
+                        partial(self.pre_publish,snapshot,self.envconf,bdoc))
+                job.add_done_callback(partial(done,step="pre"))
                 yield from job
+                if got_error:
+                    raise got_error
                 jobs.append(job)
+
             if "meta" in steps:
                 # TODO: this is a blocking call
                 # snapshot at this point can be totally different than original
                 # target_name but we still use it to potentially custom indexed
                 # (anyway, it's just to access some snapshot info so default indexer 
                 # will work)
-                if not "_meta" in bdoc:
-                    raise PublisherException("No metadata (_meta) found in build document")
                 build_version = bdoc["_meta"]["build_version"]
                 self.logger.info("Generating JSON metadata for full release '%s'" % build_version)
                 release_note = "release_%s" % build_version
@@ -338,84 +365,133 @@ class SnapshotPublisher(BasePublisher):
                         "standalone_version": btconfig.STANDALONE_VERSION,
                         "metadata" : {"repository" : bdoc["snapshot"][snapshot]["repository"]}
                         }
-                if release_folder and os.path.exists(release_folder):
-                    # ok, we have something in that folder, just pick the release note files
-                    # (we can generate diff + snaphost at the same time, so there could be diff files in that folder
-                    # from a diff process done before. release notes will be the same though)
-                    s3basedir = os.path.join(s3_release_folder,build_version)
-                    notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
-                    self.logger.info("Uploading release notes from '%s' to s3 folder '%s'" % (notes,s3basedir))
-                    for note in notes:
-                        if os.path.exists(note):
-                            s3key = os.path.join(s3basedir,os.path.basename(note))
-                            aws.send_s3_file(note,s3key,
-                                    aws_key=self.envconf.get("cloud",{}).get("access_key"),
-                                    aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
-                                    s3_bucket=s3_release_bucket,
-                                    overwrite=True)
-                    # specify release note URLs in metadata
-                    rel_txt_url = aws.get_s3_url(os.path.join(s3basedir,"%s.txt" % release_note),
-                                    aws_key=self.envconf.get("cloud",{}).get("access_key"),
-                                    aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
-                                    s3_bucket=s3_release_bucket)
-                    rel_json_url = aws.get_s3_url(os.path.join(s3basedir,"%s.json" % release_note),
-                                    aws_key=self.envconf.get("cloud",{}).get("access_key"),
-                                    aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
-                                    s3_bucket=s3_release_bucket)
-                    if rel_txt_url:
-                        full_meta.setdefault("changes",{})
-                        full_meta["changes"]["txt"] = {"url" : rel_txt_url}
-                    if rel_json_url:
-                        full_meta.setdefault("changes",{})
-                        full_meta["changes"]["json"] = {"url" : rel_json_url}
-                else:
-                    self.logger.info("No release_folder found, no release notes will be part of the publishing")
-                    # yet create the folder so we can dump metadata json file in there later
-                    os.makedirs(release_folder)
+                if release_folder:
+                    if os.path.exists(release_folder):
+                        try:
+                            self.register_status(bdoc,"publishing",transient=True,init=True,
+                                    job={"step":"release-note"},publish={snapshot:{}})
+                            # ok, we have something in that folder, just pick the release note files
+                            # (we can generate diff + snaphost at the same time, so there could be diff files in that folder
+                            # from a diff process done before. release notes will be the same though)
+                            s3basedir = os.path.join(s3_release_folder,build_version)
+                            notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
+                            self.logger.info("Uploading release notes from '%s' to s3 folder '%s'" % (notes,s3basedir))
+                            for note in notes:
+                                if os.path.exists(note):
+                                    s3key = os.path.join(s3basedir,os.path.basename(note))
+                                    aws.send_s3_file(note,s3key,
+                                            aws_key=self.envconf.get("cloud",{}).get("access_key"),
+                                            aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
+                                            s3_bucket=s3_release_bucket,
+                                            overwrite=True)
+                            # specify release note URLs in metadata
+                            rel_txt_url = aws.get_s3_url(os.path.join(s3basedir,"%s.txt" % release_note),
+                                            aws_key=self.envconf.get("cloud",{}).get("access_key"),
+                                            aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
+                                            s3_bucket=s3_release_bucket)
+                            rel_json_url = aws.get_s3_url(os.path.join(s3basedir,"%s.json" % release_note),
+                                            aws_key=self.envconf.get("cloud",{}).get("access_key"),
+                                            aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
+                                            s3_bucket=s3_release_bucket)
+                            if rel_txt_url:
+                                full_meta.setdefault("changes",{})
+                                full_meta["changes"]["txt"] = {"url" : rel_txt_url}
+                            if rel_json_url:
+                                full_meta.setdefault("changes",{})
+                                full_meta["changes"]["json"] = {"url" : rel_json_url}
 
-                # now dump that metadata
-                build_info = "%s.json" % build_version
-                build_info_path = os.path.join(btconfig.RELEASE_PATH,build_info)
-                json.dump(full_meta,open(build_info_path,"w"))
-                # override lastmodified header with our own timestamp
-                local_ts = dtparse(bdoc["_meta"]["build_date"])
-                utc_epoch = int(time.mktime(local_ts.timetuple()))
-                utc_ts = datetime.fromtimestamp(time.mktime(time.gmtime(utc_epoch)))
-                str_utc_epoch = str(utc_epoch)
-                # it's a full release, but all build info metadata (full, incremental) all go
-                # to the diff bucket (this is the main entry)
-                s3key = os.path.join(s3_release_folder,build_info)
-                aws.send_s3_file(build_info_path,s3key,
-                        aws_key=self.envconf.get("cloud",{}).get("access_key"),
-                        aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
-                        s3_bucket=s3_release_bucket,
-                        metadata={"lastmodified":str_utc_epoch},
-                        overwrite=True)
-                url = aws.get_s3_url(s3key,
-                        aws_key=self.envconf.get("cloud",{}).get("access_key"),
-                        aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
-                        s3_bucket=s3_release_bucket)
-                self.logger.info("Full release metadata published for version: '%s'" % url)
-                full_info = {"build_version":full_meta["build_version"],
-                        "require_version":None,
-                        "target_version":full_meta["target_version"],
-                        "type":full_meta["type"],
-                        "release_date":full_meta["release_date"],
-                        "url":url}
-                publish_data_version(s3_release_bucket,s3_release_folder,full_info,
-                        aws_key=self.envconf.get("cloud",{}).get("access_key"),
-                        aws_secret=self.envconf.get("cloud",{}).get("secret_key"))
-                self.logger.info("Registered version '%s'" % (build_version))
+                            self.register_status(bdoc,"success",
+                                    job={"step":"release-note"},
+                                    publish={snapshot : {
+                                        "env" : self.envconf,
+                                        "release-note": {
+                                            "base_dir" : s3basedir,
+                                            "bucket" : s3_release_bucket,
+                                            "url" : {"json" : rel_json_url, "txt" : rel_txt_url}}
+                                        }})
+                        except Exception as e:
+                            self.logger.exception("Failed to upload release notes: %s" % e)
+                            self.register_status(bdoc,"failed",
+                                    job={"step":"release-note","err" : str(e)},
+                                    publish={snapshot : {
+                                        "env" : self.envconf,
+                                        "release-note" : {
+                                            "err" : str(e),
+                                            "base_dir" : s3basedir,
+                                            "bucket" : s3_release_bucket},
+                                        }})
+                            raise
+
+                    else:
+                        self.logger.info("No release_folder found, no release notes will be part of the publishing")
+                        # yet create the folder so we can dump metadata json file in there later
+                        os.makedirs(release_folder)
+
+                try:
+                    self.register_status(bdoc,"publishing",transient=True,init=True,
+                            job={"step":"metadata"},publish={snapshot:{}})
+                    # now dump that metadata
+                    build_info = "%s.json" % build_version
+                    build_info_path = os.path.join(btconfig.RELEASE_PATH,build_info)
+                    json.dump(full_meta,open(build_info_path,"w"))
+                    # override lastmodified header with our own timestamp
+                    local_ts = dtparse(bdoc["_meta"]["build_date"])
+                    utc_epoch = int(time.mktime(local_ts.timetuple()))
+                    utc_ts = datetime.fromtimestamp(time.mktime(time.gmtime(utc_epoch)))
+                    str_utc_epoch = str(utc_epoch)
+                    # it's a full release, but all build info metadata (full, incremental) all go
+                    # to the diff bucket (this is the main entry)
+                    s3key = os.path.join(s3_release_folder,build_info)
+                    aws.send_s3_file(build_info_path,s3key,
+                            aws_key=self.envconf.get("cloud",{}).get("access_key"),
+                            aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
+                            s3_bucket=s3_release_bucket,
+                            metadata={"lastmodified":str_utc_epoch},
+                            overwrite=True)
+                    url = aws.get_s3_url(s3key,
+                            aws_key=self.envconf.get("cloud",{}).get("access_key"),
+                            aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
+                            s3_bucket=s3_release_bucket)
+                    self.logger.info("Full release metadata published for version: '%s'" % url)
+                    full_info = {"build_version":full_meta["build_version"],
+                            "require_version":None,
+                            "target_version":full_meta["target_version"],
+                            "type":full_meta["type"],
+                            "release_date":full_meta["release_date"],
+                            "url":url}
+                    publish_data_version(s3_release_bucket,s3_release_folder,full_info,
+                            aws_key=self.envconf.get("cloud",{}).get("access_key"),
+                            aws_secret=self.envconf.get("cloud",{}).get("secret_key"))
+                    self.logger.info("Registered version '%s'" % (build_version))
+                    self.register_status(bdoc,"success",
+                            job={"step":"metadata"},
+                            publish={snapshot : {
+                                "env" : self.envconf,
+                                "metadata" : full_info
+                                }})
+                except Exception as e:
+                    self.logger.exception("Failed to upload snapshot metadata: %s" % e)
+                    self.register_status(bdoc,"failed",
+                            job={"step":"metadata","err" : str(e)},
+                            publish={snapshot : {
+                                "env" : self.envconf,
+                                "metadata" : {"err" : str(e)}
+                                }})
+                    raise
+
 
             if "post" in steps:
                 # then we upload all the folder content
                 pinfo["step"] = "post"
-                self.logger.info("Runnig post-publish step")
+                self.logger.info("Running post-publish step")
+                self.register_status(bdoc,"post-publishing",transient=True,init=True,
+                        job={"step":"post-publish"},publish={snapshot:{}})
                 job = yield from self.job_manager.defer_to_thread(pinfo,partial(
                                             self.post_publish,
                                             snapshot,
                                             self.envconf,
                                             bdoc))
+                job.add_done_callback(partial(done,step="post"))
                 yield from job
                 jobs.append(job)
 
@@ -432,7 +508,8 @@ class SnapshotPublisher(BasePublisher):
                 task.add_done_callback(published)
                 yield from task
 
-        return asyncio.ensure_future(do())
+        task = asyncio.ensure_future(do())
+        return task
 
     def run_post_publish_snapshot(self, snapshot_name, repo_conf, build_doc):
         return self.run_pre_post("publish","post",snapshot_name,repo_conf,build_doc)
@@ -723,7 +800,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         return get_src_build()
     
     def register_status(self, bdoc, stage, status,transient=False,init=False,**extra):
-        super().register_status(bdoc,stage,status,transient=transient,init=init,**extra)
+        BaseStatusRegisterer.register_status(self,bdoc,stage,status,transient=transient,init=init,**extra)
 
     def load_build(self, key_name, stage=None):
         if stage is None:

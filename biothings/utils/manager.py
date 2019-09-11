@@ -215,7 +215,7 @@ class BaseStatusRegisterer(object):
     @property
     def collection(self):
         """
-        Return collection object used to store self.doc
+        Return collection object used to fetch doc in which we store status
         """
         raise NotImplementedError("implement me in sub-class")
 
@@ -251,15 +251,21 @@ class BaseStatusRegisterer(object):
             self.ti = time.time()
             self.collection.update({'_id': doc["_id"]}, {"$push": {'jobs': job_info}})
             # now refresh/sync
-            self.doc = self.collection.find_one({'_id': doc["_id"]})
+            doc = self.collection.find_one({'_id': doc["_id"]})
         else:
             # merge extra at root level
             doc["jobs"] and doc["jobs"].append(job_info)
             def merge_index_info(target,d):
-                if "__REPLACE__" in d.keys():
+                if target is None:
+                    # previous value was "null", just replace
+                    target = d
+                elif "__REPLACE__" in d.keys():
                     d.pop("__REPLACE__")
                     target = d
                 else:
+                    if status == "success":
+                        # remove 'err' key to avoid merging success results with errors
+                        target.pop("err",None)
                     for k,v in d.items():
                         if type(v) == dict:
                             if k in target:
@@ -272,7 +278,7 @@ class BaseStatusRegisterer(object):
                         else:
                             target[k] = v
                 return target
-            doc = merge_index_info(self.doc,stage_info)
+            doc = merge_index_info(doc,stage_info)
             self.collection.replace_one({"_id" : doc["_id"]},doc)
 
 
