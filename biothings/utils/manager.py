@@ -256,8 +256,8 @@ class BaseStatusRegisterer(object):
             # merge extra at root level
             doc["jobs"] and doc["jobs"].append(job_info)
             def merge_index_info(target,d):
-                if target is None:
-                    # previous value was "null", just replace
+                if not isinstance(target,dict):
+                    # previous value wasn't a dict, just replace
                     target = d
                 elif "__REPLACE__" in d.keys():
                     d.pop("__REPLACE__")

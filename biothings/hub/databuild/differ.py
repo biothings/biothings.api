@@ -79,7 +79,7 @@ class BaseDiffer(object):
                 'step_started_at': datetime.now(),
                 'logfile': self.logfile,
                 }
-        diff_key = "%s-%s" % (self.old.target_name,self.new.target_name)
+        diff_key = self.old.target_name
         diff_info = {
                 "diff": {
                     diff_key : {
@@ -234,7 +234,8 @@ class BaseDiffer(object):
                         md5 = md5sum(file_name)
                         summary["mapping_file"] = {
                                 "name" : os.path.basename(file_name),
-                                "md5sum" : md5
+                                "md5sum" : md5,
+                                "size" : os.stat(file_name).st_size
                                 }
                 else:
                     self.logger.info("Neither '%s' nor '%s' have mappings associated to them, skip" % \
@@ -430,6 +431,8 @@ class BaseDiffer(object):
         # remove some metadata key for diff registering (some are already in build doc, it would be duplication)
         self.metadata.pop("_meta",None)
         self.metadata.pop("build_config",None)
+        # record diff_folder so it's available for later without re-computing it
+        self.metadata["diff_folder"] = diff_folder
         self.register_status("success",diff=self.metadata)
         return diff_stats
 
@@ -591,7 +594,8 @@ class ColdHotJsonDifferBase(ColdHotDiffer):
                         found = True
                         break
                 assert found, "Couldn't find file information in metadata (with md5 value), try to rebuild_diff_file_list() ?"
-                self.metadata["diff"]["files"][i] = {"name":name,"md5sum":md5}
+                size = os.stat(diff_ile).st_size
+                self.metadata["diff"]["files"][i] = {"name":name,"md5sum":md5,"size":size}
                 self.logger.info(self.metadata["diff"]["files"])
 
         self.logger.info("Post-diff process fixing jsondiff operations done: %s fixed" % fixed)
@@ -641,7 +645,8 @@ def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names,
         md5 = md5sum(file_name)
         summary["diff_file"] = {
                 "name" : os.path.basename(file_name),
-                "md5sum" : md5
+                "md5sum" : md5,
+                "size" : os.stat(file_name).st_size
                 }
 
     return summary
@@ -664,7 +669,8 @@ def diff_worker_old_vs_new(id_list_old, new_db_col_names, batch_num, diff_folder
         md5 = md5sum(file_name)
         summary["diff_file"] = {
                 "name" : os.path.basename(file_name),
-                "md5sum" : md5
+                "md5sum" : md5,
+                "size" : os.stat(file_name).st_size
                 }
 
     return summary
@@ -1065,7 +1071,7 @@ class DifferManager(BaseManager):
             for diff_file in diff_files:
                 name = os.path.basename(diff_file)
                 md5 = md5sum(diff_file)
-                info = {"md5sum" : md5, "name" : name}
+                info = {"md5sum" : md5,"name" : name,"size" : os.stat(diff_file).st_size}
                 if "mapping" in diff_file: # dirty...
                     metadata["diff"]["mapping"] = info
                 else:
@@ -1093,7 +1099,7 @@ def reduce_diffs(diffs, num, diff_folder, done_folder):
         # just rename
         outf = os.path.join(diff_folder,fn)
         shutil.copyfile(diffs[0],outf)
-        res.append({"name":fn,"md5sum":md5sum(outf)})
+        res.append({"name":fn,"md5sum":md5sum(outf),"size" : os.stat(outf).st_size})
         os.rename(diffs[0],os.path.join(done_folder,os.path.basename(diffs[0])))
         return res
 
@@ -1106,7 +1112,8 @@ def reduce_diffs(diffs, num, diff_folder, done_folder):
             merged[k].extend(diff[k])
         os.rename(diff_fn,os.path.join(done_folder,os.path.basename(diff_fn)))
     dump(merged,os.path.join(diff_folder,fn),compress="lzma")
-    res.append({"name":fn,"md5sum":md5sum(os.path.join(diff_folder,fn))})
+    file_name = os.path.join(diff_folder,fn)
+    res.append({"name":fn,"md5sum":md5sum(filename),"size" : os.stat(file_name).st_size})
     return res
 
 def set_pending_to_diff(col_name):

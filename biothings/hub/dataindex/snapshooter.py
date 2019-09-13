@@ -137,14 +137,14 @@ class Snapshooter(BaseStatusRegisterer):
                         res = f.result()
                         self.register_status(bdoc,"success",
                                 job={"step":"%s-snapshot" % step,"result" : res},
-                                snapshot={snapshot_name : {"env" : self.envconf,step : res}})
+                                snapshot={snapshot_name : {"conf" : self.envconf,step : res}})
                         self.logger.info("%s-snapshot done: %s" % (step,res))
                     except Exception as e:
                         nonlocal got_error
                         got_error = e
                         self.register_status(bdoc,"failed",
                                 job={"step":"%s-snapshot" % step,"err" : str(e)},
-                                snapshot={snapshot_name : {"env" : self.envconf,step : None}})
+                                snapshot={snapshot_name : {"conf" : self.envconf,step : None}})
                         self.logger.exception("Error while running pre-snapshot: %s" % e)
 
                 pinfo = self.get_pinfo()
@@ -206,7 +206,7 @@ class Snapshooter(BaseStatusRegisterer):
                                     },
                                 snapshot={
                                     snapshot_name : {
-                                        "env" : self.envconf,
+                                        "conf" : self.envconf,
                                         "repository": None,
                                         }
                                     }
@@ -224,7 +224,7 @@ class Snapshooter(BaseStatusRegisterer):
                                     },
                                 snapshot={
                                     snapshot_name : {
-                                        "env" : self.envconf,
+                                        "conf" : self.envconf,
                                         "repository": {repo_name : repo_conf}
                                         }
                                     }
