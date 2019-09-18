@@ -16,7 +16,7 @@
                 </div>
             </div>
             <div class="meta">
-                <i class="file alternate icon"></i> {{num_indexed}} documents indexed
+                <i class="file alternate icon"></i> {{ num_indexed | formatNumber }} documents indexed
                 <!--button :class="[release.snapshot ? 'disabled' : '','ui mini labeled icon button']"
                         @click="snapshot(release)">
                     <i class="bookmark icon"></i>

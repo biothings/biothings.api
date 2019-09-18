@@ -14,7 +14,8 @@
                 </div>
             </div>
             <div class="meta">
-                <i class="file alternate icon"></i> {{release.diff.files.length}} diff files created
+                <i class="file alternate icon"></i>
+                {{release.diff.files.length}} diff files created ({{ total_diff_size | pretty_size(precision=0) }})
                 <button class="ui mini labeled icon button" @click="applyDiff(release)">
                     <i class="external link square alternate
                         icon"></i>
@@ -100,6 +101,13 @@ export default {
         }
     },
     computed: {
+        total_diff_size: function() {
+            var size = 0;
+            if(this.release.diff && this.release.diff.files) {
+                this.release.diff.files.map(function(e) { size += e.size})
+            }
+            return size;
+        },
     },
     methods: {
         displayError : function() {

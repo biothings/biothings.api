@@ -56,6 +56,9 @@
                                     </select>
                                     <br>
                                 </div>
+                                <div class="ui checkbox">
+                                    <input type="checkbox" name="diff_purge"><label>Purge existing diff files previously generated for this release ?</label>
+                                </div>
                             </span>
                             <span v-if="release_type == 'full'">
                                 <div>
@@ -182,11 +185,15 @@ export default {
         newIncrementalRelease : function() {
             var old_build = $(".ui.form select[name=old_build]").val();
             var diff_type =  $(".ui.form select[name=diff_type]").val();
+            var diff_purge = $(".ui.form input[name=diff_purge]").prop("checked");
             if(!old_build)
                 this.errors.push("Select a build to compute incremental data");
             if(!diff_type)
                 this.errors.push("Select a diff type");
-            axios.put(axios.defaults.baseURL + `/diff`,{"diff_type" : diff_type, "old" : old_build, "new" : this.build._id})
+            var args = {"diff_type" : diff_type, "old" : old_build, "new" : this.build._id};
+            if(diff_purge)
+                args["mode"] = "purge";
+            axios.put(axios.defaults.baseURL + `/diff`,args)
             .then(response => {
                 console.log(response.data.result)
                 return response.data.result;
@@ -255,5 +262,8 @@ export default {
 }
 </script>
 
-<style>
+<style scoped>
+.ui.checkbox label {
+    color: white !important;
+}
 </style>
