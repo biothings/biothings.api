@@ -1,30 +1,36 @@
 <template>
     <div class="event-container">
-        <div class="label">
-            <i class="large exchange alternate icon"></i>
-        </div>
         <div class="content">
             <div class="summary">
-                <a>diff</a> with <i>{{release.old.backend || '?'}}</i> has been computed.<br>
-                Old version: <b>{{release.old.version}}</b>, current version: <b>{{release.new.version}}</b>
+                <i class="large exchange alternate icon"></i>
+                <b>diff</b> with <i>{{release.old.backend || '?'}}</i> has been computed.<br>
+                Old version: <b v-if="release.old.version">{{release.old.version}}</b><i v-else>None</i>, current version: <b>{{release.new.version}}</b>
                 <div class="date">
+                    Created 
                     {{release.created_at | moment("from", "now")}}
                     (<i>on {{moment(release.created_at).format('MMMM Do YYYY, h:mm:ss a') }}</i>)
 
                 </div>
             </div>
             <div class="meta">
-                <i class="file alternate icon"></i>
-                {{release.diff.files.length}} diff files created ({{ total_diff_size | pretty_size(precision=0) }})
-                <button class="ui mini labeled icon button" @click="applyDiff(release)">
-                    <i class="external link square alternate
-                        icon"></i>
-                    Apply
-                </button>
-                <button class="ui mini labeled icon button" @click="publish(release)">
-                    <i class="share alternate square icon"></i>
-                    Publish
-                </button>
+                <i class="file alternate icon"></i>{{release.diff.files.length}} diff file(s) created ({{ total_diff_size | pretty_size(precision=0) }})
+                <i class="chart line icon"></i>{{release.diff.stats.update | formatInteger }} updated,
+                {{release.diff.stats.add | formatInteger }} added,
+                {{release.diff.stats.deleted | formatInteger }} deleted.
+                <b v-if="release.diff.stats.mapping_changed">Mapping has changed.</b>
+                <!-- search release note associated to this diff, ie. generated with "old" collection -->
+                <release-note-summary :build="build" :release="release"  :type="type"></release-note-summary>
+                <div class="ui pubactions basic compact segment">
+                    <button class="ui mini grey labeled icon button" @click="applyDiff(release)">
+                        <i class="external link square alternate
+                            icon"></i>
+                        Apply
+                    </button>
+                    <button class="ui mini grey labeled icon button" @click="publish(release)">
+                        <i class="share alternate square icon"></i>
+                        Publish
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -81,10 +87,11 @@
 import axios from 'axios'
 import bus from './bus.js'
 import Vue from 'vue';
+import ReleaseNoteSummary from './ReleaseNoteSummary.vue';
 
 export default {
     name: 'diff-release-event',
-    props: ['release','build_config'],
+    props: ['release','build','type'],
     mounted() {
         $(".ui.backendenv.dropdown").dropdown();
     },
@@ -93,7 +100,7 @@ export default {
     },
     created() {
     },
-    components: {  },
+    components: { ReleaseNoteSummary, },
     data () {
         return {
             errors : [],
@@ -129,7 +136,7 @@ export default {
             var newcol = release.new.backend;
             var diff_type = release.diff.type;
             var backend_type = "es"; // TODO: should we support more ?
-            var doc_type = this.build_config.doc_type;
+            var doc_type = this.build.build_config.doc_type;
             var self = this;
             $(`.ui.basic.applydiff.modal.${this.release.old.backend}`)
             .modal("setting", {
@@ -168,7 +175,7 @@ export default {
             var selecting = null;
             var self = this;
             if(envs.build_config_key) {
-                selecting = this.build_config[envs.build_config_key];
+                selecting = this.build.build_config[envs.build_config_key];
             }
             $.each(envs.env, function( env, value ) {
                 // check whether we can use one of build_config keys
@@ -177,14 +184,9 @@ export default {
                     if(!value.index.hasOwnProperty(selecting))
                         return true;// continue next iter
                 }
-                //if(!_compat.hasOwnProperty(env)) {
-                //    _compat[env] = {}
-                //    _compat[env]["index"] = [];
-                //}
-                //_compat[env]["host"] = value["host"];
                 for(var k in value.index) {
                     // make sure doc_type is the same
-                    if(value.index[k]["doc_type"] != self.build_config.doc_type) {
+                    if(value.index[k]["doc_type"] != self.build.build_config.doc_type) {
                         continue;
                     }
                     if(selecting && (selecting != k))
@@ -199,8 +201,12 @@ export default {
 }
 </script>
 
-<style>
+<style scoped>
 .event-container {
     margin-bottom: 1em;
+    width: inherit;
+}
+.pubactions {
+    padding: 0 0 1em 0 !important;
 }
 </style>

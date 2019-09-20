@@ -190,7 +190,6 @@ export default {
           console.log(res);
         },
         onExportCode: function() {
-          console.log("in onExportCode");
           // restore original state
           $("#exportok").show();
           $("#exportcancel").text("Cancel");
@@ -201,6 +200,7 @@ export default {
             detachable : false,
             closable: false,
             onApprove: function () {
+              self.loading();
               self.export_error = null;
               var parts = [];
               $(".ui.exportform.form").form('get field', "dumper").prop("checked") && parts.push("dumper")

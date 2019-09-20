@@ -274,6 +274,10 @@
         return numeral(value).format("0.00 a");
     });
 
+    Vue.filter("formatInteger", function (value) {
+        return numeral(value).format("0 a");
+    });
+
     Vue.filter("replace", function (value,what,repl) {
         return value.replace(what,repl);
     });

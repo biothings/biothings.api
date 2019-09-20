@@ -3,14 +3,14 @@
         <div v-if="error" class="ui error message">
             {{error}}
         </div>
-        <button class="ui newrelease  button" @click="newRelease">
+        <button class="ui small newrelease right floated  button" @click="newRelease">
             New release
         </button>
         <div class="ui feed"  v-if="releases">
             <div class="event" v-for="rel in releases">
-                <index-release-event :release="rel" v-if="rel.index_name"></index-release-event>
-                <diff-release-event :release="rel" :index_envs="index_envs" :build_config="build.build_config" v-if="rel.diff"></diff-release-event>
-
+                <!-- also pass main build object so we can access other related information to that release, such as release notes -->
+                <index-release-event v-if="rel.index_name" :release="rel" :build="build" :type="'full'"></index-release-event>
+                <diff-release-event v-if="rel.diff" :release="rel" :index_envs="index_envs" :build="build" :type="'incremental'"></diff-release-event>
             </div>
         </div>
         <div v-else>
@@ -152,7 +152,6 @@ export default {
             _releases.sort(function(a,b) {
                 var da = a.created_at && Date.parse(a.created_at)
                 var db = b.created_at && Date.parse(b.created_at)
-                console.log(`da ${da} db ${db}`);
                 return db - da;
             });
             console.log(_releases);
