@@ -931,7 +931,61 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         publisher = self[("snapshot",publisher_env)]
         return publisher.publish(snapshot=snapshot, build_name=build_name, previous_build=previous_build, steps=steps)
 
-    def release_note(self, old, new, filename=None, note=None, format="txt"):
+    def publish(self, publisher_env, snapshot_or_build_name, *args, **kwargs):
+        snapshot_doc = None
+        diff_doc = None
+        try:
+            snapshot_doc = self.load_doc(snapshot_or_build_name,"snapshot")
+            if isinstance(snapshot_doc,list):
+                raise PublisherException("More than one build_doc associated to snapshot '%s', " % snapshot_or_build_name + \
+                    "use explicetely publish_snapshot()")
+        except AssertionError as e:
+            # no doc at all
+            pass
+        try:
+            diff_doc = self.load_doc(snapshot_or_build_name,"diff")
+            if isinstance(diff_doc,list):
+                raise PublisherException("More than one build_doc associated to diff '%s', " % snapshot_or_build_name + \
+                    "use explicetely publish_diff()")
+        except AssertionError as e:
+            # no doc at all
+            pass
+        # check returned doc contains what we think it does and load_doc hasn't use snapshot_or_build_name as _id
+        if snapshot_doc and not snapshot_or_build_name in snapshot_doc.get("snapshot",{}):
+            # doc was returend with snapshot_or_build_name matching _id, not snapshot name, invalidate
+            snapshot_doc = None
+        if diff_doc and not snapshot_or_build_name in diff_doc.get("diff",{}):
+            diff_doc = None
+        # do we still have something ambiguous ?
+        if snapshot_doc and diff_doc:
+            # so we have 2 releases associated, we can't know which one user wants
+            raise PublisherException("'%s' is associated to 2 different releases " % snapshot_or_build_name + \
+                    "(document _id '%s' and '%s'" % (snapshot_doc["_id"],diff_doc["_id"]) + \
+                    "use explicitely publish_snapshot() or publish_diff()")
+        elif snapshot_doc:
+            self.logger.info("'%s' associated to a snapshot/full release" % snapshot_or_build_name)
+            return self.publish_snapshot(publisher_env, snapshot_or_build_name, *args, **kwargs)
+        elif diff_doc:
+            self.logger.info("'%s' associated to a diff/incremental release" % snapshot_or_build_name)
+            return self.publish_diff(publisher_env, snapshot_or_build_name, *args, **kwargs)
+        else:
+            raise PublisherException("No release associated to '%s'" % snapshot_or_build_name)
+
+    def get_release_note(self, old, new, format="txt", prefix="release_*"):
+        release_folder = generate_folder(btconfig.RELEASE_PATH,old,new)
+        if not os.path.exists(release_folder):
+            raise PublisherException("No release note folder found")
+        notes = glob.glob(os.path.join(release_folder,"%s.%s" % (prefix,format)))
+        if not notes:
+            raise PublisherException("No release notes found in folder")
+        if len(notes) != 1:
+            raise PublisherException("Found %d notes (%s), expected only one" % (len(notes),[os.path.basename(n) for n in notes]))
+        content = open(notes[0]).read()
+        if format == "json":
+            content = json.loads(content)
+        return content
+
+    def create_release_note(self, old, new, filename=None, note=None, format="txt"):
         """
         Generate release note files, in TXT and JSON format, containing significant changes
         summary between target collections old and new. Output files

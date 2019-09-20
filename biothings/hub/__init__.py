@@ -382,7 +382,7 @@ class HubServer(object):
                 job_manager=self.managers["job_manager"],
                 poll_schedule="* * * * * */10",**args)
         release_manager.configure(config.RELEASE_CONFIG)
-        release_manager.poll("release_note",lambda doc: release_manager.release_note(old=None,new=doc["_id"]))
+        release_manager.poll("release_note",lambda doc: release_manager.create_release_note(old=None,new=doc["_id"]))
         self.managers["release_manager"] = release_manager
 
     def configure_sync_manager(self):
@@ -574,7 +574,9 @@ class HubServer(object):
             self.commands["snapshot"] = self.managers["snapshot_manager"].snapshot
         # data release commands
         if self.managers.get("release_manager"):
-            self.commands["release_note"] = self.managers["release_manager"].release_note
+            self.commands["create_release_note"] = self.managers["release_manager"].create_release_note
+            self.commands["get_release_note"] = self.managers["release_manager"].get_release_note
+            self.commands["publish"] = self.managers["release_manager"].publish
             self.commands["publish_diff"] = self.managers["release_manager"].publish_diff
             self.commands["publish_snapshot"] = self.managers["release_manager"].publish_snapshot
         if self.managers.get("sync_manager"):
@@ -719,6 +721,13 @@ class HubServer(object):
         if "sync" in cmdnames: self.api_endpoints["sync"] = EndpointDefinition(name="sync",method="post",force_bodyargs=True)
         if "whatsnew" in cmdnames: self.api_endpoints["whatsnew"] = EndpointDefinition(name="whatsnew",method="get")
         if "status" in cmdnames: self.api_endpoints["status"] = EndpointDefinition(name="status",method="get")
+        self.api_endpoints["release_note"] = []
+        if "create_release_note" in cmdnames:
+            self.api_endpoints["release_note"].append(EndpointDefinition(name="create_release_note",method="put",suffix="create",force_bodyargs=True))
+        if "get_release_note" in cmdnames:
+            self.api_endpoints["release_note"].append(EndpointDefinition(name="get_release_note",method="get",force_bodyargs=True))
+        if not self.api_endpoints["release_note"]:
+            self.api_endpoints.pop("release_note")
         self.api_endpoints["api"] = []
         if "start_api" in cmdnames: self.api_endpoints["api"].append(EndpointDefinition(name="start_api",method="put",suffix="start"))
         if "stop_api" in cmdnames: self.api_endpoints["api"].append(EndpointDefinition(name="stop_api",method="put",suffix="stop"))
