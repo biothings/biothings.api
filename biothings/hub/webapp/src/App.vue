@@ -973,4 +973,10 @@
         margin-left: 1em !important;
         margin-right: 2em !important;
     }
+
+    ; very small buttons
+    .tinytiny {
+        padding: .5em 1em .5em;
+        font-size: .6em;
+    }
 </style>

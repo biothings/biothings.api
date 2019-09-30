@@ -1,36 +1,34 @@
 <template>
     <div class="event-container">
-        <div class="content">
-            <div class="summary">
-                <i class="large exchange alternate icon"></i>
-                <b>diff</b> with <i>{{release.old.backend || '?'}}</i> has been computed.<br>
-                Old version: <b v-if="release.old.version">{{release.old.version}}</b><i v-else>None</i>, current version: <b>{{release.new.version}}</b>
-                <div class="date">
-                    Created 
-                    {{release.created_at | moment("from", "now")}}
-                    (<i>on {{moment(release.created_at).format('MMMM Do YYYY, h:mm:ss a') }}</i>)
+        <div class="ui grid">
+            <div class="eight wide column">
+                <div class="summary">
+                    <i class="large exchange alternate icon"></i>
+                    <b>diff</b> with <i>{{release.old.backend || '?'}}</i> has been computed.<br>
+                    Old version: <b v-if="release.old.version">{{release.old.version}}</b><i v-else>None</i>, current version: <b>{{release.new.version}}</b>
+                    <div class="date">
+                        Created 
+                        {{release.created_at | moment("from", "now")}}
+                        (<i>on {{moment(release.created_at).format('MMMM Do YYYY, h:mm:ss a') }}</i>)
 
+                    </div>
+                </div>
+                <div class="meta">
+                    <div>
+                        <i class="file alternate icon"></i>{{release.diff.files.length}} diff file(s) created ({{ total_diff_size | pretty_size(precision=0) }})
+                        <button class="ui tinytiny grey labeled icon button" @click="applyDiff(release)">
+                            <i class="external link square alternate icon"></i>Apply
+                        </button>
+                    </div>
+                    <i class="chart line icon"></i>{{release.diff.stats.update | formatInteger }} updated,
+                    {{release.diff.stats.add | formatInteger }} added,
+                    {{release.diff.stats.deleted | formatInteger }} deleted.
+                    <b v-if="release.diff.stats.mapping_changed">Mapping has changed.</b>
+                    <!-- search release note associated to this diff, ie. generated with "old" collection -->
                 </div>
             </div>
-            <div class="meta">
-                <i class="file alternate icon"></i>{{release.diff.files.length}} diff file(s) created ({{ total_diff_size | pretty_size(precision=0) }})
-                <i class="chart line icon"></i>{{release.diff.stats.update | formatInteger }} updated,
-                {{release.diff.stats.add | formatInteger }} added,
-                {{release.diff.stats.deleted | formatInteger }} deleted.
-                <b v-if="release.diff.stats.mapping_changed">Mapping has changed.</b>
-                <!-- search release note associated to this diff, ie. generated with "old" collection -->
+            <div class="eight wide column">
                 <release-note-summary :build="build" :release="release"  :type="type"></release-note-summary>
-                <div class="ui pubactions basic compact segment">
-                    <button class="ui mini grey labeled icon button" @click="applyDiff(release)">
-                        <i class="external link square alternate
-                            icon"></i>
-                        Apply
-                    </button>
-                    <button class="ui mini grey labeled icon button" @click="publish(release)">
-                        <i class="share alternate square icon"></i>
-                        Publish
-                    </button>
-                </div>
             </div>
         </div>
 
@@ -88,15 +86,17 @@ import axios from 'axios'
 import bus from './bus.js'
 import Vue from 'vue';
 import ReleaseNoteSummary from './ReleaseNoteSummary.vue';
+import Loader from './Loader.vue'
 
 export default {
     name: 'diff-release-event',
+    mixins: [ Loader, ],
     props: ['release','build','type'],
     mounted() {
         $(".ui.backendenv.dropdown").dropdown();
     },
     beforeDestroy() {
-        $('.ui.basic.applydiff.modal').remove();
+        $(`.ui.basic.applydiff.modal.${this.release.old.backend}`).remove();
     },
     created() {
     },
@@ -120,16 +120,20 @@ export default {
         displayError : function() {
         },
         applyDiff(release) {
+            var self = this;
+            self.loading();
             axios.get(axios.defaults.baseURL + '/index_manager?remote=1')
             .then(response => {
                 // expecting a syncer exists with (diff_type,"es")
                 var envs = response.data.result;
                 this.compats = this.selectCompatibles(envs);
                 $(".ui.backendenv.dropdown").dropdown();
+                self.loaded();
             })
             .catch(err => {
                 console.log("Error getting index environments: ");
                 console.log(err);
+                self.loaderror(err);
                 throw err;
             })
             var oldcol = release.old.backend;
@@ -141,12 +145,14 @@ export default {
             $(`.ui.basic.applydiff.modal.${this.release.old.backend}`)
             .modal("setting", {
                 detachable : false,
+                closable: false,
                 onApprove: function () {
                         //var es_host = :
                         var backend = $(".ui.form select[name=target_backend] :selected");
                         var host = $(backend).attr("data-es_host");
                         var index = $(backend).attr("data-index");
                         var target_backend = [host,index,doc_type];
+                        self.loading();
                         axios.post(axios.defaults.baseURL + `/sync`,
                                 {"backend_type" : backend_type,
                                  "old_db_col_names" : oldcol,
@@ -155,20 +161,18 @@ export default {
                         .then(response => {
                             console.log(response.data.result)
                             bus.$emit("reload_build_detailed");
+                            self.loaded();
                             return response.data.result;
                         })
                         .catch(err => {
                             console.log("Error applying diff: ");
                             console.log(err);
+                            self.loaderror(err);
                         })
                 }
             })
             .modal("show");
 
-        },
-        publish(release) {
-            console.log("TODO publish");
-            console.log(release);
         },
         selectCompatibles(envs) {
             var _compat = [];
@@ -202,11 +206,12 @@ export default {
 </script>
 
 <style scoped>
+.tinytiny {
+    padding: .5em 1em .5em;
+    font-size: .6em;
+}
 .event-container {
     margin-bottom: 1em;
     width: inherit;
-}
-.pubactions {
-    padding: 0 0 1em 0 !important;
 }
 </style>

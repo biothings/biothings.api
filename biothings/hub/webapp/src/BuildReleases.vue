@@ -3,7 +3,7 @@
         <div v-if="error" class="ui error message">
             {{error}}
         </div>
-        <button class="ui small newrelease right floated  button" @click="newRelease">
+        <button class="ui small grey newrelease right floated  button" @click="newRelease">
             New release
         </button>
         <div class="ui feed"  v-if="releases">

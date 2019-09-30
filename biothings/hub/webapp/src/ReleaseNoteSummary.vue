@@ -1,22 +1,39 @@
 <template>
     <div class="meta">
         <span v-if="release_note">
-        <span v-if="type == 'incremental'">
-            <i class="bullhorn icon"></i> Release note <a @click="display()">available</a>.
-        </span>
-        <span v-else>
-            <i class="bullhorn icon"></i><b>{{ release_note.length }}</b> release note(s) available, generated against:
-                <div class="ui horizontal divided list">
-                    <div v-for="reln in release_note" class="item"><a @click="display(reln.changes.old.name)">{{reln.changes.old.name}}</a></div>
-                </div>
-        </span>
-        <b v-if="type == 'incremental' && release.diff.stats.mapping_changed">Mapping has changed.</b>
-        <!-- search release note associated to this diff, ie. generated with "old" collection -->
+            <span>
+                <i class="bullhorn icon"></i><b>{{ release_note.length }}</b> release note(s) available
+                    <table class="ui compact collapsing small table">
+                        <thead>
+                          <tr>
+                            <th>Compared with</th>
+                            <th>Notes</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="reln in release_note">
+                            <td v-if="type == 'incremental'">{{ release_id }} </td>
+                            <!-- don't why, reln.changes.old.name is undefined here for incremental,
+                                 but not in display() call... take it somewhere else -->
+                            <td v-else>{{ reln.changes.old.name }} </td>
+                            <td>
+                                <a @click="display(reln.changes.old.name)">View</a>
+                            </td>
+                            <td>
+                                <button class="ui tinytiny icon button" @click="generate">Generate</button>
+                                <button class="ui tinytiny grey labeled icon button" @click="publish(release)"><i class="share alternate square icon"></i>Publish</button>
+                            </td>
+                          </tr>
+                        </tbody>
+                    </table>
+            </span>
+            <b v-if="type == 'incremental' && release.diff.stats.mapping_changed">Mapping has changed.</b>
+            <!-- search release note associated to this diff, ie. generated with "old" collection -->
         </span>
         <span v-else>
             <i class="red bullhorn icon"></i><i><b>No</b> release note generated</i>
         </span>
-        <button class="ui tinytiny icon button" @click="generate">Generate</button>
 
         <span v-if="error">
             <br><br>
@@ -80,6 +97,7 @@
             </div>
         </div>
 
+        <!-- display release note -->
         <div :class="['ui basic disprelnote modal',release_id]">
             <h3 class="ui icon">
                 <i class="bullhorn icon"></i>
@@ -96,6 +114,54 @@
                 </div>
             </div>
         </div>
+
+        <!-- publish release-->
+        <div :class="['ui basic publishrelease modal',release_id]">
+            <h3 class="ui icon">
+                <i class="share square icon"></i>
+                Publish release
+            </h3>
+            <div class="content">
+                <div class="ui form">
+                    <div class="ui centered grid">
+                        <div class="eight wide column">
+
+                            <label>Select a release environment:</label>
+                            <div>
+                                <select class="ui fluid releaseenv dropdown" name="snapshot_env" v-model="selected_release_env">
+                                    <option v-for="_,env in release_envs">{{ env }}</option>
+                                </select>
+                                <br>
+                                <br>
+                            </div>
+                        </div>
+
+                        <div class="eight wide column">
+                            <span v-if="selected_release_env">
+                                <label>Configuration details:</label>
+                                <pre class="envdetails">{{ release_envs[selected_release_env] }}</pre>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ui error message" v-if="publish_error">
+                {{publish_error}}
+            </div>
+
+            <div class="actions">
+                <div class="ui red basic cancel inverted button">
+                    <i class="remove icon"></i>
+                    Cancel
+                </div>
+                <div class="ui green ok inverted button">
+                    <i class="checkmark icon"></i>
+                    OK
+                </div>
+            </div>
+        </div>
+
 
     </div>
 </template>
@@ -115,6 +181,7 @@ export default {
     beforeDestroy() {
         $('.ui.basic.genrelnote.modal').remove();
         $('.ui.basic.disprelnote.modal').remove();
+        $(`.ui.basic.publishrelease.modal.${this.release_id}`).remove();
     },
     created() {
     },
@@ -125,6 +192,9 @@ export default {
             list_builds_error : null,
             compats : {},
             release_note_content: null,
+            release_envs : {},
+            selected_release_env : null,
+            publish_error : null,
         }
     },
     computed: {
@@ -144,7 +214,11 @@ export default {
             if(this.build.release_note) {
                 if(this.type == "incremental") {
                     if(this.build.release_note.hasOwnProperty(this.release.old.backend)) {
-                        return this.build.release_note[this.release.old.backend];
+                        var rel = this.build.release_note[this.release.old.backend];
+                        rel["changes"]["old"]["name"] = self.release_id; // old collection name
+                        console.log("rel::::::::");
+                        console.log(rel);
+                        return [rel];
                     }
                 } else {
                     var relnotes = [];
@@ -165,6 +239,7 @@ export default {
         },
         display: function(old=null) {
             this.error = null;
+            console.log(`old ${old}`);
             if(this.type == "incremental") {
                 var oldb = this.release_id;
                 var newb = this.release.new.backend;
@@ -183,6 +258,7 @@ export default {
                 $(`.ui.basic.disprelnote.modal.${this.release_id}`)
                 .modal("setting", {
                     detachable : false,
+                    closable: false,
                 })
                 .modal("show");
             })
@@ -214,6 +290,7 @@ export default {
             $(`.ui.basic.genrelnote.modal.${this.release_id}`)
             .modal("setting", {
                 detachable : false,
+                closable: false,
                 onApprove: function () {
                     var note = $(`.ui.form.${self.release_id} textarea[name=note]`).val();
                     if(self.type == "full") {
@@ -252,7 +329,51 @@ export default {
                 }
             });
             return _compat;
-        }
+        },
+        publish(release) {
+            console.log(release);
+            var self = this;
+            self.error = null;
+            self.loading();
+            axios.get(axios.defaults.baseURL + '/release_manager')
+            .then(response => {
+                self.release_envs = response.data.result.env;
+                $(".ui.releaseenv.dropdown").dropdown();
+                self.loaded();
+            })
+            .catch(err => {
+                console.log("Error getting snapshot environments: ");
+                console.log(err);
+                self.loaderror(err);
+                self.error = err;
+            })
+            $(`.ui.basic.publishrelease.modal.${this.release_id}`)
+            .modal("setting", {
+                detachable : false,
+                closable: false,
+                onApprove: function () {
+                    return;
+                    if(!self.selected_snapshot_env)
+                        return;
+                    console.log(self.selected_snapshot_env);
+                    console.log(self.snapshot_name);
+                    axios.put(axios.defaults.baseURL + `/snapshot`,
+                        {"snapshot_env" : self.selected_snapshot_env,
+                         "index" : self.release.index_name,
+                         "snapshot" : self.snapshot_name})
+                    .then(response => {
+                        console.log(response.data.result)
+                        bus.$emit("reload_build_detailed");
+                        return response.data.result;
+                    })
+                    .catch(err => {
+                        console.log("Error publishing snapshot: ");
+                        console.log(err);
+                    })
+                }
+            })
+            .modal("show");
+        },
     }
 }
 </script>
@@ -260,9 +381,13 @@ export default {
 <style scoped>
 .tinytiny {
     padding: .5em 1em .5em;
-    font-size: .6em;
+    font-size: .6rem;
 }
 .relnotecontent {
+    font-size: .8em;
+    overflow: visible !important;
+}
+.envdetails {
     font-size: .8em;
     overflow: visible !important;
 }
