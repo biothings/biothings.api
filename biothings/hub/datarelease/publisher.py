@@ -326,8 +326,8 @@ class SnapshotPublisher(BasePublisher):
             else:
                 previous_build = previous_build.pop()
 
-            assert previous_build, "Couldn't find previous build %s" % bdoc.keys()
-            release_folder = generate_folder(btconfig.RELEASE_PATH,previous_build,bdoc["_id"])
+        assert previous_build, "Couldn't find previous build %s" % bdoc.keys()
+        release_folder = generate_folder(btconfig.RELEASE_PATH,previous_build,bdoc["_id"])
         
         assert release_folder, "No release folder found, can't publish"
 
@@ -1189,3 +1189,12 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
 
         return changes
 
+    def release_info(self, env=None, remote=False):
+        res = copy.deepcopy(self.release_config)
+        for kenv in self.release_config["env"]:
+            if env and env != kenv:
+                continue
+            if remote:
+                raise NotImplementedError()
+                # TODO: could list all releases from S3 ?
+        return res

@@ -182,6 +182,7 @@ class BaseDiffer(object):
             # load previous metadata in case we try to update/complete diff
             self.metadata = json.load(open(self.metadata_filename))
         else:
+            assert self.old.version, "Version for 'old' collection not defined"
             self.metadata = {
                     "diff" : {
                         "type" : self.diff_type,

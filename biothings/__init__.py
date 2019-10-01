@@ -442,13 +442,13 @@ class ConfigParser(object):
                 found_field = True
                 break
         if found_field:
+            section = self.find_section(field,lines,i)
+            invisible = self.is_invisible(field,lines,i)
+            hidden = self.is_hidden(field,lines,i)
+            readonly = self.is_readonly(field,lines,i)
             if not desc:
                 # no desc previously found in ConfigurationDefault or ConfigurationError
                 desc = self.find_description(field,lines,i)
-                section = self.find_section(field,lines,i)
-                invisible = self.is_invisible(field,lines,i)
-                hidden = self.is_hidden(field,lines,i)
-                readonly = self.is_readonly(field,lines,i)
         return {"found" : found_field,
                 "section" : section,
                 "desc" : desc,
@@ -499,7 +499,7 @@ class ConfigParser(object):
                 return m
 
     def find_section(self, field, lines, lineno):
-        match = self.find_special_comment("^#\*\s*(.*)\s*\*#$",field,lines,lineno,stop_on_eol=False)
+        match = self.find_special_comment("^#\*\s*(.*)\s*\*#\s*$",field,lines,lineno,stop_on_eol=False)
         if match:
             section = match.groups()[0]
             if not section: # if we have "#* *#" it's a section breaker
@@ -509,21 +509,21 @@ class ConfigParser(object):
             return section
 
     def is_invisible(self, field, lines, lineno):
-        match = self.find_special_comment("^#-\s*invisible\s*-#$",field,lines,lineno)
+        match = self.find_special_comment("^#-\s*invisible\s*-#\s*$",field,lines,lineno)
         if match:
             return True
         else:
             return False
 
     def is_hidden(self, field, lines, lineno):
-        match = self.find_special_comment("^#-\s*hide\s*-#$",field,lines,lineno)
+        match = self.find_special_comment("^#-\s*hide\s*-#\s*$",field,lines,lineno)
         if match:
             return True
         else:
             return False
 
     def is_readonly(self, field, lines, lineno):
-        match = self.find_special_comment("^#-\s*readonly\s*-#$",field,lines,lineno)
+        match = self.find_special_comment("^#-\s*readonly\s*-#\s*$",field,lines,lineno)
         if match:
             return True
         else:

@@ -536,7 +536,7 @@ class HubServer(object):
         self.commands = HubCommands()
         self.commands["status"] = CommandDefinition(command=partial(status,self.managers),tracked=False)
         if "config" in self.features:
-            self.commands["config"] = config.show
+            self.commands["config"] = CommandDefinition(command=config.show,tracked=False)
             self.commands["setconf"] = config.store_value_to_db
             self.commands["resetconf"] = config.reset
         # getting info
@@ -575,7 +575,7 @@ class HubServer(object):
         # data release commands
         if self.managers.get("release_manager"):
             self.commands["create_release_note"] = self.managers["release_manager"].create_release_note
-            self.commands["get_release_note"] = self.managers["release_manager"].get_release_note
+            self.commands["get_release_note"] = CommandDefinition(command=self.managers["release_manager"].get_release_note,tracked=False)
             self.commands["publish"] = self.managers["release_manager"].publish
             self.commands["publish_diff"] = self.managers["release_manager"].publish_diff
             self.commands["publish_snapshot"] = self.managers["release_manager"].publish_snapshot
@@ -608,6 +608,12 @@ class HubServer(object):
         self.extra_commands["pending"] = CommandDefinition(command=pending,tracked=False)
         self.extra_commands["loop"] = CommandDefinition(command=loop,tracked=False)
 
+        if self.managers.get("job_manager"):
+            self.extra_commands["pqueue"] = CommandDefinition(command=self.managers["job_manager"].process_queue,tracked=False)
+            self.extra_commands["tqueue"] = CommandDefinition(command=self.managers["job_manager"].thread_queue,tracked=False)
+            self.extra_commands["jm"] = CommandDefinition(command=self.managers["job_manager"],tracked=False)
+            self.extra_commands["top"] = CommandDefinition(command=self.managers["job_manager"].top,tracked=False)
+            self.extra_commands["job_info"] = CommandDefinition(command=self.managers["job_manager"].job_info,tracked=False)
         if self.managers.get("source_manager"):
             self.extra_commands["sm"] = CommandDefinition(command=self.managers["source_manager"],tracked=False)
             self.extra_commands["sources"] = CommandDefinition(command=self.managers["source_manager"].get_sources,tracked=False)
@@ -641,13 +647,12 @@ class HubServer(object):
             self.extra_commands["im"] = CommandDefinition(command=self.managers["index_manager"],tracked=False)
             self.extra_commands["index_info"] = CommandDefinition(command=self.managers["index_manager"].index_info,tracked=False)
             self.extra_commands["validate_mapping"] = CommandDefinition(command=self.managers["index_manager"].validate_mapping)
-            self.extra_commands["pqueue"] = CommandDefinition(command=self.managers["job_manager"].process_queue,tracked=False)
-            self.extra_commands["tqueue"] = CommandDefinition(command=self.managers["job_manager"].thread_queue,tracked=False)
-            self.extra_commands["jm"] = CommandDefinition(command=self.managers["job_manager"],tracked=False)
-            self.extra_commands["top"] = CommandDefinition(command=self.managers["job_manager"].top,tracked=False)
-            self.extra_commands["job_info"] = CommandDefinition(command=self.managers["job_manager"].job_info,tracked=False)
+        if self.managers.get("snapshot_manager"):
+            self.extra_commands["ssm"] = CommandDefinition(command=self.managers["snapshot_manager"],tracked=False)
+            self.extra_commands["snapshot_info"] = CommandDefinition(command=self.managers["snapshot_manager"].snapshot_info,tracked=False)
         if self.managers.get("release_manager"):
             self.extra_commands["rm"] = CommandDefinition(command=self.managers["release_manager"],tracked=False)
+            self.extra_commands["release_info"] = CommandDefinition(command=self.managers["release_manager"].release_info,tracked=False)
         if self.managers.get("inspect_manager"):
             self.extra_commands["ism"] = CommandDefinition(command=self.managers["inspect_manager"],tracked=False)
         if self.managers.get("api_manager"):
@@ -682,12 +687,19 @@ class HubServer(object):
         if "build_save_mapping" in cmdnames: self.api_endpoints["build"].append(EndpointDefinition(name="build_save_mapping",method="put",suffix="mapping"))
         if not self.api_endpoints["build"]:
             self.api_endpoints.pop("build")
+        self.api_endpoints["publish"] = []
+        if "publish_diff" in cmdnames: self.api_endpoints["publish"].append(EndpointDefinition(name="publish_diff",method="post",suffix="incremental",force_bodyargs=True))
+        if "publish_snapshot" in cmdnames: self.api_endpoints["publish"].append(EndpointDefinition(name="publish_snapshot",method="post",suffix="full",force_bodyargs=True))
+        if not self.api_endpoints["publish"]:
+            self.api_endpoints.pop("publish")
         if "diff" in cmdnames: self.api_endpoints["diff"] = EndpointDefinition(name="diff",method="put",force_bodyargs=True)
         if "job_info" in cmdnames: self.api_endpoints["job_manager"] = EndpointDefinition(name="job_info",method="get")
         if "dump_info" in cmdnames: self.api_endpoints["dump_manager"] = EndpointDefinition(name="dump_info", method="get")
         if "upload_info" in cmdnames: self.api_endpoints["upload_manager"] = EndpointDefinition(name="upload_info",method="get")
         if "build_config_info" in cmdnames: self.api_endpoints["build_manager"] = EndpointDefinition(name="build_config_info",method="get")
         if "index_info" in cmdnames: self.api_endpoints["index_manager"] = EndpointDefinition(name="index_info",method="get")
+        if "snapshot_info" in cmdnames: self.api_endpoints["snapshot_manager"] = EndpointDefinition(name="snapshot_info",method="get")
+        if "release_info" in cmdnames: self.api_endpoints["release_manager"] = EndpointDefinition(name="release_info",method="get")
         if "diff_info" in cmdnames: self.api_endpoints["diff_manager"] = EndpointDefinition(name="diff_info",method="get")
         if "commands" in cmdnames: self.api_endpoints["commands"] = EndpointDefinition(name="commands",method="get")
         if "command" in cmdnames: self.api_endpoints["command"] = EndpointDefinition(name="command",method="get")

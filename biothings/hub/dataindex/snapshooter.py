@@ -74,7 +74,7 @@ class Snapshooter(BaseStatusRegisterer):
 
     def get_es_idxr(self, envconf, index=None):
         if envconf["indexer"].get("env"):
-            # we should take indexer params from ES_CONFIG, ie. index_manager
+            # we should take indexer params from INDEX_CONFIG, ie. index_manager
             idxklass = self.index_manager.find_indexer(index)
             idxkwargs = self.index_manager[envconf["indexer"]["env"]]
         else:
@@ -368,3 +368,30 @@ class SnapshotManager(BaseManager):
         snapshooter = self[snapshot_env]
         return snapshooter.snapshot(index, snapshot=snapshot, steps=steps)
 
+    def snapshot_info(self, env=None, remote=False):
+        res = copy.deepcopy(self.snapshot_config)
+        for kenv in self.snapshot_config["env"]:
+            if env and env != kenv:
+                continue
+            if remote:
+                raise NotImplementedError()
+                # TODO: could list snapshot from ES
+                #try:
+                #    cl = Elasticsearch(res["env"][kenv]["host"],timeout=1,max_retries=0)
+                #    indices = [{"index":k,
+                #        "doc_type":list(v["mappings"].keys())[0],
+                #        "aliases":list(v["aliases"].keys())}
+                #        for k,v in cl.indices.get("*").items()]
+                #    # for now, we just consider
+                #    if type(res["env"][kenv]["index"]) == dict:
+                #        # we don't where to put those indices because we don't
+                #        # have that information, so we just put those in a default category
+                #        # TODO: put that info in metadata ?
+                #        res["env"][kenv]["index"].setdefault(None,[]).extend(indices)
+                #    else:
+                #        assert type(res["env"][kenv]["index"]) == list
+                #        res["env"][kenv]["index"].extend(indices)
+                #except Exception as e:
+                #    self.logger.warning("Can't load remote indices: %s" % e)
+                #    continue
+        return res
