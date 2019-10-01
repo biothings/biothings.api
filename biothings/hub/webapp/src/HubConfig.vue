@@ -30,11 +30,12 @@
                 </div>
 
                 <p>
-                    <div class="ui top attached pointing menu">
-                        <a class="red item " :data-tab="section" v-if="config" v-for="section in Object.keys(config)">{{ section }} </a>
+                    <div class="ui tiny top attached pointing menu">
+                        <!-- array.keys() gives index number -->
+                        <a :class="['red item',idx == 0 ? 'active' : '']" :data-tab="config_tabs[idx]" v-if="config" v-for="idx in config_tabs.keys()" >{{ config_tabs[idx] }} </a>
                     </div>
-                    <div class="ui bottom attached tab segment" :data-tab="section" v-if="config" v-for="section in Object.keys(config)">
-                        <hub-config-tab v-bind:section="section" v-bind:params="config[section]"></hub-config-tab>
+                    <div :class="['ui bottom attached tab segment',idx == 0 ? 'active':'']" :data-tab="config_tabs[idx]" v-if="config" v-for="idx in config_tabs.keys()">
+                        <hub-config-tab v-bind:section="config_tabs[idx]" v-bind:params="config[config_tabs[idx]]"></hub-config-tab>
                     </div>
                 </p>
             </div>
@@ -88,7 +89,6 @@ export default {
     },
     updated() {
         $('.menu .item').tab();
-        $('.menu .item').tab('change tab', 'General')
     },
     beforeDestroy() {
         bus.$off('change_source',this.onConfigChanged);
@@ -101,7 +101,9 @@ export default {
         }
     },
     computed: {
-        // a computed getter
+        config_tabs: function() {
+            return Object.keys(this.config).sort();
+        },
     },
     methods: {
         loadData () {
@@ -118,7 +120,7 @@ export default {
                     for(var param in conf) {
                         var info = conf[param];
                         // rename default section
-                        var section = info.section || "General";
+                        var section = info.section || "Misc";
                         delete info.section; // no need to store for each param now
                         info.name = param; // but we need to store the parameter name
                         if(bysections.hasOwnProperty(section)) {
