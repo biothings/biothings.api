@@ -4,7 +4,7 @@
             <div class="eight wide column">
                 <div class="summary">
                     <i class="large exchange alternate icon"></i>
-                    <b>diff</b> with <i>{{release.old.backend || '?'}}</i> has been computed.<br>
+                    Diff with <b>{{release.old.backend || '?'}}</b> has been computed.<br>
                     Old version: <b v-if="release.old.version">{{release.old.version}}</b><i v-else>None</i>, current version: <b>{{release.new.version}}</b>
                     <div class="date">
                         Created 
@@ -147,7 +147,6 @@ export default {
                 detachable : false,
                 closable: false,
                 onApprove: function () {
-                        //var es_host = :
                         var backend = $(".ui.form select[name=target_backend] :selected");
                         var host = $(backend).attr("data-es_host");
                         var index = $(backend).attr("data-index");
@@ -159,7 +158,6 @@ export default {
                                  "new_db_col_names" : newcol,
                                  "target_backend" : target_backend})
                         .then(response => {
-                            console.log(response.data.result)
                             bus.$emit("reload_build_detailed");
                             self.loaded();
                             return response.data.result;

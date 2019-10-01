@@ -13,6 +13,7 @@
                         (<i>on {{moment(release.created_at).format('MMMM Do YYYY, h:mm:ss a') }}</i>)
 
                     </div>
+                    Current version: <b>{{ build._meta.build_version }}</b>
                 </div>
                 <div class="meta">
                   <div>
@@ -20,6 +21,14 @@
                       <button :class="[release.snapshot ? 'disabled' : '','ui tinytiny grey labeled icon button']" @click="snapshot(release)">
                           <i class="bookmark icon"></i>Snapshot
                       </button>
+                  </div>
+                </div>
+                <div class="meta" v-if="build.snapshot">
+                  <div>
+                    <i class="server alternate icon"></i> {{ Object.keys(build.snapshot).length }} snapshot(s) created:
+                    <div class="ui horizontal divided list">
+                        <div v-for="info,name in build.snapshot" class="item"><a>{{name}}</a></div>
+                    </div>
                   </div>
                 </div>
             </div>
@@ -115,7 +124,6 @@ export default {
         displayError : function() {
         },
         snapshot(release) {
-            console.log(release);
             var self = this;
             self.error = null;
             self.loading();
@@ -136,22 +144,22 @@ export default {
                 detachable : false,
                 closable: false,
                 onApprove: function () {
+                    self.loading();
                     if(!self.selected_snapshot_env)
                         return;
-                    console.log(self.selected_snapshot_env);
-                    console.log(self.snapshot_name);
                     axios.put(axios.defaults.baseURL + `/snapshot`,
                         {"snapshot_env" : self.selected_snapshot_env,
                          "index" : self.release.index_name,
                          "snapshot" : self.snapshot_name})
                     .then(response => {
-                        console.log(response.data.result)
                         bus.$emit("reload_build_detailed");
+                        self.loaded();
                         return response.data.result;
                     })
                     .catch(err => {
                         console.log("Error creating snapshot: ");
                         console.log(err);
+                        self.loaderror(err);
                     })
                 }
             })

@@ -1,9 +1,10 @@
 <template>
     <div class="meta">
-        <span v-if="release_note">
+        <span v-if="release_notes">
             <span>
-                <i class="bullhorn icon"></i><b>{{ release_note.length }}</b> release note(s) available
-                    <table class="ui compact collapsing small table">
+                <i class="bullhorn icon"></i><b>{{ release_notes.length }}</b> release note(s) available
+                    <button class="ui tinytiny icon button" @click="generate">Generate</button>
+                    <table class="ui compact collapsing small green table" v-if="release_notes.length">
                         <thead>
                           <tr>
                             <th>Compared with</th>
@@ -12,17 +13,29 @@
                           </tr>
                         </thead>
                         <tbody>
-                          <tr v-for="reln in release_note">
+                          <tr v-for="reln in release_notes">
                             <td v-if="type == 'incremental'">{{ release_id }} </td>
-                            <!-- don't why, reln.changes.old.name is undefined here for incremental,
+                            <!-- don't know why, reln.changes.old.name is undefined here for incremental,
                                  but not in display() call... take it somewhere else -->
                             <td v-else>{{ reln.changes.old.name }} </td>
                             <td>
                                 <a @click="display(reln.changes.old.name)">View</a>
                             </td>
                             <td>
-                                <button class="ui tinytiny icon button" @click="generate">Generate</button>
-                                <button class="ui tinytiny grey labeled icon button" @click="publish(release)"><i class="share alternate square icon"></i>Publish</button>
+                                <!-- different way to pick the previous build name depending on
+                                     release type, as data intrinsically is different -->
+                                <button v-if="type == 'incremental'"
+                                        class="ui tinytiny grey labeled icon button"
+                                        @click="publish(release,release_id,build._id)">
+                                    <i class="share alternate square icon"></i>
+                                    Publish
+                                </button>
+                                <button v-else
+                                        class="ui tinytiny grey labeled icon button"
+                                        @click="publish(release,reln.changes.old.name,build._id)">
+                                    <i class="share alternate square icon"></i>
+                                    Publish
+                                </button>
                             </td>
                           </tr>
                         </tbody>
@@ -126,14 +139,43 @@
                     <div class="ui centered grid">
                         <div class="eight wide column">
 
-                            <label>Select a release environment:</label>
                             <div>
-                                <select class="ui fluid releaseenv dropdown" name="snapshot_env" v-model="selected_release_env">
+                                <select class="ui fluid releaseenv dropdown" name="publisher_env" v-model="selected_release_env">
+                                    <option value="" disabled selected>Select a release environment</option>
                                     <option v-for="_,env in release_envs">{{ env }}</option>
                                 </select>
                                 <br>
                                 <br>
                             </div>
+
+                            <label>The release note contains differences between:</label>
+                            <table class="ui inverted darkbluey definition table">
+                              <tbody>
+                                <tr>
+                                  <td>Current build</td>
+                                  <td>{{ selected_current }}</td>
+                                </tr>
+                                <tr>
+                                  <td>Previous build</td>
+                                  <td>{{ selected_previous }}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+
+                            <span v-if="type == 'full'">
+                                <div>
+                                    <select class="ui fluid releaseenv dropdown" name="snapshot" v-model="selected_snapshot">
+                                        <option value="" disabled selected>Select the snapshot to publish</option>
+                                        <option v-for="_,name in build.snapshot">{{ name }}</option>
+                                    </select>
+                                    <br>
+                                    <br>
+                                </div>
+                            </span>
+                            <span v-else>
+                                <label>Note: all diff files will be upload along with the release note.</label>
+                            </span>
+
                         </div>
 
                         <div class="eight wide column">
@@ -177,13 +219,14 @@ export default {
     mixins: [ Loader, ],
     props: ['release','build','type'],
     mounted() {
+        this.normalizeReleaseNotes();
+    },
+    created() {
     },
     beforeDestroy() {
         $('.ui.basic.genrelnote.modal').remove();
         $('.ui.basic.disprelnote.modal').remove();
         $(`.ui.basic.publishrelease.modal.${this.release_id}`).remove();
-    },
-    created() {
     },
     components: {  },
     data () {
@@ -192,9 +235,13 @@ export default {
             list_builds_error : null,
             compats : {},
             release_note_content: null,
+            selected_current: null,
+            selected_previous: null,
+            selected_snapshot: null,
             release_envs : {},
             selected_release_env : null,
             publish_error : null,
+            release_notes : [],
         }
     },
     computed: {
@@ -207,31 +254,12 @@ export default {
                 return this.release.old.backend;
             }
         },
-        release_note: function() {
-            // case 1: incremental
-            // build document contains release notes, and there's one that's been generated
-            // with our current release (old = collection against which we compute the diff)
-            if(this.build.release_note) {
-                if(this.type == "incremental") {
-                    if(this.build.release_note.hasOwnProperty(this.release.old.backend)) {
-                        var rel = this.build.release_note[this.release.old.backend];
-                        rel["changes"]["old"]["name"] = self.release_id; // old collection name
-                        console.log("rel::::::::");
-                        console.log(rel);
-                        return [rel];
-                    }
-                } else {
-                    var relnotes = [];
-                    for(var versus in this.build.release_note) {
-                        var rel = this.build.release_note[versus];
-                        // add old collection name in order to display it later
-                        rel["changes"]["old"]["name"] = versus;
-                        relnotes.push(rel);
-                    }
-                    return relnotes;
-                }
+    },
+    watch: {
+        build: function(newv,oldv) {
+            if(newv != oldv) {
+                this.normalizeReleaseNotes();
             }
-            return null;
         }
     },
     methods: {
@@ -239,7 +267,6 @@ export default {
         },
         display: function(old=null) {
             this.error = null;
-            console.log(`old ${old}`);
             if(this.type == "incremental") {
                 var oldb = this.release_id;
                 var newb = this.release.new.backend;
@@ -268,6 +295,31 @@ export default {
                 self.error = self.extractError(err);
                 throw err;
             })
+        },
+        normalizeReleaseNotes: function() {
+            // case 1: incremental
+            // build document contains release notes, and there's one that's been generated
+            // with our current release (old = collection against which we compute the diff)
+            if(this.build.release_note) {
+                // deep copy so we don't change original object
+                var rels = JSON.parse(JSON.stringify(this.build.release_note));
+                if(this.type == "incremental") {
+                    if(rels.hasOwnProperty(this.release.old.backend)) {
+                        var rel = rels[this.release.old.backend];
+                        rel["changes"]["old"]["name"] = self.release_id; // old collection name
+                        this.release_notes = [rel];
+                    }
+                } else {
+                    var relnotes = [];
+                    for(var versus in rels) {
+                        var rel = rels[versus];
+                        // add old collection name in order to display it later
+                        rel["changes"]["old"]["name"] = versus;
+                        relnotes.push(rel);
+                    }
+                    this.release_notes = relnotes;
+                }
+            }
         },
         generate: function() {
             this.error = null;
@@ -330,10 +382,13 @@ export default {
             });
             return _compat;
         },
-        publish(release) {
-            console.log(release);
+        publish: function(release,previous_build,current_build) {
             var self = this;
             self.error = null;
+            if(!previous_build || !current_build) {
+                console.log(`Can't publish, previous_build=${previous_build}, current_build=${current_build}`);
+                return;
+            }
             self.loading();
             axios.get(axios.defaults.baseURL + '/release_manager')
             .then(response => {
@@ -342,33 +397,39 @@ export default {
                 self.loaded();
             })
             .catch(err => {
-                console.log("Error getting snapshot environments: ");
+                console.log("Error getting publisher environments: ");
                 console.log(err);
                 self.loaderror(err);
                 self.error = err;
             })
+            self.selected_previous = previous_build;
+            self.selected_current = current_build;
             $(`.ui.basic.publishrelease.modal.${this.release_id}`)
             .modal("setting", {
                 detachable : false,
                 closable: false,
                 onApprove: function () {
-                    return;
-                    if(!self.selected_snapshot_env)
-                        return;
-                    console.log(self.selected_snapshot_env);
-                    console.log(self.snapshot_name);
-                    axios.put(axios.defaults.baseURL + `/snapshot`,
-                        {"snapshot_env" : self.selected_snapshot_env,
-                         "index" : self.release.index_name,
-                         "snapshot" : self.snapshot_name})
+                    var params = {"publisher_env" : self.selected_release_env,
+                        "build_name" : self.selected_current,
+                        "previous_build" : self.selected_previous};
+                    if(self.type == "full") {
+                        if(!self.selected_snapshot)
+                            return false;
+                        params["snapshot"] = self.selected_snapshot;
+                    }
+                    if(!self.selected_release_env)
+                        return false;
+                    self.loading();
+                    axios.post(axios.defaults.baseURL + `/publish/${self.type}`,params)
                     .then(response => {
-                        console.log(response.data.result)
                         bus.$emit("reload_build_detailed");
+                        self.loaded();
                         return response.data.result;
                     })
                     .catch(err => {
-                        console.log("Error publishing snapshot: ");
+                        console.log("Error publishing release: ");
                         console.log(err);
+                        self.loaderror(err);
                     })
                 }
             })
@@ -390,5 +451,8 @@ export default {
 .envdetails {
     font-size: .8em;
     overflow: visible !important;
+}
+.darkbluey {
+    background-color: #3c515d !important;
 }
 </style>
