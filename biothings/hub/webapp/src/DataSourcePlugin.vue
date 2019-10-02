@@ -219,7 +219,7 @@ export default {
               .catch(err => {
                 console.log("Error exporting plugin: " + err);
                 self.loaderror(err);
-                self.export_error = err.data.error;
+                self.export_error = self.extractError(err);
               })
               return false;
             }

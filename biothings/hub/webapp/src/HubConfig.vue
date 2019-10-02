@@ -30,7 +30,7 @@
                 </div>
 
                 <p>
-                    <div class="ui tiny top attached pointing menu">
+                    <div class="ui mini top attached pointing menu">
                         <!-- array.keys() gives index number -->
                         <a :class="['red item',idx == 0 ? 'active' : '']" :data-tab="config_tabs[idx]" v-if="config" v-for="idx in config_tabs.keys()" >{{ config_tabs[idx] }} </a>
                     </div>

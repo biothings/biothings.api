@@ -9,7 +9,6 @@
                           <tr>
                             <th>Compared with</th>
                             <th>Notes</th>
-                            <th>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -20,22 +19,6 @@
                             <td v-else>{{ reln.changes.old.name }} </td>
                             <td>
                                 <a @click="display(reln.changes.old.name)">View</a>
-                            </td>
-                            <td>
-                                <!-- different way to pick the previous build name depending on
-                                     release type, as data intrinsically is different -->
-                                <button v-if="type == 'incremental'"
-                                        class="ui tinytiny grey labeled icon button"
-                                        @click="publish(release,release_id,build._id)">
-                                    <i class="share alternate square icon"></i>
-                                    Publish
-                                </button>
-                                <button v-else
-                                        class="ui tinytiny grey labeled icon button"
-                                        @click="publish(release,reln.changes.old.name,build._id)">
-                                    <i class="share alternate square icon"></i>
-                                    Publish
-                                </button>
                             </td>
                           </tr>
                         </tbody>
@@ -128,83 +111,6 @@
             </div>
         </div>
 
-        <!-- publish release-->
-        <div :class="['ui basic publishrelease modal',release_id]">
-            <h3 class="ui icon">
-                <i class="share square icon"></i>
-                Publish release
-            </h3>
-            <div class="content">
-                <div class="ui form">
-                    <div class="ui centered grid">
-                        <div class="eight wide column">
-
-                            <div>
-                                <select class="ui fluid releaseenv dropdown" name="publisher_env" v-model="selected_release_env">
-                                    <option value="" disabled selected>Select a release environment</option>
-                                    <option v-for="_,env in release_envs">{{ env }}</option>
-                                </select>
-                                <br>
-                                <br>
-                            </div>
-
-                            <label>The release note contains differences between:</label>
-                            <table class="ui inverted darkbluey definition table">
-                              <tbody>
-                                <tr>
-                                  <td>Current build</td>
-                                  <td>{{ selected_current }}</td>
-                                </tr>
-                                <tr>
-                                  <td>Previous build</td>
-                                  <td>{{ selected_previous }}</td>
-                                </tr>
-                              </tbody>
-                            </table>
-
-                            <span v-if="type == 'full'">
-                                <div>
-                                    <select class="ui fluid releaseenv dropdown" name="snapshot" v-model="selected_snapshot">
-                                        <option value="" disabled selected>Select the snapshot to publish</option>
-                                        <option v-for="_,name in build.snapshot">{{ name }}</option>
-                                    </select>
-                                    <br>
-                                    <br>
-                                </div>
-                            </span>
-                            <span v-else>
-                                <label>Note: all diff files will be upload along with the release note.</label>
-                            </span>
-
-                        </div>
-
-                        <div class="eight wide column">
-                            <span v-if="selected_release_env">
-                                <label>Configuration details:</label>
-                                <pre class="envdetails">{{ release_envs[selected_release_env] }}</pre>
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="ui error message" v-if="publish_error">
-                {{publish_error}}
-            </div>
-
-            <div class="actions">
-                <div class="ui red basic cancel inverted button">
-                    <i class="remove icon"></i>
-                    Cancel
-                </div>
-                <div class="ui green ok inverted button">
-                    <i class="checkmark icon"></i>
-                    OK
-                </div>
-            </div>
-        </div>
-
-
     </div>
 </template>
 
@@ -226,7 +132,6 @@ export default {
     beforeDestroy() {
         $('.ui.basic.genrelnote.modal').remove();
         $('.ui.basic.disprelnote.modal').remove();
-        $(`.ui.basic.publishrelease.modal.${this.release_id}`).remove();
     },
     components: {  },
     data () {
@@ -235,12 +140,6 @@ export default {
             list_builds_error : null,
             compats : {},
             release_note_content: null,
-            selected_current: null,
-            selected_previous: null,
-            selected_snapshot: null,
-            release_envs : {},
-            selected_release_env : null,
-            publish_error : null,
             release_notes : [],
         }
     },
@@ -381,59 +280,6 @@ export default {
                 }
             });
             return _compat;
-        },
-        publish: function(release,previous_build,current_build) {
-            var self = this;
-            self.error = null;
-            if(!previous_build || !current_build) {
-                console.log(`Can't publish, previous_build=${previous_build}, current_build=${current_build}`);
-                return;
-            }
-            self.loading();
-            axios.get(axios.defaults.baseURL + '/release_manager')
-            .then(response => {
-                self.release_envs = response.data.result.env;
-                $(".ui.releaseenv.dropdown").dropdown();
-                self.loaded();
-            })
-            .catch(err => {
-                console.log("Error getting publisher environments: ");
-                console.log(err);
-                self.loaderror(err);
-                self.error = err;
-            })
-            self.selected_previous = previous_build;
-            self.selected_current = current_build;
-            $(`.ui.basic.publishrelease.modal.${this.release_id}`)
-            .modal("setting", {
-                detachable : false,
-                closable: false,
-                onApprove: function () {
-                    var params = {"publisher_env" : self.selected_release_env,
-                        "build_name" : self.selected_current,
-                        "previous_build" : self.selected_previous};
-                    if(self.type == "full") {
-                        if(!self.selected_snapshot)
-                            return false;
-                        params["snapshot"] = self.selected_snapshot;
-                    }
-                    if(!self.selected_release_env)
-                        return false;
-                    self.loading();
-                    axios.post(axios.defaults.baseURL + `/publish/${self.type}`,params)
-                    .then(response => {
-                        bus.$emit("reload_build_detailed");
-                        self.loaded();
-                        return response.data.result;
-                    })
-                    .catch(err => {
-                        console.log("Error publishing release: ");
-                        console.log(err);
-                        self.loaderror(err);
-                    })
-                }
-            })
-            .modal("show");
         },
     }
 }

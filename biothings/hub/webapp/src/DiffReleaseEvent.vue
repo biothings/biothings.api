@@ -19,6 +19,11 @@
                         <button class="ui tinytiny grey labeled icon button" @click="applyDiff(release)">
                             <i class="external link square alternate icon"></i>Apply
                         </button>
+                        <button class="ui tinytiny grey labeled icon button"
+                                @click="publish(release,release_id,build._id)">
+                            <i class="share alternate square icon"></i>
+                            Publish
+                        </button>
                     </div>
                     <i class="chart line icon"></i>{{release.diff.stats.update | formatInteger }} updated,
                     {{release.diff.stats.add | formatInteger }} added,
@@ -78,6 +83,73 @@
                 </div>
             </div>
         </div>
+
+        <!-- publish release-->
+        <div :class="['ui basic publishrelease modal',release_id]">
+            <h3 class="ui icon">
+                <i class="share square icon"></i>
+                Publish release
+            </h3>
+            <div class="content">
+                <div class="ui form">
+                    <div class="ui centered grid">
+                        <div class="eight wide column">
+
+                            <label>The following incremental release will be published, containing differences between:</label>
+                            <table class="ui inverted darkbluey definition table">
+                              <tbody>
+                                <tr>
+                                  <td>Current build</td>
+                                  <td>{{ selected_current }}</td>
+                                </tr>
+                                <tr>
+                                  <td>Previous build</td>
+                                  <td>{{ selected_previous }}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <label>Note: all diff files will be uploaded
+                                <span v-if="build.release_note"> as well as the release note associated to this incremental release.</span>
+                                <div v-else class="ui orange small message">Release note was not found and won't be published.</div>
+                            </label>
+                            <br>
+                            <br>
+
+                            <div>
+                                <select class="ui fluid releaseenv dropdown" name="publisher_env" v-model="selected_release_env">
+                                    <option value="" disabled selected>Select a release environment</option>
+                                    <option v-for="_,env in release_envs">{{ env }}</option>
+                                </select>
+                            </div>
+
+                        </div>
+
+                        <div class="eight wide column">
+                            <span v-if="selected_release_env">
+                                <label>Configuration details:</label>
+                                <pre class="envdetails">{{ release_envs[selected_release_env] }}</pre>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ui error message" v-if="publish_error">
+                {{publish_error}}
+            </div>
+
+            <div class="actions">
+                <div class="ui red basic cancel inverted button">
+                    <i class="remove icon"></i>
+                    Cancel
+                </div>
+                <div class="ui green ok inverted button">
+                    <i class="checkmark icon"></i>
+                    OK
+                </div>
+            </div>
+        </div>
+
     </div>
 </template>
 
@@ -86,11 +158,12 @@ import axios from 'axios'
 import bus from './bus.js'
 import Vue from 'vue';
 import ReleaseNoteSummary from './ReleaseNoteSummary.vue';
+import BaseReleaseEvent from './BaseReleaseEvent.vue';
 import Loader from './Loader.vue'
 
 export default {
     name: 'diff-release-event',
-    mixins: [ Loader, ],
+    mixins: [ Loader, BaseReleaseEvent, ],
     props: ['release','build','type'],
     mounted() {
         $(".ui.backendenv.dropdown").dropdown();
@@ -108,6 +181,11 @@ export default {
         }
     },
     computed: {
+        release_id: function() {
+            // id in that case is the build against which the diff's been computed
+            // not really well named, but we can live with that, right ?
+            return this.release.old.backend;
+        },
         total_diff_size: function() {
             var size = 0;
             if(this.release.diff && this.release.diff.files) {
@@ -198,7 +276,44 @@ export default {
                 }
             });
             return _compat;
-        }
+        },
+        publish: function(release,previous_build,current_build) {
+            var self = this;
+            self.error = null;
+            if(!previous_build || !current_build) {
+                console.log(`Can't publish, previous_build=${previous_build}, current_build=${current_build}`);
+                return;
+            }
+            self.getReleaseEnvironments();
+
+            self.selected_previous = previous_build;
+            self.selected_current = current_build;
+            $(`.ui.basic.publishrelease.modal.${this.release_id}`)
+            .modal("setting", {
+                detachable : false,
+                closable: false,
+                onApprove: function () {
+                    var params = {"publisher_env" : self.selected_release_env,
+                        "build_name" : self.selected_current,
+                        "previous_build" : self.selected_previous};
+                    if(!self.selected_release_env)
+                        return false;
+                    self.loading();
+                    axios.post(axios.defaults.baseURL + `/publish/incremental`,params)
+                    .then(response => {
+                        bus.$emit("reload_build_detailed");
+                        self.loaded();
+                        return response.data.result;
+                    })
+                    .catch(err => {
+                        console.log("Error publishing release: ");
+                        console.log(err);
+                        self.loaderror(err);
+                    })
+                }
+            })
+            .modal("show");
+        },
     }
 }
 </script>
