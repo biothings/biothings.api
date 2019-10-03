@@ -29,13 +29,16 @@
                     <table class="ui compact collapsing small green table">
                         <thead>
                           <tr>
-                            <th>Name</th>
+                            <th>Snapshot Name</th>
                             <th>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr v-for="info,name in build.snapshot" class="item">
-                            <td><a>{{name}}</a></td>
+                            <td>
+                                <a>{{name}}</a>
+                                <publish-summary v-if="build.publish && build.publish.full && build.publish.full.hasOwnProperty(name)":publish="build.publish.full[name]" :type="type"></publish-summary>
+                            </td>
                             <td>
                                 <button class="ui tinytiny grey labeled icon button"
                                         @click="publish(release,name,build._id)">
@@ -143,7 +146,6 @@
                                 <select class="ui fluid releaseenv dropdown" name="release_note" v-model="selected_release_note" v-if="build.release_note">
                                     <option value="" disabled selected>Select a release note to publish with this snapshot</option>
                                     <option v-for="_,reln in build.release_note">{{ reln }}</option>
-
                                 </select>
                                 <div v-else class="ui orange small message">Release note was not found and won't be published.</div>
                             </div>
@@ -186,6 +188,7 @@ import bus from './bus.js'
 import Vue from 'vue';
 import ReleaseNoteSummary from './ReleaseNoteSummary.vue';
 import BaseReleaseEvent from './BaseReleaseEvent.vue';
+import PublishSummary from './PublishSummary.vue';
 import Loader from './Loader.vue'
 
 export default {
@@ -197,7 +200,7 @@ export default {
     beforeDestroy() {
         $(`.ui.basic.createsnapshot.modal.${this.release.index_name}`).remove();
     },
-    components: { ReleaseNoteSummary, },
+    components: { ReleaseNoteSummary, PublishSummary, },
     data () {
         return {
             snapshot_envs : {},

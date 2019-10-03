@@ -29,7 +29,9 @@
                     {{release.diff.stats.add | formatInteger }} added,
                     {{release.diff.stats.deleted | formatInteger }} deleted.
                     <b v-if="release.diff.stats.mapping_changed">Mapping has changed.</b>
-                    <!-- search release note associated to this diff, ie. generated with "old" collection -->
+                    <div>
+                    <publish-summary v-if="build.publish && build.publish.incremental && build.publish.incremental.hasOwnProperty(release_id)":publish="build.publish.incremental[release_id]" :type="type"></publish-summary>
+                    </div>
                 </div>
             </div>
             <div class="eight wide column">
@@ -158,6 +160,7 @@ import axios from 'axios'
 import bus from './bus.js'
 import Vue from 'vue';
 import ReleaseNoteSummary from './ReleaseNoteSummary.vue';
+import PublishSummary from './PublishSummary.vue';
 import BaseReleaseEvent from './BaseReleaseEvent.vue';
 import Loader from './Loader.vue'
 
@@ -173,7 +176,7 @@ export default {
     },
     created() {
     },
-    components: { ReleaseNoteSummary, },
+    components: { ReleaseNoteSummary, PublishSummary, },
     data () {
         return {
             errors : [],
