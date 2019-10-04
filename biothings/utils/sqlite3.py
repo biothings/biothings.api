@@ -208,13 +208,18 @@ class Collection(object):
         else:
             self.insert_one(doc)
 
-    def replace_one(self,query,doc):
+    def replace_one(self,query,doc,upsert=False):
         orig = self.find_one(query)
         if orig:
             with self.get_conn() as conn:
                 conn.execute("UPDATE %s SET document = ? WHERE _id = ?" % self.colname,
                         (json.dumps(doc,default=json_serial),orig["_id"]))
                 conn.commit()
+        elif upsert:
+            assert "_id" in query
+            doc["_id"] = query["_id"]
+            self.save(doc)
+            
 
     def remove(self,query):
         docs = self.find(query)
