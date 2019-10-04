@@ -350,16 +350,16 @@ class SnapshotPublisher(BasePublisher):
                     res = f.result()
                     self.register_status(bdoc,"success",
                             job={"step": step,"result" : res},
-                            publish={snapshot : {"conf" : self.envconf,step : res}})
+                            publish={"full" : {snapshot : {"conf" : self.envconf,step : res}}})
                 except Exception as e:
                     nonlocal got_error
                     got_error = e
                     self.register_status(bdoc,"failed",
                             job={"step": step,"err" : str(e)},
-                            publish={snapshot : {
+                            publish={"full" : {snapshot : {
                                 "conf" : self.envconf,
                                 step : {"err" : str(e)}
-                                }})
+                                }}})
                     self.logger.exception("Error while running pre-publish: %s" % got_error)
 
             if not "_meta" in bdoc:
@@ -370,7 +370,7 @@ class SnapshotPublisher(BasePublisher):
                 pinfo["step"] = "pre"
                 self.logger.info("Running pre-publish step")
                 self.register_status(bdoc,"pre",transient=True,init=True,
-                        job={"step":"pre"},publish={snapshot:{}})
+                        job={"step":"pre"},publish={"full":{snapshot:{}}})
                 job = yield from self.job_manager.defer_to_thread(pinfo,
                         partial(self.pre_publish,snapshot,self.envconf,bdoc))
                 job.add_done_callback(partial(done,step="pre"))
@@ -410,7 +410,7 @@ class SnapshotPublisher(BasePublisher):
                     if os.path.exists(release_folder):
                         try:
                             self.register_status(bdoc,"publishing",transient=True,init=True,
-                                    job={"step":"release-note"},publish={snapshot:{}})
+                                    job={"step":"release-note"},publish={"full" : {snapshot:{}}})
                             # ok, we have something in that folder, just pick the release note files
                             # (we can generate diff + snaphost at the same time, so there could be diff files in that folder
                             # from a diff process done before. release notes will be the same though)
@@ -422,25 +422,25 @@ class SnapshotPublisher(BasePublisher):
                             s3basedir = os.path.join(s3_release_folder,build_version)
                             self.register_status(bdoc,"success",
                                     job={"step":"release-note"},
-                                    publish={snapshot : {
+                                    publish={"full" : {snapshot : {
                                         "conf" : self.envconf,
                                         "release-note": {
                                             "base_dir" : s3basedir,
                                             "bucket" : s3_release_bucket,
                                             "url" : urls
                                             }
-                                        }})
+                                        }}})
                         except Exception as e:
                             self.logger.exception("Failed to upload release notes: %s" % e)
                             self.register_status(bdoc,"failed",
                                     job={"step":"release-note","err" : str(e)},
-                                    publish={snapshot : {
+                                    publish={"full": {snapshot : {
                                         "conf" : self.envconf,
                                         "release-note" : {
                                             "err" : str(e),
                                             "base_dir" : s3basedir,
                                             "bucket" : s3_release_bucket},
-                                        }})
+                                        }}})
                             raise
 
                     else:
@@ -450,7 +450,7 @@ class SnapshotPublisher(BasePublisher):
 
                 try:
                     self.register_status(bdoc,"publishing",transient=True,init=True,
-                            job={"step":"metadata"},publish={snapshot:{}})
+                            job={"step":"metadata"},publish={"full":{snapshot:{}}})
                     # now dump that metadata
                     build_info = "%s.json" % build_version
                     build_info_path = os.path.join(btconfig.RELEASE_PATH,build_info)
@@ -486,18 +486,18 @@ class SnapshotPublisher(BasePublisher):
                     self.logger.info("Registered version '%s'" % (build_version))
                     self.register_status(bdoc,"success",
                             job={"step":"metadata"},
-                            publish={snapshot : {
+                            publish={"full":{snapshot : {
                                 "conf" : self.envconf,
                                 "metadata" : full_info
-                                }})
+                                }}})
                 except Exception as e:
                     self.logger.exception("Failed to upload snapshot metadata: %s" % e)
                     self.register_status(bdoc,"failed",
                             job={"step":"metadata","err" : str(e)},
-                            publish={snapshot : {
+                            publish={"full":{snapshot : {
                                 "conf" : self.envconf,
                                 "metadata" : {"err" : str(e)}
-                                }})
+                                }}})
                     raise
 
 
@@ -505,7 +505,7 @@ class SnapshotPublisher(BasePublisher):
                 pinfo["step"] = "post"
                 self.logger.info("Running post-publish step")
                 self.register_status(bdoc,"post-publishing",transient=True,init=True,
-                        job={"step":"post-publish"},publish={snapshot:{}})
+                        job={"step":"post-publish"},publish={"fulle":{snapshot:{}}})
                 job = yield from self.job_manager.defer_to_thread(pinfo,partial(
                                             self.post_publish,
                                             snapshot,
@@ -640,18 +640,18 @@ class DiffPublisher(BasePublisher):
                     res = f.result()
                     self.register_status(bdoc,"success",
                             job={"step": step,"result" : res},
-                            publish={build_name : {"conf" : self.envconf,
+                            publish={"incremental":{previous_build: {"conf" : self.envconf,
                                 step : res}
-                                })
+                                }})
                 except Exception as e:
                     nonlocal got_error
                     got_error = e
                     self.register_status(bdoc,"failed",
                             job={"step": step,"err" : str(e)},
-                            publish={build_name : {
+                            publish={"incremental":{previous_build: {
                                 "conf" : self.envconf,
                                 step : {"err" : str(e)}
-                                }})
+                                }}})
                     self.logger.exception("Error while running %s-publish: %s" % (step,got_error))
 
             if not "_meta" in bdoc:
@@ -662,7 +662,7 @@ class DiffPublisher(BasePublisher):
                 pinfo["step"] = "pre"
                 self.logger.info("Running pre-publish step")
                 self.register_status(bdoc,"pre",transient=True,init=True,
-                        job={"step":"pre"},publish={build_name:{}})
+                        job={"step":"pre"},publish={"incremental":{previous_build:{}}})
                 job = yield from self.job_manager.defer_to_thread(pinfo,
                         partial(self.pre_publish,previous_build,self.envconf,bdoc))
                 job.add_done_callback(partial(done,step="pre"))
@@ -677,7 +677,7 @@ class DiffPublisher(BasePublisher):
                 pinfo["step"] = "reset synced"
                 self.logger.info("Resetting 'synced' flag in pyobj files located in folder '%s'" % diff_folder)
                 self.register_status(bdoc,"reset-synced",transient=True,init=True,
-                        job={"step":"reset-synced"},publish={build_name:{}})
+                        job={"step":"reset-synced"},publish={"incremental":{previous_build:{}}})
                 job = yield from self.job_manager.defer_to_thread(pinfo,partial(self.reset_synced,diff_folder))
                 job.add_done_callback(partial(done,step="reset"))
                 yield from job
@@ -690,7 +690,7 @@ class DiffPublisher(BasePublisher):
                 pinfo["step"] = "upload"
                 self.logger.info("Uploading files from '%s' to s3 (%s/%s)" % (diff_folder,s3_diff_bucket,s3_diff_basedir))
                 self.register_status(bdoc,"upload",transient=True,init=True,
-                        job={"step":"upload"},publish={build_name:{}})
+                        job={"step":"upload"},publish={"incremental":{previous_build:{}}})
                 job = yield from self.job_manager.defer_to_thread(pinfo,partial(aws.send_s3_folder,
                     diff_folder,s3basedir=s3_diff_basedir,
                     aws_key=self.envconf.get("cloud",{}).get("access_key"),
@@ -702,7 +702,9 @@ class DiffPublisher(BasePublisher):
 
             if "meta" in steps:
                 # finally we create a metadata json file pointing to this release
-                def gen_meta():
+                try:
+                    self.register_status(bdoc,"metadata",transient=True,init=True,
+                            job={"step":"metadata"},publish={"incremental":{previous_build:{}}})
                     pinfo["step"] = "generate meta"
                     self.logger.info("Generating JSON metadata for incremental release '%s'" % diff_version)
                     # if the same, this would create an infinite loop in autoupdate hub
@@ -774,20 +776,31 @@ class DiffPublisher(BasePublisher):
                             aws_key=self.envconf.get("cloud",{}).get("access_key"),
                             aws_secret=self.envconf.get("cloud",{}).get("secret_key"))
                     self.logger.info("Registered version '%s'" % (diff_version))
-                self.register_status(bdoc,"metadata",transient=True,init=True,
-                        job={"step":"metadata"},publish={build_name:{}})
-                job = yield from self.job_manager.defer_to_thread(pinfo,gen_meta)
-                job.add_done_callback(partial(done,step="metadata"))
-                yield from job
-                if got_error:
-                    raise got_error
+
+                    self.register_status(bdoc,"success",
+                            job={"step":"metadata"},
+                            publish={"incremental":{previous_build: {
+                                "conf" : self.envconf,
+                                "metadata" : diff_info
+                                }}})
+
+                except Exception as e:
+                    self.logger.exception("Failed to upload snapshot metadata: %s" % e)
+                    self.register_status(bdoc,"failed",
+                            job={"step":"metadata","err" : str(e)},
+                            publish={"incremental":{previous_build: {
+                                "conf" : self.envconf,
+                                "metadata" : {"err" : str(e)}
+                                }}})
+                    raise
+
                 jobs.append(job)
 
             if "post" in steps:
                 pinfo["step"] = "post"
                 self.logger.info("Running post-publish step")
                 self.register_status(bdoc,"post",transient=True,init=True,
-                        job={"step":"post"},publish={build_name:{}})
+                        job={"step":"post"},publish={"incremental":{previous_build:{}}})
                 job = yield from self.job_manager.defer_to_thread(pinfo,
                         partial(self.post_publish,previous_build,self.envconf,bdoc))
                 job.add_done_callback(partial(done,step="post"))

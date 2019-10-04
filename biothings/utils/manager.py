@@ -727,10 +727,16 @@ class JobManager(object):
 
     @property
     def hub_memory(self):
-        procs = [self.hub_process] + self.pchildren
         total_mem = 0
-        for proc in procs:
-            total_mem += proc.memory_info().rss
+        try:
+            procs = [self.hub_process] + self.pchildren
+            for proc in procs:
+                total_mem += proc.memory_info().rss
+        except psutil.NoSuchProcess:
+            # observed multiple time: hub main pid doesn't exist, like it was replace, not sure why,... OS ?
+            self._phub = None
+            self._pchildren = None
+
         return total_mem
 
     def get_pid_files(self, child=None):
@@ -859,50 +865,54 @@ class JobManager(object):
         running_pids = self.get_pid_files()
         res = {}
         for child in self.pchildren:
-            mem = child.memory_info().rss
-            pio = child.io_counters()
-            # TODO: cpu as reported here isn't reliable, the only to get something
-            # consistent to call cpu_percent() with a waiting time argument to integrate
-            # CPU activity over this time, but this is a blocking call and freeze the hub
-            # (an async implementation might possible though). Currently, pchildren is list
-            # set at init time where process object are stored, so subsequent cpu_percent()
-            # calls should report CPU activity since last call (between /job_manager & top()
-            # calls), but it constently return CPU > 100% even when no thread running (that
-            # could have been the explination but it's not).
-            cpu = child.cpu_percent()
-            res[child.pid] = {
-                    "memory" : {
-                        "size" : child.memory_info().rss,
-                        "percent": child.memory_percent(),
-                        },
-                    "cpu" : {
-                        # override status() when we have cpu activity to avoid
-                        # having a "sleeping" process that's actually running something
-                        # (prob happening because delay between status and cpu_percent(), like a race condition)
-                        "status" : cpu > 0.0 and "running" or child.status(),
-                        "percent" : cpu
-                        },
-                    "io" : {
-                        "read_count" : pio.read_count,
-                        "write_count" : pio.write_count,
-                        "read_bytes" : pio.read_bytes,
-                        "write_bytes" : pio.write_bytes
+            try:
+                mem = child.memory_info().rss
+                pio = child.io_counters()
+                # TODO: cpu as reported here isn't reliable, the only to get something
+                # consistent to call cpu_percent() with a waiting time argument to integrate
+                # CPU activity over this time, but this is a blocking call and freeze the hub
+                # (an async implementation might possible though). Currently, pchildren is list
+                # set at init time where process object are stored, so subsequent cpu_percent()
+                # calls should report CPU activity since last call (between /job_manager & top()
+                # calls), but it constently return CPU > 100% even when no thread running (that
+                # could have been the explination but it's not).
+                cpu = child.cpu_percent()
+                res[child.pid] = {
+                        "memory" : {
+                            "size" : child.memory_info().rss,
+                            "percent": child.memory_percent(),
+                            },
+                        "cpu" : {
+                            # override status() when we have cpu activity to avoid
+                            # having a "sleeping" process that's actually running something
+                            # (prob happening because delay between status and cpu_percent(), like a race condition)
+                            "status" : cpu > 0.0 and "running" or child.status(),
+                            "percent" : cpu
+                            },
+                        "io" : {
+                            "read_count" : pio.read_count,
+                            "write_count" : pio.write_count,
+                            "read_bytes" : pio.read_bytes,
+                            "write_bytes" : pio.write_bytes
+                            }
                         }
-                    }
 
-            if child.pid in running_pids:
-                # something is running on that child process
-                worker = running_pids[child.pid]
-                res[child.pid]["job"] = {
-                        "started_at": worker["job"]["started_at"],
-                        "duration" : timesofar(worker["job"]["started_at"],0),
-                        "func_name" : worker["func_name"],
-                        "category" : worker["job"]["category"],
-                        "description" : worker["job"]["description"],
-                        "source" : worker["job"]["source"],
-                        "step" : worker["job"]["step"],
-                        "id" : worker["job"]["id"],
-                        }
+                if child.pid in running_pids:
+                    # something is running on that child process
+                    worker = running_pids[child.pid]
+                    res[child.pid]["job"] = {
+                            "started_at": worker["job"]["started_at"],
+                            "duration" : timesofar(worker["job"]["started_at"],0),
+                            "func_name" : worker["func_name"],
+                            "category" : worker["job"]["category"],
+                            "description" : worker["job"]["description"],
+                            "source" : worker["job"]["source"],
+                            "step" : worker["job"]["step"],
+                            "id" : worker["job"]["id"],
+                            }
+            except psutil.NoSuchProcess as e:
+                print("child not found %s %s" % (child,e))
+                continue
 
         return res
 
