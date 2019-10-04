@@ -48,8 +48,12 @@ def get_hub_config():
     return db[getattr(db.CONFIG,"HUB_CONFIG_COLLECTION","hub_config")]
 
 def get_last_command():
-    #dummy...
-    return {"_id":1}
+    try:
+        db = Database()
+        res = db.get_conn().execute("SELECT MAX(_id) FROM cmd").fetchall()
+        return {"_id":res[0][0]}
+    except Exception as e:
+        return {"_id":1}
 
 def get_source_fullname(col_name):
     """
@@ -209,14 +213,15 @@ class Collection(object):
             self.insert_one(doc)
 
     def replace_one(self,query,doc,upsert=False):
+        assert "_id" in query
         orig = self.find_one(query)
+        orig["_id"] = query["_id"]
         if orig:
             with self.get_conn() as conn:
                 conn.execute("UPDATE %s SET document = ? WHERE _id = ?" % self.colname,
                         (json.dumps(doc,default=json_serial),orig["_id"]))
                 conn.commit()
         elif upsert:
-            assert "_id" in query
             doc["_id"] = query["_id"]
             self.save(doc)
             
