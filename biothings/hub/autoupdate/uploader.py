@@ -11,7 +11,7 @@ from biothings.utils.es import IndexerException
 
 class BiothingsUploader(uploader.BaseSourceUploader):
 
-    name = "biothings"
+    name = None
 
     # Specify the backend this uploader should work with. Must be defined before instantiation
     # (can be an instance or a partial() returning an instance)

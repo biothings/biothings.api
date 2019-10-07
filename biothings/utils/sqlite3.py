@@ -215,8 +215,8 @@ class Collection(object):
     def replace_one(self,query,doc,upsert=False):
         assert "_id" in query
         orig = self.find_one(query)
-        orig["_id"] = query["_id"]
         if orig:
+            orig["_id"] = query["_id"]
             with self.get_conn() as conn:
                 conn.execute("UPDATE %s SET document = ? WHERE _id = ?" % self.colname,
                         (json.dumps(doc,default=json_serial),orig["_id"]))
