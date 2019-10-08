@@ -158,7 +158,7 @@ class Collection(object):
         """Insert a document in the collection. Raise an error if already inserted"""
         raise NotImplementedError()
 
-    def update_one(self,query,what):
+    def update_one(self,query,what,upsert=False):
         """Update one document (or the first matching query). See find() for query parameter.
         "what" tells how to update the document. $set/$unset/$push operators must be implemented
         (refer to MongoDB documentation for more). Nested keys operation aren't necesary.

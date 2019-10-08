@@ -177,7 +177,7 @@ class Collection(object):
                     (doc["_id"],json.dumps(doc,default=json_serial))).fetchone()
             conn.commit()
 
-    def update_one(self,query,what):
+    def update_one(self,query,what,upsert=False):
         assert len(what) == 1 and ("$set" in what or \
                 "$unset" in what or "$push" in what), "$set/$unset/$push operators not found"
         doc = self.find_one(query)
@@ -195,8 +195,11 @@ class Collection(object):
                 for listkey,elem in what["$push"].items():
                     assert not "." in listkey, "$push not supported for nested keys: %s" % listkey
                     doc.setdefault(listkey,[]).append(elem)
-
             self.save(doc)
+        elif upsert:
+            assert "$set" in what
+            query.update(what["$set"])
+            self.save(query)
 
     def update(self,query,what):
         docs = self.find(query)

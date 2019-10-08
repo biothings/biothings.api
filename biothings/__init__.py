@@ -175,7 +175,7 @@ class ConfigurationManager(types.ModuleType):
                                          upsert=True) 
         self.dirty = True # may need a reload
         self.clear_cache()
-        return res.upserted_id
+        return res
 
     def get_value_from_db(self, name, scope="config"):
         if self.hub_config:
@@ -418,7 +418,7 @@ class ConfigParser(object):
     def find_docstring_in_config(self, config, field):
         field = field.strip()
         if "." in field:
-            # dotfield notiation, explore a dict
+            # dotfield notation, explore a dict
             raise NotImplementedError("docstring no supported in dict")
             pass
         if not hasattr(config,field):
@@ -488,10 +488,14 @@ class ConfigParser(object):
 
     def find_special_comment(self, pattern, field, lines, lineno, stop_on_eol=True):
         pat = re.compile(pattern)
+        commentpat = re.compile("^\s*#")
         i = lineno
         while i > 0:
             i -= 1
             l = lines[i]
+            if stop_on_eol and not commentpat.match(l):
+                # not even a comment, brek
+                return False
             if stop_on_eol and l.startswith("\n"):
                 break
             m = pat.match(l)
