@@ -51,6 +51,7 @@ def get_last_command():
     try:
         db = Database()
         res = db.get_conn().execute("SELECT MAX(_id) FROM cmd").fetchall()
+        assert res[0][0], "No command ID found, bootstrap ?"
         return {"_id":res[0][0]}
     except Exception as e:
         return {"_id":1}
