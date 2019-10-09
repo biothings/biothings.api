@@ -177,3 +177,13 @@ def create_bucket(name, region=None, aws_key=None, aws_secret=None, acl=None,
         if e.response["Error"]["Code"] == "BucketAlreadyOwnedByYou" and not ignore_already_exists:
             raise
 
+def set_static_website(name, aws_key=None, aws_secret=None, index="index.html", error="error.html"):
+    client = boto3.client("s3",aws_access_key_id=aws_key,aws_secret_access_key=aws_secret)
+    conf = {'IndexDocument': {'Suffix': index},
+            'ErrorDocument': {'Key': error}}
+    client.put_bucket_website(Bucket=name,WebsiteConfiguration=conf)
+    location = client.get_bucket_location(Bucket=name)
+    region = location["LocationConstraint"]
+    # generate website URL
+    return "http://%(name)s.s3-website-%(region)s.amazonaws.com" % {"name":name,"region":region}
+

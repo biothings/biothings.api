@@ -95,6 +95,10 @@ class BasePublisher(BaseManager,BaseStatusRegisterer):
                 aws_key=aws_key,aws_secret=aws_secret,
                 acl=bucket_conf.get("acl"),
                 ignore_already_exists=True)
+        if bucket_conf.get("website"):
+            aws.set_static_website(bucket_conf["bucket"],
+                                   aws_key=aws_key,
+                                   aws_secret=aws_secret)
 
     def trigger_release_note(self,doc,**kwargs):
         """
@@ -404,7 +408,10 @@ class SnapshotPublisher(BasePublisher):
                         "app_version": btconfig.APP_VERSION,
                         "biothings_version": btconfig.BIOTHINGS_VERSION,
                         "standalone_version": btconfig.STANDALONE_VERSION,
-                        "metadata" : {"repository" : bdoc["snapshot"][snapshot]["repository"]}
+                        "metadata" : {
+                            "repository" : bdoc["snapshot"][snapshot]["repository"],
+                            "snapshot_name" : snapshot,
+                            }
                         }
                 if release_folder:
                     if os.path.exists(release_folder):

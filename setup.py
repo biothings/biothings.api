@@ -72,6 +72,7 @@ hub_requires = [
     'pip',              # auto-install requirements from plugins
     'pandas',  # json with inf/nan and more to come
     'yapf',  # code reformatter, better results than autopep8
+    'requests-aws4auth', # aws s3 auth requests for autohub
 ]
 
 # extra requirements for building docs

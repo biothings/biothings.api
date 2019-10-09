@@ -3,6 +3,7 @@ import asyncio
 from urllib.parse import urlparse, urljoin
 from functools import partial
 import boto3
+from requests_aws4auth import AWS4Auth
 
 from biothings import config as btconfig
 from biothings.hub.dataload.dumper import HTTPDumper, DumperException
@@ -70,7 +71,15 @@ class BiothingsDumper(HTTPDumper):
         if self.__class__.AWS_ACCESS_KEY_ID and self.__class__.AWS_SECRET_ACCESS_KEY:
             # accessing diffs controled by auth
             key = parsed.path.strip("/") # s3 key are relative, not / at beginning
-            return self.auth_download(btconfig.S3_DIFF_BUCKET,key,localfile,headers)
+            # extract bucket name from URL (reliable?)
+            pat = re.compile("^(.*?)\..*\.amazonaws.com")
+            m = pat.match(parsed.netloc)
+            if m:
+                bucket_name = m.groups()[0]
+            else:
+                raise DumperException("Can't extract bucket name from URL '%s'" % remote_url)
+
+            return self.auth_download(bucket_name,key,localfile,headers)
         else:
             return self.anonymous_download(remoteurl,localfile,headers)
 
@@ -119,7 +128,35 @@ class BiothingsDumper(HTTPDumper):
         self.logger.debug("Compat: %s" % ", ".join(msg))
 
     def load_remote_json(self,url):
-        res = self.client.get(url,allow_redirects=True)
+        if self.__class__.AWS_ACCESS_KEY_ID:
+            if ".s3-website-" in url:
+                raise DumperException("Can't access s3 static website using authentication")
+            # extract region from URL (reliable ?)
+            pat = re.compile(".*\.(.*)\.amazonaws.com.*")
+            m = pat.match(url)
+            if m:
+                frag = m.groups()[0]
+                # looks like "s3-us-west-2"
+                # whether static website is activated or not
+                region = frag.replace("s3-","")
+                auth = AWS4Auth(self.__class__.AWS_ACCESS_KEY_ID,
+                        self.__class__.AWS_SECRET_ACCESS_KEY,
+                        region,
+                        's3')
+                # since it's not a static website, redirections don't work (that's
+                # how s3 works) so we need to deal with that manually. We allow only
+                # one hop (basically, it's for latest.json file/symlink)
+                res = self.client.get(url,auth=auth)
+                redirect = res.headers.get('x-amz-website-redirect-location')
+                if redirect:
+                    parsed = urlparse(url)
+                    newurl = parsed._replace(path=redirect)
+                    res = self.client.get(newurl.geturl(),auth=auth)
+            else:
+                raise DumperException("Couldn't determine s3 region from url '%s'" % url)
+        else:
+            auth = None
+            res = self.client.get(url,allow_redirects=True,auth=auth)
         if res.status_code != 200:
             return None
         try:

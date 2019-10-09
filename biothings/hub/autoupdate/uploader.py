@@ -123,7 +123,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 return res
             except Exception as e:
                 # somethng went wrong, report as failure
-                return "FAILED %s" % e
+                return {"status" : "FAILED %s" % e}
 
         def restore_launched(f):
             try:
