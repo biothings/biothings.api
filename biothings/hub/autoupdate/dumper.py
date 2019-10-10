@@ -351,7 +351,6 @@ class BiothingsDumper(HTTPDumper):
                     self.to_dump.append({"remote":furl, "local":new_localfile}) 
 
             else:
-                self.logger.error("build_meta: %s" % build_meta)
                 # it's a full snapshot release, it always can be applied
                 self.release = build_meta["build_version"]
                 new_localfile = os.path.join(self.new_data_folder,"%s.json" % self.release)
