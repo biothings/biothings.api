@@ -7,7 +7,7 @@ from requests_aws4auth import AWS4Auth
 
 from biothings import config as btconfig
 from biothings.hub.dataload.dumper import HTTPDumper, DumperException
-from biothings.utils.common import gunzipall, md5sum
+from biothings.utils.common import uncompressall, md5sum
 
 
 class BiothingsDumper(HTTPDumper):
@@ -263,7 +263,7 @@ class BiothingsDumper(HTTPDumper):
         path = [build_meta]
 
         # latest points to a new version, 2 options there:
-        # - update is a full snapshot: nothing to download, but we need to trigger a restore
+        # - update is a full snapshot: nothing to download if type=s3, one archive to download if type=fs, we then need to trigger a restore
         # - update is an incremental, we need to check if the incremental is compatible with current version
         if build_meta["type"] == "incremental":
             # require_version contains the compatible version for which we can apply the diff
@@ -351,10 +351,18 @@ class BiothingsDumper(HTTPDumper):
                     self.to_dump.append({"remote":furl, "local":new_localfile}) 
 
             else:
+                self.logger.error("build_meta: %s" % build_meta)
                 # it's a full snapshot release, it always can be applied
                 self.release = build_meta["build_version"]
                 new_localfile = os.path.join(self.new_data_folder,"%s.json" % self.release)
                 self.to_dump.append({"remote":file_url, "local":new_localfile})
+                # if repo type is fs, we assume metadata contains url to archive
+                repo_name = list(build_meta["metadata"]["repository"].keys())[0]
+                if build_meta["metadata"]["repository"][repo_name]["type"] == "fs":
+                    archive_url = build_meta["metadata"]["archive_url"]
+                    archive = os.path.basename(archive_url)
+                    new_localfile = os.path.join(self.new_data_folder,archive)
+                    self.to_dump.append({"remote":archive_url, "local":new_localfile})
 
             # unset this one, as it may not be pickelable (next step is "download", which
             # uses different processes and need workers to be pickled)
@@ -380,6 +388,12 @@ class BiothingsDumper(HTTPDumper):
                     raise e
                 else:
                     self.logger.debug("md5 check success for file '%s'" % fname)
+        elif build_meta["type"] == "full":
+            # if type=fs, check if archive must be uncompressed
+            repo_name = list(build_meta["metadata"]["repository"].keys())[0]
+            if build_meta["metadata"]["repository"][repo_name]["type"] == "fs":
+                uncompressall(self.new_data_folder)
+
 
     @asyncio.coroutine
     def info(self,version="latest"):

@@ -413,6 +413,28 @@ class SnapshotPublisher(BasePublisher):
                             "snapshot_name" : snapshot,
                             }
                         }
+                # if snapshot tyoe is "fs" (so it means it's stored locally) and we publish (so it means we want it to
+                # be available remotely) it means we should have an pre-"upload" step in the publish pipeline
+                # let's try to get the archive url
+                repo_name = list(bdoc["snapshot"][snapshot]["repository"].keys())[0]
+                if bdoc["snapshot"][snapshot]["repository"][repo_name]["type"] == "fs":
+                    pre_steps = bdoc.get("publish",{}).get("full",{}).get(snapshot,{}).get("pre",[])
+                    try:
+                        assert pre_steps, "No pre-steps found, expecting pre-upload step"
+                        upload_step = [step for step in pre_steps if step["name"] == "upload"]
+                        assert len(upload_step) == 1, "Expecting one pre-upload step, got %s" % repr(upload_step)
+                        upload_step = upload_step.pop()
+                        res = upload_step["result"]
+                        assert res["type"] == "s3", "Only archived uploaded to S3 are currently supported"
+                        url = aws.get_s3_url(s3key=os.path.join(res["base_path"],res["key"]),
+                                             aws_key=self.envconf.get("cloud",{}).get("access_key"),
+                                             aws_secret=self.envconf.get("cloud",{}).get("secret_key"),
+                                             s3_bucket=res["bucket"])
+                        full_meta["metadata"]["archive_url"] = url
+                    except Exception as e:
+                        raise PublisherException("Repository for snapshot '%s' is type 'fs' but " % snapshot + \
+                                                 "coudln't determine archive URL to publish: %s" % e)
+
                 if release_folder:
                     if os.path.exists(release_folder):
                         try:
