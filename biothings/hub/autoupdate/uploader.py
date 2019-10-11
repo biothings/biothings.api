@@ -80,7 +80,6 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         idxr = self.target_backend.target_esidxer
         repo_name, repo_settings = self.get_snapshot_repository_config(build_meta)
         # first check if snapshot repo exists
-        repo_name, repo_settings = list(build_meta["metadata"]["repository"].items())[0]
         # do we need to enrich with some credentials ? (there are part of repo creation JSON settings)
         if repo_settings.get("type") == "s3" and btconfig.STANDALONE_AWS_CREDENTIALS.get("AWS_ACCESS_KEY_ID"):
             repo_settings["settings"]["access_key"] = btconfig.STANDALONE_AWS_CREDENTIALS["AWS_ACCESS_KEY_ID"]
