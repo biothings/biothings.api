@@ -85,6 +85,16 @@ class BasePublisher(BaseManager,BaseStatusRegisterer):
         else:
             return self.load_doc(key_name,stage)
 
+    def template_out_conf(self, build_doc):
+        # don't bother exploring certain keys, convert the whole a string
+        # and replace whatever we find
+        try:
+            strconf = template_out(json.dumps(self.envconf),build_doc)
+            return json.loads(strconf)
+        except Exception as e:
+            self.logger.exception("Coudn't template out configuration: %s" % e)
+            raise
+
     def create_bucket(self, bucket_conf, credentials):
         aws_key = credentials.get("access_key")
         aws_secret = credentials.get("secret_key")
@@ -125,7 +135,6 @@ class BasePublisher(BaseManager,BaseStatusRegisterer):
         key_value is the value of the key inside "key" dict (such as a snapshot name or a build name)
         These steps are defined in config file.
         """
-        index_meta = build_doc["_meta"]
         # determine previous result as the starting point of the pipeline,
         # depending on the type of publishing (key)
         previous_result = self.get_pre_post_previous_result(build_doc,key_value)
@@ -162,8 +171,8 @@ class BasePublisher(BaseManager,BaseStatusRegisterer):
         return action_done
 
     def step_archive(self, step_conf, build_doc, previous):
-        index_meta = build_doc["_meta"]
-        archive_file = os.path.join(self.es_backups_folder,template_out(step_conf["name"],index_meta))
+        archive_name = step_conf["name"]
+        archive_file = os.path.join(self.es_backups_folder,archive_name)
         if step_conf["format"] == "tar.xz":
             # -J is for "xz"
             tarcmd = ["tar",
@@ -216,20 +225,15 @@ class BasePublisher(BaseManager,BaseStatusRegisterer):
             raise ValueError("Only 's3' upload type supported for now, got %s" % repr(step_conf["type"]))
 
     def step_upload_s3(self, step_conf, build_doc, previous):
-        index_meta = build_doc["_meta"]
         aws_key=self.envconf.get("cloud",{}).get("access_key")
         aws_secret=self.envconf.get("cloud",{}).get("secret_key")
-        # template out for special values
-        for k in step_conf:
-            v = step_conf[k]
-            step_conf[k] = template_out(step_conf[k],index_meta)
         # create bucket if needed
         self.create_bucket(bucket_conf=step_conf,credentials=self.envconf.get("cloud",{}))
         if step_conf.get("file"):
-            basename = template_out(step_conf["file"],index_meta)
+            basename = step_conf["file"]
             uploadfunc = aws.send_s3_big_file
         elif step_conf.get("folder"):
-            basename = template_out(step_conf["folder"],index_meta)
+            basename = step_conf["folder"]
             uploadfunc = aws.send_s3_folder
         else:
             raise ValueError("Can't find 'file' or 'folder' key, don't know what to upload")
@@ -285,6 +289,7 @@ class SnapshotPublisher(BasePublisher):
         self.setup()
 
     def get_pre_post_previous_result(self, build_doc, key_value):
+        assert len(build_doc["snapshot"][key_value]["repository"]) == 1
         repo_name = list(build_doc["snapshot"][key_value]["repository"].keys())[0]
         previous_result = build_doc["snapshot"][key_value]["repository"][repo_name]
         return previous_result
@@ -319,6 +324,9 @@ class SnapshotPublisher(BasePublisher):
             steps = [steps]
         if not bdoc:
             raise PublisherException("No build document found with a snapshot name '%s' associated to it" % snapshot)
+
+        # instantiate publishing environment
+        self.envconf = self.template_out_conf(bdoc)
 
         # check if a release note is associated to the build document
         release_folder = None

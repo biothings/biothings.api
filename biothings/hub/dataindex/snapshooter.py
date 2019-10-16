@@ -69,6 +69,27 @@ class Snapshooter(BaseStatusRegisterer):
     def load_build(self, index_name):
         return self.load_doc(index_name,"index")
 
+    def template_out_conf(self, build_doc):
+        """
+        Template out for special value using build_doc
+        Templated values can look like:
+            "base_path" : "onefolder/%(_meta.build_version)s"
+        where "_meta.build_version" value is taken from build_doc dictionary
+        (dot field notation).  In other words, such repo config are dynamic
+        and potentially change for each index/snapshot created.
+        """
+        try:
+            strconf = template_out(json.dumps(self.envconf),build_doc)
+            return json.loads(strconf)
+        except Exception as e:
+            self.logger.exception("Coudn't template out configuration: %s" % e)
+            raise
+
+    def reset_repository_info(self, bdoc, snapshot_name):
+        if bdoc.get("snapshot",{}).get(snapshot_name):
+            if bdoc["snapshot"][snapshot_name].pop("repository",None):
+                    self.collection.save(bdoc)
+
     def register_status(self, bdoc, status,transient=False,init=False,**extra):
         super().register_status(bdoc,"snapshot",status,transient=transient,init=init,**extra)
 
@@ -93,16 +114,16 @@ class Snapshooter(BaseStatusRegisterer):
 
     def snapshot(self, index, snapshot=None, steps=["pre","snapshot","post"]):
         bdoc = self.load_build(index)
-        envconf = self.envconf
+        self.envconf = self.template_out_conf(bdoc)
         # check what to do
         if type(steps) == str:
             steps = [steps]
         snapshot_name = snapshot or index
-        es_idxr = self.get_es_idxr(envconf,index)
+        es_idxr = self.get_es_idxr(self.envconf,index)
         # create repo if needed
         index_meta = es_idxr.get_mapping_meta()["_meta"] # read from index
-        repo_name, repo_conf = self.create_repository(envconf, index_meta)
-        monitor_delay = envconf["monitor_delay"]
+        repo_name, repo_conf = self.create_repository(self.envconf, bdoc, index_meta)
+        monitor_delay = self.envconf["monitor_delay"]
         # will hold the overall result
         fut = asyncio.Future()
 
@@ -150,13 +171,16 @@ class Snapshooter(BaseStatusRegisterer):
                 pinfo = self.get_pinfo()
                 pinfo["source"] = index
 
+                # we only allow one repo conf per snapshot name
+                self.reset_repository_info(bdoc,snapshot_name)
+
                 if "pre" in steps:
                     self.register_status(bdoc,"pre-snapshotting",transient=True,init=True,
                                          job={"step":"pre-snapshot"},snapshot={snapshot_name:{}})
                     pinfo["step"] = "pre-snapshot"
                     pinfo.pop("description",None)
                     job = yield from self.job_manager.defer_to_thread(pinfo,
-                            partial(self.pre_snapshot,envconf,repo_conf,index_meta))
+                            partial(self.pre_snapshot,self.envconf,repo_conf,index_meta))
                     job.add_done_callback(partial(done,step="pre"))
                     yield from job
                     if got_error:
@@ -236,7 +260,7 @@ class Snapshooter(BaseStatusRegisterer):
                     pinfo["step"] = "post-snapshot"
                     pinfo.pop("description",None)
                     job = yield from self.job_manager.defer_to_thread(pinfo,
-                            partial(self.post_snapshot,envconf,repo_conf,index_meta))
+                            partial(self.post_snapshot,self.envconf,repo_conf,index_meta))
                     job.add_done_callback(partial(done,step="post"))
                     yield from job
                     if got_error:
@@ -256,28 +280,18 @@ class Snapshooter(BaseStatusRegisterer):
     def post_snapshot(self, envconf, repo_conf, index_meta):
         pass
 
-    def get_repository_config(self, repo_conf, index_meta):
-        """
-        Search repo values for special values (template)
-        and return a repo conf instantiated with values from idxr.
-        Templated values can look like:
-            "base_path" : "onefolder/%(build_version)s"
-        where "build_version" value is taken from index_meta dictionary.
-        In other words, such repo config are dynamic and potentially change
-        for each index/snapshot created.
-        """
-        repo_name = template_out(repo_conf["name"],index_meta)
-        repo_type = template_out(repo_conf["type"],index_meta)
+    def get_repository_config(self, repo_conf, build_doc, index_meta):
+        repo_name = repo_conf["name"]
+        repo_type = repo_conf["type"]
         repo_settings = {}
         for setting in repo_conf["settings"]:
-            repo_settings[setting] = template_out(repo_conf["settings"][setting],index_meta)
-
+            repo_settings[setting] = repo_conf["settings"][setting]
         return repo_name, {"type" : repo_type,"settings" : repo_settings}
 
-    def create_repository(self, envconf, index_meta={}):
+    def create_repository(self, envconf, build_doc, index_meta):
         aws_key=envconf.get("cloud",{}).get("access_key")
         aws_secret=envconf.get("cloud",{}).get("secret_key")
-        repo_name, repo_conf = self.get_repository_config(envconf["repository"],index_meta)
+        repo_name, repo_conf = self.get_repository_config(envconf["repository"],build_doc,index_meta)
         self.logger.info("Repository config: %s" % repo_conf)
         settings = repo_conf["settings"]
         repo_type = repo_conf["type"]

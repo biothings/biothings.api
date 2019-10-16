@@ -20,6 +20,7 @@ import biothings.utils.aws as aws
 from biothings.utils.hub_db import get_cmd, get_src_dump, get_src_build, get_src_build_config, \
                                    get_last_command, backup, restore
 from biothings.utils.loggers import get_logger, ShellLogger
+from biothings.utils.web.es import flatten_doc
 
 # useful variables to bring into hub namespace
 pending = "pending"
@@ -471,8 +472,9 @@ def template_out(field,confdict):
     """
     Return field as a templated-out filed,
     substituting some "%(...)s" part with confdict,
-    as well as replacing "$(...)" with a timestamp
-    following specified format.
+    Fields can follow dotfield notation.
+    Fields like "$(...)" are replaced with a timestamp
+    following specified format (see time.strftime)
     Ex:
         confdict = {"a":"one"}
         field = "%(a)s_two_three_$(%Y%m)"
@@ -491,8 +493,9 @@ def template_out(field,confdict):
         tosub,fmt = m.groups()
         ts = datetime.datetime.now().strftime("%%%s" % fmt)
         field = field.replace(tosub,ts)
+    flatdict = flatten_doc(confdict)
     # then use dict to sub keys
-    field = field % confdict
+    field = field % flatdict
 
     return field
 
