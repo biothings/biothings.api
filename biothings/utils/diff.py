@@ -84,8 +84,8 @@ def two_docs_iterator(b1, b2, id_list, step=10000, verbose=False):
         if verbose:
             print("Processing %d-%d documents..." % (i + 1, min(i + step, n)), end='')
         _ids = id_list[i:i+step]
-        iter1 = b1.mget_from_ids(_ids, asiter=True)
-        iter2 = b2.mget_from_ids(_ids, asiter=True)
+        iter1 = sorted([d for d in b1.mget_from_ids(_ids, asiter=True)],key=lambda a: a["_id"])
+        iter2 = sorted([d for d in b2.mget_from_ids(_ids, asiter=True)],key=lambda a: a["_id"])
         for doc1, doc2 in zip(iter1, iter2):
             yield doc1, doc2
         if verbose:
