@@ -17,43 +17,45 @@
                 '<a>' + conn.url + '</a><br>' +
                     'App. version: <b>' + str_app_version + '</b><br>' +
                     'Biothings version: <b>' + str_biothings_version + '</b><br></div>' +
-                    'Studio version: <b>' + current_studio_version + '</b><br></div>'
+                    'Studio version: <b>' + current_studio_version + '</b><br></div>' + 
+                    'Features: <b> ' + studio_features + '</b><br></div>'
                     " data-position="bottom center">{{conn.name || "John Doe"}}</div>
             </div>
 
-            <a class="clickable item">
+            <a class="clickable item" v-if="has_feature('source') && has_feature('build')">
                 <i class="ui home icon"></i>
                 <router-link to="/">Home</router-link>
             </a>
-            <a class="clickable item">
+            <a class="clickable item" v-if="has_feature('source')">
                 <i class="ui database icon"></i>
                 <router-link to="/sources">Sources</router-link>
             </a>
-            <a class="clickable item">
+            <a class="clickable item" v-if="has_feature('build')">
                 <i class="ui cubes icon"></i>
                 <router-link to="/builds">Builds</router-link>
             </a>
-            <a class="clickable item">
+            <a class="clickable item" v-if="has_feature('api')">
                 <i class="ui shield alternate icon"></i>
                 <router-link to="/apis">API</router-link>
             </a>
 
-            <div class="clickable ui item right">
+            <div class="clickable ui item right" v-if="has_feature('job')">
               <job-summary></job-summary>
             </div>
 
-            <div class="clickable ui item">
+            <div class="clickable ui item" v-if="has_feature('ws')">
                 <event-messages>
                 </event-messages>
             </div>
 
             <div class="ui item">
                 <loader></loader>
-                <div id="settings">
+                <div id="settings" v-if="has_feature('config')">
                     <button class="mini circular ui icon button" @click="openConfig">
                         <i class="cog icon"></i>
                     </button>
                 </div>
+                <span v-if="has_feature('ws')">
                 <div v-if="socket && socket.readyState == 1" :data-tooltip="'Connection: ' + socket.transport" data-position="bottom center">
                     <button class="mini circular ui icon button" @click="closeConnection">
                         <i class="green power off icon"></i>
@@ -71,6 +73,7 @@
                         <i class="red plug icon"></i>
                     </button>
                 </div>
+                </span>
             </div>
 
           </div>
@@ -120,7 +123,7 @@
             </div>
         </div>
 
-        <div class="ui basic config modal">
+        <div class="ui basic config modal" v-if="has_feature('config')">
             <h3 class="ui icon">
                 <i class="cog icon"></i>
                 Hub Configuration
@@ -155,7 +158,7 @@
               </a>
             </div>
             <div class="right menu">
-              <a class="clickable logs item">
+              <a class="clickable logs item" v-if="has_feature('ws')">
                   <i class="bell outline icon"></i>
                   Logs
               </a>
@@ -167,7 +170,7 @@
               </div>
           </div>
 
-          <div class="ui logs popup top transition hidden">
+          <div class="ui logs popup top transition hidden" v-if="has_feature('ws')">
               <log-viewer></log-viewer>
           </div>
 
@@ -297,18 +300,7 @@
     import Terminal from './Terminal.vue';
     import FeatureChecker from './FeatureChecker.vue';
 
-    const routes = [
-        { path: '/', component: Status },
-        { path: '/sources', component: DataSourceGrid },
-        { path: '/source/:_id', component: DataSourceDetailed, props: true },
-        { path: '/builds', component: BuildGrid },
-        { path: '/build/:_id', component: BuildDetailed, props: true, name: "build"},
-        { path: '/apis', component: ApiGrid },
-    ]
-
-    const router = new VueRouter({
-        routes // short for `routes: routes`
-    })
+    const router = new VueRouter();
 
     const PING_INTERVAL_MS = 10000;
 
@@ -338,13 +330,6 @@
             if(last) {
                 this.conn = JSON.parse(last);
             }
-            $('.logs.item').popup({
-                popup: $('.logs.popup'),
-                on: 'click' ,
-                closable: false,
-                position: 'top left',
-							  lastResort: 'top right',
-            });
             this.setupConnection();
             this.skip_studio_compat = Vue.localStorage.get("skip_studio_compat");
         },
@@ -353,6 +338,7 @@
             bus.$on("reconnect",this.setupConnection);
             bus.$on("connect",this.setupConnection,null,"/");
             bus.$on("feature_terminal",this.setupTerminal);
+            bus.$on("feature_ws",this.setupLogs);
             // connect to default one to start
             this.conn = this.default_conn;
         },
@@ -360,6 +346,7 @@
             bus.$off("reconnect",this.setupConnection);
             bus.$off("connect",this.setupConnection);
             bus.$off("feature_terminal",this.setupTerminal);
+            bus.$off("feature_ws",this.setupLogs);
         },
         data() {
             return {
@@ -393,6 +380,14 @@
              str_biothings_version: function () {
                  return this.getVersionAsString(this.conn.biothings_version);
              },
+             studio_features: function() {
+                 if(this.conn.features) {
+                     return this.conn.features.join(", ");
+                 } else {
+                     return "not listed";
+                 }
+             }
+
         },
         watch: {
             latency_value: function (newv, oldv) {
@@ -410,6 +405,30 @@
             }
         },
         methods: {
+            setupUIByFeatures() {
+                console.log("Setup UI according to listed features");
+                console.log(Vue.config.hub_features);
+                var routes = [];
+                if(this.has_feature('source') && this.has_feature('build')) {
+                    console.log("Setup Home tab");
+                    routes.push({ path: '/', component: Status });
+                }
+                if(this.has_feature('source')) {
+                    console.log("Setup Sources tab");
+                    routes.push({ path: '/sources', component: DataSourceGrid });
+                    routes.push({ path: '/source/:_id', component: DataSourceDetailed, props: true });
+                }
+                if(this.has_feature('build')) {
+                    console.log("Setup Builds tab");
+                    routes.push({ path: '/builds', component: BuildGrid });
+                    routes.push({ path: '/build/:_id', component: BuildDetailed, props: true, name: "build"});
+                }
+                if(this.has_feature('api')) {
+                    console.log("Setup API tab");
+                    routes.push({ path: '/apis', component: ApiGrid });
+                }
+                router.addRoutes(routes);
+            },
             getVersionAsString(obj) {
                  try {
                      if(typeof obj == "object") {
@@ -508,8 +527,6 @@
                     }
                 })
                 .modal("show");
-            },
-            saveConfigParameter() {
             },
             openConnection() {
                 this.setupConnection(null,false);
@@ -765,6 +782,7 @@
                 this.conn = response.data.result;
                 this.conn["url"] = url;
                 Vue.config.hub_features = response.data.result.features;
+                self.setupUIByFeatures();
                 self.loaded();
             })
             .catch(err => {
@@ -855,6 +873,15 @@
                 },
                 closable: false,
                 position: 'top left',
+            });
+        },
+        setupLogs() {
+            $('.logs.item').popup({
+                popup: $('.logs.popup'),
+                on: 'click' ,
+                closable: false,
+                position: 'top left',
+                lastResort: 'top right',
             });
         },
         showLogs(event) {

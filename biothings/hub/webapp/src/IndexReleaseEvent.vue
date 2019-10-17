@@ -124,7 +124,7 @@
                                   <tbody>
                                     <tr>
                                       <td>Snapshot name</td>
-                                      <td>{{ selected_current }}</td>
+                                      <td>{{ selected_snapshot }}</td>
                                     </tr>
                                   </tbody>
                                 </table>
@@ -206,6 +206,7 @@ export default {
             snapshot_envs : {},
             error : null,
             selected_snapshot_env : null,
+            selected_snapshot: null,
             snapshot_name : null,
             selected_release_note: null,
         }
@@ -269,6 +270,7 @@ export default {
             self.error = null;
             self.getReleaseEnvironments();
             self.selected_current = current_build;
+            self.selected_snapshot = snapshot_name;
             $(`.ui.basic.publishrelease.modal.${this.release_id}`)
             .modal("setting", {
                 detachable : false,

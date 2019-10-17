@@ -330,4 +330,8 @@ export default {
     margin-bottom: 1em;
     width: inherit;
 }
+.envdetails {
+    font-size: .8em;
+    overflow: visible !important;
+}
 </style>
