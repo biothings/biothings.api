@@ -218,6 +218,11 @@ METADATA_GET_TRANSFORM_KWARGS = {'dev': {'default': False, 'type': bool},
                                  'search': {'default': None, 'type': str},
                                  'prefix': {'default': None, 'type': str}}
 
+LICENSE_TRANSFORM = {
+    # "alias" :  "datasource",
+    # "dot.field" :  "datasource"
+}
+
 # *****************************************************************************
 # Google Analytics Settings
 # *****************************************************************************

@@ -25,7 +25,17 @@ class ESResultTransformer(object):
     :param source_metadata: Metadata object containing source information for _license keys
     :param excluded_keys: A list of keys to exclude from the available keys output
     :param field_notes: A dictionary of notes to add to the available keys output'''
-    def __init__(self, options, host, doc_url_function=lambda x: x, jsonld_context={}, data_sources={}, output_aliases={}, app_dir='', source_metadata={}, excluded_keys=[], field_notes={}):
+
+    def __init__(self, options, host,
+                 doc_url_function=lambda x: x,
+                 jsonld_context={},
+                 data_sources={},
+                 output_aliases={},
+                 app_dir='',
+                 source_metadata={},
+                 excluded_keys=[],
+                 field_notes={},
+                 licenses={}):
         self.options = options
         self.host = host
         self.doc_url_function = doc_url_function
@@ -36,6 +46,7 @@ class ESResultTransformer(object):
         self.source_metadata = source_metadata
         self.excluded_keys = excluded_keys
         self.field_notes = field_notes
+        self.licenses = licenses
 
     def _flatten_doc(self, doc, outfield_sep='.', context_sep='.'):
         def _recursion_helper(d, ret, path, out):
@@ -110,6 +121,7 @@ class ESResultTransformer(object):
         if doc.get('found', None) is False:
             _doc['found'] = doc['found']
 
+        self._append_licenses(_doc)
         self._modify_doc(_doc)
         
         if self.options.jsonld and not self.options.dotfield:
@@ -124,6 +136,102 @@ class ESResultTransformer(object):
             if self.options.dotfield:
                 _doc = self._flatten_doc(_doc)
             return _doc
+
+    def _append_licenses(self, doc):
+        '''
+            Add "_license" URL to corresponding fields.
+            URLs are retrieved from ES index metadata.
+            Specify field source conversion in settings.
+            Support dot field representation.
+            May override default behavior.
+        '''
+
+        get_url = lambda val: val.get('license_url_short', False) or val.get('license_url', None)
+        licenses = {source: get_url(val) for source, val in self.source_metadata
+                    [self.options.assembly].items() if get_url(val)}
+
+        def flatten_key(dic):
+            '''
+            {
+                "gnomad_exome": {
+                    "af": {
+                        "af": 0.0000119429,
+                        "af_afr": 0.000123077
+                    }
+                },
+                "exac_nontcga": {
+                    "af": 0.00001883
+                }
+            }
+            will be translated to a generator of
+            [
+                "gnomad_exome",
+                "gnomad_exome.af",
+                "exac_nontcga"
+            ]
+            '''
+            for key in dic:
+                if isinstance(dic[key], dict):
+                    yield key, dic[key]
+                    for sub_key, val in flatten_key(dic[key]):
+                        yield '.'.join((key, sub_key)), val
+                elif isinstance(dic[key], list):
+                    yield key, dic[key]
+
+        def set_license(obj, url):
+            '''
+            If we have the following settings in web_config.py
+
+            LICENSE_TRANSFORM = {
+                "exac_nontcga": "exac",
+                "snpeff.ann": "snpeff"
+            },
+
+            Then GET /v1/variant/chr6:g.38906659G>A would look like:
+            {
+                "exac": {
+                    "_license": "http://bit.ly/2H9c4hg",
+                    "af": 0.00002471
+                },
+                "exac_nontcga": {
+                    "_license": "http://bit.ly/2H9c4hg",         <---
+                    "af": 0.00001883
+                }, ...
+            }
+
+            And GET /v1/variant/chr14:g.35731936G>C could look like:
+            {
+                "snpeff": {
+                    "_license": "http://bit.ly/2suyRKt",
+                    "ann": [
+                        {
+                            "_license": "http://bit.ly/2suyRKt", <---
+                            "effect": "intron_variant",
+                            "feature_id": "NM_014672.3", ...
+                        },
+                        {
+                            "_license": "http://bit.ly/2suyRKt", <---
+                            "effect": "intron_variant",
+                            "feature_id": "NM_001256678.1", ...
+                        }, ...
+                    ]
+                }, ...
+            }
+
+            The arrow marked fields would not exist without the setting lines.
+            '''
+            if isinstance(obj, dict):
+                obj['_license'] = url
+            elif isinstance(obj, list):
+                for item in obj:
+                    if isinstance(item, dict):
+                        item['_license'] = url
+
+        for fkey, val in flatten_key(doc):
+            if fkey in self.licenses:
+                set_license(val, licenses[self.licenses[fkey]])
+            elif '.' not in fkey and fkey in licenses:
+                set_license(val, licenses[fkey])
 
     def _modify_doc(self, doc):
         ''' Override to add custom fields to doc before flattening/sorting '''

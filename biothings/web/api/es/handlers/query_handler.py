@@ -75,15 +75,27 @@ class QueryHandler(BaseESRequestHandler):
         ###################################################
 
         # Instantiate query builder, query, and transform classes
-        _query_builder = self.web_settings.ES_QUERY_BUILDER(options=options.esqb_kwargs,
-            index=self._get_es_index(options), doc_type=self._get_es_doc_type(options),
-            es_options=options.es_kwargs, userquery_dir=self.web_settings.USERQUERY_DIR,
-            scroll_options={'scroll': self.web_settings.ES_SCROLL_TIME, 'size': self.web_settings.ES_SCROLL_SIZE},
-            default_scopes=self.web_settings.DEFAULT_SCOPES, allow_random_query=self.web_settings.ALLOW_RANDOM_QUERY)
-        _backend = self.web_settings.ES_QUERY(client=self.web_settings.es_client, options=options.es_kwargs)
-        _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(options=options.transform_kwargs, 
-            host=self.request.host, jsonld_context=self.web_settings._jsonld_context, 
-            doc_url_function=self.web_settings.doc_url, output_aliases=self.web_settings.OUTPUT_KEY_ALIASES, source_metadata=self.web_settings.source_metadata())
+        _query_builder = self.web_settings.ES_QUERY_BUILDER(
+            options=options.esqb_kwargs,
+            index=self._get_es_index(options),
+            doc_type=self._get_es_doc_type(options),
+            es_options=options.es_kwargs,
+            userquery_dir=self.web_settings.USERQUERY_DIR,
+            scroll_options={
+                'scroll': self.web_settings.ES_SCROLL_TIME,
+                'size': self.web_settings.ES_SCROLL_SIZE},
+            default_scopes=self.web_settings.DEFAULT_SCOPES,
+            allow_random_query=self.web_settings.ALLOW_RANDOM_QUERY)
+        _backend = self.web_settings.ES_QUERY(
+            client=self.web_settings.es_client,
+            options=options.es_kwargs)
+        _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(
+            options=options.transform_kwargs, host=self.request.host,
+            jsonld_context=self.web_settings._jsonld_context,
+            doc_url_function=self.web_settings.doc_url,
+            output_aliases=self.web_settings.OUTPUT_KEY_ALIASES,
+            source_metadata=self.web_settings.source_metadata(),
+            licenses=self.web_settings.LICENSE_TRANSFORM)
 
         ###################################################
         #           Scroll request pipeline
@@ -241,15 +253,24 @@ class QueryHandler(BaseESRequestHandler):
         ###################################################
         
         # Instantiate query builder, query, and transform classes
-        _query_builder = self.web_settings.ES_QUERY_BUILDER(options=options.esqb_kwargs,
-            index=self._get_es_index(options), doc_type=self._get_es_doc_type(options),
-            es_options=options.es_kwargs, userquery_dir=self.web_settings.USERQUERY_DIR, 
+        _query_builder = self.web_settings.ES_QUERY_BUILDER(
+            options=options.esqb_kwargs,
+            index=self._get_es_index(options),
+            doc_type=self._get_es_doc_type(options),
+            es_options=options.es_kwargs,
+            userquery_dir=self.web_settings.USERQUERY_DIR,
             default_scopes=self.web_settings.DEFAULT_SCOPES)
-        _backend = self.web_settings.ES_QUERY(client=self.web_settings.es_client, options=options.es_kwargs)
-        _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(options=options.transform_kwargs, host=self.request.host,
+        _backend = self.web_settings.ES_QUERY(
+            client=self.web_settings.es_client,
+            options=options.es_kwargs)
+        _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(
+            options=options.transform_kwargs, host=self.request.host,
             doc_url_function=self.web_settings.doc_url,
-            jsonld_context=self.web_settings._jsonld_context, output_aliases=self.web_settings.OUTPUT_KEY_ALIASES, source_metadata=self.web_settings.source_metadata())
-        
+            jsonld_context=self.web_settings._jsonld_context,
+            output_aliases=self.web_settings.OUTPUT_KEY_ALIASES,
+            source_metadata=self.web_settings.source_metadata(),
+            licenses=self.web_settings.LICENSE_TRANSFORM)
+
         ###################################################
         #                  Build query
         ###################################################
