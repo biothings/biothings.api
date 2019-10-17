@@ -53,8 +53,9 @@ class ESResultTransformer(object):
             if isinstance(d, dict):
                 for key in d:
                     new_path_key = key if not path else context_sep.join([path, key])
-                    new_out_key = self._alias_output_keys(new_path_key, key) if not out else outfield_sep.join(
-                                                            [out, self._alias_output_keys(new_path_key, key)])
+                    new_out_key = self._alias_output_keys(
+                        new_path_key, key) if not out else outfield_sep.join(
+                        [out, self._alias_output_keys(new_path_key, key)])
                     _recursion_helper(d[key], ret, new_path_key, new_out_key)
             elif is_seq(d):
                 for obj in d:
@@ -71,8 +72,8 @@ class ESResultTransformer(object):
                     ret[out] = d
         ret = {}
         _recursion_helper(doc, ret, '', '')
-        return OrderedDict([(k,v) for (k,v) in sorted(ret.items(), key=lambda x: x[0])])
-    
+        return OrderedDict([(k, v) for (k, v) in sorted(ret.items(), key=lambda x: x[0])])
+
     def _sort_and_annotate_doc(self, doc, sort=True, data_src=False, field_sep='.'):
         def _recursion_helper(doc, path, parent_type):
             if is_seq(doc):
@@ -87,8 +88,11 @@ class ESResultTransformer(object):
                 this_list = []
                 for key in _doc:
                     new_path = key if not path else field_sep.join([path, key])
-                    this_list.append((self._alias_output_keys(new_path, key), _recursion_helper(doc[key], new_path, type(doc))))
-                
+                    this_list.append(
+                        (self._alias_output_keys(
+                            new_path, key), _recursion_helper(
+                            doc[key], new_path, type(doc))))
+
                 if parent_type != list and parent_type != tuple and self.options.always_list and path in self.options.always_list:
                     if sort:
                         return [OrderedDict(this_list)]
@@ -114,7 +118,7 @@ class ESResultTransformer(object):
         for attr in ['_id', '_score', '_version']:
             if attr in doc:
                 _doc.setdefault(attr, doc[attr])
-        
+
         if not score:
             _doc.pop('_score', None)
 
@@ -123,14 +127,15 @@ class ESResultTransformer(object):
 
         self._append_licenses(_doc)
         self._modify_doc(_doc)
-        
+
         if self.options.jsonld and not self.options.dotfield:
-            _d = OrderedDict([('@context', self.jsonld_context.get('@context', {})), 
+            _d = OrderedDict([('@context', self.jsonld_context.get('@context', {})),
                               ('@id', self.doc_url_function(_doc['_id']))])
             _d.update(self._flatten_doc(_doc))
             return _d
         else:
-            _doc = self._sort_and_annotate_doc(_doc, sort=self.options._sorted, data_src=self.options.datasource)
+            _doc = self._sort_and_annotate_doc(
+                _doc, sort=self.options._sorted, data_src=self.options.datasource)
             for _field in self.options.allow_null:
                 _doc = exists_or_null(_doc, _field)
             if self.options.dotfield:
@@ -241,7 +246,7 @@ class ESResultTransformer(object):
         if context in self.output_aliases:
             return self.output_aliases[context]
         return key
-    
+
     def _clean_common_POST_response(self, _list, res, single_hit=True, score=True):
         res = res['responses']
 
@@ -278,7 +283,8 @@ class ESResultTransformer(object):
         return _res
 
     def _clean_annotation_POST_response(self, bid_list, res, single_hit=False):
-        return self._clean_common_POST_response(_list=bid_list, res=res, single_hit=single_hit, score=False)
+        return self._clean_common_POST_response(
+            _list=bid_list, res=res, single_hit=single_hit, score=False)
 
     def _clean_aggregations_response(self, res):
         for facet in res:
@@ -307,9 +313,9 @@ class ESResultTransformer(object):
             if attr in res:
                 _res[attr] = res[attr]
         _res['hits'] = [self._form_doc(doc=doc) for doc in _res['hits']]
-        _resf = OrderedDict([(k, v) for (k, v) in sorted(_res.items(), key=lambda i: i[0]) 
-                                if k != 'hits'])
-        _resf['hits'] = _res['hits'] 
+        _resf = OrderedDict([(k, v) for (k, v) in sorted(_res.items(), key=lambda i: i[0])
+                             if k != 'hits'])
+        _resf['hits'] = _res['hits']
         return _resf
 
     def _clean_query_POST_response(self, qlist, res, single_hit=False):
@@ -327,31 +333,35 @@ class ESResultTransformer(object):
             # this is an available fields request
             _properties = res[_index]['mappings'][_doc_type]['properties']
             _fields = OrderedDict()
-            for (k,v) in breadth_first_traversal(_properties):
+            for (k, v) in breadth_first_traversal(_properties):
                 if isinstance(v, dict):
                     _k = _form_key(k)
                     _arr = []
-                    if (('properties' in v) or ('type' in v and isinstance(v['type'], str) and v['type'].lower() == 'object')):
+                    if (('properties' in v) or ('type' in v and isinstance(
+                            v['type'], str) and v['type'].lower() == 'object')):
                         # object datatype
                         _arr.append(('type', 'object'))
                     elif 'type' in v and isinstance(v['type'], str):
                         # other type
                         _arr.append(('type', v['type'].lower()))
                     if _arr:
-                        if 'index' in v and isinstance(v['index'], str) and v['index'].lower() in ['no', 'false']:
+                        if 'index' in v and isinstance(v['index'], str) and v['index'].lower() in [
+                                'no', 'false']:
                             _arr.append(('index', False))
                         else:
                             _arr.append(('index', True))
                         if 'analyzer' in v and isinstance(v['analyzer'], str):
                             _arr.append(('analyzer', v['analyzer'].lower()))
-                        if 'copy_to' in v and isinstance(v['copy_to'], list) and 'all' in v['copy_to']:
+                        if 'copy_to' in v and isinstance(
+                                v['copy_to'],
+                                list) and 'all' in v['copy_to']:
                             _arr.append(('searched_by_default', True))
                         if _k in self.field_notes:
                             _arr.append(('notes', self.field_notes[_k]))
                     _v = OrderedDict(_arr)
-                    if ((_k.lower() not in self.excluded_keys) and (_v and ((not self.options.prefix and not self.options.search) or 
-                        (self.options.prefix and _k.startswith(self.options.prefix)) or 
-                        (self.options.search and self.options.search in _k)))):
+                    if ((_k.lower() not in self.excluded_keys) and (_v and ((not self.options.prefix and not self.options.search)
+                                                                            or (self.options.prefix and _k.startswith(self.options.prefix))
+                                                                            or (self.options.search and self.options.search in _k)))):
                         _fields.setdefault(_k, _v)
             return OrderedDict(sorted(_fields.items(), key=lambda x: x[0]))
 
@@ -369,13 +379,14 @@ class ESResultTransformer(object):
         _ret = self._clean_query_GET_response(res)
 
         if res['_shards']['failed']:
-            _ret.update({'_warning': 'Scroll request has failed on {} shards out of {}.'.format(res['_shards']['failed'], res['_shards']['total'])})
+            _ret.update({'_warning': 'Scroll request has failed on {} shards out of {}.'.format(
+                res['_shards']['failed'], res['_shards']['total'])})
         return _ret
 
     def _get_software_info(self):
         ''' Override me '''
         return get_software_info(app_dir=self.app_dir)
- 
+
     def clean_annotation_GET_response(self, res):
         ''' Transform the results of a GET to the annotation lookup endpoint.
 
