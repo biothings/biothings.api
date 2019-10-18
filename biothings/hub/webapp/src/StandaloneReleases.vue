@@ -4,7 +4,7 @@
             <div class="fourteen wide column">
             </div>
             <div class="two wide column">
-                <div class="ui secondary small compact menu">
+                <div class="ui secondary small compact menu right floated">
                     <a class="item">
                         <i class="rss icon"></i>
                         Add
