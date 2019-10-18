@@ -38,6 +38,10 @@
                 <i class="ui shield alternate icon"></i>
                 <router-link to="/apis">API</router-link>
             </a>
+            <a class="clickable item" v-if="has_feature('autohub')">
+                <i class="ui globe icon"></i>
+                <router-link to="/standalone">Releases</router-link>
+            </a>
 
             <div class="clickable ui item right" v-if="has_feature('job')">
               <job-summary></job-summary>
@@ -299,6 +303,7 @@
     import LogViewer from './LogViewer.vue';
     import Terminal from './Terminal.vue';
     import FeatureChecker from './FeatureChecker.vue';
+    import StandaloneReleases from './StandaloneReleases.vue';
 
     const router = new VueRouter();
 
@@ -426,6 +431,10 @@
                 if(this.has_feature('api')) {
                     console.log("Setup API tab");
                     routes.push({ path: '/apis', component: ApiGrid });
+                }
+                if(this.has_feature('autohub')) {
+                    console.log("Setup autohub tab");
+                    routes.push({ path: '/standalone', component: StandaloneReleases});
                 }
                 router.addRoutes(routes);
             },
