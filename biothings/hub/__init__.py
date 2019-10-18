@@ -210,7 +210,7 @@ class HubServer(object):
         self.logger, self.logfile = get_logger("hub")
         self._passed_features = features
         self._passed_managers_custom_args = managers_custom_args
-        self.features = features or self.DEFAULT_FEATURES
+        self.features = self.clean_features(features or self.DEFAULT_FEATURES)
         self.managers_custom_args = managers_custom_args
         self.reloader_config = reloader_config or self.DEFAULT_RELOADER_CONFIG
         self.dataupload_config = dataupload_config or self.DEFAULT_DATAUPLOAD_CONFIG
@@ -226,6 +226,14 @@ class HubServer(object):
         self.routes = []
         # flag "do we need to configure?"
         self.configured = False
+
+    def clean_features(self, features):
+        # we can't just use "set()" because we need to preserve order
+        ordered = OrderedDict()
+        for feat in features:
+            if not feat in ordered:
+                ordered[feat] = None
+        return list(ordered.keys())
 
     def before_configure(self):
         """

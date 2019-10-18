@@ -260,7 +260,6 @@ class ChangeWatcher(object):
         def do():
             while klass.do_publish:
                 evt = yield from klass.event_queue.get()
-                logging.debug("Publishing event %s" % evt)
                 for listener in klass.listeners:
                     try:
                         listener.read(evt)

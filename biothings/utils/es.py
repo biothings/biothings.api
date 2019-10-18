@@ -137,8 +137,11 @@ class ESIndexer():
 
     @wrapper
     def count(self, q=None, raw=False):
-        _res = self._es.count(self._index, self._doc_type, q)
-        return _res if raw else _res['count']
+        try:
+            _res = self._es.count(self._index, self._doc_type, q)
+            return _res if raw else _res['count']
+        except NotFoundError:
+            return None
 
     @wrapper
     def count_src(self, src):

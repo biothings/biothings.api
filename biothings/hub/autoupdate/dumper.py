@@ -65,6 +65,15 @@ class BiothingsDumper(HTTPDumper):
                  self._target_backend = self.__class__.TARGET_BACKEND
         return self._target_backend
 
+    @asyncio.coroutine
+    def get_target_backend(self):
+        return {
+                "host" : self.target_backend.target_esidxer.es_host,
+                "index" : self.target_backend.target_name,
+                "version" : self.target_backend.version,
+                "count" : self.target_backend.count(),
+                }
+
     def download(self,remoteurl,localfile,headers={}):
         self.prepare_local_folders(localfile)  
         parsed = urlparse(remoteurl)
@@ -119,7 +128,7 @@ class BiothingsDumper(HTTPDumper):
             version = set(version)
             if version == set([None]):
                 raise DumperException("Remote data is too old and can't be handled with current app (%s not defined)" % version_field)
-            versionfromconf = re.sub("( \[.*\])","",getattr(btconfig,VERSION_FIELD)["branch"])
+            versionfromconf = re.sub("( \[.*\])","",getattr(btconfig,VERSION_FIELD).get("branch"))
             VERSION = set()
             VERSION.add(versionfromconf)
             found_compat_version = VERSION.intersection(version)
@@ -419,12 +428,6 @@ class BiothingsDumper(HTTPDumper):
         avail_versions = self.load_remote_json(self.__class__.VERSION_URL)
         if not avail_versions:
             raise DumperException("Can't find any versions available...'")
-        res = []
         assert avail_versions["format"] == "1.0", "versions.json format has changed: %s" % avail_versions["format"]
-        for ver in avail_versions["versions"]:
-            res.append("version=%s date=%s type=%s" % ('{0: <20}'.format(ver["build_version"]),'{0: <20}'.format(ver["release_date"]),
-            '{0: <16}'.format(ver["type"])))
-        return "\n".join(res)
-
-
+        return avail_versions["versions"]
 
