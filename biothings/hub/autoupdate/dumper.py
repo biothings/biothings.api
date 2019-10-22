@@ -1,5 +1,5 @@
 import os, sys, time, datetime, json, re
-import asyncio
+import asyncio, requests
 from urllib.parse import urlparse, urljoin
 from functools import partial
 import boto3
@@ -50,6 +50,43 @@ class BiothingsDumper(HTTPDumper):
         super(BiothingsDumper,self).__init__(*args,**kwargs)
         # list of build_version to download/apply, in order
         self._target_backend = None
+        self._region = None
+
+    def prepare_client(self):
+        """
+        Depending on presence of credentials, inject authentication
+        in client.get()
+        """
+        super().prepare_client()
+        if self.__class__.AWS_ACCESS_KEY_ID and self.__class__.AWS_SECRET_ACCESS_KEY:
+            self._client = requests.Session()
+            self._client.verify = self.__class__.VERIFY_CERT
+            def auth_get(url,*args,**kwargs):
+                if ".s3-website-" in url:
+                    raise DumperException("Can't access s3 static website using authentication")
+                # extract region from URL (reliable ?)
+                pat = re.compile(".*\.(.*)\.amazonaws.com.*")
+                m = pat.match(url)
+                if m:
+                    frag = m.groups()[0]
+                    # looks like "s3-us-west-2"
+                    # whether static website is activated or not
+                    region = frag.replace("s3-","")
+                    if region == "s3": # url doesn't contain a region, we'll use latest one we found
+                        assert self._region, "No region previously found, and also not found in URL '%s' " % url + \
+                                             "can't request"
+                        region = self._region
+                    if self._region is None:
+                        self._region = region
+                    auth = AWS4Auth(self.__class__.AWS_ACCESS_KEY_ID,
+                            self.__class__.AWS_SECRET_ACCESS_KEY,
+                            region,
+                            's3')
+                    return self._client.get(url,auth=auth,*args,**kwargs)
+                else:
+                    raise DumperException("Couldn't determine s3 region from url '%s'" % url)
+
+            self.client.get = auth_get
 
     @property
     def base_url(self):
@@ -134,44 +171,23 @@ class BiothingsDumper(HTTPDumper):
             found_compat_version = VERSION.intersection(version)
             assert found_compat_version, "Remote data requires %s to be %s, but current app is %s" % (version_field,version,VERSION)
             msg.append("%s=%s:OK" % (version_field,version))
-        self.logger.debug("Compat: %s" % ", ".join(msg))
 
     def load_remote_json(self,url):
-        if self.__class__.AWS_ACCESS_KEY_ID:
-            if ".s3-website-" in url:
-                raise DumperException("Can't access s3 static website using authentication")
-            # extract region from URL (reliable ?)
-            pat = re.compile(".*\.(.*)\.amazonaws.com.*")
-            m = pat.match(url)
-            if m:
-                frag = m.groups()[0]
-                # looks like "s3-us-west-2"
-                # whether static website is activated or not
-                region = frag.replace("s3-","")
-                auth = AWS4Auth(self.__class__.AWS_ACCESS_KEY_ID,
-                        self.__class__.AWS_SECRET_ACCESS_KEY,
-                        region,
-                        's3')
-                # since it's not a static website, redirections don't work (that's
-                # how s3 works) so we need to deal with that manually. We allow only
-                # one hop (basically, it's for latest.json file/symlink)
-                res = self.client.get(url,auth=auth)
-                redirect = res.headers.get('x-amz-website-redirect-location')
-                if redirect:
-                    parsed = urlparse(url)
-                    newurl = parsed._replace(path=redirect)
-                    res = self.client.get(newurl.geturl(),auth=auth)
-            else:
-                raise DumperException("Couldn't determine s3 region from url '%s'" % url)
-        else:
-            auth = None
-            res = self.client.get(url,allow_redirects=True,auth=auth)
+        res = self.client.get(url,allow_redirects=True)
+        redirect = res.headers.get('x-amz-website-redirect-location')
+        if redirect:
+            parsed = urlparse(url)
+            newurl = parsed._replace(path=redirect)
+            res = self.client.get(newurl.geturl())
         if res.status_code != 200:
+            self.logger.error(res)
             return None
         try:
             jsondat = json.loads(res.text)
             return jsondat
         except json.JSONDecodeError:
+            self.logger.error(res.headers)
+            self.logger.error(res)
             return None
 
     def compare_remote_local(self,remote_version,local_version,orig_remote_version,orig_local_version):
@@ -404,23 +420,27 @@ class BiothingsDumper(HTTPDumper):
 
 
     @asyncio.coroutine
-    def info(self,version="latest"):
+    def info(self, version='latest'):
         """Display version information (release note, etc...) for given version"""
-        txt = ">>> Current local version: '%s'\n" % self.target_backend.version
-        txt += ">>> Release note for remote version '%s':\n" % version
         file_url = urljoin(self.base_url,"%s.json" % version)
+        result = {}
         build_meta = self.load_remote_json(file_url)
         if not build_meta:
             raise DumperException("Can't find version '%s'" % version)
-        if build_meta.get("changes") and build_meta["changes"].get("txt"):
-            relnote_url = build_meta["changes"]["txt"]["url"]
-            res = self.client.get(relnote_url)
-            if res.status_code == 200:
-                return txt + res.text
-            else:
-                raise DumperException("Error while downloading release note '%s': %s" % (version,res))
-        else:
-            return txt + "No information found for release '%s'" % version
+        result["info"] = build_meta
+        if build_meta.get("changes"):
+            result["release_note"] = {}
+            for filtyp in build_meta["changes"]:
+                relnote_url = build_meta["changes"][filtyp]["url"]
+                res = self.client.get(relnote_url)
+                if res.status_code == 200:
+                    if filtyp == "json":
+                        result["release_note"][filtyp] = res.json()
+                    else:
+                        result["release_note"][filtyp] = res.text
+                else:
+                    raise DumperException("Error while downloading release note '%s (%s)': %s" % (version,res,res.text))
+        return result
 
     @asyncio.coroutine
     def versions(self):
