@@ -51,7 +51,9 @@ class BiothingWebSettings(object):
     
     def generate_app_list(self):
         ''' Generates the tornado.web.Application `(regex, handler_class, options) tuples <http://www.tornadoweb.org/en/stable/web.html#application-configuration>`_ for this project.'''
-        return [(endpoint_regex, handler, {"web_settings": self}) for (endpoint_regex, handler) in self.APP_LIST] + [(endpoint_regex, handler) for (endpoint_regex, handler) in self.UNINITIALIZED_APP_LIST]
+        return self.UNINITIALIZED_APP_LIST + [
+            (endpoint_regex, handler, {"web_settings": self})
+            for (endpoint_regex, handler) in self.APP_LIST]
 
     def validate(self):
         ''' Validate these settings '''

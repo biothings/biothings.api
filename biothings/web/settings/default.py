@@ -33,10 +33,10 @@ STATIC_PATH = "static"
 
 # api version in the URL patterns and elsewhere
 API_VERSION = 'v1'
-# project URL routing
-APP_LIST = []
 # for URLS that don't require settings in initialize
 UNINITIALIZED_APP_LIST = []
+# project URL routing
+APP_LIST = []
 
 # Allow the __any__ random doc retrieval
 ALLOW_RANDOM_QUERY = False
