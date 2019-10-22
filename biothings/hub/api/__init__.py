@@ -52,6 +52,7 @@ def %(method)s(self%(mandatargs)s):
     '''%(name)s => %(command)s'''
     cmdargs = %(cmdargs)s
     reqargs = {} # holds either body or query string args
+    qkwargs = {} # holds kwargs (either from body or query string)
     for k in cmdargs:
         if cmdargs[k] is None:
             raise tornado.web.HTTPError(400,reason="Bad Request (Missing argument " + k + ")")
@@ -59,18 +60,26 @@ def %(method)s(self%(mandatargs)s):
     if "%(method)s" != "get":
         # allow to have no body at all, defaulting to empty dict (no args)
         reqargs = tornado.escape.json_decode(self.request.body or '{}')
-    elif %(force_bodyargs)s == True:
+    elif %(force_bodyargs)s == True: # force_bodyargs
         for arg in %(args)s:
             qarg = self.get_query_argument(arg,None)
             if qarg:
                 reqargs[arg] = qarg;
-    for arg in %(args)s + list(reqargs.keys()):
-        mandatory = False
-        try:
-            defarg = %(defaultargs)s[arg]
-        except KeyError:
+    else:
+        # extract optional args
+        for arg in self.request.arguments:
+            if not arg in reqargs:
+                qkwargs[arg] = self.get_argument(arg)
+    #print("arguments:")
+    #print(%(args)s)
+    #print(%(defaultargs)s)
+    #print(reqargs)
+    #print(qkwargs)
+    for arg in %(args)s + list(reqargs.keys()) + list(qkwargs.keys()):
+        if arg in %(defaultargs)s or arg in qkwargs:
+            mandatory = False
+        else:
             mandatory = True
-            defarg = None
         if %(force_bodyargs)s or "%(method)s" != "get":
             try:
                 if mandatory:
@@ -93,12 +102,12 @@ def %(method)s(self%(mandatargs)s):
         else:
             # if not default arg and arg not passed, this will raise a 400 (by tornado)
             if mandatory:
-                    cmdargs[arg] # check key
+                cmdargs[arg] # check key
             else:
                 try:
-                    val = self.get_argument(arg)
+                    val = qkwargs[arg]
                     cmdargs[arg] = val
-                except tornado.web.MissingArgumentError:
+                except KeyError:
                     pass
     # we don't pass though shell evaluation there
     # to prevent security issue (injection)...
@@ -116,7 +125,8 @@ def %(method)s(self%(mandatargs)s):
 """ % {"method":method,"args":args,"defaultargs":defaultargs,"name":name,
         "mandatargs":mandatargs,"cmdargs":cmdargs,"command":repr(command),
         "force_bodyargs":force_bodyargs}
-    #print(strcode)
+    #if name == "info" or name == "builds":
+    #    print(strcode)
     return strcode, mandatargs != ""
 
 def generate_endpoint_for_composite_command(name, command, method):
