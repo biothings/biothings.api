@@ -249,10 +249,13 @@ class BasePublisher(BaseManager,BaseStatusRegisterer):
                 "key" : basename,
                 "base_path" : step_conf["base_path"],
                 "bucket" : step_conf["bucket"]}
+    
+    def get_release_note_filename(self, build_version):
+        return "release_%s" % build_version
 
     def publish_release_notes(self, release_folder, build_version, s3_release_folder, 
                               s3_release_bucket, aws_key, aws_secret, prefix="release_"):
-        release_note = "release_%s" % build_version
+        release_note = self.get_release_note_filename(build_version)
         s3basedir = os.path.join(s3_release_folder,build_version)
         notes = glob.glob(os.path.join(release_folder,"%s.*" % release_note))
         self.logger.info("Uploading release notes from '%s' to s3 folder '%s'" % (notes,s3basedir))
@@ -617,6 +620,11 @@ class DiffPublisher(BasePublisher):
             diff_file = re.sub("\.pyobj\.synced$",".pyobj",synced)
             os.rename(synced,diff_file)
 
+    def get_release_note_filename(self, build_version):
+        assert "." in build_version # make sure it's an incremental
+        _,tgt = build_version.split(".")
+        return "release_%s" % tgt
+
     def publish(self, build_name, previous_build=None, steps=["pre","reset","upload","meta","post"]):
         """
         Publish diff files and metadata about the diff files, release note, etc... on s3.
@@ -640,6 +648,9 @@ class DiffPublisher(BasePublisher):
         # check what to do
         if type(steps) == str:
             steps = [steps]
+
+        # instantiate publishing environment
+        self.envconf = self.template_out_conf(bdoc)
 
         s3_release_folder = self.envconf["release"]["folder"]
         s3_release_bucket = self.envconf["release"]["bucket"]
