@@ -41,13 +41,21 @@ export default {
             // we could get stuck, so at least we have that watchdoc constantly checking
             // for stuck commands
             this.interval_ref = setInterval(() => {
-                console.log("Watchdog is watching");
+                var todelete = [];
                 for(var cmd_id in this.running) {
                     if(this.running.hasOwnProperty(cmd_id)) {
                         console.log(`Watchdog fetch result for ${cmd_id}`);
                         // this will clear cmd_id from this.running if command is done
-                        this.fetchResult(cmd_id);
+                        try {
+                            this.fetchResult(cmd_id);
+                        } catch(err) {
+                            console.log(err);
+                            todelete.push(cmd_id);
+                        }
                     }
+                }
+                for(let i in todelete) {
+                    delete this.running[todelete[i]];
                 }
             },this.watchdog_interval);
         },
@@ -68,6 +76,7 @@ export default {
                 self.loaded();
             })
             .catch(err => {
+                errback(err);
                 self.loaderror(err);
             });
         },
@@ -81,15 +90,19 @@ export default {
             axios.get(axios.defaults.baseURL + `/command/${cmd_id}`)
             .then(response => {
                 if(response.data && response.data.result && response.data.result.is_done) {
-                    if(response.data.result.failed) {
-                        self.running[cmd_id]["eb"](response);
-                    } else {
-                        self.running[cmd_id]["cb"](response);
+                    try {
+                        if(response.data.result.failed) {
+                            self.running[cmd_id]["eb"](response);
+                        } else {
+                            self.running[cmd_id]["cb"](response);
+                        }
+                    } finally {
+                        delete self.running[cmd_id];
                     }
-                    delete self.running[cmd_id];
                 }
             })
             .catch(err => {
+                console.log(err);
             });
         },
         extractAsyncError: function(err) {

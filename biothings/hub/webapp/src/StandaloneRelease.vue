@@ -14,7 +14,7 @@
         <br>
 		<div class="ui grid">
 			<div class="twelve wide column">
-				<standalone-release-versions v-bind:name="name"></standalone-release-versions>
+				<standalone-release-versions v-bind:name="name" v-bind:backend="backend"></standalone-release-versions>
 			</div>
 			<div class="four wide column">
                 <div class="ui tiny negative message" v-if="backend_error">
