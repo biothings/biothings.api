@@ -104,12 +104,17 @@ class BiothingsDumper(HTTPDumper):
 
     @asyncio.coroutine
     def get_target_backend(self):
-        return {
-                "host" : self.target_backend.target_esidxer.es_host,
-                "index" : self.target_backend.target_name,
-                "version" : self.target_backend.version,
-                "count" : self.target_backend.count(),
-                }
+
+        @asyncio.coroutine
+        def do():
+            cnt = self.target_backend.count()
+            return {
+                    "host" : self.target_backend.target_esidxer.es_host,
+                    "index" : self.target_backend.target_name,
+                    "version" : self.target_backend.version,
+                    "count" : cnt
+                    }
+        return do()
 
     def download(self,remoteurl,localfile,headers={}):
         self.prepare_local_folders(localfile)  
@@ -447,7 +452,7 @@ class BiothingsDumper(HTTPDumper):
         """Display all available versions"""
         avail_versions = self.load_remote_json(self.__class__.VERSION_URL)
         if not avail_versions:
-            raise DumperException("Can't find any versions available...'")
+            raise DumperException("Can't find any versions available...")
         assert avail_versions["format"] == "1.0", "versions.json format has changed: %s" % avail_versions["format"]
         return avail_versions["versions"]
 
