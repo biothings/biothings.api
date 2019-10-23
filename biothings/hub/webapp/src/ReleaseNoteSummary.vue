@@ -94,7 +94,7 @@
         </div>
 
         <!-- display release note -->
-        <div :class="['ui basic disprelnote modal',release_id]">
+        <div :class="['ui basic disprelnote modal',type,release_id]">
             <h3 class="ui icon">
                 <i class="bullhorn icon"></i>
                 Release note
@@ -180,8 +180,8 @@ export default {
             .then(response => {
                 self.release_note_content = response.data.result;
                 self.loaded();
-                $(".ui.basic.disprelnote.modal." + self.release_id + " pre").text(response.data.result);
-                $(`.ui.basic.disprelnote.modal.${this.release_id}`)
+                $(`.ui.basic.disprelnote.modal.${self.type}.${self.release_id} pre`).text(response.data.result);
+                $(`.ui.basic.disprelnote.modal.${self.type}.${self.release_id}`)
                 .modal("setting", {
                     detachable : false,
                     closable: false,

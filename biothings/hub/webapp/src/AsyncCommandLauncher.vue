@@ -28,7 +28,7 @@ export default {
         return {
             running : {},
             watchdog_running: false,
-            watchdog_interval: 10000, // ms
+            watchdog_interval: 5000, // ms
             interval_ref : null,
         }
     },
