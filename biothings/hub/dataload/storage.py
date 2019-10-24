@@ -27,7 +27,11 @@ class BaseStorage(object):
         raise NotImplementedError("implement-me in subclass")
 
     def check_doc_func(self,doc):
-        return True
+        """
+        Return doc if it's alright, False if doc should be ignore for some reason
+        Subclass and override as needed.
+        """
+        return doc
 
 
 class CheckSizeStorage(BaseStorage):
@@ -38,6 +42,7 @@ class CheckSizeStorage(BaseStorage):
         # because there are too many elements in "ndc" list
         if not ok:
             self.logger.warning("Skip document '%s' because too large" % doc.get("_id"))
+            return False
         return ok
 
 
