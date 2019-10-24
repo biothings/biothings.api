@@ -50,7 +50,6 @@ class BiothingsDumper(HTTPDumper):
         super(BiothingsDumper,self).__init__(*args,**kwargs)
         # list of build_version to download/apply, in order
         self._target_backend = None
-        self._region = None
 
     def prepare_client(self):
         """
@@ -65,19 +64,19 @@ class BiothingsDumper(HTTPDumper):
                 if ".s3-website-" in url:
                     raise DumperException("Can't access s3 static website using authentication")
                 # extract region from URL (reliable ?)
-                pat = re.compile(".*\.(.*)\.amazonaws.com.*")
+                pat = re.compile("https?://(.*)\.(.*)\.amazonaws.com.*")
                 m = pat.match(url)
                 if m:
-                    frag = m.groups()[0]
+                    bucket_name,frag = m.groups()
                     # looks like "s3-us-west-2"
                     # whether static website is activated or not
                     region = frag.replace("s3-","")
-                    if region == "s3": # url doesn't contain a region, we'll use latest one we found
-                        assert self._region, "No region previously found, and also not found in URL '%s' " % url + \
-                                             "can't request"
-                        region = self._region
-                    if self._region is None:
-                        self._region = region
+                    if region == "s3": # url doesn't contain a region, we need to query the bucket
+                        s3client = boto3.client("s3",
+                                aws_access_key_id=self.__class__.AWS_ACCESS_KEY_ID,
+                                aws_secret_access_key=self.__class__.AWS_SECRET_ACCESS_KEY)
+                        bucket_info = s3client.get_bucket_location(Bucket=bucket_name)
+                        region = bucket_info["LocationConstraint"]
                     auth = AWS4Auth(self.__class__.AWS_ACCESS_KEY_ID,
                             self.__class__.AWS_SECRET_ACCESS_KEY,
                             region,
