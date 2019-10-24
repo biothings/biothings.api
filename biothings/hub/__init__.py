@@ -247,15 +247,15 @@ class HubServer(object):
         self.remaining_features = copy.deepcopy(self.features) # keep track of what's been configured
         self.configure_ioloop()
         self.configure_managers()
-        self.configure_commands()
-        self.configure_extra_commands()
         # setup the shell
         self.shell = HubShell(self.managers["job_manager"])
         self.shell.register_managers(self.managers)
-        self.configure_remaining_features()
-        self.shell.set_commands(self.commands,self.extra_commands)
         self.shell.server = self # propagate server instance in shell
                                  # so it's accessible from the console if needed
+        self.configure_remaining_features()
+        self.configure_commands()
+        self.configure_extra_commands()
+        self.shell.set_commands(self.commands,self.extra_commands)
         # set api
         if self.api_config != False:
             self.configure_api_endpoints() # after shell setup as it adds some default commands
@@ -462,6 +462,7 @@ class HubServer(object):
                 getattr(self,"configure_%s_manager" % feat)()
                 self.remaining_features.remove(feat)
             elif hasattr(self,"configure_%s_feature" % feat):
+                # see configure_remaining_features()
                 pass # this is configured after managers but should not produce an error
             else:
                 raise AttributeError("Feature '%s' listed but no 'configure_%s_{manager|feature}' method found" % (feat,feat))
