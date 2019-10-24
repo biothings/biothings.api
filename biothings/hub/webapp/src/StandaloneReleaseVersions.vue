@@ -85,7 +85,7 @@
                     <span v-if="install_path.length">
                         <br>In order to install this data release, the following releases will first be installed:
                         <div class="ui ordered inverted list">
-                            <div class="item" v-for="ver,_ in install_path" >{{ ver }}</div>
+                            <div class="item" v-for="ver,_ in install_path" >Release: <b>{{ ver }}</b></div>
                         </div>
                     </span>
                     </p>
@@ -250,12 +250,10 @@ export default {
                 return axios.post(axios.defaults.baseURL + `/standalone/${self.name}/install`,data)
             }
             var onSuccess = function(response) {
-                console.log("in insucces istall");
                 self.installing = null;
                 self.installLoader(version,true);
             }
             var onError = function(err) {
-                console.log("in ibnerrror install");
                 self.installing = null;
                 self.error = "Installation error: " + self.extractAsyncError(err);
             }

@@ -2,7 +2,14 @@
     <span>
         <div class="ui tiny compact positive nopad message">
             <div class="header">
-                <a :href="publish.metadata.url">Release published</a>
+                <div class="ui horizontal bulleted list">
+                    <div class="item">
+                        Release published
+                    </div>
+                    <div class="item">
+                        <a :href="version_url">version.json</a>
+                    </div>
+                </div>
             </div>
             <p>on {{ moment(publish.metadata.release_date).format('MMMM Do YYYY, h:mm:ss a') }}</p>
         </div>
@@ -31,6 +38,13 @@ export default {
         }
     },
     computed: {
+        version_url: function() {
+            var url = new URL(this.publish.metadata.url);
+            var parts = url.pathname.split("/").slice(0,-1);
+            parts.push("versions.json");
+            url.pathname = parts.join("/");
+            return url.toString();
+        }
     },
     watch: {
     },

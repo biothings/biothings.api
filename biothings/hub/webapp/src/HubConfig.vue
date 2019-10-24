@@ -70,6 +70,7 @@
 </template>
 
 <script>
+import Vue from 'vue';
 import axios from 'axios'
 import bus from './bus.js'
 import Loader from './Loader.vue'
@@ -86,12 +87,16 @@ export default {
     },
     created() {
         bus.$on('change_config',this.onConfigChanged);
+        bus.$on('restart_hub',this.restartHub)
+        bus.$on('save_config_param',this.onSaveParameter);
     },
     updated() {
         $('.menu .item').tab();
     },
     beforeDestroy() {
         bus.$off('change_source',this.onConfigChanged);
+        bus.$off('restart_hub',this.restartHub)
+        bus.$off('save_config_param',this.onSaveParameter);
     },
     data () {
         return {
@@ -107,7 +112,6 @@ export default {
     },
     methods: {
         loadData () {
-            console.log("loaddata");
             var self = this;
             this.loading();
             axios.get(axios.defaults.baseURL + `/config`)
@@ -130,6 +134,9 @@ export default {
                         }
                     }
                     this.config = bysections;
+                    // make this config avail globally
+                    Vue.config.hub_config = response.data.result.scope.config;
+                    bus.$emit("current_config",response.data.result);
                     this.loaded();
                 } catch(err) {
                     self.error = `Can't parse configuration: ${err}`;
@@ -165,6 +172,16 @@ export default {
         },
         onConfigChanged: function() {
             this.loadData();
+        },
+        onSaveParameter: function(data) {
+            var self = this;
+            axios.put(axios.defaults.baseURL + `/config`, {"name" : data["name"], "value" : data["value"]})
+            .then(response => {
+                self.loadData();
+            })
+            .catch(err => {
+                console.log("error saving parameter: " + err);
+            })
         },
     },
 }

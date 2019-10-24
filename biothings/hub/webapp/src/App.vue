@@ -38,9 +38,13 @@
                 <i class="ui shield alternate icon"></i>
                 <router-link to="/apis">API</router-link>
             </a>
+            <!-- only if we have a home page already, otherwise it *is* the home page -->
+            <!-- > 2 because when autohub, 2 paths are created, one for releases, one for wizard -->
             <a class="clickable item" v-if="has_feature('autohub')">
                 <i class="ui globe icon"></i>
-                <router-link to="/standalone">Releases</router-link>
+                <router-link :to="routes.length > 2 && routes[0]['path'] == '/' ? '/standalone' : '/'">
+                    {{ routes.length > 2 && routes[0]['path'] == '/' ? 'Releases' : 'Home' }}
+                </router-link>
             </a>
 
             <div class="clickable ui item right" v-if="has_feature('job')">
@@ -277,6 +281,10 @@
     });
     numeral.locale('mine');
 
+    Vue.filter("formatNumeric",function(value,fmt) {
+        return numeral(value).format(fmt);
+    });
+
     Vue.filter("formatNumber", function (value) {
         return numeral(value).format("0.00 a");
     });
@@ -304,6 +312,7 @@
     import Terminal from './Terminal.vue';
     import FeatureChecker from './FeatureChecker.vue';
     import StandaloneReleases from './StandaloneReleases.vue';
+    import StandaloneWizard from './StandaloneWizard.vue'
 
     const router = new VueRouter();
 
@@ -344,6 +353,7 @@
             bus.$on("connect",this.setupConnection,null,"/");
             bus.$on("feature_terminal",this.setupTerminal);
             bus.$on("feature_ws",this.setupLogs);
+            bus.$on("redirect",this.redirect);
             // connect to default one to start
             this.conn = this.default_conn;
         },
@@ -352,9 +362,11 @@
             bus.$off("connect",this.setupConnection);
             bus.$off("feature_terminal",this.setupTerminal);
             bus.$off("feature_ws",this.setupLogs);
+            bus.$off("redirect",this.redirect);
         },
         data() {
             return {
+                routes: [],
                 ws_connection: "disconnected",
                 socket_msg: '',
                 socket : null,
@@ -413,30 +425,39 @@
             setupUIByFeatures() {
                 console.log("Setup UI according to listed features");
                 console.log(Vue.config.hub_features);
-                var routes = [];
+                this.routes = [];
                 if(this.has_feature('source') && this.has_feature('build')) {
                     console.log("Setup Home tab");
-                    routes.push({ path: '/', component: Status });
+                    this.routes.push({ path: '/', component: Status });
                 }
                 if(this.has_feature('source')) {
                     console.log("Setup Sources tab");
-                    routes.push({ path: '/sources', component: DataSourceGrid });
-                    routes.push({ path: '/source/:_id', component: DataSourceDetailed, props: true });
+                    this.routes.push({ path: '/sources', component: DataSourceGrid });
+                    this.routes.push({ path: '/source/:_id', component: DataSourceDetailed, props: true });
                 }
                 if(this.has_feature('build')) {
                     console.log("Setup Builds tab");
-                    routes.push({ path: '/builds', component: BuildGrid });
-                    routes.push({ path: '/build/:_id', component: BuildDetailed, props: true, name: "build"});
+                    this.routes.push({ path: '/builds', component: BuildGrid });
+                    this.routes.push({ path: '/build/:_id', component: BuildDetailed, props: true, name: "build"});
                 }
                 if(this.has_feature('api')) {
                     console.log("Setup API tab");
-                    routes.push({ path: '/apis', component: ApiGrid });
+                    this.routes.push({ path: '/apis', component: ApiGrid });
                 }
                 if(this.has_feature('autohub')) {
+                    var path = "/standalone";
+                    if(this.routes.length == 0) {
+                        // if we get there, no other path has been prev defined,
+                        // it's a standalone hub only, standalone component is / (home)
+                        path = "/";
+                    }
                     console.log("Setup autohub tab");
-                    routes.push({ path: '/standalone', component: StandaloneReleases});
+                    this.routes.push({ path: path, component: StandaloneReleases});
+                    var wizard = path + "wizard";
+                    this.routes.push({ path: wizard, component: StandaloneWizard, name: "wizard"});
                 }
-                router.addRoutes(routes);
+                router.addRoutes(this.routes);
+                console.log(router);
             },
             getVersionAsString(obj) {
                  try {
@@ -856,6 +877,7 @@
             // check if we got a reply before, it not, we have a connection issue
             if(this.msg_timestamp != null) {
                 console.log("Sent a ping but got no pong, disconnect");
+                console.log(router);
                 this.closeConnection();
             }
             // Send the "pingServer" event to the server.
@@ -895,7 +917,11 @@
         },
         showLogs(event) {
             console.log(event);
-        }
+        },
+        redirect: function(url, params) {
+            console.log(`Redirecting to ${url}, with param ${JSON.stringify(params)}`);
+            router.push({name : url, params: params});
+        },
     }
 }
 

@@ -5,14 +5,14 @@
             </div>
             <div class="two wide column">
                 <div class="ui secondary small compact menu right floated">
-                    <a class="item">
-                        <i class="rss icon"></i>
-                        Add
+                    <a class="item" @click="wizard()">
+                        <i class="magic icon"></i>
+                        Setup
                     </a>
                 </div>
             </div>
         </div>
-        <div class="ui grid">
+        <div class="ui grid" v-if="sources.length">
             <div class="two wide column">
                 <div class="ui grey inverted vertical fluid tabular standalone menu">
                     <a :class="['item', i === 0 ? 'active' : '']" :data-tab="src.name" v-for="(src,i) in sources" @click="changeTab(src.name)">
@@ -34,6 +34,7 @@ import Vue from 'vue'
 import axios from 'axios'
 import Loader from './Loader.vue'
 import StandaloneRelease from './StandaloneRelease.vue'
+import StandaloneWizard from './StandaloneWizard.vue'
 import bus from './bus.js'
 
 
@@ -61,7 +62,7 @@ export default {
 	},
 	computed: {
 	},
-	components: { StandaloneRelease, },
+	components: { StandaloneRelease, StandaloneWizard, },
 	methods: {
 		refresh: function() {
 			var self = this;
@@ -71,6 +72,9 @@ export default {
 			.then(response => {
 				self.sources = response.data.result;
 				self.loaded();
+                if(!self.sources.length) {
+                    bus.$emit("redirect","wizard");
+                }
 			})
 			.catch(err => {
 				console.log("Error getting list of biothings sources: " + err);
@@ -82,6 +86,9 @@ export default {
             // we'll do that ourself...
             $('.ui.standalone.menu').find('.item').tab('change tab', tabname);
         },
+        wizard: function() {
+            bus.$emit("redirect","wizard");
+        }
     }
 }
 </script>

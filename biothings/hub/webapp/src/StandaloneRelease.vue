@@ -48,7 +48,7 @@
                             <i class="file alternate icon"></i>
                             <div class="content">
                                 <div class="header">Documents</div>
-                                {{ backend.count | formatInteger }}
+                                {{ backend.count | formatNumeric(fmt="0,0") }}
                             </div>
                         </div>
                     </div>
