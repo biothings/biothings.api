@@ -90,7 +90,11 @@ class ConfigurationManager(types.ModuleType):
     def __getattr__(self, name):
         # first try value from Hub DB, they have precedence
         # if nothing, then take it from file
-        val = self.get_value_from_db(name) or self.get_value_from_file(name)
+        try:
+            val = self.get_value_from_db(name)
+        except (KeyError, ValueError):
+            val = self.get_value_from_file(name)
+        
         return val
 
     def __delattr__(self, name):
@@ -206,7 +210,10 @@ class ConfigurationManager(types.ModuleType):
                             # the root is everything up to the last element in the path, that is, the full path
                             # of the class, etc... The last element is the attribute to set.
                             self.byroots.setdefault(".".join(elems[:-1]),[]).append({"_id" : d["_id"], "value": val})
-            return self.bykeys.get(scope,{}).get(name)
+
+            return self.bykeys.get(scope,{})[name]
+        else:
+            raise ValueError("hub_config not set yet")
 
     def get_value_from_file(self, name):
         # if "name" corresponds to a dict, we may have
