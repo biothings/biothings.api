@@ -5,9 +5,11 @@ from biothings.utils.doc_traversal import breadth_first_traversal
 from collections import OrderedDict
 import logging
 
+
 class ScrollIterationDone(Exception):
     ''' Thrown when no more results are left in request scroll batch. '''
     pass
+
 
 class ESResultTransformer(object):
     ''' Class to transform the results of the Elasticsearch query generated prior in the pipeline.
@@ -151,9 +153,10 @@ class ESResultTransformer(object):
             May override default behavior.
         '''
 
-        get_url = lambda val: val.get('license_url_short', False) or val.get('license_url', None)
-        licenses = {source: get_url(val) for source, val in self.source_metadata
-                    [self.options.assembly].items() if get_url(val)}
+        get_url = lambda val: val.get('license_url_short', val.get('license_url'))
+        sources = self.source_metadata.get(self.options.assembly, {}) \
+            if self.options.assembly else self.source_metadata
+        licenses = {source: get_url(val) for source, val in sources.items() if get_url(val)}
 
         def flatten_key(dic):
             '''
@@ -232,11 +235,12 @@ class ESResultTransformer(object):
                     if isinstance(item, dict):
                         item['_license'] = url
 
-        for fkey, val in flatten_key(doc):
-            if fkey in self.licenses:
-                set_license(val, licenses[self.licenses[fkey]])
-            elif '.' not in fkey and fkey in licenses:
-                set_license(val, licenses[fkey])
+        if licenses:
+            for fkey, val in flatten_key(doc):
+                if fkey in self.licenses:
+                    set_license(val, licenses[self.licenses[fkey]])
+                elif '.' not in fkey and fkey in licenses:
+                    set_license(val, licenses[fkey])
 
     def _modify_doc(self, doc):
         ''' Override to add custom fields to doc before flattening/sorting '''
