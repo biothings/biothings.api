@@ -406,7 +406,7 @@ class SnapshotPublisher(BasePublisher):
                 # generate json metadata about this diff release
                 assert snapshot, "Missing snapshot name information"
                 if getattr(btconfig,"SKIP_CHECK_VERSIONS",None):
-                    self.logger.info("SKIP_CHECK_VERSIONS %s, no version check will be performed on diff metadata" % repr(btconfig.SKIP_CHECK_VERSION))
+                    self.logger.info("SKIP_CHECK_VERSIONS %s, no version check will be performed on diff metadata" % repr(btconfig.SKIP_CHECK_VERSIONS))
                 else:
                     assert getattr(btconfig,"BIOTHINGS_VERSION","master") != "master", "I won't publish data refering BIOTHINGS_VERSION='master'"
                     assert getattr(btconfig,"APP_VERSION","master") != "master", "I won't publish data refering APP_VERSION='master'"
