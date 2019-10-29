@@ -232,6 +232,7 @@ class BaseAssistant(object):
                     raise AssistantException("'ignore_duplicates' key not supported anymore, " +
                                              "use 'on_duplicates' : 'error|ignore|merge'")
                 # default is not ID conversion at all
+                confdict["STORAGE_CLASS"] = storage_class
                 confdict["IMPORT_IDCONVERTER_FUNC"] = ""
                 confdict["IDCONVERTER_FUNC"] = None
                 confdict["CALL_PARSER_FUNC"] = "return parser_func(data_folder)"
