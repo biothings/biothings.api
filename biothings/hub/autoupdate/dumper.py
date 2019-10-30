@@ -158,6 +158,7 @@ class BiothingsDumper(HTTPDumper):
         for version_field in ["app_version","standalone_version","biothings_version"]:
             VERSION_FIELD = version_field.upper()
             version = build_meta.get(version_field)
+            assert not version is None, "Version field '%s' is None" % VERSION_FIELD
             # some releases use dict (most recent) some use string
             if isinstance(version,dict):
                 version = version["branch"]
