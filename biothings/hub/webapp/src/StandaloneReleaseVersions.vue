@@ -264,7 +264,12 @@ export default {
             },
             function(response) {
                 self.installLoader(version,false);
-                self.install_path = self.adjustInstallPath(response.data.result.results[0]);
+                var path = response.data.result.results[0];
+                if(path) {
+                    // if hub returned a list of versions to apply before, adjust it
+                    // (ie. remove current one for display purpose)
+                    self.install_path = self.adjustInstallPath(response.data.result.results[0]);
+                }
                 $(`.ui.basic.install.modal.${self.cssName(self.name)}`)
                 .modal("setting", {
                     onApprove: function () {
