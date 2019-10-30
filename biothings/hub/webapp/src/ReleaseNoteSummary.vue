@@ -24,7 +24,6 @@
                         </tbody>
                     </table>
             </span>
-            <b v-if="type == 'incremental' && release.diff.stats.mapping_changed">Mapping has changed.</b>
             <!-- search release note associated to this diff, ie. generated with "old" collection -->
         </span>
         <span v-else>

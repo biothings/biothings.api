@@ -457,7 +457,6 @@
                     this.routes.push({ path: wizard, component: StandaloneWizard, name: "wizard"});
                 }
                 router.addRoutes(this.routes);
-                console.log(router);
             },
             getVersionAsString(obj) {
                  try {
