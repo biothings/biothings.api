@@ -758,7 +758,7 @@ class DiffPublisher(BasePublisher):
                     # if the same, this would create an infinite loop in autoupdate hub
                     # (X requires X, where to find X ? there, but X requires X, where to find X ?...)
                     if meta["old"]["version"] == meta["new"]["version"]:
-                        raise DifferException("Required version is the same as target version " + \
+                        raise PublisherException("Required version is the same as target version " + \
                                 "('%s'), prevent publishing to avoid infinite loop " % meta["new"]["version"] + \
                                 "while resolving updates in auto-update hub")
                     # generate json metadata about this diff release
@@ -1175,7 +1175,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                 "Target databases must match current DATA_TARGET_DATABASE setting"
         new_doc = get_src_build().find_one({"_id":new.target_collection.name})
         if not new_doc:
-            raise DifferException("Collection '%s' has no corresponding build document" % \
+            raise PublisherException("Collection '%s' has no corresponding build document" % \
                     new.target_collection.name)
         # old_doc doesn't have to exist (but new_doc has) in case we build a initial release note
         # compared against nothing
