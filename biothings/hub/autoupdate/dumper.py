@@ -115,6 +115,15 @@ class BiothingsDumper(HTTPDumper):
                     }
         return do()
 
+    @asyncio.coroutine
+    def reset_target_backend(self):
+
+        @asyncio.coroutine
+        def do():
+            if self.target_backend.target_esidxer.exists_index():
+                self.target_backend.target_esidxer.delete_index()
+        return do()
+
     def download(self,remoteurl,localfile,headers={}):
         self.prepare_local_folders(localfile)  
         parsed = urlparse(remoteurl)
