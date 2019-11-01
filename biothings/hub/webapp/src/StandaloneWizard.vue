@@ -83,7 +83,15 @@
                             Enter URL pointing to a file named <code>versions.json</code>. This file contains the list of
                             all available remote data releases. It is automatically created when a data release is published from
                             a Biothings Studio. You can enter multiple URLs, one per line<br>
-                            Ex: <a href="http://biothings-releases.s3-website-us-west-2.amazonaws.com/mygene.info-demo/versions.json">versions.json</a>
+                            Ex: drag & drop one the following <i>versions.json</i>.
+                            <div class="ui horizontal bulleted list">
+                                <div class="item">
+                                    <b>MyGene Demo</b> (no auth) <a href="http://biothings-releases.s3-website-us-west-2.amazonaws.com/mygene.info-demo/versions.json">versions.json</a>
+                                </div>
+                                <div class="item">
+                                    <b>MyGene Prod.</b> (auth. required) <a href="http://biothings-releases.s3-website-us-west-2.amazonaws.com/mygene.info/versions.json">versions.json</a>
+                                </div>
+                            </div>
                         </p>
                         <br>
                         <div class="ui form">

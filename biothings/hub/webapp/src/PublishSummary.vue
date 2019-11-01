@@ -7,7 +7,7 @@
                         Release published
                     </div>
                     <div class="item">
-                        <a :href="version_url">version.json</a>
+                        <a :href="version_url">versions.json</a>
                     </div>
                 </div>
             </div>

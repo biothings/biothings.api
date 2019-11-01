@@ -52,9 +52,35 @@
                             </div>
                         </div>
                     </div>
+                    <button class="ui small negative basic button" @click="reset()">Reset</button>
+
                 </div>
             </div>
 		</div>
+
+        <div class="ui basic reset modal">
+                <h2 class="ui icon">
+                    <i class="info circle icon"></i>
+                    Reset backend
+                </h2>
+                <div class="content">
+                    <p>Are you sure you want to reset the backend and delete the index.</p>
+                    <div class="ui tiny warning message">
+                        This operation is <b>not</b> reversible, all data on the index will be lost.
+                    </div>
+                </div>
+                <div class="actions">
+                    <div class="ui red basic cancel inverted button">
+                        <i class="remove icon"></i>
+                        No
+                    </div>
+                    <div class="ui green ok inverted button">
+                        <i class="checkmark icon"></i>
+                        Yes
+                    </div>
+                </div>
+        </div>
+
 	</span>
 </template>
 
@@ -105,6 +131,25 @@ export default {
             var onError = function(err) { console.log(err); self.loaderror(err); self.backend_error = self.extractAsyncError(err);}
             this.launchAsyncCommand(cmd,onSuccess,onError)
 		},
+        resetBackend: function() {
+            var self = this;
+            self.backend_error = null;
+            var cmd = function() { self.loading(); return axios.delete(axios.defaults.baseURL + `/standalone/${self.name}/backend`) }
+			// results[0]: async command can produce multiple results (cmd1() && cmd2), but here we know we'll have only one
+            var onSuccess = function(response) { self.refreshBackend(); }
+            var onError = function(err) { console.log(err); self.loaderror(err); self.backend_error = self.extractAsyncError(err);}
+            this.launchAsyncCommand(cmd,onSuccess,onError)
+        },
+        reset: function() {
+            var self = this;
+            $(`.ui.basic.reset.modal`)
+            .modal("setting", {
+                onApprove: function () {
+                    self.resetBackend()
+                }
+            })
+            .modal(`show`);
+        }
 
     }
 }
