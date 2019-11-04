@@ -84,7 +84,7 @@ export default {
     props: ['_id','maps'],
     mixins: [DiffUtils],
     mounted () {
-        $('.menu .item').tab();
+        this.setup();
         //$('#maps .item:first').addClass('active');
         //$('.tab:first').addClass('active');
     },
@@ -93,7 +93,20 @@ export default {
         return {
         }
     },
+    watch: {
+        maps: function(newv,oldv) {
+            if(newv != oldv) {
+                // there's a race condition here: if multiple mappings updated in very little time,
+                // not all tabs will be setup properly (some could be ignored depending on the time
+                // spent to set it up and the events telling us they have changed)
+                this.setup(); // refresh tabs
+            }
+        },
+    },
     methods: {
+        setup: function() {
+            $('.menu .item').tab();
+        },
     },
 }
 </script>
