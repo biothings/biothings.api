@@ -276,6 +276,7 @@ methods: {
             this.logged_username = username;
         },
         signOut: function() {
+            auth.refreshAccessToken();
             auth.signOut();
             hubapi.clearLoggedUser();
         },
