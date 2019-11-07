@@ -807,7 +807,7 @@ class Database(IDatabase):
     def create_if_needed(self, colname):
         conn = self.get_conn()
         # add dot to make it a special index so it's hidden by default in ES gui
-        idxcolname = ".%s_%s" % (self.name, colname)
+        idxcolname = "%s_%s" % (self.name, colname)
         # it's not usefull to scale internal hubdb
         body = {
             'settings': {
@@ -837,7 +837,7 @@ class Collection(object):
 
     @property
     def dbname(self):
-        return ".%s_%s" % (self.db.name, self.colname)
+        return "%s_%s" % (self.db.name, self.colname)
 
     @property
     def name(self):
@@ -857,7 +857,7 @@ class Collection(object):
         if args and len(args) == 1 and isinstance(args[0], dict) and args[0]:
             query = {"query": {"match": args[0]}}
         # it's key/value search, let's iterate
-        res = self.get_conn().search(self.dbname, self.colname, query)
+        res = self.get_conn().search(self.dbname, self.colname, query, size=10000)
         for _src in res["hits"]["hits"]:
             doc = {"_id": _src["_id"]}
             doc.update(_src["_source"])
