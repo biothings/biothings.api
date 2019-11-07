@@ -184,6 +184,104 @@ class BaseManager(object):
                 start=True, loop=self.job_manager.loop)
 
 
+class BaseStatusRegisterer(object):
+
+    def load_doc(self, key_name, stage):
+        """
+        Find document using key_name and stage, stage being a 
+        key within the document matching a specific process name:
+        Ex: {"_id":"123","snapshot":"abc"}
+            load_doc("abc","snapshot")
+        will return the document. Note key_name is first used to
+        find the doc by its _id.
+        Ex: with another doc {"_id" : "abc", "snapshot" : "somethingelse"}
+            load_doc{"abc","snapshot")
+        will return doc with _id="abc", not "123"
+        """
+        doc = self.collection.find_one({'_id': key_name})
+        if not doc:
+            doc = []
+            bdocs = self.collection.find()
+            for adoc in bdocs:
+                if key_name in adoc.get(stage,{}):
+                    doc.append(adoc)
+            if len(doc) == 1:
+                # we'll just return the single doc
+                # otherwise it's up to the caller to do something with that
+                doc = doc.pop()
+        assert doc, "No document could be found" 
+        return doc
+
+    @property
+    def collection(self):
+        """
+        Return collection object used to fetch doc in which we store status
+        """
+        raise NotImplementedError("implement me in sub-class")
+
+    def register_status(self, doc, stage, status,transient=False,init=False,**extra):
+        assert self.collection, "No collection set"
+        # stage: "snapshot", "publish", etc... depending on the what's being done
+        job_info = {
+                'status': status,
+                'step_started_at': datetime.datetime.now(),
+                'logfile': self.logfile,
+                }
+        stage_info = {}
+        stage_key = None
+        # register status can be about different stages:
+        stage_info.setdefault(stage,{}).update(extra[stage])
+        stage_key  = list(extra[stage].keys())
+        assert len(stage_key) == 1, stage_key
+        stage_key = stage_key.pop()
+        if transient:
+            # record some "in-progress" information
+            job_info['pid'] = os.getpid()
+        else:
+            # only register time when it's a final state
+            job_info["time"] = timesofar(self.ti)
+            t1 = round(time.time() - self.ti, 0)
+            job_info["time_in_s"] = t1
+            stage_info.setdefault(stage,{}).setdefault(stage_key,{}).update({"created_at" : datetime.datetime.now()})
+        if "job" in extra:
+            job_info.update(extra["job"])
+        # since the base is the merged collection, we register info there
+        if init:
+            # init timer for this step
+            self.ti = time.time()
+            self.collection.update({'_id': doc["_id"]}, {"$push": {'jobs': job_info}})
+            # now refresh/sync
+            doc = self.collection.find_one({'_id': doc["_id"]})
+        else:
+            # merge extra at root level
+            doc["jobs"] and doc["jobs"].append(job_info)
+            def merge_index_info(target,d):
+                if not isinstance(target,dict):
+                    # previous value wasn't a dict, just replace
+                    target = d
+                elif "__REPLACE__" in d.keys():
+                    d.pop("__REPLACE__")
+                    target = d
+                else:
+                    if status == "success":
+                        # remove 'err' key to avoid merging success results with errors
+                        target.pop("err",None)
+                    for k,v in d.items():
+                        if type(v) == dict:
+                            if k in target:
+                                target[k] = merge_index_info(target[k],v) 
+                            else:
+                                v.pop("__REPLACE__",None)
+                                # merge v with "nothing" just to make sure to remove any "__REPLACE__"
+                                v = merge_index_info({},v)
+                                target[k] = v
+                        else:
+                            target[k] = v
+                return target
+            doc = merge_index_info(doc,stage_info)
+            self.collection.replace_one({"_id" : doc["_id"]},doc)
+
+
 class BaseSourceManager(BaseManager):
     """
     Base class to provide source management: discovery, registration
@@ -629,10 +727,16 @@ class JobManager(object):
 
     @property
     def hub_memory(self):
-        procs = [self.hub_process] + self.pchildren
         total_mem = 0
-        for proc in procs:
-            total_mem += proc.memory_info().rss
+        try:
+            procs = [self.hub_process] + self.pchildren
+            for proc in procs:
+                total_mem += proc.memory_info().rss
+        except psutil.NoSuchProcess:
+            # observed multiple time: hub main pid doesn't exist, like it was replace, not sure why,... OS ?
+            self._phub = None
+            self._pchildren = None
+
         return total_mem
 
     def get_pid_files(self, child=None):
@@ -761,50 +865,54 @@ class JobManager(object):
         running_pids = self.get_pid_files()
         res = {}
         for child in self.pchildren:
-            mem = child.memory_info().rss
-            pio = child.io_counters()
-            # TODO: cpu as reported here isn't reliable, the only to get something
-            # consistent to call cpu_percent() with a waiting time argument to integrate
-            # CPU activity over this time, but this is a blocking call and freeze the hub
-            # (an async implementation might possible though). Currently, pchildren is list
-            # set at init time where process object are stored, so subsequent cpu_percent()
-            # calls should report CPU activity since last call (between /job_manager & top()
-            # calls), but it constently return CPU > 100% even when no thread running (that
-            # could have been the explination but it's not).
-            cpu = child.cpu_percent()
-            res[child.pid] = {
-                    "memory" : {
-                        "size" : child.memory_info().rss,
-                        "percent": child.memory_percent(),
-                        },
-                    "cpu" : {
-                        # override status() when we have cpu activity to avoid
-                        # having a "sleeping" process that's actually running something
-                        # (prob happening because delay between status and cpu_percent(), like a race condition)
-                        "status" : cpu > 0.0 and "running" or child.status(),
-                        "percent" : cpu
-                        },
-                    "io" : {
-                        "read_count" : pio.read_count,
-                        "write_count" : pio.write_count,
-                        "read_bytes" : pio.read_bytes,
-                        "write_bytes" : pio.write_bytes
+            try:
+                mem = child.memory_info().rss
+                pio = child.io_counters()
+                # TODO: cpu as reported here isn't reliable, the only to get something
+                # consistent to call cpu_percent() with a waiting time argument to integrate
+                # CPU activity over this time, but this is a blocking call and freeze the hub
+                # (an async implementation might possible though). Currently, pchildren is list
+                # set at init time where process object are stored, so subsequent cpu_percent()
+                # calls should report CPU activity since last call (between /job_manager & top()
+                # calls), but it constently return CPU > 100% even when no thread running (that
+                # could have been the explination but it's not).
+                cpu = child.cpu_percent()
+                res[child.pid] = {
+                        "memory" : {
+                            "size" : child.memory_info().rss,
+                            "percent": child.memory_percent(),
+                            },
+                        "cpu" : {
+                            # override status() when we have cpu activity to avoid
+                            # having a "sleeping" process that's actually running something
+                            # (prob happening because delay between status and cpu_percent(), like a race condition)
+                            "status" : cpu > 0.0 and "running" or child.status(),
+                            "percent" : cpu
+                            },
+                        "io" : {
+                            "read_count" : pio.read_count,
+                            "write_count" : pio.write_count,
+                            "read_bytes" : pio.read_bytes,
+                            "write_bytes" : pio.write_bytes
+                            }
                         }
-                    }
 
-            if child.pid in running_pids:
-                # something is running on that child process
-                worker = running_pids[child.pid]
-                res[child.pid]["job"] = {
-                        "started_at": worker["job"]["started_at"],
-                        "duration" : timesofar(worker["job"]["started_at"],0),
-                        "func_name" : worker["func_name"],
-                        "category" : worker["job"]["category"],
-                        "description" : worker["job"]["description"],
-                        "source" : worker["job"]["source"],
-                        "step" : worker["job"]["step"],
-                        "id" : worker["job"]["id"],
-                        }
+                if child.pid in running_pids:
+                    # something is running on that child process
+                    worker = running_pids[child.pid]
+                    res[child.pid]["job"] = {
+                            "started_at": worker["job"]["started_at"],
+                            "duration" : timesofar(worker["job"]["started_at"],0),
+                            "func_name" : worker["func_name"],
+                            "category" : worker["job"]["category"],
+                            "description" : worker["job"]["description"],
+                            "source" : worker["job"]["source"],
+                            "step" : worker["job"]["step"],
+                            "id" : worker["job"]["id"],
+                            }
+            except psutil.NoSuchProcess as e:
+                print("child not found %s %s" % (child,e))
+                continue
 
         return res
 

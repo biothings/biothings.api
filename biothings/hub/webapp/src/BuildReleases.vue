@@ -3,14 +3,14 @@
         <div v-if="error" class="ui error message">
             {{error}}
         </div>
-        <button class="ui newrelease  button" @click="newRelease">
+        <button class="ui small grey newrelease right floated  button" @click="newRelease">
             New release
         </button>
         <div class="ui feed"  v-if="releases">
             <div class="event" v-for="rel in releases">
-                <index-release-event :release="rel" v-if="rel.index_name"></index-release-event>
-                <diff-release-event :release="rel" :index_envs="index_envs" :build_config="build.build_config" v-if="rel.diff"></diff-release-event>
-
+                <!-- also pass main build object so we can access other related information to that release, such as release notes -->
+                <index-release-event v-if="rel.index_name" :release="rel" :build="build" :type="'full'"></index-release-event>
+                <diff-release-event v-if="rel.diff" :release="rel" :index_envs="index_envs" :build="build" :type="'incremental'"></diff-release-event>
             </div>
         </div>
         <div v-else>
@@ -55,6 +55,9 @@
                                         <option v-for="dtyp in diff_types" :selected="dtyp == 'jsondiff-selfcontained'">{{dtyp}}</option>
                                     </select>
                                     <br>
+                                </div>
+                                <div class="ui checkbox">
+                                    <input type="checkbox" name="diff_purge"><label>Purge existing diff files previously generated for this release ?</label>
                                 </div>
                             </span>
                             <span v-if="release_type == 'full'">
@@ -149,7 +152,6 @@ export default {
             _releases.sort(function(a,b) {
                 var da = a.created_at && Date.parse(a.created_at)
                 var db = b.created_at && Date.parse(b.created_at)
-                console.log(`da ${da} db ${db}`);
                 return db - da;
             });
             console.log(_releases);
@@ -182,11 +184,15 @@ export default {
         newIncrementalRelease : function() {
             var old_build = $(".ui.form select[name=old_build]").val();
             var diff_type =  $(".ui.form select[name=diff_type]").val();
+            var diff_purge = $(".ui.form input[name=diff_purge]").prop("checked");
             if(!old_build)
                 this.errors.push("Select a build to compute incremental data");
             if(!diff_type)
                 this.errors.push("Select a diff type");
-            axios.put(axios.defaults.baseURL + `/diff`,{"diff_type" : diff_type, "old" : old_build, "new" : this.build._id})
+            var args = {"diff_type" : diff_type, "old" : old_build, "new" : this.build._id};
+            if(diff_purge)
+                args["mode"] = "purge";
+            axios.put(axios.defaults.baseURL + `/diff`,args)
             .then(response => {
                 console.log(response.data.result)
                 return response.data.result;
@@ -255,5 +261,8 @@ export default {
 }
 </script>
 
-<style>
+<style scoped>
+.ui.checkbox label {
+    color: white !important;
+}
 </style>

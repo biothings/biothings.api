@@ -972,7 +972,7 @@ def dict_walk(dictionary, key_func):
                 for k, v in dictionary.items())
 
 
-def dict_traverse(d,func):
+def dict_traverse(d,func,traverse_list=False):
     """
     Recursively traverse dictionary d, calling func(k,v)
     for each key/value found. func must return a
@@ -980,7 +980,10 @@ def dict_traverse(d,func):
     """
     for k,v in sorted(d.items(),key=lambda x: x[0]):
         if isinstance(v, dict):
-            dict_traverse(v,func)
+            dict_traverse(v,func,traverse_list=traverse_list)
+        elif traverse_list and isinstance(v,list):
+            for e in v:
+                dict_traverse(e,func,traverse_list=traverse_list)
         else:
             newk,newv = func(k,v)
             d.pop(k)

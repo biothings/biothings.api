@@ -1,16 +1,14 @@
 import os, sys, time, datetime, json, re
-import asyncio
+import asyncio, requests
 from urllib.parse import urlparse, urljoin
 from functools import partial
 import boto3
+from requests_aws4auth import AWS4Auth
 
 from biothings import config as btconfig
 from biothings.hub.dataload.dumper import HTTPDumper, DumperException
-from biothings.utils.common import gunzipall, md5sum
+from biothings.utils.common import uncompressall, md5sum
 
-HUB_ENV = hasattr(btconfig,"HUB_ENV") and btconfig.HUB_ENV or "" # default to prod (normal)
-LATEST = HUB_ENV and "%s-latest" % HUB_ENV or "latest"
-VERSIONS = HUB_ENV and "%s-versions" % HUB_ENV or "versions"
 
 class BiothingsDumper(HTTPDumper):
     """
@@ -23,14 +21,12 @@ class BiothingsDumper(HTTPDumper):
     update is available, rules can set so full is preferably used over incremental (size can also
     be considered when selecting the preferred way).
     """
-    # App name for this biothings API. Must be set when using this dumper
-    BIOTHINGS_S3_FOLDER = None
+    # URL pointing to versions.json file, this is the main entry point
+    VERSION_URL = None
 
-    SRC_NAME = "biothings"
-    SRC_ROOT_FOLDER = os.path.join(btconfig.DATA_ARCHIVE_ROOT, SRC_NAME)
-
-    # URL is always the same, but headers change (template for app + version)
-    SRC_URL = "http://biothings-releases.s3-website-us-west-2.amazonaws.com/%s/%s.json"
+    # set during autohub init
+    SRC_NAME = None
+    SRC_ROOT_FOLDER = None
 
     # Auto-deploy data update ?
     AUTO_UPLOAD = False
@@ -55,6 +51,47 @@ class BiothingsDumper(HTTPDumper):
         # list of build_version to download/apply, in order
         self._target_backend = None
 
+    def prepare_client(self):
+        """
+        Depending on presence of credentials, inject authentication
+        in client.get()
+        """
+        super().prepare_client()
+        if self.__class__.AWS_ACCESS_KEY_ID and self.__class__.AWS_SECRET_ACCESS_KEY:
+            self._client = requests.Session()
+            self._client.verify = self.__class__.VERIFY_CERT
+            def auth_get(url,*args,**kwargs):
+                if ".s3-website-" in url:
+                    raise DumperException("Can't access s3 static website using authentication")
+                # extract region from URL (reliable ?)
+                pat = re.compile("https?://(.*)\.(.*)\.amazonaws.com.*")
+                m = pat.match(url)
+                if m:
+                    bucket_name,frag = m.groups()
+                    # looks like "s3-us-west-2"
+                    # whether static website is activated or not
+                    region = frag.replace("s3-","")
+                    if region == "s3": # url doesn't contain a region, we need to query the bucket
+                        s3client = boto3.client("s3",
+                                aws_access_key_id=self.__class__.AWS_ACCESS_KEY_ID,
+                                aws_secret_access_key=self.__class__.AWS_SECRET_ACCESS_KEY)
+                        bucket_info = s3client.get_bucket_location(Bucket=bucket_name)
+                        region = bucket_info["LocationConstraint"]
+                    auth = AWS4Auth(self.__class__.AWS_ACCESS_KEY_ID,
+                            self.__class__.AWS_SECRET_ACCESS_KEY,
+                            region,
+                            's3')
+                    return self._client.get(url,auth=auth,*args,**kwargs)
+                else:
+                    raise DumperException("Couldn't determine s3 region from url '%s'" % url)
+
+            self.client.get = auth_get
+
+    @property
+    def base_url(self):
+        # add trailing / so urljoin won't remove folder from path
+        return os.path.dirname(self.__class__.VERSION_URL) + "/"
+
     @property
     def target_backend(self):
         if not self._target_backend:
@@ -64,14 +101,44 @@ class BiothingsDumper(HTTPDumper):
                  self._target_backend = self.__class__.TARGET_BACKEND
         return self._target_backend
 
+    @asyncio.coroutine
+    def get_target_backend(self):
+
+        @asyncio.coroutine
+        def do():
+            cnt = self.target_backend.count()
+            return {
+                    "host" : self.target_backend.target_esidxer.es_host,
+                    "index" : self.target_backend.target_name,
+                    "version" : self.target_backend.version,
+                    "count" : cnt
+                    }
+        return do()
+
+    @asyncio.coroutine
+    def reset_target_backend(self):
+
+        @asyncio.coroutine
+        def do():
+            if self.target_backend.target_esidxer.exists_index():
+                self.target_backend.target_esidxer.delete_index()
+        return do()
+
     def download(self,remoteurl,localfile,headers={}):
         self.prepare_local_folders(localfile)  
         parsed = urlparse(remoteurl)
-        if btconfig.S3_DIFF_BUCKET in parsed.netloc and \
-            self.__class__.AWS_ACCESS_KEY_ID and self.__class__.AWS_SECRET_ACCESS_KEY:
+        if self.__class__.AWS_ACCESS_KEY_ID and self.__class__.AWS_SECRET_ACCESS_KEY:
             # accessing diffs controled by auth
             key = parsed.path.strip("/") # s3 key are relative, not / at beginning
-            return self.auth_download(btconfig.S3_DIFF_BUCKET,key,localfile,headers)
+            # extract bucket name from URL (reliable?)
+            pat = re.compile("^(.*?)\..*\.amazonaws.com")
+            m = pat.match(parsed.netloc)
+            if m:
+                bucket_name = m.groups()[0]
+            else:
+                raise DumperException("Can't extract bucket name from URL '%s'" % remote_url)
+
+            return self.auth_download(bucket_name,key,localfile,headers)
         else:
             return self.anonymous_download(remoteurl,localfile,headers)
 
@@ -100,6 +167,7 @@ class BiothingsDumper(HTTPDumper):
         for version_field in ["app_version","standalone_version","biothings_version"]:
             VERSION_FIELD = version_field.upper()
             version = build_meta.get(version_field)
+            assert not version is None, "Version field '%s' is None" % VERSION_FIELD
             # some releases use dict (most recent) some use string
             if isinstance(version,dict):
                 version = version["branch"]
@@ -111,22 +179,29 @@ class BiothingsDumper(HTTPDumper):
             version = set(version)
             if version == set([None]):
                 raise DumperException("Remote data is too old and can't be handled with current app (%s not defined)" % version_field)
-            versionfromconf = re.sub("( \[.*\])","",getattr(btconfig,VERSION_FIELD))
+            versionfromconf = re.sub("( \[.*\])","",getattr(btconfig,VERSION_FIELD).get("branch"))
             VERSION = set()
             VERSION.add(versionfromconf)
             found_compat_version = VERSION.intersection(version)
             assert found_compat_version, "Remote data requires %s to be %s, but current app is %s" % (version_field,version,VERSION)
             msg.append("%s=%s:OK" % (version_field,version))
-        self.logger.debug("Compat: %s" % ", ".join(msg))
 
     def load_remote_json(self,url):
-        res = self.client.get(url)
+        res = self.client.get(url,allow_redirects=True)
+        redirect = res.headers.get('x-amz-website-redirect-location')
+        if redirect:
+            parsed = urlparse(url)
+            newurl = parsed._replace(path=redirect)
+            res = self.client.get(newurl.geturl())
         if res.status_code != 200:
+            self.logger.error(res)
             return None
         try:
             jsondat = json.loads(res.text)
             return jsondat
         except json.JSONDecodeError:
+            self.logger.error(res.headers)
+            self.logger.error(res)
             return None
 
     def compare_remote_local(self,remote_version,local_version,orig_remote_version,orig_local_version):
@@ -205,19 +280,18 @@ class BiothingsDumper(HTTPDumper):
         information about each update (see versions.json), the order of the list describes
         the order the updates should be performed.
         """
-        versions_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_S3_FOLDER,VERSIONS)
-        avail_versions = self.load_remote_json(versions_url)
+        avail_versions = self.load_remote_json(self.__class__.VERSION_URL)
         assert avail_versions["format"] == "1.0", "versions.json format has changed: %s" % avail_versions["format"]
-        if version == LATEST:
+        if version == "latest":
             version = avail_versions["versions"][-1]["build_version"]
             self.logger.info("Asking for latest version, ie. '%s'" % version)
         self.logger.info("Find update path to bring data from version '%s' up-to version '%s'" % (backend_version,version))
-        file_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_S3_FOLDER,version)
+        file_url = urljoin(self.base_url,"%s.json" % version)
         build_meta = self.load_remote_json(file_url)
-        self.check_compat(build_meta)
         if not build_meta:
             raise Exception("Can't get remote build information about version '%s' (url was '%s')" % \
                              (version,file_url))
+        self.check_compat(build_meta)
 
         if build_meta["target_version"] == backend_version:
             self.logger.info("Backend is up-to-date, version '%s'" % backend_version)
@@ -228,7 +302,7 @@ class BiothingsDumper(HTTPDumper):
         path = [build_meta]
 
         # latest points to a new version, 2 options there:
-        # - update is a full snapshot: nothing to download, but we need to trigger a restore
+        # - update is a full snapshot: nothing to download if type=s3, one archive to download if type=fs, we then need to trigger a restore
         # - update is an incremental, we need to check if the incremental is compatible with current version
         if build_meta["type"] == "incremental":
             # require_version contains the compatible version for which we can apply the diff
@@ -255,11 +329,10 @@ class BiothingsDumper(HTTPDumper):
 
         return path
 
-    def create_todump_list(self, force=False, version=LATEST, url=None):
-        assert self.__class__.BIOTHINGS_S3_FOLDER, "BIOTHINGS_S3_FOLDER class attribute is not set"
+    def create_todump_list(self, force=False, version="latest", url=None):
+        assert self.__class__.VERSION_URL, "VERSION_URL class attribute is not set"
         self.logger.info("Dumping version '%s'" % version)
-        file_url = url or self.__class__.SRC_URL % (self.__class__.BIOTHINGS_S3_FOLDER,version)
-        filename = os.path.basename(self.__class__.SRC_URL)
+        file_url = url or urljoin(self.base_url,"%s.json" % version)
         # if "latest", we compare current json file we have (because we don't know what's behind latest)
         # otherwise json file should match version explicitely in current folder.
         version = version == "latest" and self.current_release or version
@@ -321,6 +394,13 @@ class BiothingsDumper(HTTPDumper):
                 self.release = build_meta["build_version"]
                 new_localfile = os.path.join(self.new_data_folder,"%s.json" % self.release)
                 self.to_dump.append({"remote":file_url, "local":new_localfile})
+                # if repo type is fs, we assume metadata contains url to archive
+                repo_name = list(build_meta["metadata"]["repository"].keys())[0]
+                if build_meta["metadata"]["repository"][repo_name]["type"] == "fs":
+                    archive_url = build_meta["metadata"]["archive_url"]
+                    archive = os.path.basename(archive_url)
+                    new_localfile = os.path.join(self.new_data_folder,archive)
+                    self.to_dump.append({"remote":archive_url, "local":new_localfile})
 
             # unset this one, as it may not be pickelable (next step is "download", which
             # uses different processes and need workers to be pickled)
@@ -346,39 +426,42 @@ class BiothingsDumper(HTTPDumper):
                     raise e
                 else:
                     self.logger.debug("md5 check success for file '%s'" % fname)
+        elif build_meta["type"] == "full":
+            # if type=fs, check if archive must be uncompressed
+            repo_name = list(build_meta["metadata"]["repository"].keys())[0]
+            if build_meta["metadata"]["repository"][repo_name]["type"] == "fs":
+                uncompressall(self.new_data_folder)
+
 
     @asyncio.coroutine
-    def info(self,version=LATEST):
+    def info(self, version='latest'):
         """Display version information (release note, etc...) for given version"""
-        txt = ">>> Current local version: '%s'\n" % self.target_backend.version
-        txt += ">>> Release note for remote version '%s':\n" % version
-        file_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_S3_FOLDER,version)
+        file_url = urljoin(self.base_url,"%s.json" % version)
+        result = {}
         build_meta = self.load_remote_json(file_url)
         if not build_meta:
             raise DumperException("Can't find version '%s'" % version)
-        if build_meta.get("changes") and build_meta["changes"].get("txt"):
-            relnote_url = build_meta["changes"]["txt"]["url"]
-            res = self.client.get(relnote_url)
-            if res.status_code == 200:
-                return txt + res.text
-            else:
-                raise DumperException("Error while downloading release note '%s': %s" % (version,res))
-        else:
-            return txt + "No information found for release '%s'" % version
+        result["info"] = build_meta
+        if build_meta.get("changes"):
+            result["release_note"] = {}
+            for filtyp in build_meta["changes"]:
+                relnote_url = build_meta["changes"][filtyp]["url"]
+                res = self.client.get(relnote_url)
+                if res.status_code == 200:
+                    if filtyp == "json":
+                        result["release_note"][filtyp] = res.json()
+                    else:
+                        result["release_note"][filtyp] = res.text
+                else:
+                    raise DumperException("Error while downloading release note '%s (%s)': %s" % (version,res,res.text))
+        return result
 
     @asyncio.coroutine
     def versions(self):
         """Display all available versions"""
-        versions_url = self.__class__.SRC_URL % (self.__class__.BIOTHINGS_S3_FOLDER,VERSIONS)
-        avail_versions = self.load_remote_json(versions_url)
+        avail_versions = self.load_remote_json(self.__class__.VERSION_URL)
         if not avail_versions:
-            raise DumperException("Can't find any versions available...'")
-        res = []
+            raise DumperException("Can't find any versions available...")
         assert avail_versions["format"] == "1.0", "versions.json format has changed: %s" % avail_versions["format"]
-        for ver in avail_versions["versions"]:
-            res.append("version=%s date=%s type=%s" % ('{0: <20}'.format(ver["build_version"]),'{0: <20}'.format(ver["release_date"]),
-            '{0: <16}'.format(ver["type"])))
-        return "\n".join(res)
-
-
+        return avail_versions["versions"]
 

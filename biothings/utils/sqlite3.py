@@ -48,8 +48,13 @@ def get_hub_config():
     return db[getattr(db.CONFIG,"HUB_CONFIG_COLLECTION","hub_config")]
 
 def get_last_command():
-    #dummy...
-    return {"_id":1}
+    try:
+        db = Database()
+        res = db.get_conn().execute("SELECT MAX(_id) FROM cmd").fetchall()
+        assert res[0][0], "No command ID found, bootstrap ?"
+        return {"_id":res[0][0]}
+    except Exception as e:
+        return {"_id":1}
 
 def get_source_fullname(col_name):
     """
@@ -173,7 +178,7 @@ class Collection(object):
                     (doc["_id"],json.dumps(doc,default=json_serial))).fetchone()
             conn.commit()
 
-    def update_one(self,query,what):
+    def update_one(self,query,what,upsert=False):
         assert len(what) == 1 and ("$set" in what or \
                 "$unset" in what or "$push" in what), "$set/$unset/$push operators not found"
         doc = self.find_one(query)
@@ -191,8 +196,11 @@ class Collection(object):
                 for listkey,elem in what["$push"].items():
                     assert not "." in listkey, "$push not supported for nested keys: %s" % listkey
                     doc.setdefault(listkey,[]).append(elem)
-
             self.save(doc)
+        elif upsert:
+            assert "$set" in what
+            query.update(what["$set"])
+            self.save(query)
 
     def update(self,query,what):
         docs = self.find(query)
@@ -209,14 +217,15 @@ class Collection(object):
             self.insert_one(doc)
 
     def replace_one(self,query,doc,upsert=False):
+        assert "_id" in query
         orig = self.find_one(query)
         if orig:
+            orig["_id"] = query["_id"]
             with self.get_conn() as conn:
                 conn.execute("UPDATE %s SET document = ? WHERE _id = ?" % self.colname,
                         (json.dumps(doc,default=json_serial),orig["_id"]))
                 conn.commit()
         elif upsert:
-            assert "_id" in query
             doc["_id"] = query["_id"]
             self.save(doc)
             

@@ -99,12 +99,28 @@ export default {
     name: 'data-source-upload',
     props: ['source'],
     mounted () {
-        $('.menu .item').tab();
+        this.setup();
     },
     components: { },
     methods: {
         do_upload(subsrc=null) {
             return this.$parent.upload(subsrc=subsrc);
+        },
+    },
+    watch: {
+        maps: function(newv,oldv) {
+            if(newv != oldv) {
+                // there's a race condition here: if multiple mappings updated in very little time,
+                // not all tabs will be setup properly (some could be ignored depending on the time
+                // spent to set it up and the events telling us they have changed)
+                // Note: same as in DataSourceMapping.vue
+                this.setup(); // refresh tabs
+            }
+        },
+    },
+    methods: {
+        setup: function() {
+            $('.menu .item').tab();
         },
     },
 }

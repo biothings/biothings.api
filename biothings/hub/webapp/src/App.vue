@@ -17,43 +17,53 @@
                 '<a>' + conn.url + '</a><br>' +
                     'App. version: <b>' + str_app_version + '</b><br>' +
                     'Biothings version: <b>' + str_biothings_version + '</b><br></div>' +
-                    'Studio version: <b>' + current_studio_version + '</b><br></div>'
+                    'Studio version: <b>' + current_studio_version + '</b><br></div>' + 
+                    'Features: <b> ' + studio_features + '</b><br></div>'
                     " data-position="bottom center">{{conn.name || "John Doe"}}</div>
             </div>
 
-            <a class="clickable item">
+            <a class="clickable item" v-if="has_feature('source') && has_feature('build')">
                 <i class="ui home icon"></i>
                 <router-link to="/">Home</router-link>
             </a>
-            <a class="clickable item">
+            <a class="clickable item" v-if="has_feature('source')">
                 <i class="ui database icon"></i>
                 <router-link to="/sources">Sources</router-link>
             </a>
-            <a class="clickable item">
+            <a class="clickable item" v-if="has_feature('build')">
                 <i class="ui cubes icon"></i>
                 <router-link to="/builds">Builds</router-link>
             </a>
-            <a class="clickable item">
+            <a class="clickable item" v-if="has_feature('api')">
                 <i class="ui shield alternate icon"></i>
                 <router-link to="/apis">API</router-link>
             </a>
+            <!-- only if we have a home page already, otherwise it *is* the home page -->
+            <!-- > 2 because when autohub, 2 paths are created, one for releases, one for wizard -->
+            <a class="clickable item" v-if="has_feature('autohub')">
+                <i class="ui globe icon"></i>
+                <router-link :to="routes.length > 2 && routes[0]['path'] == '/' ? '/standalone' : '/'">
+                    {{ routes.length > 2 && routes[0]['path'] == '/' ? 'Releases' : 'Home' }}
+                </router-link>
+            </a>
 
-            <div class="clickable ui item right">
+            <div class="clickable ui item right" v-if="has_feature('job')">
               <job-summary></job-summary>
             </div>
 
-            <div class="clickable ui item">
+            <div class="clickable ui item" v-if="has_feature('ws')">
                 <event-messages>
                 </event-messages>
             </div>
 
             <div class="ui item">
                 <loader></loader>
-                <div id="settings">
+                <div id="settings" v-if="has_feature('config')">
                     <button class="mini circular ui icon button" @click="openConfig">
                         <i class="cog icon"></i>
                     </button>
                 </div>
+                <span v-if="has_feature('ws')">
                 <div v-if="socket && socket.readyState == 1" :data-tooltip="'Connection: ' + socket.transport" data-position="bottom center">
                     <button class="mini circular ui icon button" @click="closeConnection">
                         <i class="green power off icon"></i>
@@ -71,6 +81,7 @@
                         <i class="red plug icon"></i>
                     </button>
                 </div>
+                </span>
             </div>
 
           </div>
@@ -120,7 +131,7 @@
             </div>
         </div>
 
-        <div class="ui basic config modal">
+        <div class="ui basic config modal" v-if="has_feature('config')">
             <h3 class="ui icon">
                 <i class="cog icon"></i>
                 Hub Configuration
@@ -155,7 +166,7 @@
               </a>
             </div>
             <div class="right menu">
-              <a class="clickable logs item">
+              <a class="clickable logs item" v-if="has_feature('ws')">
                   <i class="bell outline icon"></i>
                   Logs
               </a>
@@ -167,7 +178,7 @@
               </div>
           </div>
 
-          <div class="ui logs popup top transition hidden">
+          <div class="ui logs popup top transition hidden" v-if="has_feature('ws')">
               <log-viewer></log-viewer>
           </div>
 
@@ -270,8 +281,16 @@
     });
     numeral.locale('mine');
 
+    Vue.filter("formatNumeric",function(value,fmt) {
+        return numeral(value).format(fmt);
+    });
+
     Vue.filter("formatNumber", function (value) {
         return numeral(value).format("0.00 a");
+    });
+
+    Vue.filter("formatInteger", function (value) {
+        return numeral(value).format("0 a");
     });
 
     Vue.filter("replace", function (value,what,repl) {
@@ -292,19 +311,10 @@
     import LogViewer from './LogViewer.vue';
     import Terminal from './Terminal.vue';
     import FeatureChecker from './FeatureChecker.vue';
+    import StandaloneReleases from './StandaloneReleases.vue';
+    import StandaloneWizard from './StandaloneWizard.vue'
 
-    const routes = [
-        { path: '/', component: Status },
-        { path: '/sources', component: DataSourceGrid },
-        { path: '/source/:_id', component: DataSourceDetailed, props: true },
-        { path: '/builds', component: BuildGrid },
-        { path: '/build/:_id', component: BuildDetailed, props: true, name: "build"},
-        { path: '/apis', component: ApiGrid },
-    ]
-
-    const router = new VueRouter({
-        routes // short for `routes: routes`
-    })
+    const router = new VueRouter();
 
     const PING_INTERVAL_MS = 10000;
 
@@ -334,13 +344,6 @@
             if(last) {
                 this.conn = JSON.parse(last);
             }
-            $('.logs.item').popup({
-                popup: $('.logs.popup'),
-                on: 'click' ,
-                closable: false,
-                position: 'top left',
-							  lastResort: 'top right',
-            });
             this.setupConnection();
             this.skip_studio_compat = Vue.localStorage.get("skip_studio_compat");
         },
@@ -349,6 +352,8 @@
             bus.$on("reconnect",this.setupConnection);
             bus.$on("connect",this.setupConnection,null,"/");
             bus.$on("feature_terminal",this.setupTerminal);
+            bus.$on("feature_ws",this.setupLogs);
+            bus.$on("redirect",this.redirect);
             // connect to default one to start
             this.conn = this.default_conn;
         },
@@ -356,9 +361,12 @@
             bus.$off("reconnect",this.setupConnection);
             bus.$off("connect",this.setupConnection);
             bus.$off("feature_terminal",this.setupTerminal);
+            bus.$off("feature_ws",this.setupLogs);
+            bus.$off("redirect",this.redirect);
         },
         data() {
             return {
+                routes: [],
                 ws_connection: "disconnected",
                 socket_msg: '',
                 socket : null,
@@ -389,6 +397,14 @@
              str_biothings_version: function () {
                  return this.getVersionAsString(this.conn.biothings_version);
              },
+             studio_features: function() {
+                 if(this.conn.features) {
+                     return this.conn.features.join(", ");
+                 } else {
+                     return "not listed";
+                 }
+             }
+
         },
         watch: {
             latency_value: function (newv, oldv) {
@@ -406,6 +422,42 @@
             }
         },
         methods: {
+            setupUIByFeatures() {
+                console.log("Setup UI according to listed features");
+                console.log(Vue.config.hub_features);
+                this.routes = [];
+                if(this.has_feature('source') && this.has_feature('build')) {
+                    console.log("Setup Home tab");
+                    this.routes.push({ path: '/', component: Status });
+                }
+                if(this.has_feature('source')) {
+                    console.log("Setup Sources tab");
+                    this.routes.push({ path: '/sources', component: DataSourceGrid });
+                    this.routes.push({ path: '/source/:_id', component: DataSourceDetailed, props: true });
+                }
+                if(this.has_feature('build')) {
+                    console.log("Setup Builds tab");
+                    this.routes.push({ path: '/builds', component: BuildGrid });
+                    this.routes.push({ path: '/build/:_id', component: BuildDetailed, props: true, name: "build"});
+                }
+                if(this.has_feature('api')) {
+                    console.log("Setup API tab");
+                    this.routes.push({ path: '/apis', component: ApiGrid });
+                }
+                if(this.has_feature('autohub')) {
+                    var path = "/standalone";
+                    if(this.routes.length == 0) {
+                        // if we get there, no other path has been prev defined,
+                        // it's a standalone hub only, standalone component is / (home)
+                        path = "/";
+                    }
+                    console.log("Setup autohub tab");
+                    this.routes.push({ path: path, component: StandaloneReleases});
+                    var wizard = path + "wizard";
+                    this.routes.push({ path: wizard, component: StandaloneWizard, name: "wizard"});
+                }
+                router.addRoutes(this.routes);
+            },
             getVersionAsString(obj) {
                  try {
                      if(typeof obj == "object") {
@@ -504,8 +556,6 @@
                     }
                 })
                 .modal("show");
-            },
-            saveConfigParameter() {
             },
             openConnection() {
                 this.setupConnection(null,false);
@@ -761,6 +811,7 @@
                 this.conn = response.data.result;
                 this.conn["url"] = url;
                 Vue.config.hub_features = response.data.result.features;
+                self.setupUIByFeatures();
                 self.loaded();
             })
             .catch(err => {
@@ -825,6 +876,7 @@
             // check if we got a reply before, it not, we have a connection issue
             if(this.msg_timestamp != null) {
                 console.log("Sent a ping but got no pong, disconnect");
+                console.log(router);
                 this.closeConnection();
             }
             // Send the "pingServer" event to the server.
@@ -853,9 +905,22 @@
                 position: 'top left',
             });
         },
+        setupLogs() {
+            $('.logs.item').popup({
+                popup: $('.logs.popup'),
+                on: 'click' ,
+                closable: false,
+                position: 'top left',
+                lastResort: 'top right',
+            });
+        },
         showLogs(event) {
             console.log(event);
-        }
+        },
+        redirect: function(url, params) {
+            console.log(`Redirecting to ${url}, with param ${JSON.stringify(params)}`);
+            router.push({name : url, params: params});
+        },
     }
 }
 
@@ -968,5 +1033,11 @@
         width: 100%;
         margin-left: 1em !important;
         margin-right: 2em !important;
+    }
+
+    ; very small buttons
+    .tinytiny {
+        padding: .5em 1em .5em;
+        font-size: .6em;
     }
 </style>

@@ -94,7 +94,7 @@ export default {
         displayed_value: {
             get: function() { 
                 if(this.origvalue == null) {
-                    this.value = JSON.stringify(this.param.value,null,4);
+                    this.value = JSON.stringify(this.param.value,null,2);
                     this.origvalue = this.param.value; // track changes
                 }
                 return this.value;
@@ -163,7 +163,7 @@ export default {
             .then(response => {
                     // back to default, should be done in displayed_value
                     // but can't find an easy way to do it...
-                    self.value = JSON.stringify(self.param.default,null,4);
+                    self.value = JSON.stringify(self.param.default,null,2);
                     self.origvalue = self.param.default;
                     self.resetting = false;
             })

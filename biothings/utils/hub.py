@@ -20,6 +20,7 @@ import biothings.utils.aws as aws
 from biothings.utils.hub_db import get_cmd, get_src_dump, get_src_build, get_src_build_config, \
                                    get_last_command, backup, restore
 from biothings.utils.loggers import get_logger, ShellLogger
+from biothings.utils.web.es import flatten_doc
 
 # useful variables to bring into hub namespace
 pending = "pending"
@@ -467,7 +468,40 @@ def stats(src_dump):
     pass
 
 
-def publish_data_version(s3_folder,version_info,env=None,update_latest=True):
+def template_out(field,confdict):
+    """
+    Return field as a templated-out filed,
+    substituting some "%(...)s" part with confdict,
+    Fields can follow dotfield notation.
+    Fields like "$(...)" are replaced with a timestamp
+    following specified format (see time.strftime)
+    Ex:
+        confdict = {"a":"one"}
+        field = "%(a)s_two_three_$(%Y%m)"
+        => "one_two_three_201908" # assuming we're in August 2019
+    """
+    # first deal with timestamp
+    pat = re.compile(".*(\$\((.*?)\)).*")
+
+    try:
+        m = pat.match(field)
+    except TypeError as e:
+        # not string/byte-like just skip the process
+        return field
+
+    if m:
+        tosub,fmt = m.groups()
+        ts = datetime.datetime.now().strftime("%%%s" % fmt)
+        field = field.replace(tosub,ts)
+    flatdict = flatten_doc(confdict)
+    # then use dict to sub keys
+    field = field % flatdict
+
+    return field
+
+
+def publish_data_version(s3_bucket, s3_folder, version_info, update_latest=True,
+                         aws_key=None, aws_secret=None):
     """
     Update remote files:
     - versions.json: add version_info to the JSON list
@@ -484,9 +518,11 @@ def publish_data_version(s3_folder,version_info,env=None,update_latest=True):
     # register version
     versionskey = os.path.join(s3_folder,"%s.json" % VERSIONS)
     try:
-        versions = aws.get_s3_file(versionskey,return_what="content",
-                aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
-                s3_bucket=config.S3_RELEASE_BUCKET)
+        versions = aws.get_s3_file(versionskey,
+                                   return_what="content",
+                                   aws_key=aws_key,
+                                   aws_secret=aws_secret,
+                                   s3_bucket=s3_bucket)
         versions = json.loads(versions.decode()) # S3 returns bytes
     except (FileNotFoundError,json.JSONDecodeError):
         versions = {"format" : "1.0","versions" : []}
@@ -500,27 +536,39 @@ def publish_data_version(s3_folder,version_info,env=None,update_latest=True):
         # order by build_version
         versions["versions"] = sorted(tmp.values(),key=lambda e: e["build_version"])
 
-    aws.send_s3_file(None,versionskey,content=json.dumps(versions,indent=True),
-            aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,s3_bucket=config.S3_RELEASE_BUCKET,
-            content_type="application/json",overwrite=True)
+    aws.send_s3_file(None,versionskey,
+                     content=json.dumps(versions,indent=True),
+                     aws_key=aws_key,
+                     aws_secret=aws_secret,
+                     s3_bucket=s3_bucket,
+                     content_type="application/json",
+                     overwrite=True)
 
     # update latest
     if type(version_info) != list and update_latest:
         latestkey = os.path.join(s3_folder,"%s.json" % LATEST)
         key = None
         try:
-            key = aws.get_s3_file(latestkey,return_what="key",
-                    aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
-                    s3_bucket=config.S3_RELEASE_BUCKET)
+            key = aws.get_s3_file(latestkey,
+                    return_what="key",
+                    aws_key=aws_key,
+                    aws_secret=aws_secret,
+                    s3_bucket=s3_bucket)
         except FileNotFoundError:
             pass
-        aws.send_s3_file(None,latestkey,content=json.dumps(version_info["build_version"],indent=True),
-                content_type="application/json",aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
-                s3_bucket=config.S3_RELEASE_BUCKET,overwrite=True)
+        aws.send_s3_file(None,latestkey,
+                content=json.dumps(version_info["build_version"],indent=True),
+                content_type="application/json",
+                aws_key=aws_key,
+                aws_secret=aws_secret,
+                s3_bucket=s3_bucket,
+                overwrite=True)
         if not key:
-            key = aws.get_s3_file(latestkey,return_what="key",
-                    aws_key=config.AWS_KEY,aws_secret=config.AWS_SECRET,
-                    s3_bucket=config.S3_RELEASE_BUCKET)
+            key = aws.get_s3_file(latestkey,
+                    return_what="key",
+                    aws_key=aws_key,
+                    aws_secret=aws_secret,
+                    s3_bucket=s3_bucket)
         newredir = os.path.join("/",s3_folder,"%s.json" % version_info["build_version"])
         key.set_redirect(newredir)
 

@@ -443,3 +443,33 @@ def check_document_size(doc):
     """
     return len(bson.BSON.encode(doc)) < 16777216 #16*1024*1024
 
+def get_previous_collection(new_id):
+    """
+    Given 'new_id', an _id from src_build, as the "new" collection,
+    automatically select an "old" collection. By default, src_build's documents
+    will be sorted according to their name (_id) and old colleciton is the one
+    just before new_id.
+    Note: because there can more than one build config used, the actual build config
+    name is first determined using new_id collection name, then the find.sort is done
+    on collections containing that build config name.
+    """
+    # TODO: this is not compatible with a generic hub_db backend
+    # TODO: this should return a collection with status=success
+    col = get_src_build()
+    doc = col.find_one({"_id":new_id})
+    assert doc, "No build document found for '%s'" % new_id
+    assert "build_config" in doc, "No build configuration found for document '%s'" % new_id 
+    assert doc["build_config"]["name"] == doc["build_config"]["_id"]
+    confname = doc["build_config"]["name"]
+    docs = get_src_build().find({
+        "$and":[
+            {"started_at":{"$lte":doc["started_at"]}},
+            {"build_config.name":confname},
+            {"archived":{"$exists":0}},
+            ]},
+        {"_id":1}).sort([("started_at",-1)]).limit(2)
+    _ids = [d["_id"] for d in docs]
+    assert len(_ids) == 2, "Expecting 2 collection _ids, got: %s" % _ids
+    assert _ids[0] == new_id, "Can't find collection _id '%s'" % new_id
+    return _ids[1]
+

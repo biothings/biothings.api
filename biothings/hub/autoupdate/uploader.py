@@ -11,7 +11,7 @@ from biothings.utils.es import IndexerException
 
 class BiothingsUploader(uploader.BaseSourceUploader):
 
-    name = "biothings"
+    name = None
 
     # Specify the backend this uploader should work with. Must be defined before instantiation
     # (can be an instance or a partial() returning an instance)
@@ -69,11 +69,17 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             res = yield from self.apply_diff(build_meta,job_manager=job_manager)
         return res
 
+    def get_snapshot_repository_config(self, build_meta):
+        """Return (name,config) tuple from build_meta, where
+        name is the repo name, and config is the repo config"""
+        repo_name, repo_settings = list(build_meta["metadata"]["repository"].items())[0]
+        return (repo_name, repo_settings)
+
     @asyncio.coroutine
     def restore_snapshot(self,build_meta, job_manager, **kwargs):
         idxr = self.target_backend.target_esidxer
+        repo_name, repo_settings = self.get_snapshot_repository_config(build_meta)
         # first check if snapshot repo exists
-        repo_name, repo_settings = list(build_meta["metadata"]["repository"].items())[0]
         # do we need to enrich with some credentials ? (there are part of repo creation JSON settings)
         if repo_settings.get("type") == "s3" and btconfig.STANDALONE_AWS_CREDENTIALS.get("AWS_ACCESS_KEY_ID"):
             repo_settings["settings"]["access_key"] = btconfig.STANDALONE_AWS_CREDENTIALS["AWS_ACCESS_KEY_ID"]
@@ -123,7 +129,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 return res
             except Exception as e:
                 # somethng went wrong, report as failure
-                return "FAILED %s" % e
+                return {"status" : "FAILED %s" % e}
 
         def restore_launched(f):
             try:

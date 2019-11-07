@@ -1,8 +1,11 @@
 import os
 import logging
 from urllib.parse import urlparse
+import mimetypes
 
-from boto import connect_s3
+from boto import connect_s3, s3 as botos3
+import boto3
+import botocore.exceptions
 
 try:
     from biothings import config
@@ -11,6 +14,17 @@ except ImportError:
     # to all functions
     pass
 
+
+def key_exists(bucket, s3key, aws_key=None, aws_secret=None):
+    client = boto3.client("s3",aws_access_key_id=aws_key,aws_secret_access_key=aws_secret)
+    try:
+        client.head_object(Bucket=bucket,Key=s3key)
+        return True
+    except Exception as e:
+        if e.response["Error"]["Code"] == "404":
+            return False
+        else:
+            raise
 
 
 def send_s3_file(localfile, s3key, overwrite=False, permissions=None, metadata=None,
@@ -29,6 +43,7 @@ def send_s3_file(localfile, s3key, overwrite=False, permissions=None, metadata=N
         return
     s3 = connect_s3(aws_key, aws_secret)
     bucket = s3.get_bucket(s3_bucket)
+    bucket_location = bucket.get_location()
     k = bucket.new_key(s3key)
     if not overwrite:
         assert not k.exists(), 's3key "{}" already exists.'.format(s3key)
@@ -45,6 +60,32 @@ def send_s3_file(localfile, s3key, overwrite=False, permissions=None, metadata=N
         k.set_contents_from_filename(localfile)
     if permissions:
         k.set_acl(permissions)
+
+
+def send_s3_big_file(localfile, s3key, overwrite=False, acl=None,
+                     aws_key=None, aws_secret=None, s3_bucket=None,
+                     storage_class=None):
+    """
+    Multiparts upload for file bigger than 5GiB
+    """
+    # TODO: maybe merge with send_s3_file() based in file size ? It would need boto3 migration
+    try:
+        aws_key = aws_key or getattr(config, "AWS_SECRET")
+        aws_secret = aws_secret or getattr(config, "AWS_SECRET")
+        s3_bucket = s3_bucket or getattr(config, "S3_BUCKET")
+    except AttributeError:
+        logging.info("Skip sending file to S3, missing information in config file: AWS_KEY, AWS_SECRET or S3_BUCKET")
+        return
+    client = boto3.client("s3",aws_access_key_id=aws_key,aws_secret_access_key=aws_secret)
+    if not overwrite and key_exists(s3_bucket,s3key,aws_key,aws_secret):
+        raise Exception("Key '%s' already exist" % s3key)
+    config = boto3.s3.transfer.TransferConfig(multipart_threshold=1024 * 25, max_concurrency=10,
+                            multipart_chunksize=1024 * 25, use_threads=True)
+    extra = {"ACL" : acl or "private",
+             "ContentType" : mimetypes.MimeTypes().guess_type(localfile)[0] or "binary/octet-stream",
+             "StorageClass" : storage_class or "REDUCED_REDUNDANCY"
+            }
+    client.upload_file(Filename=localfile,Bucket=s3_bucket,Key=s3key,ExtraArgs=extra,Config=config)
 
 
 def get_s3_file(s3key, localfile=None, return_what=False,
@@ -84,7 +125,7 @@ def get_s3_folder(s3folder, basedir=None, aws_key=None, aws_secret=None, s3_buck
         os.chdir(cwd)
 
 
-def send_s3_folder(folder, s3basedir=None, permissions=None, overwrite=False,
+def send_s3_folder(folder, s3basedir=None, acl=None, overwrite=False,
                    aws_key=None, aws_secret=None, s3_bucket=None):
     aws_key = aws_key or getattr(config, "AWS_SECRET")
     aws_secret = aws_secret or getattr(config, "AWS_SECRET")
@@ -95,9 +136,15 @@ def send_s3_folder(folder, s3basedir=None, permissions=None, overwrite=False,
     if not s3basedir:
         s3basedir = os.path.basename(cwd)
     for localf in [f for f in os.listdir(folder) if not f.startswith(".")]:
-        send_s3_file(os.path.join(folder, localf), os.path.join(s3basedir, localf),
-                     overwrite=overwrite, permissions=permissions,
-                     aws_key=aws_key, aws_secret=aws_secret, s3_bucket=s3_bucket)
+        fullpath = os.path.join(folder, localf)
+        if os.path.isdir(fullpath):
+            send_s3_folder(fullpath, os.path.join(s3basedir, localf),
+                           overwrite=overwrite, acl=acl,
+                           aws_key=aws_key, aws_secret=aws_secret, s3_bucket=s3_bucket)
+        else:
+            send_s3_big_file(fullpath, os.path.join(s3basedir, localf),
+                             overwrite=overwrite, acl=acl,
+                             aws_key=aws_key, aws_secret=aws_secret, s3_bucket=s3_bucket)
 
 
 def get_s3_url(s3key, aws_key=None, aws_secret=None, s3_bucket=None):
@@ -110,3 +157,33 @@ def get_s3_url(s3key, aws_key=None, aws_secret=None, s3_bucket=None):
     # as the bucket is public anyway and want "clean" url
     url = k.generate_url(expires_in=0) # never (and whatever, we
     return urlparse(url)._replace(query="").geturl()
+
+
+def create_bucket(name, region=None, aws_key=None, aws_secret=None, acl=None,
+                  ignore_already_exists=False):
+    """Create a S3 bucket "name" in optional "region". If aws_key and aws_secret
+    are set, S3 client will these, otherwise it'll use default system-wide setting.
+    "acl" defines permissions on the bucket: "private" (default), "public-read",
+    "public-read-write" and "authenticated-read"
+    """
+    client = boto3.client("s3",aws_access_key_id=aws_key,aws_secret_access_key=aws_secret)
+    acl = acl or "private"
+    kwargs = {"ACL" : acl, "Bucket" : name}
+    if region:
+        kwargs["CreateBucketConfiguration"] = {"LocationConstraint" : region}
+    try:
+        client.create_bucket(**kwargs)
+    except botocore.exceptions.ClientError as e:
+        if e.response["Error"]["Code"] == "BucketAlreadyOwnedByYou" and not ignore_already_exists:
+            raise
+
+def set_static_website(name, aws_key=None, aws_secret=None, index="index.html", error="error.html"):
+    client = boto3.client("s3",aws_access_key_id=aws_key,aws_secret_access_key=aws_secret)
+    conf = {'IndexDocument': {'Suffix': index},
+            'ErrorDocument': {'Key': error}}
+    client.put_bucket_website(Bucket=name,WebsiteConfiguration=conf)
+    location = client.get_bucket_location(Bucket=name)
+    region = location["LocationConstraint"]
+    # generate website URL
+    return "http://%(name)s.s3-website-%(region)s.amazonaws.com" % {"name":name,"region":region}
+

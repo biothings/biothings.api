@@ -6,6 +6,7 @@ from .version import MAJOR_VER, MINOR_VER, MICRO_VER
 from .utils.dotfield import merge_object, make_object
 from .utils.jsondiff import make as jsondiff
 from .utils.common import is_scalar
+from .utils.dataload import dict_traverse
 
 def get_version():
     return '{}.{}.{}'.format(MAJOR_VER, MINOR_VER, MICRO_VER)
@@ -32,6 +33,21 @@ class ConfigurationValue(object):
     """
     def __init__(self,code):
         self.code = code
+
+    def get_value(self, name, conf):
+        """
+        Return value by eval'ing code in self.code, in the context of given configuration
+        dict (namespace), for given config parameter name.
+        """
+        try:
+            return eval(self.code,conf.__dict__)
+        except SyntaxError:
+            # try exec, maybe it's a statement (not just an expression).
+            # in that case, it eeans user really knows what he's doing...
+            exec(self.code,conf.__dict__)
+            # there must be a variable named the same same, in that dict,
+            # coming from code's statements
+            return conf.__dict__[name]
 
 class ConfigurationDefault(object):
     def __init__(self,default,desc):
@@ -74,7 +90,11 @@ class ConfigurationManager(types.ModuleType):
     def __getattr__(self, name):
         # first try value from Hub DB, they have precedence
         # if nothing, then take it from file
-        val = self.get_value_from_db(name) or self.get_value_from_file(name)
+        try:
+            val = self.get_value_from_db(name)
+        except (KeyError, ValueError):
+            val = self.get_value_from_file(name)
+        
         return val
 
     def __delattr__(self, name):
@@ -159,7 +179,7 @@ class ConfigurationManager(types.ModuleType):
                                          upsert=True) 
         self.dirty = True # may need a reload
         self.clear_cache()
-        return res.upserted_id
+        return res
 
     def get_value_from_db(self, name, scope="config"):
         if self.hub_config:
@@ -190,7 +210,10 @@ class ConfigurationManager(types.ModuleType):
                             # the root is everything up to the last element in the path, that is, the full path
                             # of the class, etc... The last element is the attribute to set.
                             self.byroots.setdefault(".".join(elems[:-1]),[]).append({"_id" : d["_id"], "value": val})
-            return self.bykeys.get(scope,{}).get(name)
+
+            return self.bykeys.get(scope,{})[name]
+        else:
+            raise ValueError("hub_config not set yet")
 
     def get_value_from_file(self, name):
         # if "name" corresponds to a dict, we may have
@@ -206,21 +229,28 @@ class ConfigurationManager(types.ModuleType):
             copiedval = val
             pass
         copiedval = self.merge_with_path_from_db(name,copiedval)
-        if isinstance(copiedval,ConfigurationDefault):
-            if isinstance(copiedval.default,ConfigurationValue):
-                try:
-                    return eval(copiedval.default.code,self.conf.__dict__)
-                except SyntaxError:
-                    # try exec, maybe it's a statement (not just an expression).
-                    # in that case, it eeans user really knows what he's doing...
-                    exec(copiedval.default.code,self.conf.__dict__)
-                    # there must be a variable named the same same, in that dict,
-                    # coming from code's statements
-                    return self.conf.__dict__[name]
+
+        def eval_default_value(k,v):
+            if isinstance(v,ConfigurationDefault):
+                if isinstance(v.default,ConfigurationValue): 
+                    return (k,v.default.get_value(name,self.conf))
+                else:
+                    return (k,v.default)
+            elif isinstance(v,ConfigurationValue):
+                return (k,v.get_value(k,self.conf))
             else:
-                return copiedval.default
+                return (k,v)
+
+        if isinstance(copiedval,dict):
+            # walk the dict and instantiate values when special
+            dict_traverse(copiedval,eval_default_value,traverse_list=True)
         else:
-            return copiedval
+            # just use the same func but ignore "k" key, not a dict
+            # pass unhashable "k" to make sure we'd raise an error
+            # while dict traversing  if we're not supposed to be here
+            _,copiedval = eval_default_value({},copiedval)
+
+        return copiedval
 
     def patch(self, something, confvals, scope):
         for confval in confvals:
@@ -395,7 +425,7 @@ class ConfigParser(object):
     def find_docstring_in_config(self, config, field):
         field = field.strip()
         if "." in field:
-            # dotfield notiation, explore a dict
+            # dotfield notation, explore a dict
             raise NotImplementedError("docstring no supported in dict")
             pass
         if not hasattr(config,field):
@@ -419,13 +449,13 @@ class ConfigParser(object):
                 found_field = True
                 break
         if found_field:
+            section = self.find_section(field,lines,i)
+            invisible = self.is_invisible(field,lines,i)
+            hidden = self.is_hidden(field,lines,i)
+            readonly = self.is_readonly(field,lines,i)
             if not desc:
                 # no desc previously found in ConfigurationDefault or ConfigurationError
                 desc = self.find_description(field,lines,i)
-                section = self.find_section(field,lines,i)
-                invisible = self.is_invisible(field,lines,i)
-                hidden = self.is_hidden(field,lines,i)
-                readonly = self.is_readonly(field,lines,i)
         return {"found" : found_field,
                 "section" : section,
                 "desc" : desc,
@@ -465,10 +495,14 @@ class ConfigParser(object):
 
     def find_special_comment(self, pattern, field, lines, lineno, stop_on_eol=True):
         pat = re.compile(pattern)
+        commentpat = re.compile("^\s*#")
         i = lineno
         while i > 0:
             i -= 1
             l = lines[i]
+            if stop_on_eol and not commentpat.match(l):
+                # not even a comment, brek
+                return False
             if stop_on_eol and l.startswith("\n"):
                 break
             m = pat.match(l)
@@ -476,7 +510,7 @@ class ConfigParser(object):
                 return m
 
     def find_section(self, field, lines, lineno):
-        match = self.find_special_comment("^#\*\s*(.*)\s*\*#$",field,lines,lineno,stop_on_eol=False)
+        match = self.find_special_comment("^#\*\s*(.*)\s*\*#\s*$",field,lines,lineno,stop_on_eol=False)
         if match:
             section = match.groups()[0]
             if not section: # if we have "#* *#" it's a section breaker
@@ -486,21 +520,21 @@ class ConfigParser(object):
             return section
 
     def is_invisible(self, field, lines, lineno):
-        match = self.find_special_comment("^#-\s*invisible\s*-#$",field,lines,lineno)
+        match = self.find_special_comment("^#-\s*invisible\s*-#\s*$",field,lines,lineno)
         if match:
             return True
         else:
             return False
 
     def is_hidden(self, field, lines, lineno):
-        match = self.find_special_comment("^#-\s*hide\s*-#$",field,lines,lineno)
+        match = self.find_special_comment("^#-\s*hide\s*-#\s*$",field,lines,lineno)
         if match:
             return True
         else:
             return False
 
     def is_readonly(self, field, lines, lineno):
-        match = self.find_special_comment("^#-\s*readonly\s*-#$",field,lines,lineno)
+        match = self.find_special_comment("^#-\s*readonly\s*-#\s*$",field,lines,lineno)
         if match:
             return True
         else:

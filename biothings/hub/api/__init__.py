@@ -14,8 +14,9 @@ class EndpointDefinition(dict): pass
 
 def generate_endpoint_for_callable(name, command, method, force_bodyargs):
     if force_bodyargs is True:
-        assert method != "get", \
-            "Can't have force_bodyargs=True with method '%s' for command '%s'" % (method,command)
+        pass
+        #assert method != "get", \
+        #    "Can't have force_bodyargs=True with method '%s' for command '%s'" % (method,command)
     try:
         specs = inspect.getfullargspec(command)
     except TypeError as e:
@@ -50,35 +51,49 @@ def generate_endpoint_for_callable(name, command, method, force_bodyargs):
 def %(method)s(self%(mandatargs)s):
     '''%(name)s => %(command)s'''
     cmdargs = %(cmdargs)s
-    bodyargs = {}
+    reqargs = {} # holds either body or query string args
+    qkwargs = {} # holds kwargs (either from body or query string)
     for k in cmdargs:
         if cmdargs[k] is None:
             raise tornado.web.HTTPError(400,reason="Bad Request (Missing argument " + k + ")")
 
     if "%(method)s" != "get":
         # allow to have no body at all, defaulting to empty dict (no args)
-        bodyargs = tornado.escape.json_decode(self.request.body or '{}')
-    for arg in %(args)s + list(bodyargs.keys()):
-        mandatory = False
-        try:
-            defarg = %(defaultargs)s[arg]
-        except KeyError:
+        reqargs = tornado.escape.json_decode(self.request.body or '{}')
+    elif %(force_bodyargs)s == True: # force_bodyargs
+        for arg in %(args)s:
+            qarg = self.get_query_argument(arg,None)
+            if qarg:
+                reqargs[arg] = qarg;
+    else:
+        # extract optional args
+        for arg in self.request.arguments:
+            if not arg in reqargs:
+                qkwargs[arg] = self.get_argument(arg)
+    #print("arguments:")
+    #print(%(args)s)
+    #print(%(defaultargs)s)
+    #print(reqargs)
+    #print(qkwargs)
+    for arg in %(args)s + list(reqargs.keys()) + list(qkwargs.keys()):
+        if arg in %(defaultargs)s or arg in qkwargs:
+            mandatory = False
+        else:
             mandatory = True
-            defarg = None
-        if "%(method)s" != "get":
+        if %(force_bodyargs)s or "%(method)s" != "get":
             try:
                 if mandatory:
                     # part of signature (in URL) or body args ?
                     try:
                         cmdargs[arg] # just check key exists
                     except KeyError:
-                        cmdargs[arg] = bodyargs[arg]
+                        cmdargs[arg] = reqargs[arg]
                 else:
                     # check if optional has been passed or if value is taken from default
                     # (used to display/build command line with minimal info,
                     # ie. what's been passed by user)
                     try:
-                        val = bodyargs[arg]
+                        val = reqargs[arg]
                         cmdargs[arg] = val
                     except KeyError:
                         pass
@@ -87,12 +102,12 @@ def %(method)s(self%(mandatargs)s):
         else:
             # if not default arg and arg not passed, this will raise a 400 (by tornado)
             if mandatory:
-                    cmdargs[arg] # check key
+                cmdargs[arg] # check key
             else:
                 try:
-                    val = self.get_argument(arg)
+                    val = qkwargs[arg]
                     cmdargs[arg] = val
-                except tornado.web.MissingArgumentError:
+                except KeyError:
                     pass
     # we don't pass though shell evaluation there
     # to prevent security issue (injection)...
@@ -108,8 +123,10 @@ def %(method)s(self%(mandatargs)s):
         cmdres = CommandInformation([(k,v) for k,v in cmdres.items() if k != 'jobs'])
     self.write(cmdres)
 """ % {"method":method,"args":args,"defaultargs":defaultargs,"name":name,
-        "mandatargs":mandatargs,"cmdargs":cmdargs,"command":repr(command)}
-    #print(strcode)
+        "mandatargs":mandatargs,"cmdargs":cmdargs,"command":repr(command),
+        "force_bodyargs":force_bodyargs}
+    #if name == "info" or name == "builds":
+    #    print(strcode)
     return strcode, mandatargs != ""
 
 def generate_endpoint_for_composite_command(name, command, method):

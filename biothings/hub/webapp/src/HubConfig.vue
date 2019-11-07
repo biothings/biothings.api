@@ -30,11 +30,12 @@
                 </div>
 
                 <p>
-                    <div class="ui top attached pointing menu">
-                        <a class="red item " :data-tab="section" v-if="config" v-for="section in Object.keys(config)">{{ section }} </a>
+                    <div class="ui mini top attached pointing menu">
+                        <!-- array.keys() gives index number -->
+                        <a :class="['red item',idx == 0 ? 'active' : '']" :data-tab="config_tabs[idx]" v-if="config" v-for="idx in config_tabs.keys()" >{{ config_tabs[idx] }} </a>
                     </div>
-                    <div class="ui bottom attached tab segment" :data-tab="section" v-if="config" v-for="section in Object.keys(config)">
-                        <hub-config-tab v-bind:section="section" v-bind:params="config[section]"></hub-config-tab>
+                    <div :class="['ui bottom attached tab segment',idx == 0 ? 'active':'']" :data-tab="config_tabs[idx]" v-if="config" v-for="idx in config_tabs.keys()">
+                        <hub-config-tab v-bind:section="config_tabs[idx]" v-bind:params="config[config_tabs[idx]]"></hub-config-tab>
                     </div>
                 </p>
             </div>
@@ -69,6 +70,7 @@
 </template>
 
 <script>
+import Vue from 'vue';
 import axios from 'axios'
 import bus from './bus.js'
 import Loader from './Loader.vue'
@@ -85,13 +87,16 @@ export default {
     },
     created() {
         bus.$on('change_config',this.onConfigChanged);
+        bus.$on('restart_hub',this.restartHub)
+        bus.$on('save_config_param',this.onSaveParameter);
     },
     updated() {
         $('.menu .item').tab();
-        $('.menu .item').tab('change tab', 'General')
     },
     beforeDestroy() {
         bus.$off('change_source',this.onConfigChanged);
+        bus.$off('restart_hub',this.restartHub)
+        bus.$off('save_config_param',this.onSaveParameter);
     },
     data () {
         return {
@@ -101,11 +106,12 @@ export default {
         }
     },
     computed: {
-        // a computed getter
+        config_tabs: function() {
+            return Object.keys(this.config).sort();
+        },
     },
     methods: {
         loadData () {
-            console.log("loaddata");
             var self = this;
             this.loading();
             axios.get(axios.defaults.baseURL + `/config`)
@@ -118,7 +124,7 @@ export default {
                     for(var param in conf) {
                         var info = conf[param];
                         // rename default section
-                        var section = info.section || "General";
+                        var section = info.section || "Misc";
                         delete info.section; // no need to store for each param now
                         info.name = param; // but we need to store the parameter name
                         if(bysections.hasOwnProperty(section)) {
@@ -128,6 +134,9 @@ export default {
                         }
                     }
                     this.config = bysections;
+                    // make this config avail globally
+                    Vue.config.hub_config = response.data.result.scope.config;
+                    bus.$emit("current_config",response.data.result);
                     this.loaded();
                 } catch(err) {
                     self.error = `Can't parse configuration: ${err}`;
@@ -163,6 +172,16 @@ export default {
         },
         onConfigChanged: function() {
             this.loadData();
+        },
+        onSaveParameter: function(data) {
+            var self = this;
+            axios.put(axios.defaults.baseURL + `/config`, {"name" : data["name"], "value" : data["value"]})
+            .then(response => {
+                self.loadData();
+            })
+            .catch(err => {
+                console.log("error saving parameter: " + err);
+            })
         },
     },
 }
