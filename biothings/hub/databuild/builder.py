@@ -397,12 +397,11 @@ class DataBuilder(object):
         self.mapping = self.get_mapping(sources)
         self.stats = self.get_stats(sources,job_manager)
         self.custom_metadata = self.get_custom_metadata(sources,job_manager)
-        self.build_metadata = self.get_build_metadata()
         # also search for _meta in build_config
         bmeta = self.build_config.get("_meta")
         if bmeta:
             self.logger.info("Found _meta in build_config, merging: %s" % pformat(bmeta))
-            self.build_metadata.update(self.build_config.get("_meta",{}))
+            self.custom_metadata.update(self.build_config.get("_meta",{}))
 
     def update_src_meta_stats(self):
         for src,count in self.merge_stats.items():
