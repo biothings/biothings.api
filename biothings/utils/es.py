@@ -877,12 +877,9 @@ class Collection(object):
         if check_unique and not res["result"] == "created":
             raise Exception("Couldn't insert document '%s'" % doc)
 
-    def update_one(self, query, what):
-        # assert len(what) == 1 and ("$set" in what or \
-        #         "$unset" in what or "$push" in what), "$set/$unset/$push operators not found"      # TODO: Confirm this line
-        assert (len(what) == 1
-                and ("$set" in what or "$unset" in what or "$push" in what)), "$set/$unset/$push operators not found"
-
+    def update_one(self, query, what, upsert=False):
+        assert (len(what) == 1 and ("$set" in what or "$unset" in what or "$push" in what)), \
+               "$set/$unset/$push operators not found"
         doc = self.find_one(query)
         if doc:
             if "$set" in what:
@@ -899,6 +896,12 @@ class Collection(object):
                     assert "." not in listkey, "$push not supported for nested keys: %s" % listkey
                     doc.setdefault(listkey, []).append(elem)
 
+            self.save(doc)
+        elif upsert:
+            assert "_id" in query, "Can't upsert without _id"
+            assert "$set" in what, "Upsert needs $set operator (it makes sense...)"
+            doc = what["$set"]
+            doc["_id"] = query["_id"]
             self.save(doc)
 
     def update(self, query, what):
