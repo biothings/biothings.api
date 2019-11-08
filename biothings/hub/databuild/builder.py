@@ -349,8 +349,9 @@ class DataBuilder(object):
 
     def get_stats(self,sources,job_manager):
         """
-        Return a dictionnary of metadata for this build. It's usually app-specific 
-        and this method may be overridden as needed.
+        Return a dictionnary of metadata for this build. It's usually app-specific
+        and this method may be overridden as needed. By default though, the total
+        number of documents in the merged collection is stored (key "total")
 
         Return dictionary will be merged with any existing metadata in
         src_build collection. This behavior can be changed by setting a special
@@ -363,7 +364,8 @@ class DataBuilder(object):
         of its implementation:
         asyncio.set_event_loop(job_manager.loop)
         """
-        return {}
+        total = self.target_backend.target_collection.count()
+        return {"total" : total}
 
     def get_custom_metadata(self, sources, job_manager):
         """
@@ -809,6 +811,7 @@ class LinkDataBuilder(DataBuilder):
                 "Found more than one source to link, not allowed: %s" % conf["sources"]
         assert hasattr(self.target_backend,"datasource_name")
         self.target_backend.datasource_name = conf["sources"][0]
+        self.target_backend.source_db = self.source_backend
 
     @asyncio.coroutine
     def merge_source(self, src_name, *args, **kwargs):

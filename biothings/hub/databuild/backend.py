@@ -224,6 +224,13 @@ class LinkTargetDocMongoBackend(TargetDocBackend):
         # will be set later by LinkDataBuilder, should be the name
         # of the datasource in src database
         self.datasource_name = None
+        self.source_db = None
+
+    @property
+    def target_collection(self):
+        assert self.source_db
+        assert self.datasource_name
+        return self.source_db[self.datasource_name]
 
     def get_backend_url(self):
         assert self.datasource_name
