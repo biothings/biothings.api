@@ -58,7 +58,7 @@
             </div>
 		</div>
 
-        <div class="ui basic reset modal">
+        <div :class="['ui basic reset modal',name]">
                 <h2 class="ui icon">
                     <i class="info circle icon"></i>
                     Reset backend
@@ -142,7 +142,7 @@ export default {
         },
         reset: function() {
             var self = this;
-            $(`.ui.basic.reset.modal`)
+            $(`.ui.basic.reset.modal.${this.name}`)
             .modal("setting", {
                 onApprove: function () {
                     self.resetBackend()
