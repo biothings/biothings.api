@@ -39,7 +39,7 @@ class ApiService {
     var expiry = this.getExpiryDate(token);
     // we'll refresh that token when reaching 90% of the time
     var now = new Date();
-    var refreshIn = Math.floor((expiry - (now.getTime() / 1000)) * .9);
+    var refreshIn = Math.max(Math.floor((expiry - (now.getTime() / 1000)) * .9),0);
     console.log(`Refresh access token in ${refreshIn} seconds`);
     setTimeout(() => {
       auth.refreshAccessToken();

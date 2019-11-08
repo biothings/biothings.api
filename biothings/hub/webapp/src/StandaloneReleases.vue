@@ -12,16 +12,16 @@
                 </div>
             </div>
         </div>
-        <div class="ui grid" v-if="sources.length">
+        <div class="ui grid" v-if="version_urls.length">
             <div class="two wide column">
                 <div class="ui grey inverted vertical fluid tabular standalone menu">
-                    <a :class="['item', i === 0 ? 'active' : '']" :data-tab="src.name" v-for="(src,i) in sources" @click="changeTab(src.name)">
+                    <a :class="['item', i === 0 ? 'active' : '']" :data-tab="src.name" v-for="(src,i) in version_urls" @click="changeTab(src.name)">
                         {{src.name}}
                     </a>
                 </div>
             </div>
             <div class="fourteen wide stretched column">
-                <div :class="['ui bottom attached tab srctab segment', i === 0 ? 'active' : '']" :data-tab="src.name" v-for="(src,i) in sources">
+                <div :class="['ui bottom attached tab srctab segment', i === 0 ? 'active' : '']" :data-tab="src.name" v-for="(src,i) in version_urls">
                     <standalone-release v-bind:name="src.name" v-bind:url="src.url"></standalone-release>
                 </div>
             </div>
@@ -51,13 +51,13 @@ export default {
 	created() {
 	},
 	beforeDestroy() {
-        this.sources = [];
+        this.version_urls = [];
 	},
 	watch: {
 	},
 	data () {
 		return  {
-			sources : [],
+			version_urls: [],
 		}
 	},
 	computed: {
@@ -66,18 +66,18 @@ export default {
 	methods: {
 		refresh: function() {
 			var self = this;
-			this.sources = []; // reinit to force components to be rebuilt
+			this.version_urls = []; // reinit to force components to be rebuilt
 			this.loading();
 			axios.get(axios.defaults.baseURL + '/standalone/list')
 			.then(response => {
-				self.sources = response.data.result;
+				self.version_urls = response.data.result;
 				self.loaded();
-                if(!self.sources.length) {
+                if(!self.version_urls.length) {
                     bus.$emit("redirect","wizard");
                 }
 			})
 			.catch(err => {
-				console.log("Error getting list of biothings sources: " + err);
+				console.log("Error getting list of biothings version_urls: " + err);
 				self.loaderror(err);
             })
 		},

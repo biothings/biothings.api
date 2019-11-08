@@ -22,7 +22,11 @@
                     " data-position="bottom center">{{conn.name || "John Doe"}}</div>
             </div>
 
-            <a class="clickable item" v-if="has_feature('source') && has_feature('build')">
+            <a class="clickable item" v-for="mitem in menu">
+                <i :class="['ui',mitem['icon'],'icon']"></i>
+                <router-link :to="mitem['path']">{{ mitem['name'] }}</router-link>
+            </a>
+            <!--a class="clickable item" v-if="has_feature('source') && has_feature('build')">
                 <i class="ui home icon"></i>
                 <router-link to="/">Home</router-link>
             </a>
@@ -37,15 +41,15 @@
             <a class="clickable item" v-if="has_feature('api')">
                 <i class="ui shield alternate icon"></i>
                 <router-link to="/apis">API</router-link>
-            </a>
+            </a-->
             <!-- only if we have a home page already, otherwise it *is* the home page -->
             <!-- > 2 because when autohub, 2 paths are created, one for releases, one for wizard -->
-            <a class="clickable item" v-if="has_feature('autohub')">
+            <!--a class="clickable item" v-if="has_feature('autohub')">
                 <i class="ui globe icon"></i>
                 <router-link :to="routes.length > 2 && routes[0]['path'] == '/' ? '/standalone' : '/'">
                     {{ routes.length > 2 && routes[0]['path'] == '/' ? 'Releases' : 'Home' }}
                 </router-link>
-            </a>
+            </a-->
 
             <div class="clickable ui item right" v-if="has_feature('job')">
               <job-summary></job-summary>
@@ -367,6 +371,7 @@
         data() {
             return {
                 routes: [],
+                menu: [],
                 ws_connection: "disconnected",
                 socket_msg: '',
                 socket : null,
@@ -426,35 +431,42 @@
                 console.log("Setup UI according to listed features");
                 console.log(Vue.config.hub_features);
                 this.routes = [];
+                this.menu = [];
                 if(this.has_feature('source') && this.has_feature('build')) {
                     console.log("Setup Home tab");
                     this.routes.push({ path: '/', component: Status });
+                    this.menu.push({ path: '/', name:"Home", icon: "home"});
                 }
                 if(this.has_feature('source')) {
                     console.log("Setup Sources tab");
                     this.routes.push({ path: '/sources', component: DataSourceGrid });
                     this.routes.push({ path: '/source/:_id', component: DataSourceDetailed, props: true });
+                    this.menu.push({ path: '/sources', name:"Sources", icon: "database"});
                 }
                 if(this.has_feature('build')) {
                     console.log("Setup Builds tab");
                     this.routes.push({ path: '/builds', component: BuildGrid });
                     this.routes.push({ path: '/build/:_id', component: BuildDetailed, props: true, name: "build"});
+                    this.menu.push({ path: '/builds', name:"Builds", icon: "cubes"});
+                }
+                if(this.has_feature('autohub')) {
+                    console.log("Setup autohub tab");
+                    var path = "/standalone";
+                    this.routes.push({ path: path, component: StandaloneReleases});
+                    var wizard = path + "wizard";
+                    this.routes.push({ path: wizard, component: StandaloneWizard, name: "wizard"});
+                    this.menu.push({ path: path, name:"Releases", icon: "globe"});
                 }
                 if(this.has_feature('api')) {
                     console.log("Setup API tab");
                     this.routes.push({ path: '/apis', component: ApiGrid });
+                    this.menu.push({ path: '/apis', name:"API", icon: "shield alternate"});
                 }
-                if(this.has_feature('autohub')) {
-                    var path = "/standalone";
-                    if(this.routes.length == 0) {
-                        // if we get there, no other path has been prev defined,
-                        // it's a standalone hub only, standalone component is / (home)
-                        path = "/";
-                    }
-                    console.log("Setup autohub tab");
-                    this.routes.push({ path: path, component: StandaloneReleases});
-                    var wizard = path + "wizard";
-                    this.routes.push({ path: wizard, component: StandaloneWizard, name: "wizard"});
+                // adjust home link, if none defined
+                if(this.menu.length && this.menu[0].path != '/') {
+                    this.menu[0].path = '/';
+                    this.menu[0].name = 'Home';
+                    this.routes[0].path = '/';
                 }
                 router.addRoutes(this.routes);
             },
