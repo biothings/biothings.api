@@ -27,7 +27,7 @@
                     </div>
                     <i class="chart line icon"></i>{{release.diff.stats.update | formatInteger }} updated,
                     {{release.diff.stats.add | formatInteger }} added,
-                    {{release.diff.stats.deleted | formatInteger }} deleted.
+                    {{release.diff.stats.delete | formatInteger }} deleted.
                     <b v-if="release.diff.stats.mapping_changed">Mapping has changed.</b>
                     <div>
                     <publish-summary v-if="build.publish && build.publish.incremental && build.publish.incremental.hasOwnProperty(release_id)":publish="build.publish.incremental[release_id]" :type="type"></publish-summary>
