@@ -115,7 +115,8 @@ APP_LIST = [
             assert api_id in self.register, "API '%s' is not running" % api_id
             server = self.register.pop(api_id)
             server.stop()
-            self.register_status(api_id,"stopped")
+            if server._stopped:
+                self.register_status(api_id,"stopped")
         except Exception as e:
             self.logger.exception("Failed to stop API '%s'" % api_id)
             self.register_status(api_id,"failed",err=str(e))
