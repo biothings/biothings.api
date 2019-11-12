@@ -629,8 +629,8 @@ class ColdHotSelfContainedJsonDiffer(ColdHotJsonDifferBase, SelfContainedJsonDif
 
 def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names,
                            batch_num, diff_folder, diff_func, exclude=[], selfcontained=False):
-    new = create_backend(new_db_col_names)
-    old = create_backend(old_db_col_names)
+    new = create_backend(new_db_col_names,follow_ref=True)
+    old = create_backend(old_db_col_names,follow_ref=True)
     docs_common = old.mget_from_ids(id_list_new)
     ids_common = [_doc['_id'] for _doc in docs_common]
     id_in_new = list(set(id_list_new) - set(ids_common))
@@ -660,7 +660,7 @@ def diff_worker_new_vs_old(id_list_new, old_db_col_names, new_db_col_names,
     return summary
 
 def diff_worker_old_vs_new(id_list_old, new_db_col_names, batch_num, diff_folder):
-    new = create_backend(new_db_col_names)
+    new = create_backend(new_db_col_names,follow_ref=True)
     docs_common = new.mget_from_ids(id_list_old)
     ids_common = [_doc['_id'] for _doc in docs_common]
     id_in_old = list(set(id_list_old)-set(ids_common))
@@ -685,7 +685,7 @@ def diff_worker_old_vs_new(id_list_old, new_db_col_names, batch_num, diff_folder
 
 
 def diff_worker_count(id_list, db_col_names, batch_num):
-    col = create_backend(db_col_names)
+    col = create_backend(db_col_names,follow_ref=True)
     docs = col.mget_from_ids(id_list)
     res = {}
     for doc in docs:
@@ -1002,8 +1002,8 @@ class DifferManager(BaseManager):
             sources[data["source"]] = 1
             if detailed:
                 # TODO: if self-contained, no db connection needed
-                new_col = create_backend(metadata["new"]["backend"])
-                old_col = create_backend(metadata["old"]["backend"])
+                new_col = create_backend(metadata["new"]["backend"],follow_ref=True)
+                old_col = create_backend(metadata["old"]["backend"],follow_ref=True)
             if len(adds["ids"]) < max_reported_ids:
                 if detailed:
                     # look for which root keys were added in new collection
