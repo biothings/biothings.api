@@ -157,8 +157,14 @@ class BaseDiffer(object):
         mode: 'purge' will remove any existing files for this comparison while 'resume' will happily ignore
               existing data and to whatever it's requested (like running steps="post" on existing diff folder...)
         """
-        self.new = create_backend(new_db_col_names)
-        self.old = create_backend(old_db_col_names)
+        # these ones are used to point to the build doc, not the underlying backned
+        # (ie. if link builder has been used, it refers a colleciton in src_db, but
+        # we need the metadata from the build doc too)
+        self.new = create_backend(new_db_col_names,follow_ref=False)
+        self.old = create_backend(old_db_col_names,follow_ref=False)
+        # these point to the actual collection containing data
+        content_new = create_backend(new_db_col_names,follow_ref=True)
+        content_old = create_backend(old_db_col_names,follow_ref=True)
         # check what to do
         if type(steps) == str:
             steps = [steps]
@@ -275,14 +281,16 @@ class BaseDiffer(object):
             if got_error:
                 raise got_error
 
-        if "content" in steps:
+        if content_old == content_new:
+            self.logger.info("Old and new collections are the same, skipping 'content' step")
+        elif "content" in steps:
             skip = 0
             cnt = 0
             jobs = []
             pinfo = self.get_pinfo()
-            pinfo["source"] = "%s vs %s" % (self.new.target_name,self.old.target_name)
+            pinfo["source"] = "%s vs %s" % (content_new.target_name,content_old.target_name)
             pinfo["step"] = "content: new vs old"
-            data_new = id_feeder(self.new, batch_size=batch_size)
+            data_new = id_feeder(content_new, batch_size=batch_size)
             selfcontained = "selfcontained" in self.diff_type
             self.register_status("diffing",transient=True,init=True,job={"step":"diff-content"})
             for id_list_new in data_new:
@@ -304,10 +312,10 @@ class BaseDiffer(object):
             yield from asyncio.gather(*jobs)
             self.logger.info("Finished calculating diff for the new collection. Total number of docs updated: {}, added: {}".format(diff_stats["update"], diff_stats["add"]))
 
-            data_old = id_feeder(self.old, batch_size=batch_size)
+            data_old = id_feeder(content_old, batch_size=batch_size)
             jobs = []
             pinfo = self.get_pinfo()
-            pinfo["source"] = "%s vs %s" % (self.new.target_name,self.old.target_name)
+            pinfo["source"] = "%s vs %s" % (content_old.target_name,content_new.target_name)
             pinfo["step"] = "content: old vs new"
             for id_list_old in data_old:
                 cnt += 1
@@ -1113,7 +1121,7 @@ def reduce_diffs(diffs, num, diff_folder, done_folder):
         os.rename(diff_fn,os.path.join(done_folder,os.path.basename(diff_fn)))
     dump(merged,os.path.join(diff_folder,fn),compress="lzma")
     file_name = os.path.join(diff_folder,fn)
-    res.append({"name":fn,"md5sum":md5sum(filename),"size" : os.stat(file_name).st_size})
+    res.append({"name":fn,"md5sum":md5sum(file_name),"size" : os.stat(file_name).st_size})
     return res
 
 def set_pending_to_diff(col_name):

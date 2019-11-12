@@ -93,6 +93,13 @@ class DocMongoBackend(DocBackendBase):
         if target_collection:
             self.target_collection = target_collection
 
+    def __eq__(self, other):
+        if not isinstance(other,DocMongoBackend):
+            return False
+        return self.target_name == other.target_name and \
+               self.target_collection.database.name == other.target_collection.database.name and \
+               self.target_collection.database.client.address == other.target_collection.database.client.address
+
     @property
     def target_name(self):
         return self.target_collection.name

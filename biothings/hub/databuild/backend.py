@@ -8,7 +8,7 @@ from biothings.utils.common import get_timestamp, get_random_string
 from biothings.utils.backend import DocBackendBase, DocMongoBackend, DocESBackend
 from biothings.utils.es import ESIndexer
 import biothings.utils.mongo as mongo
-from biothings.utils.hub_db import get_source_fullname
+from biothings.utils.hub_db import get_source_fullname, get_src_build
 
 # Source specific backend (deals with build config, master docs, etc...)
 class SourceDocBackendBase(DocBackendBase):
@@ -242,10 +242,12 @@ class LinkTargetDocMongoBackend(TargetDocBackend):
         pass
 
 
-def create_backend(db_col_names,name_only=False,**kwargs):
+def create_backend(db_col_names,name_only=False,follow_ref=False,**kwargs):
     """
     Guess what's inside 'db_col_names' and return the corresponding backend.
-    - It could be a string (by default, will lookup a mongo collection in target database)
+    - It could be a string (will first check for an src_build doc to check
+      a backend_url field, if nothing there, will lookup a mongo collection
+      in target database)
     - or a tuple("target|src","col_name")
     - or a ("mongodb://user:pass@host","db","col_name") URI.
     - or a ("es_host:port","index_name","doc_type")
@@ -256,10 +258,16 @@ def create_backend(db_col_names,name_only=False,**kwargs):
     db = None
     is_mongo = True
     if type(db_col_names) == str:
-        db = mongo.get_target_db()
-        col = db[db_col_names]
-        # normalize params
-        db_col_names = ["%s:%s" % (db.client.HOST,db.client.PORT),db.name,col.name]
+        # first check build doc, if there's backend_url key, we'll use it instead of
+        # direclty using db_col_names as target collection (see LinkDataBuilder)
+        bdoc = get_src_build().find_one({"_id":db_col_names})
+        if follow_ref and bdoc and bdoc.get("backend_url") and bdoc["backend_url"] != db_col_names:
+            return create_backend(bdoc["backend_url"],name_only=name_only,follow_ref=follow_ref,**kwargs)
+        else:
+            db = mongo.get_target_db()
+            col = db[db_col_names]
+            # normalize params
+            db_col_names = ["%s:%s" % (db.client.HOST,db.client.PORT),db.name,col.name]
     elif db_col_names[0].startswith("mongodb://"):
         assert len(db_col_names) == 3, "Missing connection information for %s" % repr(db_col_names)
         conn = mongo.MongoClient(db_col_names[0])
