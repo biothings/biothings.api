@@ -73,7 +73,7 @@
                                         <input type="text" id="release" placeholder="Specify a release (optional)" autofocus v-if="info.uploader.dummy">
                                     </div>
                                     <div class="required six wide field">
-                                        <button :class="['ui labeled small icon button',info.status == 'uploading' ? 'disabled' : '']" @click="do_upload(subsrc=subsrc);">
+                                        <button :class="['ui labeled small icon button',info.status == 'uploading' ? 'disabled' : '']" @click="do_upload(subsrc)">
                                             <i class="database icon"></i>
                                             Upload
                                         </button>
@@ -102,11 +102,6 @@ export default {
         this.setup();
     },
     components: { },
-    methods: {
-        do_upload(subsrc=null) {
-            return this.$parent.upload(subsrc=subsrc);
-        },
-    },
     watch: {
         maps: function(newv,oldv) {
             if(newv != oldv) {
@@ -121,6 +116,9 @@ export default {
     methods: {
         setup: function() {
             $('.menu .item').tab();
+        },
+        do_upload: function(subsrc=null) {
+            return this.$parent.upload(subsrc=subsrc);
         },
     },
 }
