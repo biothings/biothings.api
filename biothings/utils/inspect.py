@@ -11,7 +11,7 @@ import copy
 from datetime import datetime
 import bson, json
 
-from .common import timesofar, is_scalar, is_float, is_str, is_int, splitstr
+from .common import timesofar, is_scalar, is_float, is_str, is_int, splitstr, nan, inf
 from .web.es import flatten_doc
 from biothings.utils.dataload import dict_walk
 
@@ -332,6 +332,12 @@ def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
                 mapt[splitstr] = {}
             elif typ == bson.int64.Int64:
                 mapt[int] = {}
+            # we know struct is a scalar. NaN and Inf can't be indexed on ES,
+            # need to catch those
+            elif isinstance(struct,float) and math.isnan(struct):
+                mapt[nan] = {}
+            elif isinstance(struct,float) and math.isinf(struct):
+                mapt[inf] = {}
             else:
                 mapt[typ] = {}
             # splitstr > str
@@ -827,12 +833,18 @@ if __name__ == "__main__":
     m = merge_record(m,d2,"mapping")
     assert m["k"]["a"][list]["r"] == {splitstr:{}}
 
-    # allow int & float in mapping (keep float
+    # allow int & float in mapping (keep float)
     t1 = {"_id":"a","f":[1,2]}
     t2 = {"_id":"a","f":[1.1,2.2]}
     m = inspect_docs([t1,t2],mode="mapping")
     assert m["mapping"]["f"]["type"] == "float"
 
+    # NaN/Inf not allowed (if mode is mapping)
+    n1 = {"_id": "a", "v1" : "oula", "v2" : math.nan}
+    n2 = {"_id": "b", "v1" : "arf", "v2" : 13.4}
+    n3 = {"_id": "c", "v1" : "mak", "v2" : math.nan, "v3" : math.inf}
+    m = inspect_docs([n1,n2,n3],mode="mapping")
+    assert "errors" in m["mapping"]
 
     print("All tests OK")
 

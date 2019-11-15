@@ -738,5 +738,13 @@ def md5sum(fname):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
+
 class splitstr(str):
+    """Type representing strings with space in it"""
+    pass
+class nan(object):
+    """Represents NaN type, but not as a float"""
+    pass
+class inf(object):
+    """Represents Inf type, but not as a float"""
     pass
