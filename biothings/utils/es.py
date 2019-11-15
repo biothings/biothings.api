@@ -7,7 +7,7 @@ import time
 from elasticsearch import Elasticsearch, NotFoundError, RequestError, TransportError
 from elasticsearch import helpers
 
-from biothings.utils.common import iter_n, splitstr
+from biothings.utils.common import iter_n, splitstr, nan, inf
 from biothings.utils.dataload import dict_walk
 
 # setup ES logging
@@ -691,9 +691,13 @@ def generate_es_mapping(inspect_doc, init=True, level=0):
                 else:
                     # typ = [t for t in typ if t is not type(None)][0]      # TODO: Confirm this line
                     typ = [t for t in typ if not isinstance(t, none_type)][0]
+                if typ is nan or typ is inf:
+                    raise TypeError(typ)
                 mapping[rootk] = map_tpl[typ]
-            except Exception:              # pylint: disable=broad-except
-                errors.append("Can't find map type %s for key %s", inspect_doc[rootk], rootk)
+            except KeyError:
+                errors.append("Can't find map type %s for key %s" % (inspect_doc[rootk], rootk))
+            except TypeError:
+                errors.append("Type %s for key %s isn't allowed in ES mapping" % (typ,rootk))
         elif inspect_doc[rootk] == {}:
             typ = rootk
             return map_tpl[typ]
