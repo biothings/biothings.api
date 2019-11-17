@@ -81,7 +81,13 @@ class BiothingESWebSettings(BiothingWebSettings):
 
     def _source_metadata_object(self):
         ''' Override me to return metadata for your project '''
-        return {}
+        _meta = {}
+        try:
+            _m = self.es_client.indices.get_mapping(index=self.ES_INDEX, doc_type=self.ES_DOC_TYPE)
+            _meta = _m[list(_m.keys())[0]]['mappings'][self.ES_DOC_TYPE]['_meta']['src']
+        except:
+            pass
+        return _meta
 
     def source_metadata(self):
         ''' Function to cache return of the source metadata stored in _meta of index mappings '''
