@@ -636,6 +636,17 @@ class UploaderManager(BaseSourceManager):
         super(UploaderManager,self).__init__(*args,**kwargs)
         self.poll_schedule = poll_schedule
 
+    def clean_stale_status(self):
+        src_dump = get_src_dump()
+        srcs = src_dump.find()
+        for src in srcs:
+            jobs = src.get("upload",{}).get("jobs",{})
+            for subsrc in jobs:
+                if jobs[subsrc].get("status") == "uploading":
+                    logging.warning("Found stale datasource '%s', marking upload status as 'canceled'" % src["_id"])
+                    jobs[subsrc]["status"] = "canceled"
+            src_dump.replace_one({"_id":src["_id"]},src)
+
     def filter_class(self,klass):
         if klass.name is None:
             # usually a base defined in an uploader, which then is subclassed in same

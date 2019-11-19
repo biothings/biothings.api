@@ -675,6 +675,15 @@ class SyncerManager(BaseManager):
         super(SyncerManager,self).__init__(*args,**kwargs)
         self.setup_log()
 
+    def clean_stale_status(self):
+        src_build = get_src_build()
+        for build in src_build.find():
+            for job in build.get("jobs",[]):
+                if job.get("status") == "syncing":
+                    logging.warning("Found stale build '%s', marking sync status as 'canceled'" % build["_id"])
+                    job["status"] = "canceled"
+            src_build.replace_one({"_id":build["_id"]},build)
+
     def register_syncer(self,klass):
         if type(klass) == partial:
             assert type(klass.func) == type, "%s is not a class" % klass.func

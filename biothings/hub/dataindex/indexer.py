@@ -675,6 +675,15 @@ class IndexManager(BaseManager):
         self.timestamp = datetime.now()
         self.setup()
 
+    def clean_stale_status(self):
+        src_build = get_src_build()
+        for build in src_build.find():
+            for job in build.get("jobs",[]):
+                if job.get("status") == "indexing":
+                    logging.warning("Found stale build '%s', marking index status as 'canceled'" % build["_id"])
+                    job["status"] = "canceled"
+            src_build.replace_one({"_id":build["_id"]},build)
+
     def setup(self):
         self.setup_log()
 

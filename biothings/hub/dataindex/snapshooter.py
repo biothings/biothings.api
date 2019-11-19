@@ -332,6 +332,15 @@ class SnapshotManager(BaseManager):
         self.es_backups_folder = btconfig.ES_BACKUPS_FOLDER
         self.setup()
 
+    def clean_stale_status(self):
+        src_build = get_src_build()
+        for build in src_build.find():
+            for job in build.get("jobs",[]):
+                if job.get("status","").endswith("snapshotting"):
+                    logging.warning("Found stale build '%s', marking snapshot status as 'canceled'" % build["_id"])
+                    job["status"] = "canceled"
+            src_build.replace_one({"_id":build["_id"]},build)
+
     def setup(self):
         self.setup_log()
     

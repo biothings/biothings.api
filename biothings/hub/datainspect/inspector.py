@@ -19,6 +19,8 @@ import biothings.utils.inspect as btinspect
 import biothings.utils.es as es
 
 from biothings.utils.manager import BaseManager
+from biothings import config
+logging = config.logger
 
 
 class InspectorError(Exception):
@@ -43,6 +45,17 @@ class InspectorManager(BaseManager):
         self.build_manager = build_manager
         self.logfile = None
         self.setup_log()
+
+    def clean_stale_status(self):
+        src_dump = get_src_dump()
+        srcs = src_dump.find()
+        for src in srcs:
+            jobs = src.get("inspect",{}).get("jobs",{})
+            for subsrc in jobs:
+                if jobs[subsrc].get("status") == "inspecting":
+                    logging.warning("Found stale datasource '%s', marking inspect status as 'canceled'" % src["_id"])
+                    jobs[subsrc]["status"] = "canceled"
+            src_dump.replace_one({"_id":src["_id"]},src)
 
     def setup_log(self):
         """Setup and return a logger instance"""

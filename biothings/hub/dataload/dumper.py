@@ -1057,6 +1057,17 @@ class DumperManager(BaseSourceManager):
 
     SOURCE_CLASS = BaseDumper
 
+    def clean_stale_status(self):
+        # not uysing mongo query capabilities as hub backend could be ES, SQLlite, etc...
+        # so manually iterate
+        src_dump = get_src_dump()
+        srcs = src_dump.find()
+        for src in srcs:
+            if src.get("download",{}).get("status",None) == "downloading":
+                logging.warning("Found stale datasource '%s', marking download status as 'canceled'" % src["_id"])
+                src["download"]["status"] = "canceled"
+                src_dump.replace_one({"_id":src["_id"]},src)
+
     def create_instance(self,klass):
         logging.debug("Creating new %s instance" % klass.__name__)
         inst = klass()

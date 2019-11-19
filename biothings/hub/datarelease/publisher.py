@@ -44,6 +44,15 @@ class BasePublisher(BaseManager,BaseStatusRegisterer):
         self.ti = time.time()
         self.setup()
 
+    def clean_stale_status(self):
+        src_build = get_src_build()
+        for build in src_build.find():
+            for job in build.get("jobs",[]):
+                if job.get("status","").endswith("publishing"):
+                    logging.warning("Found stale build '%s', marking publish status as 'canceled'" % build["_id"])
+                    job["status"] = "canceled"
+            src_build.replace_one({"_id":build["_id"]},build)
+
     @property
     def category(self):
         return RELEASER_CATEGORY
@@ -898,6 +907,15 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         self.poll_schedule = poll_schedule
         self.es_backups_folder = btconfig.ES_BACKUPS_FOLDER
         self.setup()
+
+    def clean_stale_status(self):
+        src_build = get_src_build()
+        for build in src_build.find():
+            for job in build.get("jobs",[]):
+                if job.get("status") == "generating":
+                    logging.warning("Found stale build '%s', marking release-note status as 'canceled'" % build["_id"])
+                    job["status"] = "canceled"
+            src_build.replace_one({"_id":build["_id"]},build)
 
     def setup(self):
         self.setup_log()

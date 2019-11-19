@@ -127,6 +127,18 @@ class BaseManager(object):
     def __init__(self, job_manager):
         self.register = {}
         self.job_manager = job_manager
+        self.clean_stale_status()
+
+    def clean_stale_status(self):
+        """
+        During startup, search for action in progress which would have
+        been interrupted and change the state to "canceled".
+        Ex: some donwloading processes could have been interrupted, at
+        startup, "downloading" status should be changed to "canceled" so
+        to reflect actual state on these datasources.
+        This must be overriden in subclass.
+        """
+        pass
 
     def __repr__(self):
         return "<%s [%d registered]: %s>" % (self.__class__.__name__,len(self.register), sorted(list(self.register.keys())))
