@@ -303,6 +303,7 @@ class BaseDiffer(object):
                     if res.get("diff_file"):
                         self.metadata["diff"]["files"].append(res["diff_file"])
                     self.logger.info("(Updated: {}, Added: {})".format(res["update"], res["add"]))
+                    self.register_status("success",job={"step":"diff-content"})
                 self.logger.info("Creating diff worker for batch #%s" % cnt)
                 job = yield from self.job_manager.defer_to_process(pinfo,
                         partial(diff_worker_new_vs_old, id_list_new, old_db_col_names,
@@ -409,6 +410,7 @@ class BaseDiffer(object):
             if got_error:
                 self.logger.exception("Failed to reduce diff files: %s" % got_error,extra={"notify":True})
                 raise got_error
+            self.register_status("success",job={"step":"diff-reduce"})
 
         if "post" in steps:
             pinfo = self.get_pinfo()
