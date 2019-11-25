@@ -26,6 +26,19 @@
                 </div>
             </div>
         </div>
+
+        <div class="ui basic inverted wizard modal">
+            <standalone-wizard></standalone-wizard>
+            <div class="ui right aligned segment">
+                <div class="actions">
+                    <div class="ui grey ok button">
+                        <i class="remove icon"></i>
+                        Close
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </span>
 </template>
 
@@ -73,7 +86,7 @@ export default {
 				self.version_urls = response.data.result;
 				self.loaded();
                 if(!self.version_urls.length) {
-                    bus.$emit("redirect","wizard");
+                    self.wizard();
                 }
 			})
 			.catch(err => {
@@ -87,7 +100,15 @@ export default {
             $('.ui.standalone.menu').find('.item').tab('change tab', tabname);
         },
         wizard: function() {
-            bus.$emit("redirect","wizard");
+            $('.ui.wizard.modal')
+            .modal("setting", {
+                detachable : false,
+                closable: false,
+                onApprove: function () {
+                    return true;
+                },
+            })
+            .modal("show");
         }
     }
 }

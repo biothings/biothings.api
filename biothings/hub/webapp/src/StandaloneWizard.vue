@@ -124,6 +124,7 @@
                             Enter URL pointing to a custom icon
                         </div>
                         <br>
+                        <br>
                         <button class="ui green ok labeled icon button" @click="saveMisc()">
                             <i class="save icon"></i>
                             Save
@@ -263,5 +264,11 @@ export default {
 input {
     font-family: monospace !important;
     font-size: 0.9em !important;
+}
+.datareleases p ~ div  {
+    color: black;
+}
+.datareleases p {
+    color: black;
 }
 </style>

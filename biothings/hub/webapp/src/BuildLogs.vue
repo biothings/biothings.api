@@ -14,6 +14,7 @@
 
         <div class="event" v-for="job in build.jobs">
             <i class="ui green checkmark icon" v-if="job.status == 'success'"></i>
+            <i class="ui orange exclamation circle icon" v-else-if="job.status == 'canceled'"></i>
             <i class="ui red warning sign icon" v-else-if="job.status == 'failed'"></i>
             <i class="ui pulsing unhide icon" v-else-if="job.status == 'inspecting'"></i>
             <i class="ui pulsing exchange icon" v-else-if="job.status == 'diffing'"></i>

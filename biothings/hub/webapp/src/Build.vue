@@ -24,6 +24,12 @@
                     v-if="build.status == 'failed'"></i>
             </div>
 
+            <div class="ui"
+                 data-tooltip="Job was canceled/interrupted">
+                <i class="right floated orange exclamation circle icon"
+                    v-if="build.status == 'canceled'"></i>
+            </div>
+
             <div class="left aligned header" v-model="build">
                 <router-link :to="{name:'build', params: {_id: build._id, color:color}}"><a>{{ build.target_name }}</a></router-link>
             </div>
