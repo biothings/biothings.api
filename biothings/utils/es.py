@@ -1,6 +1,8 @@
 import time, copy, re
 import json
-from elasticsearch import Elasticsearch, NotFoundError, RequestError, TransportError
+from elasticsearch import Elasticsearch, NotFoundError, RequestError, \
+                          TransportError, ElasticsearchException
+
 from elasticsearch import helpers
 import logging
 import itertools
@@ -193,7 +195,10 @@ class ESIndexer():
             })
             return ndoc
         actions = (_get_bulk(doc) for doc in docs)
-        return helpers.bulk(self._es, actions, chunk_size=step)
+        num_ok,errors = helpers.bulk(self._es, actions, chunk_size=step)
+        if errors:
+            raise ElasticsearchException("%d errors while bulk-indexing: %s" % (len(errors),[str(e) for e in errors]))
+        return num_ok, errors
 
     def delete_doc(self, id):
         '''delete a doc from the index based on passed id.'''
