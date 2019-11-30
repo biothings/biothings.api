@@ -1,3 +1,9 @@
+v0.5.0 (2019/11/26):
+    Support adding license url from datasource metadata. 
+
+v0.4.0 (2019/08/07):
+    Improve a few test cases and test utility organization.
+
 v0.3.0 (2019/05/01):
     Support Elasticsearch 6.x as the backend, Elasticsearch 2.x is no longer supported.
     Require Python>=3.4.
