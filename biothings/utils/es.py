@@ -3,8 +3,8 @@ import itertools
 import json
 import re
 import time
-
-from elasticsearch import Elasticsearch, NotFoundError, RequestError, TransportError
+from elasticsearch import Elasticsearch, NotFoundError, RequestError, \
+                          TransportError, ElasticsearchException
 from elasticsearch import helpers
 
 from biothings.utils.common import iter_n, splitstr, nan, inf
@@ -202,7 +202,10 @@ class ESIndexer():
             })
             return ndoc
         actions = (_get_bulk(doc) for doc in docs)
-        return helpers.bulk(self._es, actions, chunk_size=step)
+        num_ok,errors = helpers.bulk(self._es, actions, chunk_size=step)
+        if errors:
+            raise ElasticsearchException("%d errors while bulk-indexing: %s" % (len(errors),[str(e) for e in errors]))
+        return num_ok, errors
 
     def delete_doc(self, id):                # pylint: disable=redefined-builtin
         '''delete a doc from the index based on passed id.'''
