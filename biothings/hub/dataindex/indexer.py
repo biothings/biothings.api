@@ -682,10 +682,15 @@ class Indexer(object):
                             worker))
                 def batch_indexed(f,batch_num):
                     nonlocal got_error
-                    res = f.result()
-                    if type(res) != tuple or type(res[0]) != int:
-                        got_error = Exception("Batch #%s failed while indexing collection '%s' [result:%s]" % \
-                                (batch_num,self.target_name,repr(res)))
+                    try:
+                        res = f.result()
+                        if type(res) != tuple or type(res[0]) != int:
+                            got_error = Exception("Batch #%s failed while indexing collection '%s' [result:%s]" % \
+                                    (batch_num,self.target_name,repr(res)))
+                    except Exception as e:
+                        got_error = e
+                        self.logger.exception("Batch indexed error %s" % e)
+                        return
                 job.add_done_callback(partial(batch_indexed,batch_num=bnum))
                 jobs.append(job)
                 bnum += 1
@@ -704,7 +709,12 @@ class Indexer(object):
                 # returned values looks like [(num,[]),(num,[]),...]
                 cnt = sum([val[0] for val in f.result()])
                 self.register_status("success",job={"step":"index"},index={"count":cnt})
-                self.logger.info("Index '%s' successfully created" % index_name,extra={"notify":True})
+                if total != cnt:
+                    # raise error if counts don't match, but index is still created,
+                    # fully registered in case we want to use it anyways
+                    err = "Merged collection has %d documents but %d have been indexed (check logs for more)" % (total,cnt)
+                    raise IndexerException(err)
+                self.logger.info("Index '%s' successfully created using merged collection %s" % (index_name,target_name),extra={"notify":True})
             tasks.add_done_callback(done)
             yield from tasks
 
