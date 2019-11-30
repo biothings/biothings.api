@@ -39,7 +39,7 @@ class QueryHandler(BaseESRequestHandler):
         ''' Override me. '''
         return res
 
-    def get(self):
+    async def get(self):
         ''' Handle a GET to the query endpoint. '''
         ###################################################
         #          Get/type/alias query parameters
@@ -93,7 +93,7 @@ class QueryHandler(BaseESRequestHandler):
             default_scopes=self.web_settings.DEFAULT_SCOPES,
             allow_random_query=self.web_settings.ALLOW_RANDOM_QUERY)
         _backend = self.web_settings.ES_QUERY(
-            client=self.web_settings.es_client,
+            client=self.web_settings.async_es_client,
             options=options.es_kwargs)
         _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(
             options=options.transform_kwargs, host=self.request.host,
@@ -125,7 +125,7 @@ class QueryHandler(BaseESRequestHandler):
             ###################################################
 
             try:
-                res = _backend.scroll(_query)
+                res = await _backend.scroll(_query)
             except BiothingScrollError as e:
                 self._return_data_and_track(
                     {'success': False, 'error': '{}'.format(e)},
@@ -190,7 +190,7 @@ class QueryHandler(BaseESRequestHandler):
             ###################################################
 
             try:
-                res = _backend.query_GET_query(_query)
+                res = await _backend.query_GET_query(_query)
             except BiothingSearchError as e:
                 self._return_data_and_track(
                     {'success': False, 'error': '{0}'.format(e)},
@@ -241,7 +241,7 @@ class QueryHandler(BaseESRequestHandler):
 
     ###########################################################################
 
-    def post(self):
+    async def post(self):
         ''' Handle a POST to the query endpoint.'''
         ###################################################
         #          Get/type/alias query parameters
@@ -287,7 +287,7 @@ class QueryHandler(BaseESRequestHandler):
             userquery_dir=self.web_settings.USERQUERY_DIR,
             default_scopes=self.web_settings.DEFAULT_SCOPES)
         _backend = self.web_settings.ES_QUERY(
-            client=self.web_settings.es_client,
+            client=self.web_settings.async_es_client,
             options=options.es_kwargs)
         _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(
             options=options.transform_kwargs, host=self.request.host,
@@ -329,7 +329,7 @@ class QueryHandler(BaseESRequestHandler):
         ###################################################
 
         try:
-            res = _backend.query_POST_query(_query)
+            res = await _backend.query_POST_query(_query)
         except BiothingSearchError as e:
             self._return_data_and_track(
                 {'success': False, 'error': '{0}'.format(e)},

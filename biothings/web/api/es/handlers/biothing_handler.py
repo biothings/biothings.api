@@ -41,7 +41,7 @@ class BiothingHandler(BaseESRequestHandler):
             the execution will return after the redirect (not sure about this) '''
         return False
 
-    def get(self, bid=None):
+    async def get(self, bid=None):
         ''' Handle a GET to the annotation lookup endpoint.'''
         if not bid:
             self.return_object(
@@ -92,7 +92,7 @@ class BiothingHandler(BaseESRequestHandler):
             es_options=options.es_kwargs,
             default_scopes=self.web_settings.DEFAULT_SCOPES)
         _backend = self.web_settings.ES_QUERY(
-            client=self.web_settings.es_client,
+            client=self.web_settings.async_es_client,
             options=options.es_kwargs)
         _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(
             options=options.transform_kwargs,
@@ -127,7 +127,7 @@ class BiothingHandler(BaseESRequestHandler):
         ###################################################
 
         try:
-            res = _backend.annotation_GET_query(_query)
+            res = await _backend.annotation_GET_query(_query)
         except Exception:
             self.log_exceptions("Error executing query")
             self.return_object({'success': False, 'error': self.web_settings.ID_NOT_FOUND_TEMPLATE.format(
@@ -171,7 +171,7 @@ class BiothingHandler(BaseESRequestHandler):
 
     ###########################################################################
 
-    def post(self, ids=None):
+    async def post(self, ids=None):
         ''' Handle a POST to the annotation lookup endpoint '''
 
         ###################################################
@@ -218,7 +218,7 @@ class BiothingHandler(BaseESRequestHandler):
             es_options=options.es_kwargs,
             default_scopes=self.web_settings.DEFAULT_SCOPES)
         _backend = self.web_settings.ES_QUERY(
-            client=self.web_settings.es_client,
+            client=self.web_settings.async_es_client,
             options=options.es_kwargs)
         _result_transformer = self.web_settings.ES_RESULT_TRANSFORMER(
             options=options.transform_kwargs, host=self.request.host,
@@ -260,7 +260,7 @@ class BiothingHandler(BaseESRequestHandler):
         ###################################################
 
         try:
-            res = _backend.annotation_POST_query(_query)
+            res = await _backend.annotation_POST_query(_query)
         except TypeError as e:
             self.log_exceptions("Error executing annotation POST query")
             self._return_data_and_track(

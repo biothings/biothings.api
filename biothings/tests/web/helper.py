@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import requests
 from nose import SkipTest
 from nose.tools import eq_
+from tornado.ioloop import IOLoop
 from tornado.testing import AsyncHTTPTestCase
 from tornado.web import Application
 
@@ -77,6 +78,10 @@ class TornadoTestServerMixin(AsyncHTTPTestCase):
         if not getattr(cls, 'settings', None):
             cls.settings = BiothingESWebSettings(config='config')
         return super(TornadoTestServerMixin, cls).__new__(cls)
+
+    # override
+    def get_new_ioloop(self):
+        return IOLoop.current()
 
     # override
     def get_app(self):
