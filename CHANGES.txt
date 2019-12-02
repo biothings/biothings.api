@@ -1,5 +1,6 @@
-v0.5.0 (2019/11/26):
+v0.5.0 (2019/12/02):
     Support adding license url from datasource metadata. 
+    Improve concurrent performance with async elasticsearch transport client.
 
 v0.4.0 (2019/08/07):
     Improve a few test cases and test utility organization.
