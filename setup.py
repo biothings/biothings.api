@@ -42,6 +42,7 @@ install_requires = [
     'requests>=2.21.0',
     'tornado==5.1.1',
     'elasticsearch==6.3.1',
+    'elasticsearch-async',
     'gitpython==2.1.11'
 ]
 
@@ -72,7 +73,7 @@ hub_requires = [
     'pip',              # auto-install requirements from plugins
     'pandas',  # json with inf/nan and more to come
     'yapf',  # code reformatter, better results than autopep8
-    'requests-aws4auth', # aws s3 auth requests for autohub
+    'requests-aws4auth',  # aws s3 auth requests for autohub
 ]
 
 # extra requirements for building docs
@@ -103,7 +104,6 @@ setup(
     classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.4",
         "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
@@ -122,6 +122,6 @@ setup(
     extras_require={
         'web_extra': web_extra_requires,
         'hub': hub_requires,
-        'dev':  web_extra_requires + hub_requires + docs_requires + test_requires
+        'dev': web_extra_requires + hub_requires + docs_requires + test_requires
     },
 )
