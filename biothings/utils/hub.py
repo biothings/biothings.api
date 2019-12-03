@@ -587,6 +587,8 @@ def _and(*funcs):
     if type(fut1) == list:
         assert len(fut1) == 1, "Can't deal with list of more than 1 task: %s" % fut1
         fut1 = fut1.pop()
+    if not isinstance(fut1,asyncio.Future):
+        raise CommandError("First command didn't return a future, can't chain commands")
     all_res.append(fut1)
     err = None
     def do(f,cb):
