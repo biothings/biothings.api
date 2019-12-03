@@ -208,6 +208,16 @@ class TargetDocMongoBackend(TargetDocBackend,DocMongoBackend):
         self.target_collection = self.target_db[self._target_name]
 
 
+class ShardedTargetDocMongoBackend(TargetDocMongoBackend):
+
+    def prepare(self):
+        assert self.target_name, "target_name not set"
+        assert self.target_db, "target_db not set"
+        dba = self.target_db.client.admin
+        dba.command("shardCollection",
+                    "%s.%s" % (self.target_db.name,self.target_name),
+                    key={"_id":"hashed"})
+
 class LinkTargetDocMongoBackend(TargetDocBackend):
     """
     This backend type act as a dummy target backend, the data
