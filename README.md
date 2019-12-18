@@ -2,6 +2,7 @@
 [![biothings_version](https://img.shields.io/pypi/pyversions/biothings.svg)](https://pypi.python.org/pypi/biothings)
 [![biothings_version](https://img.shields.io/pypi/format/biothings.svg)](https://pypi.python.org/pypi/biothings)
 [![biothings_version](https://img.shields.io/pypi/status/biothings.svg)](https://pypi.python.org/pypi/biothings)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.0%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
 
 # BioThings SDK
