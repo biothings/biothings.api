@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 '''
 Nose tests
 run as "nosetests tests"
