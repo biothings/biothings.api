@@ -868,6 +868,9 @@ class IndexManager(BaseManager):
                         "doc_type":list(v["mappings"].keys())[0],
                         "aliases":list(v["aliases"].keys())}
                         for k,v in cl.indices.get("*").items()]
+                    # init index key if not done in config var
+                    if not "index" in res["env"][kenv]:
+                        res["env"][kenv]["index"] = {}
                     # for now, we just consider
                     if type(res["env"][kenv]["index"]) == dict:
                         # we don't where to put those indices because we don't
@@ -878,7 +881,7 @@ class IndexManager(BaseManager):
                         assert type(res["env"][kenv]["index"]) == list
                         res["env"][kenv]["index"].extend(indices)
                 except Exception as e:
-                    self.logger.warning("Can't load remote indices: %s" % e)
+                    self.logger.exception("Can't load remote indices: %s" % e)
                     continue
         return res
 
