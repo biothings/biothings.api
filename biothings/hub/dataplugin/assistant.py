@@ -471,6 +471,8 @@ class AssistantManager(BaseSourceManager):
             url = doc["plugin"]["url"]
         else:
             raise ValueError("Specify 'url' or 'name'")
+        if not doc:
+            raise AssistantException("Plugin is not registered (url=%s, name=%s)" % (url,name))
         # should be only one but just in case
         dp.remove({"_id": doc["_id"]})
         # delete plugin code so it won't be auto-register
