@@ -1,0 +1,21 @@
+---
+test_name: Check version and features
+strict: false
+stages:
+  - name: main page
+    request:
+      url: "{tavern.env_vars.HUB_API_HOST}"
+      method: GET
+    response:
+      status_code: 200
+      body:
+        status: "ok"
+        result:
+          #name: !int BioThings Hub
+          name: !anystr
+          features: ["config","job","dump","upload","dataplugin","source","build","diff","index","snapshot","release","inspect","sync","api","terminal","reloader","dataupload","ws"]
+          biothings_version: !anydict
+          app_version: !anydict
+          icon: null
+          now: !anystr
+

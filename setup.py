@@ -74,6 +74,7 @@ hub_requires = [
     'pandas',  # json with inf/nan and more to come
     'yapf',  # code reformatter, better results than autopep8
     'requests-aws4auth',  # aws s3 auth requests for autohub
+    'tavern', # rest api testing
 ]
 
 # extra requirements for building docs
