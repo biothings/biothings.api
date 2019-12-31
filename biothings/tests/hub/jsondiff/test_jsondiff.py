@@ -1,8 +1,8 @@
 import sys, os
 
 from nose.tools import ok_, eq_
-import utils.jsondiff as jsondiff
-import utils.jsonpatch as jsonpatch
+import biothings.utils.jsondiff as jsondiff
+import biothings.utils.jsonpatch as jsonpatch
 import json
 
 
@@ -58,7 +58,6 @@ class JsonDiffTest(object):
         eq_(right,new_new_right)
 
     def test_bigdoc(self):
-        os.chdir(os.path.dirname(sys.argv[1]))
         v2 = json.load(open("v2.json"))
         v3 = json.load(open("v3.json"))
         patch = jsondiff.make(v2,v3)
