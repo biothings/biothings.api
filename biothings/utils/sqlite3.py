@@ -13,7 +13,7 @@ def get_hub_db_conn():
 
 def get_src_dump():
     db = Database()
-    return db[db.CONFIG.DATA_SRC_DUMP_COLLECTION]
+    return db[getattr(db.CONFIG,"DATA_SRC_DUMP_COLLECTION","src_dump")]
 
 def get_src_master():
     db = Database()
@@ -41,7 +41,7 @@ def get_cmd():
 
 def get_event():
     db = Database()
-    return db[db.CONFIG.EVENT_COLLECTION]
+    return db[getattr(db.CONFIG,"EVENT_COLLECTION","event")]
 
 def get_hub_config():
     db = Database()
@@ -78,7 +78,7 @@ class Database(IDatabase):
 
     def __init__(self):
         super(Database,self).__init__()
-        self.name = self.CONFIG.DATA_HUB_DB_DATABASE
+        self.name = getattr(self.CONFIG,"DATA_HUB_DB_DATABASE","hubdb")
         if not os.path.exists(self.CONFIG.HUB_DB_BACKEND["sqlite_db_folder"]):
             os.makedirs(self.CONFIG.HUB_DB_BACKEND["sqlite_db_folder"])
         self.dbfile = os.path.join(self.CONFIG.HUB_DB_BACKEND["sqlite_db_folder"],self.name)

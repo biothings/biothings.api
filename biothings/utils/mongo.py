@@ -77,7 +77,7 @@ def get_hub_db_conn():
 
 @requires_config
 def get_src_conn():
-    return get_conn(config.DATA_SRC_SERVER, config.DATA_SRC_PORT)
+    return get_conn(config.DATA_SRC_SERVER, getattr(config,"DATA_SRC_PORT",27017))
 
 @requires_config
 def get_src_db(conn=None):
@@ -92,7 +92,7 @@ def get_src_master(conn=None):
 @requires_config
 def get_src_dump(conn=None):
     conn = conn or get_hub_db_conn()
-    return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_DUMP_COLLECTION]
+    return conn[config.DATA_HUB_DB_DATABASE][getattr(config,"DATA_SRC_DUMP_COLLECTION","src_dump")]
 
 @requires_config
 def get_src_build(conn=None):
