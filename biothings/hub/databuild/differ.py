@@ -122,7 +122,8 @@ class BaseDiffer(object):
                 else:
                     for k,v in d.items():
                         if type(v) == dict:
-                            if k in target:
+                            # only merge if both are dict (otherwise replace/set with d)
+                            if k in target and type(target[k]) == dict:
                                 target[k] = merge_info(target[k],v) 
                             else:
                                 v.pop("__REPLACE__",None)
@@ -133,7 +134,6 @@ class BaseDiffer(object):
                             target[k] = v
                 return target
             build = merge_info(build,diff_info)
-            #src_build.update({'_id': build["_id"]}, {"$set": index_info})
             src_build.replace_one({"_id" : build["_id"]}, build)
 
     @asyncio.coroutine
