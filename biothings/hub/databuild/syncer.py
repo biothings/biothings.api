@@ -733,6 +733,7 @@ class SyncerManager(BaseManager):
 
         try:
             syncer = self[(diff_type,backend_type)]
+            self.logger.info("Selected syncer: %s" % syncer)
             syncer.old = create_backend(old_db_col_names)
             syncer.new = create_backend(new_db_col_names)
             job = syncer.sync(diff_folder,batch_size=batch_size,mode=mode,
