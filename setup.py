@@ -75,7 +75,7 @@ hub_requires = [
     'yapf',  # code reformatter, better results than autopep8
     'requests-aws4auth',  # aws s3 auth requests for autohub
     'tavern==0.34.0', # rest api testing
-    'nose==1.3.7' # unitests
+    'nose==1.3.7', # unitests
     'biothings_client==0.2.1' # datatransform (api client)
 ]
 
