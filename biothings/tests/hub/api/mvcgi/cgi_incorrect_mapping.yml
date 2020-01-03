@@ -1,0 +1,29 @@
+# keyword_uppercase_normalizer doesn't exist
+cgi:
+  properties:
+    region:
+      normalizer: keyword_uppercase_normalizer
+      type: keyword
+    cdna:
+      normalizer: keyword_uppercase_normalizer
+      type: keyword
+    transcript:
+      normalizer: keyword_uppercase_normalizer
+      type: keyword
+    gene:
+      normalizer: keyword_uppercase_normalizer
+      type: keyword
+    protein_change:
+      normalizer: keyword_uppercase_normalizer
+      type: keyword
+    association:
+      type: text
+    source:
+      type: text
+    evidence_level:
+      type: text
+    primary_tumor_type:
+      type: text
+    drug:
+      type: text
+
