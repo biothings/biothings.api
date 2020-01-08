@@ -72,7 +72,7 @@
         <inspect-form v-bind:_id="source._id" v-bind:select_data_provider="true">
         </inspect-form>
 
-        <!-- Register new data plugin -->
+        <!-- Unregister new data plugin -->
         <div :class='[source.name,"ui basic unregister modal"]' v-if="source.data_plugin">
             <input class="plugin_url" type="hidden" :value="source.data_plugin.plugin.url">
             <div class="ui icon header">
@@ -87,7 +87,7 @@
                     <i class="remove icon"></i>
                     No
                 </div>
-                <div class="ui green ok inverted button">
+                <div class="ui green ok inverted button" :id="source.name + '_unregister_yes'">
                     <i class="checkmark icon"></i>
                     Yes
                 </div>

@@ -10,7 +10,7 @@
             <div class="ui negative button">
                 No
             </div>
-            <div class="ui positive right labeled icon button">
+            <div class="ui positive right labeled icon button" id="restart_yes">
                 Yes
                 <i class="checkmark icon"></i>
             </div>

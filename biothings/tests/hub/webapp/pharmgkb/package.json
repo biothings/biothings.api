@@ -1,0 +1,10 @@
+{
+  "name": "webapp-test",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "codeceptjs": "^2.3.6",
+    "core-js": "^2.6.5",
+    "puppeteer": "^2.0.0"
+  }
+}

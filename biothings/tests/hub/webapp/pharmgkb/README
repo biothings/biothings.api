@@ -1,0 +1,9 @@
+End-to-End (E2E) tests, following pharmgkb tutorial available at
+http://docs.biothings.io
+
+To run the tests:
+$ npx codeceptjs run --steps
+
+By default, browser is shown, if headless is wanted:
+$ npx codeceptjs run --steps -o '{ "helpers": {"Puppeteer": {"show": false}}}'
+
