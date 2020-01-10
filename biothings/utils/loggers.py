@@ -12,7 +12,8 @@ def setup_default_log(default_logger_name,log_folder,level=logging.DEBUG):
         os.makedirs(log_folder)
     logfile = os.path.join(log_folder, '%s_%s_hub.log' % (default_logger_name,time.strftime("%Y%m%d",datetime.datetime.now().timetuple())))
     fh = logging.FileHandler(logfile)
-    fh.setFormatter(logging.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',datefmt="%H:%M:%S"))
+    fh.setFormatter(logging.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',
+                                      datefmt="%Y-%m-%d %H:%M:%S"))
     fh.name = "logfile"
     logger = logging.getLogger(default_logger_name)
     logger.setLevel(level)
