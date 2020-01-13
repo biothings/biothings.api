@@ -895,6 +895,9 @@ def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,merger,batch_num)
         logger_name = "build_%s_%s_batch_%s" % (dest_name,col_name,batch_num)
         logger,_ = get_logger(logger_name, btconfig.LOG_FOLDER)
         logger.exception(e)
+        logger.error("col_name: %s, dest_name: %s, ids: see pickle, " % (col_name,dest_name) + \
+                "mapper: %s, cleaner: %s, upsert: %s, " % (mapper,cleaner,upsert) + \
+                "merger: %s, batch_num: %s" % (merger,batch_num))
         exc_fn = os.path.join(btconfig.LOG_FOLDER,"%s.exc.pick" % logger_name)
         pickle.dump(e,open(exc_fn,"wb"))
         logger.info("Exception was dumped in pickle file '%s'" % exc_fn)
