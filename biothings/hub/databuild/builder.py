@@ -1,5 +1,6 @@
 import sys, re, math
 import os, glob
+import json
 import time
 import copy
 import importlib
@@ -813,6 +814,48 @@ class LinkDataBuilder(DataBuilder):
 
 from biothings.utils.backend import DocMongoBackend
 
+def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
+    """
+    Remove duplicates from docs based on _id. If _id's the same but
+    structure is different (not real "duplicates", but different documents
+    with the same _ids), merge docs all together (dict.update)
+    or raise an error if fail_if_struct_is_different.
+    """
+    dids = {}
+    # docs per _id
+    for d in docs:
+        dids.setdefault(d["_id"],[]).append(d)
+    # identify normal _id (only one doc associated)
+    ok_ids = []
+    for _id in dids:
+        if len(dids[_id]) == 1:
+            ok_ids.append(_id)
+    # remove _id without any problems
+    [dids.pop(_id) for _id in ok_ids]
+    # now check doc structure for each duplicates
+    # if same structure, replace with one occurence of the docs
+    # if not the same, log all the docs as warning, and merge them all
+    # as we would do if we were upserting doc one-by-one (no batch)
+    # note: dict are unhashable (no set) so either compare one each other (n^2-ish)
+    # or use json strings (let's try json...)
+    dfix = {}
+    for _id in dids:
+        jl = set([json.dumps(e,sort_keys=True) for e in dids[_id]])
+        if len(jl) > 1:
+            # different structure
+            if fail_if_struct_is_different:
+                raise ValueError("Found duplicated with different document structure: %s" % dids[_id])
+            else:
+                logging.warning("Found duplicated with different document structure, merging them altogether: %s" % dids[_id])
+        # merge docs on top of each other
+        dupdocs = dids[_id]
+        merged = {}
+        [merged.update(d) for d in dupdocs]
+        dids[_id] = merged
+
+    return dids.values()
+
+
 def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,merger,batch_num):
     docs = []
     try:
@@ -825,6 +868,15 @@ def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,merger,batch_num)
             cur = map(cleaner,cur)
         mapper.load()
         docs = [d for d in mapper.process(cur)]
+        # while documents from cursor "cur" are unique, at this point, due to the use
+        # a mapper, documents can be converted and there now can be duplicates (same _id)
+        # (ex: mygene, ensembl -> entrez conversion). "docs" could produce a duplicated error
+        # within the batch, so we need to remove duplicates.
+        all_ids = [d["_id"] for d in docs]
+        uniq_ids = set(all_ids)
+        if len(all_ids) != len(uniq_ids):
+            logging.warning("Found duplicated IDs within batch, trying to fix")
+            docs = fix_batch_duplicates(docs)
         if merger == "merge_struct":
             stored_docs = dest.mget_from_ids([d["_id"] for d in docs])
             ddocs = dict([(d["_id"],d) for d in docs])
@@ -845,10 +897,10 @@ def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,merger,batch_num)
         logger.info("Exception was dumped in pickle file '%s'" % exc_fn)
         ids_fn = os.path.join(btconfig.LOG_FOLDER,"%s.ids.pick" % logger_name)
         pickle.dump(ids,open(ids_fn,"wb"))
-        logging.info("IDs dumped in pickle file '%s'" % ids_fn)
+        logger.info("IDs dumped in pickle file '%s'" % ids_fn)
         dat_fn = os.path.join(btconfig.LOG_FOLDER,"%s.docs.pick" % logger_name)
         pickle.dump(docs,open(dat_fn,"wb"))
-        logging.info("Data (batch of docs) dumped in pickle file '%s'" % dat_fn)
+        logger.info("Data (batch of docs) dumped in pickle file '%s'" % dat_fn)
         raise
 
 
