@@ -832,13 +832,6 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
     # docs per _id
     for d in docs:
         dids.setdefault(d["_id"],[]).append(d)
-    # identify normal _id (only one doc associated)
-    ok_ids = []
-    for _id in dids:
-        if len(dids[_id]) == 1:
-            ok_ids.append(_id)
-    # remove _id without any problems
-    [dids.pop(_id) for _id in ok_ids]
     # now check doc structure for each duplicates
     # if same structure, replace with one occurence of the docs
     # if not the same, log all the docs as warning, and merge them all
@@ -854,11 +847,15 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
                 raise ValueError("Found duplicated with different document structure: %s" % dids[_id])
             else:
                 logging.warning("Found duplicated with different document structure, merging them altogether: %s" % dids[_id])
-        # merge docs on top of each other
-        dupdocs = dids[_id]
-        merged = {}
-        [merged.update(d) for d in dupdocs]
-        dids[_id] = merged
+            # merge docs on top of each other
+            dupdocs = dids[_id]
+            merged = {}
+            [merged.update(d) for d in dupdocs]
+            dids[_id] = merged
+        else:
+            assert len(jl) == 1
+            # normalize to scalar
+            dids[_id] = dids[_id][0]
 
     return dids.values()
 
