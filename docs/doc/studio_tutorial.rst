@@ -22,6 +22,7 @@ Through this guide, you'll learn:
 * how to integrate a new data source by defining a data plugin
 * how to define a build configuration and create data releases
 * how to create a simple, fully operational BioThings API serving the integrated data
+* how to use multiple datasources and understand how data merge is done
 
 
 *************
@@ -52,32 +53,11 @@ using ``-g`` option:
 Downloading and running BioThings Studio
 ****************************************
 
-**BioThings Studio** is available as a Docker image that you can download following this `link`_ using your favorite web browser or ``wget``:
-
-.. _link: http://biothings-containers.s3-website-us-west-2.amazonaws.com/biothings_studio/biothings_studio_latest.docker
+**BioThings Studio** is available as a Docker image that you can pull from our BioThings Docker Hub repository:
 
 .. code:: bash
 
-  $ wget http://biothings-containers.s3-website-us-west-2.amazonaws.com/biothings_studio/biothings_studio_latest.docker
-
-Typing ``docker ps`` should return all running containers, or at least an empty list as in the following example.
-Depending on the systems and configuration, you may have to add ``sudo`` in front of this command to access Docker server.
-
-.. code:: bash
-
-  $ docker ps
-    CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS      NAMES
-
-Once downloaded, the image can be loaded into the server:
-
-.. code:: bash
-
-  $ docker image load < biothings_studio_latest.docker
-  $ docker image list
-  REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
-  biothings_studio    0.1f                742a8c502280        2 months ago        1.81 GB
-
-Notice the value for *TAG*, we'll need it to run the container (here, ``0.1f``)
+  $ docker pull biothings/biothings-studio:0.2a
 
 A **BioThings Studio** instance expose several services on different ports:
 
@@ -94,9 +74,9 @@ having to enter the container:
 
 .. code:: bash
 
-  $ docker run --name studio -p 8080:8080 -p 7022:7022 -p 7080:7080 -p 9200:9200 -p 27017:27017 -p 8000:8000 -p 9000:9000 -d biothings_studio:0.1f
+  $ docker run --rm --name studio -p 8080:8080 -p 7022:7022 -p 7080:7080 -p 9200:9200 -p 27017:27017 -p 8000:8000 -p 9000:9000 -d biothings/biothings-studio:0.2a
 
-.. note:: we need to add the release number after the image name: biothings_studio:**0.1f**. Should you use another release (including unstable releases,
+.. note:: we need to add the release number after the image name: biothings-studio:**0.2a**. Should you use another release (including unstable releases,
    tagged as ``master``) you would need to adjust this parameter accordingly.
 
 .. note:: Biothings Studio and the Hub are not designed to be publicly accessible. Those ports should **not** be exposed. When
@@ -123,60 +103,137 @@ We can follow the starting sequence using ``docker logs`` command:
 Please refer `Filesystem overview <studio_guide.html#filesystem-overview>`_ and  `Services check <studio_guide.html#services-check>`_ for
 more details about Studio's internals.
 
-By default, the studio will auto-update its source code to the latest available and install all required dependencies. This behavior can be skipped
+By default, the studio will auto-update its source code to the latest version available and install all required dependencies. This behavior can be skipped
 by adding ``no-update`` at the end of the command line of ``docker run ...``.
 
 We can now access **BioThings Studio** using the dedicated web application (see `webapp overview <studio_guide.html#overview-of-biothings-studio-web-application>`_).
 
 
-********************************
-Creating an API from a flat file
-********************************
+**********************************
+Creating an API from one flat file
+**********************************
 
 In this section we'll dive in more details on using the **BioThings Studio** and **Hub**. We will be integrating a simple flat file as a new datasource
 within the **Hub**, declare a build configuration using that datasource, create a build from that configuration, then a data release and finally instantiate a new API service
 and use it to query our data.
 
-Input data, parser and data plugin
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The whole source code is available at `https://github.com/sirloon/pharmgkb`_, each branch pointing to a specific step in this tutorial.
 
-For this tutorial, we will integrate data from the `Cancer Genome Interpreter`_ (CGI). This datasource is used in `MyVariant.info`_, one of the most used
-BioThings APIs. The input file is available here: https://www.cancergenomeinterpreter.org/data/cgi_biomarkers_latest.zip.
+Input data
+^^^^^^^^^^
 
-.. _`Cancer Genome Interpreter`: https://www.cancergenomeinterpreter.org
-.. _`MyVariant.info`: https://myvariant.info
+For this tutorial, we will use several input files provided by `PharmGKB`_, freely available in their `download`_ section, under "Annotation data":
 
-The parser itself is not the main topic of this tutorial, the full code for the parser can be found here__, in MyVariant's github repository__.
+* `annotations.zip`_: contains a file ``var_drug_ann.tsv`` about variant-gene-drug annotations. We'll use this file for the first part of this tutorial.
+* `drugLabels.zip`_: contains a file ``drugLabels.byGene.tsv`` describing, per gene, which drugs have an impact of them
+* `occurrences.zip`_: contains a file ``occurrences.tsv`` listing the literature per entity type (we'll focus on gene type only)
 
-.. __: https://github.com/biothings/myvariant.info/blob/master/src/hub/dataload/sources/cgi/cgi_parser.py
-.. __: https://github.com/biothings/myvariant.info
+The last two files will be used in the second part of this tutorial when we'll add more datasources to our API.
 
-From a single flat file, it produces JSON documents looking like this:
+.. _`PharmGKB`: https://www.pharmgkb.org/
+.. _`download`: https://www.pharmgkb.org/downloads
+.. _`annotations.zip`: https://s3.pgkb.org/data/annotations.zip
+.. _`drugLabels.zip`: https://s3.pgkb.org/data/drugLabels.zip
+.. _`occurrences.zip`: https://s3.pgkb.org/data/occurrences.zip
+
+Parser
+^^^^^^
+
+In order to ingest this data and make it available as an API, we first need to write a parser. Data is pretty simple, tab-separated files, and we'll
+make it even simpler by using ``pandas`` python library. The first version of this parser is available in branch ``pharmgkb_v1`` at
+`https://github.com/sirloon/pharmgkb/blob/pharmgkb_v1/parser.py`_. After some boiler plate code at the beginning for dependencies and initialization,
+the main logic is the following:
+
+    results = {}
+    for rec in dat:
+
+        if not rec["Gene"] or pandas.isna(rec["Gene"]):
+            logging.warning("No gene information for annotation ID '%s'", rec["Annotation ID"])
+            continue
+        _id = re.match(".* \((.*?)\)",rec["Gene"]).groups()[0]
+        # we'll remove space in keys to make queries easier. Also, lowercase is preferred
+        # for a BioThings API. We'll an helper function from BioThings SDK
+        process_key = lambda k: k.replace(" ","_").lower()
+        rec = dict_convert(rec,keyfn=process_key)
+        results.setdefault(_id,[]).append(rec)
+
+    for _id,docs in results.items():
+        doc = {"_id": _id, "annotations" : docs}
+        yield doc
+
+.. code:: python
+
+  def load_annotations(data_folder):
+
+Our parsing function is named ``load_annotations``, it could be name anything else, but it has to take a folder path ``data_folder`` 
+containing the downloaded data. This path is automatically set by the Hub and points to the latest version available. More on this later.
+
+.. code:: python
+
+    infile = os.path.join(data_folder,"var_drug_ann.tsv")
+    assert os.path.exists(infile)
+
+It is the responsibility of the parser to select, within that folder, the file(s) of interest. Here we need data from a file named ``var_drug_ann.tsv``.
+Following the moto "don't assume it, prove it", we make that file exists.
+
+.. code:: python
+
+    dat = pandas.read_csv(infile,sep="\t",squeeze=True,quoting=csv.QUOTE_NONE).to_dict(orient='records')
+    results = {}
+    for rec in dat:
+       ...
+
+We then open and read the TSV file using ``pandas.read_csv()`` function. At this point, a record ``rec`` looks like the following:
 
 .. code:: bash
 
-  {
-  "_id": "chr9:g.133747570A>G",
-    "cgi": {
-      "association": "Resistant",
-      "cdna": "c.877A>G",
-      "drug": "Imatinib (BCR-ABL inhibitor 1st gen&KIT inhibitor)",
-      "evidence_level": "European LeukemiaNet guidelines",
-      "gene": "ABL1",
-      "primary_tumor_type": "Chronic myeloid leukemia",
-      "protein_change": "ABL1:I293V",
-      "region": "inside_[cds_in_exon_5]",
-      "source": "PMID:21562040",
-      "transcript": "ENST00000318560"
-    }
-  }
+  {'Alleles': 'A',
+   'Annotation ID': 608431768,
+   'Chemical': 'warfarin (PA451906)',
+   'Chromosome': 'chr1',
+   'Gene': 'EPHX1 (PA27829)',
+   'Notes': nan,
+   'PMID': 19794411,
+   'Phenotype Category': 'dosage',
+   'Sentence': 'Allele A is associated with decreased dose of warfarin.',
+   'Significance': 'yes',
+   'StudyParameters': '608431770',
+   'Variant': 'rs1131873'}
+
+Keys are uppercase, for a BioThings API, we like to have them as lowercase. More importantly, we want to remove spaces in those keys
+as querying the API in the end will be hard with spaces. We'll use a special helper from BioThings SDK to process these.
+
+.. code:: python
+
+      process_key = lambda k: k.replace(" ","_").lower()
+      rec = dict_convert(rec,keyfn=process_key)
+
+Finally, because there could be more than one record by gene (ie. more than one annotation per gene), we need to store those records as a list,
+in a dictionary indexed by gene ID. The final documents are assembled in the last loop.
+
+.. code:: python
+
+      ...
+      results.setdefault(_id,[]).append(rec)
+
+   for _id,docs in results.items():
+        doc = {"_id": _id, "annotations" : docs}
+        yield doc
+
 
 .. note:: The `_id` key is mandatory and represents a unique identifier for this document. The type must a string. The _id key is
    used when data from multiple datasources are merged together, that process is done according to its value
    (all documents sharing the same _id from different datasources will be merged together).
 
+.. note:: in this specific example, we read the whole content of this input file in memory, when store annotations per gene. The data itself
+   is small enough to do this, but memory usage always needs to cautiously considered when writing a parser.
 
-We can easily create a new datasource and integrate data using **BioThings Studio**, by declaring a `data plugin`. Such plugin is defined by:
+
+Data plugin
+^^^^^^^^^^^
+
+Parser is ready, it's now time to glue everything together and build our API. We can easily create a new datasource and integrate data using
+**BioThings Studio**, by declaring a `data plugin`. Such plugin is defined by:
 
 * a folder containing a `manifest.json` file, where the parser and the input file location are declared
 * all necessary files supporting the declarations in the manifest, such as a python file containing the parsing function for instance.
@@ -191,30 +248,33 @@ containing everything useful for the datasource. This is what we'll do in the fo
    so we don't have to regurlarly update the plugin code (``git pull``) from the webapp, to fetch the latest code. That said, since the plugin
    is already defined in github in our case, we'll use the github repo registration method.
 
-The corresponding data plugin repository can be found at https://github.com/sirloon/mvcgi. The manifest file looks like this:
+The corresponding data plugin repository can be found at https://github.com/sirloon/pharmgkb/tree/pharmgkb_v1. The manifest file looks like this:
 
 .. code:: bash
 
   {
       "version": "0.2",
-      "__metadata__" : {
-          "license_url" : "https://www.cancergenomeinterpreter.org/faq#q11c",
-          "licence" : "CC BY-NC 4.0",
-          "url" : "https://www.cancergenomeinterpreter.org"
-      },
+      "requires" : ["pandas"],
       "dumper" : {
-          "data_url" : "https://www.cancergenomeinterpreter.org/data/cgi_biomarkers_latest.zip",
-          "uncompress" : true,
+          "data_url" : ["https://s3.pgkb.org/data/annotations.zip",
+                        "https://s3.pgkb.org/data/drugLabels.zip",
+                        "https://s3.pgkb.org/data/occurrences.zip"],
+          "uncompress" : true
       },
       "uploader" : {
-          "parser" : "parser:load_data",
-          "on_duplicates" : "ignore"
+          "parser" : "parser:load_annotations",
+          "on_duplicates" : "error"
       }
   }
 
-* the `dumper` section declares where the input file is, using `data_url` key. Since the input file is a ZIP file, we first need to uncompress the archive, using `uncompress : true`.
+
+* `version` specifies the manifest version (it's not the version of the datasource itself) and tells the Hub what to expect from the manifest.
+* parser uses ``pandas`` library, we declare that dependency in `requires` section.
+* the `dumper` section declares where the input files are, using `data_url` key. In the end, we'll use 3 different files so a list of URLs is specified there. A single
+  string is also allowed if only one file (ie. one URL) is required. Since the input file is a ZIP file, we first need to uncompress the archive, using `uncompress : true`.
 * the `uploader` section tells the **Hub** how to upload JSON documents to MongoDB. `parser` has a special format, `module_name:function_name`. Here, the parsing function is named
-  `load_data` and can be found in `parser.py` module. `'on_duplicates' : 'ignore'` tells the **Hub** to ignore any duplicated records (documents with same _id).
+  `load_annotations` and can be found in `parser.py` module. `'on_duplicates' : 'error'` tells the **Hub** to raise an error if we have documents with the same _id (it would
+  mean we have a bug in our parser).
 
 For more information about the other fields, please refer to the `plugin specification <studio_guide.html#data-plugin-architecture-and-specifications>`_.
 
@@ -249,7 +309,29 @@ reconnect, which we'll do!
 .. image:: ../_static/hub_restarting.png
    :width: 250px
 
-Upon registration, the new data source appears:
+The Hub shows an error though:
+
+.. image:: ../_static/nomanifest.png
+   :width: 250px
+
+Indeed, we fetch source code from branch ``master``, which doesn't contain any manifest file. We need to switch to another branch (this tutorial is organized using branches,
+and also it's a perfect oportunity to learn how to use a specific branch/commit using **BioThings Studio**...)
+
+Let's click on ``pharmgkb`` link, then |plugin|. In the textbox on the right, enter ``pharmgkb_v1`` then click on ``Update``.
+
+.. |plugin| image:: ../_static/plugin.png
+   :width: 70px
+
+.. image:: ../_static/updatecode.png
+   :width: 400px
+
+**BioThings Studio** will fetch the corresponding branch (we could also have specified a commit hash for instance), source code changes will be detected and the Hub will restart.
+The new code version is now visible in the plugin tab
+
+.. image:: ../_static/branch.png
+   :width: 400px
+
+If we click back on |sources| PharmGKB appears fully functional, with different actions available:
 
 .. image:: ../_static/listdp.png
    :width: 250px
@@ -266,15 +348,8 @@ Upon registration, the new data source appears:
    :width: 25px
 
 Let's open the datasource by clicking on its title to have more information. `Dumper` and `Uploader` tabs are rather empty since
-none of these steps have been launched yet. The `Plugin` tab though shows information about the actual source code pulled from the
-github repository. As shown, we're currently at the HEAD version of the plugin, but if needed, we could freeze the version
-by specifiying a git commit hash or a branch/tag name.
-
-.. image:: ../_static/plugintab.png
-   :width: 450px
-
-Without further waiting, let's trigger a dump to integrate this new datasource. Either go to `Dump` tab and click on |dumplabelicon|
-or click on |sources| to go back to the sources list and click on |dumpicon| at the bottom of the datasource.
+none of these steps have been launched yet. Without further waiting, let's trigger a dump to integrate this new datasource.
+Either go to `Dump` tab and click on |dumplabelicon| or click on |sources| to go back to the sources list and click on |dumpicon| at the bottom of the datasource.
 
 .. |dumplabelicon| image:: ../_static/dumplabelicon.png
    :width: 75px
@@ -296,7 +371,7 @@ release number, the data folder, when was the last download, how long it tooks t
 .. image:: ../_static/dumptab.png
    :width: 450px
 
-Same for the `Uploader` tab, we now have 323 documents uploaded to MongoDB.
+Same for the `Uploader` tab, we now have 979 documents uploaded to MongoDB.
 
 .. image:: ../_static/uploadtab.png
    :width: 450px
@@ -336,22 +411,42 @@ for any documents output from the parser.
 .. image:: ../_static/inspectmenu.png
    :width: 100%
 
-Since the collection is very small, inspection is fast, you should have a mapping generated within few seconds.
+Since the collection is very small, inspection is fast. But... it seems like we have a problem
+
+.. image:: ../_static/inspecterr.png
+   :width: 500px
+
+`More than one type` was found for a field named ``notes``. Indeed, if we scroll down on the `pre-mapping` structure, we can see the culprit:
+
+.. image:: ../_static/fielderr.png
+   :width: 350px
+
+This results means documents sometimes have ``notes`` key equal to ``NaN``, and sometimes equal to a string (a splittable string, meaning there are spaces in it).
+This is a problem for ElasticSearch because it wouldn't how to index the data properly. And furthermore, ElasticSearch doesn't allow ``NaN`` values anyway. So we need
+to fix the parser. The fixed version is available in branch ``pharmgkb_v2`` (go back to Plugin tab, enter that branch name and update the code).
+The fix consists in `removing key/value <https://github.com/sirloon/pharmgkb/blob/pharmgkb_v2/parser.py#L24>`_ from the records, whenever a value is equal to ``NaN``.
+
+.. code:: python
+
+    rec = dict_sweep(rec,vals=[np.nan])
+
+Once fixed, we need to re-upload the data, and inspect it again. This time, no error, our mapping is valid:
 
 .. image:: ../_static/inspected.png
-   :width: 450px
+   :width: 500px
+
 
 .. _fieldbydefault:
 
-For each field highlighted in blue, you can decide whether you want the field to be searchable or not, and whether the field should be searched
-by default when querying the API. You can also change the type for that field, or even switch to "advanced mode" and specify your own set of indexing rules.
-Let's click on "gene" field and make it searched by default.
+For each highlighted field, we can decide whether we want the field to be searchable or not, and whether the field should be searched
+by default when querying the API. We can also change the type for that field, or even switch to "advanced mode" and specify your own set of indexing rules.
+Let's click on "gene" field and make it searched by default. Let's also do the same for field "variant".
 
 .. image:: ../_static/genefield.png
    :width: 100%
 
-Indeed, by checking the "Search by default" checkbox, we will be able to search for instance gene "ABL1" with ``/query?q=ABL1``
-instead of ``/query?q=cgi.gene:ABL1``.
+Indeed, by checking the "Search by default" checkbox, we will be able to search for instance gene symbol "ABL1" with ``/query?q=ABL1``
+instead of ``/query?q=annotations.gene:ABL1``. Same for "variant" field where we can specify a rsid.
 
 After this modification, you should see |edited| at the top of the mapping, let's save our changes clicking on |savelabelicon|. Also, before
 moving forwared, we want to make sure the mapping is valid, let's click on |validatelabelicon|. You should see this success message:
@@ -396,13 +491,16 @@ tells the **Hub** which datasources should be merged together, and how. Click on
    :width: 100%
 
 * enter a `name` for this configuration. We're going to have only one configuration created through this tutorial so it doesn't matter, let's make it "default"
-* the `document type` represents the kind of documents stored in the merged collection. It gives its name to the annotate API endpoint (eg. /variant). This source
-  is about variant, so "variant" it is...
-* open the dropdown list and select the `sources` you want to be part of the merge. We only have one, "mvcgi"
+* the `document type` represents the kind of documents stored in the merged collection. It gives its name to the annotate API endpoint (eg. /gene). This source
+  is about gene annotations, so "gene" it is...
+* open the dropdown list and select the `sources` you want to be part of the merge. We only have one, "pharmgkb"
 * in `root sources`, we can declare which sources are allowed to create new documents in the merged collection, that is merge documents from a
   datasource, but only if corresponding documents exist in the merged collection. It's usefull if data from a specific source relates to data on
   another source (it only makes sense to merge that relating data if the data itself is present). If root sources are declared, **Hub** will first
   merge them, then the others. In our case, we can leave it empty (no root sources specified, all sources can create documents in the merged collection)
+* selecting a builder is optional, but the sake of this tutorial, we'll choose ``LinkDataBuilder``. This special builder will fetch documents directly from
+  our datasources `pharmgkb` when indexing documents, instead of duplicating documents into another connection (called `target` or `merged` collection). We can
+  do this (and save time and disk space) because we only have one datasource here.
 * the other fields are for advanced usage and are out-of-topic for this tutorial
 
 Click "OK" and open the menu again, you should see the new configuration available in the list.
@@ -446,7 +544,7 @@ Since we only have one build available, we can't generate an `incremental` relea
 **Hub** will directly index the data on its locally installed ElasticSearch server (``test`` environment). After few seconds, a new `full` release is created.
 
 .. image:: ../_static/newfullrelease.png
-   :width: 500px
+   :width: 100%
 
 We can easily access ElasticSearch server using the application **Cerebro** which comes pre-configured with the studio. Let's access it through http://localhost:9000/#/connect
 (assuming ports 9200 and 9000 have properly been mapped, as mentioned earlier). **Cerebro** provides an easy to manager ElasticSearch and check/query indices.
@@ -471,6 +569,15 @@ At this stage, a new index containing our data has been created on ElasticSearch
    :width: 60px
 .. |newapi| image:: ../_static/newapi.png
    :width: 100px
+
+We'll name it `pharmgkb` and have it running on port 8000.
+
+.. note:: spaces are not allowed in API names
+
+.. image:: ../_static/apiform.png
+   :width: 450px
+
+Once form is validated a new API is listed.
 
 .. image:: ../_static/apilist.png
    :width: 300px
@@ -498,101 +605,99 @@ information about the datasources and build date:
 
 .. code:: bash
 
-   $ curl localhost:8000/metadata
-   {
-     "build_date": "2018-06-05T18:32:23.604840",
-     "build_version": "20180605",
-     "src": {
-       "mvcgi": {
-         "stats": {
-           "mvcgi": 323
-         },
-         "version": "2018-04-24"
-       }
-     },
-     "src_version": {
-       "mvcgi": "2018-04-24"
-     },
-     "stats": {}
+  $ curl localhost:8000/metadata
+  {
+    "biothing_type": "gene",
+    "build_date": "2020-01-16T18:36:13.450254",
+    "build_version": "20200116",
+    "src": {
+      "pharmgkb": {
+        "stats": {
+          "pharmgkb": 979
+        },
+        "version": "2020-01-05"
+      }
+    },
+    "stats": {
+      "total": 979
+    }
+  }
+
 
 Let's query the data using a gene name (results truncated):
 
 .. code:: bash
 
-   $ curl localhost:8000/query?q=ABL1
-   {
-     "max_score": 2.5267246,
-     "took": 24,
-     "total": 93,
-     "hits": [
-       {
-         "_id": "chr9:g.133748283C>T",
-         "_score": 2.5267246,
-         "cgi": [
-           {
-             "association": "Responsive",
-             "cdna": "c.944C>T",
-             "drug": "Ponatinib (BCR-ABL inhibitor 3rd gen&Pan-TK inhibitor)",
-             "evidence_level": "NCCN guidelines",
-             "gene": "ABL1",
-             "primary_tumor_type": "Chronic myeloid leukemia",
-             "protein_change": "ABL1:T315I",
-             "region": "inside_[cds_in_exon_6]",
-             "source": "PMID:21562040",
-             "transcript": "ENST00000318560"
-           },
-           {
-             "association": "Resistant",
-             "cdna": "c.944C>T",
-             "drug": "Bosutinib (BCR-ABL inhibitor  3rd gen)",
-             "evidence_level": "European LeukemiaNet guidelines",
-             "gene": "ABL1",
-             "primary_tumor_type": "Chronic myeloid leukemia",
-             "protein_change": "ABL1:T315I",
-             "region": "inside_[cds_in_exon_6]",
-             "source": "PMID:21562040",
-             "transcript": "ENST00000318560"
-           },
-           ...
+  $ curl localhost:8000/query?q=ABL1
+  {
+    "max_score": 7.544187,
+    "took": 70,
+    "total": 1,
+    "hits": [
+      {
+        "_id": "PA24413",
+        "_score": 7.544187,
+        "annotations": [
+          {
+            "alleles": "T",
+            "annotation_id": 1447814556,
+            "chemical": "homoharringtonine (PA166114929)",
+            "chromosome": "chr9",
+            "gene": "ABL1 (PA24413)",
+            "notes": "Patient received received omacetaxine, treatment had been stopped after two cycles because of clinical intolerance, but a major molecular response and total disappearance of the T315I clone was obtained. Treatment with dasatinib was then started and after 34-month follow-up the patient is still in major molecular response.",
+            "phenotype_category": "efficacy",
+            "pmid": 25950190,
+            "sentence": "Allele T is associated with response to homoharringtonine in people with Leukemia, Myelogenous, Chronic, BCR-ABL Positive as compared to allele C.",
+            "significance": "no",
+            "studyparameters": "1447814558",
+            "variant": "rs121913459"
+          },
+          {
+            "alleles": "T",
+            "annotation_id": 1447814549,
+            "chemical": "nilotinib (PA165958345)",
+            "chromosome": "chr9",
+            "gene": "ABL1 (PA24413)",
+            "phenotype_category": "efficacy",
+            "pmid": 25950190,
+            "sentence": "Allele T is associated with resistance to nilotinib in people with Leukemia, Myelogenous, Chronic, BCR-ABL Positive as compared to allele C.",
+            "significance": "no",
+            "studyparameters": "1447814555",
+            "variant": "rs121913459"
+          }
+        ]
+      }
+    ]
+  }
 
-.. note:: we don't have to specify ``cgi.gene``, the field in which the value "ABL1" should be searched, because we explicitely asked ElasticSearch
+
+.. note:: we don't have to specify ``annotations.gene``, the field in which the value "ABL1" should be searched, because we explicitely asked ElasticSearch
    to search that field by default (see fieldbydefault_)
 
-Finally, we can fetch a variant by its ID:
+Finally, we can fetch a variant by its PharmGKB ID:
 
 .. code:: bash
 
-   $ curl "localhost:8000/variant/chr19:g.4110584A>T"
-   {
-     "_id": "chr19:g.4110584A>T",
-     "_version": 1,
-     "cgi": [
-       {
-         "association": "Resistant",
-         "cdna": "c.373T>A",
-         "drug": "BRAF inhibitors",
-         "evidence_level": "Pre-clinical",
-         "gene": "MAP2K2",
-         "primary_tumor_type": "Cutaneous melanoma",
-         "protein_change": "MAP2K2:C125S",
-         "region": "inside_[cds_in_exon_3]",
-         "source": "PMID:24265153",
-         "transcript": "ENST00000262948"
-       },
-       {
-         "association": "Resistant",
-         "cdna": "c.373T>A",
-         "drug": "MEK inhibitors",
-         "evidence_level": "Pre-clinical",
-         "gene": "MAP2K2",
-         "primary_tumor_type": "Cutaneous melanoma",
-         "protein_change": "MAP2K2:C125S",
-         "region": "inside_[cds_in_exon_3]",
-         "source": "PMID:24265153",
-         "transcript": "ENST00000262948"
-       }
-     ]
-   }
+  $ curl "localhost:8000/gene/PA134964409"
+  {
+    "_id": "PA134964409",
+    "_version": 1,
+    "annotations": [
+      {
+        "alleles": "AG + GG",
+        "annotation_id": 1448631680,
+        "chemical": "etanercept (PA449515)",
+        "chromosome": "chr1",
+        "gene": "GBP6 (PA134964409)",
+        "phenotype_category": "efficacy",
+        "pmid": 28470127,
+        "sentence": "Genotypes AG + GG is associated with increased response to etanercept in people with Psoriasis as compared to genotype AA.",
+        "significance": "yes",
+        "studyparameters": "1448631688",
+        "variant": "rs928655"
+      }
+    ]
+  }
 
 
 Conclusions
@@ -607,7 +712,14 @@ We've been able to easily convert a remote flat file to a fully operational BioT
 * Data was indexed internally on local ElasticSearch by creating a full release
 * Then we created a BioThings API instance pointing to that new index
 
-The final step would then be to deploy that API as a cluster on a cloud. This last step is currently under development, stay tuned!
+The next step is to enrich that existing API with more datasources.
+
+*****************************************
+Creating an API with multiple datasources
+*****************************************
+
+TODO
+
 
 
 ***************

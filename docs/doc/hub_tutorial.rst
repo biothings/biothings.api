@@ -2,13 +2,15 @@
 BioThings Hub tutorial
 **********************
 
+.. note:: this tutorial uses an old/deprecated version of BioThings SDK. It will be updated very soon.
+
 In this tutorial, we will build the whole process, or "hub", which produces the data
-for Taxonomy BioThings API, accessible at `<t.biothings.io>`. This API serves information
+for Taxonomy BioThings API, accessible at `<t.biothings.io>`_. This API serves information
 about species, lineage, etc... This "hub" is used to download, maintain up-to-date,
 process, merge data. At the end of this process, an Elasticsearch index is created
 containing all the data of interest, ready to be served as an API, using
 Biothings SDK Web component (covered in another tutorial).
-Taxonomy Biothings API code is avaiable at `<https://github.com/biothings/biothings.species>`
+Taxonomy Biothings API code is avaiable at `<https://github.com/biothings/biothings.species>`_.
 
 Prerequesites
 ^^^^^^^^^^^^^
