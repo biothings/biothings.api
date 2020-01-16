@@ -951,7 +951,7 @@ class GitDumper(BaseDumper):
     """
 
     GIT_REPO_URL = None
-    BRANCH = "master"
+    DEFAULT_BRANCH = "master"
 
     def _clone(self,repourl,localdir):
         self.logger.info("git clone '%s' into '%s'" % (repourl,localdir))
@@ -963,9 +963,9 @@ class GitDumper(BaseDumper):
         old = os.path.abspath(os.curdir)
         try:
             os.chdir(localdir)
-            # --ff-only: we don't want to activate a conflit resolution session...
+            # discard changes, we don't want to activate a conflit resolution session...
             # TODO: origin could be named differently ?
-            cmd = ["git","pull","--ff-only","origin",self.__class__.BRANCH]
+            cmd = ["git","reset","--hard","HEAD"]
             subprocess.check_call(cmd)
             if commit != "HEAD":
                 # first get the latest code from repo
@@ -978,7 +978,7 @@ class GitDumper(BaseDumper):
             else:
                 # if we were on a detached branch (due to specific commit checkout)
                 # we need to make sure to go back to master (re-attach)
-                cmd = ["git","checkout",self.__class__.BRANCH]
+                cmd = ["git","checkout",self.__class__.DEFAULT_BRANCH]
                 subprocess.check_call(cmd)
                 # and then get the commit hash
                 out = subprocess.check_output(["git","rev-parse","HEAD"])
