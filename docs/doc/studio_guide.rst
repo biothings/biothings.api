@@ -1,6 +1,6 @@
-#####################################
-BioThings Studio: a developer's guide
-#####################################
+*****************
+Developer's guide
+*****************
 
 This section provides both an overview and detailed information abouth **BioThings Studio**,
 and is specifically aimed to developers who like to know more about internals.
@@ -8,9 +8,9 @@ and is specifically aimed to developers who like to know more about internals.
 A complementary `tutorial <studio_tutorial.html>`_ is also available, explaining how to setup and use **BioThings Studio**,
 step-by-step, by building an API from a flat file.
 
-************************
+========================
 What is BioThings Studio
-************************
+========================
 
 **BioThings Studio** is a pre-configured, ready-to-use application. At its core is **BioThings Hub**, the
 backend service behind all BioThings APIs.
@@ -142,9 +142,9 @@ If some services are missing, the troubleshooting section may help.
 Specifically, BioThings Studio services' ports are: 7080, 7022 and 8080.
 
 
-********************************************
+============================================
 Overview of BioThings Studio web application
-********************************************
+============================================
 
 **BioThings Studio** web application can simply be accessed using any browser pointing to port 8080. The home page
 shows a summary of current data recent updates. For now, it's pretty quiet since we didn't integrate any data yet.
@@ -203,9 +203,9 @@ new API. On the right, we have different information about jobs and resources:
    on average)
 
 
-*******************************************
+===========================================
 Data plugin architecture and specifications
-*******************************************
+===========================================
 
 **BioThings Studio** allows to easily define and register datasources using *data plugins*. Such a plugin is defined by:
 

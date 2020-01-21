@@ -1,6 +1,6 @@
-#########################
-BioThings Studio tutorial
-#########################
+********
+Tutorial
+********
 
 This tutorial will guide you through **BioThings Studio**, a pre-configured environment used to build
 and administer BioThings API. This guide will show how to convert a simple flat file
@@ -11,9 +11,9 @@ to a fully operational BioThings API, with as minimal effort as possible.
 .. note:: The following tutorial is only valid for **BioThings Studio** release **0.1f**. Check
    all available `releases <https://github.com/biothings/biothings_studio/releases>`_ for more.
 
-*****************
+=================
 What you'll learn
-*****************
+=================
 
 Through this guide, you'll learn:
 
@@ -25,9 +25,9 @@ Through this guide, you'll learn:
 * how to use multiple datasources and understand how data merge is done
 
 
-*************
+=============
 Prerequisites
-*************
+=============
 
 Using **BioThings Studio** requires a Docker server up and running, some basic knowledge
 about commands to run and use containers. Images have been tested on Docker >=17. Using AWS cloud,
@@ -49,9 +49,9 @@ using ``-g`` option:
   sudo service docker restart
 
 
-****************************************
+========================================
 Downloading and running BioThings Studio
-****************************************
+========================================
 
 **BioThings Studio** is available as a Docker image that you can pull from our BioThings Docker Hub repository:
 
@@ -109,9 +109,9 @@ by adding ``no-update`` at the end of the command line of ``docker run ...``.
 We can now access **BioThings Studio** using the dedicated web application (see `webapp overview <studio_guide.html#overview-of-biothings-studio-web-application>`_).
 
 
-**********************************
+==================================
 Creating an API from one flat file
-**********************************
+==================================
 
 In this section we'll dive in more details on using the **BioThings Studio** and **Hub**. We will be integrating a simple flat file as a new datasource
 within the **Hub**, declare a build configuration using that datasource, create a build from that configuration, then a data release and finally instantiate a new API service
@@ -714,17 +714,17 @@ We've been able to easily convert a remote flat file to a fully operational BioT
 
 The next step is to enrich that existing API with more datasources.
 
-*****************************************
+=========================================
 Creating an API with multiple datasources
-*****************************************
+=========================================
 
 TODO
 
 
 
-***************
+===============
 Troubleshooting
-***************
+===============
 
 We test and make sure, as much as we can, that the **BioThings Studio** image is up-to-date and running properly. But things can still go wrong...
 
