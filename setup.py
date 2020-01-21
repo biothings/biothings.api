@@ -42,14 +42,14 @@ install_requires = [
     'requests>=2.21.0',
     'tornado==5.1.1',
     'elasticsearch==6.3.1',
-    'elasticsearch-async',
     'gitpython==2.1.11'
 ]
 
 # extra requirements for biothings.web
 web_extra_requires = [
     'msgpack>=0.6.1',   # support format=msgpack
-    'PyYAML>=5.1'       # support format=yaml
+    'PyYAML>=5.1',       # support format=yaml
+    'elasticsearch-async',
 ]
 
 # extra requirements to run biothings.hub
