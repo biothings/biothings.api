@@ -8,4 +8,4 @@ psutil
 IPython
 boto
 jsonpointer
-elasticsearch==2.4
+elasticsearch==6.3.1
