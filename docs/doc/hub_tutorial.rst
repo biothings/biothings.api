@@ -1,6 +1,6 @@
-**********************
-BioThings Hub tutorial
-**********************
+*************
+BioThings Hub
+*************
 
 .. note:: this tutorial uses an old/deprecated version of BioThings SDK. It will be updated very soon.
 

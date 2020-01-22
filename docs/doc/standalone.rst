@@ -1,6 +1,6 @@
-##############################
-BioThings Standalone instances
-##############################
+####################
+BioThings Standalone
+####################
 
 This step-by-step guide shows how to use Biothings standalone instances. Standalones instances
 are based on Docker containers and provide and fully pre-configured, ready-to-use Biothings API

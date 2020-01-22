@@ -49,9 +49,9 @@ using ``-g`` option:
   sudo service docker restart
 
 
-========================================
-Downloading and running BioThings Studio
-========================================
+============
+Installation
+============
 
 **BioThings Studio** is available as a Docker image that you can pull from our BioThings Docker Hub repository:
 
@@ -109,9 +109,9 @@ by adding ``no-update`` at the end of the command line of ``docker run ...``.
 We can now access **BioThings Studio** using the dedicated web application (see `webapp overview <studio_guide.html#overview-of-biothings-studio-web-application>`_).
 
 
-==================================
-Creating an API from one flat file
-==================================
+=========================
+Part 1: single datasource
+=========================
 
 In this section we'll dive in more details on using the **BioThings Studio** and **Hub**. We will be integrating a simple flat file as a new datasource
 within the **Hub**, declare a build configuration using that datasource, create a build from that configuration, then a data release and finally instantiate a new API service
@@ -377,8 +377,8 @@ Same for the `Uploader` tab, we now have 979 documents uploaded to MongoDB.
    :width: 450px
 
 
-Inspecting the data
-^^^^^^^^^^^^^^^^^^^
+Inspection and mapping
+^^^^^^^^^^^^^^^^^^^^^^
 
 Now that we have integrated a new datasource, we can move forward. Ultimately, data will be sent to ElasticSearch, an indexing engine.
 In order to do so, we need to tell ElasticSearch how the data is structured and which fields should be indexed (and which should not).
@@ -476,8 +476,8 @@ inspection as many time as we want, without impacting active/registered mapping 
 .. image:: ../_static/registered.png
    :width: 450px
 
-Defining and creating a build
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Build
+^^^^^
 
 Once we have integrated data and a valid ElasticSeach mapping, we can move forward by creating a build configuration. A `build configuration`
 tells the **Hub** which datasources should be merged together, and how. Click on |builds| then |menu| and finally, click on |newbuildconf|.
@@ -520,8 +520,8 @@ You can give a specific name for that build, or let the **Hub** generate one for
 
 Open it by clicking on its name. You can explore the tabs for more information about it (sources involved, build times, etc...). The "Release" tab is the one we're going to use next.
 
-Creating a data release
-^^^^^^^^^^^^^^^^^^^^^^^
+Data release
+^^^^^^^^^^^^
 
 If not there yet, open the new created build and go the "Release" tab. This is the place where we can create new data releases. Click on |newrelease|.
 
@@ -560,8 +560,8 @@ Clicking on an index gives access to different information, such as the mapping,
    :width: 100%
 
 
-Generating a BioThings API
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+API creation
+^^^^^^^^^^^^
 
 At this stage, a new index containing our data has been created on ElasticSearch, it is now time for final step. Click on |api| then |menu| and finally |newapi|
 
@@ -597,8 +597,8 @@ can be accessed:
    means nothing outside of Docker's context. In order to use the API you may need to replace this hostname by the one actually used to access the
    Docker instance.
 
-Accessing the API
-^^^^^^^^^^^^^^^^^
+Tests
+^^^^^
 
 Assuming API is accessible through http://localhost:8000, we can easily query it with ``curl`` for instance. The endpoint ``/metadata`` gives
 information about the datasources and build date:
@@ -714,12 +714,116 @@ We've been able to easily convert a remote flat file to a fully operational BioT
 
 The next step is to enrich that existing API with more datasources.
 
-=========================================
-Creating an API with multiple datasources
-=========================================
+============================
+Part 2: multiple datasources
+============================
+
+In the previous part, we generated an API from a single flat file. This API serves data about gene annotations, but we need more: as mentioned earlier in **Input data**,
+we also downloaded drug labels and publications information. Integrating those unused files, we'll be able to enrich our API even more, that's the goal of this second part.
+
+Data plugin limitations
+^^^^^^^^^^^^^^^^^^^^^^^
+
+The **data plugin architecture** provided by **BioThings Studio** allows to quickly integrate a new datasource, describing where the data is located, and how the data should be parsed.
+It provides a simple and generic way to do so, but also comes with some limitations. Indeed, only one *uploader* can be specificed. In our case, we have one *dumper* responsible for
+downloading three different files, and we now need three different *uploaders* in order to process these files. With our data plugin, only one file is parsed. In order to proceed
+further, we need to manually write dumper and uploaders code...
+
+.. note:: we could also process all three files in one single parser, that is, one single uploder, but for the sake of this tutorial, we'll proceed individually. Files can also
+   be updated at different times, keeping uploaders separated helps maintaining data up-to-date without having to process all files at once each time.
+
+Luckily, **BioThings Studio** provides an easy to export python code that has been generated during data plugin registration. Indeed, code is generated from the manifest file, compiled
+and injected into **Hub**'s memory. Exporting the code consists in writing down that dynamically generated code.
+
+Code export
+^^^^^^^^^^^
+
+Let's go back to our datasource, **Plugin** tab. Clicking on |exportcode| brings the following form:
+
+.. |exportcode| image:: ../_static/exportcode.png
+   :width: 100px
+
+.. image:: ../_static/exportform.png
+   :width: 100%
+
+We have different options regarding the parts we can export:
+
+* ``Dumper``: exports code responsible for downloading the data, according to URLs defined in the manifest.
+* ``Uploader``: exports code responsible for data integration, using our parser code.
+* ``Mapping``: any mapping generated from inspection, and registered (commit) can also be exported. It'll be part of the uploader.
+
+We'll export all these parts, let's validate the form. Export results are displayed (though quickly as Hub will detect changes in the code and will want to restart)
+
+.. image:: ../_static/exportedcode.png
+   :width: 100%
+
+We can see the relative paths where code was exported. A message about ``ACTIVE_DATASOURCES`` is also displayed explaining how to activate our newly exported datasource. That said,
+**BioThings Studio** by default monitors speficic locations for code changes, including where code is exported, so we don't need to manually activate it. That's also the reason why
+**Hub** has been restarted.
+
+Once reconnected, if we go back on |sources|, we'll see an error!
+
+.. image:: ../_static/pluginvsexport.png
+   :width: 250px
+
+Our original data plugin can't registered (ie. activated) because another datasource with the same name is already registered. That's our new exported datasource! When the **Hub** starts,
+it first loads datasources which have been manually coded (or exported), and then data plugins. Both our plugin and exported code is active, but the **Hub** can't know which one to use.
+Let's delete the plugin, by clicking on |trash|, and confirm the deletion.
+
+.. |trash| image:: ../_static/trash.png
+   :width: 30px
+
+**Hub** will restart again (reload page if not) and this time, our datasource is active. If we click on ``pharmgkb``, we'll see the same details as before except the ``Plugin`` tab which
+disappeared. So far, our exported code runs, and we're in the exact same state as before, the **Hub** even kept our previously dumped/uploaded data.
+
+Let's explore the source code that has been generated through out this process. Let's enter our docker container, and become user ``biothings`` (from which everything runs):
+
+.. code:: bash
+
+  $ docker exec -ti studio /bin/bash
+  $ sudo su - biothings
+
+Paths provided as export results (``hub/dataload/sources/*``) are relative to the started folder named ``biothings_studio``. Let's move there:
+
+.. code:: bash
+
+  $ cd biothings_studio/hub/dataload/sources/
+  $ ls -la
+  total 0
+  -rw-rw-r-- 1 biothings biothings   0 Jan 15 23:41 __init__.py
+  drwxrwxr-x 2 biothings biothings  45 Jan 15 23:41 __pycache__
+  drwxr-xr-x 1 biothings biothings  75 Jan 15 23:41 ..
+  drwxr-xr-x 1 biothings biothings  76 Jan 22 19:32 .
+  drwxrwxr-x 3 biothings biothings 154 Jan 22 19:32 pharmgkb
+
+A ``pharmgkb`` folder can be found and contains the exported code:
+
+.. code:: bash
+
+  $ cd pharmgkb
+  $ ls
+  total 32
+  drwxrwxr-x 3 biothings biothings   154 Jan 22 19:32 .
+  drwxr-xr-x 1 biothings biothings    76 Jan 22 19:32 ..
+  -rw-rw-r-- 1 biothings biothings 11357 Jan 22 19:32 LICENSE
+  -rw-rw-r-- 1 biothings biothings   225 Jan 22 19:32 README
+  -rw-rw-r-- 1 biothings biothings    70 Jan 22 19:32 __init__.py
+  drwxrwxr-x 2 biothings biothings   142 Jan 22 19:45 __pycache__
+  -rw-rw-r-- 1 biothings biothings   868 Jan 22 19:32 dump.py
+  -rw-rw-r-- 1 biothings biothings  1190 Jan 22 19:32 parser.py
+  -rw-rw-r-- 1 biothings biothings  2334 Jan 22 19:32 upload.py
+
+Some files were copied from data plugin repository (``LICENCE``, ``README`` and ``parser.py``), the others are the exported ones:  ``dump.py`` for the dumper, ``upload.py``
+for the uploader and the mappings, and ``__init__.py`` so the **Hub** can find these components upon start. We'll go in further details later, specially when we'll add more
+uploaders.
+
+.. note:: for convenience, the exported code can be found in branch ``pharmgkb_v3`` available at https://github.com/sirloon/pharmgkb/tree/pharmgkb_v3.
+
+
+More uploaders
+^^^^^^^^^^^^^^
 
 TODO
-
 
 
 ===============
