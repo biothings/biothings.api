@@ -551,6 +551,7 @@ class HubServer(object):
         # getting info
         if self.managers.get("source_manager"):
             self.commands["source_info"] = CommandDefinition(command=self.managers["source_manager"].get_source,tracked=False)
+            self.commands["source_reset"] = CommandDefinition(command=self.managers["source_manager"].reset,tracked=True)
         # dump commands
         if self.managers.get("dump_manager"):
             self.commands["dump"] = self.managers["dump_manager"].dump_src
@@ -715,6 +716,7 @@ class HubServer(object):
         if "sources" in cmdnames: self.api_endpoints["sources"] = EndpointDefinition(name="sources",method="get")
         self.api_endpoints["source"] = []
         if "source_info" in cmdnames: self.api_endpoints["source"].append(EndpointDefinition(name="source_info",method="get"))
+        if "source_reset" in cmdnames: self.api_endpoints["source"].append(EndpointDefinition(name="source_reset",method="post",suffix="reset"))
         if "dump" in cmdnames: self.api_endpoints["source"].append(EndpointDefinition(name="dump",method="put",suffix="dump"))
         if "upload" in cmdnames: self.api_endpoints["source"].append(EndpointDefinition(name="upload",method="put",suffix="upload"))
         if "source_save_mapping" in cmdnames: self.api_endpoints["source"].append(EndpointDefinition(name="source_save_mapping",method="put",suffix="mapping"))

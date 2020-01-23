@@ -318,3 +318,32 @@ class SourceManager(BaseSourceManager):
         else:
             raise ValueError("Unknow saving destination: %s" % repr(dest))
 
+    def reset(self, name, key="upload", subkey=None):
+        """
+        Reset, ie. delete, internal data (src_dump document) for given source name, key subkey.
+        This method is useful to clean outdated information in Hub's internal database.
+
+        Ex: key=upload, name=mysource, subkey=mysubsource, will delete entry in corresponding
+            src_dump doc (_id=mysource), under key "upload", for sub-source named "mysubsource"
+
+        "key" can be either 'download', 'upload' or 'inspect'. Because there's no such notion of subkey for
+        dumpers (ie. 'download', subkey is optional.
+        """
+        doc = self.src_dump.find_one({"_id":name})
+        if not doc:
+            raise ValueError("No such datasource named '%s'" % name)
+        try:
+            # nested
+            if key in ["upload","inspect"]:
+                del doc["upload"]["jobs"][subkey]
+            # not nested
+            elif key == "download":
+                del doc[key]
+            else:
+                raise ValueError("key=%s not allowed" % repr(key))
+            self.src_dump.save(doc)
+        except KeyError as e:
+            logging.exception(e)
+            raise ValueError("Can't delete information, not found in document: %s" % e)
+
+
