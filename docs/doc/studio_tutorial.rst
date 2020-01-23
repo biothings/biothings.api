@@ -817,13 +817,121 @@ Some files were copied from data plugin repository (``LICENCE``, ``README`` and 
 for the uploader and the mappings, and ``__init__.py`` so the **Hub** can find these components upon start. We'll go in further details later, specially when we'll add more
 uploaders.
 
-.. note:: for convenience, the exported code can be found in branch ``pharmgkb_v3`` available at https://github.com/sirloon/pharmgkb/tree/pharmgkb_v3.
+For conveniency, the exported code can be found in branch ``pharmgkb_v3`` available at https://github.com/sirloon/pharmgkb/tree/pharmgkb_v3. One easy way to follow
+this tutorial without having to type too much is to replace folder ``pharmgkb`` with a clone from Git repository. The checked out code is exactly the same as code after export.
+
+.. code:: bash
+
+  $ cd ~/biothings_studio/hub/dataload/sources/
+  $ rm -fr pharmgkb
+  $ git clone https://github.com/sirloon/pharmgkb.git
+  $ cd pharmgkb
+  $ git checkout pharmgkb_v3
 
 
 More uploaders
 ^^^^^^^^^^^^^^
 
-TODO
+Now that we have exported the code, we can start the modifications. The final code can be found on branch https://github.com/sirloon/pharmgkb/tree/pharmgkb_v4.
+
+.. note:: We can directly point to that branch using ``git checkout pharmgkb_v4`` within the datasource folder previously explored.
+
+First we'll write two more parsers, one for each addition files. Within ``parser.py``:
+
+* at the beginning, ``load_annotations`` is the first parser we wrote, no changes required
+* ``load_druglabels`` function is responsible for parsing file named ``drugLabels.byGene.tsv``
+* ``load_occurrences`` function is parsing file ``occurrences.tsv``
+
+Writing parsers is not the main purpose of this tutorial, which focuses more on how to use **BioThings Studio**, so we won't go into further details.
+
+Next is about defining new uploaders. In ``upload.py``, we currently have one uploader definition, which looks like this:
+
+.. code:: python
+
+  class PharmgkbUploader(biothings.hub.dataload.uploader.BaseSourceUploader):
+
+      name = "pharmgkb"
+      __metadata__ = {"src_meta": {}}
+      idconverter = None
+      storage_class = biothings.hub.dataload.storage.BasicStorage
+  ...
+
+The important pieces of information here is ``name``, which gives the name of the uploader we define. Currently uploader is named ``pharmgkb``.
+That's how this name is displayed in the "Upload" tab of the datasource. We know we need three uploaders in the end so we need to adjust names. In order to do so, we'll define
+a main source, ``pharmgkb``, then three different other "sub" sources: ``annotations``, ``druglabels`` and ``occurrences``. For clarity, we'll put these uploaders in three different files.
+As a result, we now have:
+
+* file ``upload_annotations.py``, originally coming from the code export. Class definition is:
+
+.. code:: python
+
+  class AnnotationsUploader(biothings.hub.dataload.uploader.BaseSourceUploader):
+
+    main_source = "pharmgkb"
+    name = "annotations"
+
+.. note:: We renamed the class itself, ``pharmgkb`` is now set as field ``main_source``. This name matches the dumper name as well, which is how the **Hub** knows how dumpers and uploaders relates
+   to each others. Finally, the sub-source named ``annotation`` is set as field ``name``.
+
+* doing the same for ``upload_druglabels.py``:
+
+.. code:: python
+
+  from .parser import load_druglabels
+
+  class DrugLabelsUploader(biothings.hub.dataload.uploader.BaseSourceUploader):
+
+    main_source = "pharmgkb"
+    name = "druglabels"
+    storage_class = biothings.hub.dataload.storage.BasicStorage
+
+    def load_data(self, data_folder):
+        self.logger.info("Load data from directory: '%s'" % data_folder)
+        return load_druglabels(data_folder)
+
+    @classmethod
+    def get_mapping(klass):
+        return {}
+
+.. note:: In addition to adjusting the names, we need to import our dedicated parser, ``load_druglabels``. Following what the **Hub** did during code export, we "connect" that parser to this
+   uploader in method ``load_data``. Finally, each uploader needs to implement class method ``get_mapping``, currently an empty dictionary, that is, no mapping at all. We'll fix this soon.
+
+* finally, ``upload_occurences.py`` will deal with occurences uploader. Code is similar as previous one.
+
+.. code:: python
+
+  from .parser import load_occurrences
+
+  class OccurrencesUploader(biothings.hub.dataload.uploader.BaseSourceUploader):
+
+      main_source = "pharmgkb"
+      name = "occurrences"
+      storage_class = biothings.hub.dataload.storage.BasicStorage
+
+      def load_data(self, data_folder):
+          self.logger.info("Load data from directory: '%s'" % data_folder)
+          return load_occurrences(data_folder)
+
+      @classmethod
+      def get_mapping(klass):
+          return {}
+
+The last step to activate those components is to expose them through the ``__init__.py``:
+
+.. code:: python
+
+  from .dump import PharmgkbDumper
+  from .upload_annotations import AnnotationsUploader
+  from .upload_druglabels import DrugLabelsUploader
+  from .upload_occurrences import OccurrencesUploader
+
+Upon restart, the "Upload" tab now looks like this:
+
+.. image:: ../_static/moreuploaders.png
+   :width: 500px
+
+Wait, we still have an uploader named ``pharmgkb``, but that component has been deleted! **Hub** indeed kept information within its internal database, but also detected that
+the actual uploader class doesn't exists anymore, thus providing an option to delete that internal information.
 
 
 ===============
