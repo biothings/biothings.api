@@ -335,7 +335,7 @@ class SourceManager(BaseSourceManager):
         try:
             # nested
             if key in ["upload","inspect"]:
-                del doc["upload"]["jobs"][subkey]
+                del doc[key]["jobs"][subkey]
             # not nested
             elif key == "download":
                 del doc[key]
