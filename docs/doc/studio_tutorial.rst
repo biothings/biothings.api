@@ -526,7 +526,7 @@ Data release
 If not there yet, open the new created build and go the "Release" tab. This is the place where we can create new data releases. Click on |newrelease|.
 
 .. |newrelease| image:: ../_static/newrelease.png
-   :width: 125px
+   :width: 90px
 
 .. image:: ../_static/newreleaseform.png
    :width: 100%
@@ -930,8 +930,108 @@ Upon restart, the "Upload" tab now looks like this:
 .. image:: ../_static/moreuploaders.png
    :width: 500px
 
-Wait, we still have an uploader named ``pharmgkb``, but that component has been deleted! **Hub** indeed kept information within its internal database, but also detected that
-the actual uploader class doesn't exists anymore, thus providing an option to delete that internal information.
+We still have an uploader named ``pharmgkb``, but that component has been deleted! **Hub** indeed kept information within its internal database, but also detected that
+the actual uploader class doesn't exists anymore (see message ``No uploader found, datasource may be broken``). In that specific case, an option to delete that internal information
+is provided, let's clock on the closing button on that tab to remove that information.
+
+If we look at the other uploader tabs, we don't see much information, that's because they haven't been launched yet. For each on them, let's click on "Upload" button.
+
+.. note:: Another way to trigger all uploaders at once is to click on |sources| to list all datasources, then click on |uploadicon| for that datasource in particular.
+
+After a while, all uploaders have run, data is populated, as shown in the different tabs.
+
+
+More data inspection
+^^^^^^^^^^^^^^^^^^^^
+
+Data is ready, it's now time to inspect the data for the new uploaders. Indeed, if we check the "Mapping" tab, we still have the old mapping from the original ``pharmgkb`` uploader
+(we can remove that "dead" mapping by clicking on the closing button of the tab), but nothing for uploaders ``druglabels`` and ``occurences``.
+
+Looking back at the uploaders' code, ``get_mapping`` class method was defined such as it returns an empty mapping. That's the reason why we don't have anything shown here,
+let's fix that by click on |inspectlabelicon|. After few seconds, mappings are generated, we can review them, and click on |commit| to validate and register those mappings, for
+each tab.
+
+
+Modifying build configuration
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+All data is now ready, as well as mappings, it's time to move forward and build the merged data. We now have three differents source for documents, and we need to merge them
+together. **Hub¨** will do so according to field ``_id``: if two documents from different sources share the same ``_id``, they are merged together (think about dictionary merge).
+
+In order to proceed further, we need to update our build configuration, as there's currently
+only datasource involved in the merge. Clicking on |builds|, then |menu| we can edit existing configuration.
+
+.. image:: ../_static/editbuildconf.png
+   :width: 300px
+
+There several parameters we need to adjust:
+
+* first, since original ``pharmgkb`` uploader doesn't anymore, that datasource isn't listed anymore
+* in the other hand, we now have our three new datasources, and we need to select all of them
+* our main data is coming from ``annotations``, and we want to enrich this data with druglabels and litterature occurrences. But only if data first exists in ``annotations``.
+  Behing this requirement is the notion of *root documents*. When selection ``annotations`` as a source for root documents, we tell the **Hub** to first merge that data, then
+  merge the other sources **only** if a document from ``annotations`` with the same _id exists. If not, documents are silently ignored.
+* finally, we were previously using a ``LinkDataBuilder`` because we only had one datasource (data wasn't copied, but refered, or linked to the original datasource collection). We now
+  have three datasources involved in the merge so we can't use that builder anymore and need to switch to the default ``DataBuilder`` one. If not, **Hub** will complain and deactivate
+  the build configuration until it's fixed.
+
+The next configuration is summarized in the following picture:
+
+.. image:: ../_static/editbuildconfform.png
+   :width: 500px
+
+Upon validation, build configuration is ready to be used.
+
+Creating a new build
+^^^^^^^^^^^^^^^^^^^^
+
+Configuration reflects our changes and is up-to-date, let's create a new build. Click on |menu| if not already open, then "Create a new build"
+
+.. image:: ../_static/buildconflist.png
+   :width: 350px
+
+After few seconds, we have a new build listed. Clicking on "Logs" will show how the **Hub** created it. We can see it first merged ``annotations``
+in the "merge-root" step (for *root documents*), then ``druglabels`` and ``occurrences`` sources. The last step, "diff-mapping" shows the **Hub**
+even tried to compute an incremental release by comparing our new build with previous one.
+
+.. image:: ../_static/buildlogs.png
+   :width: 300px
+
+If we open the build and click on "Releases" tab, we don't any release generated though... What happened? Time to open the logs (see button on the bottom right).
+
+.. image:: ../_static/errlogs.png
+   :width: 600px
+
+We indeed have an error, claiming that a "move" operation was found when comparing mappings between new and old builds, using *json-diff*. If we'd directly update our ElasticSearch
+mapping using that *json-diff* operation, we would get an error. To prevent proceeding further, **Hub** stopped the creation of that release. As a consequence, we'll need to create
+a *full* release again (that is, creating a new index). 
+
+Let's click on |newrelease|, select *full* and validate. Data is then being indexed, after few seconds, ElasticSearch index is ready.
+
+
+Creating and testing final API
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Next and final step is to re-create our API in order to serve this new index previously created. Click on |api|, we still have our existing API running, we can either delete or stop it
+using the action buttons.
+
+.. note:: We could also let it run and create a new one with a different port, this would also work, but following this tutorial, we only exposed port 8000 for APIs so we
+   would't be able to easily access it like we did before.
+
+We can then create our new API
+
+.. image:: ../_static/apiformv2.png
+   :width: 500px
+
+Validate, then click on "Run", API is now up and running
+
+.. note:: You may encountered an error (red bell) where Studio claims the address is already in use. This is known issue that randomly occurs. If so, **Hub** needs to be manually restarted,
+   click on |settings| (top right corner) then |restart| and try again.
+
+.. |settings| image:: ../_static/settings.png
+   :width: 30px
+.. |restart| image:: ../_static/restart.png
+   :width: 90px
 
 
 ===============
