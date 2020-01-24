@@ -13,10 +13,14 @@
             <span v-if="Object.keys(maps).length > 1">
                 <p>Found sub-sources linked to main source <b>{{_id}}</b>, select one to see mapping</p>
                 <div id="maps" class="ui top attached tabular menu">
-                    <a :class="['green item', i === 0 ? 'active' : '']" v-for="(_,subsrc,i) in maps" :data-tab="subsrc">{{subsrc}}</a>
+                    <a :class="['green item', i === 0 ? 'active' : '']" v-for="(_,subsrc,i) in maps" :data-tab="'inspect_' + subsrc">{{subsrc}}
+                        <button class="reset ui button" v-if="is_broken(subsrc)" @click="reset(subsrc)" data-tooltip="Datasource broken, click to remove">
+                            <i class="close icon"></i>
+                        </button>
+                    </a>
                 </div>
             </span>
-            <div :class="['ui bottom attached tab segment', i === 0 ? 'active' : '']" v-for="(data,subsrc,i) in maps" :data-tab="subsrc" v-if="maps">
+            <div :class="['ui bottom attached tab segment', i === 0 ? 'active' : '']" v-for="(data,subsrc,i) in maps" :data-tab="'inspect_' + subsrc" v-if="maps">
                 <p>
                     These are the mappings for source <b>{{subsrc}}</b>.
                 </p>
@@ -75,14 +79,15 @@
 <script>
 import axios from 'axios'
 import bus from './bus.js'
+import Loader from './Loader.vue'
 import MappingMap from './MappingMap.vue'
 import DiffUtils from './DiffUtils.vue'
 import InspectForm from './InspectForm.vue'
 
 export default {
     name: 'data-source-mapping',
-    props: ['_id','maps'],
-    mixins: [DiffUtils],
+    props: ['_id','maps','source'],
+    mixins: [DiffUtils, Loader],
     mounted () {
         this.setup();
         //$('#maps .item:first').addClass('active');
@@ -107,9 +112,42 @@ export default {
         setup: function() {
             $('.menu .item').tab();
         },
+        is_broken: function(subsrc) {
+            try {
+                if(!this.source.upload.sources.hasOwnProperty(subsrc) ||
+                    this.source.upload.sources[subsrc]['uploader'] === null) {
+                        return true;
+                    }
+            } catch(e) {
+                return false;
+            }
+        },
+        reset: function(subsrc) {
+            var self = this;
+            self.loading();
+            var data = {
+                "name" : self.source._id,
+                "key" : "inspect",
+                "subkey": subsrc
+            };
+            axios.post(axios.defaults.baseURL + `/source/${self.source._id}/reset`,data)
+            .then(response => {
+                self.loaded();
+            })
+            .catch(err => {
+                self.loaderror(err);
+            });
+        },
     },
 }
 </script>
 
-<style>
+<style scoped>
+.reset.button {
+    font-size: 0.5em !important;
+    margin-left: 1em !important;
+}
+.reset > i {
+    margin: 0em !important;
+}
 </style>

@@ -80,7 +80,7 @@
                             <data-source-plugin v-bind:source="source"></data-source-plugin>
                         </div>
                         <div class="ui bottom attached tab segment" data-tab="mapping">
-                            <data-source-mapping v-bind:maps="maps" v-bind:_id="_id"></data-source-mapping>
+                            <data-source-mapping v-bind:maps="maps" v-bind:_id="_id" v-bind:source="source"></data-source-mapping>
                         </div>
                         <!--div class="ui bottom attached tab segment" data-tab="inspect">
                         <data-source-inspect v-bind:maps="maps" v-bind:_id="_id"></data-source-inspect>

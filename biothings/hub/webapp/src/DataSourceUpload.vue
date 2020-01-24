@@ -3,17 +3,15 @@
         <span v-if="source.upload && source.upload.sources">
             <span v-if="Object.keys(source.upload.sources).length > 1">
                 <div id="srcs" class="ui top attached tabular menu">
-                    <span v-for="(_,subsrc,i) in source.upload.sources">
-                        <a :class="['green item', i === 0 ? 'active' : '']" :data-tab="subsrc">
-                            {{subsrc}}
-                            <button class="reset ui button" v-if="source.upload.sources[subsrc]['uploader'] === null" @click="reset(subsrc)">
-                                <i class="close icon"></i>
-                            </button>
-                        </a>
-                    </span>
+                    <a :class="['green item', i === 0 ? 'active' : '']" :data-tab="'upload_' + subsrc" v-for="(_,subsrc,i) in source.upload.sources">
+                        {{subsrc}}
+                        <button class="reset ui button" v-if="source.upload.sources[subsrc]['uploader'] === null" @click="reset(subsrc)" data-tooltip="Datasource broken, click to remove">
+                            <i class="close icon"></i>
+                        </button>
+                    </a>
                 </div>
             </span>
-            <div :class="['ui bottom attached tab segment', i === 0 ? 'active' : '']" :data-tab="subsrc" v-for="(info,subsrc,i) in source.upload.sources">
+            <div :class="['ui bottom attached tab segment', i === 0 ? 'active' : '']" :data-tab="'upload_' + subsrc" v-for="(info,subsrc,i) in source.upload.sources">
                 <div class="ui two grid">
                     <div class="row">
                         <div class="ten wide column">
@@ -111,15 +109,6 @@ export default {
     },
     components: { },
     watch: {
-        maps: function(newv,oldv) {
-            if(newv != oldv) {
-                // there's a race condition here: if multiple mappings updated in very little time,
-                // not all tabs will be setup properly (some could be ignored depending on the time
-                // spent to set it up and the events telling us they have changed)
-                // Note: same as in DataSourceMapping.vue
-                this.setup(); // refresh tabs
-            }
-        },
     },
     methods: {
         setup: function() {
