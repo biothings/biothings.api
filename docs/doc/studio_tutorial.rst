@@ -1033,6 +1033,125 @@ Validate, then click on "Run", API is now up and running
 .. |restart| image:: ../_static/restart.png
    :width: 90px
 
+Time to try our new enriched API. We'll use ``curl`` again, here few query examples:
+
+.. code:: bash
+
+  $ curl localhost:8000/metadata
+  {
+  "biothing_type": "gene",
+  "build_date": "2020-01-24T00:14:28.112289",
+  "build_version": "20200124",
+  "src": {
+    "pharmgkb": {
+      "stats": {
+        "annotations": 979,
+        "druglabels": 122,
+        "occurrences": 5503
+      },
+      "version": "2020-01-05"
+    }
+  },
+  "stats": {
+    "total": 979
+  }
+
+Metadata has changed, as expected. If we compare this result with previous one, we now have three different sources: ``annotations``, ``druglabels`` and ``occurrences``,
+reflecting our new uploaders. For each of them, we have the total number of documents involved during the merge. Interestingly, the total number of documents is in our case 979 but,
+for instance, ``occurrences`` shows 5503 documents. Remember, we set ``annotations`` as a *root documents* source, meaning documents from others are merged only if they matched (based on ``_id`` field)
+an existing documents in this *root document* source. In other words, with this specific build configuration, we can't have more documents in the final API than the number of documents in
+*root document* sources.
+
+Let's query by symbol name, just as before:
+
+.. code:: bash
+
+  $ curl localhost:8000/query?q=ABL1
+  {
+  "max_score": 7.544187,
+  "took": 2,
+  "total": 1,
+  "hits": [
+    {
+      "_id": "PA24413",
+      "_score": 7.544187,
+      "annotations": [
+        {
+          "alleles": "T",
+          "annotation_id": 1447814556,
+          "chemical": "homoharringtonine (PA166114929)",
+          "chromosome": "chr9",
+          "gene": "ABL1 (PA24413)",
+          "notes": "Patient received received omacetaxine, treatment had been stopped after two cycles because of clinical intolerance, but a major molecular response and total disappearance of theT315I clone was obtained. Treatment with dasatinib was then started and after 34-month follow-up the patient is still in major molecular response.",
+          "phenotype_category": "efficacy",
+          "pmid": 25950190,
+          "sentence": "Allele T is associated with response to homoharringtonine in people with Leukemia, Myelogenous, Chronic, BCR-ABL Positive as compared to allele C.",
+          "significance": "no",
+          "studyparameters": "1447814558",
+          "variant": "rs121913459"
+        },
+        ...
+            ],
+        "drug_labels": [
+            {
+              "id": "PA166117941",
+              "name": "Annotation of EMA Label for bosutinib and ABL1,BCR"
+            },
+            {
+              "id": "PA166104914",
+              "name": "Annotation of EMA Label for dasatinib and ABL1,BCR"
+            },
+            {
+              "id": "PA166104926",
+              "name": "Annotation of EMA Label for imatinib and ABL1,BCR,FIP1L1,KIT,PDGFRA,PDGFRB"
+            },
+            ...
+            ]
+        "occurrences": [
+            {
+              "object_id": "PA24413",
+              "object_name": "ABL1",
+              "object_type": "Gene",
+              "source_id": "PMID:18385728",
+              "source_name": "The cancer biomarker problem.",
+              "source_type": "Literature"
+            },
+            {
+              "object_id": "PA24413",
+              "object_name": "ABL1",
+              "object_type": "Gene",
+              "source_id": "PMC443563",
+              "source_name": "Two different point mutations in ABL gene ATP-binding domain conferring Primary Imatinib resistance in a Chronic Myeloid Leukemia (CML) patient: A case report.",
+              "source_type": "Literature"
+            },
+            ...
+            ]
+    }
+
+We new have much information associated (much have been remove for clarity), including keys ``drug_labels`` and ``occurrences`` coming the two new uploaders.
+
+Conclusions
+^^^^^^^^^^^
+
+Moving from a single datasource based API, previously defined as a data plugin, we've been able to export this data plugin code. This code was used as a base
+to extend our API, specifically:
+
+* we implemented two more parsers, and their counter-part uploaders.
+* we updated the build configuration to add these new datasources
+* we created a new index (*full* release) and created a new API serving this new data.
+
+So far APIs are running from within **BioThings Studio**, and data still isn't exposed to the public. The next step to publish this data and make the API available
+for everyone.
+
+.. note:: **BioThings Studio** is a backend service, aimed to be used internally to prepare, test and release APIs. It is not inteneded to be facing public internet, in other words,
+   it's not recommended to expose any ports, including API ports, to public-facing internet.
+
+=========================================
+Part 3: API cloud deployments and hosting
+=========================================
+
+This part is still under development... Stay tuned and join Biothings Google Groups (https://groups.google.com/forum/#!forum/biothings) for more.
+
 
 ===============
 Troubleshooting
