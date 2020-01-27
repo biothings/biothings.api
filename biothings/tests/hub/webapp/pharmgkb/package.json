@@ -5,6 +5,7 @@
   "dependencies": {
     "codeceptjs": "^2.3.6",
     "core-js": "^2.6.5",
+    "npx": "^10.2.0",
     "puppeteer": "^2.0.0"
   }
 }
