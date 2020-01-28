@@ -877,15 +877,8 @@ class IndexManager(BaseManager):
                     # (a default index name can be specified in config...)
                     if not "index" in res["env"][kenv]:
                         res["env"][kenv]["index"] = []
-                    # for now, we just consider
-                    if type(res["env"][kenv]["index"]) == dict:
-                        # we don't where to put those indices because we don't
-                        # have that information, so we just put those in a default category
-                        # TODO: put that info in metadata ?
-                        res["env"][kenv]["index"].setdefault(None,[]).extend(indices)
-                    else:
-                        assert type(res["env"][kenv]["index"]) == list
-                        res["env"][kenv]["index"].extend(indices)
+                    assert type(res["env"][kenv]["index"]) == list
+                    res["env"][kenv]["index"].extend(indices)
                 except Exception as e:
                     self.logger.exception("Can't load remote indices: %s" % e)
                     continue
