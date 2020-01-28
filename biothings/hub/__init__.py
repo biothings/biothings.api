@@ -663,6 +663,7 @@ class HubServer(object):
         if self.managers.get("release_manager"):
             self.extra_commands["rm"] = CommandDefinition(command=self.managers["release_manager"],tracked=False)
             self.extra_commands["release_info"] = CommandDefinition(command=self.managers["release_manager"].release_info,tracked=False)
+            self.extra_commands["reset_synced"] = CommandDefinition(command=self.managers["release_manager"].reset_synced,tracked=True)
         if self.managers.get("inspect_manager"):
             self.extra_commands["ism"] = CommandDefinition(command=self.managers["inspect_manager"],tracked=False)
         if self.managers.get("api_manager"):
@@ -710,6 +711,7 @@ class HubServer(object):
         if "index_info" in cmdnames: self.api_endpoints["index_manager"] = EndpointDefinition(name="index_info",method="get")
         if "snapshot_info" in cmdnames: self.api_endpoints["snapshot_manager"] = EndpointDefinition(name="snapshot_info",method="get")
         if "release_info" in cmdnames: self.api_endpoints["release_manager"] = EndpointDefinition(name="release_info",method="get")
+        if "reset_synced" in cmdnames: self.api_endpoints["release_manager"] = EndpointDefinition(name="reset_synced",method="put")
         if "diff_info" in cmdnames: self.api_endpoints["diff_manager"] = EndpointDefinition(name="diff_info",method="get")
         if "commands" in cmdnames: self.api_endpoints["commands"] = EndpointDefinition(name="commands",method="get")
         if "command" in cmdnames: self.api_endpoints["command"] = EndpointDefinition(name="command",method="get")

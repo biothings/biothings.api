@@ -991,6 +991,23 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
     def register_status(self, bdoc, stage, status,transient=False,init=False,**extra):
         BaseStatusRegisterer.register_status(self,bdoc,stage,status,transient=transient,init=init,**extra)
 
+    def reset_synced(self, old, new):
+        """
+        Reset sync flags for diff files produced between "old" and "new" build.
+        Once a diff has been applied, diff files are flagged as synced so subsequent diff
+        won't be applied twice (for optimization reasons, not to avoid data corruption since
+        diff files can be safely applied multiple times). 
+        In any needs to apply the diff another time, diff files needs to reset.
+        """
+        # we need a diff publisher to do that, whatever the target (s3, filesystem,...)
+        dtypes = [pub for pub in self.register if pub[0] == "diff"] 
+        assert len(dtypes), "Can't reset synced diff files, no diff publisher registered"
+        # get one, all are able to reset synced files
+        dtype = dtypes[0]
+        diff_folder = generate_folder(btconfig.DIFF_PATH,old,new)
+        diff_publisher = self[dtype]
+        return diff_publisher.reset_synced(diff_folder)
+
     def load_build(self, key_name, stage=None):
         if stage is None:
             # picke build doc searching for snapshot then diff key if not found
