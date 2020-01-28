@@ -78,7 +78,7 @@ class BaseSyncer(object):
                 'logfile': self.logfile,
                 }
         # to select correct diff sub-record (1 collection can be diffed with multiple others)
-        diff_key = "%s-%s" % (self.old.target_name,self.new.target_name)
+        diff_key = "%s" % self.old.target_name
         # once in diff, select correct sync sub-record (1 diff can be applied to different backend)
         # replace dots as hostname can have dots which could be interpreted as dotted field by mongo
         # also remove doc_type (which can be sometimes None if hub deals with multiple APIs, 
