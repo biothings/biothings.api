@@ -982,8 +982,8 @@ The next configuration is summarized in the following picture:
 
 Upon validation, build configuration is ready to be used.
 
-Creating a new build
-^^^^^^^^^^^^^^^^^^^^
+Incremental release
+^^^^^^^^^^^^^^^^^^^
 
 Configuration reflects our changes and is up-to-date, let's create a new build. Click on |menu| if not already open, then "Create a new build"
 
@@ -991,48 +991,65 @@ Configuration reflects our changes and is up-to-date, let's create a new build. 
    :width: 350px
 
 After few seconds, we have a new build listed. Clicking on "Logs" will show how the **Hub** created it. We can see it first merged ``annotations``
-in the "merge-root" step (for *root documents*), then ``druglabels`` and ``occurrences`` sources. The last step, "diff-mapping" shows the **Hub**
-even tried to compute an incremental release by comparing our new build with previous one.
+in the "merge-root" step (for *root documents*), then ``druglabels`` and ``occurrences`` sources. The remaining steps, (*diff*, *release note*) were 
+automatically triggered by the **Hub**. Let's explore these further.
 
 .. image:: ../_static/buildlogs.png
    :width: 300px
 
-If we open the build and click on "Releases" tab, we don't any release generated though... What happened? Time to open the logs (see button on the bottom right).
+If we open the build and click on "Releases" tab, we have a *diff* release, or *incremental* release, as mentioned in the "Logs". Because a previous release existed for
+that build configuration (the one we did in part one), the **Hub** tries to compute an release comparing the two together, identifying new, deleted and updated documents.
+The result is a *diff* release, based on **json diff** format.
 
-.. image:: ../_static/errlogs.png
+.. image:: ../_static/diffrelease.png
+   :width: 450px
+
+In our case, one diff file has been generated, its size is 2 MiB, and contains information to update 971 documents. This is expected since we enriched our existing data. **Hub** also
+mention the mapping has been changed, and these will be reported to the index as we "apply" that diff release.
+
+.. note:: Because we added new datasources, without modifying existing mapping in the first ``annotations`` source, the differences between previous and new mappings correspond to
+   "add" json-diff operations. This means we strictly only add **more** information to the existing mapping. If we'd removed, and modify existing mapping fields, the **Hub** would
+   have reported an error and aborted the generation of that diff release, to prevent an error during the update of the ElasticSearch index, or to avoid data inconsistency.
+
+The other document that has been automatically generated is a *release note*.
+
+.. image:: ../_static/genrelnote.png
+   :width: 300px
+
+If we click on "View", we can see the results: the **Hub** compared previous data versions and counts, deleted and added datasources and field, etc...
+In other words, a "change log" summarizing what happened betwen previous and new releases. These release notes are informative, but also can be published
+when deploying data releases (see part 3).
+
+.. image:: ../_static/relnote.png
    :width: 600px
 
-We indeed have an error, claiming that a "move" operation was found when comparing mappings between new and old builds, using *json-diff*. If we'd directly update our ElasticSearch
-mapping using that *json-diff* operation, we would get an error. To prevent proceeding further, **Hub** stopped the creation of that release. As a consequence, we'll need to create
-a *full* release again (that is, creating a new index). 
+Let's apply that diff release, by clicking on |applydiff|
 
-Let's click on |newrelease|, select *full* and validate. Data is then being indexed, after few seconds, ElasticSearch index is ready.
+.. |applydiff| image:: ../_static/applydiff.png
+   :width: 30px
 
+We can select which index to update, from a dropdown list. We only have index, the one we created earlier in part 1. That said, **Hub** will do its best to filter out any incompatible
+indices, such those not coming from the same build configuration, or not having the same document type.
 
-Creating and testing final API
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Next and final step is to re-create our API in order to serve this new index previously created. Click on |api|, we still have our existing API running, we can either delete or stop it
-using the action buttons.
-
-.. note:: We could also let it run and create a new one with a different port, this would also work, but following this tutorial, we only exposed port 8000 for APIs so we
-   would't be able to easily access it like we did before.
-
-We can then create our new API
-
-.. image:: ../_static/apiformv2.png
+.. image:: ../_static/applydiffform.png
    :width: 500px
 
-Validate, then click on "Run", API is now up and running
+Once confirmed, the synchronization process begins, diff files are applied to the index, just as if we were "patching" data. We can track the command execution from the command list, and
+also from the notification popups when it's done.
 
-.. note:: You may encountered an error (red bell) where Studio claims the address is already in use. This is known issue that randomly occurs. If so, **Hub** needs to be manually restarted,
-   click on |settings| (top right corner) then |restart| and try again.
+.. image:: ../_static/commanddiff.png
+   :width: 500px
 
-.. |settings| image:: ../_static/settings.png
-   :width: 30px
-.. |restart| image:: ../_static/restart.png
-   :width: 90px
+.. image:: ../_static/notifdiff.png
+   :width: 500px
 
+Our index, currently served by our API defined in the part 1, has been updated, using a diff, or incremental, release. It's time to have a look at the data.
+
+
+Testing final API
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Because we directly apply a diff, or patch our data, on ElasticSearch index, we don't need to re-create an API. Querying the API should just transparently reflect that "live" update.
 Time to try our new enriched API. We'll use ``curl`` again, here few query examples:
 
 .. code:: bash
@@ -1159,7 +1176,22 @@ Troubleshooting
 
 We test and make sure, as much as we can, that the **BioThings Studio** image is up-to-date and running properly. But things can still go wrong...
 
-First make sure all services are running. Enter the container and type ``netstat -tnlp``, you should see
+A good starting point investigating an issue is to look at the logs from the **BioThings Studio**. Make sure connected (green power button on the top right),
+then click "Logs" button, on the bottom right. You will see logs in real-time (if not connected, it will complain about a disconnected websocket). As you click
+and perform actions through out the web application, you will see log message in that windows, and potentially errors not displayed (or with less details) in the
+application.
+
+.. image:: ../_static/logs.png
+   :width: 500px
+
+The "Terminal" (click on the bottom left button). gives access to commands you can manually type from the web application. Basically, any action performed clicking on the application
+is converted into a command call. You can even see what commands were launched, which ones are running. This terminal gives also access to more commands, and advanced options that may
+be useful to troubleshoot an issue. Typing ``help()``, or even passing a command name such as ``help(dump)`` will print documentation on available commands and how to use them.
+
+.. image:: ../_static/term.png
+   :width: 500px
+
+On a lower level, make sure all services are running in the docker container. Enter the container with ``docker exec -ti studio /bin/bash`` and type ``netstat -tnlp``, you should see
 services running on ports (see usual running `services`_). If services running on ports 7080 or 7022 aren't running,
 it means the **Hub** has not started. If you just started the instance, wait a little more as services may take a while before
 they're fully started and ready.
@@ -1205,7 +1237,7 @@ directory (in our case, ``/home/biothings/biothings_studio``)
 
 .. note:: Press Control-B then D to dettach the tmux session and let the **Hub** running in background.
 
-By default, logs are available in ``/home/biothings/biothings_studio/data/logs``.
+By default, logs are available in ``/data/biothings_studio/logs/``.
 
 Finally, you can report issues and request for help, by joining Biothings Google Groups (https://groups.google.com/forum/#!forum/biothings)
 
