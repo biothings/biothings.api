@@ -261,9 +261,6 @@ CACHE_MAX_AGE = 604800
 # Sentry project address
 SENTRY_CLIENT_KEY = ''
 
-# JSON-LD PATH
-JSONLD_CONTEXT_PATH = ''
-
 # Can turn msgpack functionality off here, will still load msgpack module if available, just won't
 # use it to compress requests
 ENABLE_MSGPACK = True

@@ -20,7 +20,6 @@ class ESResultTransformer(object):
     :param options: Options from the URL string controlling result transformer
     :param host: Host name (extracted from request), used for JSON-LD address generation
     :param doc_url_function: a function that takes one argument (a biothing id) and returns a URL to that biothing
-    :param jsonld_context: JSON-LD context for this app (optional)
     :param data_sources: unused currently (optional)
     :param output_aliases: list of output key names to alias, unused currently (optional)
     :param app_dir: Application directory for this app (used for getting app information in /metadata)
@@ -30,7 +29,6 @@ class ESResultTransformer(object):
 
     def __init__(self, options, host,
                  doc_url_function=lambda x: x,
-                 jsonld_context={},
                  data_sources={},
                  output_aliases={},
                  app_dir='',
@@ -41,7 +39,6 @@ class ESResultTransformer(object):
         self.options = options
         self.host = host
         self.doc_url_function = doc_url_function
-        self.jsonld_context = jsonld_context
         self.data_sources = data_sources
         self.output_aliases = output_aliases
         self.app_dir = app_dir
@@ -130,19 +127,13 @@ class ESResultTransformer(object):
         self._append_licenses(_doc)
         self._modify_doc(_doc)
 
-        if self.options.jsonld and not self.options.dotfield:
-            _d = OrderedDict([('@context', self.jsonld_context.get('@context', {})),
-                              ('@id', self.doc_url_function(_doc['_id']))])
-            _d.update(self._flatten_doc(_doc))
-            return _d
-        else:
-            _doc = self._sort_and_annotate_doc(
-                _doc, sort=self.options._sorted, data_src=self.options.datasource)
-            for _field in self.options.allow_null:
-                _doc = exists_or_null(_doc, _field)
-            if self.options.dotfield:
-                _doc = self._flatten_doc(_doc)
-            return _doc
+        _doc = self._sort_and_annotate_doc(
+            _doc, sort=self.options._sorted, data_src=self.options.datasource)
+        for _field in self.options.allow_null:
+            _doc = exists_or_null(_doc, _field)
+        if self.options.dotfield:
+            _doc = self._flatten_doc(_doc)
+        return _doc
 
     def _append_licenses(self, doc):
         '''
