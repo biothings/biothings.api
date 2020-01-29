@@ -2,19 +2,11 @@
     Biothings Query Component Common Tests
 '''
 
-import os
 
-from nose.core import main
-
-from biothings.tests import BiothingsTestCase
+from helper import BiothingsTestCase
 
 
-class QueryTests(BiothingsTestCase):
-    ''' Test against server specified in environment variable BT_HOST
-        and BT_API or MyGene.info production server V3 by default '''
-
-    host = os.getenv("BT_HOST", "http://mygene.info")
-    api = os.getenv("BT_API", "/v3")
+class TestQuery(BiothingsTestCase):
 
     def test_01(self):
         ''' KWARGS CTRL Format Json '''
@@ -42,7 +34,3 @@ class QueryTests(BiothingsTestCase):
         # Event 922fc99638cb4987bccbfd30c914ff03
         _q = 'query?q=c("ZNF398", "U2AF...'
         self.request(_q, expect_status=400)
-
-
-if __name__ == '__main__':
-    main(defaultTest='__main__.QueryTests', argv=['', '-v'])
