@@ -292,7 +292,7 @@ try:
     html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
     html_theme_options = {}
 except ImportError:
-    print 'Warning: "sphinx_rtd_theme" is not installed, fall back to default theme.'
+    print('Warning: "sphinx_rtd_theme" is not installed, fall back to default theme.')
     pass
 
 autoclass_content = 'both'

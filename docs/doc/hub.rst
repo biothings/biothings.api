@@ -47,7 +47,7 @@ DummyDumper
     :members:
 
 ManualDumper
------------
+------------
 
 .. autoclass:: biothings.hub.dataload.dumper.ManualDumper
     :members:

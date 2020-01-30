@@ -43,9 +43,11 @@ BioThings Studio
 
 The architecture and different software involved in this system can be quite intimidating. To help
 the whole service is packaged as a pre-configured application, **BioThings Studio**. A docker image is available
-for `download`_ and contains everything required to run **BioThings Hub**.
+Docker Hub registry, and be pulled using:
 
-.. _download: http://biothings-containers.s3-website-us-west-2.amazonaws.com/biothings_studio/biothings_studio_latest.docker
+.. code:: bash
+
+   $ docker pull biothings/biothings-studio:0.2a
 
 .. image:: ../_static/hubstack.png
    :width: 100%
@@ -307,5 +309,5 @@ take an filename as input, it should select the file(s) to parse.
     function should return a list of tuples, where each tuple corresponds to the list of input parameters for the parser.
 
 .. note:: Please see https://github.com/sirloon/mvcgi for a simple plugin definition. https://github.com/sirloon/gwascatalog will show how to use
-the ``release`` key and https://github.com/sirloon/FIRE will demonstrate the parallelization in the uploader section.
+   the ``release`` key and https://github.com/sirloon/FIRE will demonstrate the parallelization in the uploader section.
 

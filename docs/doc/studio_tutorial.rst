@@ -2,13 +2,12 @@
 Tutorial
 ********
 
-This tutorial will guide you through **BioThings Studio**, a pre-configured environment used to build
-and administer BioThings API. This guide will show how to convert a simple flat file
-to a fully operational BioThings API, with as minimal effort as possible.
+This tutorial will guide you through **BioThings Studio** by showing, in a first part, how to convert a simple flat file
+to a fully operational BioThings API. In a second part, this API will enrich for more data.
 
 .. note:: You may also want to read the `developer's guide <studio_guide.html>`_ for more detailed informations.
 
-.. note:: The following tutorial is only valid for **BioThings Studio** release **0.1f**. Check
+.. note:: The following tutorial is only valid for **BioThings Studio** release **0.2a**. Check
    all available `releases <https://github.com/biothings/biothings_studio/releases>`_ for more.
 
 =================
@@ -117,12 +116,13 @@ In this section we'll dive in more details on using the **BioThings Studio** and
 within the **Hub**, declare a build configuration using that datasource, create a build from that configuration, then a data release and finally instantiate a new API service
 and use it to query our data.
 
-The whole source code is available at `https://github.com/sirloon/pharmgkb`_, each branch pointing to a specific step in this tutorial.
+The whole source code is available at https://github.com/sirloon/pharmgkb, each branch pointing to a specific step in this tutorial.
 
 Input data
 ^^^^^^^^^^
 
-For this tutorial, we will use several input files provided by `PharmGKB`_, freely available in their `download`_ section, under "Annotation data":
+For this tutorial, we will use several input files provided by `PharmGKB <https://www.pharmgkb.org/>`_,
+freely available in their `download <https://www.pharmgkb.org/downloads>`_ section, under "Annotation data":
 
 * `annotations.zip`_: contains a file ``var_drug_ann.tsv`` about variant-gene-drug annotations. We'll use this file for the first part of this tutorial.
 * `drugLabels.zip`_: contains a file ``drugLabels.byGene.tsv`` describing, per gene, which drugs have an impact of them
@@ -130,8 +130,6 @@ For this tutorial, we will use several input files provided by `PharmGKB`_, free
 
 The last two files will be used in the second part of this tutorial when we'll add more datasources to our API.
 
-.. _`PharmGKB`: https://www.pharmgkb.org/
-.. _`download`: https://www.pharmgkb.org/downloads
 .. _`annotations.zip`: https://s3.pgkb.org/data/annotations.zip
 .. _`drugLabels.zip`: https://s3.pgkb.org/data/drugLabels.zip
 .. _`occurrences.zip`: https://s3.pgkb.org/data/occurrences.zip
@@ -141,8 +139,13 @@ Parser
 
 In order to ingest this data and make it available as an API, we first need to write a parser. Data is pretty simple, tab-separated files, and we'll
 make it even simpler by using ``pandas`` python library. The first version of this parser is available in branch ``pharmgkb_v1`` at
-`https://github.com/sirloon/pharmgkb/blob/pharmgkb_v1/parser.py`_. After some boiler plate code at the beginning for dependencies and initialization,
+https://github.com/sirloon/pharmgkb/blob/pharmgkb_v1/parser.py. After some boiler plate code at the beginning for dependencies and initialization,
 the main logic is the following:
+
+
+.. code:: python
+
+  def load_annotations(data_folder):
 
     results = {}
     for rec in dat:
@@ -161,9 +164,6 @@ the main logic is the following:
         doc = {"_id": _id, "annotations" : docs}
         yield doc
 
-.. code:: python
-
-  def load_annotations(data_folder):
 
 Our parsing function is named ``load_annotations``, it could be name anything else, but it has to take a folder path ``data_folder`` 
 containing the downloaded data. This path is automatically set by the Hub and points to the latest version available. More on this later.
@@ -225,7 +225,7 @@ in a dictionary indexed by gene ID. The final documents are assembled in the las
    used when data from multiple datasources are merged together, that process is done according to its value
    (all documents sharing the same _id from different datasources will be merged together).
 
-.. note:: in this specific example, we read the whole content of this input file in memory, when store annotations per gene. The data itself
+.. note:: In this specific example, we read the whole content of this input file in memory, when store annotations per gene. The data itself
    is small enough to do this, but memory usage always needs to cautiously considered when writing a parser.
 
 
@@ -393,17 +393,18 @@ In order to do so, click on `Mapping` tab, then click on |inspectlabelicon|.
 
 We can inspect the data for different purposes:
 
- * **Mode**
-   - ``type``: inspection will report any types found in the collection, giving detailed information about the structure
-     of documents coming from the parser. Note results aren't available from the webapp, only in MongoDB.
-   - ``stats``: same as type but gives numbers (count) for each structures and types found. Same as previous, results aren't available
-     in the webapp yet.
-   - ``mapping``: inspect the date types and suggest an ElasticSearch mapping. Will report any error or types incompatible with ES.
+* **Mode**
+
+  - ``type``: inspection will report any types found in the collection, giving detailed information about the structure
+    of documents coming from the parser. Note results aren't available from the webapp, only in MongoDB.
+  - ``stats``: same as type but gives numbers (count) for each structures and types found. Same as previous, results aren't available
+    in the webapp yet.
+  - ``mapping``: inspect the date types and suggest an ElasticSearch mapping. Will report any error or types incompatible with ES.
 
 Here we'll stick to mode ``mapping`` to generate that mapping. There are other options used to explore the data to inspect:
 
- * **Limit**: limit the inspected documents.
- * **Sample**: randomize the documents to inspect (1.0 = consider all documents, 0.0 = skip all documents, 0.5 = consider every other documents)
+* **Limit**: limit the inspected documents.
+* **Sample**: randomize the documents to inspect (1.0 = consider all documents, 0.0 = skip all documents, 0.5 = consider every other documents)
 
 The last two options can be used to reduce the inspection time of huge data collection, or you're absolutely sure the same structure is returned
 for any documents output from the parser.
@@ -572,7 +573,7 @@ At this stage, a new index containing our data has been created on ElasticSearch
 
 We'll name it `pharmgkb` and have it running on port 8000.
 
-.. note:: spaces are not allowed in API names
+.. note:: Spaces are not allowed in API names
 
 .. image:: ../_static/apiform.png
    :width: 450px
@@ -671,7 +672,7 @@ Let's query the data using a gene name (results truncated):
   }
 
 
-.. note:: we don't have to specify ``annotations.gene``, the field in which the value "ABL1" should be searched, because we explicitely asked ElasticSearch
+.. note:: We don't have to specify ``annotations.gene``, the field in which the value "ABL1" should be searched, because we explicitely asked ElasticSearch
    to search that field by default (see fieldbydefault_)
 
 Finally, we can fetch a variant by its PharmGKB ID:
@@ -729,7 +730,7 @@ It provides a simple and generic way to do so, but also comes with some limitati
 downloading three different files, and we now need three different *uploaders* in order to process these files. With our data plugin, only one file is parsed. In order to proceed
 further, we need to manually write dumper and uploaders code...
 
-.. note:: we could also process all three files in one single parser, that is, one single uploder, but for the sake of this tutorial, we'll proceed individually. Files can also
+.. note:: We could also process all three files in one single parser, that is, one single uploder, but for the sake of this tutorial, we'll proceed individually. Files can also
    be updated at different times, keeping uploaders separated helps maintaining data up-to-date without having to process all files at once each time.
 
 Luckily, **BioThings Studio** provides an easy to export python code that has been generated during data plugin registration. Indeed, code is generated from the manifest file, compiled
