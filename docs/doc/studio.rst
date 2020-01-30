@@ -6,4 +6,6 @@ BioThings Studio
 At its core is the **Hub**, a backend service responsible for maintaining data up-to-date,
 producing data releases and update API frontends.
 
+.. include:: studio_tutorial.rst
+.. include:: studio_guide.rst
 

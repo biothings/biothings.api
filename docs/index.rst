@@ -48,11 +48,10 @@ Alternatively, you can download the source code, or clone the `BioThings SDK rep
 
 
 .. toctree::
+    :maxdepth: 3
     :caption: Products
 
     doc/studio
-    doc/studio_tutorial
-    doc/studio_guide
     doc/standalone
     doc/hub_tutorial
 
