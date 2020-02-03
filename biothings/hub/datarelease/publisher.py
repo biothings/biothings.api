@@ -905,7 +905,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         self.timestamp = datetime.now()
         self.release_config = {}
         self.poll_schedule = poll_schedule
-        self.es_backups_folder = btconfig.ES_BACKUPS_FOLDER
+        self.es_backups_folder = getattr(btconfig,"ES_BACKUPS_FOLDER",None)
         self.setup()
 
     def clean_stale_status(self):
