@@ -15,11 +15,6 @@ from importlib import import_module
 
 import elasticsearch
 from elasticsearch import ConnectionSelector
-from elasticsearch_async import AsyncElasticsearch
-from elasticsearch_async.transport import AsyncTransport
-
-from elasticsearch_dsl.connections import Connections
-
 
 # Error class
 class BiothingConfigError(Exception):
@@ -130,6 +125,10 @@ class BiothingESWebSettings(BiothingWebSettings):
         '''
         super(BiothingESWebSettings, self).__init__(config)
 
+        # temp. move import there to hide async dep unless used
+        from elasticsearch_async.transport import AsyncTransport
+        from elasticsearch_dsl.connections import Connections
+
         # elasticsearch connections
         self._connections = Connections()
 
@@ -140,7 +139,6 @@ class BiothingESWebSettings(BiothingWebSettings):
             "timeout_cutoff": 1,  # number of consecutive failures after which the timeout doesn’t increase
             "selector_class": KnownLiveSelecter}
         self._connections.create_connection(alias='sync', **connection_settings)
-
         connection_settings.update(transport_class=AsyncTransport)
         self._connections.create_connection(alias='async', **connection_settings)
 
