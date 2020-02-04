@@ -20,42 +20,6 @@ class ESQuery(object):
         self.client = client
         self.options = options
 
-    async def _scroll(self, query_kwargs):
-        ''' Returns the next scroll batch for the given scroll id '''
-        from elasticsearch import NotFoundError, RequestError, TransportError
-        try:
-            return await self.client.scroll(**query_kwargs)
-        except (NotFoundError, RequestError, TransportError):
-            raise BiothingScrollError("Invalid or stale scroll_id")
-
-    async def _annotation_GET_query(self, query_kwargs):
-        if query_kwargs.get('id', None):
-            # these query kwargs should be to an es.get
-            return await self.get_biothing(query_kwargs)
-        else:
-            return await self.client.search(**query_kwargs)
-
-    async def _annotation_POST_query(self, query_kwargs):
-        return await self._common_POST_query(query_kwargs)
-
-    async def _query_GET_query(self, query_kwargs, *args, **kwargs):
-        from elasticsearch import RequestError
-        try:
-            return await self.client.search(**query_kwargs)
-        except RequestError as e:
-            if e.args[1] == 'search_phase_execution_exception' and "error" in e.args[2] and "root_cause" in e.args[2]["error"]:
-                _root_causes = [
-                    '{} {}'.format(c['type'],
-                                   c['reason']) for c in e.args[2]['error']['root_cause']
-                    if 'reason' in c and 'type' in c]
-                raise BiothingSearchError(
-                    'Could not execute query due to the following exception(s): {}'.format(_root_causes))
-            else:
-                raise Exception('{0}'.format(e))
-
-    async def _query_POST_query(self, query_kwargs):
-        return await self._common_POST_query(query_kwargs)
-
     async def _common_POST_query(self, query_kwargs):
         from elasticsearch import RequestError
         try:
@@ -83,37 +47,51 @@ class ESQuery(object):
 
         return res
 
-    async def _metadata_query(self, query_kwargs):
-        return await self.client.indices.get_mapping(**query_kwargs)
-
-    async def get_biothing(self, query_kwargs):
-        ''' Return a biothing using the Elasticsearch client.get function '''
-        from elasticsearch import NotFoundError
-        try:
-            return await self.client.get(**query_kwargs)
-        except NotFoundError:
-            return {}
-
     async def annotation_GET_query(self, query_kwargs):
         ''' Given ``query_kwargs`` from ESQueryBuilder, return results of annotation lookup GET query on ES client.'''
-        return await self._annotation_GET_query(query_kwargs)
+        if query_kwargs.get('id', None):
+            # these query kwargs should be to an es.get
+            from elasticsearch import NotFoundError
+            try:
+                return await self.client.get(**query_kwargs)
+            except NotFoundError:
+                return {}
+        else:
+            return await self.client.search(**query_kwargs)
 
     async def annotation_POST_query(self, query_kwargs):
         ''' Given ``query_kwargs`` from ESQueryBuilder, return results of annotation lookup POST query on ES client.'''
-        return await self._annotation_POST_query(query_kwargs)
+        return await self._common_POST_query(query_kwargs)
 
     async def query_GET_query(self, query_kwargs, *args, **kwargs):
         ''' Given ``query_kwargs`` from ESQueryBuilder, return results of query GET on ES client.'''
-        return await self._query_GET_query(query_kwargs)
+        from elasticsearch import RequestError
+        try:
+            return await self.client.search(**query_kwargs)
+        except RequestError as e:
+            if e.args[1] == 'search_phase_execution_exception' and "error" in e.args[2] and "root_cause" in e.args[2]["error"]:
+                _root_causes = [
+                    '{} {}'.format(c['type'],
+                                   c['reason']) for c in e.args[2]['error']['root_cause']
+                    if 'reason' in c and 'type' in c]
+                raise BiothingSearchError(
+                    'Could not execute query due to the following exception(s): {}'.format(_root_causes))
+            else:
+                raise Exception('{0}'.format(e))
 
     async def query_POST_query(self, query_kwargs, *args, **kwargs):
         ''' Given ``query_kwargs`` from ESQueryBuilder, return results of query POST on ES client.'''
-        return await self._query_POST_query(query_kwargs)
+        return await self._common_POST_query(query_kwargs)
 
-    async def metadata_query(self, query_kwargs):
+    async def _metadata_query(self, query_kwargs):
         ''' Given ``query_kwargs`` from ESQueryBuilder, return results of metadata query on ES client.'''
-        return await self._metadata_query(query_kwargs)
+        return await self.client.indices.get_mapping(**query_kwargs)
 
     async def scroll(self, query_kwargs):
         ''' Given ``query_kwargs`` from ESQueryBuilder, return results of a scroll on ES client - returns next batch of results. '''
-        return await self._scroll(query_kwargs)
+        ''' Returns the next scroll batch for the given scroll id '''
+        from elasticsearch import NotFoundError, RequestError, TransportError
+        try:
+            return await self.client.scroll(**query_kwargs)
+        except (NotFoundError, RequestError, TransportError):
+            raise BiothingScrollError("Invalid or stale scroll_id")
