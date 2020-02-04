@@ -45,7 +45,7 @@ APP_LIST = [
     (r"/status", StatusHandler),
     (r"/metadata/?", MetadataHandler),
     (r"/metadata/fields/?", MetadataHandler),
-    (r"/{}/gene/([^\/\n\r])/?".format(API_VERSION), BiothingHandler),
+    (r"/{}/{}/([^\/\n\r])/?".format(API_VERSION, ES_DOC_TYPE), BiothingHandler),
     (r"/{}/query".format(API_VERSION), QueryHandler),
     (r"/{}/metadata/?".format(API_VERSION), MetadataHandler),
     (r"/{}/metadata/fields/?".format(API_VERSION), MetadataHandler),
