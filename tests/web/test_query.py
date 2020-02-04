@@ -15,8 +15,10 @@ class TestQuery(BiothingsTestCase):
             index='bts_test',
             doc_type=self.settings.ES_DOC_TYPE,
             body={
-                "1101": "scHq-299"
+                "1101": "test-299",
+                "1102": "test-300"
             }, id=1)
+        self.settings.ES_INDEX = 'bts_test'
 
     def test_01(self):
         ''' KWARGS CTRL Format Json '''
@@ -33,6 +35,15 @@ class TestQuery(BiothingsTestCase):
         assert '<html>' in res
 
     def test_11(self):
+        ''' GET DOC '''
+        res = self.request('doc/1')
+        assert res.json()['_id'] == '1'
+
+    def test_21(self):
+        ''' GET QUERY'''
+        self.query(q=299)
+
+    def test_51(self):
         ''' HANDLE Unmatched Quotes'''
         # Sentry
         # Issue 529121368
