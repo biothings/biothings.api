@@ -1,3 +1,4 @@
+from biothings.web.api.es.handlers import *
 from biothings.web.api.es.query import ESQuery as DefaultESQuery
 from biothings.web.api.es.query_builder import ESQueryBuilder as DefaultESQueryBuilder
 from biothings.web.api.es.transform import ESResultTransformer as DefaultESResultTransformer
@@ -12,9 +13,14 @@ ES_HOST = 'localhost:9200'
 # timeout for python es client (global request timeout)
 ES_CLIENT_TIMEOUT = 120
 # elasticsearch index name
-ES_INDEX = 'mybiothing_current'
-# elasticsearch document type
-ES_DOC_TYPE = 'biothing'
+ES_INDEX = '_all'
+# elasticsearch document type for es<7, also biothing type
+ES_DOC_TYPE = 'doc'
+# multiple index support
+ES_INDICES = {
+    # "biothing_type_1": "index1",
+    # "biothing_type_2": "index1,alias1,pattern_*"
+}
 # Amount of time a scroll request is kept open
 ES_SCROLL_TIME = '1m'
 # Size of each scroll request return
@@ -33,11 +39,17 @@ STATIC_PATH = "static"
 
 # api version in the URL patterns and elsewhere
 API_VERSION = 'v1'
-# for URLS that don't require settings in initialize
-UNINITIALIZED_APP_LIST = []
-# project URL routing
-APP_LIST = []
 
+# project URL routing
+APP_LIST = [
+    (r"/status", StatusHandler),
+    (r"/metadata/?", MetadataHandler),
+    (r"/metadata/fields/?", MetadataHandler),
+    (r"/{}/{}/([^\/\n\r])/?".format(API_VERSION, ES_DOC_TYPE), BiothingHandler),
+    (r"/{}/query".format(API_VERSION), QueryHandler),
+    (r"/{}/metadata/?".format(API_VERSION), MetadataHandler),
+    (r"/{}/metadata/fields/?".format(API_VERSION), MetadataHandler),
+]
 # Allow the __any__ random doc retrieval
 ALLOW_RANDOM_QUERY = False
 # Allow facets to be nested with ( )
@@ -261,9 +273,6 @@ CACHE_MAX_AGE = 604800
 # Sentry project address
 SENTRY_CLIENT_KEY = ''
 
-# JSON-LD PATH
-JSONLD_CONTEXT_PATH = ''
-
 # Can turn msgpack functionality off here, will still load msgpack module if available, just won't
 # use it to compress requests
 ENABLE_MSGPACK = True
@@ -273,7 +282,7 @@ LIST_SPLIT_REGEX = re.compile('[\s\r\n+|,]+')
 DEFAULT_SCOPES = ['_id']
 
 # path to the git repository for the app-specific code, override
-APP_GIT_REPOSITORY = '../'
+APP_GIT_REPOSITORY = '.'
 
 # For format=html
 HTML_OUT_HEADER_IMG = "//:0"

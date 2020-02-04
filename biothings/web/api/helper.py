@@ -1,12 +1,17 @@
-import json
-from collections import OrderedDict
 import datetime
-import tornado.web
+import json
+import logging
 import re
+from collections import OrderedDict
+from urllib.parse import (parse_qs, unquote_plus, urlencode, urlparse,
+                          urlunparse)
+
+import tornado.web
+from tornado.escape import json_decode
+
+from biothings.utils.common import is_seq, is_str, split_ids
 from biothings.utils.web.analytics import GAMixIn
 from biothings.utils.web.tracking import StandaloneTrackingMixin
-from biothings.utils.common import is_str, is_seq, split_ids
-from urllib.parse import urlencode, urlparse, urlunparse, parse_qs, unquote_plus
 
 try:
     from raven.contrib.tornado import SentryMixin
@@ -19,7 +24,6 @@ try:
     from re import fullmatch as match
 except ImportError:
     from re import match
-import logging
 
 try:
     import msgpack
@@ -46,7 +50,51 @@ class DateTimeJSONEncoder(json.JSONEncoder):
             return super(DateTimeJSONEncoder, self).default(obj)
 
 class BiothingParameterTypeError(Exception):
-    pass
+    def __init__(self, error='', param=''):
+        message = f'Cannot process parameter {param}. ' if param else ''
+        message += error
+        if message:
+            super().__init__(message)
+        else:
+            super().__init__()
+
+
+class BiothingsQueryParamInterpreter():
+
+    def __init__(self, jsoninput=False):
+        ''' 
+            Parameter sets the support for json string list
+        '''
+        if isinstance(jsoninput, str):
+            self.jsoninput = self.str_to_bool(jsoninput)
+        else:
+            self.jsoninput = bool(jsoninput)
+
+    @staticmethod
+    def str_to_bool(val, param=''):
+        return val.lower() in ('1', 'true', 'y', 't')
+
+    def str_to_list(self, val, param=''):
+        if self.jsoninput:
+            try:
+                val = json.loads(val)
+            except Exception:
+                pass
+        if not isinstance(val, list):
+            try:
+                val = split_ids(val)
+            except ValueError as e:
+                raise BiothingParameterTypeError(str(e), param)
+        return val
+
+    @staticmethod
+    def obj_to_type(val, type_, param=''):
+        try:
+            result = (type_)(val)
+        except ValueError:
+            raise BiothingParameterTypeError(f"Expect type {type_.__name__}.", param)
+        return result
+
 
 class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTrackingMixin):
     ''' Parent class of all biothings handlers, only direct descendant of
@@ -87,82 +135,72 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         self.jsonp = args.pop(self.web_settings.JSONP_PARAMETER, None)
         return args
 
-    def _typify(self, arg, argval, json_list_input=False):
-        ''' Try to get the parameter's type from settings '''
-        # first see if this parameter has an alias
-        # do value translations, if they exist
-        if 'type' not in self.kwarg_settings[arg]:
-            return argval
-
-        if self.kwarg_settings[arg]['type'] == list:
-            ret = []
-            if json_list_input:
-                try:
-                    ret = json.loads(argval)
-                    if not isinstance(ret, list):
-                        raise ValueError
-                except Exception:
-                    ret = []
-                    #raise BiothingParameterTypeError('Could not listify "{}" in parameter "{}" with "jsoninput" True'.format(argval, arg))
-            if not ret:
-                try:
-                    ret = split_ids(argval)
-                except ValueError as e:
-                    raise BiothingParameterTypeError("Could not split argument '{0}' due to the following error: '{1}'".format(arg, str(e))) 
-                #ret = [x for x in re.split(getattr(self.web_settings, 'LIST_SPLIT_REGEX', '[\s\r\n+|,]+'), argval) if x]
-            ret = ret[:self.kwarg_settings[arg].get('max', getattr(self.web_settings, 'LIST_SIZE_CAP', 1000))]
-        elif self.kwarg_settings[arg]['type'] == int:
-            try:
-                ret = int(argval)
-            except ValueError:
-                raise BiothingParameterTypeError("Expected '{0}' parameter to have integer type.  Couldn't convert '{1}' to integer".format(arg, argval))
-        elif self.kwarg_settings[arg]['type'] == float:
-            try:
-                ret = float(argval)
-            except ValueError:
-                raise BiothingParameterTypeError("Expected '{0}' parameter to have float type.  Couldn't convert '{1}' to float".format(arg, argval))
-        elif self.kwarg_settings[arg]['type'] == bool:
-            ret = self._boolify(argval)
-        else:
-            ret = argval
-        return ret
-
-    def _boolify(self, val):
-        return val.lower() in ['1', 'true', 'y', 't']
-
-    def _translate_input_arg_value(self, arg, argval):
-        if 'translations' in self.kwarg_settings[arg]:
-            for (regex, translation) in self.kwarg_settings[arg]['translations']:
-                argval = re.sub(regex, translation, argval)
-        return argval 
-
-    def _translate_and_typify_arg_values(self, args, json_list_input=False):
-        for _arg in list(args.keys()):
-            if _arg in self.kwarg_settings:
-                args[_arg] = self._translate_input_arg_value(_arg, args[_arg])
-                args[_arg] = self._typify(_arg, args[_arg], json_list_input=json_list_input)
-        return args
-    
-    def _alias_input_args(self, args):
-        alias_dict = dict([(_arg, _setting['alias']) for (_arg, _setting) in self.kwarg_settings.items() 
-                            if 'alias' in _setting])
-        for (target, src) in alias_dict.items():
-            if is_str(src) and src in args:
-                args.setdefault(target, args[src])
-            elif is_seq(src):
-                for param in src:
-                    if param in args:
-                        args.setdefault(target, args[param])
-                        break
-        return args
-
     def get_query_params(self):
         '''Extract, typify, and sanitize the parameters from the URL query string. '''
-        _args = dict([(k, self.get_argument(k)) for k in self.request.arguments])
-        _args = self._alias_input_args(_args)
-        _args = self._translate_and_typify_arg_values(_args, json_list_input=self._boolify(_args.get('jsoninput','')))
-        _args = self._sanitize_params(_args)
-        return _args
+
+        # extract and combine url parameters and body parameters
+
+        args_json = {}
+        if self.request.headers.get('Content-Type') in ('application/x-json', 'application/json'):
+            try:
+                args_json = json_decode(self.request.body)
+            except Exception:
+                raise BiothingParameterTypeError('Json decoder error')
+
+        args_query = {k: self.get_argument(k) for k in self.request.arguments}
+        args = dict(args_json)
+        args.update(args_query)
+
+        # apply key alias transformation
+        
+        aliases = {}
+        for _arg, _setting in self.kwarg_settings.items():
+            if 'alias' in _setting:
+                if isinstance(_setting['alias'], str):
+                    aliases[_setting['alias']] = _arg
+                else:
+                    for _alias in _setting['alias']:
+                        aliases[_alias] = _arg
+            
+        for key in args:
+            if key in aliases:
+                args.setdefault(aliases[key], args[key])
+                del args[key]
+
+        # perform value type validation and regex substitution
+
+        totype = {}
+        for key in args:
+            if key in self.kwarg_settings:
+                if 'type' in self.kwarg_settings[key]:
+                    type_ = self.kwarg_settings[key]['type']
+                    if not isinstance(args[key], type_):
+                        totype[key] = type_
+
+        for key in args:
+            if 'translations' in self.kwarg_settings.get(key,{}):
+                if isinstance(args[key], str):
+                    for (regex, translation) in self.kwarg_settings[key]['translations']:
+                        args[key] = re.sub(regex, translation, args[key])        
+
+        # apply value type conversion
+
+        param = BiothingsQueryParamInterpreter(args.get('jsoninput',''))
+        for key, type_ in totype.items():
+            if isinstance(args[key], str) and type_ == bool:
+                args[key] = param.str_to_bool(args[key])
+            elif isinstance(args[key], str) and type_ == list:
+                args[key] = param.str_to_list(args[key])
+            else:
+                args[key] = param.obj_to_type(args[key], type_)
+
+        for key in args:
+            if isinstance(args[key], list):
+                args[key] = args[key][:self.kwarg_settings[key].get('max',
+                        getattr(self.web_settings, 'LIST_SIZE_CAP', 1000))]
+
+        args = self._sanitize_params(args)
+        return args
 
     def return_html(self, data, status_code=200):
         self.set_status(status_code)
@@ -234,7 +272,6 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         else:
             self.return_json(data=data, encode=encode, indent=indent, status_code=status_code)
 
- 
     def return_json(self, data, encode=True, indent=None, status_code=200, is_msgpack=False):
         '''Return passed data object as JSON response.
         If **jsonp** parameter is set in the  request, return a valid 

@@ -22,6 +22,7 @@ try:
     from raven.contrib.tornado import AsyncSentryClient
 except ImportError:
     __USE_SENTRY__ = False
+
     def AsyncSentryClient(*args, **kwargs):
         pass
 
@@ -30,11 +31,12 @@ __USE_WSGI__ = False
 define("port", default=8000, help="run on the given port", type=int)
 define("address", default="127.0.0.1", help="run on localhost")
 define("debug", default=False, type=bool, help="run in debug mode")
-define("appdir", default=os.getcwd(), type=str, help="path to app directory containing (at minimum) a config module")
+define("appdir", default=os.getcwd(), type=str,
+       help="path to app directory containing (at minimum) a config module")
 
 try:
     options.parse_command_line()
-except:
+except BaseException:
     pass
 
 # assume config file is root of appdir
@@ -67,7 +69,7 @@ def main(APP_LIST, app_settings={}, debug_settings={}, sentry_client_key=None, u
         settings.update({"debug": True})
     application = get_app(APP_LIST, **settings)
     if __USE_SENTRY__ and sentry_client_key:
-       application.sentry_client = AsyncSentryClient(sentry_client_key)
+        application.sentry_client = AsyncSentryClient(sentry_client_key)
     if use_curl:
         tornado.httpclient.AsyncHTTPClient.configure(
             "tornado.curl_httpclient.CurlAsyncHTTPClient")
@@ -78,3 +80,8 @@ def main(APP_LIST, app_settings={}, debug_settings={}, sentry_client_key=None, u
         tornado.autoreload.start(loop)
         logging.info('Server is running on "%s:%s"...' % (options.address, options.port))
     loop.start()
+
+
+if __name__ == '__main__':
+    from biothings.web.settings import BiothingESWebSettings
+    main(BiothingESWebSettings().generate_app_list())

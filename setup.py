@@ -44,7 +44,6 @@ install_requires = [
     'elasticsearch==6.3.1',
     'gitpython==2.1.11',
     'elasticsearch-async',
-
 ]
 
 # extra requirements for biothings.web

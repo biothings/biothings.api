@@ -13,127 +13,238 @@ import socket
 import types
 from importlib import import_module
 
-from elasticsearch import Elasticsearch
-from elasticsearch_async import AsyncElasticsearch
-
+import elasticsearch
+from elasticsearch import ConnectionSelector
 
 # Error class
 class BiothingConfigError(Exception):
     pass
 
 class BiothingWebSettings(object):
-    ''' A container for the settings that configure the web API '''
+    '''
+    A container for the settings that configure the web API.
+
+    * Environment variables can override settings of the same names.
+    * Default values are defined in biothings.web.settings.default.
+
+    '''
 
     def __init__(self, config='biothings.web.settings.default'):
-        ''' The ``config`` init parameter specifies a module that configures
-        this biothing.  For more information see `config module`_ documentation.'''
-        self.config_mod = isinstance(config, types.ModuleType) and config or import_module(config)
-        try:
-            with open(os.path.abspath(self.config_mod.JSONLD_CONTEXT_PATH), 'r') as json_file:
-                self._jsonld_context = json.load(json_file)
-        except BaseException:
-            self._jsonld_context = {}
+        '''
+        :param config: a module that configures this biothing or its fully qualified name.
+        '''
 
-        # for metadata dev
-        self._app_git_repo = os.path.abspath(
-            self.APP_GIT_REPOSITORY) if hasattr(
-            self, 'APP_GIT_REPOSITORY') else os.path.abspath('.')
-        if not (self._app_git_repo and os.path.exists(self._app_git_repo) and os.path.isdir(
-                self._app_git_repo) and os.path.exists(os.path.join(self._app_git_repo, '.git'))):
-            self._app_git_repo = None
+        self._user = config if isinstance(config, types.ModuleType) else import_module(config)
+        self._default = import_module('biothings.web.settings.default')
 
-        # validate these settings?
+        # for metadata dev details
+        if os.path.isdir(os.path.join(self.APP_GIT_REPOSITORY, '.git')):
+            self._git_repo_path = self.APP_GIT_REPOSITORY
+        else:
+            self._git_repo_path = None
+
         self.validate()
 
     def __getattr__(self, name):
-        try:
-            return getattr(self.config_mod, name)
-        except AttributeError:
-            raise AttributeError(
-                "No setting named '{}' was found, check configuration module.".format(name))
 
-    def set_debug_level(self, debug=False):
-        '''Set if running API in debug mode.
-        Should be called before passing ``self`` to handler initialization.'''
-        self._DEBUG = debug
-        return self
+        if hasattr(self._user, name) or hasattr(self._default, name):
+
+            # environment variables can override named settings
+            if name in os.environ:
+                return os.environ[name]
+
+            return getattr(self._user, name, getattr(self._default, name))
+
+        raise AttributeError("No setting named '{}' in configuration file.".format(name))
 
     def generate_app_list(self):
-        ''' Generates the tornado.web.Application `(regex, handler_class, options) tuples <http://www.tornadoweb.org/en/stable/web.html#application-configuration>`_ for this project.'''
-        return self.UNINITIALIZED_APP_LIST + [
-            (endpoint_regex, handler, {"web_settings": self})
-            for (endpoint_regex, handler) in self.APP_LIST]
+        '''
+        Generates the tornado.web.Application `(regex, handler_class, options) tuples
+        <http://www.tornadoweb.org/en/stable/web.html#application-configuration>`_ for this project.
+        '''
+        handlers = []
+
+        for rule in self.APP_LIST:
+            settings = {"web_settings": self}
+            if len(rule) == 3:
+                settings.update(rule[-1])
+            handlers.append((rule[0], rule[1], settings))
+
+        return handlers
+
+    def get_git_repo_path(self):
+        '''
+        Return the path of the codebase if the specified folder in settings exists or `None`.
+        '''
+        return self._git_repo_path
 
     def validate(self):
-        ''' Validate these settings '''
+        '''
+        Validate the settings defined for this web server.
+        '''
+        for rule in self.APP_LIST:
+            if len(rule) == 2:
+                pass
+            elif len(rule) == 3:
+                assert isinstance(rule[-1], dict)
+            else:
+                raise BiothingConfigError()
+
+    #### COMPATIBILITY METHODS ####
+
+    def set_debug_level(self, debug=False):
         pass
 
+    @property
+    def git_repo_path(self):
+        return self._git_repo_path
+
+    @property
+    def _app_git_repo(self):
+        return self._git_repo_path
+
+class KnownLiveSelecter(ConnectionSelector):
+    """
+    Select the first connection all the time
+    """
+
+    def select(self, connections):
+        return connections[0]
+
 class BiothingESWebSettings(BiothingWebSettings):
-    ''' `BiothingWebSettings`_ subclass with functions specific to an elasticsearch backend '''
+    '''
+    `BiothingWebSettings`_ subclass with functions specific to an elasticsearch backend.
+
+    * Use the known live ES connection if more than one is specified.
+    * Cache source metadata stored under the _meta field in es indices.
+
+    '''
+
+    ES_VERSION = elasticsearch.__version__[0]
 
     def __init__(self, config='biothings.web.settings.default'):
-        ''' The ``config`` init parameter specifies a module that configures
-        this biothing.  For more information see `config module`_ documentation.'''
+        '''
+        The ``config`` init parameter specifies a module that configures
+        this biothing.  For more information see `config module`_ documentation.
+        '''
         super(BiothingESWebSettings, self).__init__(config)
 
-        # get es client for web
-        self.es_client = self.get_es_client()
-        self.async_es_client = self.get_es_client(sync=False)
+        # temp. move import there to hide async dep unless used
+        from elasticsearch_async.transport import AsyncTransport
+        from elasticsearch_dsl.connections import Connections
 
-        # populate the metadata for this project
-        self.source_metadata()
+        # elasticsearch connections
+        self._connections = Connections()
+
+        connection_settings = {
+            "hosts": self.ES_HOST,
+            "timeout": self.ES_CLIENT_TIMEOUT,
+            "max_retries": 1,  # maximum number of retries before an exception is propagated
+            "timeout_cutoff": 1,  # number of consecutive failures after which the timeout doesn’t increase
+            "selector_class": KnownLiveSelecter}
+        self._connections.create_connection(alias='sync', **connection_settings)
+        connection_settings.update(transport_class=AsyncTransport)
+        self._connections.create_connection(alias='async', **connection_settings)
+
+        # project metadata under index mappings
+        self._source_metadata = {}
+
+        # populate field notes if exist
+        try:
+            inf = open(self.AVAILABLE_FIELDS_NOTES_PATH, 'r')
+            self._fields_notes = json.load(inf)
+            inf.close()
+        except Exception:
+            self._fields_notes = {}
 
         # initialize payload for standalone tracking batch
         self.tracking_payload = []
 
-    def doc_url(self, bid):
-        ''' Function to return a url on this biothing API to the biothing object specified by bid.'''
-        return os.path.join(self.URL_BASE, self.API_VERSION, self.ES_DOC_TYPE, bid)
+    def validate(self):
+        '''
+        Additional ES settings to validate.
+        '''
+        super().validate()
 
-    def _source_metadata_object(self):
-        ''' Override me to return metadata for your project '''
-        _meta = {}
-        try:
-            _m = self.es_client.indices.get_mapping(index=self.ES_INDEX, doc_type=self.ES_DOC_TYPE)
-            _meta = _m[list(_m.keys())[0]]['mappings'][self.ES_DOC_TYPE]['_meta']['src']
-        except BaseException:
-            pass
-        return _meta
+        assert isinstance(self.ES_INDEX, str)
+        assert isinstance(self.ES_DOC_TYPE, str)
+        assert isinstance(self.ES_INDICES, dict)
+        assert '*' not in self.ES_DOC_TYPE
+
+        self.ES_INDICES[self.ES_DOC_TYPE] = self.ES_INDEX
+
+    def get_es_client(self):
+        '''
+        Return the default blocking elasticsearch client.
+        The connection is created upon first call.
+        '''
+        return self._connections.get_connection('sync')
+
+    def get_async_es_client(self):
+        '''
+        Return the async elasitcsearch client. API calls return awaitable objects.
+        The connection is created upon first call.
+        '''
+        return self._connections.get_connection('async')
+
+    def get_source_metadata(self, biothing_type=None, latest=True):
+        '''
+        Get metadata defined in the ES index.
+
+        :param biothing_type: If multiple biothings are defined, specify which here.
+        :param latest: If set to `false`, return the cached copy. Otherwise retrieve latest.
+
+        '''
+        biothing_type = biothing_type or self.ES_DOC_TYPE
+        cached = biothing_type in self._source_metadata
+
+        if latest or not cached:
+            kwargs = {
+                'index': self.ES_INDICES[biothing_type],
+                'allow_no_indices': True,
+                'ignore_unavailable': True,
+                'local': not latest
+            }
+            if self.ES_VERSION < 7:
+                kwargs['doc_type'] = biothing_type
+
+            mappings = self.get_es_client().indices.get_mapping(**kwargs)
+            metadata = {}
+
+            for index in mappings:
+
+                if self.ES_VERSION < 7:
+                    _meta = mappings[index]['mappings'][biothing_type].get('_meta', {})
+                else:
+                    _meta = mappings[index]['mappings'].get('_meta', {})
+
+                metadata.update(_meta)
+
+            self._source_metadata[biothing_type] = metadata
+
+        return self._source_metadata[biothing_type]
+
+    def get_field_notes(self):
+        '''
+        Return the cached field notes associated with this instance.
+        '''
+        return self._fields_notes
+
+    ##### COMPATIBILITY METHODS #####
+
+    @property
+    def es_client(self):
+        return self.get_es_client()
+
+    @property
+    def async_es_client(self):
+        return self.get_async_es_client()
 
     def source_metadata(self):
-        ''' Function to cache return of the source metadata stored in _meta of index mappings '''
-        if getattr(self, '_source_metadata', False):
-            return self._source_metadata
+        return self.get_source_metadata()
 
-        self._source_metadata = self._source_metadata_object()
-
-        return self._source_metadata
+    def doc_url(self, bid):
+        return os.path.join(self.URL_BASE, self.API_VERSION, self.ES_DOC_TYPE, bid)
 
     def available_fields_notes(self):
-        ''' Caches the available fields notes for this biothing '''
-        try:
-            return self._available_fields_notes
-        except BaseException:
-            pass
-
-        self._available_fields_notes = {}
-
-        if os.path.exists(os.path.abspath(self.AVAILABLE_FIELDS_NOTES_PATH)):
-            try:
-                with open(os.path.abspath(self.AVAILABLE_FIELDS_NOTES_PATH), 'r') as inf:
-                    self._available_fields_notes = json.load(inf)
-            except BaseException:
-                pass
-
-        return self._available_fields_notes
-
-    def get_es_client(self, sync=True):
-        '''
-        Get the `Elasticsearch client <https://elasticsearch-py.readthedocs.io/en/master/>`_
-        for this app, only called once on invocation of server.
-        '''
-
-        if sync:
-            return Elasticsearch(self.ES_HOST, timeout=getattr(self, 'ES_CLIENT_TIMEOUT', 120))
-
-        return AsyncElasticsearch(self.ES_HOST, timeout=getattr(self, 'ES_CLIENT_TIMEOUT', 120))
+        return self._fields_notes

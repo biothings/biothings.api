@@ -1,6 +1,7 @@
 import logging
 import json
 import os
+import elasticsearch
 from biothings.utils.common import is_seq
 from biothings.utils.web.userquery import get_userquery, get_userfilter
 try:
@@ -66,6 +67,9 @@ class ESQueryBuilder(object):
     :param regex_list: A list of (regex, scope) tuples for annotation lookup
     :param userquery_dir: The directory containing user queries for this app
     :param default_scopes: A list representing the default Elasticsearch query scope(s) for this query'''
+
+    ES_VERSION = elasticsearch.__version__[0]
+
     def __init__(self, index, doc_type, options, es_options, scroll_options={}, 
                        userquery_dir='', regex_list=[], default_scopes=['_id'], allow_random_query=False):
         self.index = index
@@ -80,9 +84,14 @@ class ESQueryBuilder(object):
         self.allow_random_query = allow_random_query
 
     def _return_query_kwargs(self, query_kwargs):
-        _kwargs = {"index": self.index, "doc_type": self.doc_type}
+
+        if self.ES_VERSION < 7:
+            _kwargs = {"index": self.index, "doc_type": self.doc_type}
+        else:
+            _kwargs = {"index": self.index}
+
         _kwargs.update(query_kwargs)
-        return _kwargs 
+        return _kwargs
 
     def _get_term_scope(self, term):
         _scopes = None

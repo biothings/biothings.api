@@ -2,13 +2,12 @@
 Tutorial
 ********
 
-This tutorial will guide you through **BioThings Studio**, a pre-configured environment used to build
-and administer BioThings API. This guide will show how to convert a simple flat file
-to a fully operational BioThings API, with as minimal effort as possible.
+This tutorial will guide you through **BioThings Studio** by showing, in a first part, how to convert a simple flat file
+to a fully operational BioThings API. In a second part, this API will enrich for more data.
 
 .. note:: You may also want to read the `developer's guide <studio_guide.html>`_ for more detailed informations.
 
-.. note:: The following tutorial is only valid for **BioThings Studio** release **0.1f**. Check
+.. note:: The following tutorial is only valid for **BioThings Studio** release **0.2a**. Check
    all available `releases <https://github.com/biothings/biothings_studio/releases>`_ for more.
 
 =================
@@ -117,12 +116,13 @@ In this section we'll dive in more details on using the **BioThings Studio** and
 within the **Hub**, declare a build configuration using that datasource, create a build from that configuration, then a data release and finally instantiate a new API service
 and use it to query our data.
 
-The whole source code is available at `https://github.com/sirloon/pharmgkb`_, each branch pointing to a specific step in this tutorial.
+The whole source code is available at https://github.com/sirloon/pharmgkb, each branch pointing to a specific step in this tutorial.
 
 Input data
 ^^^^^^^^^^
 
-For this tutorial, we will use several input files provided by `PharmGKB`_, freely available in their `download`_ section, under "Annotation data":
+For this tutorial, we will use several input files provided by `PharmGKB <https://www.pharmgkb.org/>`_,
+freely available in their `download <https://www.pharmgkb.org/downloads>`_ section, under "Annotation data":
 
 * `annotations.zip`_: contains a file ``var_drug_ann.tsv`` about variant-gene-drug annotations. We'll use this file for the first part of this tutorial.
 * `drugLabels.zip`_: contains a file ``drugLabels.byGene.tsv`` describing, per gene, which drugs have an impact of them
@@ -130,8 +130,6 @@ For this tutorial, we will use several input files provided by `PharmGKB`_, free
 
 The last two files will be used in the second part of this tutorial when we'll add more datasources to our API.
 
-.. _`PharmGKB`: https://www.pharmgkb.org/
-.. _`download`: https://www.pharmgkb.org/downloads
 .. _`annotations.zip`: https://s3.pgkb.org/data/annotations.zip
 .. _`drugLabels.zip`: https://s3.pgkb.org/data/drugLabels.zip
 .. _`occurrences.zip`: https://s3.pgkb.org/data/occurrences.zip
@@ -141,8 +139,13 @@ Parser
 
 In order to ingest this data and make it available as an API, we first need to write a parser. Data is pretty simple, tab-separated files, and we'll
 make it even simpler by using ``pandas`` python library. The first version of this parser is available in branch ``pharmgkb_v1`` at
-`https://github.com/sirloon/pharmgkb/blob/pharmgkb_v1/parser.py`_. After some boiler plate code at the beginning for dependencies and initialization,
+https://github.com/sirloon/pharmgkb/blob/pharmgkb_v1/parser.py. After some boiler plate code at the beginning for dependencies and initialization,
 the main logic is the following:
+
+
+.. code:: python
+
+  def load_annotations(data_folder):
 
     results = {}
     for rec in dat:
@@ -161,9 +164,6 @@ the main logic is the following:
         doc = {"_id": _id, "annotations" : docs}
         yield doc
 
-.. code:: python
-
-  def load_annotations(data_folder):
 
 Our parsing function is named ``load_annotations``, it could be name anything else, but it has to take a folder path ``data_folder`` 
 containing the downloaded data. This path is automatically set by the Hub and points to the latest version available. More on this later.
@@ -225,7 +225,7 @@ in a dictionary indexed by gene ID. The final documents are assembled in the las
    used when data from multiple datasources are merged together, that process is done according to its value
    (all documents sharing the same _id from different datasources will be merged together).
 
-.. note:: in this specific example, we read the whole content of this input file in memory, when store annotations per gene. The data itself
+.. note:: In this specific example, we read the whole content of this input file in memory, when store annotations per gene. The data itself
    is small enough to do this, but memory usage always needs to cautiously considered when writing a parser.
 
 
@@ -393,17 +393,18 @@ In order to do so, click on `Mapping` tab, then click on |inspectlabelicon|.
 
 We can inspect the data for different purposes:
 
- * **Mode**
-   - ``type``: inspection will report any types found in the collection, giving detailed information about the structure
-     of documents coming from the parser. Note results aren't available from the webapp, only in MongoDB.
-   - ``stats``: same as type but gives numbers (count) for each structures and types found. Same as previous, results aren't available
-     in the webapp yet.
-   - ``mapping``: inspect the date types and suggest an ElasticSearch mapping. Will report any error or types incompatible with ES.
+* **Mode**
+
+  - ``type``: inspection will report any types found in the collection, giving detailed information about the structure
+    of documents coming from the parser. Note results aren't available from the webapp, only in MongoDB.
+  - ``stats``: same as type but gives numbers (count) for each structures and types found. Same as previous, results aren't available
+    in the webapp yet.
+  - ``mapping``: inspect the date types and suggest an ElasticSearch mapping. Will report any error or types incompatible with ES.
 
 Here we'll stick to mode ``mapping`` to generate that mapping. There are other options used to explore the data to inspect:
 
- * **Limit**: limit the inspected documents.
- * **Sample**: randomize the documents to inspect (1.0 = consider all documents, 0.0 = skip all documents, 0.5 = consider every other documents)
+* **Limit**: limit the inspected documents.
+* **Sample**: randomize the documents to inspect (1.0 = consider all documents, 0.0 = skip all documents, 0.5 = consider every other documents)
 
 The last two options can be used to reduce the inspection time of huge data collection, or you're absolutely sure the same structure is returned
 for any documents output from the parser.
@@ -572,7 +573,7 @@ At this stage, a new index containing our data has been created on ElasticSearch
 
 We'll name it `pharmgkb` and have it running on port 8000.
 
-.. note:: spaces are not allowed in API names
+.. note:: Spaces are not allowed in API names
 
 .. image:: ../_static/apiform.png
    :width: 450px
@@ -671,7 +672,7 @@ Let's query the data using a gene name (results truncated):
   }
 
 
-.. note:: we don't have to specify ``annotations.gene``, the field in which the value "ABL1" should be searched, because we explicitely asked ElasticSearch
+.. note:: We don't have to specify ``annotations.gene``, the field in which the value "ABL1" should be searched, because we explicitely asked ElasticSearch
    to search that field by default (see fieldbydefault_)
 
 Finally, we can fetch a variant by its PharmGKB ID:
@@ -729,7 +730,7 @@ It provides a simple and generic way to do so, but also comes with some limitati
 downloading three different files, and we now need three different *uploaders* in order to process these files. With our data plugin, only one file is parsed. In order to proceed
 further, we need to manually write dumper and uploaders code...
 
-.. note:: we could also process all three files in one single parser, that is, one single uploder, but for the sake of this tutorial, we'll proceed individually. Files can also
+.. note:: We could also process all three files in one single parser, that is, one single uploder, but for the sake of this tutorial, we'll proceed individually. Files can also
    be updated at different times, keeping uploaders separated helps maintaining data up-to-date without having to process all files at once each time.
 
 Luckily, **BioThings Studio** provides an easy to export python code that has been generated during data plugin registration. Indeed, code is generated from the manifest file, compiled
@@ -982,8 +983,8 @@ The next configuration is summarized in the following picture:
 
 Upon validation, build configuration is ready to be used.
 
-Creating a new build
-^^^^^^^^^^^^^^^^^^^^
+Incremental release
+^^^^^^^^^^^^^^^^^^^
 
 Configuration reflects our changes and is up-to-date, let's create a new build. Click on |menu| if not already open, then "Create a new build"
 
@@ -991,48 +992,65 @@ Configuration reflects our changes and is up-to-date, let's create a new build. 
    :width: 350px
 
 After few seconds, we have a new build listed. Clicking on "Logs" will show how the **Hub** created it. We can see it first merged ``annotations``
-in the "merge-root" step (for *root documents*), then ``druglabels`` and ``occurrences`` sources. The last step, "diff-mapping" shows the **Hub**
-even tried to compute an incremental release by comparing our new build with previous one.
+in the "merge-root" step (for *root documents*), then ``druglabels`` and ``occurrences`` sources. The remaining steps, (*diff*, *release note*) were 
+automatically triggered by the **Hub**. Let's explore these further.
 
 .. image:: ../_static/buildlogs.png
    :width: 300px
 
-If we open the build and click on "Releases" tab, we don't any release generated though... What happened? Time to open the logs (see button on the bottom right).
+If we open the build and click on "Releases" tab, we have a *diff* release, or *incremental* release, as mentioned in the "Logs". Because a previous release existed for
+that build configuration (the one we did in part one), the **Hub** tries to compute an release comparing the two together, identifying new, deleted and updated documents.
+The result is a *diff* release, based on **json diff** format.
 
-.. image:: ../_static/errlogs.png
+.. image:: ../_static/diffrelease.png
+   :width: 450px
+
+In our case, one diff file has been generated, its size is 2 MiB, and contains information to update 971 documents. This is expected since we enriched our existing data. **Hub** also
+mention the mapping has been changed, and these will be reported to the index as we "apply" that diff release.
+
+.. note:: Because we added new datasources, without modifying existing mapping in the first ``annotations`` source, the differences between previous and new mappings correspond to
+   "add" json-diff operations. This means we strictly only add **more** information to the existing mapping. If we'd removed, and modify existing mapping fields, the **Hub** would
+   have reported an error and aborted the generation of that diff release, to prevent an error during the update of the ElasticSearch index, or to avoid data inconsistency.
+
+The other document that has been automatically generated is a *release note*.
+
+.. image:: ../_static/genrelnote.png
+   :width: 300px
+
+If we click on "View", we can see the results: the **Hub** compared previous data versions and counts, deleted and added datasources and field, etc...
+In other words, a "change log" summarizing what happened betwen previous and new releases. These release notes are informative, but also can be published
+when deploying data releases (see part 3).
+
+.. image:: ../_static/relnote.png
    :width: 600px
 
-We indeed have an error, claiming that a "move" operation was found when comparing mappings between new and old builds, using *json-diff*. If we'd directly update our ElasticSearch
-mapping using that *json-diff* operation, we would get an error. To prevent proceeding further, **Hub** stopped the creation of that release. As a consequence, we'll need to create
-a *full* release again (that is, creating a new index). 
+Let's apply that diff release, by clicking on |applydiff|
 
-Let's click on |newrelease|, select *full* and validate. Data is then being indexed, after few seconds, ElasticSearch index is ready.
+.. |applydiff| image:: ../_static/applydiff.png
+   :width: 30px
 
+We can select which index to update, from a dropdown list. We only have index, the one we created earlier in part 1. That said, **Hub** will do its best to filter out any incompatible
+indices, such those not coming from the same build configuration, or not having the same document type.
 
-Creating and testing final API
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Next and final step is to re-create our API in order to serve this new index previously created. Click on |api|, we still have our existing API running, we can either delete or stop it
-using the action buttons.
-
-.. note:: We could also let it run and create a new one with a different port, this would also work, but following this tutorial, we only exposed port 8000 for APIs so we
-   would't be able to easily access it like we did before.
-
-We can then create our new API
-
-.. image:: ../_static/apiformv2.png
+.. image:: ../_static/applydiffform.png
    :width: 500px
 
-Validate, then click on "Run", API is now up and running
+Once confirmed, the synchronization process begins, diff files are applied to the index, just as if we were "patching" data. We can track the command execution from the command list, and
+also from the notification popups when it's done.
 
-.. note:: You may encountered an error (red bell) where Studio claims the address is already in use. This is known issue that randomly occurs. If so, **Hub** needs to be manually restarted,
-   click on |settings| (top right corner) then |restart| and try again.
+.. image:: ../_static/commanddiff.png
+   :width: 500px
 
-.. |settings| image:: ../_static/settings.png
-   :width: 30px
-.. |restart| image:: ../_static/restart.png
-   :width: 90px
+.. image:: ../_static/notifdiff.png
+   :width: 500px
 
+Our index, currently served by our API defined in the part 1, has been updated, using a diff, or incremental, release. It's time to have a look at the data.
+
+
+Testing final API
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Because we directly apply a diff, or patch our data, on ElasticSearch index, we don't need to re-create an API. Querying the API should just transparently reflect that "live" update.
 Time to try our new enriched API. We'll use ``curl`` again, here few query examples:
 
 .. code:: bash
@@ -1159,7 +1177,22 @@ Troubleshooting
 
 We test and make sure, as much as we can, that the **BioThings Studio** image is up-to-date and running properly. But things can still go wrong...
 
-First make sure all services are running. Enter the container and type ``netstat -tnlp``, you should see
+A good starting point investigating an issue is to look at the logs from the **BioThings Studio**. Make sure connected (green power button on the top right),
+then click "Logs" button, on the bottom right. You will see logs in real-time (if not connected, it will complain about a disconnected websocket). As you click
+and perform actions through out the web application, you will see log message in that windows, and potentially errors not displayed (or with less details) in the
+application.
+
+.. image:: ../_static/logs.png
+   :width: 500px
+
+The "Terminal" (click on the bottom left button). gives access to commands you can manually type from the web application. Basically, any action performed clicking on the application
+is converted into a command call. You can even see what commands were launched, which ones are running. This terminal gives also access to more commands, and advanced options that may
+be useful to troubleshoot an issue. Typing ``help()``, or even passing a command name such as ``help(dump)`` will print documentation on available commands and how to use them.
+
+.. image:: ../_static/term.png
+   :width: 500px
+
+On a lower level, make sure all services are running in the docker container. Enter the container with ``docker exec -ti studio /bin/bash`` and type ``netstat -tnlp``, you should see
 services running on ports (see usual running `services`_). If services running on ports 7080 or 7022 aren't running,
 it means the **Hub** has not started. If you just started the instance, wait a little more as services may take a while before
 they're fully started and ready.
@@ -1205,7 +1238,7 @@ directory (in our case, ``/home/biothings/biothings_studio``)
 
 .. note:: Press Control-B then D to dettach the tmux session and let the **Hub** running in background.
 
-By default, logs are available in ``/home/biothings/biothings_studio/data/logs``.
+By default, logs are available in ``/data/biothings_studio/logs/``.
 
 Finally, you can report issues and request for help, by joining Biothings Google Groups (https://groups.google.com/forum/#!forum/biothings)
 
