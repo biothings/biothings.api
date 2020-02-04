@@ -205,7 +205,7 @@ class BiothingESWebSettings(BiothingWebSettings):
             if self.ES_VERSION < 7:
                 kwargs['doc_type'] = biothing_type
 
-            mappings = self.get_es_client().get_mapping(**kwargs)
+            mappings = self.get_es_client().indices.get_mapping(**kwargs)
             metadata = {}
 
             for index in mappings:
@@ -238,7 +238,7 @@ class BiothingESWebSettings(BiothingWebSettings):
         return self.get_async_es_client()
 
     def source_metadata(self):
-        pass
+        return self.get_source_metadata()
 
     def doc_url(self, bid):
         return os.path.join(self.URL_BASE, self.API_VERSION, self.ES_DOC_TYPE, bid)
