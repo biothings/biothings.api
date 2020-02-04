@@ -83,7 +83,7 @@ class ESQuery(object):
         ''' Given ``query_kwargs`` from ESQueryBuilder, return results of query POST on ES client.'''
         return await self._common_POST_query(query_kwargs)
 
-    async def _metadata_query(self, query_kwargs):
+    async def metadata_query(self, query_kwargs):
         ''' Given ``query_kwargs`` from ESQueryBuilder, return results of metadata query on ES client.'''
         return await self.client.indices.get_mapping(**query_kwargs)
 

@@ -147,6 +147,8 @@ class ESResultTransformer(object):
         get_url = lambda val: val.get('license_url_short', val.get('license_url'))
         sources = self.source_metadata.get(self.options.assembly, {}) \
             if self.options.assembly else self.source_metadata
+        if 'src' in sources: #TODO
+            sources = sources['src']
         licenses = {source: get_url(val) for source, val in sources.items() if get_url(val)}
 
         def flatten_key(dic):

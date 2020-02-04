@@ -99,6 +99,10 @@ class BiothingWebSettings(object):
     def git_repo_path(self):
         return self._git_repo_path
 
+    @property
+    def _app_git_repo(self):
+        return self._git_repo_path
+
 class KnownLiveSelecter(ConnectionSelector):
     """
     Select the first connection all the time
@@ -183,7 +187,7 @@ class BiothingESWebSettings(BiothingWebSettings):
         '''
         return self._connections.get_connection('async')
 
-    def get_source_metadata(self, biothing_type='doc', latest=True):
+    def get_source_metadata(self, biothing_type=None, latest=True):
         '''
         Get metadata defined in the ES index.
 
@@ -191,6 +195,7 @@ class BiothingESWebSettings(BiothingWebSettings):
         :param latest: If set to `false`, return the cached copy. Otherwise retrieve latest.
 
         '''
+        biothing_type = biothing_type or self.ES_DOC_TYPE
         cached = biothing_type in self._source_metadata
 
         if latest or not cached:
