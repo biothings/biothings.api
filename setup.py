@@ -71,7 +71,7 @@ hub_requires = [
     'networkx>=2.1',
     'jsonschema>=2.6.0',
     'pip',              # auto-install requirements from plugins
-    'pandas',  # json with inf/nan and more to come
+    'pandas==1.0.1',  # json with inf/nan and more to come
     'yapf',  # code reformatter, better results than autopep8
     'requests-aws4auth',  # aws s3 auth requests for autohub
     'tavern==0.34.0', # rest api testing
