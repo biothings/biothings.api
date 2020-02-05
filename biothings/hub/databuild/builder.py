@@ -930,13 +930,18 @@ class BuilderManager(BaseManager):
         builder can call without any argument to generate a SourceBackend.
         Same for target_backend_factory for the TargetBackend. builder_class if given
         will be used as the actual Builder class used for the merge and will be passed
-        same arguments as the base DataBuilder
+        same arguments as the base DataBuilder. It can also be a list of classes, in which
+        case the default used one is the first, when it's necessary to define multiple builders.
         """
         super(BuilderManager,self).__init__(*args,**kwargs)
         self.src_build_config = get_src_build_config()
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
-        self.default_builder_class = builder_class or DataBuilder
+        if isinstance(builder_class,list):
+            self.arg_builder_classes = builder_class
+        else:
+            self.arg_builder_classes = [builder_class]
+        self.default_builder_class = self.arg_builder_classes[0] or DataBuilder
         self.builder_classes = {}
         self.poll_schedule = poll_schedule
         self.setup_log()
@@ -1114,17 +1119,18 @@ class BuilderManager(BaseManager):
     def find_builder_classes(self):
         """
         Find all available build class:
-         1. default one in the manager
+         1. classes passed during manager init (build_class)
+            (that includes the default builder)
          2. all subclassing DataBuilder in:
            a. biothings.hub.databuilder.*
            b. hub.databuilder.* (app-specific)
         """
-        bclasses = {self.default_builder_class}
+        bclasses = set(self.arg_builder_classes)
         mods = [sys.modules[__name__]]
         try:
             import hub.databuild as m
             mods.append(m)
-        except ImportError:
+        except ImportError as e:
             pass
         for klass in find_classes_subclassing(mods,DataBuilder):
             bclasses.add(klass)

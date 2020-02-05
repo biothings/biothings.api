@@ -978,7 +978,12 @@ def dict_traverse(d,func,traverse_list=False):
     for each key/value found. func must return a
     tuple(new_key,new_value)
     """
-    for k,v in sorted(d.items(),key=lambda x: x[0]):
+    try:
+        items = sorted(d.items(),key=lambda x: x[0])
+    except TypeError:
+        # not sortable
+        items = d.items()
+    for k,v in items:
         if isinstance(v, dict):
             dict_traverse(v,func,traverse_list=traverse_list)
         elif traverse_list and isinstance(v,list):
