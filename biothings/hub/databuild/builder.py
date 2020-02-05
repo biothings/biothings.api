@@ -1124,7 +1124,7 @@ class BuilderManager(BaseManager):
         try:
             import hub.databuild as m
             mods.append(m)
-        except ImportError:
+        except ImportError as e:
             pass
         for klass in find_classes_subclassing(mods,DataBuilder):
             bclasses.add(klass)
