@@ -15,6 +15,9 @@ from importlib import import_module
 
 import elasticsearch
 from elasticsearch import ConnectionSelector
+from elasticsearch_async.transport import AsyncTransport
+from elasticsearch_dsl.connections import Connections
+
 
 # Error class
 class BiothingConfigError(Exception):
@@ -128,10 +131,6 @@ class BiothingESWebSettings(BiothingWebSettings):
         this biothing.  For more information see `config module`_ documentation.
         '''
         super(BiothingESWebSettings, self).__init__(config)
-
-        # temp. move import there to hide async dep unless used
-        from elasticsearch_async.transport import AsyncTransport
-        from elasticsearch_dsl.connections import Connections
 
         # elasticsearch connections
         self._connections = Connections()
