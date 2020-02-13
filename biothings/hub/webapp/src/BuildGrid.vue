@@ -3,16 +3,26 @@
 
         <div class="ui left vertical labeled icon small inverted sidebar menu">
             <div class="item"><i>Existing configurations</i></div>
-            <a class="ui buildconfigs dropdown item" v-for="(conf,conf_name) in build_configs">
+            <a class="ui buildconfigs dropdown item" v-for="(conf,conf_name) in build_configs" :id="'config_' + conf_name">
                 <i class="dropdown icon"></i>
                 <div :class="['ui', build_colors[conf_name], 'empty circular label']"></div>
                 {{conf_name}} <b v-if="conf.error" class="red"><i class="red bell icon"></i></b>
                 <div class="ui inverted menu">
-                    <div v-if="!conf.error" class="item" :conf-name="conf_name" @click="newBuild($event)"><i class="cube icon"></i> Create new build</div>
-                    <div class="item" :conf-name="conf_name" @click="editConfiguration($event)">
-                        <i class="edit outline icon"></i> Edit configuration <b v-if="conf.error" class="red"><i class="red bell icon"></i></b>
+                    <div v-if="!conf.error" class="item" :conf-name="conf_name" @click="newBuild($event)" :id="'create_' + conf_name">
+                        <i class="cube icon"></i>
+                        Create new build
                     </div>
-                    <div class="item" :conf-name="conf_name" @click="deleteConfiguration($event)"><i class="trash alternate outline icon"></i> Delete configuration</div>
+                    <div class="item" :conf-name="conf_name" @click="editConfiguration($event)">
+                        <i class="edit outline icon"></i>
+                        Edit configuration
+                        <b v-if="conf.error" class="red" :id="'edit_' + conf_name">
+                            <i class="red bell icon"></i>
+                        </b>
+                    </div>
+                    <div class="item" :conf-name="conf_name" @click="deleteConfiguration($event)" :id="'delete_' + conf_name">
+                        <i class="trash alternate outline icon"></i>
+                        Delete configuration
+                    </div>
                 </div>
             </a>
             <div class="item"><i>Other actions</i></div>
@@ -152,7 +162,7 @@
                         <i class="remove icon"></i>
                         Cancel
                     </div>
-                    <div class="ui green ok inverted button">
+                    <div class="ui green ok inverted button" id="newbuildconf_ok">
                         <i class="checkmark icon"></i>
                         OK
                     </div>
@@ -204,7 +214,7 @@
                         <i class="remove icon"></i>
                         Cancel
                     </div>
-                    <div class="ui green ok inverted button">
+                    <div class="ui green ok inverted button" id="newbuild_ok">
                         <i class="checkmark icon"></i>
                         OK
                     </div>

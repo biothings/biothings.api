@@ -102,7 +102,7 @@
                     <i class="remove icon"></i>
                     Cancel
                 </div>
-                <div class="ui green ok inverted button">
+                <div class="ui green ok inverted button" id="newrelease_ok">
                     <i class="checkmark icon"></i>
                     OK
                 </div>
