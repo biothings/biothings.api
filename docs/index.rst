@@ -24,6 +24,11 @@ BioThings API
 *************
 We also use "*BioThings API*" (or *BioThings APIs*) to refer to an API (or a collection of APIs) built with BioThings SDK. For example, both our popular `MyGene.Info <http://mygene.info/>`_ and `MyVariant.Info <http://myvariant.info/>`_ APIs are built and maintained using this BioThings SDK.
 
+BioThings Studio
+****************
+*BioThings Studio* is a pre-configured environment used to build and administer BioThings API. At its core is the *Hub*, a backend service responsible for maintaining data up-to-date,
+producing data releases and update API frontends.
+
 
 Installing BioThings SDK
 ------------------------
