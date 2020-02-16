@@ -850,7 +850,7 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
             # normalize to scalar
             dids[_id] = dids[_id][0]
 
-    return dids.values()
+    return list(dids.values())
 
 
 def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,merger,batch_num):
