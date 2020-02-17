@@ -2,23 +2,43 @@
     Biothings Query Component Common Tests
 '''
 
+import elasticsearch
+import pytest
 
 from helper import BiothingsTestCase
 
+TEST_INDEX = 'bts_test'
+TEST_DOC_TYPE = 'doc'
 
+@pytest.fixture
+def setup_es():
+    """
+    Populate a document in ES for testing.
+    """
+    kwargs = {
+        "index": TEST_INDEX,
+        "doc_type": TEST_DOC_TYPE,
+        "body": {
+            "1101": "test-299",
+            "1102": "test-300"
+        },
+        "id": 1
+    }
+    if elasticsearch.__version__[0] > 6:
+        kwargs.pop('doc_type')
+
+    client = elasticsearch.Elasticsearch()
+    client.index(**kwargs)
+    client.indices.refresh()
+    yield
+    client.indices.delete(index=TEST_INDEX)
+
+@pytest.mark.usefixtures("setup_es")
 class TestQuery(BiothingsTestCase):
 
-    def setUp(self):
-        super().setUp()
-        client = self.settings.get_es_client()
-        client.index(
-            index='bts_test',
-            doc_type=self.settings.ES_DOC_TYPE,
-            body={
-                "1101": "test-299",
-                "1102": "test-300"
-            }, id=1)
-        self.settings.ES_INDEX = 'bts_test'
+    @classmethod
+    def setup_class(cls):
+        cls.settings.ES_INDEX = TEST_INDEX
 
     def test_01(self):
         ''' KWARGS CTRL Format Json '''
