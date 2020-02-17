@@ -67,7 +67,7 @@ class MetadataHandler(BaseESRequestHandler):
         _query = self._pre_query_GET_hook(options, _query)
 
         #try:
-        res = await _backend.metadata_query(_query)
+        res = self.web_settings.get_source_mappings(refresh=True)
         #except Exception:
         #    self.log_exceptions("Error running query")
         #    self.return_json({'success': False, 'error': 'Error executing query'})

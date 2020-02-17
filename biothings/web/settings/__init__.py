@@ -145,8 +145,8 @@ class BiothingESWebSettings(BiothingWebSettings):
         connection_settings.update(transport_class=AsyncTransport)
         self._connections.create_connection(alias='async', **connection_settings)
 
-        # project metadata under index mappings
-        self._source_metadata = {}
+        # cached index mappings
+        self._source_mappings = {}
 
         # populate field notes if exist
         try:
@@ -186,42 +186,44 @@ class BiothingESWebSettings(BiothingWebSettings):
         '''
         return self._connections.get_connection('async')
 
-    def get_source_metadata(self, biothing_type=None, latest=True):
+    def get_source_mappings(self, biothing_type=None, refresh=False):
         '''
-        Get metadata defined in the ES index.
+        Get mappings defined in the corresponding ES indices.
+        Result does not include mapping types.
 
         :param biothing_type: If multiple biothings are defined, specify which here.
-        :param latest: If set to `false`, return the cached copy. Otherwise retrieve latest.
+        :param refresh: If set to `false`, return the cached copy. Otherwise retrieve latest.
 
         '''
         biothing_type = biothing_type or self.ES_DOC_TYPE
-        cached = biothing_type in self._source_metadata
+        cached = biothing_type in self._source_mappings
 
-        if latest or not cached:
+        if refresh or not cached:
+
             kwargs = {
                 'index': self.ES_INDICES[biothing_type],
                 'allow_no_indices': True,
                 'ignore_unavailable': True,
-                'local': not latest
+                'local': not refresh
             }
             if self.ES_VERSION < 7:
                 kwargs['doc_type'] = biothing_type
 
             mappings = self.get_es_client().indices.get_mapping(**kwargs)
-            metadata = {}
+            result = {}
 
             for index in mappings:
 
                 if self.ES_VERSION < 7:
-                    _meta = mappings[index]['mappings'][biothing_type].get('_meta', {})
+                    mapping = mappings[index]['mappings'][biothing_type]
                 else:
-                    _meta = mappings[index]['mappings'].get('_meta', {})
+                    mapping = mappings[index]['mappings']
 
-                metadata.update(_meta)
+                result[index] = mapping
 
-            self._source_metadata[biothing_type] = metadata
+            self._source_mappings[biothing_type] = result  # cache results
 
-        return self._source_metadata[biothing_type]
+        return self._source_mappings[biothing_type]
 
     def get_field_notes(self):
         '''
@@ -240,7 +242,7 @@ class BiothingESWebSettings(BiothingWebSettings):
         return self.get_async_es_client()
 
     def source_metadata(self):
-        return self.get_source_metadata()
+        return self.get_source_mappings()
 
     def doc_url(self, bid):
         return os.path.join(self.URL_BASE, self.API_VERSION, self.ES_DOC_TYPE, bid)
