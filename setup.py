@@ -41,6 +41,7 @@ if commit_hash or num_commits:
 install_requires = [
     'requests>=2.21.0',
     'tornado==5.1.1',
+    'gitdb2==2.0.4', # 3.x not compatible with gitpython 2.1.11
     'gitpython==2.1.11',
     'elasticsearch==6.3.1',
     'elasticsearch-dsl>=6.3.1, <7.0.0',
