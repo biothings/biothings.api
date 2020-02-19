@@ -9,3 +9,4 @@ IPython
 boto
 jsonpointer
 elasticsearch==6.3.1
+async-timeout==3.0.1 # for elasticsearch-async
