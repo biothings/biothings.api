@@ -1,3 +1,7 @@
+'''
+Deprecated. This module is not used any more
+'''
+
 import types
 import logging
 
@@ -46,7 +50,7 @@ class ParserValidator(object):
 
     def validate(self,func,*args,**kwargs):
         """
-        Validate parsing function "func". args and kwargs are 
+        Validate parsing function "func". args and kwargs are
         passed as arguments to this function.
         """
         assert callable(func),"%s is not callable" % func
