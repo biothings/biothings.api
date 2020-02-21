@@ -56,7 +56,7 @@ class BiothingWebSettings(object):
             if name in os.environ:
                 return os.environ[name]
 
-            return getattr(self._user, name, getattr(self._default, name))
+            return getattr(self._user, name, getattr(self._default, name, None))
 
         raise AttributeError("No setting named '{}' in configuration file.".format(name))
 
