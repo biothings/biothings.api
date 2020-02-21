@@ -11,7 +11,7 @@ before_install:
   - docker run -p 9200:9200 -e "discovery.type=single-node" -d docker.elastic.co/elasticsearch/elasticsearch:6.5.0
 
 install:
-  - pip install .[web_extra]
+  - pip install -r requirements_web_es6.txt
   - pip install nose
 
 script:

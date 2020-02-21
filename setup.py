@@ -41,11 +41,11 @@ if commit_hash or num_commits:
 install_requires = [
     'requests>=2.21.0',
     'tornado==5.1.1',
-    'gitdb2==2.0.4', # 3.x not compatible with gitpython 2.1.11
+    'gitdb2==2.0.4',    # 3.x not compatible with gitpython 2.1.11
     'gitpython==2.1.11',
-    'elasticsearch==6.3.1',
-    'elasticsearch-dsl>=6.3.1, <7.0.0',
-    'elasticsearch-async==6.2.0'
+    'elasticsearch>=6, <8',
+    'elasticsearch-dsl>=6, <8',
+    'elasticsearch-async>=6.2.0'
 ]
 
 # extra requirements for biothings.web
@@ -73,12 +73,12 @@ hub_requires = [
     'networkx>=2.1',
     'jsonschema>=2.6.0',
     'pip',              # auto-install requirements from plugins
-    'pandas==1.0.1',  # json with inf/nan and more to come
-    'yapf',  # code reformatter, better results than autopep8
-    'requests-aws4auth',  # aws s3 auth requests for autohub
-    'tavern==0.34.0', # rest api testing
-    'nose==1.3.7', # unitests
-    'biothings_client==0.2.1' # datatransform (api client)
+    'pandas==1.0.1',    # json with inf/nan and more to come
+    'yapf',             # code reformatter, better results than autopep8
+    'requests-aws4auth',    # aws s3 auth requests for autohub
+    'tavern==0.34.0',   # rest api testing
+    'nose==1.3.7',      # unitests
+    'biothings_client==0.2.1'   # datatransform (api client)
 ]
 
 # extra requirements for building docs

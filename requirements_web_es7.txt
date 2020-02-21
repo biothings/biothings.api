@@ -1,0 +1,3 @@
+elasticsearch>=7, <8
+elasticsearch-dsl>=7, <8
+-e .[web_extra]

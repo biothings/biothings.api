@@ -14,7 +14,7 @@ phases:
     commands:
        - pip3 install pytest
        - pip3 install nose
-       - pip3 install .[web_extra]
+       - pip3 install -r requirements_web_es6.txt
        - pytest tests --junitxml=test_result.xml
 reports:
   pytest:
