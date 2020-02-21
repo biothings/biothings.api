@@ -1,3 +1,4 @@
+[![Downloads](https://pepy.tech/badge/biothings)](https://pepy.tech/project/biothings)
 [![biothings package](https://badge.fury.io/py/biothings.svg)](https://pypi.python.org/pypi/biothings)
 [![biothings_version](https://img.shields.io/pypi/pyversions/biothings.svg)](https://pypi.python.org/pypi/biothings)
 [![biothings_version](https://img.shields.io/pypi/format/biothings.svg)](https://pypi.python.org/pypi/biothings)
