@@ -73,7 +73,7 @@ def main(APP_LIST, app_settings={}, debug_settings={}, sentry_client_key=None, u
     if use_curl:
         tornado.httpclient.AsyncHTTPClient.configure(
             "tornado.curl_httpclient.CurlAsyncHTTPClient")
-    http_server = tornado.httpserver.HTTPServer(application)
+    http_server = tornado.httpserver.HTTPServer(application, xheaders=True)
     http_server.listen(options.port, address=options.address)
     loop = tornado.ioloop.IOLoop.instance()
     if options.debug:
