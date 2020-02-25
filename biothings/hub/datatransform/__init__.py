@@ -15,5 +15,5 @@ from biothings.hub.datatransform.datatransform_mdb import CIMongoDBEdge
 from biothings.hub.datatransform.ciidstruct import CIIDStruct
 
 # this involved biothings client dependency, skip it for now
-#from biothings.hub.datatransform.datatransform_api import MyChemInfoEdge
-#from biothings.hub.datatransform.datatransform_api import MyGeneInfoEdge
+from biothings.hub.datatransform.datatransform_api import MyChemInfoEdge
+from biothings.hub.datatransform.datatransform_api import MyGeneInfoEdge
