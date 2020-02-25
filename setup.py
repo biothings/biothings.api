@@ -56,28 +56,26 @@ web_extra_requires = [
 
 # extra requirements to run biothings.hub
 hub_requires = [
-    'beautifulsoup4',
-    'aiocron',
+    'beautifulsoup4',   # used in dumper.GoogleDriveDumper
+    'aiocron',          # setup scheduled jobs
     'asyncssh==1.7.1',  # needs libffi-dev installed (apt-get)
     'pymongo',
     'psutil',
-    'jsonpointer',
-    'IPython',
+    'jsonpointer',      # for utils.jsonpatch
+    'IPython',          # for interactive hub console
     'boto',
     'boto3',
     'multiprocessing_on_dill',  # can replace pickler in concurrent.futures
-    'dill',
+    'dill',             # a pickle alternative with extra object type support
     'pyinotify',        # hub reloader
     'prettytable',      # diff report renderer
-    'sockjs-tornado==1.0.6',
-    'networkx>=2.1',
+    'sockjs-tornado==1.0.6',   # socket server for HubServer
     'jsonschema>=2.6.0',
     'pip',              # auto-install requirements from plugins
     'pandas==1.0.1',    # json with inf/nan and more to come
     'yapf',             # code reformatter, better results than autopep8
     'requests-aws4auth',    # aws s3 auth requests for autohub
-    'tavern==0.34.0',   # rest api testing
-    'nose==1.3.7',      # unitests
+    'networkx>=2.1',            # datatransform
     'biothings_client==0.2.1'   # datatransform (api client)
 ]
 
@@ -127,7 +125,7 @@ setup(
     install_requires=install_requires,
     extras_require={
         'web_extra': web_extra_requires,
-        'hub': hub_requires,
+        'hub': hub_requires + test_requires
         'dev': web_extra_requires + hub_requires + docs_requires + test_requires
     },
 )
