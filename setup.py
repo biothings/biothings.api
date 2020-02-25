@@ -125,7 +125,7 @@ setup(
     install_requires=install_requires,
     extras_require={
         'web_extra': web_extra_requires,
-        'hub': hub_requires + test_requires
+        'hub': hub_requires + test_requires,
         'dev': web_extra_requires + hub_requires + docs_requires + test_requires
     },
 )
