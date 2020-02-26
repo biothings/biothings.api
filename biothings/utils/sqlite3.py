@@ -240,6 +240,9 @@ class Collection(object):
     def count(self):
         return self.get_conn().execute("SELECT count(_id) FROM %s" % self.colname).fetchone()[0]
 
+    def drop(self):
+        self.get_conn().execute("DROP TABLE %s" % self.colname).fetchall()
+
     def __getitem__(self, _id):
         return self.find_one({"_id":_id})
 
