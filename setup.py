@@ -68,7 +68,7 @@ hub_requires = [
     'dill',             # a pickle alternative with extra object type support
     'pyinotify',        # hub reloader
     'prettytable',      # diff report renderer
-    'sockjs-tornado==1.0.6',   # socket server for HubServer
+    'sockjs-tornado==1.0.6',   # websocket server for HubServer
     'jsonschema>=2.6.0',
     'pip',              # auto-install requirements from plugins
     'pandas==1.0.1',    # json with inf/nan and more to come
