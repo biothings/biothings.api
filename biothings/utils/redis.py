@@ -1,6 +1,10 @@
-import redis
 import random
 import logging
+
+try:
+    import redis
+except ImportError:
+    logging.error('"redis" module is required to access Redis server.')
 
 
 class RedisClientError(Exception): pass
@@ -75,7 +79,7 @@ class RedisClient(object):
           database index and database name (so a database can be accessed
           by name). This method will flush this db and prepare it.
         - any other databases will be flushed if deep is True, making the redis
-          server fully dedicated to 
+          server fully dedicated to
         """
         if deep:
             self.mapdb.flushall()
