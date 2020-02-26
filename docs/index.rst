@@ -60,6 +60,7 @@ Alternatively, you can download the source code, or clone the `BioThings SDK rep
     doc/studio
     doc/standalone
     doc/hub_tutorial
+    doc/datatransform
 
 .. toctree::
     :maxdepth: 3
