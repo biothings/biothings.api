@@ -13,8 +13,8 @@ class SimpleConfigTest(object):
         import importlib
         importlib.reload(conf_base)
         conf_base.HUB_DB_BACKEND = {
-                "module" : "biothings.utils.mongo",
-                "uri" : "mongodb://su05:27017"
+                "module" : "biothings.utils.sqlite3",
+                "sqlite_db_folder" : "."
                 } # mandatory for
         conf_base.DATA_HUB_DB_DATABASE = "unittest_config"
         # simulaye config param set at runtime, not from config files
