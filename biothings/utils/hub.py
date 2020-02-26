@@ -13,8 +13,12 @@ from collections import OrderedDict
 import pyinotify
 
 from biothings import config
+if hasattr(config, 'logger'):
+    logging = config.logger
+else:
+    import logging
 from biothings.utils.dataload import to_boolean
-logging = config.logger
+
 from biothings.utils.common import timesofar, sizeof_fmt
 import biothings.utils.aws as aws
 from biothings.utils.hub_db import get_cmd, get_src_dump, get_src_build, get_src_build_config, \
@@ -311,7 +315,7 @@ class HubShell(InteractiveShell):
             pat = r'^([A-Za-z_]+)\(["\'\w\s=,.-]*\)$'
         else:
             pat = r'(.*)\(.*\)' # more permissive
-        m = re.match(pat,line) 
+        m = re.match(pat,line)
         if m:
             cmd = m.groups()[0].strip()
             if secure and not cmd in self.commands:
@@ -441,7 +445,7 @@ class HubShell(InteractiveShell):
                     # if we get there. So the command is sill running, so we don't
                     # know if it failed or not, so no need to check failed there,
                     # it's been handled above.
-                    # If asksed is_done=false, we don't need to check failed, 
+                    # If asksed is_done=false, we don't need to check failed,
                     # same logic applies
                     continue
             else:
