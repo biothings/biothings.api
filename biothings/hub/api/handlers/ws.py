@@ -10,16 +10,19 @@ import sockjs.tornado
 
 
 class WebSocketConnection(sockjs.tornado.SockJSConnection):
-    """Listen to Hub DB through a listener object, and publish
-    events to any client connected"""
+    """
+    Listen to Hub DB through a listener object, and publish
+    events to any client connected
+    """
 
     clients = set()
 
-    def __init__(self,session,listeners):
+    def __init__(self, session, listeners):
         """
         SockJSConnection.__init__() takes only a session as argument, and there's
         no way to pass custom settings. In order to use that class, we need to use partial
         to partially init the instance with 'listeners' and let the rest use the 'session'
+
         parameter:
           pconn = partial(WebSocketConnection,listeners=listeners)
           ws_router = sockjs.tornado.SockJSRouter(pconn,"/path")
@@ -69,7 +72,7 @@ class WebSocketConnection(sockjs.tornado.SockJSConnection):
 
 class HubDBListener(ChangeListener):
     """
-    Get events from Hub DB and propagate them through the 
+    Get events from Hub DB and propagate them through the
     websocket instance
     """
 
@@ -94,7 +97,7 @@ class LogListener(ChangeListener):
                 asyncio.set_event_loop(loop)
             finally:
                 logging.disable(logging.NOTSET)
-        
+
             try:
                 self.socket.publish(event)
             except Exception as e:

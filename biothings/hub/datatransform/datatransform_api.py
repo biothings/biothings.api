@@ -17,24 +17,24 @@ class DataTransformAPI(DataTransform):
     an API endpoint as a data source.
 
     This class uses biothings apis to conversion from one key type to another.
-    Base classes are used with the decorator syntax shown below:
+    Base classes are used with the decorator syntax shown below::
 
-    @IDLookupMyChemInfo(input_types, output_types)
-    def load_document(doc_lst):
-        for d in doc_lst:
-            yield d
+        @IDLookupMyChemInfo(input_types, output_types)
+        def load_document(doc_lst):
+            for d in doc_lst:
+                yield d
 
     Lookup fields are configured in the 'lookup_fields' object, examples of which
     can be found in 'IDLookupMyGeneInfo' and 'IDLookupMyChemInfo'.
 
     Required Options:
-    - input_types
-        - 'type'
-        - ('type', 'nested_source_field')
-        - [('type1', 'nested.source_field1'), ('type2', 'nested.source_field2'), ...]
-    - output_types:
-        - 'type'
-        - ['type1', 'type2']
+        - input_types
+            - 'type'
+            - ('type', 'nested_source_field')
+            - [('type1', 'nested.source_field1'), ('type2', 'nested.source_field2'), ...]
+        - output_types:
+            - 'type'
+            - ['type1', 'type2']
 
     Additional Options: see DataTransform class
     """

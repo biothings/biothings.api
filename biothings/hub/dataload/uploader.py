@@ -34,7 +34,7 @@ def upload_worker(name, storage_class, loaddata_func, col_name,
     Pickable job launcher, typically running from multiprocessing.
     storage_class will instanciate with col_name, the destination
     collection name. loaddata_func is the parsing/loading function,
-    called with *args
+    called with `*args`.
     """
     data = []
     try:
@@ -671,7 +671,7 @@ class UploaderManager(BaseSourceManager):
     def upload_all(self,raise_on_error=False,**kwargs):
         """
         Trigger upload processes for all registered resources.
-        **kwargs are passed to upload_src() method
+        `**kwargs` are passed to upload_src() method
         """
         jobs = []
         for src in self.register:
