@@ -1016,6 +1016,7 @@ class GoogleDriveDumper(HTTPDumper):
         remoteurl is a google drive link containing a document ID, such as:
             - https://drive.google.com/open?id=<1234567890ABCDEF>
             - https://drive.google.com/file/d/<1234567890ABCDEF>/view
+
         It can also be just a document ID
         '''
         self.prepare_local_folders(localfile)

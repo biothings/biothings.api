@@ -130,15 +130,17 @@ class Indexer(object):
     def index(self, target_name, index_name, job_manager, steps=["index","post"],
               batch_size=10000, ids=None, mode="index", worker=None):
         """
-        Build an index named "index_name" with data from collection
-        "target_collection". "ids" can be passed to selectively index documents. "mode" can have the following
-        values:
-        - 'purge': will delete index if it exists
-        - 'resume': will use existing index and add documents. "ids" can be passed as a list of missing IDs,
-                 or, if not pass, ES will be queried to identify which IDs are missing for each batch in
-                 order to complete the index.
-        - 'merge': will merge data with existing index' documents, used when populated several distinct times (cold/hot merge for instance)
-        - None (default): will create a new index, assuming it doesn't already exist
+        Build an index named "index_name" with data from collection "target_collection".
+
+        "ids" can be passed to selectively index documents.
+
+        "mode" can have the following values:
+            - 'purge': will delete index if it exists
+            - 'resume': will use existing index and add documents. "ids" can be passed as a list of missing IDs,
+                    or, if not pass, ES will be queried to identify which IDs are missing for each batch in
+                    order to complete the index.
+            - 'merge': will merge data with existing index' documents, used when populated several distinct times (cold/hot merge for instance)
+            - None (default): will create a new index, assuming it doesn't already exist
         """
         assert job_manager
         # check what to do
@@ -207,7 +209,7 @@ class Indexer(object):
 
             jobs = []
             total = target_collection.count()
-            btotal = math.ceil(total/batch_size) 
+            btotal = math.ceil(total/batch_size)
             bnum = 1
             if ids:
                 self.logger.info("Indexing from '%s' with specific list of _ids, create indexer job with batch_size=%d" % (target_name, batch_size))
@@ -368,7 +370,7 @@ class Indexer(object):
                     for k,v in d.items():
                         if type(v) == dict:
                             if k in target:
-                                target[k] = merge_index_info(target[k],v) 
+                                target[k] = merge_index_info(target[k],v)
                             else:
                                 v.pop("__REPLACE__",None)
                                 # merge v with "nothing" just to make sure to remove any "__REPLACE__"
@@ -593,7 +595,7 @@ class ColdHotIndexer(Indexer):
             yield from task
             if got_error:
                 raise got_error
-             
+
         return {self.index_name:cnt}
 
     # by default, build_doc is considered to be the hot one
@@ -671,7 +673,7 @@ class ColdHotIndexer(Indexer):
 
 
 class IndexManager(BaseManager):
-    
+
     DEFAULT_INDEXER = Indexer
 
     def __init__(self, *args, **kwargs):
@@ -810,7 +812,7 @@ class IndexManager(BaseManager):
 
     def index(self, indexer_env, target_name=None, index_name=None, ids=None, **kwargs):
         """
-        Trigger an index creation to index the collection target_name and create an 
+        Trigger an index creation to index the collection target_name and create an
         index named index_name (or target_name if None). Optional list of IDs can be
         passed to index specific documents.
         """
