@@ -16,3 +16,4 @@ install:
 
 script:
   - pytest tests
+  - cd biothings/tests/hub && make test

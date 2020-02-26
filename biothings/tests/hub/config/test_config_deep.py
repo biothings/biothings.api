@@ -9,8 +9,8 @@ class DeepConfigTest(object):
     def setUp(self):
         import conf_deep
         conf_deep.HUB_DB_BACKEND = {
-                "module" : "biothings.utils.mongo",
-                "uri" : "mongodb://su05:27017"
+                "module" : "biothings.utils.sqlite3",
+                "sqlite_db_folder" : "."
                 } # mandatory for
         conf_deep.DATA_HUB_DB_DATABASE = "test_config"
         import biothings
