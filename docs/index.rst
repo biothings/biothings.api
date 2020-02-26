@@ -11,7 +11,8 @@ Introduction
 
 What's BioThings?
 *****************
-We use "**BioThings**" to refer to objects of any biomedical entity-type represented in the biological knowledge space, such as genes, genetic variants, drugs, chemicals, diseases, etc.
+We use "**BioThings**" to refer to objects of any biomedical entity-type represented in the biological knowledge space,
+such as genes, genetic variants, drugs, chemicals, diseases, etc.
 
 BioThings SDK
 *************
@@ -26,8 +27,8 @@ We also use "*BioThings API*" (or *BioThings APIs*) to refer to an API (or a col
 
 BioThings Studio
 ****************
-*BioThings Studio* is a pre-configured environment used to build and administer BioThings API. At its core is the *Hub*, a backend service responsible for maintaining data up-to-date,
-producing data releases and update API frontends.
+*BioThings Studio* is a pre-configured environment used to build and administer BioThings API. At its core is the *Hub*,
+a backend service responsible for maintaining data up-to-date, producing data releases and update API frontends.
 
 
 Installing BioThings SDK

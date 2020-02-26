@@ -275,7 +275,7 @@ There's only one index, ``hubdb``, which is an internal index used by the hub. N
 BioThings hub is a service running inside the instance, it can be accessed through a SSH connection, or using REST API calls.
 For the purpose of the guide, we'll use SSH. Let's connect to the hub (type ``yes`` to accept the key on first connection):
 
-.. code:: bash
+.. code:: console
 
   # from Docker host
   $ ssh guest@localhost -p 19022
@@ -437,8 +437,8 @@ Local version is ``20171126``, remote is ``20171126``, we're up-to-date. We can 
 
   hub> check()
   [5] RUN {0.0s} check()
-  hub> 
-  [5] OK  check(): finished 
+  hub>
+  [5] OK  check(): finished
   Nothing to dump
 
 ``Nothing to dump`` means there's no available remote version that can be downloaded. It would otherwise return a version number, meaning
@@ -532,21 +532,21 @@ Here's the output of ``help()`` from myvariant's standalone instance:
 
   Available commands:
 
-  	versions_hg19
-  	check_hg19
-  	info_hg19
-  	download_hg19
-  	apply_hg19
-  	step_update_hg19
-  	update_hg19
-  	versions_hg38
-  	check_hg38
-  	info_hg38
-  	download_hg38
-  	apply_hg38
-  	step_update_hg38
-  	update_hg38
-  	help
+    versions_hg19
+    check_hg19
+    info_hg19
+    download_hg19
+    apply_hg19
+    step_update_hg19
+    update_hg19
+    versions_hg38
+    check_hg38
+    info_hg38
+    download_hg38
+    apply_hg38
+    step_update_hg38
+    update_hg38
+    help
 
 
 For instance, ``update()`` command is now available as ``update_hg19()`` and ``update_hg38()`` depending on the assemlby.

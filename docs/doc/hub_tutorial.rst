@@ -15,7 +15,7 @@ Taxonomy Biothings API code is avaiable at `<https://github.com/biothings/biothi
 Prerequesites
 ^^^^^^^^^^^^^
 
-BioThings SDK uses MongoDB as the "staging" storage backend for JSON objects before they are sent to 
+BioThings SDK uses MongoDB as the "staging" storage backend for JSON objects before they are sent to
 Elasticsearch for indexing. You must a have working MongoDB instance you can connect to.
 We'll also perform some basic commands.
 
@@ -44,7 +44,7 @@ Finally, BioThings SDK is written in python, so you must know some basics.
 Configuration file
 ^^^^^^^^^^^^^^^^^^
 
-Before starting to implement our hub, we first need to define a configuration file. A 
+Before starting to implement our hub, we first need to define a configuration file. A
 `config_common.py <https://github.com/biothings/biothings.species/blob/master/src/config_common.py>` file
 contains all the required configuration variables, some **have** to be defined in your own application, other
 **can** be overriden as needed.
@@ -168,7 +168,7 @@ Let’s try to run that script ! The first run, it will complain about some miss
 
 Let’s generate it, following instruction. Now we can run it again and try to connect:
 
-.. code:: bash
+.. code-block:: console
 
    $ ssh guest@localhost -p 7022
    The authenticity of host '[localhost]:7022 ([127.0.0.1]:7022)' can't be established.
@@ -212,7 +212,8 @@ One element in that list is a dictionary with the following structure:
 
    {"remote": "<path to file on remote server", "local": "<local path to file>"}
 
-Remote information are relative to the working directory specified as class attribute. Local information is an absolute path, containing filename used to save data.
+Remote information are relative to the working directory specified as class attribute. Local information is an absolute path,
+containing filename used to save data.
 
 Let’s start coding. We’ll save that python module in `dataload/sources/taxonomy/dumper.py <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/taxonomy/dumper.py>`_.
 
@@ -414,7 +415,8 @@ There are two options there, by overriding one of those methods:
    def post_download(self, remotefile, localfile): triggered for each downloaded file
    def post_dump(self): triggered once all files have been downloaded
 
-We could use either, but there’s a utility function available in BioThings SDK that uncompress everything in a directory, let’s use it in a global post-dump step:
+We could use either, but there’s a utility function available in BioThings SDK that uncompress everything in a directory,
+let’s use it in a global post-dump step:
 
 .. code-block:: python
 
@@ -820,7 +822,8 @@ While processing data in batch, some are inserted, others (duplicates) are ignor
 Note: should we want to implement the first option, the parsing function would build a dictionary indexed by taxid and would read the whole,
 extracting taxid. The whole dict would then be returned, and then processed by storage engine.
 
-So far, we’ve defined dumpers and uploaders, made them working together through some managers defined in the hub. We’re now ready to move the last step: merging data.
+So far, we’ve defined dumpers and uploaders, made them working together through some managers defined in the hub. We’re now ready to move the last step:
+merging data.
 
 Mergers
 ^^^^^^^
@@ -854,7 +857,8 @@ In the end, we want to have a collection where documents look like this:
 * (there can be other fields available, but basically the idea here is to merge all our individual collections…)
 * finally, lineage… it’s a little tricky as we need to query nodes in order to compute that field from _id and parent_taxid.
 
-A first step would be to merge **names**, **nodes** and **species** collections together. Other keys need some post-merge processing, they will handled in a second part.
+A first step would be to merge **names**, **nodes** and **species** collections together. Other keys need some post-merge processing,
+they will handled in a second part.
 
 Let’s first define a BuilderManager in the hub.
 
@@ -990,7 +994,7 @@ Note: ``sources`` parameter can also be a list of string.
 
 If we go back to ``src_build``, we can have information about the different merges (or builds) we ran:
 
-.. code:: javascript
+.. code-block:: bash
 
    > db.src_build.find({_id:"mytaxonomy"},{build:1})
    {
@@ -1188,7 +1192,8 @@ or directly tell the hub to only process master steps:
    [1] OK  upload("uniprot_species",steps="master"): finished, [None]
    [2] RUN {0.0s} upload("taxonomy.names",steps="master")
 
-(you’ll notice for taxonomy, we only trigger upload for sub-source **names**, using "dot-notation", corresponding to "main_source.name". Let’s now have a look at those master documents:
+(you’ll notice for taxonomy, we only trigger upload for sub-source **names**, using "dot-notation", corresponding to "main_source.name".
+Let’s now have a look at those master documents:
 
 .. code:: javascript
 
@@ -1280,9 +1285,10 @@ The method we have to implement in post_merge, as seen above. We also need to ch
 For now, we just added a class level in the hierarchy, everything runs the same as before. Let’s have a closer look
 to that post-merge process. For each document, we want to build the lineage. Information is stored in **nodes** collection.
 For instance, taxid 9606 (homo sapiens) has a parent_taxid 9605 (homo), which has a parent_taxid 207598 (homininae), etc…
-In the end, the homo sapiens lineage is:
+In the end, the homo sapiens lineage is::
 
-``9606, 9605, 207598, 9604, 314295, 9526, 314293, 376913, 9443, 314146, 1437010, 9347, 32525, 40674, 32524, 32523, 1338369, 8287, 117571, 117570, 7776, 7742, 89593, 7711, 33511, 33213, 6072, 33208, 33154, 2759, 131567 and 1``
+   9606, 9605, 207598, 9604, 314295, 9526, 314293, 376913, 9443, 314146, 1437010, 9347, 32525, 40674, 32524, 32523, 1338369,
+   8287, 117571, 117570, 7776, 7742, 89593, 7711, 33511, 33213, 6072, 33208, 33154, 2759, 131567 and 1
 
 We could recursively query **nodes** collections until we reach the top the tree, but that would be a lot of queries.
 We just need ``taxid`` and ``parent_taxid`` information to build the lineage, maybe it’s possible to build a dictionary that could fit in memory.

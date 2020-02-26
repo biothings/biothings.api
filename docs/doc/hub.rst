@@ -4,7 +4,7 @@ Hub component
 
 The purpose of the BioThings hub component is to allow you to easily automate the parsing and uploading of your data to an Elasticsearch backend.
 
-.. py:module:: biothings
+.. py:module:: biothings.hub
 
 ******
 dumper
@@ -144,7 +144,7 @@ DiffReportRendererBase
 ======================
 
 .. autoclass:: biothings.hub.databuild.differ.DiffReportRendererBase
-    :members:   
+    :members:
 
 DiffReportTxt
 -------------

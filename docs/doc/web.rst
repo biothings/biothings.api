@@ -2,9 +2,10 @@
 Web component
 #############
 
-The BioThings SDK web component contains tools used to generate and customize an API, given an Elasticsearch index with data.  The web component uses the Tornado Web Server to respond to incoming API requests.
+The BioThings SDK web component contains tools used to generate and customize an API, given an Elasticsearch index with data.
+The web component uses the Tornado Web Server to respond to incoming API requests.
 
-.. py:module:: biothings
+.. py:module:: biothings.web
 
 ******************
 Server boot script
