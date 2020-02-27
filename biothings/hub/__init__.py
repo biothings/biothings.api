@@ -535,6 +535,7 @@ class HubServer(object):
         # specific order, eg. job_manager is used by all managers
         for feat in self.features:
             if hasattr(self, "configure_%s_manager" % feat):
+                self.logger.info("Configuring feature '%s'" % feat)
                 getattr(self, "configure_%s_manager" % feat)()
                 self.remaining_features.remove(feat)
             elif hasattr(self, "configure_%s_feature" % feat):
