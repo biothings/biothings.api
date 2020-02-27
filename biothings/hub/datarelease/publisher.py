@@ -150,7 +150,7 @@ class BasePublisher(BaseManager,BaseStatusRegisterer):
         # determine previous result as the starting point of the pipeline,
         # depending on the type of publishing (key)
         previous_result = self.get_pre_post_previous_result(build_doc,key_value)
-        steps = repo_conf["publish"].get(stage,{}).get(key,[]) # publish[pre|post][snapshot|diff]
+        steps = repo_conf.get("publish",{}).get(stage,{}).get(key,[]) # publish[pre|post][snapshot|diff]
         assert isinstance(steps,list), "'%s' stage must be a list, got: %s" % (stage,repr(steps))
         action_done = []
         for step_conf in steps:
