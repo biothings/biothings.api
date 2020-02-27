@@ -32,9 +32,9 @@ def upload_worker(name, storage_class, loaddata_func, col_name,
                   batch_size, batch_num, *args):
     """
     Pickable job launcher, typically running from multiprocessing.
-    storage_class will instanciate with col_name, the destination 
+    storage_class will instanciate with col_name, the destination
     collection name. loaddata_func is the parsing/loading function,
-    called with *args
+    called with `*args`.
     """
     data = []
     try:
@@ -94,7 +94,7 @@ class BaseSourceUploader(object):
     keep_archive = 10 # number of archived collection to keep. Oldest get dropped first.
 
     def __init__(self, db_conn_info, collection_name=None, log_folder=None, *args, **kwargs):
-        """db_conn_info is a database connection info tuple (host,port) to fetch/store 
+        """db_conn_info is a database connection info tuple (host,port) to fetch/store
         information about the datasource's state."""
         # non-pickable attributes (see __getattr__, prepare() and unprepare())
         self.init_state()
@@ -465,7 +465,7 @@ class BaseSourceUploader(object):
         # tricky: self._state will always exist when the instance is create
         # through __init__(). But... when pickling the instance, __setstate__
         # is used to restore attribute on an instance that's hasn't been though
-        # __init__() constructor. So we raise an error here to tell pickle not 
+        # __init__() constructor. So we raise an error here to tell pickle not
         # to restore this attribute (it'll be set after)
         if attr == "_state":
             raise AttributeError(attr)
@@ -533,7 +533,7 @@ class DummySourceUploader(BaseSourceUploader):
 class ParallelizedSourceUploader(BaseSourceUploader):
 
     def jobs(self):
-        """Return list of (*arguments) passed to self.load_data, in order. for
+        """Return list of (`*arguments`) passed to self.load_data, in order. for
         each parallelized jobs. Ex: [(x,1),(y,2),(z,3)]
         If only one argument is required, it still must be passed as a 1-element tuple
         """
@@ -550,12 +550,12 @@ class ParallelizedSourceUploader(BaseSourceUploader):
         load_data = copy.deepcopy(self.load_data)
         temp_collection_name = copy.deepcopy(self.temp_collection_name)
         state = self.unprepare()
-        # important: within this loop, "self" should never be used to make sure we don't 
+        # important: within this loop, "self" should never be used to make sure we don't
         # instantiate unpicklable attributes (via via autoset attributes, see prepare())
         # because there could a race condition where an error would cause self to log a statement
         # (logger is unpicklable) while at the same another job from the loop would be
         # subtmitted to job_manager causing a error due to that logger attribute)
-        # in other words: once unprepared, self should never be changed until all 
+        # in other words: once unprepared, self should never be changed until all
         # jobs are submitted
         for bnum,args in enumerate(job_params):
             pinfo = self.get_pinfo()
@@ -671,7 +671,7 @@ class UploaderManager(BaseSourceManager):
     def upload_all(self,raise_on_error=False,**kwargs):
         """
         Trigger upload processes for all registered resources.
-        **kwargs are passed to upload_src() method
+        `**kwargs` are passed to upload_src() method
         """
         jobs = []
         for src in self.register:

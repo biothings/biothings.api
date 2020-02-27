@@ -1,11 +1,5 @@
 # Requirements for virtualenv when building sphinx documentation
-sphinx_rtd_theme
-beautifulsoup4
-aiocron
-asyncssh==1.7.1
-pymongo
-psutil
-IPython
-boto
-jsonpointer
-elasticsearch==6.3.1
+#  using the dependencies specified in setup.py file
+-e .[dev]
+async-timeout==3.0.1    # solving a dependency issue under Python 3.7 (e.g. readthedocs)
+                        # async-timeout is a dependency of elasticsearch-async

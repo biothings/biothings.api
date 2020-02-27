@@ -240,7 +240,7 @@ class DataBuilder(object):
                 'build_config': self.build_config,
                 # these are all the sources required to build target
                 # (not just the ones being processed, those are registered in jobs
-                'sources' : all_sources, 
+                'sources' : all_sources,
                 }
         job_info = {
                 'status': status,
@@ -287,7 +287,7 @@ class DataBuilder(object):
                     for k,v in d.items():
                         if type(v) == dict:
                             if k in target:
-                                target[k] = merge_build_info(target[k],v) 
+                                target[k] = merge_build_info(target[k],v)
                             else:
                                 v.pop("__REPLACE__",None)
                                 # merge v with "nothing" just to make sure to remove any "__REPLACE__"
@@ -300,7 +300,7 @@ class DataBuilder(object):
             src_build.replace_one({"_id" : build["_id"]}, build)
 
     def clean_old_collections(self):
-        # use target_name is given, otherwise build name will be used 
+        # use target_name is given, otherwise build name will be used
         # as collection name prefix, so they should start like that
         prefix = "%s_" % (self.target_name or self.build_name)
         db = mongo.get_target_db()
@@ -331,7 +331,7 @@ class DataBuilder(object):
             if len(none_root_srcs) != len(root_srcs):
                 raise BuilderException("If using '!' operator, all datasources must use it (cannot mix), got: %s" % \
                         (repr(root_srcs)))
-            # ok, grab sources for this build, 
+            # ok, grab sources for this build,
             srcs = self.build_config.get("sources",[])
             root_srcs = list(set(srcs).difference(set(none_root_srcs)))
             #self.logger.info("'except root' sources %s resolves to root source = %s" % (repr(none_root_srcs),root_srcs))
@@ -356,7 +356,7 @@ class DataBuilder(object):
 
         Return dictionary will be merged with any existing metadata in
         src_build collection. This behavior can be changed by setting a special
-        key within metadata dict: {"__REPLACE__" : True} will... replace existing 
+        key within metadata dict: {"__REPLACE__" : True} will... replace existing
         metadata with the one returned here.
 
         "job_manager" is passed in case parallelization is needed. Be aware
@@ -415,9 +415,9 @@ class DataBuilder(object):
         """
         Source can be a string that may contain regex chars. It's usefull
         when you have plenty of sub-collections prefixed with a source name.
-        For instance, given a source named 'blah' stored in as many collections
-        as chromosomes, insteand of passing each name as 'blah_1', 'blah_2', etc...
-        'blah_.*' can be specified in build_config. This method resolves potential
+        For instance, given a source named "blah" stored in as many collections
+        as chromosomes, insteand of passing each name as "blah_1", "blah_2", etc...
+        "blah\_.*" can be specified in build_config. This method resolves potential
         regexed source name into real, existing collection names
         """
         if type(sources) == str:
@@ -447,6 +447,8 @@ class DataBuilder(object):
         """Merge given sources into a collection named target_name. If sources argument is omitted,
         all sources defined for this merger will be merged together, according to what is defined
         insrc_build_config. If target_name is not defined, a unique name will be generated.
+
+        Optional parameters:
           - force=True will bypass any safety check
           - ids: list of _ids to merge, specifically. If None, all documents are merged.
           - steps:
@@ -709,7 +711,7 @@ class DataBuilder(object):
             self.logger.debug("Documents from source '%s' will be stored only if a previous document exists with same _id" % src_name)
         jobs = []
         total = self.source_backend[src_name].count()
-        btotal = math.ceil(total/batch_size) 
+        btotal = math.ceil(total/batch_size)
         bnum = 1
         cnt = 0
         got_error = False
@@ -797,7 +799,7 @@ class DataBuilder(object):
 class LinkDataBuilder(DataBuilder):
     """
     LinkDataBuilder creates a link to the original datasource to be merged, without
-    actually copying the data (merged collection remains empty). This builder is 
+    actually copying the data (merged collection remains empty). This builder is
     only valid when using only one datasource (thus no real merge) is declared in
     the list of sources to be merged, and is useful to prevent data duplication between
     the datasource itself and the resulting merged collection.
@@ -805,7 +807,7 @@ class LinkDataBuilder(DataBuilder):
 
     def __init__(self, build_name, source_backend, target_backend, *args, **kwargs):
 
-        super().__init__(build_name, source_backend, 
+        super().__init__(build_name, source_backend,
                          target_backend=partial(LinkTargetDocMongoBackend),*args, **kwargs)
         conf = self.source_backend.get_build_configuration(self.build_name)
         assert len(conf["sources"]) == 1, \
@@ -857,7 +859,7 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
             # normalize to scalar
             dids[_id] = dids[_id][0]
 
-    return dids.values()
+    return list(dids.values())
 
 
 def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,merger,batch_num):
@@ -1182,8 +1184,8 @@ class BuilderManager(BaseManager):
 
         def whatsnewcomparedto(build_name,old=None):
             if old is None:
-                # TODO: this will get big... but needs to be generic 
-                # because we handle different hub db backends (or it needs to be a 
+                # TODO: this will get big... but needs to be generic
+                # because we handle different hub db backends (or it needs to be a
                 # specific helper func to be defined all backends
                 builds = dbbuild.find({"build_config.name": build_name})
                 builds = sorted(builds,key=lambda e: e["started_at"])

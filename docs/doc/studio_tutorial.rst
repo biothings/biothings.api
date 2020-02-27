@@ -165,7 +165,7 @@ the main logic is the following:
         yield doc
 
 
-Our parsing function is named ``load_annotations``, it could be name anything else, but it has to take a folder path ``data_folder`` 
+Our parsing function is named ``load_annotations``, it could be name anything else, but it has to take a folder path ``data_folder``
 containing the downloaded data. This path is automatically set by the Hub and points to the latest version available. More on this later.
 
 .. code:: python
@@ -992,7 +992,7 @@ Configuration reflects our changes and is up-to-date, let's create a new build. 
    :width: 350px
 
 After few seconds, we have a new build listed. Clicking on "Logs" will show how the **Hub** created it. We can see it first merged ``annotations``
-in the "merge-root" step (for *root documents*), then ``druglabels`` and ``occurrences`` sources. The remaining steps, (*diff*, *release note*) were 
+in the "merge-root" step (for *root documents*), then ``druglabels`` and ``occurrences`` sources. The remaining steps, (*diff*, *release note*) were
 automatically triggered by the **Hub**. Let's explore these further.
 
 .. image:: ../_static/buildlogs.png
@@ -1192,10 +1192,11 @@ be useful to troubleshoot an issue. Typing ``help()``, or even passing a command
 .. image:: ../_static/term.png
    :width: 500px
 
-On a lower level, make sure all services are running in the docker container. Enter the container with ``docker exec -ti studio /bin/bash`` and type ``netstat -tnlp``, you should see
-services running on ports (see usual running `services`_). If services running on ports 7080 or 7022 aren't running,
-it means the **Hub** has not started. If you just started the instance, wait a little more as services may take a while before
-they're fully started and ready.
+On a lower level, make sure all services are running in the docker container. Enter the container with
+``docker exec -ti studio /bin/bash`` and type ``netstat -tnlp``, you should see services running on ports
+(see usual running `services <studio_guide.html#services-check>`_). If services running on ports 7080 or 7022 aren't running, it means the
+**Hub** has not started. If you just started the instance, wait a little more as services may take a while
+before they're fully started and ready.
 
 If after ~1 min, you still don't see the **Hub** running, log to user ``biothings`` and check the starting sequence.
 

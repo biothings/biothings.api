@@ -169,6 +169,7 @@ The new connection is now listed and can be accessed quickly later simply by sel
 but cannot be edited.
 
 .. image:: ../_static/connectionlist2.png
+   :width: 250px
 
 Following are several tabs giving access to the main steps involved in building a BioThings API.
 We'll get into those in more details while we create our

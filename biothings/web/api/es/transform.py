@@ -42,10 +42,31 @@ class ESResultTransformer(object):
         self.data_sources = data_sources
         self.output_aliases = output_aliases
         self.app_dir = app_dir
-        self.source_metadata = source_metadata
         self.excluded_keys = excluded_keys
         self.field_notes = field_notes
         self.licenses = licenses
+
+        self.source_metadata = self.get_source_metadata(source_metadata)
+
+    def get_source_metadata(self, mappings):
+        '''
+        Combine _meta fields of multiple indices to one document.
+        Override when necessary.
+        '''
+        result = {}
+        for index in mappings:
+            result.update(mappings[index].get('_meta', {}))
+        return result
+
+    def get_source_mapping(self, mappings):
+        '''
+        Combine properties fields of multiple indices to one document.
+        Override when necessary.
+        '''
+        result = {}
+        for index in mappings:
+            result.update(mappings[index].get('properties', {}))
+        return result
 
     def _flatten_doc(self, doc, outfield_sep='.', context_sep='.'):
         def _recursion_helper(d, ret, path, out):
@@ -146,9 +167,7 @@ class ESResultTransformer(object):
 
         get_url = lambda val: val.get('license_url_short', val.get('license_url'))
         sources = self.source_metadata.get(self.options.assembly, {}) \
-            if self.options.assembly else self.source_metadata
-        if 'src' in sources: #TODO
-            sources = sources['src']
+            if self.options.assembly else self.source_metadata.get('src', {})
         licenses = {source: get_url(val) for source, val in sources.items() if get_url(val)}
 
         def flatten_key(dic):
@@ -319,16 +338,26 @@ class ESResultTransformer(object):
         return self._clean_common_POST_response(_list=qlist, res=res, single_hit=single_hit)
 
     def _clean_metadata_response(self, res, fields=False):
+        '''
+            Input: res
+            {
+                'index_1': {
+                    'properties': { ... },
+                    '_meta': { ... },
+                    ...
+                },
+                'index_2': {
+                    ...
+                }
+            }
+        '''
         def _form_key(t, sep='.'):
             ''' takes a tuple, returns the key name as a string '''
             return sep.join(t).replace('.properties', '')
 
-        # assumes only one doc_type in the index... maybe a bad assumption
-        _index = next(iter(res))
-        _doc_type = next(iter(res[_index]['mappings']))
         if fields:
             # this is an available fields request
-            _properties = res[_index]['mappings'][_doc_type]['properties']
+            _properties = self.get_source_mapping(res)
             _fields = OrderedDict()
             for (k, v) in breadth_first_traversal(_properties):
                 if isinstance(v, dict):
@@ -363,7 +392,7 @@ class ESResultTransformer(object):
             return OrderedDict(sorted(_fields.items(), key=lambda x: x[0]))
 
         # normal metadata request
-        _meta = res[_index]['mappings'][_doc_type].get('_meta', {})
+        _meta = self.get_source_metadata(res)
         if self.options.dev:
             _meta['software'] = self._get_software_info()
         return self._sort_and_annotate_doc(_meta)

@@ -124,7 +124,7 @@ class BaseDiffer(object):
                         if type(v) == dict:
                             # only merge if both are dict (otherwise replace/set with d)
                             if k in target and type(target[k]) == dict:
-                                target[k] = merge_info(target[k],v) 
+                                target[k] = merge_info(target[k],v)
                             else:
                                 v.pop("__REPLACE__",None)
                                 # merge v with "nothing" just to make sure to remove any "__REPLACE__"
@@ -141,19 +141,22 @@ class BaseDiffer(object):
         """
         Compare new with old collections and produce diff files. Root keys can be excluded from
         comparison with "exclude" parameter
-        *_db_col_names can be:
-         1. a colleciton name (as a string) asusming they are
-            in the target database.
-         2. tuple with 2 elements, the first one is then either "source" or "target"
-            to respectively specify src or target database, and the second element is
-            the collection name.
-         3. tuple with 3 elements (URI,db,collection), looking like:
-            ("mongodb://user:pass@host","dbname","collection"), allowing to specify
-            any connection on any server
+
+        `*_db_col_names` can be:
+          1. a colleciton name (as a string) asusming they are
+             in the target database.
+          2. tuple with 2 elements, the first one is then either "source" or "target"
+             to respectively specify src or target database, and the second element is
+             the collection name.
+          3. tuple with 3 elements (URI,db,collection), looking like:
+             ("mongodb://user:pass@host","dbname","collection"), allowing to specify
+             any connection on any server
+
         steps: - 'content' will perform diff on actual content.
                - 'mapping' will perform diff on ES mappings (if target collection involved)
                - 'reduce' will merge diff files, trying to avoid having many small files
                - 'post' is a hook to do stuff once everything is merged (override method post_diff_cols)
+
         mode: 'purge' will remove any existing files for this comparison while 'resume' will happily ignore
               existing data and to whatever it's requested (like running steps="post" on existing diff folder...)
         """
@@ -491,7 +494,7 @@ class ColdHotJsonDifferBase(ColdHotDiffer):
     def post_diff_cols(self, old_db_col_names, new_db_col_names, batch_size, steps, mode=None, exclude=[]):
         """
         Post-process the diff files by adjusting some jsondiff operation. Here's the process.
-        For updated documents, some operations might illegal in the context of cold/hot merged collections. 
+        For updated documents, some operations might illegal in the context of cold/hot merged collections.
         Case #1: "remove" op in an update
             from a cold/premerge collection, we have that doc:
                 coldd = {"_id":1, "A":"123", "B":"456", "C":True}
@@ -512,8 +515,8 @@ class ColdHotJsonDifferBase(ColdHotDiffer):
             The problem here is 'C' is removed while it was already in cold merge, it should stay because it has come
             with some resource involved in the premerge (dependent keys, eg. myvariant, "observed" key comes with certain sources)
             => the jsondiff opetation on "C" must be discarded.
-            
-            Note: If operation involved a root key (not '/a/c' for instance) and if that key is found in the premerge, then 
+
+            Note: If operation involved a root key (not '/a/c' for instance) and if that key is found in the premerge, then
                then remove the operation. (note we just consider root keys, if the deletion occurs deeper in the document,
                it's just a legal operation updating innder content)
 
@@ -624,7 +627,7 @@ class SelfContainedJsonDiffer(JsonDiffer):
 
 class ColdHotJsonDiffer(ColdHotJsonDifferBase, JsonDiffer):
     diff_type = "coldhot-jsondiff"
-    
+
 class ColdHotSelfContainedJsonDiffer(ColdHotJsonDifferBase, SelfContainedJsonDiffer):
     diff_type = "coldhot-jsondiff-selfcontained"
 
@@ -905,7 +908,7 @@ class DifferManager(BaseManager):
         - content: will diff the content between old and new. Results (diff files) format depends on diff_type
         """
         # Note: _timestamp is excluded by default since it's an internal field (and exists in mongo doc,
-        #       but not in ES "_source" document (there's a root timestamp under control of 
+        #       but not in ES "_source" document (there's a root timestamp under control of
         #       _timestamp : {enable:true} in mapping
         try:
             differ = self[diff_type]
@@ -1072,7 +1075,7 @@ class DifferManager(BaseManager):
 
     def trigger_diff(self,diff_type,doc,**kwargs):
         """
-        Launch a diff given a src_build document. In order to 
+        Launch a diff given a src_build document. In order to
         know the first collection to diff against, get_previous_collection()
         method is used.
         """

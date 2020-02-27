@@ -11,7 +11,8 @@ Introduction
 
 What's BioThings?
 *****************
-We use "**BioThings**" to refer to objects of any biomedical entity-type represented in the biological knowledge space, such as genes, genetic variants, drugs, chemicals, diseases, etc.
+We use "**BioThings**" to refer to objects of any biomedical entity-type represented in the biological knowledge space,
+such as genes, genetic variants, drugs, chemicals, diseases, etc.
 
 BioThings SDK
 *************
@@ -23,6 +24,11 @@ The BioThings SDK can be roughly divided into two main components: data hub (or 
 BioThings API
 *************
 We also use "*BioThings API*" (or *BioThings APIs*) to refer to an API (or a collection of APIs) built with BioThings SDK. For example, both our popular `MyGene.Info <http://mygene.info/>`_ and `MyVariant.Info <http://myvariant.info/>`_ APIs are built and maintained using this BioThings SDK.
+
+BioThings Studio
+****************
+*BioThings Studio* is a buildin, pre-configured environment used to build and administer BioThings API. At its core is the *Hub*,
+a backend service responsible for maintaining data up-to-date, producing data releases and update API frontends.
 
 
 Installing BioThings SDK
@@ -54,6 +60,7 @@ Alternatively, you can download the source code, or clone the `BioThings SDK rep
     doc/studio
     doc/standalone
     doc/hub_tutorial
+    doc/datatransform
 
 .. toctree::
     :maxdepth: 3

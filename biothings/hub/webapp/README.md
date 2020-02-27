@@ -1,4 +1,5 @@
 # webapp
+This folder contains the BioThings Studio webapp built with Vue.js and Semantic UI.
 
 ## Project setup
 ```

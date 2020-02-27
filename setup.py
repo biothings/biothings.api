@@ -41,42 +41,41 @@ if commit_hash or num_commits:
 install_requires = [
     'requests>=2.21.0',
     'tornado==5.1.1',
-    'elasticsearch==6.3.1',
-    'gitpython==2.1.11',
-    'elasticsearch-async',
+    'gitpython>=3.1.0'
+    'elasticsearch>=6, <8',
+    'elasticsearch-dsl>=6, <8',
+    'elasticsearch-async>=6.2.0'
 ]
 
 # extra requirements for biothings.web
 web_extra_requires = [
     'msgpack>=0.6.1',   # support format=msgpack
-    'PyYAML>=5.1',       # support format=yaml
+    'PyYAML>=5.1',      # support format=yaml
 ]
 
 # extra requirements to run biothings.hub
 hub_requires = [
-    'beautifulsoup4',
-    'aiocron',
+    'beautifulsoup4',   # used in dumper.GoogleDriveDumper
+    'aiocron',          # setup scheduled jobs
     'asyncssh==1.7.1',  # needs libffi-dev installed (apt-get)
     'pymongo',
     'psutil',
-    'jsonpointer',
-    'IPython',
+    'jsonpointer',      # for utils.jsonpatch
+    'IPython',          # for interactive hub console
     'boto',
     'boto3',
     'multiprocessing_on_dill',  # can replace pickler in concurrent.futures
-    'dill',
+    'dill',             # a pickle alternative with extra object type support
     'pyinotify',        # hub reloader
     'prettytable',      # diff report renderer
-    'sockjs-tornado==1.0.6',
-    'networkx>=2.1',
+    'sockjs-tornado==1.0.6',   # websocket server for HubServer
     'jsonschema>=2.6.0',
     'pip',              # auto-install requirements from plugins
-    'pandas',  # json with inf/nan and more to come
-    'yapf',  # code reformatter, better results than autopep8
-    'requests-aws4auth',  # aws s3 auth requests for autohub
-    'tavern==0.34.0', # rest api testing
-    'nose==1.3.7', # unitests
-    'biothings_client==0.2.1' # datatransform (api client)
+    'pandas==1.0.1',    # json with inf/nan and more to come
+    'yapf',             # code reformatter, better results than autopep8
+    'requests-aws4auth',    # aws s3 auth requests for autohub
+    'networkx>=2.1',            # datatransform
+    'biothings_client==0.2.1'   # datatransform (api client)
 ]
 
 # extra requirements for building docs
@@ -87,7 +86,8 @@ docs_requires = [
 
 # extra requirements for nosetests
 test_requires = [
-    "nose>=1.3.7"
+    "nose>=1.3.7",
+    "pytest"
 ]
 
 setup(
@@ -124,7 +124,7 @@ setup(
     install_requires=install_requires,
     extras_require={
         'web_extra': web_extra_requires,
-        'hub': hub_requires,
+        'hub': hub_requires + test_requires,
         'dev': web_extra_requires + hub_requires + docs_requires + test_requires
     },
 )

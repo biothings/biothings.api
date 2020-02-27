@@ -1,6 +1,5 @@
 # Contribution Guidelines
 
-
 ## Code style
 
 ### Code style we follow
@@ -45,12 +44,28 @@ In addition to the standards outlined in PEP 8, we have a few guidelines:
         self.step = step    # the bulk size when doing bulk operation.
         self.s = None    # number of records to skip, useful to continue indexing after an error.
 
+* docstring format
+  A typical docstring should follow this `sphinx` format:
+
+  a typical Sphinx docsting has the following format:
+
+      """[Summary]
+
+      :param [ParamName]: [ParamDescription], defaults to [DefaultParamVal]
+      :type [ParamName]: [ParamType](, optional)
+      ...
+      :raises [ErrorType]: [ErrorDescription]
+      ...
+      :return: [ReturnDescription]
+      :rtype: [ReturnType]
+      """
+  See examples and additional details [here](https://sphinx-rtd-tutorial.readthedocs.io/en/latest/docstrings.html).
+
 In some particular cases, the style guidelines may not be suitable. Use your own best judgment,
 and also raise the issue with the team members for their opinions. Read more about when to ignore a
 particular guideline from [PEP8 doc](https://pep8.org/#a-foolish-consistency-is-the-hobgoblin-of-little-minds).
 
-
-### Check your code style ###
+### Check your code style
 
 We recommand to setup [flake8](http://flake8.pycqa.org) as your code-style checker with your editor.
 Fix the styling issue before you push the code to the github.
@@ -63,47 +78,44 @@ You can use this as your [flake8](http://flake8.pycqa.org) [config file](http://
 
 There are project-level [flake8](http://flake8.pycqa.org) settings provided in this top-level [setup.cfg](setup.cfg) file, so you can just run `flake8 <your file>` to check your code, or explicitly `flake8 --config ./setup.cfg <your file>`.
 
-
 In VSCode, you can add this to settings.json:
 
     "python.linting.flake8Args": [
         "--max-line-length=160",
         "--ignore=E226,E265,E302,E402,E731,F821,W503"
-            //E226	Missing whitespace around arithmetic operator
-            //E265	block comment should start with '# '
-            //E302	Expected 2 blank lines, found 0
-            //E402	Module level import not at top of file
-            //E731	Do not assign a lambda expression, use a def
-            //F821	Undefined name name
+            //E226  Missing whitespace around arithmetic operator
+            //E265  block comment should start with '# '
+            //E302  Expected 2 blank lines, found 0
+            //E402  Module level import not at top of file
+            //E731  Do not assign a lambda expression, use a def
+            //F821  Undefined name name
             //W503  Line break occurred before a binary operator
     ],
 
+### Other recommended but not required style checks
 
-### Other recommended but not required style checks ###
+You can always do extra checks on your code before commits. Some checkers may give you extra code style suggestions which will make your code more readable or more efficient (or not). Use your own judgement to decide to use it or not. For beginners, you may found it could be a good learning process to know some Python syntax you may not know before.
 
-  You can always do extra checks on your code before commits. Some checkers may give you extra code style suggestions which will make your code more readable or more efficient (or not). Use your own judgement to decide to use it or not. For beginners, you may found it could be a good learning process to know some Python syntax you may not know before.
+* Extra [flake8](http://flake8.pycqa.org) plugins
 
-  * Extra [flake8](http://flake8.pycqa.org) plugins
+  You may find these flake plugins can be very useful (install them using `pip`):
 
-    You may find these flake plugins can be very useful (install them using `pip`):
+      pip install flake8-builtins flake8-comprehensions flake8-logging-format pep8-naming flake8-import-order
 
-        pip install flake8-builtins flake8-comprehensions flake8-logging-format pep8-naming flake8-import-order
+* [PyLint](https://www.pylint.org/)
 
-  * [PyLint](https://www.pylint.org/)
-
-        pip install pylint
+      pip install pylint
 
   When there are conflicts with our style guidelines above from these extra checkers, follow our own rules.
 
 ### Python code formatter
 
-  Some Python code formatters can be useful, but use them with caution. Double check the converted code to make sure you don't break your own code.
+Some Python code formatters can be useful, but use them with caution. Double check the converted code to make sure you don't break your own code.
 
-  * [black](https://github.com/python/black)
-  * [yapf](https://github.com/google/yapf/)
+* [black](https://github.com/python/black)
+* [yapf](https://github.com/google/yapf/)
 
-
-### Some useful references:
+### Some useful references
 
 * [**requests** code style](http://python-requests.org//en/latest/dev/contributing/#kenneth-reitz-s-code-style)
 * [The list of Flake8 rules](https://lintlyci.github.io/Flake8Rules/)
