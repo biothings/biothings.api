@@ -47,11 +47,14 @@ class BasePublisher(BaseManager,BaseStatusRegisterer):
     def clean_stale_status(self):
         src_build = get_src_build()
         for build in src_build.find():
+            dirty = False
             for job in build.get("jobs",[]):
                 if job.get("status","").endswith("publishing"):
                     logging.warning("Found stale build '%s', marking publish status as 'canceled'" % build["_id"])
                     job["status"] = "canceled"
-            src_build.replace_one({"_id":build["_id"]},build)
+                    dirty = True
+            if dirty:
+                src_build.replace_one({"_id":build["_id"]},build)
 
     @property
     def category(self):
@@ -911,11 +914,14 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
     def clean_stale_status(self):
         src_build = get_src_build()
         for build in src_build.find():
+            dirty = False
             for job in build.get("jobs",[]):
                 if job.get("status") == "generating":
                     logging.warning("Found stale build '%s', marking release-note status as 'canceled'" % build["_id"])
                     job["status"] = "canceled"
-            src_build.replace_one({"_id":build["_id"]},build)
+                    dirty = True
+            if dirty:
+                src_build.replace_one({"_id":build["_id"]},build)
 
     def setup(self):
         self.setup_log()

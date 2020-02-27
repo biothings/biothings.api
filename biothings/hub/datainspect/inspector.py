@@ -50,12 +50,15 @@ class InspectorManager(BaseManager):
         src_dump = get_src_dump()
         srcs = src_dump.find()
         for src in srcs:
+            dirty = False
             jobs = src.get("inspect",{}).get("jobs",{})
             for subsrc in jobs:
                 if jobs[subsrc].get("status") == "inspecting":
                     logging.warning("Found stale datasource '%s', marking inspect status as 'canceled'" % src["_id"])
                     jobs[subsrc]["status"] = "canceled"
-            src_dump.replace_one({"_id":src["_id"]},src)
+                    dirty = True
+            if dirty:
+                src_dump.replace_one({"_id":src["_id"]},src)
 
     def setup_log(self):
         """Setup and return a logger instance"""

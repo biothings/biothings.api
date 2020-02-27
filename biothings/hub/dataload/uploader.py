@@ -641,11 +641,14 @@ class UploaderManager(BaseSourceManager):
         srcs = src_dump.find()
         for src in srcs:
             jobs = src.get("upload",{}).get("jobs",{})
+            dirty = False
             for subsrc in jobs:
                 if jobs[subsrc].get("status") == "uploading":
                     logging.warning("Found stale datasource '%s', marking upload status as 'canceled'" % src["_id"])
                     jobs[subsrc]["status"] = "canceled"
-            src_dump.replace_one({"_id":src["_id"]},src)
+                    dirty = True
+            if dirty:
+                src_dump.replace_one({"_id":src["_id"]},src)
 
     def filter_class(self,klass):
         if klass.name is None:

@@ -846,11 +846,14 @@ class DifferManager(BaseManager):
     def clean_stale_status(self):
         src_build = get_src_build()
         for build in src_build.find():
+            dirty = False
             for job in build.get("jobs",[]):
                 if job.get("status") == "diffing":
                     logging.warning("Found stale build '%s', marking diff status as 'canceled'" % build["_id"])
                     job["status"] = "canceled"
-            src_build.replace_one({"_id":build["_id"]},build)
+                    dirty = True
+            if dirty:
+                src_build.replace_one({"_id":build["_id"]},build)
 
     def register_differ(self,klass):
         if klass.diff_type == None:
