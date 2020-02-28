@@ -52,6 +52,11 @@ Alternatively, you can download the source code, or clone the `BioThings SDK rep
 
     python setup.py install
 
+Get started to build a BioThings API
+------------------------------------
+
+We recommend to follow `this tutorial <doc/studio.html>`_ to develop your first BioThings API in our pre-configured `BioThings Studio <doc/studio.html>`_ development environment.
+
 
 .. toctree::
     :maxdepth: 3
@@ -75,4 +80,4 @@ Indices and tables
 
  * :ref:`genindex`
  * :ref:`modindex`
-..  * :ref:`search`
+ * :ref:`search`
