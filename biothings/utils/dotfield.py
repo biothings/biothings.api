@@ -3,9 +3,12 @@ import json
 
 def make_object(attr, value):
     '''
-    make_object('a.b.c', 100) -->
-    or make_object(['a','b','c'], 100) -->
-      {a:{b:{c:100}}}
+    Create dictionary following the input dot notation and the value
+    Example::
+
+        make_object('a.b.c', 100) -->
+        or make_object(['a','b','c'], 100) -->
+        {a:{b:{c:100}}}
     '''
     attr_list = attr.split('.')
     s = ''

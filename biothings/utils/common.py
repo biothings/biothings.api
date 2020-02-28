@@ -152,10 +152,10 @@ def safewfile(filename, prompt=True, default='C', mode='w'):
 
 def anyfile(infile, mode='r'):
     '''
-    return a file handler with the support for gzip/zip comppressed files
+    return a file handler with the support for gzip/zip comppressed files.
     if infile is a two value tuple, then first one is the compressed file;
-      the second one is the actual filename in the compressed file.
-      e.g., ('a.zip', 'aa.txt')
+    the second one is the actual filename in the compressed file.
+    e.g., ('a.zip', 'aa.txt')
 
     '''
     if isinstance(infile, tuple):
@@ -237,7 +237,9 @@ class dotdict(dict):
 def get_dotfield_value(dotfield, d):
     """
     Explore dictionary d using dotfield notation and return value.
-    Ex: d = {"a":{"b":1}}.
+    Example::
+
+        d = {"a":{"b":1}}.
         get_dotfield_value("a.b",d) => 1
     """
     fields = dotfield.split(".")
@@ -248,16 +250,20 @@ def get_dotfield_value(dotfield, d):
         return get_dotfield_value(".".join(fields[1:]), d[first])
 
 def split_ids(q):
-    '''split input query string into list of ids.
-       any of " \t\n\x0b\x0c\r|,+" as the separator,
-        but perserving a phrase if quoted
-        (either single or double quoted)
-        more detailed rules see:
-        http://docs.python.org/2/library/shlex.html#parsing-rules
+    '''
+    split input query string into list of ids.
+    any of ``" \t\n\x0b\x0c\r|,+"`` as the separator,
+    but perserving a phrase if quoted
+    (either single or double quoted)
+    more detailed rules see:
+    http://docs.python.org/2/library/shlex.html#parsing-rules
 
-        e.g. split_ids('CDK2 CDK3') --> ['CDK2', 'CDK3']
-             split_ids('"CDK2 CDK3"\n CDk4')  --> ['CDK2 CDK3', 'CDK4']
+    e.g.::
 
+        >>> split_ids('CDK2 CDK3')
+         ['CDK2', 'CDK3']
+        >>> split_ids('"CDK2 CDK3"\n CDk4')
+         ['CDK2 CDK3', 'CDK4']
     '''
     # Python3 strings are already unicode, .encode
     # now returns a bytearray, which cannot be searched with
@@ -350,11 +356,13 @@ def dump2gridfs(obj, filename, db, protocol=2):
 
 
 def loadobj(filename, mode='file'):
-    '''Loads a compressed object from disk file (or file-like handler) or
-        MongoDB gridfs file (mode='gridfs')
-           obj = loadobj('data.pyobj')
+    '''
+    Loads a compressed object from disk file (or file-like handler) or
+    MongoDB gridfs file (mode='gridfs')
+    ::
 
-           obj = loadobj(('data.pyobj', mongo_db), mode='gridfs')
+        obj = loadobj('data.pyobj')
+        obj = loadobj(('data.pyobj', mongo_db), mode='gridfs')
     '''
     # import gzip
     if mode == 'gridfs':
@@ -375,16 +383,22 @@ def loadobj(filename, mode='file'):
 
 
 def list2dict(a_list, keyitem, alwayslist=False):
-    '''Return a dictionary with specified keyitem as key, others as values.
-       keyitem can be an index or a sequence of indexes.
-       For example: li=[['A','a',1],
-                        ['B','a',2],
-                        ['A','b',3]]
-                    list2dict(li,0)---> {'A':[('a',1),('b',3)],
-                                         'B':('a',2)}
-       if alwayslist is True, values are always a list even there is only one item in it.
-                    list2dict(li,0,True)---> {'A':[('a',1),('b',3)],
-                                              'B':[('a',2),]}
+    '''
+    Return a dictionary with specified keyitem as key, others as values.
+    keyitem can be an index or a sequence of indexes.
+    For example::
+
+        li = [['A','a',1],
+             ['B','a',2],
+             ['A','b',3]]
+        list2dict(li, 0)---> {'A':[('a',1),('b',3)],
+                             'B':('a',2)}
+
+    If alwayslist is True, values are always a list even there is only one item in it.
+    ::
+
+        list2dict(li, 0, True)---> {'A':[('a',1),('b',3)],
+                                    'B':[('a',2),]}
     '''
     _dict = {}
     for x in a_list:
@@ -572,11 +586,11 @@ def json_serial(obj):
             obj = obj.replace(tzinfo=timezone.utc)
         serial = obj.isoformat()
         return serial
-    elif isinstance(obj,type):
+    elif isinstance(obj, type):
         return str(obj)
     elif "SRE_Pattern" in type(obj).__name__: # can't find the class
         return obj.pattern
-    elif isinstance(obj,types.FunctionType):
+    elif isinstance(obj, types.FunctionType):
         return "__function__"
     raise TypeError("Type %s not serializable" % type(obj))
 
@@ -647,7 +661,7 @@ def unzipall(folder, pattern="*.zip"):
 
 def untargzall(folder, pattern="*.tar.gz"):
     '''
-    gunzip and untar all *.tar.gz files in "folder"
+    gunzip and untar all ``*.tar.gz`` files in "folder"
     '''
     import tarfile
     for tgz in glob.glob(os.path.join(folder, pattern)):
@@ -660,7 +674,7 @@ def untargzall(folder, pattern="*.tar.gz"):
 
 def gunzipall(folder, pattern="*.gz"):
     '''
-    gunzip all *.gz files in "folder"
+    gunzip all ``*.gz`` files in "folder"
     '''
     for f in glob.glob(os.path.join(folder, pattern)):
         # build uncompress filename from gz file and pattern

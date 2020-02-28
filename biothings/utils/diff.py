@@ -175,7 +175,8 @@ def get_mongodb_uri(backend):
 def diff_collections(b1, b2, use_parallel=True, step=10000):
     """
     b1, b2 are one of supported backend class in databuild.backend.
-    e.g.,
+    e.g.::
+
         b1 = DocMongoDBBackend(c1)
         b2 = DocMongoDBBackend(c2)
     """

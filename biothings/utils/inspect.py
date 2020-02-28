@@ -267,15 +267,17 @@ def merge_record(target,tomerge,mode):
     return target
 
 
-def inspect(struct,key=None,mapt=None,mode="type",level=0,logger=logging):
+def inspect(struct, key=None, mapt=None, mode="type", level=0, logger=logging):
     """
     Explore struct and report types contained in it.
-    - struct: is the data structure to explore
-    - mapt: if not None, will complete that type map with passed struct. This is usefull
-      when iterating over a dataset of similar data, trying to find a good type summary 
-      contained in that dataset.
-    - (level: is for internal purposes, mostly debugging)
-    - mode: see inspect_docs() documentation
+
+    Args:
+        struct: is the data structure to explore
+        mapt: if not None, will complete that type map with passed struct. This is useful
+              when iterating over a dataset of similar data, trying to find a good type summary
+              contained in that dataset.
+        level: is for internal purposes, mostly debugging
+        mode: see inspect_docs() documentation
     """
 
     mode_inst = get_mode_layer(mode)
@@ -448,25 +450,29 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
                  pre_mapping=False, limit=None, sample=None, metadata=True,
                  auto_convert=True):
     """Inspect docs and return a summary of its structure:
-    - mode:
-        + "type": explore documents and report strict data structure
-        + "mapping": same as type but also perform test on data so guess best mapping
-          (eg. check if a string is splitable, etc...). Implies merge=True
-        + "stats": explore documents and compute basic stats (count,min,max,sum)
-        + "deepstats": same as stats but record values and also compute mean,stdev,median
-          (memory intensive...)
-        + "jsonschema", same as "type" but returned a json-schema formatted result
-      (mode can also be a list of modes, eg. ["type","mapping"]. There's little
-       overhead computing multiple types as most time is spent on actually getting the data)
-    - clean: don't delete recorded vqlues or temporary results
-    - merge: merge scalar into list when both exist (eg. {"val":..} and [{"val":...}]
-    - limit: can limit the inspection to the x first docs (None = no limit, inspects all)
-    - sample: in combination with limit, randomly extract a sample of 'limit' docs
-              (so not necessarily the x first ones defined by limit). If random.random()
-              is greater than sample, doc is inspected, otherwise it's skipped
-    - metadata: compute metadata on the result
-    - auto_convert: run converters automatically (converters are used to convert one mode's
-                    output to another mode's output, eg. type to jsonschema)
+
+    Args:
+        mode: possible values are:
+
+            - "type": (default) explore documents and report strict data structure
+            - "mapping": same as type but also perform test on data so guess best mapping
+                       (eg. check if a string is splitable, etc...). Implies merge=True
+            - "stats": explore documents and compute basic stats (count,min,max,sum)
+            - "deepstats": same as stats but record values and also compute mean,stdev,median
+                         (memory intensive...)
+            - "jsonschema", same as "type" but returned a json-schema formatted result
+
+            `mode` can also be a list of modes, eg. ["type","mapping"]. There's little
+            overhead computing multiple types as most time is spent on actually getting the data.
+        clean: don't delete recorded vqlues or temporary results
+        merge: merge scalar into list when both exist (eg. {"val":..} and [{"val":...}]
+        limit: can limit the inspection to the x first docs (None = no limit, inspects all)
+        sample: in combination with limit, randomly extract a sample of 'limit' docs
+                (so not necessarily the x first ones defined by limit). If random.random()
+                is greater than sample, doc is inspected, otherwise it's skipped
+        metadata: compute metadata on the result
+        auto_convert: run converters automatically (converters are used to convert one mode's
+                      output to another mode's output, eg. type to jsonschema)
     """
 
     if type(mode) == str:

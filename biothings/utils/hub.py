@@ -472,14 +472,15 @@ def stats(src_dump):
     pass
 
 
-def template_out(field,confdict):
+def template_out(field, confdict):
     """
     Return field as a templated-out filed,
     substituting some "%(...)s" part with confdict,
     Fields can follow dotfield notation.
     Fields like "$(...)" are replaced with a timestamp
     following specified format (see time.strftime)
-    Ex:
+    Example::
+
         confdict = {"a":"one"}
         field = "%(a)s_two_three_$(%Y%m)"
         => "one_two_three_201908" # assuming we're in August 2019
@@ -508,10 +509,12 @@ def publish_data_version(s3_bucket, s3_folder, version_info, update_latest=True,
                          aws_key=None, aws_secret=None):
     """
     Update remote files:
-    - versions.json: add version_info to the JSON list
-                     or replace if arg version_info is a list
-    - latest.json: update redirect so it points to latest version url
-    "versions" is dict such as:
+        - versions.json: add version_info to the JSON list
+                        or replace if arg version_info is a list
+        - latest.json: update redirect so it points to latest version url
+
+    "versions" is dict such as::
+
         {"build_version":"...",         # version name for this release/build
          "require_version":"...",       # version required for incremental update
          "target_version": "...",       # version reached once update is applied

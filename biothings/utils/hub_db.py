@@ -1,6 +1,6 @@
 """
 hub_db module is a place-holder for internal hub database
-functions. Hub DB contains informations about sources, 
+functions. Hub DB contains informations about sources,
 configurations variables, etc... It's for internal usage.
 When biothings.config_for_app() is called, this module will be
 "filled" with the actual implementations from the specified backend
@@ -77,7 +77,7 @@ def get_source_fullname(col_name):
 
 class IDatabase(object):
     """
-    This class declares an interface and partially implements some of it, 
+    This class declares an interface and partially implements some of it,
     mimicking mongokit.Connection class. It's used to keep used document model.
     Any internal backend should implement (derives) this interface
     """
@@ -85,7 +85,7 @@ class IDatabase(object):
     def __init__(self):
         super(IDatabase,self).__init__()
         self.name = None # should be set from config module
-        # any other initialization can be done here, 
+        # any other initialization can be done here,
         # depending on the backend specifics
 
     @property
@@ -103,7 +103,7 @@ class IDatabase(object):
     def create_collection(self,colname):
         """Create a table/colleciton named colname. If backend is using a schema-based
         database (ie. SQL), backend should enforce the schema with at least field "_id"
-        as the primary key (as a string).""" 
+        as the primary key (as a string)."""
         raise NotImplementedError()
 
     def __getitem__(self, colname):
@@ -138,13 +138,13 @@ class Collection(object):
         raise NotImplementedError()
 
     def find_one(self,*args,**kwargs):
-        """Return one document from the collection. *args will contain
+        """Return one document from the collection. `*args` will contain
         a dict with the query parameters. See also find()"""
         raise NotImplementedError()
 
     def find(self,*args,**kwargs):
-        """Return an iterable of documents matching criterias defined in 
-        *args[0] (which will be a dict). Query dialect is a minimal one, inspired
+        """Return an iterable of documents matching criterias defined in
+        `*args[0]` (which will be a dict). Query dialect is a minimal one, inspired
         by MongoDB. Dict can contain the name of a key, and the value being searched for.
         Ex: {"field1":"value1"} will return all documents where field1 == "value1".
         Nested key (field1.subfield1) aren't supported (no need to implement).
@@ -190,12 +190,13 @@ class Collection(object):
         """Shortcut to find_one({"_id":_id})"""
         raise NotImplementedError()
 
-def backup(folder=".",archive=None):
+def backup(folder=".", archive=None):
     """
     Dump the whole hub_db database in given folder. "archive" can be pass
     to specify the target filename, otherwise, it's randomly generated
-    Note: this doesn't backup source/merge data, just the internal data
-          used by the hub
+
+    .. note:: this doesn't backup source/merge data, just the internal data
+             used by the hub
     """
     # get database name (ie. hub_db internal database)
     db_name = get_src_dump().database.name

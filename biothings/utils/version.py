@@ -157,7 +157,8 @@ def get_source_code_info(src_file):
     Given a path to a source code, try to find information
     about repository, revision, URL pointing to that file, etc...
     Return None if nothing can be determined.
-    Tricky cases: 
+    Tricky cases:
+
       - src_file could refer to another repo, within current repo
         (namely a remote data plugin, cloned within the api's plugins folder
       - src_file could point to a folder, when for instance a dataplugin is

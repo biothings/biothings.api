@@ -18,20 +18,28 @@ from .dotstring import key_value, set_key_value
 csv.field_size_limit(10000000)   # default is 131072, too small for some big files
 
 
-# remove keys whos values are ".", "-", "", "NA", "none", " "
-# and remove empty dictionaries
+
 def dict_sweep(d, vals=None, remove_invalid_list=False):
     """
-    @param d: a dictionary
-    @param vals: a string or list of strings to sweep, or None to use the default values
-    @param remove_invalid_list: when true, will remove key for which
-           list has only one value, which is part of "vals".
-           Ex:
-               - test_dict = {'gene': [None, None], 'site': ["Intron", None], 'snp_build' : 136}
-           with remove_invalid_list == False:
-               - {'gene': [None], 'site': ['Intron'], 'snp_build': 136}
-           with remove_invalid_list == True:
-               - {'site': ['Intron'], 'snp_build': 136}
+    Remove keys whos values are ".", "-", "", "NA", "none", " "
+    and remove empty dictionaries
+
+    Args:
+        d (dict): a dictionary
+        vals (str or list): a string or list of strings to sweep, or None to use the default values
+        remove_invalid_list (boolean): when true, will remove key for which
+            list has only one value, which is part of "vals".
+            Ex::
+
+                test_dict = {'gene': [None, None], 'site': ["Intron", None], 'snp_build' : 136}
+
+            with `remove_invalid_list == False`::
+
+                {'gene': [None], 'site': ['Intron'], 'snp_build': 136}
+
+            with `remove_invalid_list == True`::
+
+                {'site': ['Intron'], 'snp_build': 136}
     """
     # set default supported vals for empty values
     vals = vals or [".", "-", "", "NA", "none", " ", "Not Available", "unknown"]
@@ -327,14 +335,18 @@ def listitems(a_list, *idx):
 def list2dict(a_list, keyitem, alwayslist=False):     # pylint: disable=redefined-outer-name
     '''Return a dictionary with specified keyitem as key, others as values.
        keyitem can be an index or a sequence of indexes.
-       For example: li=[['A','a',1],
-                        ['B','a',2],
-                        ['A','b',3]]
-                    list2dict(li,0)---> {'A':[('a',1),('b',3)],
-                                         'B':('a',2)}
-       if alwayslist is True, values are always a list even there is only one item in it.
-                    list2dict(li,0,True)---> {'A':[('a',1),('b',3)],
-                                              'B':[('a',2),]}
+       For example::
+
+            li=[['A','a',1],
+                ['B','a',2],
+                ['A','b',3]]
+            list2dict(li,0)---> {'A':[('a',1),('b',3)],
+                                 'B':('a',2)}
+
+       If `alwayslist` is True, values are always a list even there is only one item in it::
+
+            list2dict(li,0,True)---> {'A':[('a',1),('b',3)],
+                                      'B':[('a',2),]}
     '''
     _dict = {}
     for x in a_list:
@@ -421,18 +433,23 @@ def tabfile_tester(datafile, header=1, sep='\t'):
 
 def dupline_seperator(dupline, dup_sep, dup_idx=None, strip=False):
     '''
-    for a line like this:
+    for a line like this::
+
         a   b1,b2  c1,c2
 
-    return a generator of this list (breaking out of the duplicates in each field):
+    return a generator of this list (breaking out of the duplicates in each field)::
+
         [(a,b1,c1),
          (a,b2,c1),
          (a,b1,c2),
          (a,b2,c2)]
-    example:
+
+    Example::
+
          dupline_seperator(dupline=['a', 'b1,b2', 'c1,c2'],
                            dup_idx=[1,2],
                            dup_sep=',')
+
     if dup_idx is None, try to split on every field.
     if strip is True, also tripe out of extra spaces.
     '''
@@ -718,19 +735,20 @@ def update_dict_recur(d, u):
 def merge_dict(dict_li, attr_li, missingvalue=None):
     '''
     Merging multiple dictionaries into a new one.
-    Example:
-    In [136]: d1 = {'id1': 100, 'id2': 200}
-    In [137]: d2 = {'id1': 'aaa', 'id2': 'bbb', 'id3': 'ccc'}
-    In [138]: merge_dict([d1,d2], ['number', 'string'])
-    Out[138]:
-    {'id1': {'number': 100, 'string': 'aaa'},
-     'id2': {'number': 200, 'string': 'bbb'},
-     'id3': {'string': 'ccc'}}
-    In [139]: merge_dict([d1,d2], ['number', 'string'], missingvalue='NA')
-    Out[139]:
-    {'id1': {'number': 100, 'string': 'aaa'},
-     'id2': {'number': 200, 'string': 'bbb'},
-     'id3': {'number': 'NA', 'string': 'ccc'}}
+    Example::
+
+        In [136]: d1 = {'id1': 100, 'id2': 200}
+        In [137]: d2 = {'id1': 'aaa', 'id2': 'bbb', 'id3': 'ccc'}
+        In [138]: merge_dict([d1,d2], ['number', 'string'])
+        Out[138]:
+        {'id1': {'number': 100, 'string': 'aaa'},
+        'id2': {'number': 200, 'string': 'bbb'},
+        'id3': {'string': 'ccc'}}
+        In [139]: merge_dict([d1,d2], ['number', 'string'], missingvalue='NA')
+        Out[139]:
+        {'id1': {'number': 100, 'string': 'aaa'},
+        'id2': {'number': 200, 'string': 'bbb'},
+        'id3': {'number': 'NA', 'string': 'ccc'}}
     '''
     dd = dict(zip(attr_li, dict_li))
     key_set = set()
@@ -859,13 +877,14 @@ def merge_root_keys(doc1, doc2, exclude=None):
 
 def dict_apply(d, key, value, sort=True):
     """add value to d[key], append it if key exists
-        d = {'a': 1}
-        dict_apply(d, 'a', 2) returns
-            {'a': [1, 2]}
-        dict_apply(d, 'a', 3) returns
-            {'a': [1, 2, 3]}
-        dict_apply(d, 'b', 2) returns
-            {'a': 1, 'b': 2}
+
+        >>> d = {'a': 1}
+        >>> dict_apply(d, 'a', 2)
+         {'a': [1, 2]}
+        >>> dict_apply(d, 'a', 3)
+         {'a': [1, 2, 3]}
+        >>> dict_apply(d, 'b', 2)
+         {'a': 1, 'b': 2}
     """
     if key in d:
         _value = d[key]
