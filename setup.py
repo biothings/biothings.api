@@ -80,8 +80,8 @@ hub_requires = [
 
 # extra requirements for building docs
 docs_requires = [
-    'sphinx',
-    'sphinx_rtd_theme'
+    'sphinx>=2.4.3',
+    'sphinx_rtd_theme>=0.4.3'
 ]
 
 # extra requirements for nosetests
