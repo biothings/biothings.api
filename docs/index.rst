@@ -68,10 +68,11 @@ Alternatively, you can download the source code, or clone the `BioThings SDK rep
 
     doc/hub
     doc/web
+    doc/utils
 
-.. Indices and tables
-.. ==================
+Indices and tables
+==================
 
-.. * :ref:`genindex`
-.. * :ref:`modindex`
-.. * :ref:`search`
+ * :ref:`genindex`
+ * :ref:`modindex`
+..  * :ref:`search`
