@@ -1,3 +1,6 @@
+'''
+NOTE: biothings.utils.shelve is deprecated!
+'''
 raise Exception("Don't use me, no concurrency supported...")
 
 import os
