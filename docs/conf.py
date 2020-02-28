@@ -30,6 +30,7 @@ import sys
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
+    'sphinx.ext.napoleon',   # support numpy and google style docstring
 ]
 
 # Add any paths that contain templates here, relative to this directory.
