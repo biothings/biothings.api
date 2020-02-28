@@ -73,17 +73,17 @@ from our github repository like:
     pip install git+https://github.com/biothings/biothings.api.git#egg=biothings
 
 Alternatively, you can download the source code, or clone the [BioThings
-SDK repository](http://github.com/biothings/biothings.api) and run:
+SDK repository](https://github.com/biothings/biothings.api) and run:
 
     python setup.py install
 
 ## Get started to build a BioThings API
 
-We recommend to follow [this tutorial](http://docs.biothings.io/en/latest/doc/studio.html) to develop your first BioThings API in our pre-configured **BioThings Studio** development environment.
+We recommend to follow [this tutorial](https://docs.biothings.io/en/latest/doc/studio.html) to develop your first BioThings API in our pre-configured **BioThings Studio** development environment.
 
 ## Documentation
 
-The latest document is available at https://docs.biothings.io.
+The latest documentation is available at https://docs.biothings.io.
 
 ## How to contribute
 Please check out this [Contribution Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) document.
