@@ -18,7 +18,6 @@ from .dotstring import key_value, set_key_value
 csv.field_size_limit(10000000)   # default is 131072, too small for some big files
 
 
-
 def dict_sweep(d, vals=None, remove_invalid_list=False):
     """
     Remove keys whos values are ".", "-", "", "NA", "none", " "
@@ -293,9 +292,8 @@ def unlist_incexcl(d, include_keys=None, exclude_keys=None):
     return d
 
 
-
-# split fields by sep into comma separated lists, strip.
 def list_split(d, sep):
+    """split fields by sep into comma separated lists, strip."""
     for key, val in d.items():
         if isinstance(val, dict):
             list_split(val, sep)
@@ -991,24 +989,24 @@ def dict_walk(dictionary, key_func):
                 for k, v in dictionary.items())
 
 
-def dict_traverse(d,func,traverse_list=False):
+def dict_traverse(d, func, traverse_list=False):
     """
     Recursively traverse dictionary d, calling func(k,v)
     for each key/value found. func must return a
     tuple(new_key,new_value)
     """
     try:
-        items = sorted(d.items(),key=lambda x: x[0])
+        items = sorted(d.items(), key=lambda x: x[0])
     except TypeError:
         # not sortable
         items = d.items()
-    for k,v in items:
+    for k, v in items:
         if isinstance(v, dict):
-            dict_traverse(v,func,traverse_list=traverse_list)
-        elif traverse_list and isinstance(v,list):
+            dict_traverse(v, func, traverse_list=traverse_list)
+        elif traverse_list and isinstance(v, list):
             for e in v:
-                dict_traverse(e,func,traverse_list=traverse_list)
+                dict_traverse(e, func, traverse_list=traverse_list)
         else:
-            newk,newv = func(k,v)
+            newk, newv = func(k, v)
             d.pop(k)
             d[newk] = newv
