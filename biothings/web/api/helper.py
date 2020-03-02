@@ -9,7 +9,7 @@ from urllib.parse import (parse_qs, unquote_plus, urlencode, urlparse,
 import tornado.web
 from tornado.escape import json_decode
 
-from biothings.utils.common import is_seq, is_str, split_ids
+from biothings.utils.common import split_ids, DateTimeJSONEncoder
 from biothings.utils.web.analytics import GAMixIn
 from biothings.utils.web.tracking import StandaloneTrackingMixin
 
@@ -20,10 +20,11 @@ except ImportError:
     class SentryMixin(object):
         pass
 
-try:
-    from re import fullmatch as match
-except ImportError:
-    from re import match
+# TODO: remove this unused import
+# try:
+#     from re import fullmatch as match
+# except ImportError:
+#     from re import match
 
 try:
     import msgpack
@@ -42,12 +43,13 @@ try:
 except ImportError:
     SUPPORT_YAML = False
 
-class DateTimeJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, datetime.datetime):
-            return obj.isoformat()
-        else:
-            return super(DateTimeJSONEncoder, self).default(obj)
+# TODO: remove it. dup of biothings.commons.DateTimeJSONEncoder
+# class DateTimeJSONEncoder(json.JSONEncoder):
+#     def default(self, obj):
+#         if isinstance(obj, datetime.datetime):
+#             return obj.isoformat()
+#         else:
+#             return super(DateTimeJSONEncoder, self).default(obj)
 
 class BiothingParameterTypeError(Exception):
     def __init__(self, error='', param=''):
@@ -62,7 +64,7 @@ class BiothingParameterTypeError(Exception):
 class BiothingsQueryParamInterpreter():
 
     def __init__(self, jsoninput=False):
-        ''' 
+        '''
             Parameter sets the support for json string list
         '''
         if isinstance(jsoninput, str):
@@ -98,7 +100,7 @@ class BiothingsQueryParamInterpreter():
 
 class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTrackingMixin):
     ''' Parent class of all biothings handlers, only direct descendant of
-        `tornado.web.RequestHandler <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler>`_, 
+        `tornado.web.RequestHandler <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler>`_,
         contains the common functions in the biothings handler universe:
 
             * return `self` as JSON
@@ -107,7 +109,7 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
             * optionally send tracking data to google analytics and integrate with sentry monitor'''
 
     def initialize(self, web_settings):
-        """ Tornado handler `initialize() <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler.initialize>`_, 
+        """ Tornado handler `initialize() <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler.initialize>`_,
         Override to add settings for *this* biothing API.  Assumes that the ``web_settings`` kwarg exists in APP_LIST """
         self.web_settings = web_settings
         self.ga_event_object_ret = {'category': '{}_api'.format(self.web_settings.API_VERSION)}
@@ -122,10 +124,10 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         _msg = self._format_log_exception_message(exception_msg)
         logging.exception(_msg)
 
-    def ga_event_object(self, data={}):
+    def ga_event_object(self, data=None):
         ''' Create the data object for google analytics tracking. '''
         # Most of the structure of this object is formed during self.initialize
-        if data:
+        if data and isinstance(data, dict):
             self.ga_event_object_ret['label'] = list(data.keys()).pop()
             self.ga_event_object_ret['value'] = list(data.values()).pop()
         return self.ga_event_object_ret
@@ -152,7 +154,7 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         args.update(args_query)
 
         # apply key alias transformation
-        
+
         aliases = {}
         for _arg, _setting in self.kwarg_settings.items():
             if 'alias' in _setting:
@@ -161,7 +163,7 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
                 else:
                     for _alias in _setting['alias']:
                         aliases[_alias] = _arg
-            
+
         for key in args:
             if key in aliases:
                 args.setdefault(aliases[key], args[key])
@@ -178,14 +180,14 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
                         totype[key] = type_
 
         for key in args:
-            if 'translations' in self.kwarg_settings.get(key,{}):
+            if 'translations' in self.kwarg_settings.get(key, {}):
                 if isinstance(args[key], str):
                     for (regex, translation) in self.kwarg_settings[key]['translations']:
-                        args[key] = re.sub(regex, translation, args[key])        
+                        args[key] = re.sub(regex, translation, args[key])
 
         # apply value type conversion
 
-        param = BiothingsQueryParamInterpreter(args.get('jsoninput',''))
+        param = BiothingsQueryParamInterpreter(args.get('jsoninput', ''))
         for key, type_ in totype.items():
             if isinstance(args[key], str) and type_ == bool:
                 args[key] = param.str_to_bool(args[key])
@@ -196,8 +198,12 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
 
         for key in args:
             if isinstance(args[key], list):
-                args[key] = args[key][:self.kwarg_settings[key].get('max',
-                        getattr(self.web_settings, 'LIST_SIZE_CAP', 1000))]
+                max_len = self.kwarg_settings[key].get(
+                    'max',
+                    getattr(self.web_settings, 'LIST_SIZE_CAP', 1000)
+                )
+                args[key] = args[key][:max_len]
+
 
         args = self._sanitize_params(args)
         return args
@@ -222,16 +228,23 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
         q.pop('format', None)
         d = d._replace(query=urlencode(q, True))
         _link = urlunparse(d)
-        self.write(self.web_settings.HTML_OUT_TEMPLATE.format(data=json.dumps(data), 
-            img_src=self.web_settings.HTML_OUT_HEADER_IMG, link=_link, link_decode=unquote_plus(_link),
-            title_html=self.web_settings.HTML_OUT_TITLE, docs_link=_docs))
+        self.write(
+            self.web_settings.HTML_OUT_TEMPLATE.format(
+                data=json.dumps(data),
+                img_src=self.web_settings.HTML_OUT_HEADER_IMG,
+                link=_link,
+                link_decode=unquote_plus(_link),
+                title_html=self.web_settings.HTML_OUT_TITLE,
+                docs_link=_docs
+            )
+        )
         return
 
     def return_yaml(self, data, status_code=200):
 
         if not SUPPORT_YAML:
             self.set_status(500)
-            self.write({"success":False,"error":"Extra requirements for biothings.web needed."})
+            self.write({"success": False, "error": "Extra requirements for biothings.web needed."})
             return
 
         def ordered_dump(data, stream=None, Dumper=yaml.Dumper, **kwds):
@@ -244,7 +257,7 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
                     data.items())
             OrderedDumper.add_representer(OrderedDict, _dict_representer)
             return yaml.dump(data, stream, OrderedDumper, **kwds)
-        
+
         self.set_status(status_code)
         self.set_header("Content-Type", "text/x-yaml; charset=UTF-8")
         self.support_cors()
@@ -253,7 +266,7 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
 
     def return_object(self, data, encode=True, indent=None, status_code=200, _format='json'):
         '''Return passed data object as the proper response.
-            
+
         :param data: object to return as JSON
         :param encode: if encode is False, assumes input data is already a JSON encoded string.
         :param indent: number of indents per level in JSON string
@@ -274,15 +287,15 @@ class BaseHandler(SentryMixin, tornado.web.RequestHandler, GAMixIn, StandaloneTr
 
     def return_json(self, data, encode=True, indent=None, status_code=200, is_msgpack=False):
         '''Return passed data object as JSON response.
-        If **jsonp** parameter is set in the  request, return a valid 
+        If **jsonp** parameter is set in the  request, return a valid
         `JSONP <https://en.wikipedia.org/wiki/JSONP>`_ response.
-            
+
         :param data: object to return as JSON
         :param encode: if encode is False, assumes input data is already a JSON encoded string.
         :param indent: number of indents per level in JSON string
         :param status_code: HTTP status code for response
         :param is_msgpack: should this object be compressed before return?
-        '''    
+        '''
         indent = indent or 2   # tmp settings
         self.set_status(status_code)
         if is_msgpack:
