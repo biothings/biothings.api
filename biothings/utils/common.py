@@ -17,8 +17,6 @@ import pickle
 import json
 import logging
 import importlib
-# import math
-# import statistics
 import hashlib
 import asyncio
 import inspect
@@ -28,7 +26,7 @@ import glob
 from datetime import date, datetime, timezone
 from functools import partial
 # from json serial, catching special type
-import _sre
+# import _sre     # TODO: unused import;remove it once confirmed
 
 
 # ===============================================================================
@@ -721,15 +719,15 @@ def aiogunzipall(folder, pattern, job_manager, pinfo):
         pinfo["description"] = os.path.basename(f)
         suffix = pattern.replace("*", "")
         job = yield from job_manager.defer_to_process(pinfo, partial(gunzip, f, suffix=suffix))
-        def gunzipped(fut, inf):
+        def gunzipped(fut, infile):
             try:
                 # res = fut.result()
                 fut.result()
             except Exception as e:
-                logging.error("Failed to gunzip file %s: %s", inf, e)
+                logging.error("Failed to gunzip file %s: %s", infile, e)
                 nonlocal got_error
                 got_error = e
-        job.add_done_callback(partial(gunzipped, inf=f))
+        job.add_done_callback(partial(gunzipped, infile=f))
         jobs.append(job)
         if got_error:
             raise got_error
@@ -755,10 +753,9 @@ def md5sum(fname):
 
 class splitstr(str):
     """Type representing strings with space in it"""
-    pass
+
 class nan(object):
     """Represents NaN type, but not as a float"""
-    pass
+
 class inf(object):
     """Represents Inf type, but not as a float"""
-    pass
