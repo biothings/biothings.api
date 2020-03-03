@@ -87,7 +87,11 @@ class StatsMode(BaseMode):
 
     def report(self, struct, drep, orig_struct=None):
         # if is_str(struct) or type(struct) in [dict, list]:    # TODO: remove this line
+<<<<<<< HEAD
         if is_str(struct) or isinstance(struct, (dict, list)):
+=======
+        if is_str(struct) or isinstance(struct, [dict, list]):
+>>>>>>> code formating - utils.inspect
             val = len(struct)
         else:
             val = struct
