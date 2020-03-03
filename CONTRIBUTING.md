@@ -76,6 +76,8 @@ In addition to the standards outlined in PEP 8, we have a few guidelines:
       """
   See examples and additional details [here](https://sphinx-rtd-tutorial.readthedocs.io/en/latest/docstrings.html).
 
+Please also check this [CODING_STYLE_EXAMPLES.md](CODING_STYLE_EXAMPLES.md) doc for some common styling issues we should avoid.
+
 In some particular cases, the style guidelines may not be suitable. Use your own best judgment,
 and also raise the issue with the team members for their opinions. Read more about when to ignore a
 particular guideline from [PEP8 doc](https://pep8.org/#a-foolish-consistency-is-the-hobgoblin-of-little-minds).
