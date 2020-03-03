@@ -482,16 +482,6 @@
                      return null;
                  }
             },
-            getCompatList () {
-                try {
-                var compat = require('./compat.json');
-                } catch(e) {
-                  console.log(e);
-                  console.log("Coulnd't find compat list");
-                  var compat = [];
-                }
-                return compat;
-            },
             dispatchEvent(evt) {
                 if(evt.op == "log") {
                     bus.$emit("log",evt);
@@ -597,7 +587,7 @@
                 }
                 // where should we look for compatible studio webapp
                 var current_host_port = new URI(location.protocol+'//'+location.hostname+(location.port ? ':'+location.port: ''));
-                var studio_roots = [current_host_port.toString()];
+                var studio_roots = [current_host_port.toString() + "/"];
                 var remote_webapps = ["https://studio.biothings.io"]; // default remote root if none configured
                 if(Vue.localStorage.get("remote_webapps")) {
                     studio_roots = Vue.localStorage.get("remote_webapps");
@@ -630,84 +620,93 @@
 
                 // start checks
                 var self = this;
-                var compat = self.getCompatList();
-                // find the first studio version compatible with current hub
-                for(var i in compat) {
+                // this loads a list of compatible versions (webapp versions matchings biothings versions)
+                var compat_url = studio_roots[0] + "/compat.json";
+                // remove any double slash
+                compat_url = compat_url.replace(/([^:]\/)\/+/g, "$1")
+                console.log(`Load compatibility list from ${compat_url}`);
+                axios.get(compat_url)
+                .then(response => {
+                  var compat = response.data;
+                  console.log("Compatibility options:");
+                  console.log(compat);
+                  // find the first studio version compatible with current hub
+                  for(var i in compat) {
                     var when = compat[i]["when"];
                     for(var k in when) {
-                        if(data[k]) {
-                            try {
-                                var vers = data[k].split(" ").map(function(e) { var r = /\[(.*)\]/.exec(e); return r && r[1] || e });
-                            } catch (e) {
-                                // object-like
-                                var vers = [data[k]["branch"],data[k]["commit"],data[k]["date"]];
-                            }
-                            var branch = vers[0];
-                            switch(vers.length) {
-                                case 2:
-                                    var commit = vers[1];
-                                    var commitdate = null;
-                                    break;
-                                case 3:
-                                    var commit = vers[1];
-                                    var commitdate = vers[2];
-                                    break;
-                                default:
-                                    var commit = null;
-                                    var commitdate = null;
-                            }
-                            var required_branch = when[k]["branch"];
-                            var required_commit = when[k]["commit"];
-                            var required_date = when[k]["date"];
-                            console.log(`Hub run ${k} branch:${branch} commit:${commit} commit-date:${commitdate}`);
-                            console.log(`Checking compat branch:${required_branch} commit:${required_commit} commit-date:${required_date}`);
-                            // first check branch
-                            if(required_branch == branch) {
-                              // then commit
-                              if(required_commit) {
-                                if(required_commit != commit) {
-                                  console.log(`Commit mismatch, need ${required_commit} but got ${commit}`);
-                                  continue;
-                                } else {
-                                  // commit more restrictive than date, if match, keep that version
-                                  console.log("Commits matches");
-                                  self.required_studio_version = compat[i]["requires"];
-                                  break;
-                                }
-                              }
-                              // then branch
-                              if(required_date) {
-                                if(!commitdate) {
-                                  console.log("Date compat needed but no commit date returned from Hub");
-                                  continue;
-                                }
-                                // can be an expression ("more recent than", "older than", etc...)
-                                var interval = required_date.split(",");
-                                if(interval.length == 2) {
-                                  var fromd = interval[0];
-                                  var tod = interval[1];
-                                  var dateok = evalDateCompat(fromd,commitdate) && evalDateCompat(tod,commitdate);
-                                } else {
-                                  var dateok = evalDateCompat(required_date,commitdate);
-                                }
-                                if(!dateok) {
-                                  console.log(`Date mismatch, need ${required_date} but got ${commitdate}`);
-                                  continue;
-                                } else {
-                                  console.log("Dates match");
-                                  self.required_studio_version = compat[i]["requires"];
-                                  break;
-                                }
-                              } else {
-                                // no commit, no date, but branches match
-                                console.log("Branches match");
-                                self.required_studio_version = compat[i]["requires"];
-                                break;
-                              }
-                            } else {
-                              console.log(`Branch mismatch, need ${required_branch} but got ${branch}`);
-                            }
+                      if(data[k]) {
+                        try {
+                          var vers = data[k].split(" ").map(function(e) { var r = /\[(.*)\]/.exec(e); return r && r[1] || e });
+                        } catch (e) {
+                          // object-like
+                          var vers = [data[k]["branch"],data[k]["commit"],data[k]["date"]];
                         }
+                        var branch = vers[0];
+                        switch(vers.length) {
+                            case 2:
+                                var commit = vers[1];
+                                var commitdate = null;
+                                break;
+                            case 3:
+                                var commit = vers[1];
+                                var commitdate = vers[2];
+                                break;
+                            default:
+                                var commit = null;
+                                var commitdate = null;
+                        }
+                        var required_branch = when[k]["branch"];
+                        var required_commit = when[k]["commit"];
+                        var required_date = when[k]["date"];
+                        console.log(`Hub run ${k} branch:${branch} commit:${commit} commit-date:${commitdate}`);
+                        console.log(`Checking compat branch:${required_branch} commit:${required_commit} commit-date:${required_date}`);
+                        // first check branch
+                        if(required_branch == branch) {
+                          // then commit
+                          if(required_commit) {
+                            if(required_commit != commit) {
+                              console.log(`Commit mismatch, need ${required_commit} but got ${commit}`);
+                              continue;
+                            } else {
+                              // commit more restrictive than date, if match, keep that version
+                              console.log("Commits matches");
+                              self.required_studio_version = compat[i]["requires"];
+                              break;
+                            }
+                          }
+                          // then branch
+                          if(required_date) {
+                            if(!commitdate) {
+                              console.log("Date compat needed but no commit date returned from Hub");
+                              continue;
+                            }
+                            // can be an expression ("more recent than", "older than", etc...)
+                            var interval = required_date.split(",");
+                            if(interval.length == 2) {
+                              var fromd = interval[0];
+                              var tod = interval[1];
+                              var dateok = evalDateCompat(fromd,commitdate) && evalDateCompat(tod,commitdate);
+                            } else {
+                              var dateok = evalDateCompat(required_date,commitdate);
+                            }
+                            if(!dateok) {
+                              console.log(`Date mismatch, need ${required_date} but got ${commitdate}`);
+                              continue;
+                            } else {
+                              console.log("Dates match");
+                              self.required_studio_version = compat[i]["requires"];
+                              break;
+                            }
+                          } else {
+                            // no commit, no date, but branches match
+                            console.log("Branches match");
+                            self.required_studio_version = compat[i]["requires"];
+                            break;
+                          }
+                        } else {
+                          console.log(`Branch mismatch, need ${required_branch} but got ${branch}`);
+                        }
+                      }
                     }
                     if(self.required_studio_version) {
                       break; // again to exit main for loop
@@ -715,6 +714,12 @@
                       console.log("No match found or no required version specified");
                     }
                 }
+                })
+                .catch(err => {
+                      console.log("Couldn't load compat.json file");
+                      console.log(err);
+                })
+
                 if(!self.required_studio_version) {
                   console.log("Couldn't find any suitable version, will keep current as failover");
                   return;
