@@ -92,11 +92,9 @@ def to_float(val):
     """convert an input string to int"""
     return safe_type(float, val)
 
-
 def to_int(val):
     """convert an input string to float"""
     return safe_type(int, val)
-
 
 def to_number(val):
     """convert an input string to int/float."""
@@ -130,7 +128,6 @@ def boolean_convert(d, convert_keys=None, level=0):
                 d[key] = to_boolean(val)
     return d
 
-
 def float_convert(d, include_keys=None, exclude_keys=None):
     """Convert elements in a document to floats.
 
@@ -145,7 +142,6 @@ def float_convert(d, include_keys=None, exclude_keys=None):
     """
     return value_convert_incexcl(d, to_float, include_keys, exclude_keys)
 
-
 def int_convert(d, include_keys=None, exclude_keys=None):
     """Convert elements in a document to integers.
 
@@ -159,7 +155,6 @@ def int_convert(d, include_keys=None, exclude_keys=None):
     :return: generate key, value pairs
     """
     return value_convert_incexcl(d, to_int, include_keys, exclude_keys)
-
 
 def to_boolean(val, true_str=None, false_str=None):
     """Normlize str value to boolean value"""
@@ -293,7 +288,7 @@ def unlist_incexcl(d, include_keys=None, exclude_keys=None):
 
 
 def list_split(d, sep):
-    """split fields by sep into comma separated lists, strip."""
+    """Split fields by sep into comma separated lists, strip."""
     for key, val in d.items():
         if isinstance(val, dict):
             list_split(val, sep)
@@ -325,7 +320,8 @@ def llist(li, sep='\t'):
 def listitems(a_list, *idx):
     '''Return multiple items from list by given indexes.'''
     if isinstance(a_list, tuple):
-        return tuple([a_list[i] for i in idx])
+        # return tuple([a_list[i] for i in idx])   # TODO: remove this line
+        return tuple(a_list[i] for i in idx)
     else:
         return [a_list[i] for i in idx]
 
@@ -352,8 +348,10 @@ def list2dict(a_list, keyitem, alwayslist=False):     # pylint: disable=redefine
             key = x[keyitem]
             value = tuple(x[:keyitem] + x[keyitem + 1:])
         else:
-            key = tuple([x[i] for i in keyitem])
-            value = tuple([x[i] for i in range(len(a_list)) if i not in keyitem])
+            # key = tuple([x[i] for i in keyitem])  # TODO: remove this line
+            key = tuple(x[i] for i in keyitem)
+            # value = tuple([x[i] for i in range(len(a_list)) if i not in keyitem])  # TODO: remove this line
+            value = tuple(x[i] for i in range(len(a_list)) if i not in keyitem)
         if len(value) == 1:      # single value
             value = value[0]
         if key not in _dict:
@@ -616,6 +614,7 @@ def traverse_keys(d, include_keys=None, exclude_keys=None):
     """
     include_keys = include_keys or []
     exclude_keys = exclude_keys or []
+
     def traverse_helper(d, keys):
         if isinstance(d, dict):
             for k in d.keys():
@@ -685,11 +684,12 @@ def value_convert_to_number(d, skipped_keys=None):
             if isinstance(val, list):
                 d[key] = [to_number(x) if not isinstance(x, dict) else value_convert_to_number(x, skipped_keys) for x in val]
             elif isinstance(val, tuple):
-                d[key] = tuple([to_number(x) if not isinstance(x, dict) else value_convert_to_number(x, skipped_keys) for x in val])
+                # TODO: remove this line
+                # d[key] = tuple([to_number(x) if not isinstance(x, dict) else value_convert_to_number(x, skipped_keys) for x in val])
+                d[key] = tuple(to_number(x) if not isinstance(x, dict) else value_convert_to_number(x, skipped_keys) for x in val)
             else:
                 d[key] = to_number(val)
     return d
-
 
 def dict_convert(_dict, keyfn=None, valuefn=None):
     '''Return a new dict with each key converted by keyfn (if not None),
@@ -708,13 +708,11 @@ def dict_convert(_dict, keyfn=None, valuefn=None):
     else:
         return _dict
 
-
 def updated_dict(_dict, attrs):
     '''Same as dict.update, but return the updated dictionary.'''
     out = _dict.copy()
     out.update(attrs)
     return out
-
 
 def update_dict_recur(d, u):
     """
@@ -728,7 +726,6 @@ def update_dict_recur(d, u):
         else:
             d[k] = u[k]
     return d
-
 
 def merge_dict(dict_li, attr_li, missingvalue=None):
     '''
@@ -764,7 +761,6 @@ def merge_dict(dict_li, attr_li, missingvalue=None):
         out_dict[k] = value
     return out_dict
 
-
 def normalized_value(value, sort=True):
     '''Return a "normalized" value:
            1. if a list, remove duplicate and sort it
@@ -778,7 +774,8 @@ def normalized_value(value, sort=True):
             _v = list(set(value))
         except TypeError:
             #use alternative way
-            _v = [json.loads(x) for x in set([json.dumps(x) for x in value])]
+            # _v = [json.loads(x) for x in set([json.dumps(x) for x in value])]   # TODO: remove this line
+            _v = [json.loads(x) for x in {json.dumps(x) for x in value}]
         # if len(_v) and sort:
         if _v and sort:
             # py3 won't sort dict anymore...
@@ -798,12 +795,10 @@ def normalized_value(value, sort=True):
 
     return _v
 
-
 def dict_nodup(_dict, sort=True):
     for k in _dict:
         _dict[k] = normalized_value(_dict[k], sort=sort)
     return _dict
-
 
 def dict_attrmerge(dict_li, removedup=True, sort=True, special_fns=None):
     '''
@@ -872,7 +867,6 @@ def merge_root_keys(doc1, doc2, exclude=None):
 
     return doc1
 
-
 def dict_apply(d, key, value, sort=True):
     """add value to d[key], append it if key exists
 
@@ -897,14 +891,12 @@ def dict_apply(d, key, value, sort=True):
 
     d[key] = normalized_value(_value, sort=sort)
 
-
 def dict_to_list(gene_d):
     '''return a list of genedoc from genedoc dictionary and
        make sure the "_id" field exists.
     '''
     doc_li = [updated_dict(gene_d[k], {'_id': str(k)}) for k in sorted(gene_d.keys())]
     return doc_li
-
 
 def merge_struct(v1, v2, aslistofdict=None):
 
@@ -980,13 +972,14 @@ def merge_struct(v1, v2, aslistofdict=None):
     #print("return %s" % v1)
     return v1
 
-
 def dict_walk(dictionary, key_func):
     """Recursively apply key_func to dict's keys"""
     if not isinstance(dictionary, dict):
         return dictionary
-    return dict((key_func(k), dict_walk(v, key_func))
-                for k, v in dictionary.items())
+    # TODO: remove the following two lines
+    # return dict((key_func(k), dict_walk(v, key_func))
+    #             for k, v in dictionary.items())
+    return {key_func(k): dict_walk(v, key_func) for k, v in dictionary.items()}
 
 
 def dict_traverse(d, func, traverse_list=False):
