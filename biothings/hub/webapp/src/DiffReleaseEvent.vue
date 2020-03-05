@@ -264,18 +264,26 @@ export default {
                 // check whether we can use one of build_config keys
                 // to filter compatibles indices
                 if(selecting) {
-                    if(!value.index.hasOwnProperty(selecting))
-                        return true;// continue next iter
+                    var found = false;
+                    for(var i in value.index) {
+                        var idx = value.index[i];
+                        console.log(idx);
+                        if(!idx.hasOwnProperty(selecting)) {
+                            continue;
+                        } else {
+                            found = true;
+                        }
+                    }
+                    if(!found) {
+                        return true;// continue next iter from $.each
+                    }
                 }
                 for(var k in value.index) {
                     // make sure doc_type is the same
                     if(value.index[k]["doc_type"] != self.build.build_config.doc_type) {
                         continue;
                     }
-                    if(selecting && (selecting != k))
-                        continue;
                     _compat.push({"env":env, "host":value["host"],"index":value.index[k]["index"]});
-                    //_compat[env]["index"].push(value.index[k]["index"]);
                 }
             });
             return _compat;
