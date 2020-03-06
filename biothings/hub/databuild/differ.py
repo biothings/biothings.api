@@ -607,7 +607,7 @@ class ColdHotJsonDifferBase(ColdHotDiffer):
                         found = True
                         break
                 assert found, "Couldn't find file information in metadata (with md5 value), try to rebuild_diff_file_list() ?"
-                size = os.stat(diff_ile).st_size
+                size = os.stat(diff_file).st_size
                 self.metadata["diff"]["files"][i] = {"name":name,"md5sum":md5,"size":size}
                 self.logger.info(self.metadata["diff"]["files"])
 

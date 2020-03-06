@@ -1062,9 +1062,9 @@ class BuilderManager(BaseManager):
         self.delete_merged_data(merge_name)
 
     def get_query_for_list_merge(self,only_archived):
-        q = {"$or" : [{"archived" : {"$exists" : 0}}, {"archived" : False}]}
+        q = {"archived" : {"$exists" : 0}}
         if only_archived:
-            q = {"$and" : [{"archived" : {"$exists" : 1}}, {"archived" : True}]}
+            q = {"archived" : {"$exists" : 1}}
         return q
 
     def list_merge(self,build_config=None,only_archived=False):
