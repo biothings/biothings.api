@@ -14,7 +14,7 @@ import logging
 
 from biothings import config
 from biothings.utils.loggers import get_logger, WSLogHandler, WSShellHandler, ShellLogger
-from biothings.utils.hub import (HubShell, HubReloader, CommandDefinition, pending,
+from biothings.utils.hub import (HubShell, get_hub_reloader, CommandDefinition, pending,
                                  AlreadyRunningException, CommandError)
 from biothings.utils.jsondiff import make as jsondiff
 
@@ -607,16 +607,11 @@ class HubServer(object):
             "hub/dataload/sources",
             getattr(config, "DATA_PLUGIN_FOLDER", None)
         ]
-        reload_managers = [
-            self.managers[m] for m in self.reloader_config["managers"]
-            if m in self.managers
-        ]
         reload_func = self.reloader_config["reload_func"] or partial(
             self.shell.restart, force=True)
-        reloader = HubReloader(monitored_folders,
-                               reload_managers,
-                               reload_func=reload_func)
-        reloader.monitor()
+        reloader = get_hub_reloader(monitored_folders,
+                                    reload_func=reload_func)
+        reloader and reloader.monitor()
 
     def configure_remaining_features(self):
         self.logger.info("Setting up remaining features: %s" %
