@@ -54,9 +54,9 @@ class MongoDBEdge(DataTransformEdge):
                     # MongoDB deals with that => TODO check
                     for k in keys:
                         avail_idxs[k] = True
-                if not self.lookup in avail_idxs:
-                    raise ValueError("Field '%s' isn't indexed, this would " % self.lookup + \
-                            "result in very long datatransform process")
+                if self.lookup not in avail_idxs:
+                    raise ValueError("Field '%s' isn't indexed, this would " % self.lookup
+                                     + "result in very long datatransform process")
             else:
                 self.logger.warning("Collection '%s' doesn't exist, can't check indices" % self.collection_name)
 
@@ -218,8 +218,8 @@ class DataTransformMDB(DataTransform):
                 raise ValueError("edge_object for ({}, {}) is missing".format(vert1, vert2))
             edge_object = graph.edges[vert1, vert2]['object']
             if not isinstance(edge_object, DataTransformEdge):
-                raise ValueError("edge_object for ({}, {}) is of the wrong type".\
-                    format(vert1, vert2))
+                raise ValueError("edge_object for ({}, {}) is of the wrong type".
+                                 format(vert1, vert2))
 
     def _precompute_paths(self):
         """
@@ -264,7 +264,7 @@ class DataTransformMDB(DataTransform):
             # in debug mode, skip all documents not in the debug list
             if self.debug:
                 # pylint: disable=C0121
-                if self.debug == True or doc['_id'] in self.debug:
+                if self.debug is True or doc['_id'] in self.debug:
                     # set debug information
                     doc['dt_debug'] = {'orig_id': doc['_id']}
                     doc_lst.append(doc)
