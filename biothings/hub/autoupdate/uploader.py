@@ -1,13 +1,13 @@
-import os, asyncio
+import os
+import asyncio
 import json
 from functools import partial
-
-from elasticsearch.exceptions import NotFoundError, TransportError
 
 from biothings import config as btconfig
 import biothings.hub.dataload.uploader as uploader
 from biothings.utils.backend import DocESBackend
 from biothings.utils.es import IndexerException
+
 
 class BiothingsUploader(uploader.BaseSourceUploader):
 
@@ -24,9 +24,8 @@ class BiothingsUploader(uploader.BaseSourceUploader):
     # should we delete index before restoring snapshot if index already exist ?
     AUTO_PURGE_INDEX = False
 
-
     def __init__(self, *args, **kwargs):
-        super(BiothingsUploader,self).__init__(*args,**kwargs)
+        super(BiothingsUploader, self).__init__(*args, **kwargs)
         self._target_backend = None
         self._syncer_func = None
 
@@ -36,8 +35,11 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             if type(self.__class__.TARGET_BACKEND) == partial:
                 self._target_backend = self.__class__.TARGET_BACKEND()
             else:
-                 self._target_backend = self.__class__.TARGET_BACKEND
-            assert type(self._target_backend) == DocESBackend, "Only ElasticSearch backend is supported (got %s)" % type(self._target_backend)
+                self._target_backend = self.__class__.TARGET_BACKEND
+            assert type(
+                self._target_backend
+            ) == DocESBackend, "Only ElasticSearch backend is supported (got %s)" % type(
+                self._target_backend)
         return self._target_backend
 
     @property
@@ -48,7 +50,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
 
     @asyncio.coroutine
     def load(self, *args, **kwargs):
-        return super().load(steps=["data"],*args,**kwargs)
+        return super().load(steps=["data"], *args, **kwargs)
 
     @asyncio.coroutine
     def update_data(self, batch_size, job_manager):
@@ -56,66 +58,80 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         Look in data_folder and either restore a snapshot to ES
         or apply diff to current ES index
         """
-        got_error = False
         # determine if it's about a snapshot/full and diff/incremental
         # we should have a json metadata matching the release
-        self.prepare_src_dump() # load infor from src_dump
-        release = self.src_doc.get("download",{}).get("release")
+        self.prepare_src_dump()  # load infor from src_dump
+        release = self.src_doc.get("download", {}).get("release")
         assert release, "Can't find release information in src_dump document"
-        build_meta = json.load(open(os.path.join(self.data_folder,"%s.json" % release)))
+        build_meta = json.load(
+            open(os.path.join(self.data_folder, "%s.json" % release)))
         if build_meta["type"] == "full":
-            res = yield from self.restore_snapshot(build_meta,job_manager=job_manager)
+            res = yield from self.restore_snapshot(build_meta,
+                                                   job_manager=job_manager)
         elif build_meta["type"] == "incremental":
-            res = yield from self.apply_diff(build_meta,job_manager=job_manager)
+            res = yield from self.apply_diff(build_meta,
+                                             job_manager=job_manager)
         return res
 
     def get_snapshot_repository_config(self, build_meta):
         """Return (name,config) tuple from build_meta, where
         name is the repo name, and config is the repo config"""
-        repo_name, repo_settings = list(build_meta["metadata"]["repository"].items())[0]
+        repo_name, repo_settings = list(
+            build_meta["metadata"]["repository"].items())[0]
         return (repo_name, repo_settings)
 
     @asyncio.coroutine
-    def restore_snapshot(self,build_meta, job_manager, **kwargs):
+    def restore_snapshot(self, build_meta, job_manager, **kwargs):
         idxr = self.target_backend.target_esidxer
-        repo_name, repo_settings = self.get_snapshot_repository_config(build_meta)
+        repo_name, repo_settings = self.get_snapshot_repository_config(
+            build_meta)
         # first check if snapshot repo exists
         # do we need to enrich with some credentials ? (there are part of repo creation JSON settings)
-        if repo_settings.get("type") == "s3" and btconfig.STANDALONE_AWS_CREDENTIALS.get("AWS_ACCESS_KEY_ID"):
-            repo_settings["settings"]["access_key"] = btconfig.STANDALONE_AWS_CREDENTIALS["AWS_ACCESS_KEY_ID"]
-            repo_settings["settings"]["secret_key"] = btconfig.STANDALONE_AWS_CREDENTIALS["AWS_SECRET_ACCESS_KEY"]
+        if repo_settings.get(
+                "type") == "s3" and btconfig.STANDALONE_AWS_CREDENTIALS.get(
+                    "AWS_ACCESS_KEY_ID"):
+            repo_settings["settings"][
+                "access_key"] = btconfig.STANDALONE_AWS_CREDENTIALS[
+                    "AWS_ACCESS_KEY_ID"]
+            repo_settings["settings"][
+                "secret_key"] = btconfig.STANDALONE_AWS_CREDENTIALS[
+                    "AWS_SECRET_ACCESS_KEY"]
             repo_settings["settings"]["readonly"] = True
         try:
             repo = idxr.get_repository(repo_name)
             # ok it exists, check if settings are the same
             if repo[repo_name] != repo_settings:
                 # different, raise exception so it's handles in the except
-                self.logger.info("Repository '%s' was found but settings are different, it needs to be created again" % repo_name)
+                self.logger.info(
+                    "Repository '%s' was found but settings are different, it needs to be created again"
+                    % repo_name)
                 self.logger.debug("Existing setting: %s" % repo[repo_name])
                 self.logger.debug("Required (new) setting: %s" % repo_settings)
                 raise IndexerException
         except IndexerException:
             # ok, it doesn't exist let's try to create it
             try:
-                repo = idxr.create_repository(repo_name,repo_settings)
+                repo = idxr.create_repository(repo_name, repo_settings)
             except IndexerException as e:
                 if repo_settings["settings"].get("url"):
-                    raise uploader.ResourceError("Could not create snapshot repository. Check elasticsearch.yml configuration " + \
-                            "file, you should have a line like this: " + \
-                            'repositories.url.allowed_urls: "%s*" ' % repo_settings["settings"]["url"] + \
-                            "allowing snapshot to be restored from this URL. Error was: %s" % e)
+                    raise uploader.ResourceError("Could not create snapshot repository. Check elasticsearch.yml configuration "
+                                                 + "file, you should have a line like this: "
+                                                 + 'repositories.url.allowed_urls: "%s*" ' % repo_settings["settings"]["url"]
+                                                 + "allowing snapshot to be restored from this URL. Error was: %s" % e)
                 else:
                     # try to create repo without key/secret, assuming it's already configured in ES keystore
                     if repo_settings["settings"].get("access_key"):
                         repo_settings["settings"].pop("access_key")
                         repo_settings["settings"].pop("secret_key")
                         try:
-                            repo = idxr.create_repository(repo_name,repo_settings)
+                            repo = idxr.create_repository(
+                                repo_name, repo_settings)
                         except IndexerException as e:
-                            raise uploader.ResourceError("Could not create snapshot repository, even assuming " + \
-                                    "credentials configured in keystore: %s" % e)
+                            raise uploader.ResourceError("Could not create snapshot repository, even assuming "
+                                                         + "credentials configured in keystore: %s" % e)
                     else:
-                        raise uploader.ResourceError("Could not create snapshot repository: %s" % e)
+                        raise uploader.ResourceError(
+                            "Could not create snapshot repository: %s" % e)
 
         # repository is now ready, let's trigger the restore
         snapshot_name = build_meta["metadata"]["snapshot_name"]
@@ -129,7 +145,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 return res
             except Exception as e:
                 # somethng went wrong, report as failure
-                return {"status" : "FAILED %s" % e}
+                return {"status": "FAILED %s" % e}
 
         def restore_launched(f):
             try:
@@ -138,25 +154,32 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 self.logger.error("Error while lauching restore: %s" % e)
                 raise e
 
-        self.logger.info("Restoring snapshot '%s' to index '%s' on host '%s'" % (snapshot_name,idxr._index,idxr.es_host))
-        job = yield from job_manager.defer_to_thread(pinfo,
-                partial(idxr.restore,repo_name,snapshot_name,idxr._index,
+        self.logger.info("Restoring snapshot '%s' to index '%s' on host '%s'" %
+                         (snapshot_name, idxr._index, idxr.es_host))
+        job = yield from job_manager.defer_to_thread(
+            pinfo,
+            partial(idxr.restore,
+                    repo_name,
+                    snapshot_name,
+                    idxr._index,
                     purge=self.__class__.AUTO_PURGE_INDEX))
         job.add_done_callback(restore_launched)
         yield from job
         while True:
             status_info = get_status_info()
             status = status_info["status"]
-            self.logger.info("Recovery status for index '%s': %s" % (idxr._index,status_info))
-            if status in ["INIT","IN_PROGRESS"]:
-                yield from asyncio.sleep(getattr(btconfig,"MONITOR_SNAPSHOT_DELAY",60))
+            self.logger.info("Recovery status for index '%s': %s" %
+                             (idxr._index, status_info))
+            if status in ["INIT", "IN_PROGRESS"]:
+                yield from asyncio.sleep(
+                    getattr(btconfig, "MONITOR_SNAPSHOT_DELAY", 60))
             else:
                 if status == "DONE":
-                    self.logger.info("Snapshot '%s' successfully restored to index '%s' (host: '%s')" % \
-                            (snapshot_name,idxr._index,idxr.es_host),extra={"notify":True})
+                    self.logger.info("Snapshot '%s' successfully restored to index '%s' (host: '%s')" %
+                                     (snapshot_name, idxr._index, idxr.es_host), extra={"notify": True})
                 else:
-                    e = uploader.ResourceError("Failed to restore snapshot '%s' on index '%s', status: %s" % \
-                            (snapshot_name,idxr._index,status))
+                    e = uploader.ResourceError("Failed to restore snapshot '%s' on index '%s', status: %s" %
+                                               (snapshot_name, idxr._index, status))
                     self.logger.error(e)
                     raise e
                 break
@@ -165,8 +188,9 @@ class BiothingsUploader(uploader.BaseSourceUploader):
 
     @asyncio.coroutine
     def apply_diff(self, build_meta, job_manager, **kwargs):
-        self.logger.info("Applying incremental update from diff folder: %s" % self.data_folder)
-        meta = json.load(open(os.path.join(self.data_folder,"metadata.json")))
+        self.logger.info("Applying incremental update from diff folder: %s" %
+                         self.data_folder)
+        meta = json.load(open(os.path.join(self.data_folder, "metadata.json")))
         # old: index we want to update
         old = (self.target_backend.target_esidxer.es_host,
                self.target_backend.target_name,
@@ -175,9 +199,9 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         new = (self.target_backend.target_esidxer.es_host,
                meta["new"]["backend"],
                self.target_backend.target_esidxer._doc_type)
-        res = yield from self.syncer_func(old_db_col_names=old,
-                                          new_db_col_names=new,
-                                          diff_folder=self.data_folder)
+        yield from self.syncer_func(old_db_col_names=old,
+                                    new_db_col_names=new,
+                                    diff_folder=self.data_folder)
         # return current number of docs in index (even if diff update)
         return self.target_backend.count()
 

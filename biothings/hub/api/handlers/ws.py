@@ -2,10 +2,8 @@ import logging
 import asyncio
 import json
 
-import biothings.hub.api.handlers.base as base
 from biothings.utils.hub_db import ChangeListener
 
-import tornado.websocket
 import sockjs.tornado
 
 
@@ -33,7 +31,7 @@ class WebSocketConnection(sockjs.tornado.SockJSConnection):
         # propagate connection so listeners can access it and trigger message sending
         for listener in self.listeners:
             listener.socket = self
-        super(WebSocketConnection,self).__init__(session)
+        super(WebSocketConnection, self).__init__(session)
 
     def publish(self, message):
         self.broadcast(self.clients, message)
@@ -50,7 +48,7 @@ class WebSocketConnection(sockjs.tornado.SockJSConnection):
         try:
             message = json.loads(message)
             if message["op"] == "ping":
-                self.send({"op":"pong"})
+                self.send({"op": "pong"})
         except json.JSONDecodeError:
             strerr = "malformed json message: %s" % message
             err = json.JSONDecodeError(strerr)
@@ -58,10 +56,10 @@ class WebSocketConnection(sockjs.tornado.SockJSConnection):
             strerr = "malformed socket message: %s" % message
             err = KeyError(strerr)
         except Exception as e:
-            strerr = "Unable to process message '%s': %s" % (message,e)
+            strerr = "Unable to process message '%s': %s" % (message, e)
             err = Exception(strerr)
         if err:
-            self.send({"error" : strerr})
+            self.send({"error": strerr})
             raise err
 
     def on_close(self):
@@ -75,7 +73,6 @@ class HubDBListener(ChangeListener):
     Get events from Hub DB and propagate them through the
     websocket instance
     """
-
     def read(self, event):
         # self.socket is set while initalizing the websocket connection
         self.socket.publish(event)
@@ -83,10 +80,11 @@ class HubDBListener(ChangeListener):
 
 class LogListener(ChangeListener):
     # IMPORTANT: no logging calls here, or infinite loop
-    def __init__(self,*args,**kwargs):
-        super().__init__(*args,**kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.socket = None
-    def read(self,event):
+
+    def read(self, event):
         if self.socket:
             # make sure there's a loop in current thread
             try:
@@ -106,4 +104,3 @@ class LogListener(ChangeListener):
                 # any error in the caller
                 print(e)
                 pass
-
