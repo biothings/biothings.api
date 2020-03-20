@@ -185,6 +185,10 @@ class BaseSourceUploader(object):
         return state
 
     def get_predicates(self):
+        """
+        Return a list of predicates (functions returning true/false, as in math logic)
+        which instructs/dictates if job manager should start a job (process/thread)
+        """
         def no_dumper_running(job_manager):
             """
             Dumpers could change the files uploader is currently using

@@ -345,13 +345,10 @@ class BaseDumper(object):
                 self.release_client()
 
     def get_predicates(self):
-        # TODO: can't use this one for parallized dumpers
-        #def no_same_dumper_running(job_manager):
-        #    """
-        #    Avoid collision at file's level (and what's the point anyway?)
-        #    """
-        #    return len([j for j in job_manager.jobs.values() if \
-        #            j["source"] == self.src_name and j["category"] == DUMPER_CATEGORY]) == 0
+        """
+        Return a list of predicates (functions returning true/false, as in math logic)
+        which instructs/dictates if job manager should start a job (process/thread)
+        """
         def no_corresponding_uploader_running(job_manager):
             """
             Don't download data if the associated uploader is running

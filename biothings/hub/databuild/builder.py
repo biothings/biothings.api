@@ -163,6 +163,10 @@ class DataBuilder(object):
         return state
 
     def get_predicates(self):
+        """
+        Return a list of predicates (functions returning true/false, as in math logic)
+        which instructs/dictates if job manager should start a job (process/thread)
+        """
         def no_uploader_running(job_manager):
             """Uploaders could change the data to be merged..."""
             return len([j for j in job_manager.jobs.values() if j["category"] == UPLOADER_CATEGORY]) == 0
