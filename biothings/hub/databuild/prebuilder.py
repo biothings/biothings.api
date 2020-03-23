@@ -2,8 +2,8 @@ import biothings.utils.redis as redis
 from biothings.utils.mongo import doc_feeder
 import pymongo
 
-class BasePreCompiledDataProvider(object):
 
+class BasePreCompiledDataProvider(object):
     def __init__(self, name):
         """
         'name' is a way to identify this provider
@@ -11,7 +11,7 @@ class BasePreCompiledDataProvider(object):
         """
         self.name = name
 
-    def register(self,_id,col_name):
+    def register(self, _id, col_name):
         """
         Tell provider that _id can be found in collection named 'col_name'
         """
@@ -26,9 +26,8 @@ class BasePreCompiledDataProvider(object):
 
 
 class RedisPreCompiledDataProvider(BasePreCompiledDataProvider):
-
     def __init__(self, name, connection_params):
-        super(RedisPreCompiledDataProvider,self).__init__(name)
+        super(RedisPreCompiledDataProvider, self).__init__(name)
         self.connection_params = connection_params
         self.client = redis.RedisClient(connection_params)
         try:
@@ -37,17 +36,17 @@ class RedisPreCompiledDataProvider(BasePreCompiledDataProvider):
             self.client.initialize()
         self.db = self.client.get_db(self.name)
 
-    def register(self,_id,col_name):
-        self.db.hset(_id,col_name,1)
+    def register(self, _id, col_name):
+        self.db.hset(_id, col_name, 1)
 
     def get_all(self):
         for _id in self.db.scan_iter():
             #cols = list(self.db.hgetall(_id).keys())
             cols = []
-            yield (_id,cols)
+            yield (_id, cols)
+
 
 class MongoDBPreCompiledDataProvider(BasePreCompiledDataProvider):
-
     def __init__(self, db_name, name, connection_params):
         self.db_name = db_name
         self.col_name = name
@@ -55,18 +54,17 @@ class MongoDBPreCompiledDataProvider(BasePreCompiledDataProvider):
         self.client = pymongo.MongoClient(connection_params)
         self.col = self.client[self.db_name][self.col_name]
 
-    def register(self,_id,col_name):
-        updt = {"$set" : {"srcs.%s" % col_name : 1}}
+    def register(self, _id, col_name):
+        updt = {"$set": {"srcs.%s" % col_name: 1}}
         if type(_id) == list:
             bob = self.col.initialize_unordered_bulk_op()
             for oneid in _id:
-                bob.find({"_id" : oneid}).upsert().update(updt)
+                bob.find({"_id": oneid}).upsert().update(updt)
             bob.execute()
         else:
-            self.col.update_one({"_id":_id},updt,upsert=True)
+            self.col.update_one({"_id": _id}, updt, upsert=True)
 
-    def get_all(self,batch_size=100000):
+    def get_all(self, batch_size=100000):
         for doc_ids in doc_feeder(self.col, step=batch_size, inbatch=True):
             for d in doc_ids:
                 yield d
-
