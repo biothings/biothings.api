@@ -17,7 +17,7 @@ from .differ import set_pending_to_diff
 from ..databuild.backend import SourceDocMongoBackend, TargetDocMongoBackend, \
     LinkTargetDocMongoBackend
 from biothings.utils.common import timesofar, iter_n, dotdict, open_compressed_file, \
-    find_classes_subclassing
+    find_classes_subclassing, get_random_string
 from biothings.utils.mongo import doc_feeder, id_feeder
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
@@ -244,13 +244,24 @@ class DataBuilder(object):
                 raise ResourceNotReady(
                     "No successful upload found for resource '%s'" % src_name)
 
+    def get_target_name(self):
+        return '{}_{}_{}'.format(self.build_name,
+                                 self.get_build_version(),
+                                 get_random_string()).lower()
+
     def get_build_version(self):
         """
         Generate an arbitrary major build version. Default is using a timestamp (YYMMDD)
         '.' char isn't allowed in build version as it's reserved for minor versions
         """
         d = datetime.fromtimestamp(self.t0)
-        return "%d%02d%02d" % (d.year, d.month, d.day)
+        version_fmt = self.build_config.get("build_version")
+        if not version_fmt:
+            version_fmt = "%Y%m%d"
+        bversion = d.strftime(version_fmt)
+        self.logger.info("Build version: %s", bversion)
+
+        return bversion
 
     def register_status(self, status, transient=False, init=False, **extra):
         """
@@ -382,6 +393,8 @@ class DataBuilder(object):
 
     def setup(self, sources=None, target_name=None):
         sources = sources or self.sources
+        # try to get target_name from args, otherwise for now generate it
+        # using mongo backend (it'll be set later during merge() call)
         target_name = target_name or self.target_name
         self.target_backend.set_target_name(self.target_name, self.build_name)
         # root key is optional but if set, it must exist in build config
@@ -538,16 +551,13 @@ class DataBuilder(object):
         if not sources and "merge" in steps:
             raise BuilderException("No source found, got %s while available sources are: %s" %
                                    (repr(orig_sources), repr(avail_sources)))
-        if target_name:
-            self.target_backend.set_target_name(target_name)
-        else:
-            target_name = self.target_backend.target_name
+        if not target_name:
+            target_name = self.get_target_name()
         self.target_name = target_name
+        self.target_backend.set_target_name(self.target_name)
 
         self.custom_metadata = {}
-
         self.clean_old_collections()
-
         self.logger.info("Merging into target collection '%s'" %
                          self.target_backend.target_name)
         strargs = "[sources=%s,target_name=%s]" % (sources, target_name)
