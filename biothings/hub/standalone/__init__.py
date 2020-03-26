@@ -150,7 +150,7 @@ class AutoHubServer(HubServer):
                     "AWS_SECRET_ACCESS_KEY": btconfig.STANDALONE_AWS_CREDENTIALS.get("AWS_SECRET_ACCESS_KEY")
                 }
             )
-            sys.modules["standalone.hub"].__dict__[dump_class_name] = dumper_klass
+            sys.modules["biothings.hub.standalone"].__dict__[dump_class_name] = dumper_klass
             self.managers["dump_manager"].register_classes([dumper_klass])
             # uploader
             # syncer will work on index used in web part
@@ -168,7 +168,7 @@ class AutoHubServer(HubServer):
                     "name": SRC_NAME
                 }
             )
-            sys.modules["standalone.hub"].__dict__[uploader_class_name] = uploader_klass
+            sys.modules["biothings.hub.standalone"].__dict__[uploader_class_name] = uploader_klass
             self.managers["upload_manager"].register_classes([uploader_klass])
 
     def configure_commands(self):
