@@ -6,6 +6,7 @@ from datetime import datetime
 import pickle
 import asyncio
 from functools import partial
+
 from elasticsearch import Elasticsearch
 
 from biothings.utils.hub_db import get_src_build
@@ -47,9 +48,11 @@ def merge_index_worker(col_name, ids, pindexer, batch_num):
                      }})
     docs = [d for d in cur]
     [d.pop("_timestamp", None) for d in docs]
-    dids = dict([(d["_id"], d) for d in docs])
-    dexistings = dict([(d["_id"], d)
-                       for d in idxer.get_docs([k for k in dids.keys()])])
+    # dids = dict([(d["_id"], d) for d in docs])
+    dids = {d["_id"]: d for d in docs}
+    # dexistings = dict([(d["_id"], d)
+    #                    for d in idxer.get_docs([k for k in dids.keys()])])
+    dexistings = {d["_id"]: d for d in idxer.get_docs([k for k in dids.keys()])}
     for _id in dexistings:
         d = dexistings[_id]
         # update in-place
@@ -58,10 +61,10 @@ def merge_index_worker(col_name, ids, pindexer, batch_num):
         dids.pop(_id)
     # updated docs (those existing in col *and* index)
     upd_cnt = idxer.index_bulk(dexistings.values(), len(dexistings))
-    logging.debug("%s documents updated in index" % repr(upd_cnt))
+    logging.debug("%s documents updated in index", repr(upd_cnt))
     # new docs (only in col, *not* in index)
     new_cnt = idxer.index_bulk(dids.values(), len(dids))
-    logging.debug("%s new documents in index" % repr(new_cnt))
+    logging.debug("%s new documents in index", repr(new_cnt))
     # need to return one: tuple(cnt,list)
     ret = (upd_cnt[0] + new_cnt[0], upd_cnt[1] + new_cnt[1])
     return ret
@@ -89,11 +92,10 @@ def indexer_worker(col_name,
         logger_name = "index_%s_%s_batch_%s" % (pindexer.keywords.get(
             "index", "index"), col_name, batch_num)
         logger, _ = get_logger(logger_name, btconfig.LOG_FOLDER)
-        logger.exception(e)
+        logger.exception("indexer_worker failed")
         exc_fn = os.path.join(btconfig.LOG_FOLDER, "%s.pick" % logger_name)
         pickle.dump({"exc": e, "ids": ids}, open(exc_fn, "wb"))
-        logger.info("Exception and IDs were dumped in pickle file '%s'" %
-                    exc_fn)
+        logger.info("Exception and IDs were dumped in pickle file '%s'", exc_fn)
         raise
 
 
@@ -225,11 +227,11 @@ class Indexer(object):
                 for _id in ids:
                     if type(_id) != str:
                         self.logger.warning(
-                            "_id '%s' has invalid type (!str), skipped" %
-                            repr(_id))
+                            "_id '%s' has invalid type (!str), skipped", repr(_id)
+                        )
                         continue
                     if len(_id) > 512:  # this is an ES6 limitation
-                        self.logger.warning("_id is too long: '%s'" % _id)
+                        self.logger.warning("_id is too long: '%s'", _id)
                         continue
                     cleaned.append(_id)
                 return cleaned
@@ -240,13 +242,13 @@ class Indexer(object):
             bnum = 1
             if ids:
                 self.logger.info(
-                    "Indexing from '%s' with specific list of _ids, create indexer job with batch_size=%d"
-                    % (target_name, batch_size))
+                    "Indexing from '%s' with specific list of _ids, create indexer job with batch_size=%d",
+                    target_name, batch_size)
                 id_provider = [ids]
             else:
                 self.logger.info(
-                    "Fetch _ids from '%s', and create indexer job with batch_size=%d"
-                    % (target_name, batch_size))
+                    "Fetch _ids from '%s', and create indexer job with batch_size=%d",
+                    target_name, batch_size)
                 id_provider = id_feeder(target_collection,
                                         batch_size=batch_size,
                                         logger=self.logger)
@@ -256,8 +258,9 @@ class Indexer(object):
                 ids = clean_ids(ids)
                 newcnt = len(ids)
                 if origcnt != newcnt:
-                    self.logger.warning("%d document(s) can't be indexed and " % (origcnt-newcnt)
-                                        + "will be skipped (invalid _id)")
+                    self.logger.warning(
+                        "%d document(s) can't be indexed and will be skipped (invalid _id)",
+                        origcnt-newcnt)
                 # progress count
                 cnt += len(ids)
                 pinfo = self.get_pinfo()
@@ -268,8 +271,8 @@ class Indexer(object):
                     descprogress = 0.0
                 pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum, btotal,
                                                             descprogress)
-                self.logger.info("Creating indexer job #%d/%d, to index '%s' %d/%d (%.1f%%)" %
-                                 (bnum, btotal, backend_url, cnt, total, descprogress))
+                self.logger.info("Creating indexer job #%d/%d, to index '%s' %d/%d (%.1f%%)",
+                                 bnum, btotal, backend_url, cnt, total, descprogress)
                 job = yield from job_manager.defer_to_process(
                     pinfo,
                     partial(indexer_worker, backend_url, ids, partial_idxer,
@@ -284,7 +287,7 @@ class Indexer(object):
                                                   (batch_num, self.target_name, repr(res)))
                     except Exception as e:
                         got_error = e
-                        self.logger.exception("Batch indexed error %s" % e)
+                        self.logger.exception("Batch indexed error")
                         return
 
                 job.add_done_callback(partial(batch_indexed, batch_num=bnum))
@@ -295,7 +298,7 @@ class Indexer(object):
                     self.register_status("failed",
                                          job={"err": repr(got_error)})
                     raise got_error
-            self.logger.info("%d jobs created for indexing step" % len(jobs))
+            self.logger.info("%d jobs created for indexing step", len(jobs))
             tasks = asyncio.gather(*jobs)
 
             def done(f):
@@ -305,7 +308,7 @@ class Indexer(object):
                     return
                 # compute overall inserted/updated records
                 # returned values looks like [(num,[]),(num,[]),...]
-                cnt = sum([val[0] for val in f.result()])
+                cnt = sum((val[0] for val in f.result()))
                 self.register_status("success",
                                      job={"step": "index"},
                                      index={"count": cnt})
@@ -316,15 +319,15 @@ class Indexer(object):
                         total, cnt)
                     raise IndexerException(err)
                 self.logger.info(
-                    "Index '%s' successfully created using merged collection %s"
-                    % (index_name, target_name),
+                    "Index '%s' successfully created using merged collection %s",
+                    index_name, target_name,
                     extra={"notify": True})
 
             tasks.add_done_callback(done)
             yield from tasks
 
         if "post" in steps:
-            self.logger.info("Running post-index process for index '%s'" %
+            self.logger.info("Running post-index process for index '%s'",
                              index_name)
             self.register_status("indexing",
                                  transient=True,
@@ -351,15 +354,15 @@ class Indexer(object):
                 try:
                     res = f.result()
                     self.logger.info(
-                        "Post-index process done for index '%s': %s" %
-                        (index_name, res))
+                        "Post-index process done for index '%s': %s",
+                        index_name, res)
                     self.register_status("indexing",
                                          job={"step": "post-index"})
                 except Exception as e:
                     got_error = e
-                    self.logger.error(
-                        "Post-index process failed for index '%s': %s" %
-                        (index_name, e),
+                    self.logger.exception(
+                        "Post-index process failed for index '%s':",
+                        index_name,
                         extra={"notify": True})
                     return
 
@@ -661,12 +664,11 @@ class ColdHotIndexer(Indexer):
                     self.register_status("success",
                                          job={"step": "index"},
                                          index={"count": cnt})
-                    self.logger.info("index '%s' successfully created" %
+                    self.logger.info("index '%s' successfully created",
                                      index_name,
                                      extra={"notify": True})
                 except Exception as e:
-                    logging.exception(
-                        "failed indexing cold/hot collections: %s" % e)
+                    logging.exception("failed indexing cold/hot collections:")
                     got_error = e
                     raise
 
@@ -692,10 +694,10 @@ class ColdHotIndexer(Indexer):
                 try:
                     _ = f.result()
                     # no need to process the return value more, it's been done in super
-                except exception as e:
-                    self.logger.error(
-                        "Post-index process failed for index '%s': %s" %
-                        (self.index_name, e),
+                except Exception as e:
+                    self.logger.exception(
+                        "Post-index process failed for index '%s':",
+                        self.index_name,
                         extra={"notify": True})
                     got_error = e
                     raise
@@ -811,8 +813,8 @@ class IndexManager(BaseManager):
             for job in build.get("jobs", []):
                 if job.get("status") == "indexing":
                     logging.warning(
-                        "Found stale build '%s', marking index status as 'canceled'"
-                        % build["_id"])
+                        "Found stale build '%s', marking index status as 'canceled'",
+                        build["_id"])
                     job["status"] = "canceled"
                     dirty = True
             if dirty:
@@ -926,8 +928,8 @@ class IndexManager(BaseManager):
                     strklass = self.indexers[path_in_doc]
                     klass = get_class_from_classpath(strklass)
                     self.logger.info(
-                        "Found special indexer '%s' required to index '%s'" %
-                        (klass, target_name))
+                        "Found special indexer '%s' required to index '%s'",
+                        klass, target_name)
                     # the first to match wins
                     break
                 except KeyError:
@@ -938,7 +940,7 @@ class IndexManager(BaseManager):
         else:
             # either we return a default declared in config or
             # a specific one found according to the doc
-            self.logger.debug("Using custom indexer %s" % klass)
+            self.logger.debug("Using custom indexer %s", klass)
             return klass
 
     def index(self,
@@ -957,10 +959,10 @@ class IndexManager(BaseManager):
             try:
                 res = f.result()
                 self.logger.info(
-                    "Done indexing target '%s' to index '%s': %s" %
-                    (target_name, index_name, res))
-            except Exception as e:
-                self.logger.exception("Error while running index job, %s" % e)
+                    "Done indexing target '%s' to index '%s': %s",
+                    target_name, index_name, res)
+            except Exception:
+                self.logger.exception("Error while running index job:")
                 raise
 
         idxklass = self.find_indexer(target_name)
@@ -1036,8 +1038,8 @@ class IndexManager(BaseManager):
                     else:
                         assert type(res["env"][kenv]["index"]) == list
                         res["env"][kenv]["index"].extend(indices)
-                except Exception as e:
-                    self.logger.exception("Can't load remote indices: %s" % e)
+                except Exception:
+                    self.logger.exception("Can't load remote indices:")
                     continue
         return res
 
@@ -1053,13 +1055,13 @@ class IndexManager(BaseManager):
         idxr = ESIndexer(index=index_name,
                          es_host=idxr_obj.host,
                          doc_type=None)
-        self.logger.info("Testing mapping by creating index '%s' on host '%s' (settings: %s)" %
-                         (index_name, idxr_obj.host, settings))
+        self.logger.info("Testing mapping by creating index '%s' on host '%s' (settings: %s)",
+                         index_name, idxr_obj.host, settings)
         try:
             res = idxr.create_index(mapping, settings)
             return res
         except Exception as e:
-            self.logger.exception(e)
+            self.logger.exception("create_index failed")
             raise e
         finally:
             try:
