@@ -303,7 +303,8 @@ A manifest file is defined like this:
 	    "dumper" : {
 	        "data_url" : "<url>" # (or list of url: ["<url1>", "<url1>"]),
 	        "uncompress" : true|false, # optional, default to false
-	        "release" : "<path.to.module>:<function_name>" # optional
+	        "release" : "<path.to.module>:<function_name>"  # optional
+	        "schedule" : "0 12 * * *"  # optional
 	    },
 	    "uploader" : { # optional, a manifest is allowed to only have a "dumper" section
 	        "parser" : "<path.to.module>:<function_name>",
@@ -320,26 +321,41 @@ A manifest file is defined like this:
 - a *requires* section, optional, describes dependencies that should be installed for the plugin to work. This uses `pip` behind the scene, and each element of that list
   is passed to `pip install` command line. If one dependency installation fails, the plugin is invalidated. Alternately, a single string can be passed, instead of a list.
 - a *dumper* section specifies how to download the actual data.
+
   * *data_url* specifies where to download the data from. It can be a URL (string) or a list of URLs (list of strings). Currently supported protocols are **http(s)** and **ftp**. 
-  URLs must point to individual files (no wildcards) and only one protocol is allowed within a list of URLs (no mix of URLs using htttp and ftp are allowed). All files
-  are download in a data folder, determined by ``config.DATA_ARCHIVE_ROOT``/<plugin_name>/<release>
+    URLs must point to individual files (no wildcards) and only one protocol is allowed within a list of URLs (no mix of URLs using htttp and ftp are allowed). All files
+    are download in a data folder, determined by ``config.DATA_ARCHIVE_ROOT``/<plugin_name>/<release>
+
   * *uncompress*: once downloaded, this flag, if set to true, will uncompress all supported archived found in the data folder.
-  Currently supported format are: ``*.zip``, ``*.gz``, ``*.tar.gz`` (includes untar step)
+    Currently supported format are: ``*.zip``, ``*.gz``, ``*.tar.gz`` (includes untar step)
+
+  * *schedule* will trigger the scheduling of the dumper, so it automatically checks for new data on a regular basis. Format is the same as crontabs, with the
+    addition of an optional sixth parameter for scheduling by the seconds.
+
+    Ex: ``* * * * * */10`` will trigger the dumper every 10 seconds (unless specific use case, this is not recommanded).
+
+    For more information, **Hub** relies on `aiocron`_ for scheduling jobs.
+
   * *release* optionally specifies how to determine the release number/name of the datasource. By default, if not present, the release will be set using:
 
     - ``Last-Modified`` header for an HTTP-based URL. Format: ``YYYY-MM-DD``
     - ``ETag`` header for an HTTP-based URL if ``Last-Modified`` isn't present in headers. Format: the actual etag hash.
     - ``MDTM`` ftp command if URL is FTP-based.
 
-  If a list of URLs is specified in *data_url*, the last URL is the one used to determine the release.
-  If none of those are available, or not satisfactory, a *release* section can be specified, and should point to a python module and a function name
-  following this format: ``module:function_name``. Within this module, function has the following signature and should return the release, as a string.
+    If a list of URLs is specified in *data_url*, the last URL is the one used to determine the release.
+    If none of those are available, or not satisfactory, a *release* section can be specified, and should point to a python module and a function name
+    following this format: ``module:function_name``. Within this module, function has the following signature and should return the release, as a string.
+    ``set_release`` is a reserver name and must not be used.
 
 .. code:: python
 
    def function_name(self):
        # code
        return "..."
+
+
+.. _`aiocron`: https://github.com/gawel/aiocron
+
 
 
 
@@ -353,6 +369,7 @@ on the protocol. All properties, methods from the instance are available, specif
 
 
 - an *uploader* section specifies how to parse and store (upload):
+
   * *parser* key defined a module and a function name within that module. Format: ``module:function_name``. Function has the following signature and return a list of dictionary
   (or ``yield`` dictionaries) containing at least a ``_id`` key reprensenting a unique identifier (string) for this document:
 
@@ -362,6 +379,7 @@ on the protocol. All properties, methods from the instance are available, specif
    def function_name(data_folder):
        # code
        yield {"_id":"..."}
+
 
 ``data_folder`` is the folder containing the previously downloaded (dumped) data, it is automatically set to the latest release available. Note the function doesn't
 take an filename as input, it should select the file(s) to parse.
@@ -374,7 +392,26 @@ take an filename as input, it should select the file(s) to parse.
 
   * *parallelizer* points to a ``module:function_name`` that can be used when the uploader can be parallelized. If multiple input files exist, using the
     exact same parser, the uploader can be parallelized using that option. The parser should take an input file as parameter, not a path to a folder. The parallizer
-    function should return a list of tuples, where each tuple corresponds to the list of input parameters for the parser.
+    function should return a list of tuples, where each tuple corresponds to the list of input parameters for the parser. ``jobs`` is a reserved name and must not
+    be used.
+
+  * *mapping* points to a ``module:classmethod_name`` that can be used to specify a custom ElasticSearch mapping. Class method must return a python dictionary with a
+    valid mapping. ``get_mapping`` is a reserved name and must not be used. There's no need to add ``@classmethod`` decorator, **Hub** will take care of it, the first
+    and only argument is a class. Ex:
+
+.. code:: python
+
+   def custom_mapping(cls):
+       return {
+           "root_field": {
+                "properties": {
+                    "subfield": {
+                        "type": "text",
+                    }
+                }
+            }
+       }
+
 
 .. note:: Please see https://github.com/sirloon/mvcgi for a simple plugin definition. https://github.com/sirloon/gwascatalog will show how to use
    the ``release`` key and https://github.com/sirloon/FIRE will demonstrate the parallelization in the uploader section.
