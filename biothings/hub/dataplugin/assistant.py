@@ -129,6 +129,24 @@ class BaseAssistant(object):
             klass.data_plugin_error = error
         pass
 
+    def get_code_for_mod_name(self, mod_name):
+        try:
+            mod, funcname = map(str.strip,mod_name.split(":"))
+        except ValueError as e:
+            raise AssistantException("'Wrong format for '%s', it must be defined following format 'module:func': %s" % (mod_name, e))
+        modpath = self.plugin_name + "." + mod
+        pymod = importlib.import_module(modpath)
+        # reload in case we need to refresh plugin's code
+        importlib.reload(pymod)
+        assert funcname in dir(pymod), "%s not found in module %s" % (funcname, pymod)
+        func = getattr(pymod, funcname)
+        # fetch source and indent to class method level in the template
+        strfunc = inspect.getsource(func)
+        # always indent with spaces, normalize to avoid mixed indenting chars
+        indentfunc = textwrap.indent(strfunc.replace("\t", "    "), prefix="    ")
+
+        return indentfunc, funcname
+
     def get_dumper_dynamic_class(self, dumper_section, metadata):
         if dumper_section.get("data_url"):
             if not type(dumper_section["data_url"]) is list:
@@ -162,23 +180,8 @@ class BaseAssistant(object):
                 confdict["__metadata__"] = {}
 
             if dumper_section.get("release"):
-                try:
-                    mod, func = dumper_section.get("release").split(":")
-                except ValueError:
-                    raise AssistantException("'release' must be defined as 'module:parser_func' but got: '%s'" %
-                                             dumper_section["release"])
-                modpath = self.plugin_name + "." + mod
-                pymod = importlib.import_module(modpath)
-                # reload in case we need to refresh plugin's code
-                importlib.reload(pymod)
-                assert func in dir(
-                    pymod), "%s not found in module %s" % (func, pymod)
-                get_release_func = getattr(pymod, func)
-                # fetch source and indent to class method level in the template
-                strfunc = inspect.getsource(get_release_func)
-                # always indent with spaces, normalize to avoid mixed indenting chars
-                indentfunc = textwrap.indent(strfunc.replace("\t", "    "),
-                                             prefix="    ")
+                indentfunc, func = self.get_code_for_mod_name(dumper_section["release"])
+                assert func != "set_release","'set_release' is a reserved method name, pick another name"
                 confdict["SET_RELEASE_FUNC"] = """
 %s
 
@@ -214,6 +217,7 @@ class BaseAssistant(object):
                 confdict["UNCOMPRESS"] = dumper_section.get(
                     "uncompress") or False
                 pystr = tpl.substitute(confdict)
+                #print(pystr)
                 import imp
                 code = compile(pystr, "<string>", "exec")
                 mod = imp.new_module(self.plugin_name)
@@ -291,7 +295,7 @@ class BaseAssistant(object):
                 else:
                     confdict["__metadata__"] = {}
 
-                self.logger.error(confdict)
+                #self.logger.error(confdict)
 
                 if hasattr(btconfig, "DUMPER_TEMPLATE"):
                     tpl_file = btconfig.DUMPER_TEMPLATE
@@ -303,35 +307,37 @@ class BaseAssistant(object):
                 tpl = Template(open(tpl_file).read())
 
                 if uploader_section.get("parallelizer"):
-                    try:
-                        mod, func = uploader_section.get("parallelizer").split(
-                            ":")
-                    except ValueError:
-                        raise AssistantException("'parallelizer' must be defined as 'module:parallelizer_func' but got: '%s'" %
-                                                 uploader_section["parallelizer"])
-                    # parse source file to check imports and other code before function definition
-                    modpath = self.plugin_name + "." + mod
-                    pymod = importlib.import_module(modpath)
-                    # reload in case we need to refresh plugin's code
-                    importlib.reload(pymod)
-                    assert func in dir(
-                        pymod), "%s not found in module %s" % (func, pymod)
-                    strfunc = inspect.getsource(pymod)
-                    # always indent with spaces, normalize to avoid mixed indenting chars
-                    indentfunc = textwrap.indent(strfunc.replace("\t", "    "),
-                                                 prefix="    ")
+                    indentfunc, func = self.get_code_for_mod_name(uploader_section["parallelizer"])
+                    assert func != "jobs", "'jobs' is a reserved method name, pick another name"
                     confdict[
                         "BASE_CLASSES"] = "biothings.hub.dataload.uploader.ParallelizedSourceUploader"
                     confdict["IMPORT_FROM_PARALLELIZER"] = ""
                     confdict["JOBS_FUNC"] = """
 %s
-""" % indentfunc
+    def jobs(self):
+        return self.%s()
+""" % (indentfunc,func)
                 else:
                     confdict[
                         "BASE_CLASSES"] = "biothings.hub.dataload.uploader.BaseSourceUploader"
                     confdict["JOBS_FUNC"] = ""
 
+                if uploader_section.get("mapping"):
+                    indentfunc, func = self.get_code_for_mod_name(uploader_section["mapping"])
+                    assert func != "get_mapping", "'get_mapping' is a reserved class method name, pick another name"
+                    confdict["MAPPING_FUNC"] = """
+    @classmethod
+%s
+
+    @classmethod
+    def get_mapping(cls):
+        return cls.%s()
+""" % (indentfunc, func)
+                else:
+                    confdict["MAPPING_FUNC"] = ""
+
                 pystr = tpl.substitute(confdict)
+                #print(pystr)
                 import imp
                 code = compile(pystr, "<string>", "exec")
                 mod = imp.new_module(self.plugin_name)
@@ -761,7 +767,23 @@ class AssistantManager(BaseSourceManager):
                 "origin": None
             }
         }
-        # first try to export mapping from src_master (official)
+        # first check if plugin defines a custom mapping in manifest
+        # if that's the case, we don't need to export mapping there
+        # as it'll be exported with "uploader" code
+        plugindoc = get_data_plugin().find_one({"_id" : plugin_name})
+        assert plugindoc, "Can't find plugin named '%s'" % plugin_name
+        plugin_folder = plugindoc.get("download",{}).get("data_folder")
+        assert plugin_folder, "Can't find plugin folder for '%s'" % plugin_name
+        try:
+            manifest = json.load(open(os.path.join(plugin_folder,"manifest.json")))
+            if "mapping" in manifest.get("uploader",{}):
+                res["mapping"]["message"] = "Custom mapping included in uploader export"
+                res["mapping"]["status"] = "warning"
+                res["mapping"]["origin"] = "custom"
+                return res
+        except Exception as e:
+            self.logger.error("Can't read manifest while exporting code: %s" % e)
+        # try to export mapping from src_master (official)
         doc = get_src_master().find_one({"_id": plugin_name})
         if doc:
             mapping = doc.get("mapping")
