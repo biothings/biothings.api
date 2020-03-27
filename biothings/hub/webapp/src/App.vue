@@ -720,6 +720,10 @@
                       console.log(err);
                 })
 
+                if(self.required_studio_version == "this") {
+                    console.log("Running version is the actual required one, all good");
+                    return;
+                }
                 if(!self.required_studio_version) {
                   console.log("Couldn't find any suitable version, will keep current as failover");
                   return;
