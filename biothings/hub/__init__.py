@@ -1,16 +1,17 @@
-from pprint import pformat
 import asyncio
-import asyncssh
 import crypt
-import aiocron
 import os
 import sys
 import types
 import time
 import copy
+import logging
 from collections import OrderedDict
 from functools import partial
-import logging
+from pprint import pformat
+
+import asyncssh
+import aiocron
 
 from biothings import config
 from biothings.utils.loggers import get_logger, WSLogHandler, WSShellHandler, ShellLogger
@@ -34,9 +35,12 @@ DIFFMANAGER_CATEGORY = "diffmanager"
 SYNCER_CATEGORY = "syncer"
 INSPECTOR_CATEGORY = "inspector"
 
-HUB_REFRESH_COMMANDS = hasattr(
-    config, "HUB_REFRESH_COMMANDS"
-) and config.HUB_REFRESH_COMMANDS or "* * * * * *"  # every sec
+# HUB_REFRESH_COMMANDS = hasattr(
+#     config, "HUB_REFRESH_COMMANDS"
+# ) and config.HUB_REFRESH_COMMANDS or "* * * * * *"  # every sec
+HUB_REFRESH_COMMANDS = getattr(
+    config, "HUB_REFRESH_COMMANDS", "* * * * * *"  # every sec
+)
 
 
 class JobRenderer(object):
@@ -74,7 +78,8 @@ class JobRenderer(object):
 
     def render_method(self, m):
         # what is self ? cron ?
-        if type(m.__self__) == aiocron.Cron:
+        # if type(m.__self__) == aiocron.Cron:   # TODO: delete if confirmed
+        if isinstance(m.__self__, aiocron.Cron):
             return self.render_cron(m.__self__)
         else:
             return "%s.%s" % (m.__self__.__class__.__name__, m.__name__)
@@ -103,21 +108,21 @@ def status(managers):
             srcs = srcm.get_sources()
             total_srcs = len(srcs)
             total_docs = sum([s["upload"]["sources"][subs].get("count", 0) or 0
-                             for s in srcs
-                             for subs in s.get("upload", {}).get("sources", {})
-                             if s.get("upload")])
-        except Exception as e:
-            logging.error("Can't get stats for sources: %s" % e)
+                              for s in srcs
+                              for subs in s.get("upload", {}).get("sources", {})
+                              if s.get("upload")])
+        except Exception:
+            logging.exception("Can't get stats for sources:")
 
     try:
         bm = managers["build_manager"]
         total_confs = len(bm.build_config_info())
-    except Exception as e:
-        logging.error("Can't get total number of build configurations: %s" % e)
+    except Exception:
+        logging.exception("Can't get total number of build configurations:")
     try:
         total_builds = len(bm.build_info())
-    except Exception as e:
-        logging.error("Can't get total number of builds: %s" % e)
+    except Exception:
+        logging.exception("Can't get total number of builds:")
 
     try:
         am = managers["api_manager"]
@@ -125,8 +130,8 @@ def status(managers):
         total_apis = len(apis)
         total_running_apis = len(
             [a for a in apis if a.get("status") == "running"])
-    except Exception as e:
-        logging.error("Can't get stats for APIs: %s" % e)
+    except Exception:
+        logging.exception("Can't get stats for APIs:")
 
     return {
         "source": {
@@ -147,7 +152,7 @@ def status(managers):
 
 
 def schedule(loop):
-    # try to render job in a human-readable way...
+    """try to render job in a human-readable way..."""
     out = []
     for sch in loop._scheduled:
         if type(sch) != asyncio.events.TimerHandle:
@@ -321,7 +326,7 @@ class HubServer(object):
     def start(self):
         if not self.configured:
             self.configure()
-        self.logger.info("Starting server '%s'" % self.name)
+        self.logger.info("Starting server '%s'", self.name)
         # can't use asyncio.get_event_loop() if python < 3.5.3 as it would return
         # another instance of aio loop, take it from job_manager to make sure
         # we share the same one
@@ -353,7 +358,8 @@ class HubServer(object):
             sys.exit('Error starting server: ' + str(exc))
         loop.run_forever()
 
-    def mixargs(self, feat, params={}):
+    def mixargs(self, feat, params=None):
+        params = params or {}
         args = {}
         for p in params:
             args[p] = self.managers_custom_args.get(feat, {}).pop(
@@ -524,7 +530,7 @@ class HubServer(object):
             raise Exception("Managers have already been configured")
         self.managers = {}
 
-        self.logger.info("Setting up managers for following features: %s" %
+        self.logger.info("Setting up managers for following features: %s",
                          self.features)
         assert "job" in self.features, "'job' feature is mandatory"
         if "source" in self.features:
@@ -535,7 +541,7 @@ class HubServer(object):
         # specific order, eg. job_manager is used by all managers
         for feat in self.features:
             if hasattr(self, "configure_%s_manager" % feat):
-                self.logger.info("Configuring feature '%s'" % feat)
+                self.logger.info("Configuring feature '%s'", feat)
                 getattr(self, "configure_%s_manager" % feat)()
                 self.remaining_features.remove(feat)
             elif hasattr(self, "configure_%s_feature" % feat):
@@ -614,7 +620,7 @@ class HubServer(object):
         reloader and reloader.monitor()
 
     def configure_remaining_features(self):
-        self.logger.info("Setting up remaining features: %s" %
+        self.logger.info("Setting up remaining features: %s",
                          self.remaining_features)
         # specific order, eg. job_manager is used by all managers
         for feat in copy.deepcopy(self.remaining_features):
@@ -714,7 +720,7 @@ class HubServer(object):
             self.commands["dump_plugin"] = self.managers[
                 "dataplugin_manager"].dump_src
 
-        logging.info("Registered commands: %s" % list(self.commands.keys()))
+        logging.info("Registered commands: %s", list(self.commands.keys()))
 
     def configure_extra_commands(self):
         """
@@ -847,7 +853,7 @@ class HubServer(object):
             self.extra_commands["stop_api"] = self.managers[
                 "api_manager"].stop_api
 
-        logging.debug("Registered extra (private) commands: %s" %
+        logging.debug("Registered extra (private) commands: %s",
                       list(self.extra_commands.keys()))
 
     def configure_api_endpoints(self):
@@ -1093,10 +1099,10 @@ class HubSSHServer(asyncssh.SSHServer):
     def session_requested(self):
         return HubSSHServerSession(self.__class__.NAME, self.__class__.SHELL)
 
-    def connection_made(self, conn):
-        self._conn = conn
+    def connection_made(self, connection):
+        self._conn = connection
         print('SSH connection received from %s.' %
-              conn.get_extra_info('peername')[0])
+              connection.get_extra_info('peername')[0])
 
     def connection_lost(self, exc):
         if exc:
