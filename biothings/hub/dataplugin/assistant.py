@@ -131,7 +131,7 @@ class BaseAssistant(object):
 
     def get_code_for_mod_name(self, mod_name):
         try:
-            mod, funcname = map(str.strip,mod_name.split(":"))
+            mod, funcname = map(str.strip, mod_name.split(":"))
         except ValueError as e:
             raise AssistantException("'Wrong format for '%s', it must be defined following format 'module:func': %s" % (mod_name, e))
         modpath = self.plugin_name + "." + mod
@@ -181,7 +181,7 @@ class BaseAssistant(object):
 
             if dumper_section.get("release"):
                 indentfunc, func = self.get_code_for_mod_name(dumper_section["release"])
-                assert func != "set_release","'set_release' is a reserved method name, pick another name"
+                assert func != "set_release", "'set_release' is a reserved method name, pick another name"
                 confdict["SET_RELEASE_FUNC"] = """
 %s
 
@@ -316,7 +316,7 @@ class BaseAssistant(object):
 %s
     def jobs(self):
         return self.%s()
-""" % (indentfunc,func)
+""" % (indentfunc, func)
                 else:
                     confdict[
                         "BASE_CLASSES"] = "biothings.hub.dataload.uploader.BaseSourceUploader"
@@ -770,13 +770,13 @@ class AssistantManager(BaseSourceManager):
         # first check if plugin defines a custom mapping in manifest
         # if that's the case, we don't need to export mapping there
         # as it'll be exported with "uploader" code
-        plugindoc = get_data_plugin().find_one({"_id" : plugin_name})
+        plugindoc = get_data_plugin().find_one({"_id": plugin_name})
         assert plugindoc, "Can't find plugin named '%s'" % plugin_name
-        plugin_folder = plugindoc.get("download",{}).get("data_folder")
+        plugin_folder = plugindoc.get("download", {}).get("data_folder")
         assert plugin_folder, "Can't find plugin folder for '%s'" % plugin_name
         try:
-            manifest = json.load(open(os.path.join(plugin_folder,"manifest.json")))
-            if "mapping" in manifest.get("uploader",{}):
+            manifest = json.load(open(os.path.join(plugin_folder, "manifest.json")))
+            if "mapping" in manifest.get("uploader", {}):
                 res["mapping"]["message"] = "Custom mapping included in uploader export"
                 res["mapping"]["status"] = "warning"
                 res["mapping"]["origin"] = "custom"
