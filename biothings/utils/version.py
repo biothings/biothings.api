@@ -1,13 +1,18 @@
 ''' Functions to return versions of things. '''
-from subprocess import check_output, DEVNULL
-from io import StringIO
-from contextlib import redirect_stdout
+import functools
+import logging
 # import pip
 import os
-import sys
-import logging
-from git import Repo, Git, GitCommandError, NoSuchPathError, InvalidGitRepositoryError
 import re
+import shlex
+import sys
+from contextlib import redirect_stdout
+from io import StringIO
+from subprocess import DEVNULL, check_output
+
+from git import (Git, GitCommandError, InvalidGitRepositoryError,
+                 NoSuchPathError, Repo)
+
 import biothings
 from biothings.utils.dataload import dict_sweep
 
@@ -19,8 +24,8 @@ APP_REPO_DATA = {}
 def get_python_version():
     ''' Get a list of python packages installed and their versions. '''
     try:
-        return check_output('pip list',
-                            shell=True, stderr=DEVNULL).decode('utf-8').split('\n')[2: -1]
+        output = check_output('pip list', shell=True, stderr=DEVNULL)
+        return output.decode('utf-8').replace('\r', '').split('\n')[2: -1]
     except Exception:
         return []
 
@@ -39,40 +44,42 @@ def get_biothings_commit():
             'commit-hash': lines[1],
             'master-commits': lines[2],
             'version': biothings.get_version()}
-    except:
+    except Exception:
         BIOTHINGS_REPO_DATA = {'repository-url': '', 'commit-hash': '',
                                'master-commits': '', 'version': biothings.get_version()}
 
     return BIOTHINGS_REPO_DATA
 
-
+@functools.lru_cache()
 def get_repository_information(app_dir=None):
-    ''' Get the repository information for the local repository, if it exists. '''
-    global APP_REPO_DATA
-    if APP_REPO_DATA:
-        return APP_REPO_DATA
+    """
+    Get the repository information for the local repository, if it exists.
+    """
+    commit_hash = ''
+    repository_url = ''
 
-    if not app_dir:
-        APP_REPO_DATA = {'repository-url': '', 'commit-hash': ''}
-        return APP_REPO_DATA
+    if app_dir:
+        app_dir = os.path.abspath(app_dir)
 
-    try:
-        commit_hash = check_output(
-            "cd {};git rev-parse HEAD".format(os.path.abspath(app_dir)),
-            shell=True, stderr=DEVNULL).decode('utf-8').strip('\n')
-    except:
-        commit_hash = ''
+        try:
+            args = shlex.split("git rev-parse HEAD")
+            output = check_output(args, cwd=app_dir, shell=True, stderr=DEVNULL)
+            commit_hash = output.decode('utf-8').strip('\n')
+        except BaseException:
+            pass
 
-    try:
-        repository_url = check_output(
-            "cd {};git config --get remote.origin.url".format(os.path.abspath(app_dir)),
-            shell=True, stderr=DEVNULL).decode('utf-8').strip('\n')
-    except:
-        repository_url = ''
+        try:
+            args = shlex.split("git config --get remote.origin.url")
+            output = check_output(args, cwd=app_dir, shell=True, stderr=DEVNULL)
+            repository_url = output.decode('utf-8').strip('\n')
+        except BaseException:
+            pass
 
-    APP_REPO_DATA = {'repository-url': repository_url, 'commit-hash': commit_hash}
-
-    return APP_REPO_DATA
+    codebase = {
+        'repository-url': repository_url,
+        'commit-hash': commit_hash
+    }
+    return codebase
 
 
 def get_python_exec_version():
@@ -110,14 +117,14 @@ def set_versions(config, app_folder):
             commit = "unknown"
             commitdate = "unknown"
         try:
-            config.APP_VERSION = {"branch" : repo.active_branch.name,
-                                  "commit" : commit,
-                                  "date" : commitdate}
+            config.APP_VERSION = {"branch": repo.active_branch.name,
+                                  "commit": commit,
+                                  "date": commitdate}
         except Exception as e:
             logging.warning("Can't determine app version, defaulting to 'master': %s" % e)
-            config.APP_VERSION = {"branch" : "master",
-                                  "commit" : commit,
-                                  "date" : commitdate}
+            config.APP_VERSION = {"branch": "master",
+                                  "commit": commit,
+                                  "date": commitdate}
     else:
         logging.info("app_version '%s' forced in configuration file" % config.APP_VERSION)
 
@@ -136,14 +143,14 @@ def set_versions(config, app_folder):
             commit = "unknown"
             commitdate = "unknown"
         try:
-            config.BIOTHINGS_VERSION = {"branch" : repo.active_branch.name,
-                                        "commit" : commit,
-                                        "date" : commitdate}
+            config.BIOTHINGS_VERSION = {"branch": repo.active_branch.name,
+                                        "commit": commit,
+                                        "date": commitdate}
         except Exception as e:
             logging.warning("Can't determine biothings version, defaulting to 'master': %s" % e)
-            config.BIOTHINGS_VERSION = {"branch" : "master",
-                                        "commit" : commit,
-                                        "date" : commitdate}
+            config.BIOTHINGS_VERSION = {"branch": "master",
+                                        "commit": commit,
+                                        "date": commitdate}
     else:
         logging.info("biothings_version '%s' forced in configuration file" %
                      config.BIOTHINGS_VERSION)
@@ -157,7 +164,7 @@ def get_source_code_info(src_file):
     Given a path to a source code, try to find information
     about repository, revision, URL pointing to that file, etc...
     Return None if nothing can be determined.
-    Tricky cases: 
+    Tricky cases:
       - src_file could refer to another repo, within current repo
         (namely a remote data plugin, cloned within the api's plugins folder
       - src_file could point to a folder, when for instance a dataplugin is
