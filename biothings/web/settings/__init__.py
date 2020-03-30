@@ -1,29 +1,35 @@
-# -*- coding: utf-8 -*-
-'''Settings objects used to configure the web API
-These settings get passed into the handler.initialize() function,
-of each request, and configure the web API endpoint.  They are mostly
-a container for the `Config module`_, and any other settings that
-are the same across all handler types, e.g. the Elasticsearch client.'''
-
+"""
+    Biothings Web Settings
+"""
 import asyncio
+import importlib.util
 import json
 import logging
 import os
+import re
 import socket
 import types
+from collections import defaultdict
+from copy import deepcopy
 from importlib import import_module
+from pprint import pformat
 
 import elasticsearch
 from elasticsearch import ConnectionSelector
 from elasticsearch_async.transport import AsyncTransport
+from elasticsearch_dsl import A, MultiSearch, Q, Search
 from elasticsearch_dsl.connections import Connections
 
+import biothings.web.settings.default
+from biothings.web.api.helper import BaseHandler as BiothingsBaseHandler
 
-# Error class
+from .userquery import ESUserQuery
+
+
 class BiothingConfigError(Exception):
     pass
 
-class BiothingWebSettings(object):
+class BiothingWebSettings():
     '''
     A container for the settings that configure the web API.
 
@@ -32,13 +38,39 @@ class BiothingWebSettings(object):
 
     '''
 
-    def __init__(self, config='biothings.web.settings.default'):
+    def __init__(self, config=None, **kwargs):
         '''
-        :param config: a module that configures this biothing or its fully qualified name.
+        :param config: a module that configures this biothing
+            or its fully qualified name,
+            or its module file path.
         '''
+        self._default = biothings.web.settings.default
 
-        self._user = config if isinstance(config, types.ModuleType) else import_module(config)
-        self._default = import_module('biothings.web.settings.default')
+        # load user settings
+        if isinstance(config, types.ModuleType):
+            self._user = config
+        elif isinstance(config, str) and config.endswith('.py'):
+            spec = importlib.util.spec_from_file_location("config", config)
+            config = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(config)
+            self._user = config
+        elif isinstance(config, str) and config:
+            self._user = import_module(config)
+        elif not config:
+            self._user = self._default
+        else:
+            raise BiothingConfigError()
+        logging.info("Loaded: %s", self._user.__file__)
+
+        # process keyword setting override
+        for key, value in kwargs.items():
+            setattr(self._user, key, value)
+
+        # process environment variable override of named settings
+        for name in os.environ:
+            if hasattr(self, name) and isinstance(getattr(self, name), str):
+                logging.info("Env %s = %s", name, os.environ[name])
+                setattr(self._user, name, os.environ[name])
 
         # for metadata dev details
         if os.path.isdir(os.path.join(self.APP_GIT_REPOSITORY, '.git')):
@@ -49,30 +81,38 @@ class BiothingWebSettings(object):
         self.validate()
 
     def __getattr__(self, name):
-
-        if hasattr(self._user, name) or hasattr(self._default, name):
-
-            # environment variables can override named settings
-            if name in os.environ:
-                return os.environ[name]
-
-            return getattr(self._user, name, getattr(self._default, name, None))
-
-        raise AttributeError("No setting named '{}' in configuration file.".format(name))
+        return getattr(self._user, name,
+                       getattr(self._default, name))
 
     def generate_app_list(self):
         '''
         Generates the tornado.web.Application `(regex, handler_class, options) tuples
-        <http://www.tornadoweb.org/en/stable/web.html#application-configuration>`_ for this project.
+        <http://www.tornadoweb.org/en/stable/web.html#application-configuration>`_.
         '''
         handlers = []
-
         for rule in self.APP_LIST:
-            settings = {"web_settings": self}
-            if len(rule) == 3:
-                settings.update(rule[-1])
-            handlers.append((rule[0], rule[1], settings))
+            if issubclass(rule[1], BiothingsBaseHandler):
+                pattern = rule[0]
+                handler = rule[1]
+                setting = rule[2] if len(rule) == 3 else {}
+                handler.setup(self)
+                if '{typ}' in pattern:
+                    for biothing_type in self.BIOTHING_TYPES:
+                        pattern = pattern.format(
+                            pre=self.API_PREFIX,
+                            ver=self.API_VERSION,
+                            typ=biothing_type).replace('//', '/')
+                        setting['biothing_type'] = biothing_type
+                    handlers.append((pattern, handler, setting))
+                else:
+                    pattern = pattern.format(
+                        pre=self.API_PREFIX,
+                        ver=self.API_VERSION).replace('//', '/')
+                    handlers.append((pattern, handler, setting))
+            else:
+                handlers.append(rule)
 
+        logging.debug('API Handlers:\n%s', pformat(handlers, width=200))
         return handlers
 
     def get_git_repo_path(self):
@@ -85,13 +125,7 @@ class BiothingWebSettings(object):
         '''
         Validate the settings defined for this web server.
         '''
-        for rule in self.APP_LIST:
-            if len(rule) == 2:
-                pass
-            elif len(rule) == 3:
-                assert isinstance(rule[-1], dict)
-            else:
-                raise BiothingConfigError()
+        assert self.API_VERSION or self.API_PREFIX
 
     #### COMPATIBILITY METHODS ####
 
@@ -125,12 +159,12 @@ class BiothingESWebSettings(BiothingWebSettings):
 
     ES_VERSION = elasticsearch.__version__[0]
 
-    def __init__(self, config='biothings.web.settings.default'):
+    def __init__(self, config='config', **kwargs):
         '''
         The ``config`` init parameter specifies a module that configures
         this biothing.  For more information see `config module`_ documentation.
         '''
-        super(BiothingESWebSettings, self).__init__(config)
+        super(BiothingESWebSettings, self).__init__(config, **kwargs)
 
         # elasticsearch connections
         self._connections = Connections()
@@ -139,14 +173,15 @@ class BiothingESWebSettings(BiothingWebSettings):
             "hosts": self.ES_HOST,
             "timeout": self.ES_CLIENT_TIMEOUT,
             "max_retries": 1,  # maximum number of retries before an exception is propagated
-            "timeout_cutoff": 1,  # number of consecutive failures after which the timeout doesn’t increase
+            "timeout_cutoff": 1,  # timeout freezes after this number of consecutive failures
             "selector_class": KnownLiveSelecter}
         self._connections.create_connection(alias='sync', **connection_settings)
         connection_settings.update(transport_class=AsyncTransport)
         self._connections.create_connection(alias='async', **connection_settings)
 
-        # cached index mappings
-        self._source_mappings = {}
+        # cached index mappings # TODO
+        self.source_metadata = defaultdict(dict)
+        self.source_properties = defaultdict(dict)
 
         # populate field notes if exist
         try:
@@ -156,8 +191,20 @@ class BiothingESWebSettings(BiothingWebSettings):
         except Exception:
             self._fields_notes = {}
 
+        # user query data
+        self.userquery = ESUserQuery(self.USERQUERY_DIR)
+
+        # query pipelines
+        self.query_builder = self.ES_QUERY_BUILDER(self)
+        self.query_backend = self.ES_QUERY(self)
+        self.query_transform = self.ES_RESULT_TRANSFORMER(self)
+
         # initialize payload for standalone tracking batch
         self.tracking_payload = []
+
+        # populate source mappings
+        for biothing_type in self.ES_INDICES:
+            self.read_index_mappings(biothing_type)
 
     def validate(self):
         '''
@@ -171,6 +218,7 @@ class BiothingESWebSettings(BiothingWebSettings):
         assert '*' not in self.ES_DOC_TYPE
 
         self.ES_INDICES[self.ES_DOC_TYPE] = self.ES_INDEX
+        self.BIOTHING_TYPES = list(self.ES_INDICES.keys())
 
     def get_es_client(self):
         '''
@@ -181,49 +229,75 @@ class BiothingESWebSettings(BiothingWebSettings):
 
     def get_async_es_client(self):
         '''
-        Return the async elasitcsearch client. API calls return awaitable objects.
+        Return the async elasitcsearch client.
         The connection is created upon first call.
+        API calls return awaitable objects.
         '''
         return self._connections.get_connection('async')
 
-    def get_source_mappings(self, biothing_type=None, refresh=False):
-        '''
-        Get mappings defined in the corresponding ES indices.
-        Result does not include mapping types.
+    def read_index_mappings(self, biothing_type=None):
+        """
+        Read ES index mappings for the corresponding biothing_type,
+        Populate datasource info and field properties from mappings.
+        Return ES raw response. This implementation combines indices.
 
-        :param biothing_type: If multiple biothings are defined, specify which here.
-        :param refresh: If set to `false`, return the cached copy. Otherwise retrieve latest.
-
-        '''
-        biothing_type = biothing_type or self.ES_DOC_TYPE
-        cached = biothing_type in self._source_mappings
-
-        if refresh or not cached:
-
-            kwargs = {
-                'index': self.ES_INDICES[biothing_type],
-                'allow_no_indices': True,
-                'ignore_unavailable': True,
-                'local': not refresh
+        The ES response would look like: (for es7+)
+        {
+            'index_1': {
+                'properties': { ... },  <----- Extract ource_properties
+                '_meta': {
+                    "src" : { ... }     <----- Extract source_licenses
+                    ...
+                },              <----- Extract source_metadata
+                ...
+            },
+            'index_2': {
+                ...     <----- Combine with results above
             }
+        }
+        """
+
+        biothing_type = biothing_type or self.ES_DOC_TYPE
+        try:
+            mappings = self.get_es_client().indices.get_mapping(
+                index=self.ES_INDICES[biothing_type],
+                allow_no_indices=True,
+                ignore_unavailable=True,
+                local=False)
+        except Exception:
+            return None
+
+        metadata = self.source_metadata[biothing_type]
+        properties = self.source_properties[biothing_type]
+        licenses = self.query_transform.source_licenses[biothing_type]
+
+        metadata.clear()
+        properties.clear()
+        licenses.clear()
+
+        for index in mappings:
             if self.ES_VERSION < 7:
-                kwargs['doc_type'] = biothing_type
+                mapping = mappings[index]['mappings'][biothing_type]
+            else:
+                mapping = mappings[index]['mappings']
+            if '_meta' in mapping:
+                for key, val in mapping['_meta'].items():
+                    if key in metadata and isinstance(val, dict) \
+                            and isinstance(metadata[key], dict):
+                        metadata[key].update(val)
+                    else:
+                        metadata[key] = val
+                metadata.update(mapping['_meta'])
+                if 'src' in mapping['_meta']:
+                    for src, info in mapping['_meta']['src'].items():
+                        if 'license_url_short' in info:
+                            licenses[src] = info['license_url_short']
+                        elif 'license_url' in info:
+                            licenses[src] = info['license_url']
+            if 'properties' in mapping:
+                properties.update(mapping['properties'])
 
-            mappings = self.get_es_client().indices.get_mapping(**kwargs)
-            result = {}
-
-            for index in mappings:
-
-                if self.ES_VERSION < 7:
-                    mapping = mappings[index]['mappings'][biothing_type]
-                else:
-                    mapping = mappings[index]['mappings']
-
-                result[index] = mapping
-
-            self._source_mappings[biothing_type] = result  # cache results
-
-        return self._source_mappings[biothing_type]
+        return mappings
 
     def get_field_notes(self):
         '''
@@ -240,9 +314,6 @@ class BiothingESWebSettings(BiothingWebSettings):
     @property
     def async_es_client(self):
         return self.get_async_es_client()
-
-    def source_metadata(self):
-        return self.get_source_mappings()
 
     def doc_url(self, bid):
         return os.path.join(self.URL_BASE, self.API_VERSION, self.ES_DOC_TYPE, bid)
