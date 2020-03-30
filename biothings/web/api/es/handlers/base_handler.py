@@ -1,167 +1,281 @@
-from biothings.web.api.helper import BaseHandler, BiothingParameterTypeError
-from biothings.utils.common import dotdict, is_str
-import re
+import json
 import logging
+import re
+from collections import defaultdict
+from itertools import chain, product
+from pprint import pformat
+
+from tornado.web import Finish, HTTPError
+
+from biothings.utils.common import dotdict, is_str
+from biothings.web.api.es.query import BiothingSearchError
+from biothings.web.api.helper import BaseHandler, BiothingsQueryParamInterpreter
+
 
 class BaseESRequestHandler(BaseHandler):
-    ''' Parent class of all Elasticsearch-based Request handlers, subclass of `BaseHandler`_. 
-    Contains handling for Elasticsearch-specific query params (like ``fields``, ``size``, etc) '''
-    # override these in child class
-    control_kwargs = {}
-    es_kwargs = {}
-    esqb_kwargs = {}
-    transform_kwargs = {}
+    '''
+    Parent class of all Elasticsearch-based Request handlers, subclass of `BaseHandler`_.
+    Contains handling for Elasticsearch-specific query params (like ``fields``, ``size``, etc)
+    '''
+    name = ''
+    kwarg_types = ('control', 'esqb', 'es', 'transform')
+    kwarg_methods = ('get', 'post')
+    options = dotdict()
 
-    def initialize(self, web_settings):
-        ''' Tornado reqeust handler initialization.  Initializations common to all 
-        Elasticsearch-specific request handlers go here.'''
-        super(BaseESRequestHandler, self).initialize(web_settings)
+    @classmethod
+    def setup(cls, web_settings):
+        '''
+        Class level setup. Called in generate API.
+        Populate relevent kwarg settings in _kwarg_settings.
+        Access with attribute kwarg_settings.
+        '''
+        super().setup(web_settings)
 
-    def _return_data_and_track(self, data, ga_event_data={}, rawquery=False, status_code=200, _format='json'):
-        ''' Small function to return a chunk of data and send a google analytics tracking request.'''
-        if rawquery:
-            self.return_raw_query_json(data, status_code=status_code, _format=_format)
+        if not cls.name:
+            return
+
+        cls._kwarg_settings = defaultdict(dict)
+        for method, kwarg_type in product(cls.kwarg_methods, cls.kwarg_types):
+            key = '_'.join((cls.name, method, kwarg_type, 'kwargs')).upper()
+            if hasattr(web_settings, key):
+                setting = cls._kwarg_settings[method.upper()]
+                setting[kwarg_type] = getattr(web_settings, key)
+
+    def initialize(self, biothing_type=None):
+        '''
+        Request Level initialization.
+        '''
+        super(BaseESRequestHandler, self).initialize()
+        self.biothing_type = biothing_type or self.web_settings.ES_DOC_TYPE
+
+        # Google Analytics
+
+        action_key = f'GA_ACTION_{self.name.upper()}_{self.request.method}'
+        if hasattr(self.web_settings, action_key):
+            self.ga_event_object_ret['action'] = getattr(self.web_settings, action_key)
         else:
-            self.return_object(data, status_code=status_code, _format=_format)
-        self.ga_track(event=self.ga_event_object(ga_event_data))
-        self.self_track(data=self.ga_event_object_ret)
-        return
+            self.ga_event_object_ret['action'] = self.request.method
 
-    def return_raw_query_json(self, query, status_code=200, _format='json'):
-        '''Return valid JSON if `rawquery` option is selected.
-        This is necessary as queries can span multiple lines (POST)'''
-        _ret = query.get('body', {'GET': query.get('bid')})
-        if is_str(_ret) and len(_ret.split('\n')) > 1:
-            self.return_object({'body': _ret}, status_code=status_code, _format=_format)
-        else:
-            self.return_object(_ret, status_code=status_code, _format=_format)
+        logging.debug("Google Analytics Base object: {}".format(self.ga_event_object_ret))
 
-    def _should_sanitize(self, param, kwargs):
-        return ((param in kwargs) and (param in self.kwarg_settings))
+    def prepare(self):  # TODO query param should have dominance
+        '''
+        Extract, typify, and sanitize query arguments from URL and request body.
 
-    def _sanitize_source_param(self, kwargs):
-        if self._should_sanitize('_source', kwargs):
-            if len(kwargs['_source']) == 0:
-                kwargs.pop('_source')
-            elif len(kwargs['_source']) == 1 and kwargs['_source'][0].lower() == 'all':
-                kwargs['_source'] = True
-        return kwargs
+        * Inputs are combined and then separated into functional catagories.
+        * Duplicated query or body arguments will overwrite the previous value.
+        * JSON body input will not overwrite query arguments in URL. # TODO
+        * Path arguments can overwirte all other existing values.
+        '''
+        super().prepare()
+        args = dict(self.json_arguments)
+        args.update({key: self.get_argument(key) for key in self.request.arguments})
 
-    def _sanitize_sort_param(self, kwargs):
-        if self._should_sanitize('sort', kwargs):
-            dirty_sort = kwargs['sort']
-            kwargs['sort'] = [{field[1:]:{"order":"desc"}} if field.startswith('-') 
-                else {field:{"order":"asc"}} for field in dirty_sort]
-        return kwargs
+        for catagory, settings in self.kwarg_settings.items():
+            self.options[catagory] = options = {}
+            for keyword, setting in settings.items():
 
-    def _sanitize_size_param(self, kwargs):
-        # cap size
-        if self._should_sanitize('size', kwargs):
-            kwargs['size'] = kwargs['size'] if (kwargs['size'] < 
-                self.web_settings.ES_SIZE_CAP) else self.web_settings.ES_SIZE_CAP
-        return kwargs
+                # retrieve from url and body arguments
+                value = args.get(keyword)
+                if 'alias' in setting and not value:
+                    if not isinstance(setting['alias'], list):
+                        setting['alias'] = [setting['alias']]
+                    for _alias in setting['alias']:
+                        if _alias in args:
+                            value = args[_alias]
+                            break
 
-    def _parse_nested_aggs(self, field, facet_size):
-        ''' parse nested aggs '''
-        if re.search(r'\(.*\)', field):
-            return {re.sub(r'\(.*\)', '', field): {'terms': {"field": re.sub(r'\(.*\)', '', field), 'size': facet_size}, "aggs": self._parse_nested_aggs(re.sub(r'^.*?\(','', field)[:-1], facet_size)}}
-        else:
-            return {field: {'terms': {"field": field, 'size': facet_size}}}
+                # overwrite with path args (regex captures)
+                if 'path' in setting:
+                    if isinstance(setting['path'], int):
+                        if len(self.path_args) <= setting['path']:
+                            self.send_error(400, missing=keyword)
+                            raise Finish()
+                        value = self.path_args[setting['path']]
+                    elif isinstance(setting['path'], str):
+                        if setting['path'] not in self.path_kwargs:
+                            self.send_error(400, missing=keyword)
+                            raise Finish()
+                        value = self.path_kwargs[setting['path']]
 
-    def _sanitize_aggs_param(self, kwargs):
-        if self._should_sanitize('aggs', kwargs):
-            kwargs['facet_size'] = kwargs.get('facet_size', self.kwarg_settings['facet_size']['default']) 
-            if (kwargs['facet_size'] > self.kwarg_settings['facet_size'].get('max', 1000)):
-                 kwargs['facet_size'] = self.kwarg_settings['facet_size'].get('max', 1000)
-            aggs_dict = {}
-            for field in kwargs['aggs']:
-                if self.web_settings.ALLOW_NESTED_AGGS and re.search(r'\(.*\)', field):
-                    aggs_dict.update(self._parse_nested_aggs(field, kwargs['facet_size']))
-                else:
-                    aggs_dict.update({field: {"terms": {"field": field, "size": kwargs["facet_size"]}}})
-            kwargs['aggs'] = aggs_dict
-        return kwargs
+                # fallback to default values or raise error
+                if value is None:
+                    if setting.get('required'):
+                        self.send_error(400, missing=keyword, received=args)
+                        raise Finish()
+                    value = setting.get('default')
+                    if value is not None:
+                        options[keyword] = value
+                    continue
 
-    def _sanitize_from_param(self, kwargs):
-        # cap from
-        if self._should_sanitize('from', kwargs) and kwargs['from'] > self.web_settings.ES_RESULT_WINDOW_SIZE_CAP:
-            raise BiothingParameterTypeError('"from" parameter cannot be greater than {0}'.format(self.web_settings.ES_RESULT_WINDOW_SIZE_CAP))
-        return kwargs
+                # convert to the desired value type and format
+                if not isinstance(value, setting['type']):  # TODO type should exist , use double dispatch
+                    param = BiothingsQueryParamInterpreter(args.get('jsoninput', ''))  # TODO undocumented
+                    value = param.convert(value, setting['type'])
+                if 'translations' in setting and isinstance(value, str):
+                    for (regex, translation) in setting['translations']:
+                        value = re.sub(regex, translation, value)
 
-    def get_cleaned_options(self, kwargs):
-        ''' Separate URL keyword arguments into their functional category.
-        Incoming kwargs are separated into one of 4 categories, depending on how the argument controls the
-        pipeline:
+                # list size and int value validation
+                global_max = getattr(self.web_settings, 'LIST_SIZE_CAP', 1000)
+                if isinstance(value, list):
+                    max_allowed = setting.get('max', global_max)
+                    if len(value) > max_allowed:
+                        self.send_error(400, keyword=keyword, lst=value, max=max_allowed)
+                        raise Finish()
+                elif isinstance(value, (int, float, complex)) and not isinstance(value, bool):
+                    if 'max' in setting:
+                        if value > setting['max']:
+                            self.send_error(400, keyword=keyword, num=value, max=setting['max'])
+                            raise Finish()
 
-        * ``control_kwargs`` - These are arguments that control the pipeline execution (**raw**, **rawquery**, etc)
-        * ``es_kwargs`` - These are arguments that get passed directly to the Elasticsearch client during query
-        * ``esqb_kwargs`` - These are arguments that go to the Elasticsearch query builder (**fields**, **size**, etc)
-        * ``transform_kwargs`` - These are arguments that go to the Elasticsearch result transformer (**jsonld**, **dotfield**, etc)'''
-        options = dotdict()
+                # ignroe None value
+                if value is not None:
+                    options[keyword] = value
 
-        # split kwargs into one (or more) of 4 categories:
-        #   * control_kwargs:  kwargs that control aspects of the handler's pipeline (e.g. raw, rawquery)
-        #   * es_kwargs: kwargs that go directly to the ES query (e.g. fields, size, ...)
-        #   * esqb_kwargs: kwargs that go directly to the ESQueryBuilder instance
-        #   * transform_kwargs: kwargs that go directly to the response transformer (e.g. jsonld, dotfield)
-        for kwarg_category in ["control_kwargs", "es_kwargs", "esqb_kwargs", "transform_kwargs"]:
-            options.setdefault(kwarg_category, dotdict())
-            for option, settings in getattr(self, kwarg_category, {}).items():
-                if option in kwargs or settings.get('default', None) is not None:
-                    options.get(kwarg_category).setdefault(option, kwargs.get(option, settings['default']))
-        # do userquery kwargs
-        if options.esqb_kwargs.userquery:
-            for k in kwargs.keys():
-                if re.match(self.web_settings.USERQUERY_KWARG_REGEX, k):
-                    options['esqb_kwargs'].setdefault('userquery_kwargs', dotdict())
-                    options['esqb_kwargs']['userquery_kwargs'][self.web_settings.USERQUERY_KWARG_TRANSFORM(k)] = kwargs.get(k)
+        logging.debug("Kwarg settings:\n{}".format(pformat(self.kwarg_settings, width=150)))
+        logging.debug("Kwarg received:\n{}".format(pformat(args, width=150)))
+        logging.debug("Processed options:\n{}".format(pformat(self.options, width=150)))
+
+    @property
+    def kwarg_settings(self):
+        '''
+        Return the appropriate kwarg settings basing on the request method.
+        '''
+        if hasattr(self, '_kwarg_settings'):
+            if self.request.method in self._kwarg_settings:
+                return self._kwarg_settings[self.request.method]
+        return {}
+
+    def get_cleaned_options(self, options):  # TODO change docstring: additional cleanings besides common things you can write to config
+        """
+        Clean up inherent logic between keyword arguments.
+        For example, enforce mutual exclusion relationships.
+        """
+
+        ### ESQB Stage ###
+
+        # facet_size only relevent for aggs
+        if not options.esqb.aggs:
+            options.esqb.pop('facet_size', None)
+
+        ### ES Backend Stage ###
+
+        # no sorting when scrolling
+        if options.es.fetch_all:
+            options.es.pop('sort', None)
+            options.es.pop('size', None)
+
+        # fields=all should return all fields
+        if options.es._source is not None:
+            if not options.es._source:
+                options.es.pop('_source')
+            elif 'all' in options.es._source:
+                options.es._source = True
+
+        ### Transform Stage ###
+
+        options.transform.biothing_type = self.biothing_type
+
+        # inject original query terms
+        if self.request.method == 'POST':
+            queries = options.esqb.ids or options.esqb.q
+            options.transform.templates = (dict(query=q) for q in queries)
+            options.transform.template_miss = dict(notfound=True)
+            options.transform.template_hit = dict()
+
+        logging.debug("Cleaned options:\n{}".format(pformat(options, width=150)))
         return options
 
-    def _sanitize_params(self, kwargs):
-        kwargs = super(BaseESRequestHandler, self)._sanitize_params(kwargs)
-        kwargs = self._sanitize_source_param(kwargs)
-        kwargs = self._sanitize_size_param(kwargs)
-        kwargs = self._sanitize_sort_param(kwargs)
-        kwargs = self._sanitize_aggs_param(kwargs)
-        kwargs = self._sanitize_from_param(kwargs)
-        return kwargs
-    
-    def _get_es_index(self, options):
-        ''' Override to change query index for this request. '''
-        return self.web_settings.ES_INDEX
+    def write_error(self, status_code, **kwargs):
 
-    def _get_es_doc_type(self, options):
-        ''' Override to change doc_type for this request. '''
-        return self.web_settings.ES_DOC_TYPE
+        reason = kwargs.pop('reason', self._reason)
+        assert '\n' not in reason
 
-    def _pre_query_builder_GET_hook(self, options):
-        ''' Override me. '''
+        message = {
+            "code": status_code,
+            "success": False,
+            "error": reason}
+        message.update(kwargs)
+
+        # TODO track
+
+        self.finish(message)  # TODO return different formats basing on control keywords
+
+class ESRequestHandler(BaseESRequestHandler):
+    '''
+    Default Implementation of ES Query Pipelines
+    '''
+
+    async def get(self, *args, **kwargs):
+        return await self.execute_pipeline(*args, **kwargs)
+
+    async def post(self, *args, **kwargs):
+        return await self.execute_pipeline(*args, **kwargs)
+
+    async def execute_pipeline(self, *args, **kwargs):
+
+        options = self.get_cleaned_options(self.options)
+        options = self.pre_query_builder_hook(options)
+
+        ###################################################
+        #                   Build query
+        ###################################################
+
+        _query = self.web_settings.query_builder.build(options.esqb)
+        _query = self.pre_query_hook(options, _query)
+
+        ###################################################
+        #                   Execute query
+        ###################################################
+
+        res = await self.web_settings.query_backend.execute(
+            _query, options.es, self.biothing_type, self.send_error)
+        res = self.pre_transform_hook(options, res)
+
+        ###################################################
+        #                 Transform result
+        ###################################################
+
+        res = self.web_settings.query_transform.transform(
+            res, options.transform)
+        res = self.pre_finish_hook(options, res)
+
+        self.return_object(res, _format=options.control.out_format)
+
+    def pre_query_builder_hook(self, options):
+        '''
+        Override this in subclasses.
+        At this stage, we have the cleaned user input available.
+        Might be a good place to implement input based tracking.
+        '''
         return options
 
-    def _pre_query_GET_hook(self, options, query):
-        ''' Override me. '''
+    def pre_query_hook(self, options, query):
+        '''
+        Override this in subclasses.
+        By default, return raw query, if requested.
+        Might want to persist this behavior by calling super().
+        '''
+        if options.control.rawquery:
+            self.return_object(query.to_dict())
+            raise Finish()
         return query
 
-    def _pre_transform_GET_hook(self, options, res):
-        ''' Override me. '''
+    def pre_transform_hook(self, options, res):
+        '''
+        Override this in subclasses.
+        By default, return query response, if requested.
+        Might want to persist this behavior by calling super().
+        '''
+        if options.control.raw:
+            self.return_object(res, _format=options.control.out_format)
+            raise Finish()
         return res
 
-    def _pre_finish_GET_hook(self, options, res):
-        ''' Override me. '''
-        return res
-    
-    def _pre_query_builder_POST_hook(self, options):
-        ''' Override me. '''
-        return options
-
-    def _pre_query_POST_hook(self, options, query):
-        ''' Override me. '''
-        return query
-
-    def _pre_transform_POST_hook(self, options, res):
-        ''' Override me. '''
-        return res
-
-    def _pre_finish_POST_hook(self, options, res):
-        ''' Override me. '''
+    def pre_finish_hook(self, options, res):
+        '''
+        Override this in subclasses.
+        Could implement additional high-level result translation.
+        '''
         return res
