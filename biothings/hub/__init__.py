@@ -209,7 +209,7 @@ class HubServer(object):
     DEFAULT_FEATURES = [
         "config", "job", "dump", "upload", "dataplugin", "source", "build",
         "diff", "index", "snapshot", "release", "inspect", "sync", "api",
-        "terminal", "reloader", "dataupload", "ws"
+        "terminal", "reloader", "dataupload", "ws", "readonly"
     ]
     DEFAULT_MANAGERS_ARGS = {"upload": {"poll_schedule": "* * * * * */10"}}
     DEFAULT_RELOADER_CONFIG = {
@@ -267,14 +267,19 @@ class HubServer(object):
         # set during configure()
         self.managers = None
         self.api_endpoints = None
+        self.readonly_api_endpoints = None
         self.shell = None
         self.commands = None
         self.extra_commands = None
         self.routes = []
+        self.readonly_routes = []
         # flag "do we need to configure?"
         self.configured = False
 
     def clean_features(self, features):
+        """
+        Sanitize (ie. remove duplicates) features
+        """
         # we can't just use "set()" because we need to preserve order
         ordered = OrderedDict()
         for feat in features:
@@ -288,6 +293,25 @@ class HubServer(object):
         used eg. to adjust features list
         """
         pass
+
+    def configure_readonly_api_endpoints(self):
+        """
+        Assuming read-write API endpoints have previously been defined (self.api_endpoints set)
+        extract commands and their endpoint definitions only when method is GET. That is, for any
+        given API definition honoring REST principle for HTTP verbs, generate endpoints only for
+        which actions are read-only actions.
+        """
+        assert self.api_endpoints, "Can't derive a read-only API is no read-write endpoints are defined"
+        self.readonly_api_endpoints = {}
+        for cmd, api_endpoints in self.api_endpoints.items():
+            if not isinstance(api_endpoints, list):
+                api_endpoints = [api_endpoints]
+            for endpoint in api_endpoints:
+                if endpoint["method"].lower() != "get":
+                    self.logger.debug("Skipping %s: %s for read-only API" % (cmd, endpoint))
+                    continue
+                else:
+                    self.readonly_api_endpoints.setdefault(cmd, []).append(endpoint)
 
     def configure(self):
         self.before_configure()
@@ -304,14 +328,35 @@ class HubServer(object):
         self.configure_commands()
         self.configure_extra_commands()
         self.shell.set_commands(self.commands, self.extra_commands)
-        # set api
+        # setapi
         if self.api_config is not False:
             self.configure_api_endpoints(
             )  # after shell setup as it adds some default commands
             # we want to expose throught the api
             from biothings.hub.api import generate_api_routes
+            from biothings.hub.api.handlers.base import RootHandler
+
+            # First deal with read-only API
+            if "readonly" in self.features:
+                self.configure_readonly_api_endpoints()
+                self.readonly_routes.extend(
+                    generate_api_routes(self.shell, self.readonly_api_endpoints))
+                # we don't want to expose feature read-only for the API that is *not*
+                # read-only. "readonly" feature means we're running another webapp for
+                # a specific readonly API. UI can then query the root handler and see
+                # if the API is readonly or not, and adjust the components & actions
+                all_features = copy.deepcopy(self.features)
+                self.features.remove("readonly")
+                self.readonly_routes.append(("/", RootHandler, {
+                    "features": all_features,
+                }))
+
+            # Then deal with read-write API
             self.routes.extend(
                 generate_api_routes(self.shell, self.api_endpoints))
+            self.routes.append(("/", RootHandler, {
+                "features": self.features,
+            }))
 
         # done
         self.configured = True
@@ -332,8 +377,8 @@ class HubServer(object):
         # we share the same one
         loop = self.managers["job_manager"].loop
         if self.routes:
-            self.logger.info(self.routes)
             self.logger.info("Starting Hub API server")
+            self.logger.info(self.routes)
             import tornado.web
             # register app into current event loop
             api = tornado.web.Application(self.routes)
@@ -343,6 +388,17 @@ class HubServer(object):
                       config.HUB_API_PORT,
                       settings=getattr(config, "TORNADO_SETTINGS", {})
                       )
+            if self.readonly_routes:
+                if not getattr(config, "READONLY_HUB_API_PORT", None):
+                    self.logger.warning("Read-only Hub API feature is set but READONLY_HUB_API_PORT"
+                                        + "isn't set in configuration")
+                else:
+                    self.logger.info("Starting read-only Hub API server")
+                    self.logger.info(self.readonly_routes)
+                    ro_api = tornado.web.Application(self.readonly_routes)
+                    start_api(ro_api,
+                              config.READONLY_HUB_API_PORT,
+                              settings=getattr(config, "TORNADO_SETTINGS", {}))
         else:
             self.logger.info("No route defined, API server won't start")
         # at this point, everything is ready/set, last call for customizations
@@ -558,10 +614,9 @@ class HubServer(object):
         # just a placeholder
         pass
 
-    def configure_ws_feature(self):
-        # add websocket endpoint
-        import biothings.hub.api.handlers.ws as ws
+    def get_websocket_urls(self):
         import sockjs.tornado
+        import biothings.hub.api.handlers.ws as ws
         from biothings.utils.hub_db import ChangeWatcher
         # monitor change in database to report activity in webapp
         self.db_listener = ws.HubDBListener()
@@ -574,11 +629,15 @@ class HubServer(object):
         # (ie. infinite loop), root logger not recommended)
         root_logger.addHandler(WSLogHandler(self.log_listener))
         self.ws_listeners.extend([self.db_listener, self.log_listener])
-
         ws_router = sockjs.tornado.SockJSRouter(
             partial(ws.WebSocketConnection, listeners=self.ws_listeners),
             '/ws')
-        self.routes.extend(ws_router.urls)
+        return ws_router.urls
+
+    def configure_ws_feature(self):
+        # add websocket endpoint
+        ws_urls = self.get_websocket_urls()
+        self.routes.extend(ws_urls)
 
     def configure_terminal_feature(self):
         assert "ws" in self.features, "'terminal' feature requires 'ws'"
@@ -618,6 +677,18 @@ class HubServer(object):
         reloader = get_hub_reloader(monitored_folders,
                                     reload_func=reload_func)
         reloader and reloader.monitor()
+
+    def configure_readonly_feature(self):
+        """
+        Define then expose read-only Hub API endpoints
+        so Hub can be accessed without any risk of modifying data
+        """
+        assert self.api_config is not False, "api_config (read/write API) is required " \
+                                             + "to defined a read-only API (it's derived from)"
+        # first websockets URLs (we only fetch data from websocket, so no
+        # risk of write operations there
+        ws_urls = self.get_websocket_urls()
+        self.readonly_routes.extend(ws_urls)
 
     def configure_remaining_features(self):
         self.logger.info("Setting up remaining features: %s",

@@ -8,7 +8,7 @@ import socket
 import contextlib
 
 import tornado.web
-from biothings.hub.api.handlers.base import GenericHandler, RootHandler
+from biothings.hub.api.handlers.base import GenericHandler
 from biothings.utils.hub import CommandInformation, CommandError, CommandDefinition
 
 
@@ -274,9 +274,6 @@ def create_handlers(shell, command_defs):
 
 def generate_api_routes(shell, commands, settings={}):
     routes = create_handlers(shell, commands)
-    routes.append(("/", RootHandler, {
-        "features": shell.server.DEFAULT_FEATURES
-    }))
     return routes
 
 
