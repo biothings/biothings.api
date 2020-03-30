@@ -272,13 +272,13 @@ class DataTransform(object):
             for input_type in input_types:
                 if isinstance(input_type, (tuple, list)):
                     if not self._valid_input_type(input_type[0]):
-                        raise ValueError("input_type '%s' is not a node in the key_lookup graph" \
-                                % repr(input_type[0]))
+                        raise ValueError("input_type '%s' is not a node in the key_lookup graph"
+                                         % repr(input_type[0]))
                     res_input_types.append((input_type[0].lower(), input_type[1]))
                 elif isinstance(input_type, str):
                     if not self._valid_input_type(input_type.lower()):
-                        raise ValueError("input_type '%s' is not a node in the key_lookup graph" \
-                                % repr(input_type))
+                        raise ValueError("input_type '%s' is not a node in the key_lookup graph"
+                                         % repr(input_type))
                     res_input_types.append((input_type, self.default_source))
                 else:
                     raise ValueError('Provided input_types is not of the correct type')
@@ -346,8 +346,8 @@ class DataTransform(object):
                         if isinstance(self.debug, list) and \
                                 odoc['dt_debug']['orig_id'] in self.debug:
                             self.logger.debug(
-                                "DataTransform Debug doc['dt_debug']:  {}"\
-                                        .format(odoc['dt_debug']))
+                                "DataTransform Debug doc['dt_debug']:  {}"
+                                .format(odoc['dt_debug']))
                     output_doc_cnt += 1
                     yield odoc
             self.logger.info("wrapped_f Num. output_docs:  {}".format(output_doc_cnt))
@@ -375,8 +375,8 @@ class DataTransform(object):
         for odoc in output_docs:
             # print debug information if available
             if self.debug and 'dt_debug' in odoc:
-                self.logger.debug("DataTransform Debug doc['dt_debug']:  {}"\
-                        .format(odoc['dt_debug']))
+                self.logger.debug("DataTransform Debug doc['dt_debug']:  {}"
+                                  .format(odoc['dt_debug']))
             yield odoc
         self.logger.info("DataTransform.histogram:  {}".format(self.histogram))
 

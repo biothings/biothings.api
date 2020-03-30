@@ -5,7 +5,7 @@ class BaseMapper(object):
     """
     Basic mapper used to convert documents.
     if mapper's name matches source's metadata's mapper,
-    mapper.convert(docs) call will be used to 
+    mapper.convert(docs) call will be used to
     process/convert/whatever passed documents
     """
 
@@ -19,7 +19,7 @@ class BaseMapper(object):
         """
         raise NotImplementedError("sub-class and implement me")
 
-    def process(self,docs):
+    def process(self, docs):
         """
         Convert given docs into other docs.
         """
@@ -36,11 +36,11 @@ class IDBaseMapper(BaseMapper):
         'name' may match a "mapper" metatdata field (see uploaders). If None, mapper
         will be applied to any document from a resource without "mapper" argument
         """
-        super(IDBaseMapper,self).__init__(name=name)
+        super(IDBaseMapper, self).__init__(name=name)
         self.map = None
         self.convert_func = convert_func
 
-    def translate(self,_id,transparent=False):
+    def translate(self, _id, transparent=False):
         """
         Return _id translated through mapper, or _id itself if not part of mapper
         If 'transparent' and no match, original _id will be returned
@@ -49,9 +49,9 @@ class IDBaseMapper(BaseMapper):
             self.load()
         default = transparent and _id or None
         conv = self.convert_func or (lambda x: x)
-        return self.map.get(conv(_id),default)
+        return self.map.get(conv(_id), default)
 
-    def __contains__(self,_id):
+    def __contains__(self, _id):
         if self.need_load():
             self.load()
         return _id in self.map
@@ -61,7 +61,7 @@ class IDBaseMapper(BaseMapper):
             self.load()
         return len(self.map)
 
-    def process(self,docs,key_to_convert="_id",transparent=True):
+    def process(self, docs, key_to_convert="_id", transparent=True):
         """
         Process 'key_to_convert' document key using mapping.
         If transparent and no match, original key will be used
@@ -72,7 +72,7 @@ class IDBaseMapper(BaseMapper):
         """
         for doc in docs:
             _id = doc.get(key_to_convert)
-            _newid = self.translate(_id,transparent)
+            _newid = self.translate(_id, transparent)
             if _newid is None and not transparent:
                 continue
             for _oneid in alwayslist(_newid):

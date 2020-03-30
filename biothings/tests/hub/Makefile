@@ -8,7 +8,9 @@ test_jsonschema:
 	nosetests jsonschema
 test_utils:
 	nosetests utils
+test_inspector:
+	nosetests inspector
 
-unittest: test_config test_jsondiff test_jsonschema test_utils
+test: test_config test_jsondiff test_jsonschema test_utils test_inspector
 
 

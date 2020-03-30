@@ -1,9 +1,11 @@
 ''' Backend access class. '''
 from functools import partial
 
+from elasticsearch.exceptions import NotFoundError, TransportError
+
 from biothings.utils.es import ESIndexer
 from biothings import config as btconfig
-from elasticsearch.exceptions import NotFoundError, TransportError
+
 
 # Generic base backend
 class DocBackendBase(object):
@@ -11,7 +13,6 @@ class DocBackendBase(object):
 
     def prepare(self):
         '''if needed, add extra preparation steps here.'''
-        pass
 
     @property
     def target_name(self):
@@ -42,7 +43,6 @@ class DocBackendBase(object):
            at the end of updating.
            Final optimization or compacting can be done here as well.
         '''
-        pass
 
 class DocMemoryBackend(DocBackendBase):
     name = 'memory'
@@ -94,7 +94,7 @@ class DocMongoBackend(DocBackendBase):
             self.target_collection = target_collection
 
     def __eq__(self, other):
-        if not isinstance(other,DocMongoBackend):
+        if not isinstance(other, DocMongoBackend):
             return False
         return self.target_name == other.target_name and \
                self.target_collection.database.name == other.target_collection.database.name and \
@@ -113,14 +113,14 @@ class DocMongoBackend(DocBackendBase):
                 return
             mainsrc = fulln.split(".")[0]
             col = mongo.get_src_dump()
-            src = col.find_one({"_id":mainsrc})
+            src = col.find_one({"_id": mainsrc})
             return src.get("release")
         elif self.target_collection.database.name == btconfig.DATA_TARGET_DATABASE:
             col = mongo.get_src_build()
-            tgt = col.find_one({"_id" : self.target_collection.name})
+            tgt = col.find_one({"_id": self.target_collection.name})
             if not tgt:
                 return
-            return tgt.get("_meta",{}).get("build_version")
+            return tgt.get("_meta", {}).get("build_version")
         else:
             return None
 
@@ -139,7 +139,7 @@ class DocMongoBackend(DocBackendBase):
             return len(res.inserted_ids)
         except Exception as e:
             import pickle
-            pickle.dump(e,open("err","wb"))
+            pickle.dump(e, open("err", "wb"))
 
     def update(self, docs, upsert=False):
         '''if id does not exist in the target_collection,
@@ -149,10 +149,10 @@ class DocMongoBackend(DocBackendBase):
         at_least_one = False
         for doc in docs:
             at_least_one = True
-            op = bulk.find({'_id':doc["_id"]})
+            op = bulk.find({'_id': doc["_id"]})
             if upsert:
                 op = op.upsert()
-            op.update({"$set":doc})
+            op.update({"$set": doc})
         if at_least_one:
             res = bulk.execute()
             # if doc is the same, it'll be matched but not modified.
@@ -175,7 +175,8 @@ class DocMongoBackend(DocBackendBase):
                 _add_d.update(extra)
             _updates['$set'] = _add_d
         if diff.get('delete', None):
-            _updates['$unset'] = dict([(x, 1) for x in diff['delete']])
+            # _updates['$unset'] = dict([(x, 1) for x in diff['delete']])    # TODO: remove this line, rewritten using dict comprehension
+            _updates['$unset'] = {x: 1 for x in diff['delete']}
         res = self.target_collection.update_one({'_id': diff['_id']}, _updates, upsert=False)
         return res.modified_count
 
@@ -186,7 +187,7 @@ class DocMongoBackend(DocBackendBase):
         return [x['_id'] for x in self.target_collection.find(projection=[], manipulate=False)]
 
     def get_from_id(self, id):
-        return self.target_collection.find_one({"_id":id})
+        return self.target_collection.find_one({"_id": id})
 
     def mget_from_ids(self, ids, asiter=False):
         '''ids is an id list.
@@ -218,7 +219,6 @@ class DocMongoBackend(DocBackendBase):
         # no need to flush, fsync is used for backups. also, this locks the whole
         # database for reads...
         #self.target_collection.database.client.fsync(async=True)
-        pass
 
     def remove_from_ids(self, ids, step=10000):
         deleted = 0
@@ -237,7 +237,7 @@ class DocESBackend(DocBackendBase):
         """esidxer is an instance of utils.es.ESIndexer class."""
         if type(esidxer) == partial:
             self._target_esidxer_provider = esidxer
-            self._target_esidxer= None
+            self._target_esidxer = None
         else:
             _target_esidxer_provider = None
             self._target_esidxer = esidxer
@@ -298,11 +298,11 @@ class DocESBackend(DocBackendBase):
         conn.indices.refresh()
         self.target_esidxer.optimize()
 
-    def get_id_list(self,step=None):
+    def get_id_list(self, step=None):
         return self.target_esidxer.get_id_list(step=step)
 
     def get_from_id(self, id):
-        return self.target_esidxer.get_biothing(id,only_source=True)
+        return self.target_esidxer.get_biothing(id, only_source=True)
 
     def mget_from_ids(self, ids, step=100000, only_source=True, asiter=True, **kwargs):
         '''ids is an id list. always return a generator'''
@@ -311,12 +311,12 @@ class DocESBackend(DocBackendBase):
     def remove_from_ids(self, ids, step=10000):
         self.target_esidxer.delete_docs(ids, step=step)
 
-    def query(self, query=None, verbose=False, step=10000, scroll="10m", 
+    def query(self, query=None, verbose=False, step=10000, scroll="10m",
               only_source=True, **kwargs):
         ''' Function that takes a query and returns an iterator to query results. '''
         try:
             return self.target_esidxer.doc_feeder(query=query, verbose=verbose, step=step, scroll=scroll, only_source=only_source, **kwargs)
-        except Exception as e:
+        except Exception:
             pass
 
     @classmethod

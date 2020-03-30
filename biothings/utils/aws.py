@@ -1,9 +1,9 @@
-import os
 import logging
-from urllib.parse import urlparse
 import mimetypes
+import os
+from urllib.parse import urlparse
 
-from boto import connect_s3, s3 as botos3
+from boto import connect_s3
 import boto3
 import botocore.exceptions
 
@@ -16,9 +16,9 @@ except ImportError:
 
 
 def key_exists(bucket, s3key, aws_key=None, aws_secret=None):
-    client = boto3.client("s3",aws_access_key_id=aws_key,aws_secret_access_key=aws_secret)
+    client = boto3.client("s3", aws_access_key_id=aws_key, aws_secret_access_key=aws_secret)
     try:
-        client.head_object(Bucket=bucket,Key=s3key)
+        client.head_object(Bucket=bucket, Key=s3key)
         return True
     except Exception as e:
         if e.response["Error"]["Code"] == "404":
@@ -43,7 +43,7 @@ def send_s3_file(localfile, s3key, overwrite=False, permissions=None, metadata=N
         return
     s3 = connect_s3(aws_key, aws_secret)
     bucket = s3.get_bucket(s3_bucket)
-    bucket_location = bucket.get_location()
+    # bucket_location = bucket.get_location()  # TODO: delete this unused variable
     k = bucket.new_key(s3key)
     if not overwrite:
         assert not k.exists(), 's3key "{}" already exists.'.format(s3key)
@@ -76,16 +76,21 @@ def send_s3_big_file(localfile, s3key, overwrite=False, acl=None,
     except AttributeError:
         logging.info("Skip sending file to S3, missing information in config file: AWS_KEY, AWS_SECRET or S3_BUCKET")
         return
-    client = boto3.client("s3",aws_access_key_id=aws_key,aws_secret_access_key=aws_secret)
-    if not overwrite and key_exists(s3_bucket,s3key,aws_key,aws_secret):
+    client = boto3.client("s3", aws_access_key_id=aws_key, aws_secret_access_key=aws_secret)
+    if not overwrite and key_exists(s3_bucket, s3key, aws_key, aws_secret):
         raise Exception("Key '%s' already exist" % s3key)
-    config = boto3.s3.transfer.TransferConfig(multipart_threshold=1024 * 25, max_concurrency=10,
-                            multipart_chunksize=1024 * 25, use_threads=True)
-    extra = {"ACL" : acl or "private",
-             "ContentType" : mimetypes.MimeTypes().guess_type(localfile)[0] or "binary/octet-stream",
-             "StorageClass" : storage_class or "REDUCED_REDUNDANCY"
-            }
-    client.upload_file(Filename=localfile,Bucket=s3_bucket,Key=s3key,ExtraArgs=extra,Config=config)
+    tfr_config = boto3.s3.transfer.TransferConfig(
+        multipart_threshold=1024 * 25,
+        max_concurrency=10,
+        multipart_chunksize=1024 * 25,
+        use_threads=True
+    )
+    extra = {
+        "ACL": acl or "private",
+        "ContentType": mimetypes.MimeTypes().guess_type(localfile)[0] or "binary/octet-stream",
+        "StorageClass": storage_class or "REDUCED_REDUNDANCY"
+    }
+    client.upload_file(Filename=localfile, Bucket=s3_bucket, Key=s3key, ExtraArgs=extra, Config=tfr_config)
 
 
 def get_s3_file(s3key, localfile=None, return_what=False,
@@ -155,7 +160,7 @@ def get_s3_url(s3key, aws_key=None, aws_secret=None, s3_bucket=None):
         return None
     # generate_url will include some acdesskey, signature, etc... we want to remove this
     # as the bucket is public anyway and want "clean" url
-    url = k.generate_url(expires_in=0) # never (and whatever, we
+    url = k.generate_url(expires_in=0)  # never (and whatever, we
     return urlparse(url)._replace(query="").geturl()
 
 
@@ -166,11 +171,11 @@ def create_bucket(name, region=None, aws_key=None, aws_secret=None, acl=None,
     "acl" defines permissions on the bucket: "private" (default), "public-read",
     "public-read-write" and "authenticated-read"
     """
-    client = boto3.client("s3",aws_access_key_id=aws_key,aws_secret_access_key=aws_secret)
+    client = boto3.client("s3", aws_access_key_id=aws_key, aws_secret_access_key=aws_secret)
     acl = acl or "private"
-    kwargs = {"ACL" : acl, "Bucket" : name}
+    kwargs = {"ACL": acl, "Bucket": name}
     if region:
-        kwargs["CreateBucketConfiguration"] = {"LocationConstraint" : region}
+        kwargs["CreateBucketConfiguration"] = {"LocationConstraint": region}
     try:
         client.create_bucket(**kwargs)
     except botocore.exceptions.ClientError as e:
@@ -178,12 +183,11 @@ def create_bucket(name, region=None, aws_key=None, aws_secret=None, acl=None,
             raise
 
 def set_static_website(name, aws_key=None, aws_secret=None, index="index.html", error="error.html"):
-    client = boto3.client("s3",aws_access_key_id=aws_key,aws_secret_access_key=aws_secret)
+    client = boto3.client("s3", aws_access_key_id=aws_key, aws_secret_access_key=aws_secret)
     conf = {'IndexDocument': {'Suffix': index},
             'ErrorDocument': {'Key': error}}
-    client.put_bucket_website(Bucket=name,WebsiteConfiguration=conf)
+    client.put_bucket_website(Bucket=name, WebsiteConfiguration=conf)
     location = client.get_bucket_location(Bucket=name)
     region = location["LocationConstraint"]
     # generate website URL
-    return "http://%(name)s.s3-website-%(region)s.amazonaws.com" % {"name":name,"region":region}
-
+    return "http://%(name)s.s3-website-%(region)s.amazonaws.com" % {"name": name, "region": region}

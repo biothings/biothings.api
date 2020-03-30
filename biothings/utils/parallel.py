@@ -1,4 +1,6 @@
 '''
+NOTE: This is deprecated!
+
 Utils for running parallel jobs on IPython cluster.
 '''
 import os, sys

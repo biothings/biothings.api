@@ -1,12 +1,9 @@
-import asyncio
 import logging
 import cgi
 import os
 
-from tornado.web import Application, RequestHandler, stream_request_body
+from tornado.web import stream_request_body
 from tornado import gen
-from tornado.ioloop import IOLoop
-from tornado.options import parse_command_line, define, options
 
 from .base import GenericHandler
 from biothings.utils.common import sizeof_fmt
@@ -14,28 +11,36 @@ from biothings.utils.common import sizeof_fmt
 
 @stream_request_body
 class UploadHandler(GenericHandler):
-
-    def initialize(self,upload_root,**kwargs):
+    def initialize(self, upload_root, **kwargs):
         self.upload_root = upload_root
 
     def prepare(self):
         # sanity check + extract boundary
         ct = self.request.headers.get("Content-Type")
         if not ct:
-            self.write_error(400,exc_info=[None,"No Content-Type header found",None])
+            self.write_error(
+                400, exc_info=[None, "No Content-Type header found", None])
             return
         try:
-            ct,boundary = ct.split(";")
+            ct, boundary = ct.split(";")
         except Exception as e:
-            self.write_error(400,exc_info=[None,str(e),None])
+            self.write_error(400, exc_info=[None, str(e), None])
             return
         ct = ct.strip()
         if ct != "multipart/form-data":
-            self.write_error(400,exc_info=[None,"Excepting 'Content-Type: multipart/form-data', got %s" % ct,None])
+            self.write_error(
+                400,
+                exc_info=[
+                    None,
+                    "Excepting 'Content-Type: multipart/form-data', got %s" %
+                    ct, None
+                ])
             return
-        boundname,boundary = boundary.strip().split("=")
+        boundname, boundary = boundary.strip().split("=")
         if boundname != "boundary":
-            self.write_error(400,exc_info=[None,"No boundary field found in headers",None])
+            self.write_error(
+                400,
+                exc_info=[None, "No boundary field found in headers", None])
         self.boundary = boundary
         cl = self.request.headers.get("Content-Length")
         if cl:
@@ -49,26 +54,35 @@ class UploadHandler(GenericHandler):
         self.head = ""
 
     def parse_head(self):
-        data = self.head.splitlines();
+        data = self.head.splitlines()
         assert "--" + self.boundary == data[0]
-        length = "unknown size"
         for dat in data[1:]:
             if "Content-Disposition:".lower() in dat.lower():
-                cd,cdopts = cgi.parse_header(dat)
+                cd, cdopts = cgi.parse_header(dat)
                 try:
                     self.filename = cdopts["filename"]
                 except KeyError:
-                    self.write_error(400,
-                            exc_info=[None,"No 'filename' found in Content-Disposition",None])
+                    self.write_error(
+                        400,
+                        exc_info=[
+                            None, "No 'filename' found in Content-Disposition",
+                            None
+                        ])
             if "Content-Type:".lower() in dat.lower():
-                _,ct = map(str.strip,dat.split(":"))
+                _, ct = map(str.strip, dat.split(":"))
                 if not ct == "application/octet-stream":
-                    self.write_error(400,
-                            exc_info=[None,"Expected 'application/octet-stream', got: %s" % ct,None])
-        logging.info("Upload file '%s' (%s) for source '%s'" % (self.filename,self.contentlength,self.src_name))
-        folder = os.path.join(self.upload_root,self.src_name)
-        os.makedirs(folder,exist_ok=True)
-        self.fp = open(os.path.join(folder,self.filename),"wb")
+                    self.write_error(
+                        400,
+                        exc_info=[
+                            None,
+                            "Expected 'application/octet-stream', got: %s" %
+                            ct, None
+                        ])
+        logging.info("Upload file '%s' (%s) for source '%s'" %
+                     (self.filename, self.contentlength, self.src_name))
+        folder = os.path.join(self.upload_root, self.src_name)
+        os.makedirs(folder, exist_ok=True)
+        self.fp = open(os.path.join(folder, self.filename), "wb")
 
     @gen.coroutine
     def data_received(self, chunk):
@@ -76,7 +90,7 @@ class UploadHandler(GenericHandler):
             if self.begin:
                 endbound = b"\r\n--" + self.boundary.encode() + b"--\r\n"
                 if endbound in chunk:
-                    chunk = chunk.replace(endbound,b"")
+                    chunk = chunk.replace(endbound, b"")
                 self.fp.write(chunk)
                 break
             else:
@@ -88,6 +102,6 @@ class UploadHandler(GenericHandler):
                 chunk = b"\r\n\r\n".join(data[1:])
                 self.parse_head()
 
-    def post(self,src_name):
+    def post(self, src_name):
         assert src_name == self.src_name
         self.write('ok')

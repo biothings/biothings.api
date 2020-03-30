@@ -17,24 +17,24 @@ class DataTransformAPI(DataTransform):
     an API endpoint as a data source.
 
     This class uses biothings apis to conversion from one key type to another.
-    Base classes are used with the decorator syntax shown below:
+    Base classes are used with the decorator syntax shown below::
 
-    @IDLookupMyChemInfo(input_types, output_types)
-    def load_document(doc_lst):
-        for d in doc_lst:
-            yield d
+        @IDLookupMyChemInfo(input_types, output_types)
+        def load_document(doc_lst):
+            for d in doc_lst:
+                yield d
 
     Lookup fields are configured in the 'lookup_fields' object, examples of which
     can be found in 'IDLookupMyGeneInfo' and 'IDLookupMyChemInfo'.
 
     Required Options:
-    - input_types
-        - 'type'
-        - ('type', 'nested_source_field')
-        - [('type1', 'nested.source_field1'), ('type2', 'nested.source_field2'), ...]
-    - output_types:
-        - 'type'
-        - ['type1', 'type2']
+        - input_types
+            - 'type'
+            - ('type', 'nested_source_field')
+            - [('type1', 'nested.source_field1'), ('type2', 'nested.source_field2'), ...]
+        - output_types:
+            - 'type'
+            - ['type1', 'type2']
 
     Additional Options: see DataTransform class
     """
@@ -211,9 +211,9 @@ class DataTransformAPI(DataTransform):
                 # Break out if an input type was used.
                 if new_doc:
                     break
-            if not new_doc and \
-                ((self.skip_w_regex and self.skip_w_regex.match(doc['_id'])) \
-                or not self.skip_on_failure):
+            if not new_doc and (
+                    (self.skip_w_regex and self.skip_w_regex.match(doc['_id']))
+                    or not self.skip_on_failure):
                 res_lst.append(doc)
 
         self.logger.info("_replace_keys:  Num of documents yielded:  {}".format(len(res_lst)))
@@ -259,7 +259,7 @@ class DataTransformMyChemInfo(DataTransformAPI):
             'drugbank.inchi',
             'chembl.inchi',
             'pubchem.inchi'
-            ],
+        ],
         'inchikey': [
             'drugbank.inchi_key',
             'chembl.inchi_key',
@@ -268,7 +268,7 @@ class DataTransformMyChemInfo(DataTransformAPI):
     }
     # The order of output_types decides the priority
     # of the key types we used to get _id value
-    output_types = ['inchikey', 'unii', 'rxnorm', 'drugbank', \
+    output_types = ['inchikey', 'unii', 'rxnorm', 'drugbank',
                     'chebi', 'chembl', 'pubchem', 'drugname'],
 
     def __init__(self, input_types,

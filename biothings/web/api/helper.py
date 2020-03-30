@@ -10,6 +10,9 @@ from urllib.parse import (parse_qs, unquote_plus, urlencode, urlparse,
 
 import tornado.web
 from biothings.utils.common import dotdict, is_seq, is_str, split_ids
+from tornado.escape import json_decode
+
+from biothings.utils.common import split_ids, DateTimeJSONEncoder
 from biothings.utils.web.analytics import GAMixIn
 from biothings.utils.web.tracking import StandaloneTrackingMixin
 from tornado.escape import json_decode
@@ -23,10 +26,12 @@ except ImportError:
     class SentryMixin(object):
         pass
 
-try:
-    from re import fullmatch as match
-except ImportError:
-    from re import match
+# TODO: remove this unused import
+# try:
+#     from re import fullmatch as match
+# except ImportError:
+#     from re import match
+
 try:
     import msgpack
 
@@ -44,13 +49,13 @@ try:
 except ImportError:
     SUPPORT_YAML = False
 
-
-class DateTimeJSONEncoder(json.JSONEncoder):
-
-    def default(self, o):  # pylint: disable=method-hidden
-        if isinstance(o, datetime.datetime):
-            return o.isoformat()
-        return super().default(o)
+# TODO: remove it. dup of biothings.commons.DateTimeJSONEncoder
+# class DateTimeJSONEncoder(json.JSONEncoder):
+#     def default(self, obj):
+#         if isinstance(obj, datetime.datetime):
+#             return obj.isoformat()
+#         else:
+#             return super(DateTimeJSONEncoder, self).default(obj)
 
 class BiothingParameterTypeError(Exception):
 
@@ -186,10 +191,10 @@ class BaseHandler(SentryMixin, RequestHandler, GAMixIn, StandaloneTrackingMixin)
         else:
             return super(SentryMixin, self).log_exception(*args, **kwargs)
 
-    def ga_event_object(self, data={}):
+    def ga_event_object(self, data=None):
         ''' Create the data object for google analytics tracking. '''
         # Most of the structure of this object is formed during self.initialize
-        if data:
+        if data and isinstance(data, dict):
             self.ga_event_object_ret['label'] = list(data.keys()).pop()
             self.ga_event_object_ret['value'] = list(data.values()).pop()
         return self.ga_event_object_ret
@@ -214,10 +219,16 @@ class BaseHandler(SentryMixin, RequestHandler, GAMixIn, StandaloneTrackingMixin)
         q.pop('format', None)
         d = d._replace(query=urlencode(q, True))
         _link = urlunparse(d)
-        self.write(self.web_settings.HTML_OUT_TEMPLATE.format(
-            data=json.dumps(data),
-            img_src=self.web_settings.HTML_OUT_HEADER_IMG, link=_link, link_decode=unquote_plus(_link),
-            title_html=self.web_settings.HTML_OUT_TITLE, docs_link=_docs))
+        self.write(
+            self.web_settings.HTML_OUT_TEMPLATE.format(
+                data=json.dumps(data),
+                img_src=self.web_settings.HTML_OUT_HEADER_IMG,
+                link=_link,
+                link_decode=unquote_plus(_link),
+                title_html=self.web_settings.HTML_OUT_TITLE,
+                docs_link=_docs
+            )
+        )
         return
 
     def return_yaml(self, data, status_code=200):
@@ -281,7 +292,7 @@ class BaseHandler(SentryMixin, RequestHandler, GAMixIn, StandaloneTrackingMixin)
         :param status_code: HTTP status code for response
         :param is_msgpack: should this object be compressed before return?
         '''
-        indent = indent or 4
+        indent = indent or 2   # tmp settings
         self.set_status(status_code)
         if is_msgpack:
             _json_data = msgpack.packb(data, use_bin_type=True, default=msgpack_encode_datetime)

@@ -2,7 +2,7 @@ import biothings.utils.redis as redis
 
 class IDCache(object):
 
-    def mark_done(self,_ids):
+    def mark_done(self, _ids):
         raise NotImplementedError()
 
     def load(self, name, id_provider, flush=True):
@@ -26,15 +26,13 @@ class RedisIDCache(IDCache):
             self.redis_client.check()
 
     def load(self, id_provider, flush=True):
-        db  = self.redis_client.get_db(self.name)
+        db = self.redis_client.get_db(self.name)
         if flush:
             db.flushdb()
         for _ids in id_provider:
-            dids = dict([(_id,0) for _id in _ids])
+            dids = dict([(_id, 0) for _id in _ids])
             db.mset(dids)
 
-    def mark_done(self,_ids):
-        db  = self.redis_client.get_db(self.name)
+    def mark_done(self, _ids):
+        db = self.redis_client.get_db(self.name)
         db.delete(*_ids)
-
-        

@@ -1,18 +1,13 @@
-import asyncio
-import logging
 import tornado.web
 import json.decoder
-from collections import OrderedDict
 
 from .base import GenericHandler
-from biothings.utils.dataload import to_boolean
 from biothings.utils.hub import CommandError, NoSuchCommand, CommandNotAllowed
 
 
 class ShellHandler(GenericHandler):
-
     def initialize(self, shell, shellog, **kwargs):
-        super().initialize(shell,**kwargs)
+        super().initialize(shell, **kwargs)
         self.shellog = shellog
 
     def put(self):
@@ -20,19 +15,21 @@ class ShellHandler(GenericHandler):
             bodyargs = tornado.escape.json_decode(self.request.body or '{}')
             cmd = bodyargs["cmd"]
         except KeyError:
-            raise tornado.web.HTTPError(400,reason="Bad Request oula (Missing argument cmd)")
+            raise tornado.web.HTTPError(
+                400, reason="Bad Request oula (Missing argument cmd)")
         except json.decoder.JSONDecodeError:
-            raise tornado.web.HTTPError(400,reason="Invalid JSON payload")
+            raise tornado.web.HTTPError(400, reason="Invalid JSON payload")
 
         try:
-            outs = self.shell.eval(cmd,secure=True) # only pre-defined command
+            outs = self.shell.eval(cmd,
+                                   secure=True)  # only pre-defined command
             for out in outs:
                 if out != "":
                     self.shellog.output(out)
         except CommandError as e:
-            raise tornado.web.HTTPError(400,reason="Error: %s" % e)
+            raise tornado.web.HTTPError(400, reason="Error: %s" % e)
         except NoSuchCommand as e:
-            raise tornado.web.HTTPError(404,reason="No such command: %s" % e)
+            raise tornado.web.HTTPError(404, reason="No such command: %s" % e)
         except CommandNotAllowed as e:
-            raise tornado.web.HTTPError(403,reason="Command not allowed: %s" % e)
-
+            raise tornado.web.HTTPError(403,
+                                        reason="Command not allowed: %s" % e)

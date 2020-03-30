@@ -4,184 +4,201 @@ Hub component
 
 The purpose of the BioThings hub component is to allow you to easily automate the parsing and uploading of your data to an Elasticsearch backend.
 
-.. py:module:: biothings
+*************
+biothings.hub
+*************
+.. automodule:: biothings.hub
+    :members:
 
-******
+api
+===
+.. automodule:: biothings.hub.api
+    :members:
+
+manager
+-------
+.. automodule:: biothings.hub.api.manager
+    :members:
+
+handlers
+--------
+.. automodule:: biothings.hub.api.handlers
+    :members:
+
+base
+^^^^
+.. automodule:: biothings.hub.api.handlers.base
+    :members:
+
+shell
+^^^^^
+.. automodule:: biothings.hub.api.handlers.shell
+    :members:
+
+upload
+^^^^^^
+.. automodule:: biothings.hub.api.handlers.upload
+    :members:
+
+ws
+^^
+.. automodule:: biothings.hub.api.handlers.ws
+    :members:
+
+
+
+dataload
+========
+.. automodule:: biothings.hub.dataload
+    :members:
+
 dumper
-******
-
-BaseDumper
-==========
-
-.. autoclass:: biothings.hub.dataload.dumper.BaseDumper
+------
+.. automodule:: biothings.hub.dataload.dumper
     :members:
 
-FTPDumper
----------
-
-.. autoclass:: biothings.hub.dataload.dumper.FTPDumper
-    :members:
-
-HTTPDumper
-----------
-
-.. autoclass:: biothings.hub.dataload.dumper.HTTPDumper
-    :members:
-
-GoogleDriveDumper
-+++++++++++++++++
-
-.. autoclass:: biothings.hub.dataload.dumper.GoogleDriveDumper
-    :members:
-
-WgetDumper
-----------
-
-.. autoclass:: biothings.hub.dataload.dumper.WgetDumper
-    :members:
-
-DummyDumper
------------
-
-.. autoclass:: biothings.hub.dataload.dumper.DummyDumper
-    :members:
-
-ManualDumper
-------------
-
-.. autoclass:: biothings.hub.dataload.dumper.ManualDumper
-    :members:
-
-********
 uploader
-********
-
-BaseSourceUploader
-==================
-
-.. autoclass:: biothings.hub.dataload.uploader.BaseSourceUploader
+--------
+.. automodule:: biothings.hub.dataload.uploader
     :members:
 
-NoBatchIgnoreDuplicatedSourceUploader
--------------------------------------
-
-.. autoclass:: biothings.hub.dataload.uploader.NoBatchIgnoreDuplicatedSourceUploader
+storage
+--------
+.. automodule:: biothings.hub.dataload.storage
     :members:
 
-IgnoreDuplicatedSourceUploader
-------------------------------
-
-.. autoclass:: biothings.hub.dataload.uploader.IgnoreDuplicatedSourceUploader
+source
+--------
+.. automodule:: biothings.hub.dataload.source
     :members:
 
-MergerSourceUploader
---------------------
 
-.. autoclass:: biothings.hub.dataload.uploader.MergerSourceUploader
-    :members:
 
-DummySourceUploader
--------------------
-
-.. autoclass:: biothings.hub.dataload.uploader.DummySourceUploader
-    :members:
-
-ParallelizedSourceUploader
---------------------------
-
-.. autoclass:: biothings.hub.dataload.uploader.ParallelizedSourceUploader
-    :members:
-
-NoDataSourceUploader
---------------------
-
-.. autoclass:: biothings.hub.dataload.uploader.NoDataSourceUploader
-    :members:
-
-*******
-builder
-*******
-
-DataBuilder
+datainspect
 ===========
-
-.. autoclass:: biothings.hub.databuild.builder.DataBuilder
+.. automodule:: biothings.hub.datainspect
     :members:
 
-*******
-indexer
-*******
-
-Indexer
-=======
-
-.. autoclass:: biothings.hub.dataindex.indexer.Indexer
+inspector
+---------
+.. automodule:: biothings.hub.datainspect.inspector
     :members:
 
-******
+
+
+databuild
+=========
+.. automodule:: biothings.hub.databuild
+    :members:
+
+builder
+-------
+.. automodule:: biothings.hub.databuild.builder
+    :members:
+
 differ
-******
-
-BaseDiffer
-==========
-
-.. autoclass:: biothings.hub.databuild.differ.BaseDiffer
+------
+.. automodule:: biothings.hub.databuild.differ
     :members:
 
-JsonDiffer
+mapper
+------
+.. automodule:: biothings.hub.databuild.mapper
+    :members:
+
+prebuilder
 ----------
-
-.. autoclass:: biothings.hub.databuild.differ.JsonDiffer
+.. automodule:: biothings.hub.databuild.prebuilder
     :members:
 
-SelfContainedJsonDiffer
-+++++++++++++++++++++++
-
-.. autoclass:: biothings.hub.databuild.differ.SelfContainedJsonDiffer
-    :members:
-
-DiffReportRendererBase
-======================
-
-.. autoclass:: biothings.hub.databuild.differ.DiffReportRendererBase
-    :members:   
-
-DiffReportTxt
--------------
-
-.. autoclass:: biothings.hub.databuild.differ.DiffReportTxt
-    :members:
-
-******
 syncer
-******
+------
+.. automodule:: biothings.hub.databuild.syncer
+    :members:
 
-BaseSyncer
+
+dataindex
+===========
+.. automodule:: biothings.hub.dataindex
+    :members:
+
+indexer
+-------
+.. automodule:: biothings.hub.dataindex.indexer
+    :members:
+
+snapshooter
+-----------
+.. automodule:: biothings.hub.dataindex.snapshooter
+    :members:
+
+
+dataexport
 ==========
-
-.. autoclass:: biothings.hub.databuild.syncer.BaseSyncer
+.. automodule:: biothings.hub.dataexport
     :members:
 
-MongoJsonDiffSyncer
--------------------
-
-.. autoclass:: biothings.hub.databuild.syncer.MongoJsonDiffSyncer
+ids
+---
+.. automodule:: biothings.hub.dataexport.ids
     :members:
 
-MongoJsonDiffSelfContainedSyncer
---------------------------------
 
-.. autoclass:: biothings.hub.databuild.syncer.MongoJsonDiffSelfContainedSyncer
+dataplugin
+==========
+.. automodule:: biothings.hub.dataplugin
     :members:
 
-ESJsonDiffSyncer
-----------------
-
-.. autoclass:: biothings.hub.databuild.syncer.ESJsonDiffSyncer
+assistant
+---------
+.. automodule:: biothings.hub.dataplugin.assistant
     :members:
 
-ESJsonDiffSelfContainedSyncer
------------------------------
-
-.. autoclass:: biothings.hub.databuild.syncer.ESJsonDiffSelfContainedSyncer
+manager
+-------
+.. automodule:: biothings.hub.dataplugin.manager
     :members:
+
+
+datarelease
+===========
+.. automodule:: biothings.hub.datarelease
+    :members:
+
+publisher
+---------
+.. automodule:: biothings.hub.datarelease.publisher
+    :members:
+
+releasenote
+-----------
+.. automodule:: biothings.hub.datarelease.releasenote
+    :members:
+
+
+
+datatransform
+=============
+.. automodule:: biothings.hub.datatransform
+    :members:
+
+ciidstruct
+----------
+.. automodule:: biothings.hub.datatransform.ciidstruct
+    :members:
+
+datatransform_api
+-----------------
+.. automodule:: biothings.hub.datatransform.datatransform_api
+    :members:
+
+datatransform_mdb
+-----------------
+.. automodule:: biothings.hub.datatransform.datatransform_mdb
+    :members:
+
+histogram
+---------
+.. automodule:: biothings.hub.datatransform.histogram
+    :members:
+

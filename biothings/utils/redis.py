@@ -1,31 +1,36 @@
-import redis
 import random
 import logging
 
+try:
+    import redis
+except ImportError:
+    logging.error('"redis" module is required to access Redis server.')
 
-class RedisClientError(Exception): pass
+
+class RedisClientError(Exception):
+    pass
 
 class RedisClient(object):
 
     client = None
 
     @classmethod
-    def get_client(klass,params):
-        if klass.client is None:
-            klass.client = klass(params)
-        return klass.client
+    def get_client(cls, params):
+        if cls.client is None:
+            cls.client = cls(params)
+        return cls.client
 
-    def __init__(self,connection_params):
+    def __init__(self, connection_params):
         self._mapdb = None
         self.connection_params = connection_params
 
     @property
     def mapdb(self):
         if self._mapdb is None:
-            self._mapdb = redis.StrictRedis(db=0,**self.connection_params)
+            self._mapdb = redis.StrictRedis(db=0, **self.connection_params)
         return self._mapdb
 
-    def get_db(self,db_name=None):
+    def get_db(self, db_name=None):
         """
         Return a redict client instance from a database name or
         database number (if db_name is an integer)
@@ -37,9 +42,9 @@ class RedisClient(object):
             db_num = self.mapdb.get(db_name)
             if not db_num:
                 db_num = self.pick_db()
-        self.mapdb.set(db_name,int(db_num))
+        self.mapdb.set(db_name, int(db_num))
 
-        return redis.StrictRedis(db=int(db_num),**self.connection_params)
+        return redis.StrictRedis(db=int(db_num), **self.connection_params)
 
     def pick_db(self):
         """
@@ -48,16 +53,16 @@ class RedisClient(object):
         """
         db_max_num = int(self.mapdb.config_get("databases")["databases"] or 16)
         # -1: we always keep db=0 (meta db)
-        avail = dict(zip(range(1,db_max_num),[True]*(db_max_num-1)))
+        avail = dict(zip(range(1, db_max_num), [True]*(db_max_num-1)))
         for info in self.mapdb.info("keyspace"):
             if not info.startswith("db"):
                 continue
-            num = int(info.replace("db",""))
+            num = int(info.replace("db", ""))
             if num == 0:
                 continue
             avail.pop(num)
         if not avail:
-            db_num = random.randint(1,db_max_num-1)
+            db_num = random.randint(1, db_max_num-1)
         else:
             db_num = random.choice(list(avail.keys()))
 
@@ -67,7 +72,7 @@ class RedisClient(object):
         if not self.mapdb.get("__META__") == b'0':
             raise RedisClientError("Can't find database metadata, you may want to use initialize()")
 
-    def initialize(self,deep=False):
+    def initialize(self, deep=False):
         """
         Careful: this may delete data.
         Prepare Redis instance to work with biothings hub:
@@ -75,10 +80,10 @@ class RedisClient(object):
           database index and database name (so a database can be accessed
           by name). This method will flush this db and prepare it.
         - any other databases will be flushed if deep is True, making the redis
-          server fully dedicated to 
+          server fully dedicated to
         """
         if deep:
             self.mapdb.flushall()
         self.mapdb.flushdb()
-        self.mapdb.set("__META__",0)
+        self.mapdb.set("__META__", 0)
         self.check()
