@@ -17,10 +17,15 @@ import os
 from functools import partial
 
 import requests
-from biothings.web.settings import BiothingESWebSettings
 from tornado.ioloop import IOLoop
 from tornado.testing import AsyncHTTPTestCase
 from tornado.web import Application
+
+import config
+from biothings.web.settings import BiothingESWebSettings
+
+TEST_INDEX = 'bts_test'
+TEST_DOC_TYPE = 'gene'
 
 
 class BiothingsTestCase(AsyncHTTPTestCase):
@@ -28,8 +33,10 @@ class BiothingsTestCase(AsyncHTTPTestCase):
         Starts a tornado server to run tests on.
     '''
 
-    settings = BiothingESWebSettings()
-    host = os.getenv('TEST_HOST', f'/{settings.API_VERSION}').rstrip('/')
+    @classmethod
+    def setup_class(cls):
+        cls.settings = BiothingESWebSettings(config)
+        cls.prefix = cls.settings.API_VERSION
 
     # override
     def get_new_ioloop(self):
@@ -40,7 +47,7 @@ class BiothingsTestCase(AsyncHTTPTestCase):
 
         app_list = self.settings.generate_app_list()
 
-        settings = {"static_path": self.settings.STATIC_PATH}
+        settings = {"static_path": self.settings.STATIC_PATH}  # TODO maybe settings should generate app settings
         if getattr(self.settings, 'COOKIE_SECRET', None):
             settings["cookie_secret"] = self.settings.COOKIE_SECRET
 
@@ -48,17 +55,18 @@ class BiothingsTestCase(AsyncHTTPTestCase):
 
     # override
     def request(self, path='/', method="GET", expect_status=200, **kwargs):
-        '''
+        """
         Make a requets with python requests library syntax.
-        In addition, it compares response status code. '''
-
+        In addition, it compares response status code.
+        """
         partial_func = partial(requests.request, method, self.get_url(path), **kwargs)
 
         res = self.io_loop.run_sync(
             lambda: self.io_loop.run_in_executor(None, partial_func),
             timeout=os.getenv("TEST_TIMEOUT"))
 
-        assert res.status_code == expect_status
+        status_code = res.status_code
+        assert status_code == expect_status
         return res
 
     # override
@@ -66,7 +74,7 @@ class BiothingsTestCase(AsyncHTTPTestCase):
         '''
         Return the URL that can be passed to an HTTP client.
 
-        When environment API_HOST is set to /v3:
+        When environment API_HOST is set to /v3: # TODO update
 
         http://example.com/     ->      http://example.com/
         /query?q=cdk2           ->      http://<test_server>/v3/query?q=cdk2
@@ -85,16 +93,14 @@ class BiothingsTestCase(AsyncHTTPTestCase):
         if not path.startswith('/'):
             return self.get_url('/' + path)
 
-        if not path.startswith(self.host):
-            return self.get_url(self.host + path)
-
         return super().get_url(path)
 
     def query(self, method='GET', endpoint='query', expect_hits=True, **kwargs):
         '''
         Make a Biothings API query request.
-        Query parameters are passed in as keyword arguments. '''
-
+        Query parameters are passed in as keyword arguments.
+        '''  # TODO add in the /v1/
+        endpoint = self.prefix + '/' + endpoint
         if method == 'GET':
             dic = self.request(endpoint, params=kwargs).json()
             if expect_hits:
