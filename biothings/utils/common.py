@@ -228,7 +228,9 @@ class dotdict(dict):
     def __getattr__(self, attr):
         value = self.get(attr, None)
         if isinstance(value, dict):
-            return dotdict(value)
+            value = dotdict(value)
+            setattr(self, attr, value)
+            return value
         else:
             return value
     __setattr__ = dict.__setitem__
@@ -497,7 +499,7 @@ def find_doc(k, keys):
                     elif isinstance(item[keys[i]], list):
                         for _item in item[keys[i]]:
                             tmp.append(_item)
-                except:
+                except Exception:
                     continue
             k = tmp
     return k
@@ -556,6 +558,7 @@ class DateTimeJSONEncoder(json.JSONEncoder):
     '''A class to dump Python Datetime object.
         json.dumps(data, cls=DateTimeJSONEncoder, indent=indent)
     '''
+
     def default(self, o):
         if isinstance(o, datetime):
             return o.isoformat()
@@ -572,11 +575,11 @@ def json_serial(obj):
             obj = obj.replace(tzinfo=timezone.utc)
         serial = obj.isoformat()
         return serial
-    elif isinstance(obj,type):
+    elif isinstance(obj, type):
         return str(obj)
-    elif "SRE_Pattern" in type(obj).__name__: # can't find the class
+    elif "SRE_Pattern" in type(obj).__name__:  # can't find the class
         return obj.pattern
-    elif isinstance(obj,types.FunctionType):
+    elif isinstance(obj, types.FunctionType):
         return "__function__"
     raise TypeError("Type %s not serializable" % type(obj))
 
@@ -589,7 +592,7 @@ def json_encode(obj):
 
 def rmdashfr(top):
     '''Recursively delete dirs and files from "top" directory, then delete "top" dir'''
-    assert top # prevent rm -fr * ... (let's be explicit there)
+    assert top  # prevent rm -fr * ... (let's be explicit there)
     for root, dirs, files in os.walk(top, topdown=False):
         for name in files:
             os.remove(os.path.join(root, name))
@@ -626,7 +629,7 @@ def find_classes_subclassing(mods, baseclass):
     return classes
 
 def sizeof_fmt(num, suffix='B'):
-	# http://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
+    # http://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
     for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
         if abs(num) < 1024.0:
             return "%3.1f%s%s" % (num, unit, suffix)
@@ -707,6 +710,7 @@ def aiogunzipall(folder, pattern, job_manager, pinfo):
         pinfo["description"] = os.path.basename(f)
         suffix = pattern.replace("*", "")
         job = yield from job_manager.defer_to_process(pinfo, partial(gunzip, f, suffix=suffix))
+
         def gunzipped(fut, inf):
             try:
                 # res = fut.result()
