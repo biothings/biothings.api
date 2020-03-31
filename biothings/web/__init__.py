@@ -33,8 +33,8 @@ class BiothingsAPI():
     * A default tornado event loop by calling start()
     """
 
-    def __init__(self, config=None, **settings):
-        self.config = config
+    def __init__(self, config_module=None, **settings):
+        self.config = config_module
         self.settings = dict(autoreload=False)
         self.settings.update(settings)
         self.host = '127.0.0.1'
