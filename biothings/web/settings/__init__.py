@@ -60,7 +60,7 @@ class BiothingWebSettings():
             self._user = self._default
         else:
             raise BiothingConfigError()
-        logging.info("Loaded: %s", self._user.__file__)
+        logging.info("Loaded: %s", self._user)
 
         # process keyword setting override
         for key, value in kwargs.items():

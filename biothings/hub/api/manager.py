@@ -71,14 +71,14 @@ ES_INDEX = "%(index)s"
 ES_DOC_TYPE = "%(doc_type)s"
 
 from biothings.web.api.es.handlers import BiothingHandler
-from biothings.web.api.es.handlers import MetadataHandler
+from biothings.web.api.es.handlers import MetadataSourceHandler, MetadataFieldHandler
 from biothings.web.api.es.handlers import QueryHandler
 from biothings.web.api.es.handlers import StatusHandler
 
 # doc_type involved there:
 APP_LIST = [
-    (r"/metadata/?", MetadataHandler),
-    (r"/metadata/fields/?", MetadataHandler),
+    (r"/metadata/?", MetadataSourceHandler),
+    (r"/metadata/fields/?", MetadataFieldHandler),
     (r"/%(doc_type)s/(.+)/?", BiothingHandler),
     (r"/%(doc_type)s/?$", BiothingHandler),
     (r"/query/?", QueryHandler),
