@@ -1,0 +1,5 @@
+{
+    "term": {
+        "type_of_gene": "ncRNA"
+    }
+}
