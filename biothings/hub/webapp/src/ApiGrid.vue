@@ -1,7 +1,7 @@
 <template>
     <div id="apis">
 
-        <div class="ui left vertical labeled icon small inverted sidebar menu">
+        <div class="ui left vertical labeled icon small inverted sidebar menu" :class="actionable">
             <a class="item"  v-on:click="createAPI">
                 <i class="big icons">
                     <i class="shield icon"></i>
@@ -15,7 +15,7 @@
         <div class="pusher">
             <div class="ui main container">
                 <div class="ui segment">
-                    <div class="ui secondary small menu">
+                    <div class="ui secondary small menu" :class="actionable">
                         <a class="item" id="side_menu">
                             <i class="sidebar icon"></i>
                             Menu
@@ -104,12 +104,13 @@
 import axios from 'axios'
 import Api from './Api.vue'
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 import bus from './bus.js'
 
 
 export default {
     name: 'api-grid',
-    mixins: [ Loader, ],
+    mixins: [ Loader, Actionable, ],
     mounted () {
         console.log("ApiGrid mounted");
         $('.ui.apibackends.dropdown').dropdown();

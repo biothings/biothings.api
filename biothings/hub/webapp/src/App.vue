@@ -203,6 +203,7 @@
     import VueLocalStorage from 'vue-localstorage';
     Vue.use(VueLocalStorage);
     import Loader from './Loader.vue'
+    import Actionable from './Actionable.vue'
 
     import Vue2Filters from 'vue2-filters';
     import VueRouter from 'vue-router';
@@ -325,7 +326,7 @@
     export default {
         name: 'app',
         router: router,
-        mixins: [ FeatureChecker, Loader, ],
+        mixins: [ FeatureChecker, Loader, Actionable, ],
         components: { JobSummary, EventMessages, EventAlert,
                       ChooseHub, HubConfig, Loader, LogViewer,
                       Terminal},
@@ -393,6 +394,7 @@
                 current_studio_version: STUDIO_VERSION,
                 compat_urls: [],
                 redirect_delay: 5000,
+                readonly_mode: true,
             }
         },
         computed : {
@@ -424,14 +426,27 @@
                     else
                         $(".logo").attr("src",this.default_conn.icon);
                 }
-            }
+            },
+            readonly_mode: function(newv,oldv) {
+                if(newv != oldv) {
+                    this.actionable = newv;
+                    bus.$emit("readonly_mode",newv);
+                }
+            },
         },
         methods: {
             setupUIByFeatures() {
+                var self = this;
                 console.log("Setup UI according to listed features");
                 console.log(Vue.config.hub_features);
                 this.routes = [];
                 this.menu = [];
+                if(this.has_feature('readonly')) {
+                    this.readonly_mode = true;
+                } else {
+                    this.readonly_mode = false;
+                }
+                this.actionable = this.readonly_mode;
                 if(this.has_feature('source') && this.has_feature('build')) {
                     console.log("Setup Home tab");
                     this.routes.push({ path: '/', component: Status });
@@ -1032,6 +1047,7 @@
   -o-animation: rotating 2s linear infinite;
   animation: rotating 2s linear infinite;
 }
+
 
     html,
     body,

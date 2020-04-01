@@ -42,7 +42,7 @@
           </tbody>
         </table>
       </div>
-      <div class="six wide column">
+      <div class="six wide column" :class="actionable">
         <div :class="['ui plugin form',source._id]">
           <div class="fields">
             <div class="required ten wide field">
@@ -159,11 +159,12 @@
 import axios from 'axios'
 import bus from './bus.js'
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 import PluginPartExport from './PluginPartExport.vue'
 
 export default {
     name: 'data-source-plugin',
-    mixins: [ Loader, ],
+    mixins: [ Loader, Actionable, ],
     props: ['source'],
     mounted () {
     },

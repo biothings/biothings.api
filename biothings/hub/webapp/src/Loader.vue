@@ -10,7 +10,7 @@
 export default {
     name: 'loader',
     // Note: we don't declare "source", it must be defined in subclass/mixed
-    // (sometimes it's a prop, sometimes it's a data field
+    // (sometimes it's a prop, sometimes it's a data field)
     mounted () {
         $('#loader')
       .popup({

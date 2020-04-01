@@ -18,7 +18,7 @@
                 <div class="configmenu">
                     <div class="ui secondary small menu">
                         <div class="ui mini yellow compact message right floated" v-if="dirty">Hub needs to restart to reflect changes</div>
-                        <a class="right aligned item">
+                        <a class="right aligned item" :class="actionable">
                             <a class="item">
                                 <button class="ui red labeled icon button" @click="restartHub">
                                     <i class="sync alternate icon"></i>
@@ -74,13 +74,14 @@ import Vue from 'vue';
 import axios from 'axios'
 import bus from './bus.js'
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 import HubConfigTab from './HubConfigTab.vue'
 
 export default {
     name: 'hub-config',
     props: [],
     components: { Loader, HubConfigTab},
-    mixins : [ Loader],
+    mixins : [ Loader, Actionable, ],
     mounted () {
         console.log("HubConfig mounted");
         this.loadData();

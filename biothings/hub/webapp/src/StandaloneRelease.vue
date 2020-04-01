@@ -52,7 +52,7 @@
                             </div>
                         </div>
                     </div>
-                    <button class="ui small negative basic button" @click="reset()">Reset</button>
+                    <button class="ui small negative basic button" @click="reset()" :class="actionable">Reset</button>
 
                 </div>
             </div>
@@ -88,6 +88,7 @@
 import Vue from 'vue'
 import axios from 'axios'
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 import AsyncCommandLauncher from './AsyncCommandLauncher.vue'
 import StandaloneReleaseVersions from './StandaloneReleaseVersions.vue'
 import bus from './bus.js'
@@ -96,7 +97,7 @@ import bus from './bus.js'
 export default {
     name: 'standalone-release',
     props: ['name', 'url'],
-    mixins: [ AsyncCommandLauncher, Loader, ],
+    mixins: [ AsyncCommandLauncher, Loader, Actionable, ],
     mounted () {
         this.refresh();
     },

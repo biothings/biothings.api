@@ -12,7 +12,7 @@
                   <th>Release date</th>
                   <th>Type</th>
                   <th>Requires</th>
-                  <th>Action</th>
+                  <th v-if="!readonly">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -21,7 +21,7 @@
                   <td>{{ moment(version.release_date).format('MMMM Do YYYY, h:mm:ss a')}}</td>
                   <td><i :class="['ui ', version.type == 'full' ? 'blue bookmark' : 'orange exchange alternate','icon']"></i>{{version.type}}</td>
                   <td>{{version.require_version || "-"}}</td>
-                  <td>
+                  <td v-if="!readonly">
                       <div class="ui tiny compact menu">
                           <a class="item" @click="info(version)">
                               <div :class="['hide info loader', cssName(version.build_version)]">
@@ -110,6 +110,7 @@ import Vue from 'vue'
 import bus from './bus.js'
 import axios from 'axios'
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 import AsyncCommandLauncher from './AsyncCommandLauncher.vue'
 import StandaloneReleaseInfo from './StandaloneReleaseInfo.vue'
 
@@ -117,7 +118,7 @@ import StandaloneReleaseInfo from './StandaloneReleaseInfo.vue'
 export default {
     name: 'standalone-release-versions',
     props: ['name','backend'],
-    mixins: [ AsyncCommandLauncher, Loader, ],
+    mixins: [ AsyncCommandLauncher, Loader, Actionable, ],
     mounted () {
         this.refreshVersions();
     },

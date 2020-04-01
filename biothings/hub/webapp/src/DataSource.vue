@@ -39,10 +39,10 @@
                 </p>
             </div>
         </div>
-        <div class="extra content">
+        <div class="extra content" :class="actionable">
             <span v-if="source.data_plugin && source.data_plugin.error">
                 <div class="plugin-error">
-                <i class="red alarm icon"></i>
+                    <i class="red alarm icon"></i>
                     {{source.data_plugin.error}}
                 </div>
             </span>
@@ -60,13 +60,13 @@
                         <i class="unhide icon"></i>
                     </button>
                 </div>
+                <div class="ui icon buttons right floated mini">
+                    <button class="ui button"
+                        v-on:click="unregister" v-if="source.data_plugin">
+                        <i class="trash icon"></i>
+                    </button>
+                </div>
             </span>
-            <div class="ui icon buttons right floated mini">
-                <button class="ui button"
-                    v-on:click="unregister" v-if="source.data_plugin">
-                    <i class="trash icon"></i>
-                </button>
-            </div>
         </div>
 
         <inspect-form v-bind:_id="source._id" v-bind:select_data_provider="true">
@@ -102,12 +102,13 @@ import axios from 'axios'
 import bus from './bus.js'
 import InspectForm from './InspectForm.vue'
 import BaseDataSource from './BaseDataSource.vue'
+import Actionable from './Actionable.vue'
 
 export default {
     name: 'data-source',
     props: ['psource'],
     components: { InspectForm },
-    mixins: [ BaseDataSource, ],
+    mixins: [ BaseDataSource, Actionable],
     mounted () {
         $('select.dropdown').dropdown();
     },

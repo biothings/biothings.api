@@ -1,6 +1,6 @@
 <template>
     <span>
-        <div class="ui fluid basic segment right aligned">
+        <div class="ui fluid basic segment right aligned" :class="actionable">
             <button class="ui button mini" v-on:click="$parent.inspect">
                 <i class="unhide icon"></i>
                 Inspect data
@@ -37,7 +37,7 @@
                     </ul>
                 </div>
                 <div class="ui grid">
-                    <div class="center aligned sixteen wide column" v-if="maps[subsrc]['inspect_mapping'] && !maps[subsrc]['inspect_mapping']['errors'] && !maps[subsrc]['inspect_mapping']['pre-mapping']">
+                    <div :class="actionable" class="center aligned sixteen wide column" v-if="maps[subsrc]['inspect_mapping'] && !maps[subsrc]['inspect_mapping']['errors'] && !maps[subsrc]['inspect_mapping']['pre-mapping']">
                         <button class="ui labeled mini icon button"
                             v-on:click="diffMapping('tab_mapping_inspected','tab_mapping_registered',subsrc)">
                             <i class="exchange icon"></i>
@@ -80,6 +80,7 @@
 import axios from 'axios'
 import bus from './bus.js'
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 import MappingMap from './MappingMap.vue'
 import DiffUtils from './DiffUtils.vue'
 import InspectForm from './InspectForm.vue'
@@ -87,7 +88,7 @@ import InspectForm from './InspectForm.vue'
 export default {
     name: 'data-source-mapping',
     props: ['_id','maps','source'],
-    mixins: [DiffUtils, Loader],
+    mixins: [DiffUtils, Loader, Actionable, ],
     mounted () {
         this.setup();
         //$('#maps .item:first').addClass('active');
