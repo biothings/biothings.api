@@ -73,13 +73,14 @@ class GenericHandler(DefaultHandler):
 
 
 class RootHandler(DefaultHandler):
-    def initialize(self, features, **kwargs):
+    def initialize(self, features, hub_name=None, **kwargs):
         self.features = features
+        self.hub_name = hub_name
 
     @asyncio.coroutine
     def get(self):
         self.write({
-            "name":
+            "name": self.hub_name or \
             getattr(config, "HUB_NAME", None),
             "biothings_version":
             getattr(config, "BIOTHINGS_VERSION", None),

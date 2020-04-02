@@ -347,8 +347,9 @@ class HubServer(object):
                 # if the API is readonly or not, and adjust the components & actions
                 all_features = copy.deepcopy(self.features)
                 self.features.remove("readonly")
+                hub_name = getattr(config, "HUB_NAME", "Hub") + " (read-only)"
                 self.readonly_routes.append(("/", RootHandler, {
-                    "features": all_features,
+                    "features": all_features, "hub_name" : hub_name
                 }))
 
             # Then deal with read-write API
