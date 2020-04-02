@@ -34,13 +34,12 @@ else:
         sys.path.append(APP_PATH)
 
 
-def main(biothings_config='config', app_settings=None, sentry_client_key=None, use_curl=False):
+def main(biothings_config='config', app_settings=None, use_curl=False):
     """ Start a Biothings API Server
 
         :param biothings_config: the biothings web config module to use
         :param app_settings: `Tornado application settings
         <http://www.tornadoweb.org/en/stable/web.html#tornado.web.Application.settings>`_
-        :param sentry_client_key: Application-specific key for attaching Sentry error monitor
         :param use_curl: Overide the default simple_httpclient with curl_httpclient
         <https://www.tornadoweb.org/en/stable/httpclient.html>
     """
@@ -49,8 +48,6 @@ def main(biothings_config='config', app_settings=None, sentry_client_key=None, u
 
     if app_settings:
         api.settings.update(app_settings)
-    if sentry_client_key:
-        api.use_sentry(sentry_client_key)
     if use_curl:
         api.use_curl()
 
