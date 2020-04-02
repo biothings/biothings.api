@@ -16,7 +16,7 @@ class BiothingHandler(ESRequestHandler):
         Set GA tracking object.
         '''
         if self.request.method == 'GET':
-            options.esqb['bid'] = self.path_args[0]
+            options.esqb['bid'] = self.path_args[0]  # TODO
         elif self.request.method == 'POST':
             self.ga_event_object({'qsize': len(options.esqb.ids)})
         return options

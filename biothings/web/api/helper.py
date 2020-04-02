@@ -2,78 +2,67 @@ import datetime
 import json
 import logging
 import re
-from collections import OrderedDict
-from itertools import chain
+from collections import OrderedDict, defaultdict
+from itertools import product
 from pprint import pformat
 from urllib.parse import (parse_qs, unquote_plus, urlencode, urlparse,
                           urlunparse)
 
-import tornado.web
-from biothings.utils.common import dotdict, is_seq, is_str, split_ids
 from tornado.escape import json_decode
+from tornado.web import HTTPError
 
-from biothings.utils.common import split_ids, DateTimeJSONEncoder
+from biothings.utils.common import DateTimeJSONEncoder, dotdict, split_ids
 from biothings.utils.web.analytics import GAMixIn
 from biothings.utils.web.tracking import StandaloneTrackingMixin
-from tornado.escape import json_decode
-from tornado.web import Finish, RequestHandler
+from biothings.web.handler import BaseHandler
 
-
-try:
-    from raven.contrib.tornado import SentryMixin
-except ImportError:
-    # dummy class mixin
-    class SentryMixin(object):
-        pass
-
-# TODO: remove this unused import
-# try:
-#     from re import fullmatch as match
-# except ImportError:
-#     from re import match
 
 try:
     import msgpack
 
     def msgpack_encode_datetime(obj):
         if isinstance(obj, datetime.datetime):
-            return {'__datetime__': True, 'as_str': obj.strftime("%Y%m%dT%H:%M:%S.%f")}
+            return {'__datetime__': True,
+                    'as_str': obj.strftime("%Y%m%dT%H:%M:%S.%f")}
         return obj
-    SUPPORT_MSGPACK = True
 except ImportError:
     SUPPORT_MSGPACK = False
+else:
+    SUPPORT_MSGPACK = True
+
 
 try:
     import yaml
-    SUPPORT_YAML = True
 except ImportError:
     SUPPORT_YAML = False
+else:
+    SUPPORT_YAML = True
 
-# TODO: remove it. dup of biothings.commons.DateTimeJSONEncoder
-# class DateTimeJSONEncoder(json.JSONEncoder):
-#     def default(self, obj):
-#         if isinstance(obj, datetime.datetime):
-#             return obj.isoformat()
-#         else:
-#             return super(DateTimeJSONEncoder, self).default(obj)
+class BadRequest(HTTPError):
 
-class BiothingParameterTypeError(Exception):
+    def __init__(self, log_message=None, *args, **kwargs):
+        super().__init__(400, log_message, *args, **kwargs)
+        self.kwargs = dict(kwargs) or {}
+        self.kwargs.pop('reason', None)
 
-    def __init__(self, error='', param=''):
-        message = f'Cannot process parameter {param}. ' if param else ''  # TODO reword
-        message += error
-        if message:
-            super().__init__(message)
-        else:
-            super().__init__()
+class EndRequest(HTTPError):
+    """
+        Similar to tornado.web.Finish() but write_error handles it.
+    """
 
+    def __init__(self, log_message=None, *args, **kwargs):
+        super().__init__(200, log_message, *args, **kwargs)
+        self.kwargs = dict(kwargs) or {}
+        self.kwargs.pop('reason', None)
 
-class BiothingsQueryParamInterpreter():
+class QueryParamInterpreter():
+    """
+    Translate the input parameter to the desired type.
+    If jsoninput is set to true, try to load str in json.
+    """
 
     def __init__(self, jsoninput=False):
-        '''
-            Parameter sets the support for json string list
-        '''
+
         if isinstance(jsoninput, str):
             self.jsoninput = self.str_to_bool(jsoninput)
         else:
@@ -93,7 +82,7 @@ class BiothingsQueryParamInterpreter():
 
     @staticmethod
     def str_to_bool(val):
-        return val.lower() in ('1', 'true', 'y', 't', '')  # TODO maybe set a switch
+        return val.lower() in ('1', 'true', 'y', 't', '')
 
     def str_to_list(self, val, param=''):
         if self.jsoninput:
@@ -105,7 +94,7 @@ class BiothingsQueryParamInterpreter():
             try:
                 val = split_ids(str(val))
             except ValueError as e:
-                raise BiothingParameterTypeError(str(e), param)
+                raise BadRequest(str(e), param=param)
         return val
 
     @staticmethod
@@ -113,54 +102,146 @@ class BiothingsQueryParamInterpreter():
         try:
             result = (type_)(val)
         except ValueError:
-            raise BiothingParameterTypeError(f"Expect type {type_.__name__}.", param)
+            raise BadRequest(f"Expect type {type_.__name__}.", param=param)
         return result
 
-        # TODO the two above can be put to utils
 
-class GoogleAnalyticsMixIn(GAMixIn):  # TODO maybe not necessary as we are putting most features into the base_handler
-    pass
-
-
-class BaseHandler(SentryMixin, RequestHandler, GAMixIn, StandaloneTrackingMixin):
+class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
     """
-        Parent class of all biothings handlers, only direct descendant of
-        `tornado.web.RequestHandler <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler>`_,
-        contains the common functions in the biothings handler universe:
+        Contains the common functions in the biothings handler universe:
 
-            * return `self` as JSON
-            * set CORS and caching headers
-            * typify the URL keyword arguments
-            * optionally send tracking data to google analytics and integrate with sentry monitor
+            * return data in json, html, yaml and msgpack
+            * set CORS and Cache Control HTTP headers
+            * typify the URL and body keyword arguments
+            * optionally send tracking data to google analytics
     """
+    name = ''
+    kwarg_types = ()
+    kwarg_methods = ()
+    grouped_options = dotdict()
+
     json_arguments = {}
+    out_format = 'json'
 
     @classmethod
     def setup(cls, web_settings):
         '''
-        Override me to extend class level setup.
-        Called in generate API.
+        Override me to extend class level setup. Called in generate API.
+        Populate relevent kwarg settings in _kwarg_settings.
+        Access with attribute kwarg_settings.
         '''
         cls.web_settings = web_settings
 
+        if not cls.name:
+            return
+
+        cls._kwarg_settings = defaultdict(dict)
+        for method, kwarg_type in product(cls.kwarg_methods, cls.kwarg_types):
+            key = '_'.join((cls.name, method, kwarg_type, 'kwargs')).upper()
+            if hasattr(web_settings, key):
+                setting = cls._kwarg_settings[method.upper()]
+                setting[kwarg_type] = getattr(web_settings, key)
+
+    @property
+    def kwarg_settings(self):
+        '''
+        Return the appropriate kwarg settings basing on the request method.
+        '''
+        if hasattr(self, '_kwarg_settings'):
+            if self.request.method in self._kwarg_settings:
+                return self._kwarg_settings[self.request.method]
+        return {}
+
     def prepare(self):
         '''
-        Extract body and url query parameters.
+        Extract body and url query parameters into functional groups.
+        Typify predefined user inputs patterns here. Rules:
+
+            * Inputs are combined and then separated into functional catagories.
+            * Duplicated query or body arguments will overwrite the previous value.
+            * JSON body input will not overwrite query arguments in URL.
+            * Path arguments can overwirte all other existing values.
+
         Override to add more customizations.
-        Typify predefined user inputs patterns here.
         '''
-        if self.request.headers.get('Content-Type') in ('application/x-json', 'application/json'):
+        if self.request.headers.get('Content-Type') == 'application/json':
             try:
                 self.json_arguments = json_decode(self.request.body)
             except Exception:
-                self.send_error(400, reason='Invalid JSON body.')
-                raise Finish()
+                raise HTTPError(400, reason='Invalid JSON body.')
+
+        args = dict(self.json_arguments)
+        args.update({key: self.get_argument(key) for key in self.request.arguments})
+
+        for catagory, settings in self.kwarg_settings.items():
+            self.grouped_options[catagory] = options = {}
+            for keyword, setting in settings.items():
+
+                # retrieve from url and body arguments
+                value = args.get(keyword)
+                if 'alias' in setting and not value:
+                    if not isinstance(setting['alias'], list):
+                        setting['alias'] = [setting['alias']]
+                    for _alias in setting['alias']:
+                        if _alias in args:
+                            value = args[_alias]
+                            break
+
+                # overwrite with path args (regex captures)
+                if 'path' in setting:
+                    if isinstance(setting['path'], int):
+                        if len(self.path_args) <= setting['path']:
+                            raise BadRequest(missing=keyword)
+                        value = self.path_args[setting['path']]
+                    elif isinstance(setting['path'], str):
+                        if setting['path'] not in self.path_kwargs:
+                            raise BadRequest(missing=keyword)
+                        value = self.path_kwargs[setting['path']]
+
+                # fallback to default values or raise error
+                if value is None:
+                    if setting.get('required'):
+                        raise BadRequest(missing=keyword)
+                    value = setting.get('default')
+                    if value is not None:
+                        options[keyword] = value
+                    continue
+
+                # convert to the desired value type and format
+                if not isinstance(value, setting['type']):
+                    param = QueryParamInterpreter(args.get('jsoninput'))  # TODO test case?
+                    value = param.convert(value, setting['type'])
+                if 'translations' in setting and isinstance(value, str):
+                    for (regex, translation) in setting['translations']:
+                        value = re.sub(regex, translation, value)
+
+                # list size and int value validation
+                global_max = self.web_settings.LIST_SIZE_CAP
+                if isinstance(value, list):
+                    max_allowed = setting.get('max', global_max)
+                    if len(value) > max_allowed:
+                        raise BadRequest(
+                            keyword=keyword,
+                            max=max_allowed,
+                            lst=value)
+                elif isinstance(value, (int, float, complex)) \
+                        and not isinstance(value, bool):
+                    if 'max' in setting and value > setting['max']:
+                        raise BadRequest(
+                            keyword=keyword,
+                            max=setting['max'],
+                            num=value)
+
+                # ignroe None value
+                if value is not None:
+                    options[keyword] = value
+
+        logging.debug("Kwarg settings:\n%s", pformat(self.kwarg_settings, width=150))
+        logging.debug("Kwarg received:\n%s", pformat(args, width=150))
+        logging.debug("Processed options:\n%s", pformat(self.grouped_options, width=150))
 
     def initialize(self):
-        """
-        Tornado handler `initialize() <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler.initialize>`_,
-        Override to add settings for *this* biothing API.  Assumes that the ``web_settings`` kwarg exists in APP_LIST
-        """
+
         self.ga_event_object_ret = {
             'category': '{}_api'.format(self.web_settings.API_VERSION)
             # 'action': 'query_get', 'gene_post', 'fetch_all', etc.
@@ -168,75 +249,34 @@ class BaseHandler(SentryMixin, RequestHandler, GAMixIn, StandaloneTrackingMixin)
             # 'value': 0, corresponds to label ...
         }
 
-    def on_finish(self):
+    def write(self, chunk):
         """
-        This is a tornado lifecycle hook.
-        Override to provide tracking features.
+        Override to write output basing on the specified format.
         """
-        self.ga_track(event=self.ga_event_object_ret)
-        self.self_track(data=self.ga_event_object_ret)
+        if isinstance(chunk, dict) and self.out_format not in ('json', ''):
+            if self.out_format == 'yaml' and SUPPORT_YAML:
+                self.set_header("Content-Type", "text/x-yaml; charset=UTF-8")
+                chunk = self._format_yaml(chunk)
 
-    def get_sentry_client(self):
-        """
-        Override the default behavior and retrieve from app setting instead.
-        """
-        return self.settings.get('sentry_client')
+            elif self.out_format == 'msgpack' and SUPPORT_MSGPACK:
+                self.set_header("Content-Type", "application/x-msgpack")
+                chunk = self._format_msgpack(chunk)
 
-    def log_exception(self, *args, **kwargs):
-        """
-        Only attempt to report to Sentry when the client key is provided.
-        """
-        if self.settings.get('sentry_client'):
-            return super(BaseHandler, self).log_exception(*args, **kwargs)
-        else:
-            return super(SentryMixin, self).log_exception(*args, **kwargs)
+            elif self.out_format == 'html':
+                self.set_header("Content-Type", "text/html; charset=utf-8")
+                chunk = self._format_html(chunk)
+            else:
+                self.set_status(400)
+                chunk = {"success": False, "code": 400,
+                         "error": f"Server not configured to output {self.out_format}."}
 
-    def ga_event_object(self, data=None):
-        ''' Create the data object for google analytics tracking. '''
-        # Most of the structure of this object is formed during self.initialize
-        if data and isinstance(data, dict):
-            self.ga_event_object_ret['label'] = list(data.keys()).pop()
-            self.ga_event_object_ret['value'] = list(data.values()).pop()
-        return self.ga_event_object_ret
+        elif isinstance(chunk, (dict, list)):
+            self.set_header("Content-Type", "application/json; charset=UTF-8")
+            chunk = json.dumps(chunk, cls=DateTimeJSONEncoder)
 
-    def return_html(self, data, status_code=200):
-        self.set_status(status_code)
-        if not self.web_settings.DISABLE_CACHING:
-            #get etag if data is a dictionary and has "etag" attribute.
-            etag = data.get('etag', None) if isinstance(data, dict) else None
-            self.set_cacheable(etag=etag)
-        self.support_cors()
-        self.set_header("Content-Type", "text/html; charset=utf-8")
-        _link = self.request.full_url()
-        d = urlparse(_link)
-        if 'metadata' in d.path:
-            _docs = self.web_settings.METADATA_DOCS_URL
-        elif 'query' in d.path:
-            _docs = self.web_settings.QUERY_DOCS_URL
-        else:
-            _docs = self.web_settings.ANNOTATION_DOCS_URL
-        q = parse_qs(d.query)
-        q.pop('format', None)
-        d = d._replace(query=urlencode(q, True))
-        _link = urlunparse(d)
-        self.write(
-            self.web_settings.HTML_OUT_TEMPLATE.format(
-                data=json.dumps(data),
-                img_src=self.web_settings.HTML_OUT_HEADER_IMG,
-                link=_link,
-                link_decode=unquote_plus(_link),
-                title_html=self.web_settings.HTML_OUT_TITLE,
-                docs_link=_docs
-            )
-        )
-        return
+        super().write(chunk)
 
-    def return_yaml(self, data, status_code=200):
-
-        if not SUPPORT_YAML:
-            self.set_status(500)
-            self.write({"success": False, "error": "Extra requirements for biothings.web needed."})
-            return
+    def _format_yaml(self, data):
 
         def ordered_dump(data, stream=None, Dumper=yaml.Dumper, **kwds):
             class OrderedDumper(Dumper):
@@ -249,89 +289,63 @@ class BaseHandler(SentryMixin, RequestHandler, GAMixIn, StandaloneTrackingMixin)
             OrderedDumper.add_representer(OrderedDict, _dict_representer)
             return yaml.dump(data, stream, OrderedDumper, **kwds)
 
-        self.set_status(status_code)
-        self.set_header("Content-Type", "text/x-yaml; charset=UTF-8")
-        self.support_cors()
-        self.write(ordered_dump(
-            data=data, Dumper=yaml.SafeDumper, default_flow_style=False))
+        return ordered_dump(
+            data=data, Dumper=yaml.SafeDumper, default_flow_style=False)
 
-    def return_object(self, data, encode=True, indent=None, status_code=200, _format='json'):
-        '''Return passed data object as the proper response.
+    def _format_msgpack(self, data):
 
-        :param data: object to return as JSON
-        :param encode: if encode is False, assumes input data is already a JSON encoded string.
-        :param indent: number of indents per level in JSON string
-        :param status_code: HTTP status code for response
-        :param _format: output format - currently supports "json", "html", "yaml", or "msgpack"
-        '''
-        if _format == 'html':
-            self.return_html(data=data, status_code=status_code)
-            return
-        elif _format == 'yaml':
-            self.return_yaml(data=data, status_code=status_code)
-            return
-        elif SUPPORT_MSGPACK and self.web_settings.ENABLE_MSGPACK and _format == 'msgpack':
-            self.return_json(
-                data=data,
-                encode=encode,
-                indent=indent,
-                status_code=status_code,
-                is_msgpack=True)
-            return
-        else:
-            self.return_json(data=data, encode=encode, indent=indent, status_code=status_code)
+        return msgpack.packb(
+            data, use_bin_type=True, default=msgpack_encode_datetime)
 
-    def return_json(self, data, encode=True, indent=None, status_code=200, is_msgpack=False):
-        '''Return passed data object as JSON response.
-        If **jsonp** parameter is set in the  request, return a valid
-        `JSONP <https://en.wikipedia.org/wiki/JSONP>`_ response.
+    def _format_html(self, data):
 
-        :param data: object to return as JSON
-        :param encode: if encode is False, assumes input data is already a JSON encoded string.
-        :param indent: number of indents per level in JSON string
-        :param status_code: HTTP status code for response
-        :param is_msgpack: should this object be compressed before return?
-        '''
-        indent = indent or 2   # tmp settings
-        self.set_status(status_code)
-        if is_msgpack:
-            _json_data = msgpack.packb(data, use_bin_type=True, default=msgpack_encode_datetime)
-            self.set_header("Content-Type", "application/x-msgpack")
-        else:
-            _json_data = json.dumps(data, cls=DateTimeJSONEncoder,
-                                    indent=indent) if encode else data
-            self.set_header("Content-Type", "application/json; charset=UTF-8")
-        if not self.web_settings.DISABLE_CACHING:
-            #get etag if data is a dictionary and has "etag" attribute.
-            etag = data.get('etag', None) if isinstance(data, dict) else None
-            self.set_cacheable(etag=etag)
-        self.support_cors()
-        if getattr(self, 'jsonp', False):
-            self.write('%s(%s)' % (self.jsonp, _json_data))
-        else:
-            self.write(_json_data)
+        _link = self.request.full_url()
+        d = urlparse(_link)
+        q = parse_qs(d.query)
+        q.pop('format', None)
+        d = d._replace(query=urlencode(q, True))
+        _link = urlunparse(d)
 
-    def set_cacheable(self, etag=None):
-        '''set proper header to make the response cacheable.
-           set etag if provided.
-        '''
-        self.set_header("Cache-Control",
-                        "max-age={}, public".format(self.web_settings.CACHE_MAX_AGE))
-        if etag:
-            self.set_header('Etag', etag)
+        return self.web_settings.HTML_OUT_TEMPLATE.format(
+            data=json.dumps(data),
+            img_src=self.web_settings.HTML_OUT_HEADER_IMG,
+            link=_link,
+            link_decode=unquote_plus(_link),
+            title_html=self.web_settings.HTML_OUT_TITLE,
+            docs_link=getattr(self.web_settings, self.name.upper()+'_DOCS_URL', '')
+        )
 
-    def support_cors(self, *args, **kwargs):
-        '''Provide server side support for CORS request.'''
+    def on_finish(self):
+        """
+        This is a tornado lifecycle hook.
+        Override to provide tracking features.
+        """
+        self.ga_track(event=self.ga_event_object_ret)
+        self.self_track(data=self.ga_event_object_ret)
+
+    def ga_event_object(self, data=None):
+        ''' Create the data object for google analytics tracking. '''
+        # Most of the structure of this object is formed during self.initialize
+        if data and isinstance(data, dict):
+            self.ga_event_object_ret['label'] = list(data.keys()).pop()
+            self.ga_event_object_ret['value'] = list(data.values()).pop()
+        return self.ga_event_object_ret
+
+    def options(self, *args, **kwargs):
+
+        self.set_status(204)
+        self.finish()
+
+    def set_default_headers(self):
+
         self.set_header("Access-Control-Allow-Origin", "*")
         self.set_header("Access-Control-Allow-Methods",
-                        "{}".format(self.web_settings.ACCESS_CONTROL_ALLOW_METHODS))
+                        self.web_settings.ACCESS_CONTROL_ALLOW_METHODS)
         self.set_header("Access-Control-Allow-Headers",
-                        "{}".format(self.web_settings.ACCESS_CONTROL_ALLOW_HEADERS))
+                        self.web_settings.ACCESS_CONTROL_ALLOW_HEADERS)
         self.set_header("Access-Control-Allow-Credentials", "false")
         self.set_header("Access-Control-Max-Age", "60")
 
-    def options(self, *args, **kwargs):
-        pass  # TODO
-
-    def set_default_headers(self):
-        pass  # TODO
+        if not self.web_settings.DISABLE_CACHING:
+            seconds = self.web_settings.CACHE_MAX_AGE
+            self.set_header("Cache-Control", f"max-age={seconds}, public")

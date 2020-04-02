@@ -126,7 +126,6 @@ class ESQueryBuilder(object):
         '''
 
         assert isinstance(qs, list)
-        # assert isinstance(self.regex_list, list) TODO move to init
 
         scopes = scopes or self.default_scopes
         msearch = AsyncMultiSearch()

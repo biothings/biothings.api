@@ -8,9 +8,9 @@ from elasticsearch import NotFoundError, RequestError, TransportError
 from elasticsearch_dsl import A, MultiSearch, Q, Search
 from elasticsearch_dsl.connections import get_connection
 from elasticsearch_dsl.response import Response
-from tornado.web import Finish
 
 from biothings.utils.common import dotdict
+from biothings.web.api.helper import BadRequest, EndRequest
 
 
 class BiothingScrollError(Exception):
@@ -92,7 +92,7 @@ class ESQuery(object):
         self.scroll_time = web_settings.ES_SCROLL_TIME
         self.scroll_size = web_settings.ES_SCROLL_SIZE
 
-    async def execute(self, query, options, biothing_type, callback):
+    async def execute(self, query, options, biothing_type):
         '''
         Execute the corresponding query.
         May override to add more. Handle uncaught exceptions.
@@ -104,12 +104,10 @@ class ESQuery(object):
                     scroll_id=options.scroll_id,
                     scroll=self.scroll_time)
             except (NotFoundError, RequestError, TransportError):
-                callback(400, reason="Invalid or stale scroll_id.")
-                raise Finish()
+                raise BadRequest(reason="Invalid or stale scroll_id.")
             else:
                 if not res['hits']['hits']:
-                    callback(200, reason="No more results to return.")
-                    raise Finish()
+                    raise EndRequest(reason="No more results to return.")
                 return res
 
         if query:
@@ -126,11 +124,9 @@ class ESQuery(object):
             try:
                 return await self.dsl_query(query, **options)
             except elasticsearch.RequestError as err:
-                callback(400, root_cause=err.info['error']['root_cause'][0]['reason'])
-                raise Finish()
-            except Exception:  # TODO
-                callback(400, reason='request error')
-                raise Finish()
+                raise BadRequest(root_cause=err.info['error']['root_cause'][0]['reason'])
+            # except Exception:  # TODO
+                # raise Finish()
 
         return asyncio.sleep(0, {})
 
