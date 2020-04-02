@@ -15,6 +15,7 @@ from importlib import import_module
 from pprint import pformat
 
 import elasticsearch
+import tornado.web
 from elasticsearch import ConnectionSelector
 from elasticsearch_async.transport import AsyncTransport
 from elasticsearch_dsl import A, MultiSearch, Q, Search
@@ -25,6 +26,12 @@ from biothings.web.api.helper import BaseHandler as BiothingsBaseHandler
 
 from .userquery import ESUserQuery
 
+try:
+    from raven.contrib.tornado import AsyncSentryClient
+except ImportError:
+    __SENTRY_INSTALLED__ = False
+else:
+    __SENTRY_INSTALLED__ = True
 
 class BiothingConfigError(Exception):
     pass
@@ -45,21 +52,7 @@ class BiothingWebSettings():
             or its module file path.
         '''
         self._default = biothings.web.settings.default
-
-        # load user settings
-        if isinstance(config, types.ModuleType):
-            self._user = config
-        elif isinstance(config, str) and config.endswith('.py'):
-            spec = importlib.util.spec_from_file_location("config", config)
-            config = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(config)
-            self._user = config
-        elif isinstance(config, str) and config:
-            self._user = import_module(config)
-        elif not config:
-            self._user = self._default
-        else:
-            raise BiothingConfigError()
+        self._user = self.load_module(config)
         logging.info("Loaded: %s", self._user)
 
         # process keyword setting override
@@ -80,9 +73,49 @@ class BiothingWebSettings():
 
         self.validate()
 
+    @staticmethod
+    def load_module(config):
+        """
+        Ensure config is a module.
+        """
+        if isinstance(config, types.ModuleType):
+            return config
+        elif isinstance(config, str) and config.endswith('.py'):
+            spec = importlib.util.spec_from_file_location("config", config)
+            config = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(config)
+            return config
+        elif isinstance(config, str) and config:
+            return import_module(config)
+        elif not config:
+            return biothings.web.settings.default
+        else:
+            raise BiothingConfigError()
+
     def __getattr__(self, name):
         return getattr(self._user, name,
                        getattr(self._default, name))
+
+    def generate_app(self, settings=None):
+        """
+        Generates tornado.web.Application with this setting file.
+        """
+        settings = dict(settings or {})
+
+        for setting in ('default_handler_class', 'default_handler_args',
+                        'log_function', 'compress_response', 'cookie_secret',
+                        'login_url', 'static_path', 'static_url_prefix'):
+            if hasattr(self, setting.upper()):
+                settings[setting] = getattr(self, setting.upper())
+
+        app = tornado.web.Application(self.generate_app_list(), **settings)
+
+        if __SENTRY_INSTALLED__ and self.SENTRY_CLIENT_KEY:
+            # Setup error monitoring with Sentry. More on:
+            # https://docs.sentry.io/clients/python/integrations/#tornado
+            app.sentry_client = AsyncSentryClient(self.SENTRY_CLIENT_KEY)
+
+        return app
 
     def generate_app_list(self):
         '''
@@ -126,6 +159,9 @@ class BiothingWebSettings():
         Validate the settings defined for this web server.
         '''
         assert self.API_VERSION or self.API_PREFIX
+        assert isinstance(self.LIST_SIZE_CAP, int)
+        assert isinstance(self.ACCESS_CONTROL_ALLOW_METHODS, str)
+        assert isinstance(self.ACCESS_CONTROL_ALLOW_HEADERS, str)
 
     #### COMPATIBILITY METHODS ####
 
@@ -202,6 +238,9 @@ class BiothingESWebSettings(BiothingWebSettings):
         # initialize payload for standalone tracking batch
         self.tracking_payload = []
 
+        self.ES_INDICES[self.ES_DOC_TYPE] = self.ES_INDEX
+        self.BIOTHING_TYPES = list(self.ES_INDICES.keys())
+
         # populate source mappings
         for biothing_type in self.ES_INDICES:
             self.read_index_mappings(biothing_type)
@@ -216,9 +255,6 @@ class BiothingESWebSettings(BiothingWebSettings):
         assert isinstance(self.ES_DOC_TYPE, str)
         assert isinstance(self.ES_INDICES, dict)
         assert '*' not in self.ES_DOC_TYPE
-
-        self.ES_INDICES[self.ES_DOC_TYPE] = self.ES_INDEX
-        self.BIOTHING_TYPES = list(self.ES_INDICES.keys())
 
     def get_es_client(self):
         '''
@@ -276,10 +312,12 @@ class BiothingESWebSettings(BiothingWebSettings):
         licenses.clear()
 
         for index in mappings:
+
             if self.ES_VERSION < 7:
                 mapping = mappings[index]['mappings'][biothing_type]
             else:
                 mapping = mappings[index]['mappings']
+
             if '_meta' in mapping:
                 for key, val in mapping['_meta'].items():
                     if key in metadata and isinstance(val, dict) \
@@ -288,12 +326,14 @@ class BiothingESWebSettings(BiothingWebSettings):
                     else:
                         metadata[key] = val
                 metadata.update(mapping['_meta'])
+
                 if 'src' in mapping['_meta']:
                     for src, info in mapping['_meta']['src'].items():
                         if 'license_url_short' in info:
                             licenses[src] = info['license_url_short']
                         elif 'license_url' in info:
                             licenses[src] = info['license_url']
+                            
             if 'properties' in mapping:
                 properties.update(mapping['properties'])
 

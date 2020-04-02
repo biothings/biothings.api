@@ -38,10 +38,6 @@ ES_RESULT_WINDOW_SIZE_CAP = 10000
 # *****************************************************************************
 BIOTHING_TYPES = []
 
-# default static path, relative to current working dir
-# (from where app is launched)
-STATIC_PATH = "static"
-
 # api version in the URL patterns and elsewhere
 API_VERSION = 'v1'
 API_PREFIX = ''
@@ -67,7 +63,7 @@ ACCESS_CONTROL_ALLOW_HEADERS = ('Content-Type, Depth, User-Agent, If-Modified-Si
                                 'Cache-Control, X-File-Size, X-Requested-With, X-File-Name')
 # Caching behavior
 DISABLE_CACHING = False
-CACHE_MAX_AGE = 604800
+CACHE_MAX_AGE = 604800  # default 7 days
 
 # Global default cap for list inputs
 LIST_SIZE_CAP = 1000
@@ -89,6 +85,10 @@ ANNOTATION_DOCS_URL = "javascript:;"
 
 # path to the git repository for the app-specific code, override
 APP_GIT_REPOSITORY = '.'
+
+# default static path, relative to current working dir
+# (from where app is launched)
+STATIC_PATH = "static"
 
 # parameter for JSONP
 JSONP_PARAMETER = 'callback'
@@ -231,7 +231,7 @@ GA_ACCOUNT = ''
 GA_RUN_IN_PROD = False
 
 # url for google analytics tracker
-GA_TRACKER_URL = 'mybiothing.info'
+GA_TRACKER_URL = 'mybiothing.info'  # TODO
 GA_ACTION_QUERY_GET = 'query_get'
 GA_ACTION_QUERY_POST = 'query_post'
 GA_ACTION_ANNOTATION_GET = 'biothing_get'

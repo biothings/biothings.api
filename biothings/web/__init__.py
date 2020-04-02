@@ -12,12 +12,6 @@ import tornado.web
 
 from biothings.web.settings import BiothingESWebSettings
 
-try:
-    from raven.contrib.tornado import AsyncSentryClient
-except ImportError:
-    __SENTRY_INSTALLED__ = False
-else:
-    __SENTRY_INSTALLED__ = True
 
 class BiothingsAPI():
     """
@@ -34,7 +28,7 @@ class BiothingsAPI():
     """
 
     def __init__(self, config_module=None, **settings):
-        self.config = config_module
+        self.config = BiothingESWebSettings(config_module)
         self.settings = dict(autoreload=False)
         self.settings.update(settings)
         self.host = '127.0.0.1'
@@ -47,15 +41,6 @@ class BiothingsAPI():
         """
         tornado.httpclient.AsyncHTTPClient.configure(
             "tornado.curl_httpclient.CurlAsyncHTTPClient")
-
-    def use_sentry(self, sentry_client_key):
-        """
-        Setup error monitoring with Sentry. More on:
-        https://docs.sentry.io/clients/python/integrations/#tornado
-        """
-        if __SENTRY_INSTALLED__:
-            self.settings['sentry_client'] = \
-                AsyncSentryClient(sentry_client_key)
 
     def update(self, **settings):
         """
@@ -88,8 +73,10 @@ class BiothingsAPI():
         """
         Run API in an external event loop.
         """
-        api = BiothingESWebSettings(config or self.config)
-        app = tornado.web.Application(api.generate_app_list(), **settings)
+        api = BiothingESWebSettings(config) if config else self.config
+        settings_ = dict(self.settings)
+        settings_.update(settings)
+        app = api.generate_app(settings_)
         server = tornado.httpserver.HTTPServer(app, xheaders=True)
         return server
 
