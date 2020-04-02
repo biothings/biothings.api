@@ -204,8 +204,7 @@ class TestAnnotationPOST(BiothingsTestCase):
         {
             "success": false,
             "error": "Bad Request",
-            "missing": "ids",
-            "received": {}
+            "missing": "ids"
         }
         """
         res = self.request('/v1/gene', expect_status=400).json()
