@@ -60,13 +60,13 @@
                         <i class="unhide icon"></i>
                     </button>
                 </div>
-                <div class="ui icon buttons right floated mini">
-                    <button class="ui button"
-                        v-on:click="unregister" v-if="source.data_plugin">
-                        <i class="trash icon"></i>
-                    </button>
-                </div>
             </span>
+            <div class="ui icon buttons right floated mini">
+                <button class="ui button"
+                    v-on:click="unregister" v-if="source.data_plugin">
+                    <i class="trash icon"></i>
+                </button>
+            </div>
         </div>
 
         <inspect-form v-bind:_id="source._id" v-bind:select_data_provider="true">
