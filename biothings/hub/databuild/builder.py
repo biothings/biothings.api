@@ -9,6 +9,7 @@ import pickle
 from datetime import datetime
 from pprint import pformat
 import asyncio
+import aiocron
 from functools import partial
 
 from .mapper import TransparentMapper
@@ -1480,10 +1481,40 @@ class BuilderManager(BaseManager):
                 logging.info("Dropping target collection '%s" % col_name)
                 target_db[col_name].drop()
 
-    def poll(self, state, func):
-        super(BuilderManager, self).poll(state,
-                                         func,
-                                         col=get_src_build_config())
+    def poll(self):
+        """
+        Check "whatsnew()" to idenfity builds which could be automatically built,
+        if {"autobuild" : {...}} is part of the build configuration. "autobuild" contains
+        a dict with "schedule" (aiocron/crontab format), so each build configuration can
+        have a different polling schedule.
+        """
+        # don't use $exists in find(), not all hub backend implements that
+        confs = get_src_build_config().find()
+        autobuild_confs = [conf for conf in confs if "autobuild" in conf]
+
+        @asyncio.coroutine
+        def check_new(conf_name):
+            new = self.whatsnew(conf_name)
+            if new[conf_name]["sources"]:
+                new_sources = [(name, info["new"].get("version")) for (name, info) in new[conf_name]["sources"].items()]
+                logging.info("Build configuration '%s' can be launched (autobuid) because" % conf_name
+                             + "some datasources are new: %s" % new_sources)
+                self.merge(conf_name)
+            else:
+                logging.debug("Nothing new for build configuration '%s'" % conf_name)
+
+        for conf in autobuild_confs:
+            try:
+                sch = conf["autobuild"].get("schedule")
+                if not sch:
+                    logging.error("Build configuration needs autobuild but 'schedule' isn't defined" % conf_name)
+                    continue
+                aiocron.crontab(
+                    sch, func=partial(check_new, conf["_id"]),
+                    start=True, loop=self.job_manager.loop
+                )
+            except Exception as e:
+                logging.exception("Invalid autobuild information for build config '%s': %s" % (conf["_id"], e))
 
     def trigger_merge(self, doc):
         return self.merge(doc["_id"])

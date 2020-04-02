@@ -349,7 +349,7 @@ class HubServer(object):
                 self.features.remove("readonly")
                 hub_name = getattr(config, "HUB_NAME", "Hub") + " (read-only)"
                 self.readonly_routes.append(("/", RootHandler, {
-                    "features": all_features, "hub_name" : hub_name
+                    "features": all_features, "hub_name": hub_name
                 }))
 
             # Then deal with read-write API
@@ -473,6 +473,7 @@ class HubServer(object):
             job_manager=self.managers["job_manager"], **args)
         build_manager.configure()
         self.managers["build_manager"] = build_manager
+        build_manager.poll()
 
     def configure_diff_manager(self):
         from biothings.hub.databuild.differ import DifferManager, SelfContainedJsonDiffer
