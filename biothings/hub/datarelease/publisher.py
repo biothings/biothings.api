@@ -509,7 +509,7 @@ class SnapshotPublisher(BasePublisher):
                 assert snapshot, "Missing snapshot name information"
                 if getattr(btconfig, "SKIP_CHECK_VERSIONS", None):
                     self.logger.info(
-                        "SKIP_CHECK_VERSIONS %s, no version check will be performed on diff metadata"
+                        "SKIP_CHECK_VERSIONS %s, no version check will be performed on full metadata"
                         % repr(btconfig.SKIP_CHECK_VERSIONS))
                 else:
                     assert getattr(
@@ -772,7 +772,17 @@ class SnapshotPublisher(BasePublisher):
                 task.add_done_callback(published)
                 yield from task
 
+
+        def done(f):
+            try:
+                _ = f.result()
+            except Exception as e:
+                self.logger.exception("Unable to publish full release: %s" % e)
+                raise
+
         task = asyncio.ensure_future(do())
+        task.add_done_callback(done)
+
         return task
 
     def run_post_publish_snapshot(self, snapshot_name, repo_conf, build_doc):
@@ -1216,7 +1226,17 @@ class DiffPublisher(BasePublisher):
             task.add_done_callback(uploaded)
             yield from task
 
-        return asyncio.ensure_future(do())
+        def done(f):
+            try:
+                _ = f.result()
+            except Exception as e:
+                self.logger.exception("Unable to publish incremental release: %s" % e)
+                raise
+
+        task = asyncio.ensure_future(do())
+        task.add_done_callback(done)
+
+        return task
 
     def run_post_publish_diff(self, build_name, repo_conf, build_doc):
         return self.run_pre_post("diff", "post", build_name, repo_conf,
