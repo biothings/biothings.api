@@ -45,7 +45,7 @@ class BiothingsTestCase(AsyncHTTPTestCase):
     # override
     def get_app(self):
 
-        app_list = self.settings.generate_app_list()
+        app_list = self.settings.generate_app_handlers()
 
         settings = {"static_path": self.settings.STATIC_PATH}  # TODO maybe settings should generate app settings
         if getattr(self.settings, 'COOKIE_SECRET', None):

@@ -15,7 +15,6 @@ from importlib import import_module
 from pprint import pformat
 
 import elasticsearch
-import tornado.web
 from elasticsearch import ConnectionSelector
 from elasticsearch_async.transport import AsyncTransport
 from elasticsearch_dsl import A, MultiSearch, Q, Search
@@ -93,31 +92,36 @@ class BiothingWebSettings():
             raise BiothingConfigError()
 
     def __getattr__(self, name):
-        return getattr(self._user, name,
-                       getattr(self._default, name))
+        if hasattr(self._user, name):
+            return getattr(self._user, name)
+        elif hasattr(self._default, name):
+            return getattr(self._default, name)
+        else:  # not provided and no default
+            raise AttributeError()
 
-    def generate_app(self, settings=None):
+    def generate_app_settings(self):
         """
-        Generates tornado.web.Application with this setting file.
+        Generates settings for tornado.web.Application. This result and the
+        method below can define a tornado application to start a web server.
         """
-        settings = dict(settings or {})
+        supported_keywords = (
+            'default_handler_class', 'default_handler_args',
+            'log_function', 'compress_response', 'cookie_secret',
+            'login_url', 'static_path', 'static_url_prefix')
 
-        for setting in ('default_handler_class', 'default_handler_args',
-                        'log_function', 'compress_response', 'cookie_secret',
-                        'login_url', 'static_path', 'static_url_prefix'):
+        settings = {}
+        for setting in supported_keywords:
             if hasattr(self, setting.upper()):
                 settings[setting] = getattr(self, setting.upper())
-
-        app = tornado.web.Application(self.generate_app_list(), **settings)
 
         if __SENTRY_INSTALLED__ and self.SENTRY_CLIENT_KEY:
             # Setup error monitoring with Sentry. More on:
             # https://docs.sentry.io/clients/python/integrations/#tornado
-            app.sentry_client = AsyncSentryClient(self.SENTRY_CLIENT_KEY)
+            settings['sentry_client'] = AsyncSentryClient(self.SENTRY_CLIENT_KEY)
 
-        return app
+        return settings
 
-    def generate_app_list(self):
+    def generate_app_handlers(self):
         '''
         Generates the tornado.web.Application `(regex, handler_class, options) tuples
         <http://www.tornadoweb.org/en/stable/web.html#application-configuration>`_.
@@ -333,7 +337,7 @@ class BiothingESWebSettings(BiothingWebSettings):
                             licenses[src] = info['license_url_short']
                         elif 'license_url' in info:
                             licenses[src] = info['license_url']
-                            
+
             if 'properties' in mapping:
                 properties.update(mapping['properties'])
 

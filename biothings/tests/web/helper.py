@@ -85,7 +85,7 @@ class TornadoTestServerMixin(AsyncHTTPTestCase):
 
     # override
     def get_app(self):
-        app_list = self.settings.generate_app_list()
+        app_list = self.settings.generate_app_handlers()
         static_path = self.settings.STATIC_PATH
         if getattr(self.settings, 'COOKIE_SECRET', None):
             return Application(app_list, static_path=static_path,
@@ -207,7 +207,7 @@ class BiothingsTestCase(unittest.TestCase):
             raise SkipTest('Msgpack is not installed.')
         try:
             dic = msgpack.unpackb(packed_bytes)
-        except:  # pylint: disable=bare-except
+        except BaseException:  # pylint: disable=bare-except
             assert False, 'Not a valid Msgpack binary.'
         if checkerror:
             assert not (isinstance(dic, dict)

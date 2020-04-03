@@ -1,5 +1,5 @@
 """
-    A Biothings API demo implementation that supports command line arguments.
+    A simple Biothings API implementation that supports command line arguments.
 
     Command line arguments are processed by tornado.options
     The following arguments are defined:
@@ -38,7 +38,7 @@ def main(biothings_config='config', app_settings=None, use_curl=False):
     """ Start a Biothings API Server
 
         :param biothings_config: the biothings web config module to use
-        :param app_settings: `Tornado application settings
+        :param app_settings: `Tornado application settings dictionary
         <http://www.tornadoweb.org/en/stable/web.html#tornado.web.Application.settings>`_
         :param use_curl: Overide the default simple_httpclient with curl_httpclient
         <https://www.tornadoweb.org/en/stable/httpclient.html>

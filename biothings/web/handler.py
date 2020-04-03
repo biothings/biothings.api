@@ -20,6 +20,15 @@ class BaseHandler(SentryMixin, RequestHandler):
         <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler>`_,
     """
 
+    def get_sentry_client(self):
+        """
+        Override default and retrieve from tornado setting instead.
+        """
+        client = self.settings.get('sentry_client')
+        if not client:
+            self.require_setting('sentry_client')
+        return client
+
     def log_exception(self, *args, **kwargs):
         """
         Only attempt to report to Sentry when the client is setup.
@@ -34,4 +43,3 @@ class BaseHandler(SentryMixin, RequestHandler):
         Implement this method to handle streamed request data.
         """
         # this dummy implementation silences the pylint abstract-class error
-        raise NotImplementedError()

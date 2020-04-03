@@ -90,7 +90,7 @@ APP_LIST = [
         app = biothings.web.BiothingsAPIApp(config_module=config_mod)
         port = int(apidoc["config"]["port"])
         try:
-            server = app.get_server(config_mod)
+            server = app.get_server()
             server.listen(port)
             self.register[api_id] = server
             self.logger.info("Running API '%s' on port %s" % (api_id, port))

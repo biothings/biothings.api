@@ -1,8 +1,5 @@
 """
     Biothings Web API
-
-    - Support running behind a load balancer. Understand x-headers.
-    TODO
 """
 import logging
 
@@ -15,22 +12,22 @@ from biothings.web.settings import BiothingESWebSettings
 
 class BiothingsAPI():
     """
-    Configure a Biothings Web API.
+    Configure a Biothings Web API Server.
 
     There are three parts to it:
-    * A biothings config module that defines the API.
-    * Tornado settings that control web behaviors.
-    * An asyncio event loop to run tornado.
+    * A biothings config module that defines the API handlers.
+    * Additional Tornado settings like autoreload and logging.
+    * An asyncio event loop to run the tornado application.
 
     The API can be started with:
     * An external event loop by calling get_server()
     * A default tornado event loop by calling start()
+
     """
 
-    def __init__(self, config_module=None, **settings):
+    def __init__(self, config_module=None):
         self.config = BiothingESWebSettings(config_module)
         self.settings = dict(autoreload=False)
-        self.settings.update(settings)
         self.host = '127.0.0.1'
 
     @staticmethod
@@ -69,14 +66,14 @@ class BiothingsAPI():
             self.settings.update({"debug": False})
             logging.getLogger().setLevel(logging.WARNING)
 
-    def get_server(self, config=None, **settings):
+    def get_server(self):
         """
         Run API in an external event loop.
         """
-        api = BiothingESWebSettings(config) if config else self.config
-        settings_ = dict(self.settings)
-        settings_.update(settings)
-        app = api.generate_app(settings_)
+        settings = dict(self.settings)
+        settings.update(self.config.generate_app_settings())
+        handlers = self.config.generate_app_handlers()
+        app = tornado.web.Application(handlers, **settings)
         server = tornado.httpserver.HTTPServer(app, xheaders=True)
         return server
 
@@ -84,7 +81,7 @@ class BiothingsAPI():
         """
         Run API in the default event loop.
         """
-        http_server = self.get_server(**self.settings)
+        http_server = self.get_server()
         http_server.listen(port, self.host)
 
         logging.debug('Server is running on "%s:%s"...',

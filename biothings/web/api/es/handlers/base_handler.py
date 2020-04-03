@@ -8,7 +8,6 @@ from pprint import pformat
 from tornado.web import Finish, HTTPError
 
 from biothings.utils.common import dotdict
-from biothings.web.api.es.query import BiothingSearchError
 from biothings.web.api.helper import BaseAPIHandler, BadRequest
 
 

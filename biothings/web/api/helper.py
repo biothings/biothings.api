@@ -162,7 +162,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
             * JSON body input will not overwrite query arguments in URL.
             * Path arguments can overwirte all other existing values.
 
-        Override to add more customizations.
+        Extend to add more customizations.
         '''
         if self.request.headers.get('Content-Type') == 'application/json':
             try:
@@ -209,7 +209,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
 
                 # convert to the desired value type and format
                 if not isinstance(value, setting['type']):
-                    param = QueryParamInterpreter(args.get('jsoninput'))  # TODO test case?
+                    param = QueryParamInterpreter(args.get('jsoninput'))
                     value = param.convert(value, setting['type'])
                 if 'translations' in setting and isinstance(value, str):
                     for (regex, translation) in setting['translations']:
