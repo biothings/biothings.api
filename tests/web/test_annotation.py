@@ -15,16 +15,18 @@ class TestAnnotationGET(BiothingsTestCase):
     ### Query Builder Keywords ###
 
     def test_00_hit(self):
-        """ GET /v1/gene/101952537
+        """ GET /v1/gene/1017
         {
             "HGNC": "1771",
             "MIM": "116953",
             "_id": "1017",
+            "_version": 1
             ...
         }
         """
         res = self.request('/v1/gene/1017').json()
         assert res['HGNC'] == '1771'
+        assert '_version' in res
 
     def test_01_miss(self):
         """ GET /v1/gene/0
