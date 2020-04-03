@@ -585,11 +585,12 @@
                 if(/\/connect=/.test(window.location.hash)) {
                     var url = window.location.hash.replace(/.*\/connect=/,"");
                     console.log(`Connect from anchor hash: ${url}`);
+                    router.push({name: "/"})
                 } else {
                     var url = this.conn["url"].replace(/\/$/,"");
                     console.log(`Connecting to ${this.conn.name} (${url})`);
-                    hubapi.base(url);
                 }
+                hubapi.base(url);
                 this.refreshConnection(url);
                 Vue.localStorage.set('last_conn',JSON.stringify(this.conn));
                 this.setupSocket(redirect);
