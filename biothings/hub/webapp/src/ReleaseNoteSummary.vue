@@ -3,7 +3,7 @@
         <span v-if="release_notes">
             <span>
                 <i class="bullhorn icon"></i><b>{{ release_notes.length }}</b> release note(s) available
-                    <button class="ui tinytiny icon button" @click="generate">Generate</button>
+                    <button class="ui tinytiny icon button" @click="generate" :class="actionable">Generate</button>
                     <table class="ui compact collapsing small green table" v-if="release_notes.length">
                         <thead>
                           <tr>
@@ -118,10 +118,11 @@ import axios from 'axios'
 import bus from './bus.js'
 import Vue from 'vue';
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 
 export default {
     name: 'release-note-summary',
-    mixins: [ Loader, ],
+    mixins: [ Loader, Actionable, ],
     props: ['release','build','type'],
     mounted() {
         this.normalizeReleaseNotes();
