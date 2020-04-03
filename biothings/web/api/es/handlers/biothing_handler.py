@@ -12,14 +12,18 @@ class BiothingHandler(ESRequestHandler):
 
     def pre_query_builder_hook(self, options):
         '''
-        Inject bid(s) in esqb_kwargs.
         Set GA tracking object.
         '''
-        if self.request.method == 'GET':
-            options.esqb['bid'] = self.path_args[0]  # TODO
-        elif self.request.method == 'POST':
+        if self.request.method == 'POST':
             self.ga_event_object({'qsize': len(options.esqb.ids)})
         return options
+
+    def pre_query_hook(self, options, query):
+        '''
+        Request _version field.
+        '''
+        options.es.version = True
+        return super().pre_query_hook(options, query)
 
     def pre_finish_hook(self, options, res):
         '''
@@ -29,7 +33,7 @@ class BiothingHandler(ESRequestHandler):
         if isinstance(res, dict):
             if not res.get('hits'):
                 self.send_error(404, reason=self.web_settings.ID_NOT_FOUND_TEMPLATE.format(bid=options.esqb.bid))
-                raise Finish()
+                raise Finish()  # TODO
             res = res['hits'][0]
             res.pop('_score')
 
