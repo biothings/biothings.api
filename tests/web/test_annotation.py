@@ -41,15 +41,17 @@ class TestAnnotationGET(BiothingsTestCase):
     ### Query Backend Keywords ###
 
     def test_10_fields(self):
-        """ GET /v1/gene/101952537?fields=symbol
+        """ GET /v1/gene/1017?fields=symbol
         {
             "_id": "1017",
+            "_version": 1
             "symbol": "CDK2"
         }
         """
         res = self.request('/v1/gene/1017?fields=symbol').json()
-        assert len(res) == 2
+        assert len(res) == 3
         assert '_id' in res
+        assert '_version' in res
         assert 'symbol' in res
 
     ### Workflow Control Keywords ###
@@ -146,6 +148,7 @@ class TestAnnotationGET(BiothingsTestCase):
         """ GET /v1/gene/102812112?_sorted=false
         {
             "_id": "102812112",
+            "_version": 1
             "taxid": 185453,
             "symbol": "CDK2",
             "name": "cyclin dependent kinase 2",
@@ -157,6 +160,7 @@ class TestAnnotationGET(BiothingsTestCase):
         """
         keys = iter(self.request('/v1/gene/102812112?_sorted=false').json().keys())
         assert next(keys) == '_id'
+        assert next(keys) == '_version'
         assert next(keys) == 'taxid'
         assert next(keys) == 'symbol'
 
