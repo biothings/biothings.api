@@ -273,6 +273,7 @@ class HubServer(object):
         self.extra_commands = None
         self.routes = []
         self.readonly_routes = []
+        self.ws_urls = [] # only one set, shared between r/w and r/o hub api server
         # flag "do we need to configure?"
         self.configured = False
 
@@ -345,11 +346,14 @@ class HubServer(object):
                 # read-only. "readonly" feature means we're running another webapp for
                 # a specific readonly API. UI can then query the root handler and see
                 # if the API is readonly or not, and adjust the components & actions
-                all_features = copy.deepcopy(self.features)
+                ro_features = copy.deepcopy(self.features)
+                # terminal feature certainly not allowed in read-only server...
+                if "terminal" in self.features: ro_features.remove("terminal")
+                # if we have readonly feature, it means another non-readonly server is running
                 self.features.remove("readonly")
                 hub_name = getattr(config, "HUB_NAME", "Hub") + " (read-only)"
                 self.readonly_routes.append(("/", RootHandler, {
-                    "features": all_features, "hub_name": hub_name
+                    "features": ro_features, "hub_name": hub_name
                 }))
 
             # Then deal with read-write API
@@ -617,6 +621,10 @@ class HubServer(object):
         pass
 
     def get_websocket_urls(self):
+
+        if self.ws_urls:
+            return self.ws_urls
+
         import sockjs.tornado
         import biothings.hub.api.handlers.ws as ws
         from biothings.utils.hub_db import ChangeWatcher
@@ -634,7 +642,8 @@ class HubServer(object):
         ws_router = sockjs.tornado.SockJSRouter(
             partial(ws.WebSocketConnection, listeners=self.ws_listeners),
             '/ws')
-        return ws_router.urls
+        self.ws_urls = ws_router.urls
+        return self.ws_urls
 
     def configure_ws_feature(self):
         # add websocket endpoint
@@ -691,6 +700,7 @@ class HubServer(object):
         # risk of write operations there
         ws_urls = self.get_websocket_urls()
         self.readonly_routes.extend(ws_urls)
+        # the rest of the readonly feature setup is done as the end, when starting the server
 
     def configure_remaining_features(self):
         self.logger.info("Setting up remaining features: %s",

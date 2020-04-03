@@ -34,13 +34,13 @@ class WebSocketConnection(sockjs.tornado.SockJSConnection):
         super(WebSocketConnection, self).__init__(session)
 
     def publish(self, message):
-        self.broadcast(self.clients, message)
+        self.broadcast(self.__class__.clients, message)
 
     def on_open(self, info):
         # Send that someone joined
-        self.broadcast(self.clients, "Someone joined. %s" % info)
+        self.broadcast(self.__class__.clients, "Someone joined. %s" % info)
         # Add client to the clients list
-        self.clients.add(self)
+        self.__class__.clients.add(self)
 
     def on_message(self, message):
         err = None
@@ -64,8 +64,8 @@ class WebSocketConnection(sockjs.tornado.SockJSConnection):
 
     def on_close(self):
         # Remove client from the clients list and broadcast leave message
-        self.clients.remove(self)
-        self.broadcast(self.clients, "Someone left.")
+        self.__class__.clients.remove(self)
+        self.broadcast(self.__class__.clients, "Someone left.")
 
 
 class HubDBListener(ChangeListener):
@@ -104,3 +104,7 @@ class LogListener(ChangeListener):
                 # any error in the caller
                 print(e)
                 pass
+
+
+class ShellListener(LogListener):
+    pass
