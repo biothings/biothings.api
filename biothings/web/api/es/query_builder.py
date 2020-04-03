@@ -1,7 +1,7 @@
 """
     Elasticsearch Query DSL Construction
 """
-from biothings.web.api.es.query import AsyncMultiSearch, AsyncSearch
+from biothings.utils.web.es_dsl import AsyncMultiSearch, AsyncSearch
 
 try:
     from re import fullmatch as match
@@ -51,17 +51,16 @@ class ESQueryBuilder(object):
         May override to add more. Handle uncaught exceptions.
         '''
         if 'bid' in options:
-            return self.build_terms_query([options.bid])[0]
+            return self.build_terms_query([options.bid], options)[0]
         if 'ids' in options:
-            return self.build_terms_query(options.ids, options.scopes)
+            return self.build_terms_query(options.ids, options)
         if 'q' in options:
             if isinstance(options.q, list):
-                return self.build_terms_query(options.q, options.scopes)
+                return self.build_terms_query(options.q, options)
             if isinstance(options.q, str):
-                return self.build_string_query(
-                    options.q, options.userquery, options.aggs, options.facet_size)
+                return self.build_string_query(options.q, options)
 
-    def build_default_query(self, q):
+    def default_string_query(self, q, options):
         '''
         Override this to customize default string query.
         By default it implements a query string query.
@@ -78,14 +77,21 @@ class ESQueryBuilder(object):
 
         return AsyncSearch().query("query_string", query=q)
 
-    def build_string_query(self, q, userquery, aggs, facet_size):
+    def default_terms_query(self, q, options):
         '''
-        Return a query endpoint GET query for this query string ``q``.
+        Override this to customize default terms query.
+        By default it implements a multi_match query.
+        '''
+        q, scopes_ = get_term_scope(q, self.regex_list)
+        scopes = scopes_ or options.scopes or self.default_scopes
+        return AsyncSearch().query('multi_match', query=q, fields=scopes, operator="and")
 
-        :param q: query string specifying the query
-        '''
+    def build_string_query(self, q, options):
 
         search = AsyncSearch()
+
+        facet_size = options.facet_size or 10
+        userquery = options.userquery or ''
 
         if self.user_query.has_query(userquery):
             userquery_ = self.user_query.get_query(userquery, q=q)
@@ -98,13 +104,13 @@ class ESQueryBuilder(object):
             search = search.query('function_score', random_score={})
 
         else:  # customization here
-            search = self.build_default_query(q)
+            search = self.default_string_query(q, options)
 
         if self.user_query.has_filter(userquery):
             userfilter = self.user_query.get_filter(userquery)
             search = search.filter(userfilter)
 
-        for agg in aggs or []:
+        for agg in options.aggs or []:
             term, bucket = agg, search.aggs
             while term:
                 if self.allow_nested_query and \
@@ -117,23 +123,14 @@ class ESQueryBuilder(object):
 
         return search
 
-    def build_terms_query(self, qs, scopes=None):
-        '''
-        Return query endpoint POST queries for these query strings ``qs``.
-
-        :param qs: Query strings to query
-        :param scopes: Scope of query strings ``qs``
-        '''
+    def build_terms_query(self, qs, options):
 
         assert isinstance(qs, list)
-
-        scopes = scopes or self.default_scopes
         msearch = AsyncMultiSearch()
-
         for q in qs:
-            q, scopes_ = get_term_scope(q, self.regex_list)
-            scopes = scopes_ or scopes
-            search = AsyncSearch().query('multi_match', query=q, fields=scopes, operator="and")
+            search = self.default_terms_query(q, options)
             msearch = msearch.add(search)
 
         return msearch
+
+    get_term_scope = staticmethod(get_term_scope)
