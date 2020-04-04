@@ -199,7 +199,7 @@ class BiothingESWebSettings(BiothingWebSettings):
 
     ES_VERSION = elasticsearch.__version__[0]
 
-    def __init__(self, config='config', **kwargs):
+    def __init__(self, config=None, **kwargs):
         '''
         The ``config`` init parameter specifies a module that configures
         this biothing.  For more information see `config module`_ documentation.
