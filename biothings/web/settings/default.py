@@ -126,7 +126,7 @@ COMMON_TRANSFORM_KWARGS = {
 # For annotation GET endpoint
 ANNOTATION_GET_CONTROL_KWARGS = dict(COMMON_CONTROL_KWARGS)
 ANNOTATION_GET_ESQB_KWARGS = {
-    'bid': {'default': '', 'type': str, 'path': 0}}
+    'q': {'default': '', 'type': str, 'path': 0}}
 ANNOTATION_GET_ES_KWARGS = {
     '_source': {'default': None, 'type': list, 'max': 1000, 'alias': ['fields', 'filter']}}
 ANNOTATION_GET_TRANSFORM_KWARGS = dict(COMMON_TRANSFORM_KWARGS)
@@ -134,7 +134,7 @@ ANNOTATION_GET_TRANSFORM_KWARGS = dict(COMMON_TRANSFORM_KWARGS)
 # For annotation POST endpoint
 ANNOTATION_POST_CONTROL_KWARGS = dict(COMMON_CONTROL_KWARGS)
 ANNOTATION_POST_ESQB_KWARGS = {
-    'ids': {'default': None, 'type': list, 'max': 1000, 'required': True}}
+    'q': {'default': None, 'type': list, 'max': 1000, 'required': True, 'alias': 'ids'}}
 ANNOTATION_POST_ES_KWARGS = {
     '_source': {'default': None, 'type': list, 'max': 1000, 'alias': ['fields', 'filter']}}
 ANNOTATION_POST_TRANSFORM_KWARGS = dict(COMMON_TRANSFORM_KWARGS)
