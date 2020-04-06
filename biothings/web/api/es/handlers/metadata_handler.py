@@ -22,7 +22,7 @@ class MetadataSourceHandler(BaseESRequestHandler):
         self.web_settings.read_index_mappings()
         _meta = self.web_settings.source_metadata[self.biothing_type]
 
-        if self.grouped_options.source.dev:
+        if self.kwargs.source.dev:
             _meta['software'] = get_software_info(app_dir=self.web_settings.get_git_repo_path())
 
         self.finish(dict(sorted(_meta.items())))
@@ -40,14 +40,14 @@ class MetadataFieldHandler(BaseESRequestHandler):
 
         _properties = self.web_settings.source_properties[self.biothing_type]
 
-        if self.grouped_options.fields.raw:
+        if self.kwargs.fields.raw:
             raise Finish(_properties)
 
         field_notes = self.web_settings.get_field_notes()
         excluded_keys = self.web_settings.AVAILABLE_FIELDS_EXCLUDED
 
-        prefix = self.grouped_options.fields.prefix or []
-        search = self.grouped_options.fields.search or []
+        prefix = self.kwargs.fields.prefix or []
+        search = self.kwargs.fields.search or []
 
         result = {}
         todo = list(_properties.items())
