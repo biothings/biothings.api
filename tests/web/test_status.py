@@ -6,7 +6,7 @@
 
 """
 
-from helper import BiothingsTestCase
+from biothings.tests.web import BiothingsTestCase
 from setup import setup_es  # pylint: disable=unused-import
 
 

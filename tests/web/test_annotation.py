@@ -6,7 +6,7 @@
 
 '''
 
-from helper import BiothingsTestCase
+from biothings.tests.web import BiothingsTestCase
 from setup import setup_es  # pylint: disable=unused-import
 
 
@@ -35,7 +35,7 @@ class TestAnnotationGET(BiothingsTestCase):
             "error": "ID '0' not found"
         }
         """
-        res = self.request('/v1/gene/0', expect_status=404).json()
+        res = self.request('/v1/gene/0', expect=404).json()
         assert 'not found' in res['error']
 
     ### Query Backend Keywords ###
@@ -213,7 +213,7 @@ class TestAnnotationPOST(BiothingsTestCase):
             "missing": "ids"
         }
         """
-        res = self.request('/v1/gene', expect_status=400).json()
+        res = self.request('/v1/gene', expect=400).json()
         assert 'error' in res
 
     def test_01_id_miss(self):
@@ -352,6 +352,6 @@ class TestAnnotationPOST(BiothingsTestCase):
         """
         res = self.request(
             path='/v1/gene', data='{"ids":{"ISCW006791"}}'.encode(),
-            headers={"Content-Type": "application/json"}, expect_status=400).json()
+            headers={"Content-Type": "application/json"}, expect=400).json()
         assert not res['success']
         assert res['error'] == "Invalid JSON body."

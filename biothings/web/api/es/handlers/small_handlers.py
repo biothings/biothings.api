@@ -2,9 +2,10 @@
     TODO load balancer check settings
 """
 
-from biothings.web.api.es.handlers.base_handler import BaseESRequestHandler
 from elasticsearch.exceptions import ElasticsearchException
 from tornado.web import HTTPError
+
+from biothings.web.api.es.handlers.base_handler import BaseESRequestHandler
 
 
 class StatusHandler(BaseESRequestHandler):

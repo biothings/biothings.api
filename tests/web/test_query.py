@@ -5,7 +5,7 @@
     POST /query
 
 '''
-from helper import BiothingsTestCase
+from biothings.tests.web import BiothingsTestCase
 from setup import setup_es  # pylint: disable=unused-import
 
 
@@ -90,7 +90,7 @@ class TestQueryKeywords(BiothingsTestCase):
         """
         res = self.request(
             '/v1/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=10',
-            expect_status=400).json()
+            expect=400).json()
         assert res['success'] is False
 
     def test_04_facet_nested(self):
@@ -153,7 +153,7 @@ class TestQueryKeywords(BiothingsTestCase):
             "max": 10000
         }
         """
-        res = self.request('/v1/query?q=__all__&from=10001', expect_status=400).json()
+        res = self.request('/v1/query?q=__all__&from=10001', expect=400).json()
         assert res['success'] is False
 
     def test_12_size(self):
@@ -183,7 +183,7 @@ class TestQueryKeywords(BiothingsTestCase):
             "max": 1000
         }
         """
-        res = self.request('/v1/query?q=__all__&size=1001', expect_status=400).json()
+        res = self.request('/v1/query?q=__all__&size=1001', expect=400).json()
         assert res['success'] is False
 
     def test_14_explain(self):
@@ -625,7 +625,7 @@ class TestQueryKeywords(BiothingsTestCase):
             "error": "Invalid or stale scroll_id."
         }
         """
-        res = self.request('/v1/query?scroll_id=<invalid>', expect_status=400).json()
+        res = self.request('/v1/query?scroll_id=<invalid>', expect=400).json()
         assert res['success'] is False
 
 
@@ -743,4 +743,4 @@ class TestQueryString(BiothingsTestCase):
         # Issue 529121368
         # Event 922fc99638cb4987bccbfd30c914ff03
         _q = '/v1/query?q=c("ZNF398", "U2AF...'
-        self.request(_q, expect_status=400)
+        self.request(_q, expect=400)
