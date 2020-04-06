@@ -6,7 +6,7 @@ import asyncio
 import elasticsearch
 from elasticsearch import NotFoundError, RequestError, TransportError
 
-from biothings.web.api.helper import BadRequest, EndRequest
+from biothings.web.api.handler import BadRequest, EndRequest
 
 
 class ESQuery(object):
@@ -28,7 +28,7 @@ class ESQuery(object):
         self.scroll_time = web_settings.ES_SCROLL_TIME
         self.scroll_size = web_settings.ES_SCROLL_SIZE
 
-    async def execute(self, query, options, biothing_type):
+    async def execute(self, query, options):
         '''
         Execute the corresponding query.
         May override to add more. Handle uncaught exceptions.
@@ -47,7 +47,7 @@ class ESQuery(object):
                 return res
 
         if query:
-            biothing_type = biothing_type or self.default_type
+            biothing_type = options.pop('biothing_type', None) or self.default_type
             query = query.index(self.indices.get(biothing_type, self.default_index))
 
             if options.pop('fetch_all', False):
