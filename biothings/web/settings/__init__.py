@@ -21,7 +21,7 @@ from elasticsearch_dsl import A, MultiSearch, Q, Search
 from elasticsearch_dsl.connections import Connections
 
 import biothings.web.settings.default
-from biothings.web.api.helper import BaseHandler as BiothingsBaseHandler
+from biothings.web.api.handler import BaseHandler as BiothingsBaseHandler
 
 from .userquery import ESUserQuery
 
