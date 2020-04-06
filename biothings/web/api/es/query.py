@@ -3,7 +3,6 @@
 """
 import asyncio
 
-import elasticsearch
 from elasticsearch import NotFoundError, RequestError, TransportError
 
 from biothings.web.api.handler import BadRequest, EndRequest
@@ -13,7 +12,6 @@ class ESQuery(object):
     '''
     Execute an Elasticsearch query
     '''
-    ES_VERSION = elasticsearch.__version__[0]
 
     def __init__(self, web_settings):
 
@@ -59,7 +57,7 @@ class ESQuery(object):
 
             try:
                 return await self.dsl_query(query, **options)
-            except elasticsearch.RequestError as err:
+            except RequestError as err:
                 raise BadRequest(root_cause=err.info['error']['root_cause'][0]['reason'])
 
         return asyncio.sleep(0, {})
