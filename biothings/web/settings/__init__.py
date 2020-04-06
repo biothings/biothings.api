@@ -284,7 +284,7 @@ class BiothingESWebSettings(BiothingWebSettings):
         The ES response would look like: (for es7+)
         {
             'index_1': {
-                'properties': { ... },  <----- Extract ource_properties
+                'properties': { ... },  <----- Extract source_properties
                 '_meta': {
                     "src" : { ... }     <----- Extract source_licenses
                     ...
