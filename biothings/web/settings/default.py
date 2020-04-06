@@ -39,8 +39,8 @@ ES_RESULT_WINDOW_SIZE_CAP = 10000
 BIOTHING_TYPES = []
 
 # api version in the URL patterns and elsewhere
-API_VERSION = 'v1'
 API_PREFIX = ''
+API_VERSION = 'v1'
 
 # project URL routing
 APP_LIST = [
