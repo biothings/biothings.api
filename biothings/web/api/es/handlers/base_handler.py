@@ -8,7 +8,7 @@ from pprint import pformat
 from tornado.web import Finish, HTTPError
 
 from biothings.utils.common import dotdict
-from biothings.web.api.helper import BaseAPIHandler, BadRequest
+from biothings.web.api.handler import BaseAPIHandler, BadRequest
 
 
 class BaseESRequestHandler(BaseAPIHandler):
@@ -27,6 +27,9 @@ class BaseESRequestHandler(BaseAPIHandler):
         '''
         super(BaseESRequestHandler, self).initialize()
         self.biothing_type = biothing_type or self.web_settings.ES_DOC_TYPE
+        self.query_builder = self.web_settings.query_builder
+        self.query_backend = self.web_settings.query_backend
+        self.query_transform = self.web_settings.query_transform
 
         # Configure Google Analytics
 
@@ -41,7 +44,7 @@ class BaseESRequestHandler(BaseAPIHandler):
     def prepare(self):
 
         super().prepare()
-        self.out_format = self.grouped_options.control.out_format or 'json'
+        self.out_format = self.kwargs.control.out_format or 'json'
 
     def write_error(self, status_code, **kwargs):
 
@@ -72,14 +75,12 @@ class ESRequestHandler(BaseESRequestHandler):
         Clean up inherent logic between keyword arguments.
         For example, enforce mutual exclusion relationships.
         """
-
-        ### ESQB Stage ###
+        options.es.biothing_type = self.biothing_type
+        options.transform.biothing_type = self.biothing_type
 
         # facet_size only relevent for aggs
         if not options.esqb.aggs:
             options.esqb.pop('facet_size', None)
-
-        ### ES Backend Stage ###
 
         # no sorting when scrolling
         if options.es.fetch_all:
@@ -93,13 +94,9 @@ class ESRequestHandler(BaseESRequestHandler):
             elif 'all' in options.es._source:
                 options.es._source = True
 
-        ### Transform Stage ###
-
-        options.transform.biothing_type = self.biothing_type
-
         # inject original query terms
         if self.request.method == 'POST':
-            queries = options.esqb.ids or options.esqb.q
+            queries = options.esqb.q
             options.transform.templates = (dict(query=q) for q in queries)
             options.transform.template_miss = dict(notfound=True)
             options.transform.template_hit = dict()
@@ -115,30 +112,28 @@ class ESRequestHandler(BaseESRequestHandler):
 
     async def execute_pipeline(self, *args, **kwargs):
 
-        options = self.get_cleaned_options(self.grouped_options)
+        options = self.get_cleaned_options(self.kwargs)
         options = self.pre_query_builder_hook(options)
 
         ###################################################
         #                   Build query
         ###################################################
 
-        _query = self.web_settings.query_builder.build(options.esqb)
+        _query = self.query_builder.build(options.esqb.q, options.esqb)
         _query = self.pre_query_hook(options, _query)
 
         ###################################################
         #                   Execute query
         ###################################################
 
-        res = await self.web_settings.query_backend.execute(
-            _query, options.es, self.biothing_type)
-        res = self.pre_transform_hook(options, res)
+        _res = await self.query_backend.execute(_query, options.es)
+        _res = self.pre_transform_hook(options, _res)
 
         ###################################################
         #                 Transform result
         ###################################################
 
-        res = self.web_settings.query_transform.transform(
-            res, options.transform)
+        res = self.query_transform.transform(_res, options.transform)
         res = self.pre_finish_hook(options, res)
 
         self.finish(res)
