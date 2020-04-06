@@ -1118,6 +1118,7 @@ class BuilderManager(BaseManager):
         self.src_build_config = get_src_build_config()
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
+        builder_class = builder_class or DataBuilder
         if isinstance(builder_class, list):
             self.arg_builder_classes = builder_class
         else:
