@@ -6,8 +6,6 @@ import os
 import re
 import shlex
 import sys
-from contextlib import redirect_stdout
-from io import StringIO
 from subprocess import DEVNULL, check_output
 
 from git import (Git, GitCommandError, InvalidGitRepositoryError,
@@ -102,29 +100,68 @@ def get_software_info(app_dir=None):
     }
 
 
+def check_new_version(folder):
+    """
+    Given a folder pointing to a Git repo, return a dict containing info
+    about remote commits not qpplied yet to the repo, or empty dict if nothing
+    new.
+    """
+    # from https://stackoverflow.com/questions/8290233/gitpython-get-list-of-remote-commits-not-yet-applied
+    repo = Repo(folder)
+    new_info = {}
+    try:
+        head = repo.head.ref
+        tracking = head.tracking_branch()
+        new_commits = [commit for commit in tracking.commit.iter_items(repo, f'{head.path}..{tracking.path}')]
+        if new_commits:
+            new_info = {
+                "latest": new_commits[0].hexsha[:6],
+                "commits": [
+                    {
+                        "hash": c.hexsha[:6],
+                        "date": c.committed_datetime.isoformat(),
+                        "message": c.message
+                    } for c in new_commits],
+            }
+    except Exception as e:
+
+        logging.warning("Can't check for new version: %s" % e)
+        raise e
+
+    return new_info
+
+def get_version(folder):
+    repo = Repo(folder)  # app or lib dir
+    try:
+        commit = repo.head.object.hexsha[:6]
+        commitdate = repo.head.object.committed_datetime.isoformat()
+    except Exception as e:
+        logging.warning("can't determine app commit hash: %s" % e)
+        commit = "unknown"
+        commitdate = "unknown"
+
+    try:
+        return {"branch": repo.active_branch.name,
+                "commit": commit,
+                "date": commitdate}
+    except Exception as e:
+        logging.warning("can't determine app version, assuming HEAD detached': %s" % e)
+        return {"branch": "HEAD detached",
+                "commit": commit,
+                "date": commitdate}
+
+
 def set_versions(config, app_folder):
     """
-    Propagate versions (git branch name) in config module
+    Propagate versions (git branch name) in config module.
+    Also set app and biothings folder paths (though not
+    exposed as a config param since they are lower-cased,
+    see biothings.__init__.py, regex PARAM_PAT)
     """
     # app_version: version of the API application
     if not hasattr(config, "APP_VERSION"):
-        repo = Repo(app_folder)  # app dir (mygene, myvariant, ...)
-        try:
-            commit = repo.head.object.hexsha[:6]
-            commitdate = repo.head.object.committed_datetime.isoformat()
-        except Exception as e:
-            logging.warning("Can't determine app commit hash: %s" % e)
-            commit = "unknown"
-            commitdate = "unknown"
-        try:
-            config.APP_VERSION = {"branch": repo.active_branch.name,
-                                  "commit": commit,
-                                  "date": commitdate}
-        except Exception as e:
-            logging.warning("Can't determine app version, defaulting to 'master': %s" % e)
-            config.APP_VERSION = {"branch": "master",
-                                  "commit": commit,
-                                  "date": commitdate}
+        config.APP_VERSION = get_version(app_folder)
+        config.app_folder = app_folder
     else:
         logging.info("app_version '%s' forced in configuration file" % config.APP_VERSION)
 
@@ -134,23 +171,8 @@ def set_versions(config, app_folder):
         # .../biothings.api/biothings/__init__.py
         bt_folder, _bt = os.path.split(os.path.split(os.path.realpath(biothings.__file__))[0])
         assert _bt == "biothings", "Expectig 'biothings' dir in biothings lib path"
-        repo = Repo(bt_folder)  # app dir (mygene, myvariant, ...)
-        try:
-            commit = repo.head.object.hexsha[:6]
-            commitdate = repo.head.object.committed_datetime.isoformat()
-        except Exception as e:
-            logging.warning("Can't determine biothings commit hash: %s" % e)
-            commit = "unknown"
-            commitdate = "unknown"
-        try:
-            config.BIOTHINGS_VERSION = {"branch": repo.active_branch.name,
-                                        "commit": commit,
-                                        "date": commitdate}
-        except Exception as e:
-            logging.warning("Can't determine biothings version, defaulting to 'master': %s" % e)
-            config.BIOTHINGS_VERSION = {"branch": "master",
-                                        "commit": commit,
-                                        "date": commitdate}
+        config.BIOTHINGS_VERSION = get_version(bt_folder)
+        config.biothings_folder = bt_folder
     else:
         logging.info("biothings_version '%s' forced in configuration file" %
                      config.BIOTHINGS_VERSION)
@@ -175,7 +197,7 @@ def get_source_code_info(src_file):
     abs_src_file = os.path.abspath(src_file)
     try:
         repo = Repo(abs_src_file, search_parent_directories=True)
-    except (InvalidGitRepositoryError, NoSuchPathError) as e:
+    except (InvalidGitRepositoryError, NoSuchPathError):
         logging.exception("Can't find a github repository for file '%s'" % src_file)
         return None
     try:
@@ -216,12 +238,12 @@ def get_source_code_info(src_file):
         info = dict_sweep(info)
         # rebuild URL to that file
         if "github.com" in repo_url:
-            info["url"] = os.path.join(re.sub("\.git$", "", repo_url),
+            info["url"] = os.path.join(re.sub(r"\.git$", "", repo_url),
                                        "tree", hash, rel_src_file)
 
         return info
 
-    except GitCommandError as e:
+    except GitCommandError:
         logging.exception("Error while getting git information for file '%s'" % src_file)
         return None
     except TypeError as e:

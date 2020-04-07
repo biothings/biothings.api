@@ -18,6 +18,7 @@ from biothings.utils.loggers import get_logger, WSLogHandler, WSShellHandler, Sh
 from biothings.utils.hub import (HubShell, get_hub_reloader, CommandDefinition, pending,
                                  AlreadyRunningException, CommandError)
 from biothings.utils.jsondiff import make as jsondiff
+from biothings.utils.version import check_new_version
 
 # Keys used as category in pinfo (description of jobs submitted to JobManager)
 # Those are used in different places
@@ -40,6 +41,11 @@ INSPECTOR_CATEGORY = "inspector"
 # ) and config.HUB_REFRESH_COMMANDS or "* * * * * *"  # every sec
 HUB_REFRESH_COMMANDS = getattr(
     config, "HUB_REFRESH_COMMANDS", "* * * * * *"  # every sec
+)
+
+# Check for new code update from app and biothings Git repo
+HUB_CHECK_UPGRADE = getattr(
+    config, "HUB_CHECK_UPGRADE", "0 * * * *"  # every hour
 )
 
 
@@ -209,7 +215,7 @@ class HubServer(object):
     DEFAULT_FEATURES = [
         "config", "job", "dump", "upload", "dataplugin", "source", "build",
         "diff", "index", "snapshot", "release", "inspect", "sync", "api",
-        "terminal", "reloader", "dataupload", "ws", "readonly"
+        "terminal", "reloader", "dataupload", "ws", "readonly", "upgrade",
     ]
     DEFAULT_MANAGERS_ARGS = {"upload": {"poll_schedule": "* * * * * */10"}}
     DEFAULT_RELOADER_CONFIG = {
@@ -273,7 +279,7 @@ class HubServer(object):
         self.extra_commands = None
         self.routes = []
         self.readonly_routes = []
-        self.ws_urls = [] # only one set, shared between r/w and r/o hub api server
+        self.ws_urls = []  # only one set, shared between r/w and r/o hub api server
         # flag "do we need to configure?"
         self.configured = False
 
@@ -348,7 +354,8 @@ class HubServer(object):
                 # if the API is readonly or not, and adjust the components & actions
                 ro_features = copy.deepcopy(self.features)
                 # terminal feature certainly not allowed in read-only server...
-                if "terminal" in self.features: ro_features.remove("terminal")
+                if "terminal" in self.features:
+                    ro_features.remove("terminal")
                 # if we have readonly feature, it means another non-readonly server is running
                 self.features.remove("readonly")
                 hub_name = getattr(config, "HUB_NAME", "Hub") + " (read-only)"
@@ -619,6 +626,47 @@ class HubServer(object):
     def configure_config_feature(self):
         # just a placeholder
         pass
+
+    def configure_upgrade_feature(self):
+        """
+        Allows a Hub to check for new versions (new commits to apply on running branch)
+        and apply them on current code base
+        """
+
+        if not getattr(config, "app_folder", None) or not getattr(config, "biothings_folder", None):
+            self.logger.warning("Can't schedule check for new code updates, "
+                                + "app folder and/or biothings folder not defined")
+            return
+
+        @asyncio.coroutine
+        def check_code_upgrade():
+            self.logger.info("Checking for new code updates")
+            bt_new = check_new_version(config.biothings_folder)
+            try:
+                app_new = check_new_version(config.app_folder)
+            except Exception as e:
+                self.logger.warning("Can't check for new version: %s" % e)
+                return
+            # enrich existing version information with an "upgrade" field.
+            # note: we do that on config.conf, the actual config.py module,
+            # *not* directly on config as it's a wrapper over config.conf
+            for (name, new, param) in (("app", app_new, "APP_VERSION"), ("biothings", bt_new, "BIOTHINGS_VERSION")):
+                if new:
+                    self.logger.info("Found updates for %s:\n%s" % (name, pformat(new)))
+                    getattr(config.conf, param)["upgrade"] = new
+                else:
+                    # just in case, we pop out the key
+                    getattr(config.conf, param).pop("upgrade", None)
+
+        loop = self.managers.get("job_manager") and self.managers[
+            "job_manager"].loop or asyncio.get_event_loop()
+
+        # check at startup, then regularly
+        asyncio.ensure_future(check_code_upgrade())
+        aiocron.crontab(HUB_CHECK_UPGRADE,
+                        func=check_code_upgrade,
+                        start=True,
+                        loop=loop)
 
     def get_websocket_urls(self):
 
