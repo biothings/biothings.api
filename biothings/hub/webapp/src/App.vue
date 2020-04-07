@@ -12,6 +12,7 @@
 
         <div class="header item">
             <img class="logo" src="./assets/biothings-studio-color.svg">
+            <i class="red lock icon" v-if="readonly_mode"></i>
             <div id="conn" :data-html="
                 '<div style=\'width:30em;\'>' +
                 '<a>' + conn.url + '</a><br>' +
@@ -394,7 +395,8 @@
                 current_studio_version: STUDIO_VERSION,
                 compat_urls: [],
                 redirect_delay: 5000,
-                readonly_mode: true,
+                readonly_mode: true, // from hub features
+                readonly_switch: true, // from UI (switch in config)
             }
         },
         computed : {
@@ -428,10 +430,13 @@
                 }
             },
             readonly_mode: function(newv,oldv) {
-                if(newv != oldv) {
-                    this.actionable = newv;
-                    bus.$emit("readonly_mode",newv);
-                }
+                this.actionable = newv;
+                bus.$emit("readonly_mode",newv);
+            },
+            readonly_switch: function(newv,oldv) {
+                // sync mode and switch together
+                this.readonly_mode = newv;
+                Vue.localStorage.set("readonly_switch",JSON.stringify(this.readonly_switch));
             },
         },
         methods: {
@@ -443,8 +448,23 @@
                 this.menu = [];
                 if(this.has_feature('readonly')) {
                     this.readonly_mode = true;
+                    console.log("Hub is read-only, deactivate readonly switch");
+                    this.readonly_switch = null;
                 } else {
                     this.readonly_mode = false;
+                    console.log("Hub is read/write, activate readonly switch");
+                    // restore from localstorage
+                    var stored_switch = Vue.localStorage.get('readonly_switch');
+                    if(stored_switch !== null) {
+                        // something previously stored, restore switch state, and sync
+                        // readonly mode accordingly
+                        this.readonly_switch = JSON.parse(stored_switch);
+                        this.readonly_mode = this.readonly_switch;
+                    } else {
+                        // nothing stored previously, so sync switch state to default mode
+                        // (ie. not readonly)
+                        this.readonly_switch = this.readonly_mode;
+                    }
                 }
                 this.actionable = this.readonly_mode;
                 if(this.has_feature('source') && this.has_feature('build')) {
