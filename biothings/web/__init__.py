@@ -136,8 +136,8 @@ class BiothingsAPI():
         http_server = self.get_server()
         http_server.listen(port, self.host)
 
-        logging.debug('Server is running on "%s:%s"...',
-                      self.host, port)
+        logging.info('Server is running on "%s:%s"...',
+                     self.host, port)
 
         loop = tornado.ioloop.IOLoop.instance()
         loop.start()
