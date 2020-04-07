@@ -11,6 +11,7 @@ import socket
 import types
 from collections import defaultdict
 from copy import deepcopy
+from functools import partial
 from importlib import import_module
 from pprint import pformat
 
@@ -236,7 +237,7 @@ class BiothingESWebSettings(BiothingWebSettings):
 
         # query pipelines
         self.query_builder = self.ES_QUERY_BUILDER(self)
-        self.query_backend = self.ES_QUERY(self)
+        self.query_backend = partial(self.ES_QUERY, self)
         self.query_transform = self.ES_RESULT_TRANSFORMER(self)
 
         # initialize payload for standalone tracking batch

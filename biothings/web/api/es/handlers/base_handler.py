@@ -28,7 +28,7 @@ class BaseESRequestHandler(BaseAPIHandler):
         super(BaseESRequestHandler, self).initialize()
         self.biothing_type = biothing_type or self.web_settings.ES_DOC_TYPE
         self.query_builder = self.web_settings.query_builder
-        self.query_backend = self.web_settings.query_backend
+        self.query_backend = self.web_settings.query_backend()
         self.query_transform = self.web_settings.query_transform
 
         # Configure Google Analytics
