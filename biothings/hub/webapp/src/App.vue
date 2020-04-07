@@ -3,6 +3,20 @@
     <div class="ui fixed inverted menu">
       <div class="ui studio container">
 
+          <div class="item">
+              <!-- check value, null means toggle deactivated (hub is read-only, can't switch back to read/write) -->
+              <span v-if="readonly_switch !== null">
+                  <div class="ui middle aligned mini" data-tooltip="Toggle read-only mode" data-position="bottom left">
+                      <i class="clickicon large lock icon" :class="readonly_mode ? 'red': ''" @click="switchReadOnly"></i>
+                  </div>
+              </span>
+              <span v-else>
+                  <div class="ui middle aligned mini"  data-tooltip="Hub is read-only" data-position="bottom left">
+                      <i class="large lock icon" :class="readonly_mode ? 'red': ''"></i>
+                  </div>
+              </span>
+          </div>
+
 		<div class="item">
 			<div class="ui middle aligned mini">
 				<choose-hub></choose-hub>
@@ -12,7 +26,6 @@
 
         <div class="header item">
             <img class="logo" src="./assets/biothings-studio-color.svg">
-            <i class="red lock icon" v-if="readonly_mode"></i>
             <div id="conn" :data-html="
                 '<div style=\'width:30em;\'>' +
                 '<a>' + conn.url + '</a><br>' +
@@ -435,8 +448,12 @@
             },
             readonly_switch: function(newv,oldv) {
                 // sync mode and switch together
-                this.readonly_mode = newv;
-                Vue.localStorage.set("readonly_switch",JSON.stringify(this.readonly_switch));
+                // if null, we're just deactivating the switch, only true/false values
+                // are allowed to be considered and synced
+                if(newv !== null) {
+                    this.readonly_mode = newv;
+                    Vue.localStorage.set("readonly_switch",JSON.stringify(this.readonly_switch));
+                }
             },
         },
         methods: {
@@ -950,6 +967,9 @@
             this.skip_studio_compat = skip;
 
         },
+        switchReadOnly() {
+            this.readonly_switch = !this.readonly_switch;
+        },
         setupTerminal() {
             $('.terminal.item').popup({
                 popup: $('.terminal.popup'),
@@ -1067,6 +1087,10 @@
   -ms-animation: rotating 2s linear infinite;
   -o-animation: rotating 2s linear infinite;
   animation: rotating 2s linear infinite;
+}
+
+.clickicon {
+    cursor: pointer;
 }
 
 

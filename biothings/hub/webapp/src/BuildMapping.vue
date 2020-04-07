@@ -65,13 +65,14 @@
         </div>
         <div v-else class="ui segment">
             No mapping found.
-            <button class="ui button mini" v-on:click="inspect">
-                <i class="unhide icon"></i>
-                Inspect data
-            </button>
-            to create one.
+            <span :class="actionable">
+                <button class="ui button mini" v-on:click="inspect">
+                    <i class="unhide icon"></i>
+                    Inspect data
+                </button>
+                to create one.
+            </span>
         </div>
-
 
     </span>
 </template>

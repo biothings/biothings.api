@@ -17,13 +17,6 @@
 
                 <div class="configmenu">
                     <div class="ui secondary small menu">
-                        <a class="left aligned item">
-                            <!-- check value, null means toggle deactivated (hub is read-only, can't switch back to read/write) -->
-                            <div class="ui toggle checkbox" v-if="$parent.readonly_switch !== null">
-                                <input type="checkbox" name="ro_switch" v-model="$parent.readonly_switch">
-                                <label>Read-only mode</label>
-                            </div>
-                        </a>
                         <div class="ui mini yellow compact message right floated" v-if="dirty">Hub needs to restart to reflect changes</div>
                         <a class="right aligned item" :class="actionable">
                             <a class="item">

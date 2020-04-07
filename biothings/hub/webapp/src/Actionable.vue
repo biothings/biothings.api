@@ -46,7 +46,6 @@ export default {
     methods: {
         switchMode(mode) {
             this.readonly = mode;
-            console.log(`switching to mode read-only: ${this.readonly}`);
         },
     },
 }
