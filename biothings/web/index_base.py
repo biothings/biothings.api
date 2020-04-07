@@ -51,8 +51,8 @@ def main(biothings_config='config', app_settings=None, use_curl=False):
     if use_curl:
         api.use_curl()
 
-    api.debug(options.debug)
     api.host = options.address
+    api.debug(options.debug)
     api.start(options.port)
 
 
