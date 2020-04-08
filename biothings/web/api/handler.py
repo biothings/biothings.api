@@ -55,24 +55,44 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
 
     out_format = 'json'
 
-    @classmethod
-    def setup(cls, web_settings):
-        '''
-        Override me to extend class level setup. Called in generate API.
-        Populate relevent kwarg settings in _kwarg_settings.
-        Access with attribute kwarg_settings.
-        '''
-        cls.web_settings = web_settings
+    def initialize(self):
 
-        if not cls.name:
-            return
+        if self.name and not hasattr(self, '_kwarg_settings'):
 
-        cls._kwarg_settings = defaultdict(dict)
-        for method, kwarg_type in product(cls.kwarg_methods, cls.kwarg_types):
-            key = '_'.join((cls.name, method, kwarg_type, 'kwargs')).upper()
-            if hasattr(web_settings, key):
-                setting = cls._kwarg_settings[method.upper()]
-                setting[kwarg_type] = getattr(web_settings, key)
+            if self.__class__ is not BaseAPIHandler:
+                _self = self.__class__
+            else:
+                _self = self  # do no cache on base handler level
+
+            _self._kwarg_settings = defaultdict(dict)
+            for method, kwarg_type in product(self.kwarg_methods, self.kwarg_types):
+                key = '_'.join((self.name, method, kwarg_type, 'kwargs')).upper()
+                if hasattr(self.web_settings, key):
+                    setting = _self._kwarg_settings[method.upper()]
+                    setting[kwarg_type] = getattr(self.web_settings, key)
+
+            logging.debug("Endpoint [%s] kwargs settings:\n%s",
+                          self.name, pformat(self.kwarg_settings, width=150))
+
+        self.json_arguments = {}
+        self.kwargs = dotdict()
+
+        self.ga_event_object_ret = {
+            'category': '{}_api'.format(self.web_settings.API_VERSION)
+            # 'action': 'query_get', 'gene_post', 'fetch_all', etc.
+            # 'label': 'total', 'qsize', etc.
+            # 'value': 0, corresponds to label ...
+        }
+
+    @property
+    def web_settings(self):
+        try:
+            setting = self.settings['biothings']
+        except KeyError:
+            # need to pass it to tornado application settings
+            self.require_setting('biothings')
+        else:
+            return setting
 
     @property
     def kwarg_settings(self):
@@ -83,17 +103,6 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
             if self.request.method in self._kwarg_settings:
                 return self._kwarg_settings[self.request.method]
         return {}
-
-    def initialize(self):
-
-        self.kwargs = dotdict()
-        self.json_arguments = {}
-        self.ga_event_object_ret = {
-            'category': '{}_api'.format(self.web_settings.API_VERSION)
-            # 'action': 'query_get', 'gene_post', 'fetch_all', etc.
-            # 'label': 'total', 'qsize', etc.
-            # 'value': 0, corresponds to label ...
-        }
 
     def prepare(self):
         '''
@@ -116,7 +125,6 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         args = dict(self.json_arguments)
         args.update({key: self.get_argument(key) for key in self.request.arguments})
 
-        logging.debug("Kwarg settings:\n%s", pformat(self.kwarg_settings, width=150))
         logging.debug("Kwargs received:\n%s", pformat(args, width=150))
 
         for catagory, settings in self.kwarg_settings.items():
