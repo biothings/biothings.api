@@ -51,21 +51,14 @@ class ESQuery(object):
             if options.pop('fetch_all', False):
                 query = query.params(scroll=self.scroll_time)
                 query = query.extra(size=self.scroll_size)
-
-            if options.sort:  # accept '-' prefixed field names
-                query = query.sort(*options.pop('sort'))
-
             try:
-                return await self.dsl_query(query, **options)
-            except RequestError as err:
+                res = await query.using(self.client).execute()
+            except RequestError as err:  # TODO
                 raise BadRequest(root_cause=err.info['error']['root_cause'][0]['reason'])
+            else:
+                if isinstance(res, list):
+                    return [res_.to_dict() for res_ in res]
+                return res.to_dict()
 
         return asyncio.sleep(0, {})
 
-    async def dsl_query(self, query, **options):
-
-        query = query.extra(**options)
-        res = await query.using(self.client).execute()
-        if isinstance(res, list):
-            return [res_.to_dict() for res_ in res]
-        return res.to_dict()
