@@ -52,9 +52,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
     name = ''
     kwarg_types = ()
     kwarg_methods = ()
-    kwargs = dotdict()
 
-    json_arguments = {}
     out_format = 'json'
 
     @classmethod
@@ -85,6 +83,17 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
             if self.request.method in self._kwarg_settings:
                 return self._kwarg_settings[self.request.method]
         return {}
+
+    def initialize(self):
+
+        self.kwargs = dotdict()
+        self.json_arguments = {}
+        self.ga_event_object_ret = {
+            'category': '{}_api'.format(self.web_settings.API_VERSION)
+            # 'action': 'query_get', 'gene_post', 'fetch_all', etc.
+            # 'label': 'total', 'qsize', etc.
+            # 'value': 0, corresponds to label ...
+        }
 
     def prepare(self):
         '''
@@ -123,15 +132,6 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
                     options[keyword] = value
 
         logging.debug("Processed kwargs:\n%s", pformat(self.kwargs, width=150))
-
-    def initialize(self):
-
-        self.ga_event_object_ret = {
-            'category': '{}_api'.format(self.web_settings.API_VERSION)
-            # 'action': 'query_get', 'gene_post', 'fetch_all', etc.
-            # 'label': 'total', 'qsize', etc.
-            # 'value': 0, corresponds to label ...
-        }
 
     def write(self, chunk):
         """
