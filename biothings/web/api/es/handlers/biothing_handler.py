@@ -15,12 +15,6 @@
             ...
         }
 
-    GET /v3/gene/0
-        {
-            "success": false,
-            "error": "ID '0' not found"
-        }
-
     POST /v3/gene
     {
         "ids": ["1017"]
@@ -35,22 +29,10 @@
             }
         ]
 
-    POST /v3/gene
-    {
-        "ids": ["0"]
-    }
-    >>> [
-            {
-                "query": "0",
-                "notfound": true
-            }
-        ]
-
 """
-import re
 
 from biothings.web.api.es.handlers.base_handler import ESRequestHandler
-from biothings.web.api.handler import EndRequest, BadRequest
+from biothings.web.api.handler import EndRequest
 
 class BiothingHandler(ESRequestHandler):
     """
@@ -85,10 +67,16 @@ class BiothingHandler(ESRequestHandler):
         return options
 
     def pre_finish_hook(self, options, res):
-        '''
+        """
         Return single result for GET.
         Also does not return empty results.
-        '''
+
+        GET /v3/gene/0
+        {
+            "success": false,
+            "error": "ID '0' not found"
+        }
+        """
         if isinstance(res, dict):
             if not res.get('hits'):
                 template = self.web_settings.ID_NOT_FOUND_TEMPLATE

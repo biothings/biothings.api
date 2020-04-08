@@ -144,6 +144,18 @@ class ESRequestHandler(BaseESRequestHandler):
         Override this in subclasses.
         By default, return query response, if requested.
         Might want to persist this behavior by calling super().
+
+        POST /v3/gene
+        {
+            "ids": ["0"]
+        }
+        >>> [
+                {
+                    "query": "0",
+                    "notfound": true
+                }
+            ]
+
         '''
         if options.control.raw:
             raise Finish(res)
