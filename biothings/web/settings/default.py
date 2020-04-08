@@ -1,9 +1,9 @@
+"""
+    Biothings Web Settings Default
+"""
+
 import re
 
-from biothings.web.api.es.handlers import *
-from biothings.web.api.es.query import ESQuery
-from biothings.web.api.es.query_builder import ESQueryBuilder
-from biothings.web.api.es.transform import ESResultTransformer
 from biothings.web.templates import HTML_OUT_TEMPLATE
 
 from .templates import KWARG_DESCRIPTIONS
@@ -44,17 +44,17 @@ API_VERSION = 'v1'
 
 # project URL routing
 APP_LIST = [
-    (r"/{pre}/status", StatusHandler),
-    (r"/{pre}/metadata/?", MetadataSourceHandler),
-    (r"/{pre}/metadata/fields/?", MetadataFieldHandler),
-    (r"/{pre}/{ver}/query", QueryHandler),
-    (r"/{pre}/{ver}/{typ}/query", QueryHandler),
-    (r"/{pre}/{ver}/{typ}/?", BiothingHandler),
-    (r"/{pre}/{ver}/{typ}/([^\/]+)/?", BiothingHandler),
-    (r"/{pre}/{ver}/metadata/?", MetadataSourceHandler),
-    (r"/{pre}/{ver}/metadata/fields/?", MetadataFieldHandler),
-    (r"/{pre}/{ver}/{typ}/metadata/?", MetadataSourceHandler),
-    (r"/{pre}/{ver}/{typ}/metadata/fields/?", MetadataFieldHandler),
+    (r"/{pre}/status", 'biothings.web.api.es.handlers.StatusHandler'),
+    (r"/{pre}/metadata/?", 'biothings.web.api.es.handlers.MetadataSourceHandler'),
+    (r"/{pre}/metadata/fields/?", 'biothings.web.api.es.handlers.MetadataFieldHandler'),
+    (r"/{pre}/{ver}/query", 'biothings.web.api.es.handlers.QueryHandler'),
+    (r"/{pre}/{ver}/{typ}/query", 'biothings.web.api.es.handlers.QueryHandler'),
+    (r"/{pre}/{ver}/{typ}/?", 'biothings.web.api.es.handlers.BiothingHandler'),
+    (r"/{pre}/{ver}/{typ}/([^\/]+)/?", 'biothings.web.api.es.handlers.BiothingHandler'),
+    (r"/{pre}/{ver}/metadata/?", 'biothings.web.api.es.handlers.MetadataSourceHandler'),
+    (r"/{pre}/{ver}/metadata/fields/?", 'biothings.web.api.es.handlers.MetadataFieldHandler'),
+    (r"/{pre}/{ver}/{typ}/metadata/?", 'biothings.web.api.es.handlers.MetadataSourceHandler'),
+    (r"/{pre}/{ver}/{typ}/metadata/fields/?", 'biothings.web.api.es.handlers.MetadataFieldHandler'),
 ]
 
 # string used in headers to support CORS
@@ -180,7 +180,7 @@ METADATA_GET_FIELDS_KWARGS = {
 # *****************************************************************************
 # Elasticsearch Query Builder
 # *****************************************************************************
-ES_QUERY_BUILDER = ESQueryBuilder
+ES_QUERY_BUILDER = 'biothings.web.api.es.pipelines.ESQueryBuilder'
 # For the userquery folder for this app
 USERQUERY_DIR = ''
 # Allow the __any__ random doc retrieval
@@ -188,16 +188,15 @@ ALLOW_RANDOM_QUERY = False
 # Allow facets to be nested with ( )
 ALLOW_NESTED_AGGS = False
 
-
 # *****************************************************************************
 # Elasticsearch Query Execution
 # *****************************************************************************
-ES_QUERY = ESQuery
+ES_QUERY_BACKEND = 'biothings.web.api.es.pipelines.ESQueryBackend'
 
 # *****************************************************************************
 # Elasticsearch Result Transform
 # *****************************************************************************
-ES_RESULT_TRANSFORMER = ESResultTransformer
+ES_RESULT_TRANSFORM = 'biothings.web.api.es.pipelines.ESResultTransform'
 
 OUTPUT_KEY_ALIASES = {}
 #OUTPUT_KEY_ALIASES = {'cadd':'schmadd', 'cadd/gene/ccds_id': 'cces_id'}
