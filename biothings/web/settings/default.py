@@ -126,17 +126,17 @@ COMMON_TRANSFORM_KWARGS = {
 # For annotation GET endpoint
 ANNOTATION_GET_CONTROL_KWARGS = dict(COMMON_CONTROL_KWARGS)
 ANNOTATION_GET_ESQB_KWARGS = {
-    'q': {'default': '', 'type': str, 'path': 0}}
-ANNOTATION_GET_ES_KWARGS = {
+    'id': {'default': '', 'type': str, 'path': 0},
     '_source': {'default': None, 'type': list, 'max': 1000, 'alias': ['fields', 'filter']}}
+ANNOTATION_GET_ES_KWARGS = {}
 ANNOTATION_GET_TRANSFORM_KWARGS = dict(COMMON_TRANSFORM_KWARGS)
 
 # For annotation POST endpoint
 ANNOTATION_POST_CONTROL_KWARGS = dict(COMMON_CONTROL_KWARGS)
 ANNOTATION_POST_ESQB_KWARGS = {
-    'q': {'default': None, 'type': list, 'max': 1000, 'required': True, 'alias': 'ids'}}
-ANNOTATION_POST_ES_KWARGS = {
+    'ids': {'default': None, 'type': list, 'max': 1000, 'required': True},
     '_source': {'default': None, 'type': list, 'max': 1000, 'alias': ['fields', 'filter']}}
+ANNOTATION_POST_ES_KWARGS = {}
 ANNOTATION_POST_TRANSFORM_KWARGS = dict(COMMON_TRANSFORM_KWARGS)
 
 # For query GET endpoint
@@ -146,25 +146,25 @@ QUERY_GET_ESQB_KWARGS = {
           'translations': []},  # (re.compile(r'chr:', re.I), r'chrom:')
     'aggs': {'default': None, 'type': list, 'max': 1000, 'alias': 'facets'},
     'facet_size': {'default': 10, 'type': int, 'max': 1000},
-    'userquery': {'default': None, 'type': str, 'alias': ['userfilter']}}
-QUERY_GET_ES_KWARGS = {
-    'fetch_all': {'default': None, 'type': bool},
-    'scroll_id': {'default': None, 'type': str},
     '_source': {'default': None, 'type': list, 'max': 1000, 'alias': ['fields', 'field', 'filter']},
     'from': {'default': None, 'type': int, 'max': 10000, 'alias': 'skip'},
     'size': {'default': None, 'type': int, 'max': 1000, 'alias': 'limit'},
     'explain': {'default': None, 'type': bool},
-    'sort': {'default': None, 'type': list, 'max': 1000}}
+    'sort': {'default': None, 'type': list, 'max': 1000},
+    'userquery': {'default': None, 'type': str, 'alias': ['userfilter']}}
+QUERY_GET_ES_KWARGS = {
+    'fetch_all': {'default': None, 'type': bool},
+    'scroll_id': {'default': None, 'type': str}}
 QUERY_GET_TRANSFORM_KWARGS = dict(COMMON_TRANSFORM_KWARGS)
 
 # For query POST endpoint
 QUERY_POST_CONTROL_KWARGS = dict(COMMON_CONTROL_KWARGS)
-QUERY_POST_ES_KWARGS = {
-    '_source': {'default': None, 'type': list, 'max': 1000, 'alias': ['fields', 'filter']},
-    'size': {'default': None, 'type': int}}
 QUERY_POST_ESQB_KWARGS = {
     'q': {'default': None, 'type': list, 'required': True},
-    'scopes': {'default': ['_id'], 'type': list, 'max': 1000, 'translations': []}}
+    'scopes': {'default': ['_id'], 'type': list, 'max': 1000, 'translations': []},
+    '_source': {'default': None, 'type': list, 'max': 1000, 'alias': ['fields', 'filter']},
+    'size': {'default': None, 'type': int}}
+QUERY_POST_ES_KWARGS = {}
 QUERY_POST_TRANSFORM_KWARGS = dict(COMMON_TRANSFORM_KWARGS)
 
 # For metadata GET endpoint
@@ -187,11 +187,7 @@ USERQUERY_DIR = ''
 ALLOW_RANDOM_QUERY = False
 # Allow facets to be nested with ( )
 ALLOW_NESTED_AGGS = False
-# TODO
-DEFAULT_SCOPES = ['_id']
-# TODO: Need to describe
-#ANNOTATION_ID_REGEX_LIST = [(re.compile(r'rs[0-9]+', re.I), 'dbsnp.rsid')]
-ANNOTATION_ID_REGEX_LIST = []
+
 
 # *****************************************************************************
 # Elasticsearch Query Execution
@@ -248,6 +244,11 @@ STANDALONE_TRACKING_BATCH_SIZE = 1000
 # *****************************************************************************
 # Endpoints Specifics & Others
 # *****************************************************************************
+### Annotation ###
+
+ANNOTATION_DEFAULT_SCOPES = ['_id']
+#ANNOTATION_ID_REGEX_LIST = [(re.compile(r'rs[0-9]+', re.I), 'dbsnp.rsid')]
+ANNOTATION_ID_REGEX_LIST = []
 
 ### Status ###
 

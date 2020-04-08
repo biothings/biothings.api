@@ -70,40 +70,6 @@ class ESRequestHandler(BaseESRequestHandler):
     kwarg_types = ('control', 'esqb', 'es', 'transform')
     kwarg_methods = ('get', 'post')
 
-    def get_cleaned_options(self, options):
-        """
-        Clean up inherent logic between keyword arguments.
-        For example, enforce mutual exclusion relationships.
-        """
-        options.es.biothing_type = self.biothing_type
-        options.transform.biothing_type = self.biothing_type
-
-        # facet_size only relevent for aggs
-        if not options.esqb.aggs:
-            options.esqb.pop('facet_size', None)
-
-        # no sorting when scrolling
-        if options.es.fetch_all:
-            options.es.pop('sort', None)
-            options.es.pop('size', None)
-
-        # fields=all should return all fields
-        if options.es._source is not None:
-            if not options.es._source:
-                options.es.pop('_source')
-            elif 'all' in options.es._source:
-                options.es._source = True
-
-        # inject original query terms
-        if self.request.method == 'POST':
-            queries = options.esqb.q
-            options.transform.templates = (dict(query=q) for q in queries)
-            options.transform.template_miss = dict(notfound=True)
-            options.transform.template_hit = dict()
-
-        logging.debug("Cleaned options:\n%s", pformat(options, width=150))
-        return options
-
     async def get(self, *args, **kwargs):
         return await self.execute_pipeline(*args, **kwargs)
 
@@ -112,8 +78,7 @@ class ESRequestHandler(BaseESRequestHandler):
 
     async def execute_pipeline(self, *args, **kwargs):
 
-        options = self.get_cleaned_options(self.kwargs)
-        options = self.pre_query_builder_hook(options)
+        options = self.pre_query_builder_hook(self.kwargs)
 
         ###################################################
         #                   Build query
@@ -154,6 +119,14 @@ class ESRequestHandler(BaseESRequestHandler):
         '''
         if options.control.rawquery:
             raise Finish(query.to_dict())
+
+        options.es.biothing_type = self.biothing_type
+
+        # by default scroll ignores sort and size
+        if options.es.fetch_all:
+            options.es.pop('sort', None)
+            options.es.pop('size', None)
+
         return query
 
     def pre_transform_hook(self, options, res):
@@ -164,6 +137,15 @@ class ESRequestHandler(BaseESRequestHandler):
         '''
         if options.control.raw:
             raise Finish(res)
+
+        options.transform.biothing_type = self.biothing_type
+
+        if self.request.method == 'POST':
+            queries = options.esqb.q
+            options.transform.templates = (dict(query=q) for q in queries)
+            options.transform.template_miss = dict(notfound=True)
+            options.transform.template_hit = dict()
+
         return res
 
     def pre_finish_hook(self, options, res):
