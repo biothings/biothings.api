@@ -8,7 +8,7 @@ from elasticsearch import NotFoundError, RequestError, TransportError
 from biothings.web.api.handler import BadRequest, EndRequest
 
 
-class ESQuery(object):
+class ESQueryBackend(object):
     '''
     Execute an Elasticsearch query
     '''
