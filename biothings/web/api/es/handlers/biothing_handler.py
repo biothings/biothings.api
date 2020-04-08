@@ -47,9 +47,10 @@
         ]
 
 """
+import re
 
 from biothings.web.api.es.handlers.base_handler import ESRequestHandler
-from biothings.web.api.handler import EndRequest
+from biothings.web.api.handler import EndRequest, BadRequest
 
 class BiothingHandler(ESRequestHandler):
     """
@@ -69,20 +70,19 @@ class BiothingHandler(ESRequestHandler):
 
     def pre_query_builder_hook(self, options):
         '''
-        Use default scopes.
+        Annotation query has default scopes.
+        Annotation query include _version field.
         Set GA tracking object.
         '''
-        options.esqb.scopes = []
         if self.request.method == 'POST':
-            self.ga_event_object({'qsize': len(options.esqb.q)})
+            self.ga_event_object({'qsize': len(options.esqb.ids)})
+            options.esqb.q = options.esqb.ids
+        elif self.request.method == 'GET':
+            options.esqb.q = options.esqb.id
+        options.esqb.regexs = self.web_settings.ANNOTATION_ID_REGEX_LIST
+        options.esqb.scopes = self.web_settings.ANNOTATION_DEFAULT_SCOPES
+        options.esqb.version = True
         return options
-
-    def pre_query_hook(self, options, query):
-        '''
-        Request _version field.
-        '''
-        options.es.version = True
-        return super().pre_query_hook(options, query)
 
     def pre_finish_hook(self, options, res):
         '''

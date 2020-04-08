@@ -18,12 +18,8 @@ class ESQueryBuilder(object):
         self.user_query = web_settings.userquery
         self.allow_random_query = web_settings.ALLOW_RANDOM_QUERY
 
-        # for aggs queries
+        # for aggregations
         self.allow_nested_query = web_settings.ALLOW_NESTED_AGGS
-
-        # for term queries
-        self.regex_list = web_settings.ANNOTATION_ID_REGEX_LIST
-        self.default_scopes = web_settings.DEFAULT_SCOPES
 
     def build(self, q, options):
         '''
@@ -32,19 +28,19 @@ class ESQueryBuilder(object):
         if isinstance(q, list):
             msearch = AsyncMultiSearch()
             for _q in q:
-                search = self.build(_q, options)
+                search = self.build(str(_q), options)
                 msearch = msearch.add(search)
             return msearch
 
         if isinstance(q, str):
-            if options.scopes is not None:
-                return self.build_terms_query(
-                    q, options.pop('scopes'), options)
-            search = self.build_string_query(q, options)
-            search = self.build_aggs_query(search, options)
+            if isinstance(options.scopes, list):
+                search = self.build_terms_query(q, options)
+            else:
+                search = self.build_string_query(q, options)
+            search = self._apply_extras(search, options)
             return search
 
-        raise TypeError(q)
+        raise TypeError(type(q))
 
     def default_string_query(self, q, options):
         '''
@@ -74,7 +70,6 @@ class ESQueryBuilder(object):
     def build_string_query(self, q, options):
 
         search = AsyncSearch()
-
         userquery = options.userquery or ''
 
         if self.user_query.has_query(userquery):
@@ -96,19 +91,19 @@ class ESQueryBuilder(object):
 
         return search
 
-    def build_terms_query(self, q, scopes, options):
+    def build_terms_query(self, q, options):
 
-        for regex, scope in self.regex_list:
+        scopes = options.scopes or []
+        for regex, scope in options.regexs or []:
             match = re.match(regex, q)
             if match:
                 q = match.groupdict().get('search_term') or q
-                scopes = [scope] if isinstance(scope, str) else scope
+                scopes = scope if isinstance(scope, list) else [scope]
                 break
 
-        scopes = scopes or self.default_scopes
         return self.default_terms_query(q, scopes, options)
 
-    def build_aggs_query(self, search, options):
+    def _apply_extras(self, search, options):
 
         facet_size = options.facet_size or 10
 
@@ -122,5 +117,17 @@ class ESQueryBuilder(object):
                     _term, term = term, ''
                 bucket = bucket.bucket(
                     _term, 'terms', field=_term, size=facet_size)
+
+        if isinstance(options.sort, list):
+            # accept '-' prefixed field names
+            search = search.sort(*options.sort)
+
+        if isinstance(options._source, list):
+            if 'all' not in options._source:
+                search = search.source(options._source)
+
+        for key, value in options.items():
+            if key in ('from', 'size', 'explain', 'version'):
+                search = search.extra(**{key: value})
 
         return search
