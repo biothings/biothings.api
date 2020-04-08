@@ -59,6 +59,16 @@ class BaseESRequestHandler(BaseAPIHandler):
         if 'exc_info' in kwargs:
             exception = kwargs['exc_info'][1]
             if isinstance(exception, BadRequest) and exception.kwargs:
+                if '_es_error' in exception.kwargs:
+                    _es_error = exception.kwargs.pop('_es_error')
+                    message['error'] = _es_error.error
+                    try:
+                        root_cause = _es_error.info['error']['root_cause'][0]['reason']
+                        root_cause = root_cause.replace('\"', '\'').split('\n')
+                        for index, cause in enumerate(root_cause):
+                            message['root_cuase_line_'+f'{index:02}'] = cause
+                    except Exception:
+                        pass
                 message.update(exception.kwargs)
 
         self.finish(message)
@@ -84,21 +94,21 @@ class ESRequestHandler(BaseESRequestHandler):
         #                   Build query
         ###################################################
 
-        _query = self.query_builder.build(options.esqb.q, options.esqb)
-        _query = self.pre_query_hook(options, _query)
+        self._query = self.query_builder.build(options.esqb.q, options.esqb)
+        self._query = self.pre_query_hook(options, self._query)
 
         ###################################################
         #                   Execute query
         ###################################################
 
-        _res = await self.query_backend.execute(_query, options.es)
-        _res = self.pre_transform_hook(options, _res)
+        self._res = await self.query_backend.execute(self._query, options.es)
+        self._res = self.pre_transform_hook(options, self._res)
 
         ###################################################
         #                 Transform result
         ###################################################
 
-        res = self.query_transform.transform(_res, options.transform)
+        res = self.query_transform.transform(self._res, options.transform)
         res = self.pre_finish_hook(options, res)
 
         self.finish(res)
@@ -124,8 +134,8 @@ class ESRequestHandler(BaseESRequestHandler):
 
         # by default scroll ignores sort and size
         if options.es.fetch_all:
-            options.es.pop('sort', None)
-            options.es.pop('size', None)
+            options.esqb.pop('sort', None)
+            options.esqb.pop('size', None)
 
         return query
 

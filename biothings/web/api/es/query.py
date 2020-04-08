@@ -53,12 +53,11 @@ class ESQuery(object):
                 query = query.extra(size=self.scroll_size)
             try:
                 res = await query.using(self.client).execute()
-            except RequestError as err:  # TODO
-                raise BadRequest(root_cause=err.info['error']['root_cause'][0]['reason'])
+            except RequestError as err:
+                raise BadRequest(_es_error=err)
             else:
                 if isinstance(res, list):
                     return [res_.to_dict() for res_ in res]
                 return res.to_dict()
 
         return asyncio.sleep(0, {})
-
