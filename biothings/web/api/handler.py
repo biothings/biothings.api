@@ -125,7 +125,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
 
                 parser = OptionArgsParser(keyword, setting)
                 parser.list_size_cap = self.web_settings.LIST_SIZE_CAP
-                parser.string_as_json = args.pop('jsoninput', False)
+                parser.string_as_json = args.get('jsoninput')
                 value = parser.parse(args, self.path_args, self.path_kwargs)
 
                 if value is not None:

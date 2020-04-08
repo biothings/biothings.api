@@ -628,6 +628,33 @@ class TestQueryKeywords(BiothingsTestCase):
         res = self.request('/v1/query?scroll_id=<invalid>', expect=400).json()
         assert res['success'] is False
 
+    def test_32_jsoninput(self):
+        """ POST /v1/query
+        q:[1017, "1018"]
+        scopes:entrezgene
+        jsoninput:true
+        [
+            {
+                "query": 1017,
+                "_id": "1017",
+                "_score": 24.204842,
+                ...
+            },
+            {
+                "query": "1018",
+                "notfound": True
+            }
+        ]
+        """
+        data = {'q': '[1017, "1018"]',
+                'scopes': 'entrezgene',
+                'jsoninput': 'true'}
+        res = self.request('query', method='POST', data=data).json()
+        assert len(res) == 2
+        assert res[0]['_id'] == '1017'
+        assert res[1]['query'] == '1018'
+        assert res[1]['notfound']
+
 
 class TestQueryString(BiothingsTestCase):
 
