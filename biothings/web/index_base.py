@@ -1,58 +1,66 @@
 """
-    A simple Biothings API implementation that supports command line arguments.
+    A simple Biothings API implementation.
 
-    Command line arguments are processed by tornado.options
-    The following arguments are defined:
+    * Process command line arguments to setup the API.
+    * Add additional applicaion settings like handlers.
 
     * ``port``: the port to start the API on, **default** 8000
-    * ``address``: the address to start the API on, **default** 127.0.0.1
     * ``debug``: start the API in debug mode, **default** False
+    * ``address``: the address to start the API on, **default** 0.0.0.0
+    * ``profile``: choose an alternative setting, **default** config
     * ``dir``: path to app directory. **default**: current working directory
 
 """
+import logging
 import os
 import sys
 
-from tornado.options import define, options, Error
+from tornado.options import Error, define, options
 
 from biothings.web import BiothingsAPI
 
 __USE_WSGI__ = False
 
-define("port", default=8000, type=int, help="run on the given port")
-define("address", default="127.0.0.1", help="host address to listen to")
-define("debug", default=False, type=bool, help="debug settings like detailed logging")
-define("dir", default=os.getcwd(), type=str, help="path to app directory and config")
+define("port", default=8000, help="run on the given port")
+define("debug", default=False, help="debug settings like logging preferences")
+define("address", default=None, help="host address to listen to, default to all interfaces")
+define("profile", default='config', help="specify a config module name to import")
+define("dir", default=os.getcwd(), help="path to app directory that includes config.py")
 
 try:
     options.parse_command_line()
+    _path = os.path.abspath(options.dir)
+    if _path not in sys.path:
+        sys.path.append(_path)
+    del _path
 except Error:
-    pass
+    pass  # TODO
 else:
-    APP_PATH = os.path.abspath(options.dir)
-    if APP_PATH not in sys.path:
-        sys.path.append(APP_PATH)
+    pass
 
 
-def main(biothings_config='config', app_settings=None, use_curl=False):
+def main(app_handlers=None, app_settings=None, use_curl=False):
     """ Start a Biothings API Server
 
-        :param biothings_config: the biothings web config module to use
+        :param app_handlers: additional web handlers to add to the app
         :param app_settings: `Tornado application settings dictionary
         <http://www.tornadoweb.org/en/stable/web.html#tornado.web.Application.settings>`_
         :param use_curl: Overide the default simple_httpclient with curl_httpclient
         <https://www.tornadoweb.org/en/stable/httpclient.html>
     """
+    app_handlers = app_handlers or []
     app_settings = app_settings or {}
-    api = BiothingsAPI(biothings_config)
+    api = BiothingsAPI(options.profile)
 
     if app_settings:
         api.settings.update(app_settings)
+    if app_handlers:
+        api.handlers = app_handlers
     if use_curl:
         api.use_curl()
 
     api.host = options.address
-    api.debug(options.debug)
+    api.debug = options.debug
     api.start(options.port)
 
 

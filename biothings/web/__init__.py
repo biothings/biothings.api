@@ -68,19 +68,25 @@ class BiothingsAPI():
 
     There are three parts to it:
     * A biothings config module that defines the API handlers.
-    * Additional Tornado settings like autoreload and logging.
+    * Additional Tornado handlers and application settings.
     * An asyncio event loop to run the tornado application.
 
     The API can be started with:
     * An external event loop by calling get_server()
     * A default tornado event loop by calling start()
 
+    Unless started externally, debug mode:
+    * Sets proper logging levels for root logger and es,
+    * Enables debug mode on tornado except for autoreload,
+    * Disables integrated tracking and error monitoring.
     """
 
     def __init__(self, config_module=None):
         self.config = BiothingESWebSettings(config_module)
+        self.handlers = []
         self.settings = dict(autoreload=False)
-        self.host = '127.0.0.1'
+        self.debug = True
+        self.host = None
 
     @staticmethod
     def use_curl():
@@ -99,45 +105,41 @@ class BiothingsAPI():
         """
         self.settings.update(settings)
 
-    def debug(self, debug=True):
+    def configure_debug_mode(self):
         """
-        Configure API to run in debug mode.
-        * listen on all interfaces.
-        * log debug level message.
-        * enable autoreload etc.
+        Override to define additional debug settings.
+        For example, add some handlers in debug mode.
         """
         # About debug mode in tornado:
         # https://www.tornadoweb.org/en/stable/guide/running.html \
         # #debug-mode-and-automatic-reloading
-        if debug:
-            self.host = '0.0.0.0'
-            self.settings.update({"debug": True})
+        if self.debug:
             logging.getLogger().setLevel(logging.DEBUG)
         else:
-            self.host = '127.0.0.1'
-            self.settings.update({"debug": False})
-            logging.getLogger().setLevel(logging.WARNING)
+            logging.getLogger().setLevel(logging.INFO)
 
     def get_server(self):
         """
         Run API in an external event loop.
         """
         settings = dict(self.settings)
-        settings.update(self.config.generate_app_settings())
-        handlers = self.config.generate_app_handlers()
-        app = tornado.web.Application(handlers, **settings)
-        server = tornado.httpserver.HTTPServer(app, xheaders=True)
+        settings.update(self.config.generate_app_settings(self.debug))
+        handlers = self.config.generate_app_handlers(self.handlers)
+        webapp = tornado.web.Application(handlers, **settings)
+        server = tornado.httpserver.HTTPServer(webapp, xheaders=True)
         return server
 
     def start(self, port=8000):
         """
         Run API in the default event loop.
         """
+        self.configure_debug_mode()
+
         http_server = self.get_server()
         http_server.listen(port, self.host)
 
         logging.info('Server is running on "%s:%s"...',
-                     self.host, port)
+                     self.host or '0.0.0.0', port)
 
         loop = tornado.ioloop.IOLoop.instance()
         loop.start()
