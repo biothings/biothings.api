@@ -237,7 +237,7 @@ class BiothingESWebSettings(BiothingWebSettings):
 
         # query pipelines
         self.query_builder = self.ES_QUERY_BUILDER(self)
-        self.query_backend = partial(self.ES_QUERY, self)
+        self.query_backend = self.ES_QUERY(self)
         self.query_transform = self.ES_RESULT_TRANSFORMER(self)
 
         # initialize payload for standalone tracking batch
