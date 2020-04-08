@@ -1,7 +1,7 @@
 
 
 from biothings.web.api.es.handlers.base_handler import ESRequestHandler
-from tornado.web import Finish
+from biothings.web.api.handler import BadRequest
 
 
 class QueryHandler(ESRequestHandler):
@@ -17,8 +17,9 @@ class QueryHandler(ESRequestHandler):
         if self.request.method == 'GET':
             args = self.request.arguments
             if 'q' not in args and 'scroll_id' not in args:
-                self.send_error(400, missing={'or': ['q', 'scroll_id']})
-                raise Finish()
+                raise BadRequest(
+                    missing={'or': ['q', 'scroll_id']}
+                )
         super().prepare()
 
     def pre_query_builder_hook(self, options):
