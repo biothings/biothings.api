@@ -22,7 +22,7 @@ from elasticsearch_dsl import A, MultiSearch, Q, Search
 from elasticsearch_dsl.connections import Connections
 
 import biothings.web.settings.default
-from biothings.web.api.handler import BaseHandler as BiothingsBaseHandler
+from biothings.web.api.handler import BaseAPIHandler
 
 from .userquery import ESUserQuery
 
@@ -129,7 +129,7 @@ class BiothingWebSettings():
         '''
         handlers = []
         for rule in self.APP_LIST:
-            if issubclass(rule[1], BiothingsBaseHandler):
+            if issubclass(rule[1], BaseAPIHandler):
                 pattern = rule[0]
                 handler = rule[1]
                 setting = rule[2] if len(rule) == 3 else {}

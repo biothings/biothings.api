@@ -5,10 +5,10 @@
 from elasticsearch.exceptions import ElasticsearchException
 from tornado.web import HTTPError
 
-from biothings.web.api.es.handlers.base_handler import BaseESRequestHandler
+from biothings.web.api.handler import BaseAPIHandler
 
 
-class StatusHandler(BaseESRequestHandler):
+class StatusHandler(BaseAPIHandler):
     '''
     Handles requests to check the status of the server.
     '''
