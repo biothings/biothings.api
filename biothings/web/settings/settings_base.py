@@ -128,12 +128,13 @@ class BiothingWebSettings():
                 setting = rule[2] if len(rule) == 3 else {}
                 if '{typ}' in pattern:
                     for biothing_type in self.BIOTHING_TYPES:
-                        pattern = pattern.format(
+                        _pattern = pattern.format(
                             pre=self.API_PREFIX,
                             ver=self.API_VERSION,
                             typ=biothing_type).replace('//', '/')
+                        setting = dict(setting)
                         setting['biothing_type'] = biothing_type
-                    handlers.append((pattern, handler, setting))
+                        handlers.append((_pattern, handler, setting))
                 else:
                     pattern = pattern.format(
                         pre=self.API_PREFIX,

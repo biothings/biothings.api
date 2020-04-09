@@ -18,7 +18,7 @@ ES_CLIENT_TIMEOUT = 120
 # elasticsearch index name
 ES_INDEX = '_all'
 # elasticsearch document type for es<7, also biothing type
-ES_DOC_TYPE = 'doc'
+ES_DOC_TYPE = 'all'
 # additional index support
 ES_INDICES = {
     # "biothing_type_1": "index1",
@@ -47,14 +47,14 @@ APP_LIST = [
     (r"/{pre}/status", 'biothings.web.api.es.handlers.StatusHandler'),
     (r"/{pre}/metadata/?", 'biothings.web.api.es.handlers.MetadataSourceHandler'),
     (r"/{pre}/metadata/fields/?", 'biothings.web.api.es.handlers.MetadataFieldHandler'),
-    (r"/{pre}/{ver}/query", 'biothings.web.api.es.handlers.QueryHandler'),
-    (r"/{pre}/{ver}/{typ}/query", 'biothings.web.api.es.handlers.QueryHandler'),
-    (r"/{pre}/{ver}/{typ}/?", 'biothings.web.api.es.handlers.BiothingHandler'),
-    (r"/{pre}/{ver}/{typ}/([^\/]+)/?", 'biothings.web.api.es.handlers.BiothingHandler'),
-    (r"/{pre}/{ver}/metadata/?", 'biothings.web.api.es.handlers.MetadataSourceHandler'),
-    (r"/{pre}/{ver}/metadata/fields/?", 'biothings.web.api.es.handlers.MetadataFieldHandler'),
-    (r"/{pre}/{ver}/{typ}/metadata/?", 'biothings.web.api.es.handlers.MetadataSourceHandler'),
     (r"/{pre}/{ver}/{typ}/metadata/fields/?", 'biothings.web.api.es.handlers.MetadataFieldHandler'),
+    (r"/{pre}/{ver}/{typ}/metadata/?", 'biothings.web.api.es.handlers.MetadataSourceHandler'),
+    (r"/{pre}/{ver}/{typ}/query", 'biothings.web.api.es.handlers.QueryHandler'),
+    (r"/{pre}/{ver}/{typ}/([^\/]+)/?", 'biothings.web.api.es.handlers.BiothingHandler'),
+    (r"/{pre}/{ver}/{typ}/?", 'biothings.web.api.es.handlers.BiothingHandler'),
+    (r"/{pre}/{ver}/metadata/fields/?", 'biothings.web.api.es.handlers.MetadataFieldHandler'),
+    (r"/{pre}/{ver}/metadata/?", 'biothings.web.api.es.handlers.MetadataSourceHandler'),
+    (r"/{pre}/{ver}/query", 'biothings.web.api.es.handlers.QueryHandler'),
 ]
 
 # string used in headers to support CORS
