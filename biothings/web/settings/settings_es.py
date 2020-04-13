@@ -1,4 +1,3 @@
-import inspect
 import json
 import os
 from collections import defaultdict
@@ -31,19 +30,6 @@ class BiothingESWebSettings(BiothingWebSettings):
     '''
 
     ES_VERSION = elasticsearch.__version__[0]
-
-    @staticmethod
-    def load_class(kls):
-        """
-        Ensure config is a module.
-        If config does not evaluate,
-        Return default if it's provided.
-        """
-        if inspect.isclass(kls):
-            return kls
-        elif isinstance(kls, str):
-            return locate(kls)
-        raise BiothingConfigError()
 
     def __init__(self, config=None, **kwargs):
         '''

@@ -1,12 +1,12 @@
 
 import importlib.util
+import inspect
 import logging
 import os
 import types
 from importlib import import_module
 from pprint import pformat
 from pydoc import locate
-
 
 import biothings.web.settings.default
 from biothings.web.api.handler import BaseAPIHandler
@@ -86,6 +86,19 @@ class BiothingWebSettings():
         else:  # not provided and no default
             raise AttributeError()
 
+    @staticmethod
+    def load_class(kls):
+        """
+        Ensure config is a module.
+        If config does not evaluate,
+        Return default if it's provided.
+        """
+        if inspect.isclass(kls):
+            return kls
+        if isinstance(kls, str):
+            return locate(kls)
+        raise BiothingConfigError()
+
     def generate_app_settings(self, debug=False):
         """
         Generates settings for tornado.web.Application. This result and the
@@ -122,7 +135,7 @@ class BiothingWebSettings():
         handlers = []
         addons = addons or []
         for rule in self.APP_LIST + addons:
-            handler = locate(rule[1])
+            handler = self.load_class(rule[1])
             if issubclass(handler, BaseAPIHandler):
                 pattern = rule[0]
                 setting = rule[2] if len(rule) == 3 else {}
