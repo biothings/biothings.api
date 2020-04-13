@@ -7,7 +7,7 @@
     * ``port``: the port to start the API on, **default** 8000
     * ``debug``: start the API in debug mode, **default** False
     * ``address``: the address to start the API on, **default** 0.0.0.0
-    * ``profile``: choose an alternative setting, **default** config
+    * ``conf``: choose an alternative setting, **default** config
     * ``dir``: path to app directory. **default**: current working directory
 
 """
@@ -24,7 +24,7 @@ __USE_WSGI__ = False
 define("port", default=8000, help="run on the given port")
 define("debug", default=False, help="debug settings like logging preferences")
 define("address", default=None, help="host address to listen to, default to all interfaces")
-define("profile", default='config', help="specify a config module name to import")
+define("conf", default='config', help="specify a config module name to import")
 define("dir", default=os.getcwd(), help="path to app directory that includes config.py")
 
 try:
@@ -50,7 +50,7 @@ def main(app_handlers=None, app_settings=None, use_curl=False):
     """
     app_handlers = app_handlers or []
     app_settings = app_settings or {}
-    api = BiothingsAPI(options.profile)
+    api = BiothingsAPI(options.conf)
 
     if app_settings:
         api.settings.update(app_settings)
