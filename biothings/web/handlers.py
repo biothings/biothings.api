@@ -5,8 +5,8 @@
     * Report errors to sentry when its API key is provided
 """
 
+from elasticsearch.exceptions import ElasticsearchException
 from tornado.web import RequestHandler
-
 
 try:
     from raven.contrib.tornado import SentryMixin
@@ -19,6 +19,16 @@ class BaseHandler(SentryMixin, RequestHandler):
         Parent class of all handlers, only direct descendant of `tornado.web.RequestHandler
         <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler>`_,
     """
+
+    @property
+    def web_settings(self):
+        try:
+            setting = self.settings['biothings']
+        except KeyError:
+            # need to pass it to tornado application settings
+            self.require_setting('biothings')
+        else:
+            return setting
 
     def get_sentry_client(self):
         """
@@ -43,3 +53,33 @@ class BaseHandler(SentryMixin, RequestHandler):
         Implement this method to handle streamed request data.
         """
         # this dummy implementation silences the pylint abstract-class error
+
+
+class StatusHandler(BaseHandler):
+    '''
+    Handles requests to check the status of the server.
+    Use set_status instead of raising exception so that
+    no error will be propogated to sentry monitoring.
+    '''
+    async def head(self):
+
+        try:
+            client = self.web_settings.async_es_client
+
+            if self.web_settings.STATUS_CHECK:
+                res = await client.get(
+                    **self.web_settings.STATUS_CHECK)
+            else:
+                res = await client.info()
+
+        except ElasticsearchException:
+            self.set_status(503)
+        else:
+            self.set_status(200)
+
+    async def get(self):
+
+        await self.head()
+
+        if self.get_status() == 200:
+            self.write('OK')

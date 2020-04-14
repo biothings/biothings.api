@@ -16,7 +16,7 @@ from biothings.utils.web.analytics import GAMixIn
 from biothings.utils.web.tracking import StandaloneTrackingMixin
 from biothings.web.api.helper import BadRequest, EndRequest
 from biothings.web.api.options import OptionArgsParser
-from biothings.web.handler import BaseHandler
+from biothings.web.handlers import BaseHandler
 
 try:
     import msgpack
@@ -83,16 +83,6 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
             # 'label': 'total', 'qsize', etc.
             # 'value': 0, corresponds to label ...
         }
-
-    @property
-    def web_settings(self):
-        try:
-            setting = self.settings['biothings']
-        except KeyError:
-            # need to pass it to tornado application settings
-            self.require_setting('biothings')
-        else:
-            return setting
 
     @property
     def kwarg_settings(self):

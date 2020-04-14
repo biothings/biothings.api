@@ -9,7 +9,7 @@ from pprint import pformat
 from pydoc import locate
 
 import biothings.web.settings.default
-from biothings.web.api.handler import BaseAPIHandler
+from biothings.web.handlers import BaseHandler
 
 try:
     from raven.contrib.tornado import AsyncSentryClient
@@ -136,7 +136,7 @@ class BiothingWebSettings():
         addons = addons or []
         for rule in self.APP_LIST + addons:
             handler = self.load_class(rule[1])
-            if issubclass(handler, BaseAPIHandler):
+            if issubclass(handler, BaseHandler):
                 pattern = rule[0]
                 setting = rule[2] if len(rule) == 3 else {}
                 if '{typ}' in pattern:
@@ -173,16 +173,3 @@ class BiothingWebSettings():
         assert isinstance(self.LIST_SIZE_CAP, int)
         assert isinstance(self.ACCESS_CONTROL_ALLOW_METHODS, str)
         assert isinstance(self.ACCESS_CONTROL_ALLOW_HEADERS, str)
-
-    #### COMPATIBILITY METHODS ####
-
-    def set_debug_level(self, debug=False):
-        pass
-
-    @property
-    def git_repo_path(self):
-        return self._git_repo_path
-
-    @property
-    def _app_git_repo(self):
-        return self._git_repo_path
