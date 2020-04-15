@@ -1,8 +1,8 @@
 '''
     Test Metadata Endpoint
 
-    GET /metadata
-    GET /metadata/fields
+    GET /v1/metadata
+    GET /v1/metadata/fields
 
 '''
 
@@ -13,7 +13,7 @@ from setup import setup_es  # pylint: disable=unused-import
 class TestMetadata(BiothingsTestCase):
 
     def test_00_meta(self):
-        """ GET /metadata
+        """ GET /v1/metadata
         {
             "biothing_type": "gene",
             "build_date": "2020-01-19T02:00:00.027534",
@@ -22,11 +22,11 @@ class TestMetadata(BiothingsTestCase):
             "stats": { ... }
         }
         """
-        res = self.request('/metadata').json()
+        res = self.request('/v1/metadata').json()
         assert res['biothing_type'] == 'gene'
 
     def test_01_meta_dev(self):
-        """ GET /metadata?dev
+        """ GET /v1/metadata?dev
         {
             "biothing_type": "gene",
             "build_date": "2020-01-19T02:00:00.027534",
@@ -45,11 +45,11 @@ class TestMetadata(BiothingsTestCase):
             ...
         }
         """
-        res = self.request('/metadata?dev').json()
+        res = self.request('/v1/metadata?dev').json()
         assert 'software' in res
 
     def test_10_field(self):
-        """ GET /metadata/fields
+        """ GET /v1/metadata/fields
         {
             ...
             "refseq": { ... }
@@ -60,24 +60,24 @@ class TestMetadata(BiothingsTestCase):
             ...
         }
         """
-        res = self.request('/metadata/fields').json()
+        res = self.request('/v1/metadata/fields').json()
         assert not res['refseq.genomic']['index']
 
     def test_11_field_search(self):
-        """ GET /metadata/fields?search=HGNC
+        """ GET /v1/metadata/fields?search=HGNC
         {
             "HGNC": { ... },
             "pantherdb.HGNC": { ... },
             "pantherdb.ortholog.HGNC": { ... }
         }
         """
-        res = self.request('/metadata/fields?search=HGNC').json()
+        res = self.request('/v1/metadata/fields?search=HGNC').json()
         assert res
         for key in res:
             assert 'HGNC' in key
 
     def test_12_field_prefix(self):
-        """ GET /metadata/fields?prefix=accession
+        """ GET /v1/metadata/fields?prefix=accession
         {
             "accession": { ... },
             "accession.genomic": { ... },
@@ -87,7 +87,7 @@ class TestMetadata(BiothingsTestCase):
             "accession_agg": { ... }
         }
         """
-        res = self.request('/metadata/fields?prefix=accession').json()
+        res = self.request('/v1/metadata/fields?prefix=accession').json()
         assert res
         for key in res:
             assert key.startswith('accession')
