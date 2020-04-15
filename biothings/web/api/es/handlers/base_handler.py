@@ -1,14 +1,8 @@
-import json
 import logging
-import re
-from collections import defaultdict
-from itertools import chain, product
-from pprint import pformat
 
-from tornado.web import Finish, HTTPError
+from tornado.web import Finish
 
-from biothings.utils.common import dotdict
-from biothings.web.api.handler import BaseAPIHandler, BadRequest
+from biothings.web.api.handler import BaseAPIHandler
 
 
 class BaseESRequestHandler(BaseAPIHandler):
@@ -44,34 +38,28 @@ class BaseESRequestHandler(BaseAPIHandler):
     def prepare(self):
 
         super().prepare()
-        self.out_format = self.kwargs.control.out_format or 'json'
+        try:
+            self.out_format = self.kwargs.control.out_format or 'json'
+        except KeyError:
+            pass
 
-    def write_error(self, status_code, **kwargs):
+    def parse_exception(self, exception):
 
-        reason = kwargs.pop('reason', self._reason)
-        assert '\n' not in reason
+        message = super().parse_exception(exception)
 
-        message = {
-            "code": status_code,
-            "success": False,
-            "error": reason
-        }
-        if 'exc_info' in kwargs:
-            exception = kwargs['exc_info'][1]
-            if isinstance(exception, BadRequest) and exception.kwargs:
-                if '_es_error' in exception.kwargs:
-                    _es_error = exception.kwargs.pop('_es_error')
-                    message['error'] = _es_error.error
-                    try:
-                        root_cause = _es_error.info['error']['root_cause'][0]['reason']
-                        root_cause = root_cause.replace('\"', '\'').split('\n')
-                        for index, cause in enumerate(root_cause):
-                            message['root_cuase_line_'+f'{index:02}'] = cause
-                    except Exception:
-                        pass
-                message.update(exception.kwargs)
+        if '_es_error' in message:
+            _es_error = message.pop('_es_error')
+            message['error'] = _es_error.error
+            try:
+                root_cause = _es_error.info['error']['root_cause'][0]['reason']
+                root_cause = root_cause.replace('\"', '\'').split('\n')
+                for index, cause in enumerate(root_cause):
+                    message['root_cuase_line_'+f'{index:02}'] = cause
+            except Exception:
+                pass
 
-        self.finish(message)
+        return message
+
 
 class ESRequestHandler(BaseESRequestHandler):
     '''

@@ -206,6 +206,31 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         self.ga_track(event=self.ga_event_object_ret)
         self.self_track(data=self.ga_event_object_ret)
 
+    def write_error(self, status_code, **kwargs):
+
+        reason = kwargs.pop('reason', self._reason)
+        assert '\n' not in reason
+
+        message = {
+            "code": status_code,
+            "success": False,
+            "error": reason
+        }
+        if 'exc_info' in kwargs:
+            exception = kwargs['exc_info'][1]
+            message.update(self.parse_exception(exception))
+
+        self.finish(message)
+
+    def parse_exception(self, exception):
+        """
+        Return customized error message basing on exception types.
+        """
+        if isinstance(exception, BadRequest):
+            if exception.kwargs:
+                return exception.kwargs
+        return {}
+
     def ga_event_object(self, data=None):
         ''' Create the data object for google analytics tracking. '''
         # Most of the structure of this object is formed during self.initialize
