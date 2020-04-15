@@ -7,6 +7,7 @@
     * ``port``: the port to start the API on, **default** 8000
     * ``debug``: start the API in debug mode, **default** False
     * ``address``: the address to start the API on, **default** 0.0.0.0
+    * ``autoreload``: restart the server when file changes, **default** False
     * ``conf``: choose an alternative setting, **default** config
     * ``dir``: path to app directory. **default**: current working directory
 
@@ -24,6 +25,7 @@ __USE_WSGI__ = False
 define("port", default=8000, help="run on the given port")
 define("debug", default=False, help="debug settings like logging preferences")
 define("address", default=None, help="host address to listen to, default to all interfaces")
+define("autoreload", default=False, help="auto reload the web server when file change detected")
 define("conf", default='config', help="specify a config module name to import")
 define("dir", default=os.getcwd(), help="path to app directory that includes config.py")
 
@@ -61,6 +63,7 @@ def main(app_handlers=None, app_settings=None, use_curl=False):
 
     api.host = options.address
     api.debug = options.debug
+    api.update(autoreload=options.autoreload)
     api.start(options.port)
 
 
