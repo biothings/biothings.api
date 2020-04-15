@@ -20,7 +20,7 @@
 5. Test the package built locally:
 
     ```
-    pip install dist/biothings-0.6.0-py3-none-any.whl
+    pip install dist/biothings-0.7.0-py3-none-any.whl
     ```
 
    And run any local test as needed (e.g. run nosetests on a local BioThings API instance).
@@ -29,14 +29,14 @@
 
    * Create a version branch (no need for every micro versions):
         ```
-        git checkout -b 0.6.x
-        git push -u origin "0.6.x"
+        git checkout -b 0.7.x
+        git push -u origin "0.7.x"
         ```
      Note: future version-specific bug-fixes (with increased micro versions) will go to this branch (possibly cherry-picked from `master` branch).
 
    * Create a tag for each released version (with "v" prefix):
         ```
-        git tag -a "v0.6.0" -m "tagging v0.6.0 for release"
+        git tag -a "v0.7.0" -m "tagging v0.7.0 for release"
         ```
    * If everything looks good, push to the remote:
         ```
@@ -51,10 +51,10 @@
 
     Note: for now, this step needs to be done by @newgene under ["newgene" PyPI account](https://pypi.org/user/newgene/).
 
-8. `master` branch is our dev branch. After a successful release, update major and/or minor version to the next release version, and update micro as "dev". Here is an example after "v0.6.0" release:
+8. `master` branch is our dev branch. After a successful release, update major and/or minor version to the next release version, and update micro as "dev". Here is an example after "v0.7.0" release:
 
     ```
     MAJOR_VER=0
-    MINOR_VER=6
+    MINOR_VER=8
     MICRO_VER="dev"
     ```
