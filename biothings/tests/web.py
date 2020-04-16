@@ -104,7 +104,7 @@ class BiothingsTestCase(AsyncHTTPTestCase):
                 data=data,
                 json=json).json()
 
-            assert bool(res.get('hits', [])) is hits
+            assert bool(res.get('hits', []))
             return res
 
         if method == 'POST':
