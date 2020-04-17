@@ -9,7 +9,7 @@ from pprint import pformat
 from pydoc import locate
 
 import biothings.web.settings.default
-from biothings.web.handlers import BaseHandler
+from biothings.web.api.es.handlers import BaseESRequestHandler
 
 try:
     from raven.contrib.tornado import AsyncSentryClient
@@ -132,14 +132,16 @@ class BiothingWebSettings():
         Generates the tornado.web.Application `(regex, handler_class, options) tuples
         <http://www.tornadoweb.org/en/stable/web.html#application-configuration>`_.
         '''
-        handlers = []
+        handlers = {}
         addons = addons or []
         for rule in self.APP_LIST + addons:
-            handler = self.load_class(rule[1])
-            if issubclass(handler, BaseHandler):
-                pattern = rule[0]
+            pattern = rule[0]
+            if '{' in pattern and '}' in pattern:
+                handler = self.load_class(rule[1])
                 setting = rule[2] if len(rule) == 3 else {}
                 if '{typ}' in pattern:
+                    if not issubclass(handler, BaseESRequestHandler):
+                        raise BiothingConfigError()
                     for biothing_type in self.BIOTHING_TYPES:
                         _pattern = pattern.format(
                             pre=self.API_PREFIX,
@@ -147,15 +149,16 @@ class BiothingWebSettings():
                             typ=biothing_type).replace('//', '/')
                         setting = dict(setting)
                         setting['biothing_type'] = biothing_type
-                        handlers.append((_pattern, handler, setting))
-                else:
+                        handlers[pattern] = (_pattern, handler, setting)
+                else:  # process prefix and version
                     pattern = pattern.format(
                         pre=self.API_PREFIX,
                         ver=self.API_VERSION).replace('//', '/')
-                    handlers.append((pattern, handler, setting))
+                    handlers[pattern] = (pattern, handler, setting)
             else:
-                handlers.append(rule)
+                handlers[pattern] = rule
 
+        handlers = list(handlers.values())
         logging.info('API Handlers:\n%s', pformat(handlers, width=200))
         return handlers
 
