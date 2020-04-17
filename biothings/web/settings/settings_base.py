@@ -149,7 +149,7 @@ class BiothingWebSettings():
                             typ=biothing_type).replace('//', '/')
                         setting = dict(setting)
                         setting['biothing_type'] = biothing_type
-                        handlers[pattern] = (_pattern, handler, setting)
+                        handlers[_pattern] = (_pattern, handler, setting)
                 else:  # process prefix and version
                     pattern = pattern.format(
                         pre=self.API_PREFIX,
