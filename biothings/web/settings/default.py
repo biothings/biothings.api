@@ -47,12 +47,12 @@ APP_LIST = [
     (r"/{pre}/status", 'biothings.web.handlers.StatusHandler'),
     (r"/{pre}/{ver}/{typ}/metadata/fields/?", 'biothings.web.api.es.handlers.MetadataFieldHandler'),
     (r"/{pre}/{ver}/{typ}/metadata/?", 'biothings.web.api.es.handlers.MetadataSourceHandler'),
-    (r"/{pre}/{ver}/{typ}/query", 'biothings.web.api.es.handlers.QueryHandler'),
+    (r"/{pre}/{ver}/{typ}/query/?", 'biothings.web.api.es.handlers.QueryHandler'),
     (r"/{pre}/{ver}/{typ}/([^\/]+)/?", 'biothings.web.api.es.handlers.BiothingHandler'),
     (r"/{pre}/{ver}/{typ}/?", 'biothings.web.api.es.handlers.BiothingHandler'),
     (r"/{pre}/{ver}/metadata/fields/?", 'biothings.web.api.es.handlers.MetadataFieldHandler'),
     (r"/{pre}/{ver}/metadata/?", 'biothings.web.api.es.handlers.MetadataSourceHandler'),
-    (r"/{pre}/{ver}/query", 'biothings.web.api.es.handlers.QueryHandler'),
+    (r"/{pre}/{ver}/query/?", 'biothings.web.api.es.handlers.QueryHandler'),
 ]
 
 # string used in headers to support CORS
