@@ -58,7 +58,7 @@
             </div>
 		</div>
 
-        <div :class="['ui basic reset modal',name]">
+        <div :class="['ui basic reset modal',encoded_name]">
                 <h2 class="ui icon">
                     <i class="info circle icon"></i>
                     Reset backend
@@ -116,6 +116,9 @@ export default {
         }
     },
     computed: {
+        encoded_name: function() {
+            return btoa(this.name).replace(/=/g,"_");
+        }
     },
     components: { StandaloneReleaseVersions, },
     methods: {
@@ -143,7 +146,7 @@ export default {
         },
         reset: function() {
             var self = this;
-            $(`.ui.basic.reset.modal.${this.name}`)
+            $(`.ui.basic.reset.modal.${this.encoded_name}`)
             .modal("setting", {
                 onApprove: function () {
                     self.resetBackend()
