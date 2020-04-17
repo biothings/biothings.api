@@ -66,6 +66,7 @@ export default {
 	},
 	beforeDestroy() {
         this.version_urls = [];
+        $('.ui.wizard.modal').remove();
 	},
 	watch: {
 	},
