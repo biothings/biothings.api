@@ -95,7 +95,7 @@ class ESQueryBuilder(object):
 
         scopes = options.scopes or []
         for regex, scope in options.regexs or []:
-            match = re.match(regex, q)
+            match = re.fullmatch(regex, q)
             if match:
                 q = match.groupdict().get('search_term') or q
                 scopes = scope if isinstance(scope, list) else [scope]
