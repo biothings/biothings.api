@@ -28,7 +28,7 @@ class ESUserQuery():
                         elif 'filter' in filename:
                             self._filters[os.path.basename(dirpath)] = json.load(text_file)
         except Exception:
-            pass
+            logging.exception('Error loading user queries.')
 
     def has_query(self, named_query):
 
@@ -52,7 +52,7 @@ class ESUserQuery():
 
         dic = deepcopy(self._queries.get(named_query))
         in_place_sub(dic, kwargs)
-        key, val = dic.popitem()
+        key, val = next(iter(dic.items()))
         return Q(key, **val)
 
         ## alternative implementation
@@ -66,5 +66,5 @@ class ESUserQuery():
     def get_filter(self, named_query):
 
         dic = self._filters.get(named_query)
-        key, val = dic.popitem()
+        key, val = next(iter(dic.items()))
         return Q(key, **val)

@@ -180,7 +180,7 @@ METADATA_GET_FIELDS_KWARGS = {
 # *****************************************************************************
 ES_QUERY_BUILDER = 'biothings.web.api.es.pipelines.ESQueryBuilder'
 # For the userquery folder for this app
-USERQUERY_DIR = ''
+USERQUERY_DIR = 'userquery'
 # Allow the __any__ random doc retrieval
 ALLOW_RANDOM_QUERY = False
 # Allow facets to be nested with ( )
