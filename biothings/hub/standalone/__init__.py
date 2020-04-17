@@ -12,18 +12,15 @@ from biothings import config as btconfig
 from biothings.hub.autoupdate import BiothingsDumper, BiothingsUploader
 from biothings.utils.es import ESIndexer
 from biothings.utils.backend import DocESBackend
-from biothings.utils.hub import CommandDefinition
-from biothings.hub import HubServer
+from biothings.utils.loggers import get_logger
 
 
-class AutoHubServer(HubServer):
-
-    DEFAULT_FEATURES = ["job", "autohub", "terminal", "config", "ws"]
+class AutoHubFeature(object):
 
     DEFAULT_DUMPER_CLASS = BiothingsDumper
     DEFAULT_UPLOADER_CLASS = BiothingsUploader
 
-    def __init__(self, version_urls, indexer_factory=None, *args, **kwargs):
+    def __init__(self, managers, version_urls, indexer_factory=None, *args, **kwargs):
         """
         version_urls is a list of URLs pointing to versions.json file. The name
         of the data release is taken from the URL (http://...s3.amazon.com/<the_name>/versions.json)
@@ -48,6 +45,8 @@ class AutoHubServer(HubServer):
         super().__init__(*args, **kwargs)
         self.version_urls = self.extract(version_urls)
         self.indexer_factory = indexer_factory
+        self.managers = managers
+        self.logger, _ = get_logger("autohub")
 
     def extract(self, urls):
         vurls = []
@@ -110,27 +109,26 @@ class AutoHubServer(HubServer):
     def list_biothings(self):
         return self.version_urls
 
-    def configure_autohub_feature(self):
-        # "autohub" feature is based on "dump","upload" and "sync" features.
-        # we don't list them in DEFAULT_FEATURES as we don't want them to produce
-        # commands such as dump() or upload() as these are renamed for clarity
-        # that said, those managers could still exist *if* autohub is mixed
-        # with "standard" hub, so we don't want to override them if already configured
-        if not self.managers.get("dump_manager"):
-            self.configure_dump_manager()
-        if not self.managers.get("upload_manager"):
-            self.configure_upload_manager()
-        if not self.managers.get("sync_manager"):
-            self.configure_sync_manager()
+    def configure(self):
+        """
+        Either configure autohub from static definition (STANDALONE_CONFIG) where
+        different hard-coded names of indexes can be managed on different ES server,
+        *or* use a indexer factory where index names are taken from version_urls *but*
+        only one ES host is used.
+        """
         default_standalone_conf = getattr(btconfig, "STANDALONE_CONFIG", {}).get("_default")
+        if not default_standalone_conf:
+            assert self.indexer_factory, "No STANDALONE_CONFIG defined, and no indexer factory class defined as well"
         for info in self.version_urls:
             version_url = info["url"]
             self.__class__.DEFAULT_DUMPER_CLASS.VERSION_URL = version_url
             if self.indexer_factory:
                 pidxr, actual_conf = self.indexer_factory.create(info["name"])
+                self.logger.info("Autohub configured for %s (dynamic): %s" % (info["name"], actual_conf))
             else:
                 actual_conf = btconfig.STANDALONE_CONFIG.get(info["name"], default_standalone_conf)
                 assert actual_conf, "No standalone config could be found for data release '%s'" % info["name"]
+                self.logger.info("Autohub configured for %s (static): %s" % (info["name"], actual_conf))
                 pidxr = partial(ESIndexer, index=actual_conf["index"],
                                 doc_type=None,
                                 es_host=actual_conf["es_host"])
@@ -170,66 +168,3 @@ class AutoHubServer(HubServer):
             )
             sys.modules["biothings.hub.standalone"].__dict__[uploader_class_name] = uploader_klass
             self.managers["upload_manager"].register_classes([uploader_klass])
-
-    def configure_commands(self):
-        super().configure_commands()
-        self.commands["list"] = CommandDefinition(command=self.list_biothings, tracked=False)
-        # dump commands
-        self.commands["versions"] = partial(self.managers["dump_manager"].call, method_name="versions")
-        self.commands["check"] = partial(self.managers["dump_manager"].dump_src, check_only=True)
-        self.commands["info"] = partial(self.managers["dump_manager"].call, method_name="info")
-        self.commands["download"] = partial(self.managers["dump_manager"].dump_src)
-        # upload commands
-        self.commands["apply"] = partial(self.managers["upload_manager"].upload_src)
-        self.commands["install"] = partial(self.install)
-        self.commands["backend"] = partial(self.managers["dump_manager"].call, method_name="get_target_backend")
-        self.commands["reset_backend"] = partial(self.managers["dump_manager"].call, method_name="reset_target_backend")
-
-    def configure_api_endpoints(self):
-        super().configure_api_endpoints()
-        from biothings.hub.api import EndpointDefinition
-        # cmdnames = list(self.commands.keys())
-        self.api_endpoints["standalone"] = []
-        self.api_endpoints["standalone"].append(EndpointDefinition(name="list", method="get", suffix="list"))
-        self.api_endpoints["standalone"].append(EndpointDefinition(name="versions", method="get", suffix="versions"))
-        self.api_endpoints["standalone"].append(EndpointDefinition(name="check", method="get", suffix="check"))
-        self.api_endpoints["standalone"].append(EndpointDefinition(name="info", method="get", suffix="info"))
-        self.api_endpoints["standalone"].append(EndpointDefinition(name="backend", method="get", suffix="backend"))
-        self.api_endpoints["standalone"].append(EndpointDefinition(name="reset_backend", method="delete", suffix="backend"))
-        self.api_endpoints["standalone"].append(EndpointDefinition(name="download", method="post", suffix="download"))
-        self.api_endpoints["standalone"].append(EndpointDefinition(name="apply", method="post", suffix="apply"))
-        self.api_endpoints["standalone"].append(EndpointDefinition(name="install", method="post", suffix="install"))
-
-
-class DynamicIndexerFactory(object):
-    """
-    Create indexer with parameters taken from versions.json URL.
-    A list of  URLs is provided so the factory knows how to create these
-    indexers for each URLs. There's no way to "guess" an ES host from a URL,
-    so this parameter must be specified as well, common to all URLs
-    "suffix" param is added at the end of index names.
-    """
-
-    def __init__(self, urls, es_host, suffix="_current"):
-        self.urls = urls
-        self.es_host = es_host
-        self.bynames = {}
-        for url in urls:
-            if isinstance(url, dict):
-                name = url["name"]
-                # actual_url = url["url"]
-            else:
-                name = os.path.basename(os.path.dirname(url))
-                # actual_url = url
-            self.bynames[name] = {
-                "es_host": self.es_host,
-                "index": name + suffix
-            }
-
-    def create(self, name):
-        conf = self.bynames[name]
-        pidxr = partial(ESIndexer, index=conf["index"],
-                        doc_type=None,
-                        es_host=conf["es_host"])
-        conf = {"es_host": conf["es_host"], "index": conf["index"]}
-        return pidxr, conf

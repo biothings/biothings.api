@@ -1068,3 +1068,38 @@ class IndexManager(BaseManager):
                 idxr.delete_index()
             except Exception:
                 pass
+
+
+class DynamicIndexerFactory(object):
+    """
+    In the context of autohub/standalone instances, create indexer
+    with parameters taken from versions.json URL.
+    A list of  URLs is provided so the factory knows how to create these
+    indexers for each URLs. There's no way to "guess" an ES host from a URL,
+    so this parameter must be specified as well, common to all URLs
+    "suffix" param is added at the end of index names.
+    """
+
+    def __init__(self, urls, es_host, suffix="_current"):
+        self.urls = urls
+        self.es_host = es_host
+        self.bynames = {}
+        for url in urls:
+            if isinstance(url, dict):
+                name = url["name"]
+                # actual_url = url["url"]
+            else:
+                name = os.path.basename(os.path.dirname(url))
+                # actual_url = url
+            self.bynames[name] = {
+                "es_host": self.es_host,
+                "index": name + suffix
+            }
+
+    def create(self, name):
+        conf = self.bynames[name]
+        pidxr = partial(ESIndexer, index=conf["index"],
+                        doc_type=None,
+                        es_host=conf["es_host"])
+        conf = {"es_host": conf["es_host"], "index": conf["index"]}
+        return pidxr, conf
