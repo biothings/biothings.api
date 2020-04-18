@@ -56,6 +56,7 @@ class BiothingWebSettings():
         else:
             self._git_repo_path = None
 
+        self.handlers = {}
         self.validate()
 
     @staticmethod
@@ -158,6 +159,7 @@ class BiothingWebSettings():
             else:
                 handlers[pattern] = rule
 
+        self.handlers = handlers
         handlers = list(handlers.values())
         logging.info('API Handlers:\n%s', pformat(handlers, width=200))
         return handlers

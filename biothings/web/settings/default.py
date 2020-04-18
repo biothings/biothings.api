@@ -44,6 +44,7 @@ API_VERSION = 'v1'
 
 # project URL routing
 APP_LIST = [
+    (r"/", 'biothings.web.handlers.FrontPageHandler'),
     (r"/{pre}/status", 'biothings.web.handlers.StatusHandler'),
     (r"/{pre}/{ver}/{typ}/metadata/fields/?", 'biothings.web.api.es.handlers.MetadataFieldHandler'),
     (r"/{pre}/{ver}/{typ}/metadata/?", 'biothings.web.api.es.handlers.MetadataSourceHandler'),

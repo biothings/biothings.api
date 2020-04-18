@@ -8,6 +8,8 @@
 from elasticsearch.exceptions import ElasticsearchException
 from tornado.web import RequestHandler
 
+from .templates import FRONT_PAGE_TEMPLATE
+
 try:
     from raven.contrib.tornado import SentryMixin
 except ImportError:
@@ -83,3 +85,16 @@ class StatusHandler(BaseHandler):
 
         if self.get_status() == 200:
             self.write('OK')
+
+class FrontPageHandler(BaseHandler):
+
+    def get(self):
+
+        self.write(FRONT_PAGE_TEMPLATE.format(
+            alert='Front Page Not Configured.',
+            title='Biothings API',
+            text='<br />'.join(self.web_settings.handlers.keys()),
+            footnote='Supported types: '
+            + ', '.join(self.web_settings.ES_INDICES.keys()),
+            url='http://biothings.io/'
+        ))
