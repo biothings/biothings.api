@@ -137,27 +137,27 @@ class BiothingWebSettings():
         addons = addons or []
         for rule in self.APP_LIST + addons:
             pattern = rule[0]
-            if '{' in pattern and '}' in pattern:
-                handler = self.load_class(rule[1])
-                setting = rule[2] if len(rule) == 3 else {}
-                if '{typ}' in pattern:
-                    if not issubclass(handler, BaseESRequestHandler):
-                        raise BiothingConfigError()
-                    for biothing_type in self.BIOTHING_TYPES:
-                        _pattern = pattern.format(
-                            pre=self.API_PREFIX,
-                            ver=self.API_VERSION,
-                            typ=biothing_type).replace('//', '/')
-                        setting = dict(setting)
-                        setting['biothing_type'] = biothing_type
-                        handlers[_pattern] = (_pattern, handler, setting)
-                else:  # process prefix and version
-                    pattern = pattern.format(
+            handler = self.load_class(rule[1])
+            setting = rule[2] if len(rule) == 3 else {}
+            if '{typ}' in pattern:
+                if not issubclass(handler, BaseESRequestHandler):
+                    raise BiothingConfigError()
+                for biothing_type in self.BIOTHING_TYPES:
+                    _pattern = pattern.format(
                         pre=self.API_PREFIX,
-                        ver=self.API_VERSION).replace('//', '/')
-                    handlers[pattern] = (pattern, handler, setting)
-            else:
-                handlers[pattern] = rule
+                        ver=self.API_VERSION,
+                        typ=biothing_type).replace('//', '/')
+                    _setting = dict(setting)
+                    _setting['biothing_type'] = biothing_type
+                    handlers[_pattern] = (_pattern, handler, _setting)
+            elif '{pre}' in pattern or '{ver}' in pattern:
+                pattern = pattern.format(
+                    pre=self.API_PREFIX,
+                    ver=self.API_VERSION).replace('//', '/')
+                handlers[pattern] = (pattern, handler, setting)
+            else: # no pattern translation
+                handlers[pattern] = (pattern, handler, setting)
+
 
         self.handlers = handlers
         handlers = list(handlers.values())
