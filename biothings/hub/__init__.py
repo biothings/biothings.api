@@ -19,6 +19,7 @@ from biothings.utils.hub import (HubShell, get_hub_reloader, CommandDefinition, 
                                  AlreadyRunningException, CommandError)
 from biothings.utils.jsondiff import make as jsondiff
 from biothings.utils.version import check_new_version
+from biothings.utils.common import get_class_from_classpath
 
 # Keys used as category in pinfo (description of jobs submitted to JobManager)
 # Those are used in different places
@@ -216,6 +217,7 @@ class HubServer(object):
         "config", "job", "dump", "upload", "dataplugin", "source", "build",
         "diff", "index", "snapshot", "release", "inspect", "sync", "api",
         "terminal", "reloader", "dataupload", "ws", "readonly", "upgrade",
+        "autohub",
     ]
     DEFAULT_MANAGERS_ARGS = {"upload": {"poll_schedule": "* * * * * */10"}}
     DEFAULT_RELOADER_CONFIG = {
@@ -228,6 +230,11 @@ class HubServer(object):
     }
     DEFAULT_WEBSOCKET_CONFIG = {}
     DEFAULT_API_CONFIG = {}
+    DEFAULT_AUTOHUB_CONFIG = {
+        "version_urls": getattr(config, "VERSION_URLS", []),
+        "indexer_factory": getattr(config, "AUTOHUB_INDEXER_FACTORY", None),
+        "es_host": getattr(config, "AUTOHUB_ES_HOST", None),
+    }
 
     def __init__(self,
                  source_list,
@@ -237,7 +244,8 @@ class HubServer(object):
                  api_config=None,
                  reloader_config=None,
                  dataupload_config=None,
-                 websocket_config=None):
+                 websocket_config=None,
+                 autohub_config=None):
         """
         Helper to setup and instantiate common managers usually used in a hub
         (eg. dumper manager, uploader manager, etc...)
@@ -253,9 +261,9 @@ class HubServer(object):
         init managers:
             managers_custom_args={"upload" : {"poll_schedule" : "*/5 * * * *"}}
         will set poll schedule to check upload every 5min (instead of default 10s)
-        "reloader_config", "dataupload_config" and "websocket_config" can be used to
-        customize reloader, dataupload and websocket. If None, default config is used.
-        If explicitely False, feature is deactivated.
+        "reloader_config", "dataupload_config", "autohub_config" and "websocket_config"
+        can be used to customize reloader, dataupload and websocket. If None, default config
+        is used. If explicitely False, feature is deactivated.
         """
         self.name = name
         self.source_list = source_list
@@ -267,6 +275,7 @@ class HubServer(object):
         self.reloader_config = reloader_config or self.DEFAULT_RELOADER_CONFIG
         self.dataupload_config = dataupload_config or self.DEFAULT_DATAUPLOAD_CONFIG
         self.websocket_config = websocket_config or self.DEFAULT_WEBSOCKET_CONFIG
+        self.autohub_config = autohub_config or self.DEFAULT_AUTOHUB_CONFIG
         self.ws_listeners = [
         ]  # collect listeners that should be connected (push data through) to websocket
         self.api_config = api_config or self.DEFAULT_API_CONFIG
@@ -594,6 +603,53 @@ class HubServer(object):
                     partial(self.managers["upload_manager"].upload_src, doc[
                         "_id"])))
 
+    def configure_autohub_feature(self):
+        """
+        See bt.hub.standalone.AutoHubFeature
+        """
+        # "autohub" feature is based on "dump","upload" and "sync" features.
+        # If autohub is running on its own (standalone instance only for instance)
+        # we don't list them in DEFAULT_FEATURES as we don't want them to produce
+        # commands such as dump() or upload() as these are renamed for clarity
+        # that said, those managers could still exist *if* autohub is mixed
+        # with "standard" hub, so we don't want to override them if already configured
+        if not self.managers.get("dump_manager"):
+            self.configure_dump_manager()
+        if not self.managers.get("upload_manager"):
+            self.configure_upload_manager()
+        if not self.managers.get("sync_manager"):
+            self.configure_sync_manager()
+
+        # Originally, autohub was a hub server on its own, it's now
+        # converted a feature;to avoid mixins and bringing complexity in this HubServer
+        # definition, we use composition pointing to an instance of that feature which
+        # encapsulates that complexity
+        from biothings.hub.standalone import AutoHubFeature
+        # only pass required manage rs
+        autohub_managers = {
+            "dump_manager": self.managers["dump_manager"],
+            "upload_manager": self.managers["upload_manager"],
+            "sync_manager": self.managers["sync_manager"],
+        }
+
+        version_urls = self.autohub_config["version_urls"]
+        indexer_factory = self.autohub_config["indexer_factory"]
+        es_host = self.autohub_config["es_host"]
+        factory = None
+        if indexer_factory:
+            assert es_host, "indexer_factory set but es_host not set (AUTOHUB_ES_HOST), can't know which ES server to use"
+            try:
+                factory_class = get_class_from_classpath(indexer_factory)
+                factory = factory_class(version_urls, es_host)
+            except (ImportError, ModuleNotFoundError) as e:
+                self.logger.error("Couldn't find indexer factory class from '%s': %s" % (indexer_factory, e))
+        self.autohub_feature = AutoHubFeature(autohub_managers, version_urls, factory)
+        try:
+            self.autohub_feature.configure()
+        except Exception as e:
+            self.logger.error("Could't configure feature 'autohub', will be deactivated: %s" % e)
+            self.features.remove("autohub")
+
     def configure_managers(self):
         if self.managers is not None:
             raise Exception("Managers have already been configured")
@@ -850,6 +906,18 @@ class HubServer(object):
         if self.managers.get("dataplugin_manager"):
             self.commands["dump_plugin"] = self.managers[
                 "dataplugin_manager"].dump_src
+        if "autohub" in self.DEFAULT_FEATURES:
+            self.commands["list"] = CommandDefinition(command=self.autohub_feature.list_biothings, tracked=False)
+            # dump commands
+            self.commands["versions"] = partial(self.managers["dump_manager"].call, method_name="versions")
+            self.commands["check"] = partial(self.managers["dump_manager"].dump_src, check_only=True)
+            self.commands["info"] = partial(self.managers["dump_manager"].call, method_name="info")
+            self.commands["download"] = partial(self.managers["dump_manager"].dump_src)
+            # upload commands
+            self.commands["apply"] = partial(self.managers["upload_manager"].upload_src)
+            self.commands["install"] = partial(self.autohub_feature.install)
+            self.commands["backend"] = partial(self.managers["dump_manager"].call, method_name="get_target_backend")
+            self.commands["reset_backend"] = partial(self.managers["dump_manager"].call, method_name="reset_target_backend")
 
         logging.info("Registered commands: %s", list(self.commands.keys()))
 
@@ -1220,6 +1288,27 @@ class HubServer(object):
         if "restart" in cmdnames:
             self.api_endpoints["restart"] = EndpointDefinition(name="restart",
                                                                method="put")
+        self.api_endpoints["standalone"] = []
+        if "list" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="list", method="get", suffix="list"))
+        if "versions" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="versions", method="get", suffix="versions"))
+        if "check" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="check", method="get", suffix="check"))
+        if "info" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="info", method="get", suffix="info"))
+        if "download" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="download", method="post", suffix="download"))
+        if "apply" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="apply", method="post", suffix="apply"))
+        if "install" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="install", method="post", suffix="install"))
+        if "backend" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="backend", method="get", suffix="backend"))
+        if "reset_backend" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="reset_backend", method="delete", suffix="backend"))
+        if not self.api_endpoints["standalone"]:
+            self.api_endpoints.pop("standalone")
 
 
 class HubSSHServer(asyncssh.SSHServer):
