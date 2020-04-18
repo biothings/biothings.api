@@ -13,10 +13,9 @@
 
 """
 import os
-import sys
-from difflib import Differ
 from functools import partial
 
+import pytest
 import requests
 from tornado.ioloop import IOLoop
 from tornado.testing import AsyncHTTPTestCase
@@ -125,3 +124,16 @@ class BiothingsTestCase(AsyncHTTPTestCase):
             return res
 
         raise ValueError(f'Query method {method} is not supported.')
+
+    @staticmethod
+    def msgpack_ok(packed_bytes):
+        ''' Load msgpack into a dict '''
+        try:
+            import msgpack
+        except ImportError:
+            pytest.skip('Msgpack is not installed.')
+        try:
+            dic = msgpack.unpackb(packed_bytes)
+        except BaseException:  # pylint: disable=bare-except
+            assert False, 'Not a valid Msgpack binary.'
+        return dic
