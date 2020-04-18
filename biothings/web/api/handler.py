@@ -72,7 +72,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
                     setting[kwarg_type] = getattr(self.web_settings, key)
 
             logging.debug("Endpoint [%s] kwargs settings:\n%s",
-                          self.name, pformat(self.kwarg_settings, width=150))
+                          self.name, pformat(_self._kwarg_settings, width=150))
 
         self.json_arguments = {}
         self.kwargs = dotdict()
