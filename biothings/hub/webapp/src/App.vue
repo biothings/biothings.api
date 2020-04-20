@@ -207,7 +207,7 @@
 
 <script>
 
-    const STUDIO_VERSION = "0.2a";
+    const STUDIO_VERSION = "0.2b";
 
     import Vue from 'vue';
     import axios from 'axios';
@@ -455,6 +455,12 @@
                     Vue.localStorage.set("readonly_switch",JSON.stringify(this.readonly_switch));
                 }
             },
+            required_studio_version: function(newv, oldv) {
+                console.log(`this.required_studio_version, old ${oldv} new ${newv}`);
+                if(newv != oldv) {
+                    this.selectStudio(newv);
+                }
+            },
         },
         methods: {
             setupUIByFeatures() {
@@ -632,12 +638,7 @@
                 Vue.localStorage.set('last_conn',JSON.stringify(this.conn));
                 this.setupSocket(redirect);
             },
-            checkCompat: function(data) {
-                // user asked to skip compat checks ?
-                if(Vue.localStorage.get('skip_studio_compat') == "true") {
-                    console.log("Skip Studio version compatibility, as instructed in local storage");
-                    return;
-                }
+            getStudioWebappRoots: function() {
                 // where should we look for compatible studio webapp
                 var current_host_port = new URI(location.protocol+'//'+location.hostname+(location.port ? ':'+location.port: ''));
                 var studio_roots = [current_host_port.toString() + "/"];
@@ -649,6 +650,124 @@
                 }
                 Array.prototype.push.apply(studio_roots,remote_webapps);
                 console.log(`Studio webapp roots: ${studio_roots}`);
+                return studio_roots;
+            },
+            selectStudio: function(studio_version) {
+
+                var studio_roots = this.getStudioWebappRoots();
+                var current_host_port = new URI(location.protocol+'//'+location.hostname+(location.port ? ':'+location.port: ''));
+
+                var self = this;
+                console.log(`Now selecting Studio version ${studio_version}`);
+
+                if(studio_version == "this") {
+                    console.log("Running version is the actual required one, all good");
+                    return;
+                }
+                if(!studio_version) {
+                  console.log("Couldn't find any suitable version, will keep current as failover");
+                  return;
+                } else {
+                  console.log(`Selected compatible version ${studio_version}`);
+                }
+                for(var idx in studio_roots) {
+                     var root = studio_roots[idx];
+                     if(studio_version == this.current_studio_version) {
+                         var uri = new URI(root);
+                     } else {
+                         var uri = new URI([root,studio_version].join("/"));
+                     }
+                     uri.normalize(); // prevent double slashes
+                     var url = uri.toString();
+                     self.compat_urls.push(url);
+                 }
+
+                if(!self.compat_urls) {
+                    console.log("Could not ensure compatibity");
+                    return;
+                }
+
+                var checked = [];
+                for(var i in self.compat_urls) {
+                    // check URL is valid
+                    console.log(`Checking ${self.compat_urls[i]}`);
+                    // opaque response only needed so we can avoid CORS security, we just wanna know if
+                    // there's something valid on the other side before redirection
+                    // Note: this function is tricky, fetch() is async and we want to access
+                    // compat_urls using index "i", but in then() we may treat "i" as the one from the
+                    // loop occurence since it's async (fetch() will immediately return, moving the next loop)
+                    // so we need to store "i" as "idx" on this function (like a clojure)
+                    function doFetch(idx) {
+                        fetch(self.compat_urls[idx])
+                        .then(function(response) {
+                            checked.push({"url" : self.compat_urls[idx], "valid": response.ok, "order":idx});
+                        });
+                    }
+                    doFetch(i);
+                }
+                // ok fetch() are running, we now wait for the results
+                var poll_delay = 500;
+                var max_iter = self.redirect_delay / 500; // try at least the number of seconds we would wait before redirect
+                var count = 0;
+                var inter = setInterval(function() {
+                    if(Object.keys(checked).length != self.compat_urls.length) {
+                        count++;
+                        console.log(`Checking URL for compatible version ${count}/${max_iter}`);
+                        if(count > max_iter) {
+                            console.log("Give up");
+                            clearInterval(inter);
+                            $(".redirect.modal")
+                            .modal("show");
+                        }
+                    } else {
+                        console.log("All checked:");
+                        console.log(checked);
+                        clearInterval(inter);
+                        self.cancel_redirect = false;
+                        // select the best redirect, following studio_roots order
+                        self.redirect_url = null;
+                        var validsorted = checked.filter(url => url.valid == true).sort((u1,u2) => u1.order - u2.order);
+                        if(!validsorted.length) {
+                            console.log("No valid redirection, weird...");
+                            $(".redirect.modal")
+                            .modal("show");
+                            return;
+                        }
+                        self.redirect_url = validsorted[0].url;
+                        if(self.redirect_url) {
+                            if(current_host_port.toString() == self.redirect_url) {
+                                console.log("Current Studio is compatible");
+                                return;
+                            }
+                            $(".redirect.modal")
+                            .modal("setting", {
+                                detachable : false,
+                                closable: false,
+                                onApprove: function () {
+                                    window.location.replace(self.redirect_url + window.location.hash);
+                                },
+                                onDeny: function() {
+                                    self.cancel_redirect = true;
+                                }
+                            }).modal("show");
+                            setTimeout(
+                            function() {
+                                if(!self.cancel_redirect) {
+                                    console.log(`Redirecting to ${self.redirect_url}`);
+                                    window.location.replace(self.redirect_url + window.location.hash);
+                                }
+                            }, self.redirect_delay);
+                        }
+                    }
+                }, poll_delay);
+
+            },
+            checkCompat: function(data) {
+                // user asked to skip compat checks ?
+                if(Vue.localStorage.get('skip_studio_compat') == "true") {
+                    console.log("Skip Studio version compatibility, as instructed in local storage");
+                    return;
+                }
 
                 function evalDateCompat(refd,d) {
                     // check comparator operator if any (>, <, >= or <=)
@@ -670,6 +789,7 @@
                     return isok;
                 }
 
+                var studio_roots = this.getStudioWebappRoots();
 
                 // start checks
                 var self = this;
@@ -752,8 +872,8 @@
                             }
                           } else {
                             // no commit, no date, but branches match
-                            console.log("Branches match");
                             self.required_studio_version = compat[i]["requires"];
+                            console.log(`Branches match, required Studio version: ${self.required_studio_version}`);
                             break;
                           }
                         } else {
@@ -772,108 +892,6 @@
                       console.log("Couldn't load compat.json file");
                       console.log(err);
                 })
-
-                if(self.required_studio_version == "this") {
-                    console.log("Running version is the actual required one, all good");
-                    return;
-                }
-                if(!self.required_studio_version) {
-                  console.log("Couldn't find any suitable version, will keep current as failover");
-                  return;
-                } else {
-                  console.log(`Selected compatible version ${self.required_studio_version}`);
-                }
-                for(var idx in studio_roots) {
-                     var root = studio_roots[idx];
-                     if(self.required_studio_version == this.current_studio_version) {
-                         var uri = new URI(root);
-                     } else {
-                         var uri = new URI([root,self.required_studio_version].join("/"));
-                     }
-                     uri.normalize(); // prevent double slashes
-                     var url = uri.toString();
-                     self.compat_urls.push(url);
-                 }
-
-                if(!self.compat_urls) {
-                    console.log("Could not ensure compatibity");
-                    return;
-                }
-
-                var checked = [];
-                for(var i in self.compat_urls) {
-                    // check URL is valid
-                    console.log(`Checking ${self.compat_urls[i]}`);
-                    // opaque response only needed so we can avoid CORS security, we just wanna know if
-                    // there's something valid on the other side before redirection
-                    // Note: this function is tricky, fetch() is async and we want to access
-                    // compat_urls using index "i", but in then() we may treat "i" as the one from the
-                    // loop occurence since it's async (fetch() will immediately return, moving the next loop)
-                    // so we need to store "i" as "idx" on this function (like a clojure)
-                    function doFetch(idx) {
-                        fetch(self.compat_urls[idx])
-                        .then(function(response) {
-                            checked.push({"url" : self.compat_urls[idx], "valid": response.ok, "order":idx});
-                        });
-                    }
-                    doFetch(i);
-                }
-                // ok fetch() are running, we now wait for the results
-                var poll_delay = 500;
-                var max_iter = self.redirect_delay / 500; // try at least the number of seconds we would wait before redirect
-                var count = 0;
-                var inter = setInterval(function() {
-                    if(Object.keys(checked).length != self.compat_urls.length) {
-                        count++;
-                        console.log(`Checking URL for compatible version ${count}/${max_iter}`);
-                        if(count > max_iter) {
-                            console.log("Give up");
-                            clearInterval(inter);
-                            $(".redirect.modal")
-                            .modal("show");
-                        }
-                    } else {
-                        console.log("All checked:");
-                        console.log(checked);
-                        clearInterval(inter);
-                        self.cancel_redirect = false;
-                        // select the best redirect, following studio_roots order
-                        self.redirect_url = null;
-                        var validsorted = checked.filter(url => url.valid == true).sort((u1,u2) => u1.order - u2.order);
-                        if(!validsorted.length) {
-                            console.log("No valid redirection, weird...");
-                            $(".redirect.modal")
-                            .modal("show");
-                            return;
-                        }
-                        self.redirect_url = validsorted[0].url;
-                        if(self.redirect_url) {
-                            if(current_host_port.toString() == self.redirect_url) {
-                                console.log("Current Studio is compatible");
-                                return;
-                            }
-                            $(".redirect.modal")
-                            .modal("setting", {
-                                detachable : false,
-                                closable: false,
-                                onApprove: function () {
-                                    window.location.replace(self.redirect_url + window.location.hash);
-                                },
-                                onDeny: function() {
-                                    self.cancel_redirect = true;
-                                }
-                            }).modal("show");
-                            setTimeout(
-                            function() {
-                                if(!self.cancel_redirect) {
-                                    console.log(`Redirecting to ${self.compat_urls[i]}`);
-                                    window.location.replace(self.redirect_url + window.location.hash);
-                                }
-                            }, self.redirect_delay);
-                        }
-                    }
-                }, poll_delay);
-
         },
         refreshConnection: function(url) {
             var self = this;
