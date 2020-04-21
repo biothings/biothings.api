@@ -46,7 +46,7 @@ class BaseHandler(SentryMixin, RequestHandler):
         Only attempt to report to Sentry when the client is setup.
         Discard when API key is not set or raven is not installed.
         """
-        if hasattr(self.application, 'sentry_client'):
+        if 'sentry_client' in self.settings:
             return SentryMixin.log_exception(self, *args, **kwargs)
         return RequestHandler.log_exception(self, *args, **kwargs)
 
