@@ -78,8 +78,8 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         self.kwargs = dotdict()
 
         self.ga_event_object_ret = {
-            'category': '{}_api'.format(self.web_settings.API_VERSION)
-            # 'action': 'query_get', 'gene_post', 'fetch_all', etc.
+            'category': '{}_api'.format(self.web_settings.API_VERSION),
+            'action': self.request.method,  # 'query_get', 'fetch_all', etc.
             # 'label': 'total', 'qsize', etc.
             # 'value': 0, corresponds to label ...
         }

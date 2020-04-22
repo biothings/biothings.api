@@ -6,14 +6,6 @@ from biothings.web.api.handler import BaseAPIHandler
 
 
 class BaseESRequestHandler(BaseAPIHandler):
-    '''
-    Parent class of all Elasticsearch-based Request handlers, subclass of `BaseHandler`_.
-    Contains handling for Elasticsearch-specific query params (like ``fields``, ``size``, etc)
-    '''
-    name = 'api'
-    out_format = 'json'
-    kwarg_types = ('control', )
-    kwarg_methods = ('get', 'post')
 
     def initialize(self, biothing_type=None):
         '''
@@ -30,8 +22,6 @@ class BaseESRequestHandler(BaseAPIHandler):
         action_key = f'GA_ACTION_{self.name.upper()}_{self.request.method}'
         if hasattr(self.web_settings, action_key):
             self.ga_event_object_ret['action'] = getattr(self.web_settings, action_key)
-        else:
-            self.ga_event_object_ret['action'] = self.request.method
 
         logging.debug("Google Analytics Base object: %s", self.ga_event_object_ret)
 
@@ -48,7 +38,7 @@ class BaseESRequestHandler(BaseAPIHandler):
                 for index, cause in enumerate(root_cause):
                     message['root_cuase_line_'+f'{index:02}'] = cause
             except Exception:
-                pass
+                pass  # TODO
 
         return message
 
