@@ -115,8 +115,14 @@ class BiothingsAPI():
         # #debug-mode-and-automatic-reloading
         if self.debug:
             logging.getLogger().setLevel(logging.DEBUG)
+            es_tracer = logging.getLogger('elasticsearch.trace')
+            es_tracer.propagate = True
+            es_tracer.setLevel(logging.DEBUG)
+            es_tracer.addHandler(logging.NullHandler())
+            logging.getLogger('elasticsearch').setLevel(logging.WARNING)
         else:
             logging.getLogger().setLevel(logging.INFO)
+            logging.getLogger('elasticsearch').setLevel(logging.WARNING)
 
     def get_server(self):
         """
