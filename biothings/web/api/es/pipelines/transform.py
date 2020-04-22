@@ -10,8 +10,7 @@ class ResultTransformException(Exception):
 class ESResultTransform(object):
     ''' Class to transform the results of the Elasticsearch query generated prior in the pipeline.
     This contains the functions to extract the final document from the elasticsearch query result
-    in `Elasticsearch Query`_.  This also contains the code to flatten a document (if **dotfield** is True), or
-    to add JSON-LD context to the document (if **jsonld** is True).
+    in `Elasticsearch Query`_.  This also contains the code to flatten a document etc.
     '''
 
     def __init__(self, web_settings):
