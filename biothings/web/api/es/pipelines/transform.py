@@ -170,7 +170,7 @@ class ESResultTransform(object):
         for path, value in cls.traverse(dic, leaf_node=True):
             hit_[path].append(value)
         for key, lst in hit_.items():
-            if len(lst) == 1 and key not in options.always_list:
+            if len(lst) == 1 and key not in (options.always_list or []):
                 hit_[key] = lst[0]
             else:  # multi-element list
                 hit_[key] = list(filter(None, lst))
