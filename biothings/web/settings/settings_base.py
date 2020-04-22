@@ -155,9 +155,8 @@ class BiothingWebSettings():
                     pre=self.API_PREFIX,
                     ver=self.API_VERSION).replace('//', '/')
                 handlers[pattern] = (pattern, handler, setting)
-            else: # no pattern translation
+            else:  # no pattern translation
                 handlers[pattern] = (pattern, handler, setting)
-
 
         self.handlers = handlers
         handlers = list(handlers.values())
