@@ -137,6 +137,9 @@ class BiothingESWebSettings(BiothingWebSettings):
                 allow_no_indices=True,
                 ignore_unavailable=True,
                 local=False)
+        except elasticsearch.ConnectionError:
+            logging.error('Error connecting to elasticsearch.')
+            return None
         except Exception:
             logging.exception('Error reading index mapping.')
             return None

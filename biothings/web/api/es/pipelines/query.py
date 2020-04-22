@@ -3,7 +3,9 @@
 """
 import asyncio
 
-from elasticsearch import NotFoundError, RequestError, TransportError
+from elasticsearch import (ConnectionError, NotFoundError, RequestError,
+                           TransportError)
+from tornado.web import HTTPError
 
 from biothings.web.api.handler import BadRequest, EndRequest
 
@@ -37,6 +39,8 @@ class ESQueryBackend(object):
                 res = await self.client.scroll(
                     scroll_id=options.scroll_id,
                     scroll=self.scroll_time)
+            except ConnectionError:
+                raise HTTPError(503)
             except (NotFoundError, RequestError, TransportError):
                 raise BadRequest(reason="Invalid or stale scroll_id.")
             else:
@@ -53,6 +57,8 @@ class ESQueryBackend(object):
                 query = query.extra(size=self.scroll_size)
             try:
                 res = await query.using(self.client).execute()
+            except ConnectionError:
+                raise HTTPError(503)
             except RequestError as err:
                 raise BadRequest(_es_error=err)
             else:
