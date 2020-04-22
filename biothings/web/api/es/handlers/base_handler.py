@@ -35,14 +35,6 @@ class BaseESRequestHandler(BaseAPIHandler):
 
         logging.debug("Google Analytics Base object: %s", self.ga_event_object_ret)
 
-    def prepare(self):
-
-        super().prepare()
-        try:
-            self.out_format = self.kwargs.control.out_format or 'json'
-        except KeyError:
-            pass
-
     def parse_exception(self, exception):
 
         message = super().parse_exception(exception)
@@ -107,6 +99,7 @@ class ESRequestHandler(BaseESRequestHandler):
         At this stage, we have the cleaned user input available.
         Might be a good place to implement input based tracking.
         '''
+        self.out_format = self.kwargs.control.out_format or 'json'
         return options
 
     def pre_query_hook(self, options, query):

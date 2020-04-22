@@ -26,6 +26,7 @@ class QueryHandler(ESRequestHandler):
         '''
         Set GA tracking object.
         '''
+        options = super().pre_query_builder_hook(options)
         if self.request.method == 'GET':
             self.ga_event_object({'total': 0})
         elif self.request.method == 'POST':

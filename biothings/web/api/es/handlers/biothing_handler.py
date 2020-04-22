@@ -56,6 +56,7 @@ class BiothingHandler(ESRequestHandler):
         Annotation query include _version field.
         Set GA tracking object.
         '''
+        options = super().pre_query_builder_hook(options)
         if self.request.method == 'POST':
             self.ga_event_object({'qsize': len(options.esqb.ids)})
             options.esqb.q = options.esqb.ids
