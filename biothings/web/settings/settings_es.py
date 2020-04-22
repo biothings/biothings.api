@@ -1,16 +1,16 @@
 import json
+import logging
 import os
 from collections import defaultdict
 from pydoc import locate
 
 import elasticsearch
+from biothings.web.api.es.userquery import ESUserQuery
+from biothings.web.settings import BiothingConfigError, BiothingWebSettings
 from elasticsearch import ConnectionSelector
 from elasticsearch_async.transport import AsyncTransport
 from elasticsearch_dsl.connections import Connections
-
-from biothings.web.api.es.userquery import ESUserQuery
-from biothings.web.settings import BiothingConfigError, BiothingWebSettings
-
+from tornado.ioloop import IOLoop
 
 class KnownLiveSelecter(ConnectionSelector):
     """
@@ -51,7 +51,7 @@ class BiothingESWebSettings(BiothingWebSettings):
         connection_settings.update(transport_class=AsyncTransport)
         self._connections.create_connection(alias='async', **connection_settings)
 
-        # cached index mappings # TODO
+        # cached index mappings
         self.source_metadata = defaultdict(dict)
         self.source_properties = defaultdict(dict)
 
@@ -79,7 +79,8 @@ class BiothingESWebSettings(BiothingWebSettings):
 
         # populate source mappings
         for biothing_type in self.ES_INDICES:
-            self.read_index_mappings(biothing_type)
+            IOLoop.current().add_callback(
+                self.read_index_mappings, biothing_type)
 
     def validate(self):
         '''
@@ -107,7 +108,7 @@ class BiothingESWebSettings(BiothingWebSettings):
         '''
         return self._connections.get_connection('async')
 
-    def read_index_mappings(self, biothing_type=None):
+    async def read_index_mappings(self, biothing_type=None):
         """
         Read ES index mappings for the corresponding biothing_type,
         Populate datasource info and field properties from mappings.
@@ -131,12 +132,13 @@ class BiothingESWebSettings(BiothingWebSettings):
 
         biothing_type = biothing_type or self.ES_DOC_TYPE
         try:
-            mappings = self.get_es_client().indices.get_mapping(
+            mappings = await self.async_es_client.indices.get_mapping(
                 index=self.ES_INDICES[biothing_type],
                 allow_no_indices=True,
                 ignore_unavailable=True,
                 local=False)
         except Exception:
+            logging.exception('Error reading index mapping.')
             return None
 
         metadata = self.source_metadata[biothing_type]
@@ -182,8 +184,6 @@ class BiothingESWebSettings(BiothingWebSettings):
         '''
         return self._fields_notes
 
-    ##### COMPATIBILITY METHODS #####
-
     @property
     def es_client(self):
         return self.get_es_client()
@@ -191,9 +191,3 @@ class BiothingESWebSettings(BiothingWebSettings):
     @property
     def async_es_client(self):
         return self.get_async_es_client()
-
-    def doc_url(self, bid):
-        return os.path.join(self.URL_BASE, self.API_VERSION, self.ES_DOC_TYPE, bid)
-
-    def available_fields_notes(self):
-        return self._fields_notes

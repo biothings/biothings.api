@@ -17,13 +17,14 @@ class MetadataSourceHandler(BaseESRequestHandler):
     kwarg_types = ('control', 'source')
     kwarg_methods = ('get',)
 
-    def get(self):
+    async def get(self):
 
-        self.web_settings.read_index_mappings()
+        await self.web_settings.read_index_mappings()
         _meta = self.web_settings.source_metadata[self.biothing_type]
 
         if self.kwargs.source.dev:
-            _meta['software'] = get_software_info(app_dir=self.web_settings.get_git_repo_path())
+            _meta['software'] = get_software_info(
+                app_dir=self.web_settings.get_git_repo_path())
 
         self.finish(dict(sorted(_meta.items())))
 
