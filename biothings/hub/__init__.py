@@ -18,7 +18,7 @@ from biothings.utils.loggers import get_logger, WSLogHandler, WSShellHandler, Sh
 from biothings.utils.hub import (HubShell, get_hub_reloader, CommandDefinition, pending,
                                  AlreadyRunningException, CommandError)
 from biothings.utils.jsondiff import make as jsondiff
-from biothings.utils.version import check_new_version
+from biothings.utils.version import check_new_version, get_version
 from biothings.utils.common import get_class_from_classpath
 
 # Keys used as category in pinfo (description of jobs submitted to JobManager)
@@ -694,6 +694,18 @@ class HubServer(object):
                                 + "app folder and/or biothings folder not defined")
             return
 
+        from biothings.hub.upgrade import BioThingsSystemUpgrade, ApplicationSystemUpgrade
+        def get_upgrader(klass, folder):
+            version = get_version(folder)
+            klass.SRC_ROOT_FOLDER = folder
+            klass.GIT_REPO_URL = version["giturl"]
+            klass.DEFAULT_BRANCH = version["branch"]
+            return klass
+
+        bt_upgrader_class = get_upgrader(BioThingsSystemUpgrade, config.biothings_folder)
+        app_upgrader_class = get_upgrader(ApplicationSystemUpgrade, config.app_folder)
+        self.managers["dump_manager"].register_classes([bt_upgrader_class, app_upgrader_class])
+
         @asyncio.coroutine
         def check_code_upgrade():
             self.logger.info("Checking for new code updates")
@@ -1051,6 +1063,12 @@ class HubServer(object):
                 command=self.managers["api_manager"].start_api)
             self.extra_commands["stop_api"] = self.managers[
                 "api_manager"].stop_api
+        if "upgrade" in self.DEFAULT_FEATURES:
+            def upgrade(code_base):  # just a wrapper over dumper
+                """Upgrade (git pull) repository for given code base name ("biothings_sdk" or "application")"""
+                assert code_base in ("application","biothings_sdk"), "Unknown code base '%s'" % code_base
+                return self.managers["dump_manager"].dump_src("__" + code_base)
+            self.commands["upgrade"] = CommandDefinition(command=upgrade)
 
         logging.debug("Registered extra (private) commands: %s",
                       list(self.extra_commands.keys()))

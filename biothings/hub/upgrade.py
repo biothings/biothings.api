@@ -2,6 +2,8 @@ import sys
 
 from biothings.utils.hub_db import get_src_dump, get_data_plugin, get_hub_db_conn, backup, restore
 from biothings import config
+from biothings.hub.dataload.dumper import GitDumper
+
 logging = config.logger
 
 
@@ -113,3 +115,12 @@ def migrate(from_version, to_version, restore_if_failure=True):
             logging.info(
                 "*not* restoring original data. It can still be restored using file '%s'"
                 % path)
+
+class BioThingsSystemUpgrade(GitDumper):
+    """Used to upgrade biothings SDK code"""
+    SRC_NAME = "__biothings_sdk"  # "__" means private, not listed
+
+class ApplicationSystemUpgrade(GitDumper):
+    """Used to upgrade application (api app) code"""
+    SRC_NAME = "__application"  # "__" means private, not listed
+    

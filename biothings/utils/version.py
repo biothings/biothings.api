@@ -140,6 +140,7 @@ def check_new_version(folder, max_commits=10):
 
 def get_version(folder):
     repo = Repo(folder)  # app or lib dir
+    url = repo.remotes.origin.url
     try:
         commit = repo.head.object.hexsha[:6]
         commitdate = repo.head.object.committed_datetime.isoformat()
@@ -151,12 +152,14 @@ def get_version(folder):
     try:
         return {"branch": repo.active_branch.name,
                 "commit": commit,
-                "date": commitdate}
+                "date": commitdate,
+                "giturl" : url}
     except Exception as e:
         logging.warning("can't determine app version, assuming HEAD detached': %s" % e)
         return {"branch": "HEAD detached",
                 "commit": commit,
-                "date": commitdate}
+                "date": commitdate,
+                "giturl" : url}
 
 
 def set_versions(config, app_folder):

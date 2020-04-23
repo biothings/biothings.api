@@ -151,7 +151,8 @@ class BaseManager(object):
         """
 
     def __repr__(self):
-        return "<%s [%d registered]: %s>" % (self.__class__.__name__, len(self.register), sorted(list(self.register.keys())))
+        registered = sorted(list(self.register.keys()))
+        return "<%s [%d registered]: %s>" % (self.__class__.__name__, len(self.register), registered)
 
     def __getitem__(self, src_name):
         try:
