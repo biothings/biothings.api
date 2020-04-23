@@ -100,7 +100,7 @@ def get_software_info(app_dir=None):
     }
 
 
-def check_new_version(folder):
+def check_new_version(folder, max_commits=10):
     """
     Given a folder pointing to a Git repo, return a dict containing info
     about remote commits not qpplied yet to the repo, or empty dict if nothing
@@ -108,6 +108,12 @@ def check_new_version(folder):
     """
     # from https://stackoverflow.com/questions/8290233/gitpython-get-list-of-remote-commits-not-yet-applied
     repo = Repo(folder)
+    try:
+
+        repo_url = re.sub("\.git$","",repo.remotes.origin.url)
+    except Exception as e:
+        logging.debug("Can't determine repository URL: %s" % e)
+        repo_url = None
     new_info = {}
     try:
         head = repo.head.ref
@@ -119,9 +125,11 @@ def check_new_version(folder):
                 "commits": [
                     {
                         "hash": c.hexsha[:6],
+                        "url" : repo_url and os.path.join(repo_url,"commit",c.hexsha) or None,
                         "date": c.committed_datetime.isoformat(),
                         "message": c.message
-                    } for c in new_commits],
+                    } for c in new_commits][:max_commits],
+                "total": len(new_commits),
             }
     except Exception as e:
 
