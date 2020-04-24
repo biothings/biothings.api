@@ -10,6 +10,7 @@ import importlib
 import textwrap
 import pip  # noqa: F401
 import subprocess
+import copy
 from string import Template
 from yapf.yapflib import yapf_api
 
@@ -70,6 +71,7 @@ class BaseAssistant(object):
     def __init__(self, url):
         self.url = url
         self._plugin_name = None
+        self._src_folder = None
         self.logfile = None
         self.setup_log()
 
@@ -80,24 +82,33 @@ class BaseAssistant(object):
 
     @property
     def plugin_name(self):
-        if not self._plugin_name:
-            split = urllib.parse.urlsplit(self.url)
-            self._plugin_name = os.path.basename(split.path).replace(
-                ".git", "")
-        return self._plugin_name
+        """
+        Return plugin name, parsed from self.url and set self._src_folder as
+        path to folder containing dataplugin source code
+        """
+        raise NotImplementedError("implement 'plugin_name' in subclass")
 
     def handle(self):
         """Access self.url and do whatever is necessary to bring code to life within the hub...
         (hint: that may involve creating a dumper on-the-fly and register that dumper to
         a manager...)
         """
-        raise NotImplementedError("implement in subclass")
+        raise NotImplementedError("implement 'handle' in subclass")
 
     def can_handle(self):
         """Return true if assistant can handle the code"""
-        raise NotImplementedError("implement in subclass")
+        raise NotImplementedError("implement 'can_handle' in subclass")
 
-    def load_manifest(self):
+    def load_plugin(self):
+        """
+        Load plugin and register its components
+        """
+        raise NotImplementedError("implement 'load_plugin' in subclass")
+
+
+class ManifestBasedPluginAssistant(BaseAssistant):
+
+    def load_plugin(self):
         dp = get_data_plugin()
         p = dp.find_one({"_id": self.plugin_name})
         if not p.get("download", {}).get("data_folder"):
@@ -295,8 +306,6 @@ class BaseAssistant(object):
                 else:
                     confdict["__metadata__"] = {}
 
-                #self.logger.error(confdict)
-
                 if hasattr(btconfig, "DUMPER_TEMPLATE"):
                     tpl_file = btconfig.DUMPER_TEMPLATE
                 else:
@@ -396,6 +405,43 @@ class BaseAssistant(object):
                 self.plugin_name] = assisted_uploader_class
 
 
+class AdvancedPluginAssistant(BaseAssistant):
+
+    def load_plugin(self):
+        dp = get_data_plugin()
+        p = dp.find_one({"_id": self.plugin_name})
+        if not p.get("download", {}).get("data_folder"):
+            # not yet available
+            self.logger.warning("Can't find data_folder, not available yet ?")
+            return
+        df = p["download"]["data_folder"]
+        if os.path.exists(df):
+            # we assume there's a __init__ module exposing Dumper and Uploader classes
+            # as necessary
+            # we could strip and split on "/" manually but let's use os.path for that
+            # just to make sure we'll handle any cases (supposedly)
+            tmpdf = copy.deepcopy(df)
+            path_elements = []
+            while tmpdf:
+                tmpdf, elem = os.path.split(tmpdf)
+                if elem == ".":
+                    continue
+                path_elements.append(elem)
+            path_elements.reverse()  # we got elems from the end, back to forward
+            modpath = ".".join(path_elements)
+            # before registering, process optional requirements.txt
+            reqfile = os.path.join(df,"requirements.txt")
+            if os.path.exists(reqfile):
+                self.logger.info("Installing requirements from %s for plugin '%s'" % (reqfile,self.plugin_name))
+                subprocess.check_call([sys.executable,"-m","pip","install","-r",reqfile])
+            # submit to managers to register datasources
+            self.logger.info("Registering '%s' to dump/upload managers" % modpath)
+            self.__class__.dumper_manager.register_source(modpath)
+            self.__class__.uploader_manager.register_source(modpath)
+        else:
+            self.invalidate_plugin("Missing plugin folder '%s'" % df)
+
+
 class AssistedDumper(object):
     DATA_PLUGIN_FOLDER = None
 
@@ -404,9 +450,17 @@ class AssistedUploader(object):
     DATA_PLUGIN_FOLDER = None
 
 
-class GithubAssistant(BaseAssistant):
+class GithubAssistant(ManifestBasedPluginAssistant):
 
     plugin_type = "github"
+
+    @property
+    def plugin_name(self):
+        if not self._plugin_name:
+            split = urllib.parse.urlsplit(self.url)
+            self._plugin_name = os.path.basename(split.path).replace(".git", "")
+            self._src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, self.plugin_name)
+        return self._plugin_name
 
     def can_handle(self):
         # analyze headers to guess type of required assitant
@@ -415,18 +469,16 @@ class GithubAssistant(BaseAssistant):
             if headers.get("server").lower() == "github.com":
                 return True
         except Exception as e:
-            self.logger.info("%s plugin can't handle URL '%s': %s" %
+            self.logger.error("%s plugin can't handle URL '%s': %s" %
                              (self.plugin_type, self.url, e))
             return False
 
     def get_classdef(self):
         # generate class dynamically and register
-        src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER,
-                                  self.plugin_name)
         confdict = {
             "SRC_NAME": self.plugin_name,
             "GIT_REPO_URL": self.url,
-            "SRC_ROOT_FOLDER": src_folder
+            "SRC_ROOT_FOLDER": self._src_folder
         }
         # TODO: store confdict in hubconf collection
         k = type("AssistedGitDataPlugin_%s" % self.plugin_name,
@@ -439,7 +491,7 @@ class GithubAssistant(BaseAssistant):
         self.__class__.data_plugin_manager.register_classes([klass])
 
 
-class LocalAssistant(BaseAssistant):
+class LocalAssistant(ManifestBasedPluginAssistant):
 
     plugin_type = "local"
 
@@ -458,21 +510,20 @@ class LocalAssistant(BaseAssistant):
             # don't use hostname here because it's lowercased, netloc isn't
             # (and we're matching directory names on the filesystem, it's case-sensitive)
             self._plugin_name = os.path.basename(split.netloc)
+            self._src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, self._plugin_name)
         return self._plugin_name
 
     def can_handle(self):
-        if self.url.startswith("local://"):
+        if self.url.startswith(self.__class__.plugin_type + "://"):
             return True
         else:
             return False
 
     def get_classdef(self):
         # generate class dynamically and register
-        src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER,
-                                  self.plugin_name)
         confdict = {
             "SRC_NAME": self.plugin_name,
-            "SRC_ROOT_FOLDER": src_folder
+            "SRC_ROOT_FOLDER": self._src_folder
         }
         k = type("AssistedManualDataPlugin_%s" % self.plugin_name,
                  (ManualDataPlugin, ), confdict)
@@ -484,9 +535,27 @@ class LocalAssistant(BaseAssistant):
         self.__class__.data_plugin_manager.register_classes([klass])
 
 
-class AssistantManager(BaseSourceManager):
+class AdvancedLocalAssistant(AdvancedPluginAssistant, LocalAssistant):
 
-    ASSISTANT_CLASS = BaseAssistant
+    plugin_type = "advanced-local"
+
+    #def can_handle(self):
+    #    return super(LocalAssistant,self).can_handle()
+
+    @property
+    def plugin_name(self):
+        if not self._plugin_name:
+            split = urllib.parse.urlsplit(self.url)
+            path, src_name = os.path.split(split.path)
+            assert path.endswith("datasources"), "Expecting a folder name 'datasources' in path '%s'" % self.url
+            self._plugin_name = src_name
+            # netloc is '.' when plugin dir is relative
+            # Keep it so path doesn't become absolute (netloc is '' when absolute so it's safe)
+            self._src_folder = split.netloc + split.path
+        return self._plugin_name
+
+
+class AssistantManager(BaseSourceManager):
 
     def __init__(self,
                  data_plugin_manager,
@@ -515,10 +584,9 @@ class AssistantManager(BaseSourceManager):
         self.logger, self.logfile = get_logger('assistantmanager')
 
     def create_instance(self, klass, url):
-        self.logger.debug("Creating new %s instance" % klass.__name__)
         return klass(url)
 
-    def configure(self, klasses=[GithubAssistant, LocalAssistant]):
+    def configure(self, klasses=[GithubAssistant, LocalAssistant, AdvancedLocalAssistant, ]):
         self.register_classes(klasses)
 
     def register_classes(self, klasses):
@@ -572,7 +640,8 @@ class AssistantManager(BaseSourceManager):
         url = url.strip()
         dp = get_data_plugin()
         if dp.find_one({"plugin.url": url}):
-            raise AssistantException("Plugin '%s' already registered" % url)
+            self.logger.info("Plugin '%s' already registered" % url)
+            return
         assistant = self.submit(url)
         if assistant:
             # register plugin info
@@ -597,7 +666,7 @@ class AssistantManager(BaseSourceManager):
                     self.logger.debug(
                         "Plugin '%s' loaded, now loading manifest" %
                         assistant.plugin_name)
-                    assistant.load_manifest()
+                    assistant.load_plugin()
                 except Exception as e:
                     self.logger.exception("Unable to load plugin '%s': %s" %
                                           (assistant.plugin_name, e))
@@ -620,7 +689,7 @@ class AssistantManager(BaseSourceManager):
                 aklass = self.register[ptype]
                 assistant = self.create_instance(aklass, url)
                 assistant.handle()
-                assistant.load_manifest()
+                assistant.load_plugin()
             except Exception as e:
                 self.logger.exception("Unable to load plugin '%s': %s" %
                                       (url, e))
@@ -663,18 +732,22 @@ class AssistantManager(BaseSourceManager):
                     if "manifest.json" in os.listdir(fulldir) and \
                        json.load(open(os.path.join(fulldir, "manifest.json"))):
                         self.logger.info(
-                            "Found unregistered plugin '%s', auto-register it"
+                            "Found unregistered manifest-based plugin '%s', auto-register it"
                             % pdir)
                         self.register_url("local://%s" %
                                           pdir.strip().strip("/"))
+                    elif "datasources" in os.listdir(fulldir) and os.path.isdir(os.path.join(fulldir,"datasources")):
+                        sources_folder = os.path.join(fulldir,"datasources")
+                        for src_folder in os.listdir(sources_folder):
+                            advanced_src_folder = os.path.join(sources_folder,src_folder)
+                            self.logger.info(
+                                "Found unregister plugin (\"advanced\") in '%s', auto-register it"
+                                % advanced_src_folder)
+                            self.register_url("advanced-local://%s" % advanced_src_folder.strip().strip("/"))
+
                 except Exception as e:
                     self.logger.exception(
                         "Couldn't auto-register plugin '%s': %s" % (pdir, e))
-                    continue
-                else:
-                    self.logger.warning(
-                        "Directory '%s' doesn't contain a plugin, skip it" %
-                        pdir)
                     continue
 
     def export_dumper(self, plugin_name, folder):
