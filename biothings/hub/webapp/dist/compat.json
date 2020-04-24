@@ -4,11 +4,5 @@
       "biothings_version" : {"branch" : "master"}
     },
     "requires" : "this"
-  },
-  {
-    "when" : {
-      "biothings_version" : {"branch" : "0.7.x"}
-    },
-    "requires" : "0.2b"
   }
 ]

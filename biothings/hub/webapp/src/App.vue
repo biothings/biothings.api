@@ -36,6 +36,15 @@
                     " data-position="bottom center">{{conn.name || "John Doe"}}</div>
             </div>
 
+            <div class="ui item" v-if="needs_upgrade">
+                <div>
+                    <button class="mini circular ui icon button" @click="showUpgrades()">
+                        <i class="upgrade sync icon"></i>
+                    </button>
+                </div>
+            </div>
+
+
             <a class="clickable item" v-for="mitem in menu">
                 <i :class="['ui',mitem['icon'],'icon']"></i>
                 <router-link :to="mitem['path']">{{ mitem['name'] }}</router-link>
@@ -172,6 +181,22 @@
 
         <div id="page_content" class="clickable ui active tab segment">
             <router-view></router-view>
+        </div>
+
+        <div class="ui basic upgrade modal">
+            <h3 class="ui icon">
+                <i class="sync icon"></i>
+                Upgrade system
+            </h3>
+            <div class="content">
+                <system-upgrade v-bind:biothings_version="conn.biothings_version" v-bind:app_version="conn.app_version"></system-upgrade>
+            </div>
+            <div class="actions">
+                <div class="ui green ok inverted button">
+                    <i class="checkmark icon"></i>
+                    OK
+                </div>
+            </div>
         </div>
 
         <event-alert></event-alert>
@@ -331,7 +356,8 @@
     import Terminal from './Terminal.vue';
     import FeatureChecker from './FeatureChecker.vue';
     import StandaloneReleases from './StandaloneReleases.vue';
-    import StandaloneWizard from './StandaloneWizard.vue'
+    import StandaloneWizard from './StandaloneWizard.vue';
+    import SystemUpgrade from './SystemUpgrade.vue';
 
     const router = new VueRouter();
 
@@ -343,7 +369,7 @@
         mixins: [ FeatureChecker, Loader, Actionable, ],
         components: { JobSummary, EventMessages, EventAlert,
                       ChooseHub, HubConfig, Loader, LogViewer,
-                      Terminal},
+                      Terminal, SystemUpgrade, },
         mounted () {
             $('#conn')
             .popup({
@@ -425,7 +451,24 @@
                  } else {
                      return "not listed";
                  }
-             }
+             },
+             biothings_needs_upgrade: function () {
+                 if(Object(this.conn.biothings_version).hasOwnProperty("upgrade")) {
+                    return true;
+                 } else {
+                    return false;
+                 }
+             },
+             app_needs_upgrade: function () {
+                 if(Object(this.conn.app_version).hasOwnProperty("upgrade")) {
+                    return true;
+                 } else {
+                    return false;
+                 }
+             },
+             needs_upgrade: function() {
+                 return this.biothings_needs_upgrade || this.app_needs_upgrade;
+             },
 
         },
         watch: {
@@ -1016,6 +1059,22 @@
             console.log(`Redirecting to ${url}, with param ${JSON.stringify(params)}`);
             router.push({name : url, params: params});
         },
+        showUpgrades() {
+            this.loading();
+            var self = this;
+            $('.ui.basic.upgrade.modal')
+            .modal("setting", {
+                detachable : false,
+                closable: false,
+                onApprove: function () {
+                    self.loaded();
+                },
+                onDeny: function() {
+                    self.loaded();
+                }
+            })
+            .modal("show");
+        },
     }
 }
 
@@ -1111,6 +1170,9 @@
     cursor: pointer;
 }
 
+.upgrade {
+    color: red;
+}
 
     html,
     body,

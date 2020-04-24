@@ -162,7 +162,7 @@ export default {
                     })
                     .catch(err => {
                         console.log(err);
-                        self.loaderr(err);
+                        self.loaderror(err);
                     })
                 },
                 onDeny: function () {
