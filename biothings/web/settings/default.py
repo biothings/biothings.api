@@ -220,11 +220,6 @@ SENTRY_CLIENT_KEY = ''
 
 # Google Analytics Account ID
 GA_ACCOUNT = ''
-
-# Turn this to True to start google analytics tracking
-GA_RUN_IN_PROD = False
-
-# url for google analytics tracker
 GA_TRACKER_URL = 'mybiothing.info'  # TODO
 GA_ACTION_QUERY_GET = 'query_get'
 GA_ACTION_QUERY_POST = 'query_post'
