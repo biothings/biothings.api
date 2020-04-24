@@ -127,7 +127,7 @@ class BaseSystemUpgrade(GitDumper):
             # SRC_ROOT_FOLDER is set to code base root
             os.chdir(self.__class__.SRC_ROOT_FOLDER)
             cmd = ["git", "pull", "--rebase"]
-            self.logger.debug("Pulling new code in '%s' using: %s" % (localdir,cmd))
+            self.logger.debug("Pulling new code in '%s' using: %s" % (self.__class__.SRC_ROOT_FOLDER, cmd))
             subprocess.check_call(cmd)
         finally:
             os.chdir(old)
