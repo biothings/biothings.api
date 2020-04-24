@@ -169,6 +169,8 @@ def set_versions(config, app_folder):
     exposed as a config param since they are lower-cased,
     see biothings.__init__.py, regex PARAM_PAT)
     """
+    if not os.path.exists(app_folder):
+        raise FileNotFoundError("'%s' application folder doesn't exist")
     # app_version: version of the API application
     if not hasattr(config, "APP_VERSION"):
         config.APP_VERSION = get_version(app_folder)
@@ -181,6 +183,8 @@ def set_versions(config, app_folder):
         import biothings
         # .../biothings.api/biothings/__init__.py
         bt_folder, _bt = os.path.split(os.path.split(os.path.realpath(biothings.__file__))[0])
+        if not os.path.exists(bt_folder):
+            raise FileNotFoundError("'%s' biothings folder doesn't exist")
         assert _bt == "biothings", "Expectig 'biothings' dir in biothings lib path"
         config.BIOTHINGS_VERSION = get_version(bt_folder)
         config.biothings_folder = bt_folder
