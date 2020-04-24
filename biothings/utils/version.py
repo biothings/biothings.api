@@ -124,11 +124,12 @@ def check_new_version(folder, max_commits=10):
         # inspect remote HEAD for that branch
         output = repo.git.ls_remote("--heads", tracking.remote_name, tracking.remote_head)
         remote_head_hexsha = output.split("\t")[0]
-        logging.info("HEAD on remote is different, new commit(s) available for '%s'" % folder)
         if remote_head_hexsha == head.commit.hexsha:
             # hashes the same, we're up-to-date with the remote
             return
         else:
+            logging.info("HEAD on remote is different, new commit(s) available for '%s'" % folder)
+            logging.info("HEAD(remote): %s, HEAD(local): %s" % (remote_head_hexsha,head.commit.hexsha))
             # need to fetch new code locally
             # usually one remotes, but just in case...
             for remote in repo.remotes:
