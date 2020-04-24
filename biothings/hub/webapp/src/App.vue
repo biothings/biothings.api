@@ -7,7 +7,7 @@
               <!-- check value, null means toggle deactivated (hub is read-only, can't switch back to read/write) -->
               <span v-if="readonly_switch !== null">
                   <div class="ui middle aligned mini" data-tooltip="Toggle read-only mode" data-position="bottom left">
-                      <i class="clickicon large lock icon" :class="readonly_mode ? 'red': ''" @click="switchReadOnly"></i>
+                      <i class="clickicon large icon" :class="readonly_mode ? 'red lock': 'unlock'" @click="switchReadOnly"></i>
                   </div>
               </span>
               <span v-else>
