@@ -202,9 +202,10 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         This is a tornado lifecycle hook.
         Override to provide tracking features.
         """
-        logging.debug("Track: %s", self.ga_event_object_ret)
-        self.ga_track(event=self.ga_event_object_ret)
-        self.self_track(data=self.ga_event_object_ret)
+        logging.debug("Tracking Object: %s",
+                      self.ga_event_object_ret)
+        self.ga_track(self.ga_event_object_ret)
+        self.self_track(self.ga_event_object_ret)
 
     def write_error(self, status_code, **kwargs):
 
