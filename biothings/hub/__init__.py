@@ -1327,6 +1327,8 @@ class HubServer(object):
             self.api_endpoints["standalone"].append(EndpointDefinition(name="reset_backend", method="delete", suffix="backend"))
         if not self.api_endpoints["standalone"]:
             self.api_endpoints.pop("standalone")
+        if "upgrade" in self.commands:
+            self.api_endpoints["code/upgrade"] = EndpointDefinition(name="upgrade", method="put")
 
 
 class HubSSHServer(asyncssh.SSHServer):
