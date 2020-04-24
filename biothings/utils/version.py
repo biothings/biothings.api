@@ -109,15 +109,31 @@ def check_new_version(folder, max_commits=10):
     # from https://stackoverflow.com/questions/8290233/gitpython-get-list-of-remote-commits-not-yet-applied
     repo = Repo(folder)
     try:
-
         repo_url = re.sub("\.git$","",repo.remotes.origin.url)
     except Exception as e:
         logging.debug("Can't determine repository URL: %s" % e)
         repo_url = None
     new_info = {}
     try:
+        # we can't directly get the list of new commits without fetching them locally first
+        # but we'd like to avoid fetching all the time just to check.
+        # what we can do is a ls-remote and check the HEAD hash, if different, then fetch
+        # (no pull) and inspect differences.
         head = repo.head.ref
         tracking = head.tracking_branch()
+        # inspect remote HEAD for that branch
+        output = repo.git.ls_remote("--heads", tracking.remote_name, tracking.remote_head)
+        remote_head_hexsha = output.split("\t")[0]
+        logging.info("HEAD on remote is different, new commit(s) available for '%s'" % folder)
+        if remote_head_hexsha == head.commit.hexsha:
+            # hashes the same, we're up-to-date with the remote
+            return
+        else:
+            # need to fetch new code locally
+            # usually one remotes, but just in case...
+            for remote in repo.remotes:
+                remote.fetch()
+        # now identify new commits
         new_commits = [commit for commit in tracking.commit.iter_items(repo, f'{head.path}..{tracking.path}')]
         if new_commits:
             new_info = {
