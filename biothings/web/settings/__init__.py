@@ -170,6 +170,7 @@ class BiothingESWebSettings(BiothingWebSettings):
         assert isinstance(self.ES_INDICES, dict)
         assert '*' not in self.ES_DOC_TYPE
 
+        self.ES_INDICES = dict(self.ES_INDICES)
         self.ES_INDICES[self.ES_DOC_TYPE] = self.ES_INDEX
 
     def get_es_client(self):
