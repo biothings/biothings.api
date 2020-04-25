@@ -5,12 +5,15 @@ from collections import defaultdict
 from pydoc import locate
 
 import elasticsearch
-from biothings.web.api.es.userquery import ESUserQuery
-from biothings.web.settings import BiothingConfigError, BiothingWebSettings
+import elasticsearch_dsl
 from elasticsearch import ConnectionSelector
 from elasticsearch_async.transport import AsyncTransport
 from elasticsearch_dsl.connections import Connections
 from tornado.ioloop import IOLoop
+
+from biothings.web.api.es.userquery import ESUserQuery
+from biothings.web.settings import BiothingConfigError, BiothingWebSettings
+
 
 class KnownLiveSelecter(ConnectionSelector):
     """
@@ -28,8 +31,6 @@ class BiothingESWebSettings(BiothingWebSettings):
     * Cache source metadata stored under the _meta field in es indices.
 
     '''
-
-    ES_VERSION = elasticsearch.__version__[0]
 
     def __init__(self, config=None, **kwargs):
         '''
@@ -50,6 +51,22 @@ class BiothingESWebSettings(BiothingWebSettings):
         self._connections.create_connection(alias='sync', **connection_settings)
         connection_settings.update(transport_class=AsyncTransport)
         self._connections.create_connection(alias='async', **connection_settings)
+
+        logging.info("Python Elasticsearch Version: %s", elasticsearch.__version__)
+        logging.info("Python Elasticsearch DSL Version: %s", elasticsearch_dsl.__version__)
+        try:
+            info = self.es_client.info(request_timeout=0.1)
+            version = info['version']['number']
+            cluster = info['cluster_name']
+            health = self.es_client.cluster.health(request_timeout=0.1)['status']
+        except elasticsearch.ConnectionError:
+            pass  # error will be exposed when reading index mappings
+        except Exception:
+            logging.exception('Error reading elasticsearch state.')
+        else:
+            logging.info('Elasticsearch Version: %s', version)
+            logging.info('Elasticsearch Cluster: %s', cluster)
+            logging.info('Elasticsearch Health: %s', health)
 
         # cached index mappings
         self.source_metadata = defaultdict(dict)
@@ -156,7 +173,7 @@ class BiothingESWebSettings(BiothingWebSettings):
 
             mapping = mappings[index]['mappings']
 
-            if self.ES_VERSION < 7:
+            if elasticsearch.__version__[0] < 7:
                 # remove doc_type, support 1 type per index
                 mapping = next(iter(mapping.values()))
 
