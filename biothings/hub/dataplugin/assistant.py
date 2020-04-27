@@ -29,14 +29,50 @@ from biothings.hub.dataplugin.manager import GitDataPlugin, ManualDataPlugin
 class AssistantException(Exception):
     pass
 
+class LoaderException(Exception):
+    pass
 
-class BaseAssistant(object):
 
-    plugin_type = None  # to be defined in subblass
-    data_plugin_manager = None  # set by assistant manager
-    dumper_manager = None  # set by assistant manager
-    uploader_manager = None  # set by assistant manager
-    keylookup = None  # set by assistant manager
+class BasePluginLoader(object):
+
+    def __init__(self, plugin_name):
+        self.plugin_name = plugin_name
+        self.setup_log()
+
+    def setup_log(self):
+        """Setup and return a logger instance"""
+        self.logger, self.logfile = get_logger('loader_%s' % self.plugin_name)
+
+    def get_plugin_obj(self):
+        dp = get_data_plugin()
+        plugin = dp.find_one({"_id": self.plugin_name})
+        if not plugin.get("download", {}).get("data_folder"):
+            raise LoaderException("Can't find data_folder, not available yet ?")
+        return plugin
+
+    def invalidate_plugin(self, error):
+        self.logger.exception("Invalidate plugin '%s' because: %s" %
+                              (self.plugin_name, error))
+        # flag all plugin associated (there should only one though, but no need to care here)
+        for klass in self.__class__.data_plugin_manager[self.plugin_name]:
+            klass.data_plugin_error = error
+        raise LoaderException(error)
+
+    def can_load_plugin(self):
+        """
+        Return True if loader is able to load plugin (check data folder content)
+        """
+        raise NotImplementedError("implement 'can_load_plugin' in subclass")
+
+    def load_plugin(self):
+        """
+        Load plugin and register its components
+        """
+        raise NotImplementedError("implement 'load_plugin' in subclass")
+
+
+class ManifestBasedPluginLoader(BasePluginLoader):
+
     # should match a _dict_for_***
     dumper_registry = {
         "http": LastModifiedHTTPDumper,
@@ -48,12 +84,9 @@ class BaseAssistant(object):
         if type(data_url) == str:
             data_url = [data_url]
         return {
-            "SRC_NAME":
-            self.plugin_name,
-            "SRC_ROOT_FOLDER":
-            os.path.join(btconfig.DATA_ARCHIVE_ROOT, self.plugin_name),
-            "SRC_URLS":
-            data_url
+            "SRC_NAME": self.plugin_name,
+            "SRC_ROOT_FOLDER": os.path.join(btconfig.DATA_ARCHIVE_ROOT, self.plugin_name),
+            "SRC_URLS": data_url
         }
 
     def _dict_for_http(self, data_url):
@@ -68,54 +101,17 @@ class BaseAssistant(object):
     def _dict_for_ftp(self, data_url):
         return self._dict_for_base(data_url)
 
-    def __init__(self, url):
-        self.url = url
-        self._plugin_name = None
-        self._src_folder = None
-        self.logfile = None
-        self.setup_log()
-
-    def setup_log(self):
-        """Setup and return a logger instance"""
-        self.logger, self.logfile = get_logger('assistant_%s' %
-                                               self.__class__.plugin_type)
-
-    @property
-    def plugin_name(self):
-        """
-        Return plugin name, parsed from self.url and set self._src_folder as
-        path to folder containing dataplugin source code
-        """
-        raise NotImplementedError("implement 'plugin_name' in subclass")
-
-    def handle(self):
-        """Access self.url and do whatever is necessary to bring code to life within the hub...
-        (hint: that may involve creating a dumper on-the-fly and register that dumper to
-        a manager...)
-        """
-        raise NotImplementedError("implement 'handle' in subclass")
-
-    def can_handle(self):
-        """Return true if assistant can handle the code"""
-        raise NotImplementedError("implement 'can_handle' in subclass")
+    def can_load_plugin(self):
+        plugin = self.get_plugin_obj()
+        df = plugin["download"]["data_folder"]
+        if "manifest.json" in os.listdir(df) and os.path.exists(os.path.join(df,"manifest.json")):
+            return True
+        else:
+            return False
 
     def load_plugin(self):
-        """
-        Load plugin and register its components
-        """
-        raise NotImplementedError("implement 'load_plugin' in subclass")
-
-
-class ManifestBasedPluginAssistant(BaseAssistant):
-
-    def load_plugin(self):
-        dp = get_data_plugin()
-        p = dp.find_one({"_id": self.plugin_name})
-        if not p.get("download", {}).get("data_folder"):
-            # not yet available
-            self.logger.warning("Can't find data_folder, not available yet ?")
-            return
-        df = p["download"]["data_folder"]
+        plugin = self.get_plugin_obj()
+        df = plugin["download"]["data_folder"]
         if os.path.exists(df):
             mf = os.path.join(df, "manifest.json")
             if os.path.exists(mf):
@@ -127,18 +123,10 @@ class ManifestBasedPluginAssistant(BaseAssistant):
                                            str(e))
             else:
                 self.logger.info("No manifest found for plugin: %s" %
-                                 p["plugin"]["url"])
+                                 plugin["plugin"]["url"])
                 self.invalidate_plugin("No manifest found")
         else:
             self.invalidate_plugin("Missing plugin folder '%s'" % df)
-
-    def invalidate_plugin(self, error):
-        self.logger.exception("Invalidate plugin '%s' because: %s" %
-                              (self.plugin_name, error))
-        # flag all plugin associated (there should only one though, but no need to care here)
-        for klass in self.__class__.data_plugin_manager[self.plugin_name]:
-            klass.data_plugin_error = error
-        pass
 
     def get_code_for_mod_name(self, mod_name):
         try:
@@ -405,16 +393,19 @@ class ManifestBasedPluginAssistant(BaseAssistant):
                 self.plugin_name] = assisted_uploader_class
 
 
-class AdvancedPluginAssistant(BaseAssistant):
+class AdvancedPluginLoader(BasePluginLoader):
+
+    def can_load_plugin(self):
+        plugin = self.get_plugin_obj()
+        df = plugin["download"]["data_folder"]
+        if "__init__.py" in os.listdir(df):
+            return True
+        else:
+            return False
 
     def load_plugin(self):
-        dp = get_data_plugin()
-        p = dp.find_one({"_id": self.plugin_name})
-        if not p.get("download", {}).get("data_folder"):
-            # not yet available
-            self.logger.warning("Can't find data_folder, not available yet ?")
-            return
-        df = p["download"]["data_folder"]
+        plugin = self.get_plugin_obj()
+        df = plugin["download"]["data_folder"]
         if os.path.exists(df):
             # we assume there's a __init__ module exposing Dumper and Uploader classes
             # as necessary
@@ -442,6 +433,83 @@ class AdvancedPluginAssistant(BaseAssistant):
             self.invalidate_plugin("Missing plugin folder '%s'" % df)
 
 
+class BaseAssistant(object):
+
+    plugin_type = None  # to be defined in subblass
+    data_plugin_manager = None  # set by assistant manager
+    dumper_manager = None  # set by assistant manager
+    uploader_manager = None  # set by assistant manager
+    keylookup = None  # set by assistant manager
+
+    # known plugin loaders
+    loaders = {
+        "manifest": ManifestBasedPluginLoader,
+        "advanced": AdvancedPluginLoader,
+    }
+
+    def __init__(self, url):
+        self.url = url
+        self._plugin_name = None
+        self._src_folder = None
+        self._loader = None
+        self.logfile = None
+        self.setup_log()
+
+    def setup_log(self):
+        """Setup and return a logger instance"""
+        self.logger, self.logfile = get_logger('assistant_%s' %
+                                               self.__class__.plugin_type)
+
+    @property
+    def loader(self):
+        """
+        Return loader object able to interpret plugin's folder content
+        """
+        if not self._loader:
+            # iterate over known loaders, the first one which can interpret plugin content is kept
+            for klass in self.loaders.values():
+                # propagate managers
+                klass.dumper_manager = self.dumper_manager
+                klass.uploader_manager = self.uploader_manager
+                klass.data_plugin_manager = self.data_plugin_manager
+                klass.keylookup = self.keylookup
+                loader = klass(self.plugin_name)
+                if loader.can_load_plugin():
+                    self._loader = loader
+                    self.logger.info("For plugin '%s', selecting loader %s" % (self.plugin_name, self._loader))
+                    break
+                else:
+                    self.logger.debug("Loader %s can't load plugin '%s'" % (loader, self.plugin_name))
+                    continue
+        return self._loader
+
+    @property
+    def plugin_name(self):
+        """
+        Return plugin name, parsed from self.url and set self._src_folder as
+        path to folder containing dataplugin source code
+        """
+        raise NotImplementedError("implement 'plugin_name' in subclass")
+
+    def handle(self):
+        """Access self.url and do whatever is necessary to bring code to life within the hub...
+        (hint: that may involve creating a dumper on-the-fly and register that dumper to
+        a manager...)
+        """
+        raise NotImplementedError("implement 'handle' in subclass")
+
+    def can_handle(self):
+        """Return true if assistant can handle the code"""
+        raise NotImplementedError("implement 'can_handle' in subclass")
+
+    def load_plugin(self):
+        """
+        Load plugin and register its components
+        """
+        raise NotImplementedError("implement 'load_plugin' in subclass")
+
+
+
 class AssistedDumper(object):
     DATA_PLUGIN_FOLDER = None
 
@@ -450,7 +518,7 @@ class AssistedUploader(object):
     DATA_PLUGIN_FOLDER = None
 
 
-class GithubAssistant(ManifestBasedPluginAssistant):
+class GithubAssistant(BaseAssistant):
 
     plugin_type = "github"
 
@@ -491,7 +559,7 @@ class GithubAssistant(ManifestBasedPluginAssistant):
         self.__class__.data_plugin_manager.register_classes([klass])
 
 
-class LocalAssistant(ManifestBasedPluginAssistant):
+class LocalAssistant(BaseAssistant):
 
     plugin_type = "local"
 
@@ -535,26 +603,6 @@ class LocalAssistant(ManifestBasedPluginAssistant):
         self.__class__.data_plugin_manager.register_classes([klass])
 
 
-class AdvancedLocalAssistant(AdvancedPluginAssistant, LocalAssistant):
-
-    plugin_type = "advanced-local"
-
-    #def can_handle(self):
-    #    return super(LocalAssistant,self).can_handle()
-
-    @property
-    def plugin_name(self):
-        if not self._plugin_name:
-            split = urllib.parse.urlsplit(self.url)
-            path, src_name = os.path.split(split.path)
-            assert path.endswith("datasources"), "Expecting a folder name 'datasources' in path '%s'" % self.url
-            self._plugin_name = src_name
-            # netloc is '.' when plugin dir is relative
-            # Keep it so path doesn't become absolute (netloc is '' when absolute so it's safe)
-            self._src_folder = split.netloc + split.path
-        return self._plugin_name
-
-
 class AssistantManager(BaseSourceManager):
 
     def __init__(self,
@@ -586,7 +634,7 @@ class AssistantManager(BaseSourceManager):
     def create_instance(self, klass, url):
         return klass(url)
 
-    def configure(self, klasses=[GithubAssistant, LocalAssistant, AdvancedLocalAssistant, ]):
+    def configure(self, klasses=[GithubAssistant, LocalAssistant, ]):
         self.register_classes(klasses)
 
     def register_classes(self, klasses):
@@ -643,8 +691,13 @@ class AssistantManager(BaseSourceManager):
             self.logger.info("Plugin '%s' already registered" % url)
             return
         assistant = self.submit(url)
+        self.logger.info("For data-plugin URL '%s', selected assistant is: %s" % (url, assistant))
         if assistant:
             # register plugin info
+            # if a github url was used, by default, we assume it's a manifest-based plugin
+            # (we can't know until we have a look at the content). So assistant will have
+            # manifest-based loader. If it fails, another assistant with advanced loader will
+            # be used to try again.
             dp.update({"_id": assistant.plugin_name}, {
                 "$set": {
                     "plugin": {
@@ -664,11 +717,11 @@ class AssistantManager(BaseSourceManager):
                 try:
                     _ = f.result()
                     self.logger.debug(
-                        "Plugin '%s' loaded, now loading manifest" %
+                        "Plugin '%s' downloaded, now loading manifest" %
                         assistant.plugin_name)
-                    assistant.load_plugin()
+                    assistant.loader.load_plugin()
                 except Exception as e:
-                    self.logger.exception("Unable to load plugin '%s': %s" %
+                    self.logger.exception("Unable to download plugin '%s': %s" %
                                           (assistant.plugin_name, e))
 
             job.add_done_callback(loaded)
@@ -689,7 +742,7 @@ class AssistantManager(BaseSourceManager):
                 aklass = self.register[ptype]
                 assistant = self.create_instance(aklass, url)
                 assistant.handle()
-                assistant.load_plugin()
+                assistant.loader.load_plugin()
             except Exception as e:
                 self.logger.exception("Unable to load plugin '%s': %s" %
                                       (url, e))
@@ -727,24 +780,11 @@ class AssistantManager(BaseSourceManager):
         if plugin_dirs:
             for pdir in plugin_dirs:
                 fulldir = os.path.join(btconfig.DATA_PLUGIN_FOLDER, pdir)
-                # basic sanity check to make sure it's plugin
                 try:
-                    if "manifest.json" in os.listdir(fulldir) and \
-                       json.load(open(os.path.join(fulldir, "manifest.json"))):
-                        self.logger.info(
-                            "Found unregistered manifest-based plugin '%s', auto-register it"
-                            % pdir)
-                        self.register_url("local://%s" %
-                                          pdir.strip().strip("/"))
-                    elif "datasources" in os.listdir(fulldir) and os.path.isdir(os.path.join(fulldir,"datasources")):
-                        sources_folder = os.path.join(fulldir,"datasources")
-                        for src_folder in os.listdir(sources_folder):
-                            advanced_src_folder = os.path.join(sources_folder,src_folder)
-                            self.logger.info(
-                                "Found unregister plugin (\"advanced\") in '%s', auto-register it"
-                                % advanced_src_folder)
-                            self.register_url("advanced-local://%s" % advanced_src_folder.strip().strip("/"))
-
+                    self.logger.info(
+                        "Found unregistered manifest-based plugin '%s', auto-register it"
+                        % pdir)
+                    self.register_url("local://%s" % pdir.strip().strip("/"))
                 except Exception as e:
                     self.logger.exception(
                         "Couldn't auto-register plugin '%s': %s" % (pdir, e))
