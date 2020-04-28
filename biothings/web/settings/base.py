@@ -11,6 +11,7 @@ from pydoc import locate
 import tornado.log
 
 import biothings.web.settings.default
+from biothings import get_version
 from biothings.web.api.es.handlers import BaseESRequestHandler
 
 try:
@@ -40,7 +41,8 @@ class BiothingWebSettings():
         '''
         self._default = biothings.web.settings.default
         self._user = self.load_module(config, self._default)
-        self.logger.info("Loaded: %s", self._user)
+        self.logger.info("Biothings API %s", get_version())
+        self.logger.info("%s", self._user)  # log file location
 
         # process keyword setting override
         for key, value in kwargs.items():
