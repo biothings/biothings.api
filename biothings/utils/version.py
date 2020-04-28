@@ -14,10 +14,6 @@ from git import (Git, GitCommandError, InvalidGitRepositoryError,
 import biothings
 from biothings.utils.dataload import dict_sweep
 
-# cache these
-BIOTHINGS_REPO_DATA = {}
-APP_REPO_DATA = {}
-
 
 def get_python_version():
     ''' Get a list of python packages installed and their versions. '''
@@ -27,26 +23,26 @@ def get_python_version():
     except Exception:
         return []
 
-
+@functools.lru_cache()
 def get_biothings_commit():
     ''' Gets the biothings commit information. '''
-    global BIOTHINGS_REPO_DATA
-    if BIOTHINGS_REPO_DATA:
-        return BIOTHINGS_REPO_DATA
-
     try:
         with open(os.path.join(os.path.dirname(biothings.__file__), '.git-info'), 'r') as f:
             lines = [l.strip('\n') for l in f.readlines()]
-        BIOTHINGS_REPO_DATA = {
-            'repository-url': lines[0],
-            'commit-hash': lines[1],
-            'master-commits': lines[2],
-            'version': biothings.get_version()}
+            return {
+                'repository-url': lines[0],
+                'commit-hash': lines[1],
+                'master-commits': lines[2],
+                'version': biothings.get_version()
+            }
     except Exception:
-        BIOTHINGS_REPO_DATA = {'repository-url': '', 'commit-hash': '',
-                               'master-commits': '', 'version': biothings.get_version()}
+        return {
+            'repository-url': '',
+            'commit-hash': '',
+            'master-commits': '',
+            'version': biothings.get_version()
+        }
 
-    return BIOTHINGS_REPO_DATA
 
 @functools.lru_cache()
 def get_repository_information(app_dir=None):
@@ -109,7 +105,7 @@ def check_new_version(folder, max_commits=10):
     # from https://stackoverflow.com/questions/8290233/gitpython-get-list-of-remote-commits-not-yet-applied
     repo = Repo(folder)
     try:
-        repo_url = re.sub("\.git$","",repo.remotes.origin.url)
+        repo_url = re.sub(r"\.git$", "", repo.remotes.origin.url)
     except Exception as e:
         logging.debug("Can't determine repository URL: %s" % e)
         repo_url = None
@@ -129,7 +125,7 @@ def check_new_version(folder, max_commits=10):
             return
         else:
             logging.info("HEAD on remote is different, new commit(s) available for '%s'" % folder)
-            logging.info("HEAD(remote): %s, HEAD(local): %s" % (remote_head_hexsha,head.commit.hexsha))
+            logging.info("HEAD(remote): %s, HEAD(local): %s" % (remote_head_hexsha, head.commit.hexsha))
             # need to fetch new code locally
             # usually one remotes, but just in case...
             for remote in repo.remotes:
@@ -142,7 +138,7 @@ def check_new_version(folder, max_commits=10):
                 "commits": [
                     {
                         "hash": c.hexsha[:6],
-                        "url" : repo_url and os.path.join(repo_url,"commit",c.hexsha) or None,
+                        "url": repo_url and os.path.join(repo_url, "commit", c.hexsha) or None,
                         "date": c.committed_datetime.isoformat(),
                         "message": c.message
                     } for c in new_commits][:max_commits],
@@ -170,13 +166,13 @@ def get_version(folder):
         return {"branch": repo.active_branch.name,
                 "commit": commit,
                 "date": commitdate,
-                "giturl" : url}
+                "giturl": url}
     except Exception as e:
         logging.warning("can't determine app version, assuming HEAD detached': %s" % e)
         return {"branch": "HEAD detached",
                 "commit": commit,
                 "date": commitdate,
-                "giturl" : url}
+                "giturl": url}
 
 
 def set_versions(config, app_folder):
