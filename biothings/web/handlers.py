@@ -69,28 +69,43 @@ class StatusHandler(BaseHandler):
     Use set_status instead of raising exception so that
     no error will be propogated to sentry monitoring.
     '''
-    async def head(self):
+
+    def head(self):
+        return self._check(False)
+
+    def get(self):
+        return self._check()
+
+    async def _check(self, body=True):
+
+        client = self.web_settings.async_es_client
+        payload = self.web_settings.STATUS_CHECK
+
+        status = None  # green, red, yellow
+        res = None  # additional doc check
 
         try:
-            client = self.web_settings.async_es_client
-
-            if self.web_settings.STATUS_CHECK:
-                res = await client.get(
-                    **self.web_settings.STATUS_CHECK)
-            else:
-                res = await client.info()
+            health = await client.cluster.health()
+            status = health['status']
+            if payload:
+                res = await client.get(**payload)
 
         except ElasticsearchException:
             self.set_status(503)
+
         else:
-            self.set_status(200)
-
-    async def get(self):
-
-        await self.head()
-
-        if self.get_status() == 200:
-            self.write('OK')
+            if status == 'red':
+                self.set_status(503)
+            if payload and not res:
+                self.set_status(503)
+        finally:
+            if body:
+                self.write({
+                    "code": self.get_status(),
+                    "status": status,
+                    "payload": payload,
+                    "response": res
+                })
 
 class FrontPageHandler(BaseHandler):
 
