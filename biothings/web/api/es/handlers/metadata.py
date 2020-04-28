@@ -5,6 +5,7 @@
 
 from tornado.web import Finish
 
+from biothings.utils.web.es import get_es_versions
 from biothings.utils.version import get_software_info
 from biothings.web.api.es.handlers import BaseESRequestHandler
 
@@ -25,6 +26,8 @@ class MetadataSourceHandler(BaseESRequestHandler):
         if self.kwargs.source.dev:
             _meta['software'] = get_software_info(
                 app_dir=self.web_settings.get_git_repo_path())
+            _meta['server'] = await get_es_versions(
+                client=self.web_settings.async_es_client)
 
         self.finish(dict(sorted(_meta.items())))
 

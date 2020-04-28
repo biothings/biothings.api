@@ -9,8 +9,6 @@ from biothings.utils.doc_traversal import depth_first_traversal
 
 
 async def get_es_versions(client):
-    py_es_ver = elasticsearch.__version__
-    py_dsl_ver = elasticsearch_dsl.__version__
     es_version = 'unknown'
     es_cluster = 'unknown'
     try:
@@ -27,8 +25,6 @@ async def get_es_versions(client):
         es_version = version
         es_cluster = f"{cluster} ({status})"
     return {
-        "python_es_version": py_es_ver,
-        "python_dsl_version": py_dsl_ver,
         "elasticsearch_version": es_version,
         "elasticsearch_cluster": es_cluster
     }

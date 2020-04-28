@@ -3,6 +3,7 @@ import logging
 from collections import defaultdict
 
 import elasticsearch
+import elasticsearch_dsl
 from elasticsearch_async.transport import AsyncTransport
 from elasticsearch_dsl.connections import Connections
 from tornado.ioloop import IOLoop
@@ -77,10 +78,10 @@ class BiothingESWebSettings(BiothingWebSettings):
         # failures will be logged concisely
         logging.getLogger('elasticsearch.trace').propagate = False
 
+        self.logger.info("Python Elasticsearch Version: %s", elasticsearch.__version__)
+        self.logger.info("Python Elasticsearch DSL Version: %s", elasticsearch_dsl.__version__)
         versions = await get_es_versions(self.async_es_client)
         versions = iter(versions.values())
-        self.logger.info("Python Elasticsearch Version: %s", next(versions))
-        self.logger.info("Python Elasticsearch DSL Version: %s", next(versions))
         self.logger.info('Elasticsearch Version: %s', next(versions))
         self.logger.info('Elasticsearch Cluster: %s', next(versions))
 
