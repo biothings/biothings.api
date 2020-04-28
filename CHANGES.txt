@@ -1,3 +1,6 @@
+v0.6.0 (2020/04/25):
+    Add functionalities to create and publish data release (full & incremental)
+
 v0.5.0 (2019/12/02):
     Support adding license url from datasource metadata. 
     Improve concurrent performance with async elasticsearch transport client.
