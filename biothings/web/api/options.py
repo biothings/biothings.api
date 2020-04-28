@@ -99,6 +99,9 @@ class OptionArgsParser():
         if 'translations' in self.setting:
             value = self._translate(value)
 
+        if 'enum' in self.setting:
+            value = self._enum(value)
+
         if 'max' in self.setting or self.list_size_cap:
             value = self._max(value)
 
@@ -167,4 +170,19 @@ class OptionArgsParser():
                         keyword=self.keyword,
                         max=self.setting['max'],
                         num=value)
+        return value
+
+    def _enum(self, value):
+
+        # allow only specified values
+        allowed = self.setting['enum']
+
+        if isinstance(value, list):
+            for val in value:
+                self._enum(val)
+        elif value not in allowed:
+            raise BadRequest(
+                keyword=self.keyword,
+                allowed=allowed
+            )
         return value
