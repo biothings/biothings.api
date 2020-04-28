@@ -399,7 +399,7 @@ class HubServer(object):
         loop = self.managers["job_manager"].loop
         if self.routes:
             self.logger.info("Starting Hub API server")
-            self.logger.info(self.routes)
+            #self.logger.info(self.routes)
             import tornado.web
             # register app into current event loop
             api = tornado.web.Application(self.routes)
@@ -415,7 +415,7 @@ class HubServer(object):
                                         + "isn't set in configuration")
                 else:
                     self.logger.info("Starting read-only Hub API server")
-                    self.logger.info(self.readonly_routes)
+                    #self.logger.info(self.readonly_routes)
                     ro_api = tornado.web.Application(self.readonly_routes)
                     start_api(ro_api,
                               config.READONLY_HUB_API_PORT,

@@ -35,6 +35,8 @@ class LoaderException(Exception):
 
 class BasePluginLoader(object):
 
+    loader_type = None  # set in subclass
+
     def __init__(self, plugin_name):
         self.plugin_name = plugin_name
         self.setup_log()
@@ -72,6 +74,8 @@ class BasePluginLoader(object):
 
 
 class ManifestBasedPluginLoader(BasePluginLoader):
+
+    loader_type = "manifest"
 
     # should match a _dict_for_***
     dumper_registry = {
@@ -395,6 +399,8 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
 class AdvancedPluginLoader(BasePluginLoader):
 
+    loader_type = "advanced"
+
     def can_load_plugin(self):
         plugin = self.get_plugin_obj()
         df = plugin["download"]["data_folder"]
@@ -460,6 +466,13 @@ class BaseAssistant(object):
         self.logger, self.logfile = get_logger('assistant_%s' %
                                                self.__class__.plugin_type)
 
+    def register_loader(self):
+        dp = get_data_plugin()
+        dp.update({"_id": self.plugin_name}, {
+            "$set": { "plugin.loader": self.loader.loader_type }
+            },
+            upsert=True)
+
     @property
     def loader(self):
         """
@@ -477,6 +490,7 @@ class BaseAssistant(object):
                 if loader.can_load_plugin():
                     self._loader = loader
                     self.logger.info("For plugin '%s', selecting loader %s" % (self.plugin_name, self._loader))
+                    self.register_loader()
                     break
                 else:
                     self.logger.debug("Loader %s can't load plugin '%s'" % (loader, self.plugin_name))
