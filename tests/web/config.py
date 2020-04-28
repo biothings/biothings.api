@@ -35,4 +35,3 @@ STATUS_CHECK = {
     'index': 'bts_test',
     'doc_type': '_all'
 }
-
