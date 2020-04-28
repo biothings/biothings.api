@@ -22,7 +22,13 @@
             </i></div>
 
             <div class="left aligned header" v-if="source.name">
-                <router-link :to="'/source/' + source._id"><a>{{ source.name }}</a></router-link>
+                <router-link :to="'/source/' + source._id">
+                    <a>{{ source.name }}</a>
+                </router-link>
+                <span v-if="source.data_plugin">
+                    <i class="plugin small plug icon" :class="source.data_plugin.plugin.loader"></i>
+                </span>
+
             </div>
             <div class="meta">
                 <span class="right floated time" v-if="source.download && source.download.started_at">Updated {{ source.download.started_at | moment("from", "now") }}</span>
@@ -111,6 +117,7 @@ export default {
     mixins: [ BaseDataSource, Actionable],
     mounted () {
         $('select.dropdown').dropdown();
+        $('.plugin-popup').popup();
     },
     data() {
         return {
@@ -147,6 +154,17 @@ export default {
   .plugin-error {
       color: #a00202;
       word-wrap: break-word;
+  }
+  .plugin.icon {
+      padding-left: 1em !important;
+  }
+
+  .advanced {
+      color: lightpink !important;
+  }
+
+  .manifest {
+      color: lightgrey !important;
   }
 
 </style>

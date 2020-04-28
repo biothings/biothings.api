@@ -14,6 +14,20 @@
               <td v-else>No information available</td>
             </tr>
             <tr>
+              <td >Type</td>
+              <td>
+                  <span v-if="source.data_plugin.plugin.loader == 'manifest'">
+                      Based on a <b>manifest</b> file
+                  </span>
+                  <span v-else-if="source.data_plugin.plugin.loader == 'advanced'">
+                      <b>Advanced</b> plugin (python code)
+                  </span>
+                  <span v-else>
+                      Unknown type <b>{{source.data_plugin.plugin.loader}}</b>
+                  </span>
+              </td>
+            </tr>
+            <tr>
               <td >Release</td>
               <td>
                 {{source.data_plugin.download.release}}
@@ -59,7 +73,7 @@
             <div class="required ten wide field">
             </div>
             <div class="required six wide field">
-              <button class="ui labeled small icon button" @click="onExportCode();">
+              <button class="ui labeled small icon button" @click="onExportCode();" v-if="source.data_plugin.plugin.loader == 'manifest'">
                 <i class="upload icon"></i>
                 Export code
               </button>
