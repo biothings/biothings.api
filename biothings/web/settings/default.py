@@ -89,12 +89,7 @@ APP_GIT_REPOSITORY = '.'
 # (from where app is launched)
 STATIC_PATH = "static"
 
-# parameter for JSONP
-JSONP_PARAMETER = 'callback'
-
-# TODO
-LIST_SPLIT_REGEX = re.compile(r'[\s\r\n+|,]+')
-
+LOGGING_FORMAT = "%(color)s[%(levelname)s %(name)s %(module)s:%(lineno)d]%(end_color)s %(message)s"
 # *****************************************************************************
 # User Input Control
 # *****************************************************************************
@@ -177,7 +172,7 @@ METADATA_GET_FIELDS_KWARGS = {
     'prefix': {'default': None, 'type': str}}
 
 # *****************************************************************************
-# Elasticsearch Query Builder
+# Elasticsearch Query Pipeline
 # *****************************************************************************
 ES_QUERY_BUILDER = 'biothings.web.api.es.pipelines.ESQueryBuilder'
 # For the userquery folder for this app
@@ -187,14 +182,8 @@ ALLOW_RANDOM_QUERY = False
 # Allow facets to be nested with ( )
 ALLOW_NESTED_AGGS = False
 
-# *****************************************************************************
-# Elasticsearch Query Execution
-# *****************************************************************************
 ES_QUERY_BACKEND = 'biothings.web.api.es.pipelines.ESQueryBackend'
 
-# *****************************************************************************
-# Elasticsearch Result Transform
-# *****************************************************************************
 ES_RESULT_TRANSFORM = 'biothings.web.api.es.pipelines.ESResultTransform'
 
 OUTPUT_KEY_ALIASES = {}

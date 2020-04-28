@@ -16,7 +16,7 @@ class ESUserQuery():
         try:
             for (dirpath, dirnames, filenames) in os.walk(path):
                 if dirnames:
-                    logging.info("Detected user query folders: %s.", dirnames)
+                    self.logger.info("Detected user query folders: %s.", dirnames)
                     continue
                 for filename in filenames:
                     with open(os.path.join(dirpath, filename)) as text_file:
@@ -28,7 +28,7 @@ class ESUserQuery():
                         elif 'filter' in filename:
                             self._filters[os.path.basename(dirpath)] = json.load(text_file)
         except Exception:
-            logging.exception('Error loading user queries.')
+            self.logger.exception('Error loading user queries.')
 
     def has_query(self, named_query):
 
@@ -68,3 +68,7 @@ class ESUserQuery():
         dic = self._filters.get(named_query)
         key, val = next(iter(dic.items()))
         return Q(key, **val)
+
+    @property
+    def logger(self):
+        return logging.getLogger(__name__)

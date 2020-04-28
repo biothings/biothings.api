@@ -82,8 +82,11 @@ class BiothingsAPI():
     """
 
     def __init__(self, config_module=None):
+        # About debug mode in tornado:
+        # https://www.tornadoweb.org/en/stable/guide/running.html \
+        # #debug-mode-and-automatic-reloading
         self.config = BiothingESWebSettings(config_module)
-        self.handlers = []
+        self.handlers = []  # additional handlers
         self.settings = dict(autoreload=False)
         self.debug = True
         self.host = None
@@ -105,24 +108,18 @@ class BiothingsAPI():
         """
         self.settings.update(settings)
 
-    def configure_debug_mode(self):
-        """
-        Override to define additional debug settings.
-        For example, add some handlers in debug mode.
-        """
-        # About debug mode in tornado:
-        # https://www.tornadoweb.org/en/stable/guide/running.html \
-        # #debug-mode-and-automatic-reloading
+    def _configure_logging(self):
+        root_logger = logging.getLogger()
+        self.config.configure_logger(root_logger)
+        logging.getLogger('urllib3').setLevel(logging.ERROR)
+        logging.getLogger('elasticsearch').setLevel(logging.ERROR)
         if self.debug:
-            logging.getLogger().setLevel(logging.DEBUG)
+            root_logger.setLevel(logging.DEBUG)
             es_tracer = logging.getLogger('elasticsearch.trace')
-            es_tracer.propagate = True
             es_tracer.setLevel(logging.DEBUG)
             es_tracer.addHandler(logging.NullHandler())
-            logging.getLogger('elasticsearch').setLevel(logging.WARNING)
         else:
-            logging.getLogger().setLevel(logging.INFO)
-            logging.getLogger('elasticsearch').setLevel(logging.WARNING)
+            root_logger.setLevel(logging.INFO)
 
     def get_server(self):
         """
@@ -139,13 +136,14 @@ class BiothingsAPI():
         """
         Run API in the default event loop.
         """
-        self.configure_debug_mode()
+        self._configure_logging()
 
         http_server = self.get_server()
         http_server.listen(port, self.host)
 
-        logging.info('Server is running on "%s:%s"...',
-                     self.host or '0.0.0.0', port)
+        logger = logging.getLogger('biothings.web')
+        logger.info('Server is running on "%s:%s"...',
+                    self.host or '0.0.0.0', port)
 
         loop = tornado.ioloop.IOLoop.instance()
         loop.start()

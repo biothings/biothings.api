@@ -6,7 +6,7 @@
 from tornado.web import Finish
 
 from biothings.utils.version import get_software_info
-from biothings.web.api.es.handlers.base_handler import BaseESRequestHandler
+from biothings.web.api.es.handlers import BaseESRequestHandler
 
 
 class MetadataSourceHandler(BaseESRequestHandler):

@@ -71,8 +71,8 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
                     setting = _self._kwarg_settings[method.upper()]
                     setting[kwarg_type] = getattr(self.web_settings, key)
 
-            logging.debug("Endpoint [%s] kwargs settings:\n%s",
-                          self.name, pformat(_self._kwarg_settings, width=150))
+            self.logger.debug("Endpoint [%s] kwargs settings:\n%s",
+                              self.name, pformat(_self._kwarg_settings, width=150))
 
         self.json_arguments = {}
         self.kwargs = dotdict()
@@ -115,7 +115,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         args = dict(self.json_arguments)
         args.update({key: self.get_argument(key) for key in self.request.arguments})
 
-        logging.debug("Kwargs received:\n%s", pformat(args, width=150))
+        self.logger.debug("Kwargs received:\n%s", pformat(args, width=150))
 
         for catagory, settings in self.kwarg_settings.items():
             self.kwargs[catagory] = options = {}
@@ -129,7 +129,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
                 if value is not None:
                     options[keyword] = value
 
-        logging.debug("Processed kwargs:\n%s", pformat(self.kwargs, width=150))
+        self.logger.debug("Processed kwargs:\n%s", pformat(self.kwargs, width=150))
 
     def write(self, chunk):
         """
@@ -202,8 +202,8 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         This is a tornado lifecycle hook.
         Override to provide tracking features.
         """
-        logging.debug("Tracking Object: %s",
-                      self.ga_event_object_ret)
+        self.logger.debug("Tracking Object: %s",
+                          self.ga_event_object_ret)
         self.ga_track(self.ga_event_object_ret)
         self.self_track(self.ga_event_object_ret)
 

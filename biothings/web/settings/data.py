@@ -15,14 +15,6 @@ from biothings.web.api.es.userquery import ESUserQuery
 from biothings.web.settings import BiothingConfigError, BiothingWebSettings
 
 
-class KnownLiveSelecter(ConnectionSelector):
-    """
-    Select the first connection all the time
-    """
-
-    def select(self, connections):
-        return connections[0]
-
 class BiothingESWebSettings(BiothingWebSettings):
     '''
     `BiothingWebSettings`_ subclass with functions specific to an elasticsearch backend.
@@ -47,26 +39,12 @@ class BiothingESWebSettings(BiothingWebSettings):
             "timeout": self.ES_CLIENT_TIMEOUT,
             "max_retries": 1,  # maximum number of retries before an exception is propagated
             "timeout_cutoff": 1,  # timeout freezes after this number of consecutive failures
-            "selector_class": KnownLiveSelecter}
+            "sniff_on_connection_fail": True,
+            "sniffer_timeout": 60
+        }
         self._connections.create_connection(alias='sync', **connection_settings)
         connection_settings.update(transport_class=AsyncTransport)
         self._connections.create_connection(alias='async', **connection_settings)
-
-        logging.info("Python Elasticsearch Version: %s", elasticsearch.__version__)
-        logging.info("Python Elasticsearch DSL Version: %s", elasticsearch_dsl.__version__)
-        try:
-            info = self.es_client.info(request_timeout=0.1)
-            version = info['version']['number']
-            cluster = info['cluster_name']
-            health = self.es_client.cluster.health(request_timeout=0.1)['status']
-        except elasticsearch.ConnectionError:
-            pass  # error will be exposed when reading index mappings
-        except Exception:
-            logging.exception('Error reading elasticsearch state.')
-        else:
-            logging.info('Elasticsearch Version: %s', version)
-            logging.info('Elasticsearch Cluster: %s', cluster)
-            logging.info('Elasticsearch Health: %s', health)
 
         # cached index mappings
         self.source_metadata = defaultdict(dict)
@@ -98,6 +76,7 @@ class BiothingESWebSettings(BiothingWebSettings):
         for biothing_type in self.ES_INDICES:
             IOLoop.current().add_callback(
                 self.read_index_mappings, biothing_type)
+        IOLoop.current().add_callback(self._log_versions)
 
     def validate(self):
         '''
@@ -124,6 +103,23 @@ class BiothingESWebSettings(BiothingWebSettings):
         API calls return awaitable objects.
         '''
         return self._connections.get_connection('async')
+
+    def _log_versions(self):
+        self.logger.info("Python Elasticsearch Version: %s", elasticsearch.__version__)
+        self.logger.info("Python Elasticsearch DSL Version: %s", elasticsearch_dsl.__version__)
+        logging.getLogger('elasticsearch.trace').propagate = False
+        try:
+            info = self.es_client.info(request_timeout=0.1)
+            version = info['version']['number']
+            cluster = info['cluster_name']
+            health = self.es_client.cluster.health(request_timeout=0.1)['status']
+        except elasticsearch.TransportError as exc:
+            self.logger.error('Error reading elasticsearch state. %s', exc)
+        else:
+            self.logger.info('Elasticsearch Version: %s', version)
+            self.logger.info('Elasticsearch Cluster: %s (%s)', cluster, health)
+        finally:
+            logging.getLogger('elasticsearch.trace').propagate = True
 
     async def read_index_mappings(self, biothing_type=None):
         """
@@ -154,11 +150,11 @@ class BiothingESWebSettings(BiothingWebSettings):
                 allow_no_indices=True,
                 ignore_unavailable=True,
                 local=False)
-        except elasticsearch.ConnectionError:
-            logging.error('Error connecting to elasticsearch.')
+        except elasticsearch.TransportError as exc:
+            self.logger.error(exc)
             return None
         except Exception:
-            logging.exception('Error reading index mapping.')
+            self.logger.exception('Error reading index mapping.')
             return None
 
         metadata = self.source_metadata[biothing_type]

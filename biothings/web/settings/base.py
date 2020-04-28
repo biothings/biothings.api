@@ -8,6 +8,8 @@ from importlib import import_module
 from pprint import pformat
 from pydoc import locate
 
+import tornado.log
+
 import biothings.web.settings.default
 from biothings.web.api.es.handlers import BaseESRequestHandler
 
@@ -38,7 +40,7 @@ class BiothingWebSettings():
         '''
         self._default = biothings.web.settings.default
         self._user = self.load_module(config, self._default)
-        logging.info("Loaded: %s", self._user)
+        self.logger.info("Loaded: %s", self._user)
 
         # process keyword setting override
         for key, value in kwargs.items():
@@ -47,7 +49,7 @@ class BiothingWebSettings():
         # process environment variable override of named settings
         for name in os.environ:
             if hasattr(self, name) and isinstance(getattr(self, name), str):
-                logging.info("Env %s = %s", name, os.environ[name])
+                self.logger.info("Env %s = %s", name, os.environ[name])
                 setattr(self._user, name, os.environ[name])
 
         # for metadata dev details
@@ -86,6 +88,10 @@ class BiothingWebSettings():
             return getattr(self._default, name)
         else:  # not provided and no default
             raise AttributeError()
+
+    @property
+    def logger(self):
+        return logging.getLogger('biothings.web.settings')
 
     @staticmethod
     def load_class(kls):
@@ -160,7 +166,7 @@ class BiothingWebSettings():
 
         self.handlers = handlers
         handlers = list(handlers.values())
-        logging.info('API Handlers:\n%s', pformat(handlers, width=200))
+        self.logger.info('API Handlers:\n%s', pformat(handlers, width=200))
         return handlers
 
     def get_git_repo_path(self):
@@ -168,6 +174,18 @@ class BiothingWebSettings():
         Return the path of the codebase if the specified folder in settings exists or `None`.
         '''
         return self._git_repo_path
+
+    def configure_logger(self, logger):
+        '''
+        Configure a logger's formatter to use the format defined in this web setting.
+        '''
+        try:
+            if self.LOGGING_FORMAT and logger.hasHandlers():
+                for handler in logger.handlers:
+                    if isinstance(handler.formatter, tornado.log.LogFormatter):
+                        handler.formatter._fmt = self.LOGGING_FORMAT
+        except Exception:
+            self.logger.exception('Error configuring logger %s.', logger)
 
     def validate(self):
         '''

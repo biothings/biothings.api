@@ -5,6 +5,8 @@
     * Report errors to sentry when its API key is provided
 """
 
+import logging
+
 from elasticsearch.exceptions import ElasticsearchException
 from tornado.web import RequestHandler
 
@@ -40,6 +42,10 @@ class BaseHandler(SentryMixin, RequestHandler):
         if not client:
             self.require_setting('sentry_client')
         return client
+
+    @property
+    def logger(self):
+        return logging.getLogger(__name__)
 
     def log_exception(self, *args, **kwargs):
         """

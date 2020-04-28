@@ -31,7 +31,7 @@
 
 """
 
-from biothings.web.api.es.handlers.base_handler import ESRequestHandler
+from biothings.web.api.es.handlers import ESRequestHandler
 from biothings.web.api.handler import EndRequest
 
 class BiothingHandler(ESRequestHandler):

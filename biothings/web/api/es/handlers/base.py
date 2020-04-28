@@ -23,7 +23,7 @@ class BaseESRequestHandler(BaseAPIHandler):
         if hasattr(self.web_settings, action_key):
             self.ga_event_object_ret['action'] = getattr(self.web_settings, action_key)
 
-        logging.debug("Google Analytics Base object: %s", self.ga_event_object_ret)
+        self.logger.debug("Google Analytics Base object: %s", self.ga_event_object_ret)
 
     def parse_exception(self, exception):
 
