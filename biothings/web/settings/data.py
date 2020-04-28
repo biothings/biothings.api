@@ -1,18 +1,15 @@
 import json
 import logging
-import os
 from collections import defaultdict
-from pydoc import locate
 
 import elasticsearch
-import elasticsearch_dsl
-from elasticsearch import ConnectionSelector
 from elasticsearch_async.transport import AsyncTransport
 from elasticsearch_dsl.connections import Connections
 from tornado.ioloop import IOLoop
 
+from biothings.utils.web.es import get_es_versions
 from biothings.web.api.es.userquery import ESUserQuery
-from biothings.web.settings import BiothingConfigError, BiothingWebSettings
+from biothings.web.settings import BiothingWebSettings
 
 
 class BiothingESWebSettings(BiothingWebSettings):
@@ -69,14 +66,30 @@ class BiothingESWebSettings(BiothingWebSettings):
         # initialize payload for standalone tracking batch
         self.tracking_payload = []
 
+        self.ES_INDICES = dict(self.ES_INDICES)  # TODO
         self.ES_INDICES[self.ES_DOC_TYPE] = self.ES_INDEX
         self.BIOTHING_TYPES = list(self.ES_INDICES.keys())
 
+        IOLoop.current().add_callback(self._initialize)
+
+    async def _initialize(self):
+
+        # failures will be logged concisely
+        logging.getLogger('elasticsearch.trace').propagate = False
+
+        versions = await get_es_versions(self.async_es_client)
+        versions = iter(versions.values())
+        self.logger.info("Python Elasticsearch Version: %s", next(versions))
+        self.logger.info("Python Elasticsearch DSL Version: %s", next(versions))
+        self.logger.info('Elasticsearch Version: %s', next(versions))
+        self.logger.info('Elasticsearch Cluster: %s', next(versions))
+
         # populate source mappings
         for biothing_type in self.ES_INDICES:
-            IOLoop.current().add_callback(
-                self.read_index_mappings, biothing_type)
-        IOLoop.current().add_callback(self._log_versions)
+            await self.read_index_mappings(biothing_type)
+
+        # resume normal log flow
+        logging.getLogger('elasticsearch.trace').propagate = True
 
     def validate(self):
         '''
@@ -103,23 +116,6 @@ class BiothingESWebSettings(BiothingWebSettings):
         API calls return awaitable objects.
         '''
         return self._connections.get_connection('async')
-
-    def _log_versions(self):
-        self.logger.info("Python Elasticsearch Version: %s", elasticsearch.__version__)
-        self.logger.info("Python Elasticsearch DSL Version: %s", elasticsearch_dsl.__version__)
-        logging.getLogger('elasticsearch.trace').propagate = False
-        try:
-            info = self.es_client.info(request_timeout=0.1)
-            version = info['version']['number']
-            cluster = info['cluster_name']
-            health = self.es_client.cluster.health(request_timeout=0.1)['status']
-        except elasticsearch.TransportError as exc:
-            self.logger.error('Error reading elasticsearch state. %s', exc)
-        else:
-            self.logger.info('Elasticsearch Version: %s', version)
-            self.logger.info('Elasticsearch Cluster: %s (%s)', cluster, health)
-        finally:
-            logging.getLogger('elasticsearch.trace').propagate = True
 
     async def read_index_mappings(self, biothing_type=None):
         """
@@ -151,10 +147,8 @@ class BiothingESWebSettings(BiothingWebSettings):
                 ignore_unavailable=True,
                 local=False)
         except elasticsearch.TransportError as exc:
-            self.logger.error(exc)
-            return None
-        except Exception:
-            self.logger.exception('Error reading index mapping.')
+            self.logger.error('Error loading index mapping for [%s].', biothing_type)
+            self.logger.debug(exc)
             return None
 
         metadata = self.source_metadata[biothing_type]

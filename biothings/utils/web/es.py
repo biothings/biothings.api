@@ -1,6 +1,37 @@
+import logging
+from collections import OrderedDict
+
+import elasticsearch
+import elasticsearch_dsl
+
 from biothings.utils.common import is_seq
 from biothings.utils.doc_traversal import depth_first_traversal
-from collections import OrderedDict
+
+
+async def get_es_versions(client):
+    py_es_ver = elasticsearch.__version__
+    py_dsl_ver = elasticsearch_dsl.__version__
+    es_version = 'unknown'
+    es_cluster = 'unknown'
+    try:
+        info = await client.info(request_timeout=1)
+        version = info['version']['number']
+        cluster = info['cluster_name']
+        health = await client.cluster.health(request_timeout=1)
+        status = health['status']
+    except elasticsearch.TransportError as exc:
+        logger = logging.getLogger(__name__)
+        logger.error('Error reading elasticsearch status.')
+        logger.debug(exc)
+    else:
+        es_version = version
+        es_cluster = f"{cluster} ({status})"
+    return {
+        "python_es_version": py_es_ver,
+        "python_dsl_version": py_dsl_ver,
+        "elasticsearch_version": es_version,
+        "elasticsearch_cluster": es_cluster
+    }
 
 def exists_or_null(doc, field, val=None):
     def _helper(doc, _list, val):
@@ -31,7 +62,7 @@ def flatten_doc_2(doc, outfield_sep='.', sort=True):
                 _new_path = _path
             _ret.setdefault(_new_path, []).append(_val)
     if sort and outfield_sep:
-        return OrderedDict(sorted([(k,v[0]) if len(v) == 1 else (k, v) for (k, v) in _ret.items()], key=lambda x: x[0]))
+        return OrderedDict(sorted([(k, v[0]) if len(v) == 1 else (k, v) for (k, v) in _ret.items()], key=lambda x: x[0]))
     return dict([(k, v[0]) if len(v) == 1 else (k, v) for (k, v) in _ret.items()])
 
 
@@ -59,5 +90,5 @@ def flatten_doc(doc, outfield_sep='.', sort=True):
     ret = {}
     _recursion_helper(doc, ret, '')
     if sort and outfield_sep:
-        return OrderedDict(sorted([(k,v[0]) if len(v) == 1 else (k,v) for (k,v) in ret.items()], key=lambda x: x[0]))
-    return dict([(k,v[0]) if len(v) == 1 else (k,v) for (k,v) in ret.items()])
+        return OrderedDict(sorted([(k, v[0]) if len(v) == 1 else (k, v) for (k, v) in ret.items()], key=lambda x: x[0]))
+    return dict([(k, v[0]) if len(v) == 1 else (k, v) for (k, v) in ret.items()])
