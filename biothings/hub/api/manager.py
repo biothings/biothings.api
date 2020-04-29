@@ -73,7 +73,6 @@ ES_DOC_TYPE = "%(doc_type)s"
 from biothings.web.api.es.handlers import BiothingHandler
 from biothings.web.api.es.handlers import MetadataSourceHandler, MetadataFieldHandler
 from biothings.web.api.es.handlers import QueryHandler
-from biothings.web.api.es.handlers import StatusHandler
 
 # doc_type involved there:
 APP_LIST = [
