@@ -7,7 +7,7 @@ from elasticsearch import (ConnectionError, NotFoundError, RequestError,
                            TransportError)
 from tornado.web import HTTPError
 
-from biothings.web.api.handler import BadRequest, EndRequest
+from biothings.web.handlers.exceptions import BadRequest, EndRequest
 
 
 class ESQueryBackend(object):

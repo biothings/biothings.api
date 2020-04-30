@@ -1,5 +1,3 @@
-# TODO
-
 from .build import ESQueryBuilder
-from .query import ESQueryBackend
+from .execute import ESQueryBackend
 from .transform import ESResultTransform

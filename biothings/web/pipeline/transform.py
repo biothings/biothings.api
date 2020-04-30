@@ -3,7 +3,7 @@
 """
 from collections import defaultdict
 
-
+from biothings.utils.common import dotdict
 class ResultTransformException(Exception):
     pass
 
@@ -18,6 +18,10 @@ class ESResultTransform(object):
         # license appending settings
         self.source_licenses = defaultdict(dict)  # will be populated by web setting
         self.license_transform = web_settings.LICENSE_TRANSFORM
+
+        # mapping transform
+        self.field_notes = web_settings.get_field_notes()
+        self.excluded_keys = web_settings.AVAILABLE_FIELDS_EXCLUDED
 
     @classmethod
     def traverse(cls, obj, leaf_node=False):
@@ -72,6 +76,8 @@ class ESResultTransform(object):
         """
         Transform the query result. TODO more
         """
+        if not isinstance(options, dotdict):
+            options = dotdict(options)
         if isinstance(response, list):
             responses_ = []
             template = options.pop('template', {})
@@ -126,7 +132,7 @@ class ESResultTransform(object):
         When flattened, the field could be converted to an empty list.
         """
         if isinstance(obj, dict):
-            for field in fields:
+            for field in fields or []:
                 if field.startswith(path):
                     key = field[len(path):].lstrip('.')
                     if '.' not in key and key not in obj:
@@ -241,3 +247,49 @@ class ESResultTransform(object):
                         term.update(self.transform_aggregations({agg_k: term[agg_k]}))
             res[facet]['total'] = count
         return res
+
+    def transform_mapping(self, mapping, prefix, search):
+        """
+        Transform Elasticsearch mapping definition to
+        user-friendly field definitions metadata result
+        """
+        assert isinstance(mapping, dict)
+        assert isinstance(prefix, str) or prefix is None
+        assert isinstance(search, str) or search is None
+
+        result = {}
+        todo = list(mapping.items())
+        todo.reverse()
+
+        while todo:
+            key, dic = todo.pop()
+            dic = dict(dic)
+            dic.pop('dynamic', None)
+            dic.pop('normalizer', None)
+
+            if key in self.field_notes:
+                result['notes'] = self.field_notes[key]
+
+            if 'copy_to' in dic:
+                if 'all' in dic['copy_to']:
+                    dic['searched_by_default'] = True
+                del dic['copy_to']
+
+            if 'index' not in dic:
+                if 'enabled' in dic:
+                    dic['index'] = dic.pop('enabled')
+                else:  # true by default
+                    dic['index'] = True
+
+            if 'properties' in dic:
+                dic['type'] = 'object'
+                subs = (('.'.join((key, k)), v) for k, v in dic['properties'].items())
+                todo.extend(reversed(list(subs)))
+                del dic['properties']
+
+            if all((not self.excluded_keys or key not in self.excluded_keys,
+                    not prefix or key.startswith(prefix),
+                    not search or search in key)):
+                result[key] = dict(sorted(dic.items()))
+
+        return result
