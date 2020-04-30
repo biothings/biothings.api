@@ -12,10 +12,10 @@ async def get_es_versions(client):
     es_version = 'unknown'
     es_cluster = 'unknown'
     try:
-        info = await client.info(request_timeout=1)
+        info = await client.info(request_timeout=3)
         version = info['version']['number']
         cluster = info['cluster_name']
-        health = await client.cluster.health(request_timeout=1)
+        health = await client.cluster.health(request_timeout=3)
         status = health['status']
     except elasticsearch.TransportError as exc:
         logger = logging.getLogger(__name__)
