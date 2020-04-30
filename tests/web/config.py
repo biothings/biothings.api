@@ -3,7 +3,7 @@
 """
 import os
 
-from biothings.web.settings.default import QUERY_GET_ESQB_KWARGS
+from biothings.web.settings.default import QUERY_KWARGS
 
 # *****************************************************************************
 # Elasticsearch Variables
@@ -15,10 +15,9 @@ ES_SCROLL_SIZE = 60
 # *****************************************************************************
 # User Input Control
 # *****************************************************************************
-QUERY_GET_ESQB_KWARGS = dict(QUERY_GET_ESQB_KWARGS)
-QUERY_GET_ESQB_KWARGS.update({
-    'facet_size': {'default': 3, 'type': int, 'max': 5},  # use a smaller size for testing
-})
+# use a smaller size for testing
+QUERY_KWARGS['GET']['facet_size']['default'] = 3
+QUERY_KWARGS['GET']['facet_size']['max'] = 5
 
 # *****************************************************************************
 # Elasticsearch Query Builder

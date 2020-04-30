@@ -14,9 +14,6 @@ KWARG_DESCRIPTIONS = {
     'dotfield': {
         'name': 'dotfield',
         'text_template': 'control the format of the returned {biothing_object} object. If "true" or "1", all fields will be collapsed into a single level deep object (all nested objects will be a single level deep, using dotfield notation to signify the nested structure){param_type}{param_default_value}{param_max}'},
-    'callback': {
-        'name': 'callback',
-        'text_template': 'you can pass a "callback" parameter to make a JSONP call. Type: string.'},
     'email': {
         'name': 'email',
         'text_template': 'If you are regular users of our services, we encourage you to provide us with an email, so that we can better track the usage or follow up with you.'},
@@ -43,5 +40,4 @@ KWARG_DESCRIPTIONS = {
         'text_template': 'Pass a search term to filter the available fields.{param_type}{param_default_value}{param_max}'},
     'prefix': {
         'name': 'prefix',
-        'text_template': 'Pass a prefix string to filter the available fields.{param_type}{param_default_value}{param_max}'}
-}
+        'text_template': 'Pass a prefix string to filter the available fields.{param_type}{param_default_value}{param_max}'}}

@@ -1,11 +1,18 @@
+import copy
 import json
 import re
+from collections import defaultdict
+from functools import partial
 
-from biothings.utils.common import split_ids
-from biothings.web.api.helper import BadRequest
+from biothings.utils.common import dotdict, split_ids
 
 
-class StringParamParser():
+class OptionArgError(Exception):
+
+    def __init__(self, **info):
+        self.info = info
+
+class StringTranslate():
     """
     Translate the input parameter to the desired type.
     If jsoninput is set to true, try to load str in json.
@@ -44,7 +51,7 @@ class StringParamParser():
             try:
                 val = split_ids(str(val))
             except ValueError as e:
-                raise BadRequest(reason=str(e), param=param)
+                raise OptionArgError(reason=str(e), param=param)
         return val
 
     @staticmethod
@@ -52,10 +59,10 @@ class StringParamParser():
         try:
             result = (type_)(val)
         except ValueError:
-            raise BadRequest(reason=f"Expect type {type_.__name__}.", param=param)
+            raise OptionArgError(reason=f"Expect type {type_.__name__}.", param=param)
         return result
 
-class OptionArgsParser():
+class OptionArg():
     """
     Interpret a setting file for a keyword like
     {
@@ -78,11 +85,11 @@ class OptionArgsParser():
         self.setting = setting
 
         self.list_size_cap = 1000
-        self.string_as_json = False
 
     def parse(self, args, path_args, path_kwargs):
 
         value = args.get(self.keyword)
+        jsoninput = args.get('jsoninput')  # deprecated
 
         if 'alias' in self.setting and not value:
             value = self._alias(args)
@@ -94,7 +101,7 @@ class OptionArgsParser():
             return self._default()
 
         if 'type' in self.setting:
-            value = self._typify(value)
+            value = self._typify(value, jsoninput)
 
         if 'translations' in self.setting:
             value = self._translate(value)
@@ -113,11 +120,11 @@ class OptionArgsParser():
         path = self.setting['path']
         if isinstance(path, int):
             if len(path_args) <= path:
-                raise BadRequest(missing=self.keyword)
+                raise OptionArgError(missing=self.keyword)
             return path_args[path]
         elif isinstance(path, str):
             if path not in path_kwargs:
-                raise BadRequest(missing=self.keyword)
+                raise OptionArgError(missing=self.keyword)
             return path_kwargs[path]
 
     def _alias(self, args):
@@ -131,14 +138,14 @@ class OptionArgsParser():
     def _default(self):
         # fallback to default values or raise error
         if self.setting.get('required'):
-            raise BadRequest(missing=self.keyword)
+            raise OptionArgError(missing=self.keyword)
         return self.setting.get('default')
 
-    def _typify(self, value):
+    def _typify(self, value, jsoninput):
         # convert to the desired value type and format
         if isinstance(value, self.setting['type']):
             return value
-        param = StringParamParser(self.string_as_json)
+        param = StringTranslate(jsoninput)
         return param.convert(value, self.setting['type'])
 
     def _translate(self, obj):
@@ -158,7 +165,7 @@ class OptionArgsParser():
             max_allowed = self.setting.get('max')
             max_allowed = max_allowed or self.list_size_cap
             if len(value) > max_allowed:
-                raise BadRequest(
+                raise OptionArgError(
                     keyword=self.keyword,
                     max=max_allowed,
                     lst=value)
@@ -166,7 +173,7 @@ class OptionArgsParser():
                 and not isinstance(value, bool):
             if 'max' in self.setting:
                 if value > self.setting['max']:
-                    raise BadRequest(
+                    raise OptionArgError(
                         keyword=self.keyword,
                         max=self.setting['max'],
                         num=value)
@@ -181,8 +188,99 @@ class OptionArgsParser():
             for val in value:
                 self._enum(val)
         elif value not in allowed:
-            raise BadRequest(
+            raise OptionArgError(
                 keyword=self.keyword,
                 allowed=allowed
             )
         return value
+
+
+class OptionSets():
+
+    def __init__(self):
+
+        self.options = defaultdict(partial(defaultdict, dict))
+        self.groups = defaultdict()
+        self.methods = defaultdict()
+
+    def add(self, name, optionset):
+        if name:
+            for method, options in optionset.items():
+                self.options[name][method.upper()].update(options)
+
+    def get(self, name):
+
+        return Options(
+            self.options[name],
+            self.groups[name],
+            self.methods[name]
+        )
+
+    def log(self):
+
+        res = copy.deepcopy(self.options)
+        res = self._serialize(res)
+        for api, groups in self.groups.items():
+            res[api]['_groups'] = groups
+        for api, methods in self.methods.items():
+            res[api]['_methods'] = methods
+        return res
+
+    def _serialize(self, obj):
+        if isinstance(obj, dict):
+            for key, val in obj.items():
+                obj[key] = self._serialize(val)
+            return obj
+        elif isinstance(obj, (list, tuple)):
+            # return [self._serialize(item) for item in obj]
+            # assume valid inside
+            return obj
+        elif isinstance(obj, (str, int)):
+            return obj
+        else:  # best effort
+            return str(obj)
+
+class Options():
+
+    def __init__(self, options, groups, methods):
+
+        self._options = options  # example: {'dev':{'type':str }}
+        self._groups = groups or ()  # example: ('es', 'transform')
+        self._methods = list(method.upper() for method in methods or ())  # 'GET'
+
+    def parse(self, method, args, path_args, path_kwargs):
+
+        result = defaultdict(dict)
+        options = {}
+
+        rules = []  # expand * to kwarg_methods setting
+        if not self._methods or method in self._methods:
+            rules += list(self._options['*'].items())
+        rules += list(self._options[method].items())
+
+        # method precedence: specific > *
+        for keyword, setting in rules:
+            options[keyword] = setting
+
+        # setting + inputs -> arg value
+        for keyword, setting in options.items():
+            arg = OptionArg(keyword, setting)
+            val = arg.parse(args, path_args, path_kwargs)
+            # discard no default value
+            if val is not None:
+                if 'group' in setting:
+                    group = setting['group']
+                    if isinstance(group, str):
+                        result[group][keyword] = val
+                    else:  # assume iterable
+                        for _group in group:
+                            result[_group][keyword] = val
+                else:  # top level keywords
+                    result[keyword] = val
+
+        # make sure all named groups exist
+        for group in self._groups:
+            if group not in result:
+                result[group] = {}
+
+        return dotdict(result)

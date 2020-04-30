@@ -12,7 +12,8 @@ import tornado.log
 
 import biothings.web.settings.default
 from biothings import get_version
-from biothings.web.api.es.handlers import BaseESRequestHandler
+from biothings.web.handlers import BaseAPIHandler, BaseESRequestHandler
+from biothings.web.options import OptionSets
 
 try:
     from raven.contrib.tornado import AsyncSentryClient
@@ -60,6 +61,7 @@ class BiothingWebSettings():
         else:
             self._git_repo_path = None
 
+        self.optionsets = OptionSets()
         self.handlers = {}
         self.validate()
 
@@ -126,10 +128,7 @@ class BiothingWebSettings():
             if hasattr(self, setting.upper()):
                 settings[setting] = getattr(self, setting.upper())
 
-        if debug:
-            self.GA_RUN_IN_PROD = False
-
-        elif __SENTRY_INSTALLED__ and self.SENTRY_CLIENT_KEY:
+        if __SENTRY_INSTALLED__ and self.SENTRY_CLIENT_KEY:
             # Setup error monitoring with Sentry. More on:
             # https://docs.sentry.io/clients/python/integrations/#tornado
             settings['sentry_client'] = AsyncSentryClient(self.SENTRY_CLIENT_KEY)
@@ -147,6 +146,16 @@ class BiothingWebSettings():
             pattern = rule[0]
             handler = self.load_class(rule[1])
             setting = rule[2] if len(rule) == 3 else {}
+            assert handler, rule[1]
+            if issubclass(handler, BaseAPIHandler):
+                handler_name = handler.name
+                handler_options = handler.kwargs
+                setting_attr = '_'.join((handler_name, 'kwargs')).upper()
+                setting_options = getattr(self, setting_attr, {})
+                self.optionsets.add(handler_name, handler_options)
+                self.optionsets.add(handler_name, setting_options)
+                self.optionsets.groups[handler_name] = handler.kwarg_groups
+                self.optionsets.methods[handler_name] = handler.kwarg_methods
             if '{typ}' in pattern:
                 if not issubclass(handler, BaseESRequestHandler):
                     raise BiothingConfigError()

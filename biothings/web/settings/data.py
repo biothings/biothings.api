@@ -9,7 +9,7 @@ from elasticsearch_dsl.connections import Connections
 from tornado.ioloop import IOLoop
 
 from biothings.utils.web.es import get_es_versions
-from biothings.web.api.es.userquery import ESUserQuery
+from biothings.utils.web.userquery import ESUserQuery
 from biothings.web.settings import BiothingWebSettings
 
 
@@ -37,7 +37,7 @@ class BiothingESWebSettings(BiothingWebSettings):
             "timeout": self.ES_CLIENT_TIMEOUT,
             "max_retries": 1,  # maximum number of retries before an exception is propagated
             "timeout_cutoff": 1,  # timeout freezes after this number of consecutive failures
-            "sniff_on_connection_fail": True,
+            # "sniff_on_connection_fail": True, TODO
             "sniffer_timeout": 60
         }
         self._connections.create_connection(alias='sync', **connection_settings)
@@ -62,7 +62,7 @@ class BiothingESWebSettings(BiothingWebSettings):
         # query pipelines
         self.query_builder = self.load_class(self.ES_QUERY_BUILDER)(self)
         self.query_backend = self.load_class(self.ES_QUERY_BACKEND)(self)
-        self.query_transform = self.load_class(self.ES_RESULT_TRANSFORM)(self)
+        self.result_transform = self.load_class(self.ES_RESULT_TRANSFORM)(self)
 
         # initialize payload for standalone tracking batch
         self.tracking_payload = []
@@ -154,7 +154,7 @@ class BiothingESWebSettings(BiothingWebSettings):
 
         metadata = self.source_metadata[biothing_type]
         properties = self.source_properties[biothing_type]
-        licenses = self.query_transform.source_licenses[biothing_type]
+        licenses = self.result_transform.source_licenses[biothing_type]
 
         metadata.clear()
         properties.clear()
