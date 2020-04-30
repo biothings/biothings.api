@@ -1,16 +1,31 @@
 """
-    Web Handler Class
+Biothings Web Handlers
 
-    * Can be used for both API handlers and web rendering
-    * Report errors to sentry when its API key is provided
+biothings.web.handlers.BaseHandler
+
+    Supports:
+    - access to biothings.web.settings instance
+    - access to biothings.web.handlers logging stream
+    - access to default web templates
+    - Sentry error monitoring
+
+    Subclasses:
+    - biothings.web.handlers.StatusHandler
+    - biothings.web.handlers.FrontPageHandler
+    - discovery.web.handlers.BaseHandler
+    ...
+
+Also available:
+
+biothings.web.handlers.BaseAPIHandler
+biothings.web.handlers.BaseESRequestHandler
+biothings.web.handlers.ESRequestHandler
+
 """
-
 import logging
 
 from elasticsearch.exceptions import ElasticsearchException
 from tornado.web import RequestHandler
-
-from .templates import FRONT_PAGE_TEMPLATE
 
 try:
     from raven.contrib.tornado import SentryMixin
@@ -29,7 +44,6 @@ class BaseHandler(SentryMixin, RequestHandler):
         try:
             setting = self.settings['biothings']
         except KeyError:
-            # need to pass it to tornado application settings
             self.require_setting('biothings')
         else:
             return setting
@@ -56,12 +70,20 @@ class BaseHandler(SentryMixin, RequestHandler):
             return SentryMixin.log_exception(self, *args, **kwargs)
         return RequestHandler.log_exception(self, *args, **kwargs)
 
+    def get_template_path(self):
+        if "template_path" in self.settings:
+            return super().get_template_path()
+        import biothings.web.templates
+        return next(iter(biothings.web.templates.__path__))
+
     def data_received(self, chunk):
         """
         Implement this method to handle streamed request data.
         """
-        # this dummy implementation silences the pylint abstract-class error
 
+
+        # this dummy implementation silences the pylint abstract-class error
+import copy
 
 class StatusHandler(BaseHandler):
     '''
@@ -71,12 +93,14 @@ class StatusHandler(BaseHandler):
     '''
 
     def head(self):
-        return self._check(False)
-
-    def get(self):
         return self._check()
 
-    async def _check(self, body=True):
+    async def get(self):
+        res = await self._check()
+        res['options'] = self.web_settings.optionsets.log()
+        self.finish(res)
+
+    async def _check(self):
 
         client = self.web_settings.async_es_client
         payload = self.web_settings.STATUS_CHECK
@@ -98,24 +122,28 @@ class StatusHandler(BaseHandler):
                 self.set_status(503)
             if payload and not res:
                 self.set_status(503)
-        finally:
-            if body:
-                self.write({
-                    "code": self.get_status(),
-                    "status": status,
-                    "payload": payload,
-                    "response": res
-                })
+
+        return {
+            "code": self.get_status(),
+            "status": status,
+            "payload": payload,
+            "response": res
+        }
+
 
 class FrontPageHandler(BaseHandler):
 
     def get(self):
 
-        self.write(FRONT_PAGE_TEMPLATE.format(
+        self.render(
+            template_name="home.html",
             alert='Front Page Not Configured.',
             title='Biothings API',
-            text='<br />'.join(self.web_settings.handlers.keys()),
-            footnote='Supported types: '
-            + ', '.join(self.web_settings.ES_INDICES.keys()),
+            contents=self.web_settings.handlers.keys(),
+            support=self.web_settings.BIOTHING_TYPES,
             url='http://biothings.io/'
-        ))
+        )
+
+
+from .api import *
+from .es import *

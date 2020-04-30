@@ -1,9 +1,22 @@
+"""
+
+Biothings Web API Handlers
+
+    Supports: (all features above and)
+    - payload type 'application/json' (through self.json_arguments)
+    - parsing keyword argument options (type, default, alias, ...)
+    - multi-type dictionary output (json, yaml, html, msgpack)
+    - standardized error response (exception -> error template)
+    - analytics and usage tracking (Google Analytics and AWS)
+    - default common http headers (CORS and Cache Control)
+
+    Subclasses:
+    - discovery.web.api.APIBaseHandler
+"""
+
 import datetime
 import json
-import logging
-import re
-from collections import OrderedDict, defaultdict
-from itertools import product
+from collections import OrderedDict
 from pprint import pformat
 from urllib.parse import (parse_qs, unquote_plus, urlencode, urlparse,
                           urlunparse)
@@ -11,12 +24,13 @@ from urllib.parse import (parse_qs, unquote_plus, urlencode, urlparse,
 from tornado.escape import json_decode
 from tornado.web import HTTPError
 
-from biothings.utils.common import DateTimeJSONEncoder, dotdict, split_ids
+from biothings.utils.common import DateTimeJSONEncoder
 from biothings.utils.web.analytics import GAMixIn
 from biothings.utils.web.tracking import StandaloneTrackingMixin
-from biothings.web.api.helper import BadRequest, EndRequest
-from biothings.web.api.options import OptionArgsParser
-from biothings.web.handlers import BaseHandler
+from biothings.web.options import OptionArgError
+
+from . import BaseHandler
+from .exceptions import BadRequest
 
 try:
     import msgpack
@@ -39,60 +53,26 @@ except ImportError:
 else:
     SUPPORT_YAML = True
 
+__all__ = ['BaseAPIHandler']
 
 class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
-    """
-        Contains the common functions in the biothings handler universe:
 
-            * return data in json, html, yaml and msgpack
-            * set CORS and Cache Control HTTP headers
-            * typify the URL and body keyword arguments
-            * optionally send tracking data to google analytics
-    """
     name = ''
-    kwarg_types = ()
+    kwargs = None  # dict
+    kwarg_groups = ()
     kwarg_methods = ()
-
-    out_format = 'json'
+    format = 'json'
 
     def initialize(self):
 
-        if self.name and not hasattr(self, '_kwarg_settings'):
-
-            if self.__class__ is not BaseAPIHandler:
-                _self = self.__class__
-            else:
-                _self = self  # do no cache on base handler level
-
-            _self._kwarg_settings = defaultdict(dict)
-            for method, kwarg_type in product(self.kwarg_methods, self.kwarg_types):
-                key = '_'.join((self.name, method, kwarg_type, 'kwargs')).upper()
-                if hasattr(self.web_settings, key):
-                    setting = _self._kwarg_settings[method.upper()]
-                    setting[kwarg_type] = getattr(self.web_settings, key)
-
-            self.logger.debug("Endpoint [%s] kwargs settings:\n%s",
-                              self.name, pformat(_self._kwarg_settings, width=150))
-
-        self.json_arguments = {}
-        self.kwargs = dotdict()
-
-        self.ga_event_object_ret = {
+        self.args = {}  # processed args will be available here
+        self.args_json = {}  # applicatoin/json type body
+        self.event = {
             'category': '{}_api'.format(self.web_settings.API_VERSION),
             'action': self.request.method,  # 'query_get', 'fetch_all', etc.
             # 'label': 'total', 'qsize', etc.
             # 'value': 0, corresponds to label ...
         }
-
-    @property
-    def kwarg_settings(self):
-        '''
-        Return the appropriate kwarg settings basing on the request method.
-        '''
-        if hasattr(self, '_kwarg_settings'):
-            if self.request.method in self._kwarg_settings:
-                return self._kwarg_settings[self.request.method]
-        return {}
 
     def prepare(self):
         '''
@@ -108,49 +88,48 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         '''
         if self.request.headers.get('Content-Type') == 'application/json':
             try:
-                self.json_arguments = json_decode(self.request.body)
-            except Exception:
+                self.args_json = json_decode(self.request.body)
+            except json.JSONDecodeError:
                 raise HTTPError(400, reason='Invalid JSON body.')
 
-        args = dict(self.json_arguments)
-        args.update({key: self.get_argument(key) for key in self.request.arguments})
+        args = dict(self.args_json)
+        args.update({key: self.get_argument(key)
+                     for key in self.request.arguments})
 
-        self.logger.debug("Kwargs received:\n%s", pformat(args, width=150))
+        self.logger.debug("Incoming Requests:\n%s\n%s",
+                          self.request.uri,
+                          pformat(args, width=150))
 
-        for catagory, settings in self.kwarg_settings.items():
-            self.kwargs[catagory] = options = {}
-            for keyword, setting in settings.items():
+        options = self.web_settings.optionsets.get(self.name)
+        try:
+            self.args = options.parse(
+                self.request.method, args,
+                self.path_args, self.path_kwargs)
+        except OptionArgError as err:
+            raise BadRequest(**err.info)
 
-                parser = OptionArgsParser(keyword, setting)
-                parser.list_size_cap = self.web_settings.LIST_SIZE_CAP
-                parser.string_as_json = args.get('jsoninput')
-                value = parser.parse(args, self.path_args, self.path_kwargs)
-
-                if value is not None:
-                    options[keyword] = value
-
-        self.logger.debug("Processed kwargs:\n%s", pformat(self.kwargs, width=150))
+        self.logger.debug("Processed Arguments:\n%s", pformat(self.args, width=150))
 
     def write(self, chunk):
         """
         Override to write output basing on the specified format.
         """
-        if isinstance(chunk, dict) and self.out_format not in ('json', ''):
-            if self.out_format == 'yaml' and SUPPORT_YAML:
+        if isinstance(chunk, dict) and self.format not in ('json', ''):
+            if self.format == 'yaml' and SUPPORT_YAML:
                 self.set_header("Content-Type", "text/x-yaml; charset=UTF-8")
                 chunk = self._format_yaml(chunk)
 
-            elif self.out_format == 'msgpack' and SUPPORT_MSGPACK:
+            elif self.format == 'msgpack' and SUPPORT_MSGPACK:
                 self.set_header("Content-Type", "application/x-msgpack")
                 chunk = self._format_msgpack(chunk)
 
-            elif self.out_format == 'html':
+            elif self.format == 'html':
                 self.set_header("Content-Type", "text/html; charset=utf-8")
                 chunk = self._format_html(chunk)
             else:
                 self.set_status(400)
                 chunk = {"success": False, "code": 400,
-                         "error": f"Server not configured to output {self.out_format}."}
+                         "error": f"Server not configured to output {self.format}."}
 
         elif isinstance(chunk, (dict, list)):
             self.set_header("Content-Type", "application/json; charset=UTF-8")
@@ -188,10 +167,11 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         d = d._replace(query=urlencode(q, True))
         _link = urlunparse(d)
 
-        return self.web_settings.HTML_OUT_TEMPLATE.format(
+        return self.render_string(
+            template_name="api.html",
             data=json.dumps(data),
             img_src=self.web_settings.HTML_OUT_HEADER_IMG,
-            link=_link,
+            link=_link,  # url to get regular format
             link_decode=unquote_plus(_link),
             title_html=self.web_settings.HTML_OUT_TITLE,
             docs_link=getattr(self.web_settings, self.name.upper()+'_DOCS_URL', '')
@@ -202,10 +182,9 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         This is a tornado lifecycle hook.
         Override to provide tracking features.
         """
-        self.logger.debug("Tracking Object: %s",
-                          self.ga_event_object_ret)
-        self.ga_track(self.ga_event_object_ret)
-        self.self_track(self.ga_event_object_ret)
+        self.logger.debug("Event: %s", self.event)
+        self.ga_track(self.event)
+        self.self_track(self.event)
 
     def write_error(self, status_code, **kwargs):
 
@@ -231,14 +210,6 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
             if exception.kwargs:
                 return exception.kwargs
         return {}
-
-    def ga_event_object(self, data=None):
-        ''' Create the data object for google analytics tracking. '''
-        # Most of the structure of this object is formed during self.initialize
-        if data and isinstance(data, dict):
-            self.ga_event_object_ret['label'] = list(data.keys()).pop()
-            self.ga_event_object_ret['value'] = list(data.values()).pop()
-        return self.ga_event_object_ret
 
     def options(self, *args, **kwargs):
 

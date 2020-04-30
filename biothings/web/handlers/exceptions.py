@@ -1,6 +1,5 @@
 from tornado.web import HTTPError
 
-
 class BadRequest(HTTPError):
 
     def __init__(self, log_message=None, *args, **kwargs):
