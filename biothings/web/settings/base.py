@@ -120,7 +120,7 @@ class BiothingWebSettings():
             'debug': bool(debug)
         }
         supported_keywords = (
-            'default_handler_class', 'default_handler_args',
+            'default_handler_class', 'default_handler_args', 'template_path',
             'log_function', 'compress_response', 'cookie_secret',
             'login_url', 'static_path', 'static_url_prefix')
 
