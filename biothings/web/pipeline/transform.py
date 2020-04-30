@@ -103,17 +103,12 @@ class ESResultTransform(object):
             if 'hits' in response:
                 for hit in response['hits']:
                     hit.update(hit.pop('_source', {}))  # collapse one level
-                    hit.pop('_type')
-                    hit.pop('_index')
-                    hit.pop('sort', None)     # added when using sort
-                    hit.pop('_node', None)    # added when using explain
-                    hit.pop('_shard', None)   # added when using explain
                     for path, obj in self.traverse(hit):
+                        self.transform_hit(path, obj, options)
                         if options.allow_null:
                             self.option_allow_null(path, obj, options.allow_null)
                         if options.always_list:
                             self.option_always_list(path, obj, options.always_list)
-                        self.transform_hit(path, obj, options)
                         if options._sorted:
                             self.option_sorted(path, obj)
                     if options.dotfield:
@@ -224,10 +219,16 @@ class ESResultTransform(object):
 
         The arrow marked fields would not exist without the setting lines.
         """
+        if path == '':
+            doc.pop('_index')
+            doc.pop('_type', None)    # not available by default on es7
+            doc.pop('sort', None)     # added when using sort
+            doc.pop('_node', None)    # added when using explain
+            doc.pop('_shard', None)   # added when using explain
 
+        licenses = self.source_licenses[options.biothing_type]
         if path in self.license_transform:
             path = self.license_transform[path]
-        licenses = self.source_licenses[options.biothing_type]
         if path in licenses and isinstance(doc, dict):
             doc['_license'] = licenses[path]
 
