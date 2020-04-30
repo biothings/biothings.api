@@ -64,15 +64,14 @@ class APIManager(BaseManager):
                                       + "only basic generated APIs are currently supported")
         config_mod = types.ModuleType("config_mod")
         config_str = """
-from biothings.web.settings.default import *
+from biothings.web.handlers import BiothingHandler
+from biothings.web.handlers import MetadataSourceHandler
+from biothings.web.handlers import MetadataFieldHandler
+from biothings.web.handlers import QueryHandler
 
 ES_HOST = "%(es_host)s"
 ES_INDEX = "%(index)s"
 ES_DOC_TYPE = "%(doc_type)s"
-
-from biothings.web.api.es.handlers import BiothingHandler
-from biothings.web.api.es.handlers import MetadataSourceHandler, MetadataFieldHandler
-from biothings.web.api.es.handlers import QueryHandler
 
 # doc_type involved there:
 APP_LIST = [
