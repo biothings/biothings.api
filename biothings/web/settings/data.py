@@ -38,7 +38,7 @@ class BiothingESWebSettings(BiothingWebSettings):
             "max_retries": 1,  # maximum number of retries before an exception is propagated
             "timeout_cutoff": 1,  # timeout freezes after this number of consecutive failures
             # "sniff_on_connection_fail": True, TODO
-            "sniffer_timeout": 60
+            # "sniffer_timeout": 60
         }
         self._connections.create_connection(alias='sync', **connection_settings)
         connection_settings.update(transport_class=AsyncTransport)
