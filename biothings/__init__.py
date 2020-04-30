@@ -617,3 +617,13 @@ def get_loop(max_workers=None):
     executor = concurrent.futures.ProcessPoolExecutor(max_workers=max_workers)
     loop.set_default_executor(executor)
     return loop
+
+
+# adjust some loggers...
+if os.environ.get("HUB_VERBOSE","0") != "1":
+    logging.getLogger("elasticsearch").setLevel(logging.ERROR)
+    logging.getLogger("urllib3").setLevel(logging.ERROR)
+    logging.getLogger("requests").setLevel(logging.ERROR)
+    logging.getLogger("botocore").setLevel(logging.ERROR)
+    logging.getLogger("boto").setLevel(logging.ERROR)
+    logging.getLogger("git").setLevel(logging.ERROR)

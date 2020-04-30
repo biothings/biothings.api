@@ -9,10 +9,16 @@ import asyncio
 from functools import partial
 
 from biothings import config as btconfig
+from biothings.hub import HubServer
 from biothings.hub.autoupdate import BiothingsDumper, BiothingsUploader
 from biothings.utils.es import ESIndexer
 from biothings.utils.backend import DocESBackend
 from biothings.utils.loggers import get_logger
+
+
+class AutoHubServer(HubServer):
+
+    DEFAULT_FEATURES = ["job", "autohub", "terminal", "config", "ws"]
 
 
 class AutoHubFeature(object):

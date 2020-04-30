@@ -392,13 +392,13 @@ class HubServer(object):
     def start(self):
         if not self.configured:
             self.configure()
-        self.logger.info("Starting server '%s'", self.name)
+        self.logger.info("Starting '%s'", self.name)
         # can't use asyncio.get_event_loop() if python < 3.5.3 as it would return
         # another instance of aio loop, take it from job_manager to make sure
         # we share the same one
         loop = self.managers["job_manager"].loop
         if self.routes:
-            self.logger.info("Starting Hub API server")
+            self.logger.info("Starting Hub API server on port %s" % config.HUB_API_PORT)
             #self.logger.info(self.routes)
             import tornado.web
             # register app into current event loop
@@ -414,7 +414,7 @@ class HubServer(object):
                     self.logger.warning("Read-only Hub API feature is set but READONLY_HUB_API_PORT"
                                         + "isn't set in configuration")
                 else:
-                    self.logger.info("Starting read-only Hub API server")
+                    self.logger.info("Starting read-only Hub API server on port %s" % config.READONLY_HUB_API_PORT)
                     #self.logger.info(self.readonly_routes)
                     ro_api = tornado.web.Application(self.readonly_routes)
                     start_api(ro_api,
@@ -424,6 +424,7 @@ class HubServer(object):
             self.logger.info("No route defined, API server won't start")
         # at this point, everything is ready/set, last call for customizations
         self.before_start()
+        self.logger.info("Starting Hub SSH server on port %s" % config.HUB_SSH_PORT)
         self.ssh_server = start_ssh_server(loop,
                                            self.name,
                                            passwords=config.HUB_PASSWD,
