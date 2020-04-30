@@ -86,7 +86,7 @@ def get_python_exec_version():
         }
     }
 
-
+@functools.lru_cache()
 def get_software_info(app_dir=None):
     return {
         'python-package-info': get_python_version(),
