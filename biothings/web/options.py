@@ -232,9 +232,7 @@ class OptionSets():
                 obj[key] = self._serialize(val)
             return obj
         elif isinstance(obj, (list, tuple)):
-            # return [self._serialize(item) for item in obj]
-            # assume valid inside
-            return obj
+            return [self._serialize(item) for item in obj]
         elif isinstance(obj, (str, int)):
             return obj
         else:  # best effort
