@@ -1,6 +1,6 @@
 <template>
     <div id="sources">
-        <div class="ui left vertical labeled icon small inverted sidebar menu">
+        <div class="ui left vertical labeled icon small inverted sidebar menu actionable">
             <a class="item" v-on:click="register">
                 <i class="plug icon"></i>
                 New data plugin
@@ -9,7 +9,7 @@
         <div class="pusher">
             <div class="ui main container">
                 <div class="ui segment left aligned">
-                    <div class="ui secondary small menu">
+                    <div class="ui secondary small menu" :class="actionable">
                         <a class="item">
                             <i class="sidebar icon"></i>
                             Menu
@@ -64,11 +64,12 @@
 import axios from 'axios'
 import DataSource from './DataSource.vue'
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 import bus from './bus.js'
 
 export default {
     name: 'data-source-grid',
-    mixins: [ Loader, ],
+    mixins: [ Loader, Actionable],
     mounted () {
         console.log("DataSourceGrid mounted");
         this.getSourcesStatus();

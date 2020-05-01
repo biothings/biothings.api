@@ -1,22 +1,25 @@
-from pprint import pformat
 import asyncio
-import asyncssh
 import crypt
-import aiocron
 import os
 import sys
 import types
 import time
 import copy
+import logging
 from collections import OrderedDict
 from functools import partial
-import logging
+from pprint import pformat
+
+import asyncssh
+import aiocron
 
 from biothings import config
 from biothings.utils.loggers import get_logger, WSLogHandler, WSShellHandler, ShellLogger
-from biothings.utils.hub import (HubShell, HubReloader, CommandDefinition, pending,
+from biothings.utils.hub import (HubShell, get_hub_reloader, CommandDefinition, pending,
                                  AlreadyRunningException, CommandError)
 from biothings.utils.jsondiff import make as jsondiff
+from biothings.utils.version import check_new_version, get_version
+from biothings.utils.common import get_class_from_classpath
 
 # Keys used as category in pinfo (description of jobs submitted to JobManager)
 # Those are used in different places
@@ -34,9 +37,17 @@ DIFFMANAGER_CATEGORY = "diffmanager"
 SYNCER_CATEGORY = "syncer"
 INSPECTOR_CATEGORY = "inspector"
 
-HUB_REFRESH_COMMANDS = hasattr(
-    config, "HUB_REFRESH_COMMANDS"
-) and config.HUB_REFRESH_COMMANDS or "* * * * * *"  # every sec
+# HUB_REFRESH_COMMANDS = hasattr(
+#     config, "HUB_REFRESH_COMMANDS"
+# ) and config.HUB_REFRESH_COMMANDS or "* * * * * *"  # every sec
+HUB_REFRESH_COMMANDS = getattr(
+    config, "HUB_REFRESH_COMMANDS", "* * * * * *"  # every sec
+)
+
+# Check for new code update from app and biothings Git repo
+HUB_CHECK_UPGRADE = getattr(
+    config, "HUB_CHECK_UPGRADE", "0 * * * *"  # every hour
+)
 
 
 class JobRenderer(object):
@@ -74,7 +85,8 @@ class JobRenderer(object):
 
     def render_method(self, m):
         # what is self ? cron ?
-        if type(m.__self__) == aiocron.Cron:
+        # if type(m.__self__) == aiocron.Cron:   # TODO: delete if confirmed
+        if isinstance(m.__self__, aiocron.Cron):
             return self.render_cron(m.__self__)
         else:
             return "%s.%s" % (m.__self__.__class__.__name__, m.__name__)
@@ -103,21 +115,21 @@ def status(managers):
             srcs = srcm.get_sources()
             total_srcs = len(srcs)
             total_docs = sum([s["upload"]["sources"][subs].get("count", 0) or 0
-                             for s in srcs
-                             for subs in s.get("upload", {}).get("sources", {})
-                             if s.get("upload")])
-        except Exception as e:
-            logging.error("Can't get stats for sources: %s" % e)
+                              for s in srcs
+                              for subs in s.get("upload", {}).get("sources", {})
+                              if s.get("upload")])
+        except Exception:
+            logging.exception("Can't get stats for sources:")
 
     try:
         bm = managers["build_manager"]
         total_confs = len(bm.build_config_info())
-    except Exception as e:
-        logging.error("Can't get total number of build configurations: %s" % e)
+    except Exception:
+        logging.exception("Can't get total number of build configurations:")
     try:
         total_builds = len(bm.build_info())
-    except Exception as e:
-        logging.error("Can't get total number of builds: %s" % e)
+    except Exception:
+        logging.exception("Can't get total number of builds:")
 
     try:
         am = managers["api_manager"]
@@ -125,8 +137,8 @@ def status(managers):
         total_apis = len(apis)
         total_running_apis = len(
             [a for a in apis if a.get("status") == "running"])
-    except Exception as e:
-        logging.error("Can't get stats for APIs: %s" % e)
+    except Exception:
+        logging.exception("Can't get stats for APIs:")
 
     return {
         "source": {
@@ -147,7 +159,7 @@ def status(managers):
 
 
 def schedule(loop):
-    # try to render job in a human-readable way...
+    """try to render job in a human-readable way..."""
     out = []
     for sch in loop._scheduled:
         if type(sch) != asyncio.events.TimerHandle:
@@ -204,7 +216,8 @@ class HubServer(object):
     DEFAULT_FEATURES = [
         "config", "job", "dump", "upload", "dataplugin", "source", "build",
         "diff", "index", "snapshot", "release", "inspect", "sync", "api",
-        "terminal", "reloader", "dataupload", "ws"
+        "terminal", "reloader", "dataupload", "ws", "readonly", "upgrade",
+        "autohub",
     ]
     DEFAULT_MANAGERS_ARGS = {"upload": {"poll_schedule": "* * * * * */10"}}
     DEFAULT_RELOADER_CONFIG = {
@@ -217,6 +230,11 @@ class HubServer(object):
     }
     DEFAULT_WEBSOCKET_CONFIG = {}
     DEFAULT_API_CONFIG = {}
+    DEFAULT_AUTOHUB_CONFIG = {
+        "version_urls": getattr(config, "VERSION_URLS", []),
+        "indexer_factory": getattr(config, "AUTOHUB_INDEXER_FACTORY", None),
+        "es_host": getattr(config, "AUTOHUB_ES_HOST", None),
+    }
 
     def __init__(self,
                  source_list,
@@ -226,7 +244,8 @@ class HubServer(object):
                  api_config=None,
                  reloader_config=None,
                  dataupload_config=None,
-                 websocket_config=None):
+                 websocket_config=None,
+                 autohub_config=None):
         """
         Helper to setup and instantiate common managers usually used in a hub
         (eg. dumper manager, uploader manager, etc...)
@@ -242,9 +261,9 @@ class HubServer(object):
         init managers:
             managers_custom_args={"upload" : {"poll_schedule" : "*/5 * * * *"}}
         will set poll schedule to check upload every 5min (instead of default 10s)
-        "reloader_config", "dataupload_config" and "websocket_config" can be used to
-        customize reloader, dataupload and websocket. If None, default config is used.
-        If explicitely False, feature is deactivated.
+        "reloader_config", "dataupload_config", "autohub_config" and "websocket_config"
+        can be used to customize reloader, dataupload and websocket. If None, default config
+        is used. If explicitely False, feature is deactivated.
         """
         self.name = name
         self.source_list = source_list
@@ -256,20 +275,27 @@ class HubServer(object):
         self.reloader_config = reloader_config or self.DEFAULT_RELOADER_CONFIG
         self.dataupload_config = dataupload_config or self.DEFAULT_DATAUPLOAD_CONFIG
         self.websocket_config = websocket_config or self.DEFAULT_WEBSOCKET_CONFIG
+        self.autohub_config = autohub_config or self.DEFAULT_AUTOHUB_CONFIG
         self.ws_listeners = [
         ]  # collect listeners that should be connected (push data through) to websocket
         self.api_config = api_config or self.DEFAULT_API_CONFIG
         # set during configure()
         self.managers = None
         self.api_endpoints = None
+        self.readonly_api_endpoints = None
         self.shell = None
         self.commands = None
         self.extra_commands = None
         self.routes = []
+        self.readonly_routes = []
+        self.ws_urls = []  # only one set, shared between r/w and r/o hub api server
         # flag "do we need to configure?"
         self.configured = False
 
     def clean_features(self, features):
+        """
+        Sanitize (ie. remove duplicates) features
+        """
         # we can't just use "set()" because we need to preserve order
         ordered = OrderedDict()
         for feat in features:
@@ -283,6 +309,25 @@ class HubServer(object):
         used eg. to adjust features list
         """
         pass
+
+    def configure_readonly_api_endpoints(self):
+        """
+        Assuming read-write API endpoints have previously been defined (self.api_endpoints set)
+        extract commands and their endpoint definitions only when method is GET. That is, for any
+        given API definition honoring REST principle for HTTP verbs, generate endpoints only for
+        which actions are read-only actions.
+        """
+        assert self.api_endpoints, "Can't derive a read-only API is no read-write endpoints are defined"
+        self.readonly_api_endpoints = {}
+        for cmd, api_endpoints in self.api_endpoints.items():
+            if not isinstance(api_endpoints, list):
+                api_endpoints = [api_endpoints]
+            for endpoint in api_endpoints:
+                if endpoint["method"].lower() != "get":
+                    self.logger.debug("Skipping %s: %s for read-only API" % (cmd, endpoint))
+                    continue
+                else:
+                    self.readonly_api_endpoints.setdefault(cmd, []).append(endpoint)
 
     def configure(self):
         self.before_configure()
@@ -299,14 +344,40 @@ class HubServer(object):
         self.configure_commands()
         self.configure_extra_commands()
         self.shell.set_commands(self.commands, self.extra_commands)
-        # set api
+        # setapi
         if self.api_config is not False:
             self.configure_api_endpoints(
             )  # after shell setup as it adds some default commands
             # we want to expose throught the api
             from biothings.hub.api import generate_api_routes
+            from biothings.hub.api.handlers.base import RootHandler
+
+            # First deal with read-only API
+            if "readonly" in self.features:
+                self.configure_readonly_api_endpoints()
+                self.readonly_routes.extend(
+                    generate_api_routes(self.shell, self.readonly_api_endpoints))
+                # we don't want to expose feature read-only for the API that is *not*
+                # read-only. "readonly" feature means we're running another webapp for
+                # a specific readonly API. UI can then query the root handler and see
+                # if the API is readonly or not, and adjust the components & actions
+                ro_features = copy.deepcopy(self.features)
+                # terminal feature certainly not allowed in read-only server...
+                if "terminal" in self.features:
+                    ro_features.remove("terminal")
+                # if we have readonly feature, it means another non-readonly server is running
+                self.features.remove("readonly")
+                hub_name = getattr(config, "HUB_NAME", "Hub") + " (read-only)"
+                self.readonly_routes.append(("/", RootHandler, {
+                    "features": ro_features, "hub_name": hub_name
+                }))
+
+            # Then deal with read-write API
             self.routes.extend(
                 generate_api_routes(self.shell, self.api_endpoints))
+            self.routes.append(("/", RootHandler, {
+                "features": self.features,
+            }))
 
         # done
         self.configured = True
@@ -321,14 +392,14 @@ class HubServer(object):
     def start(self):
         if not self.configured:
             self.configure()
-        self.logger.info("Starting server '%s'" % self.name)
+        self.logger.info("Starting '%s'", self.name)
         # can't use asyncio.get_event_loop() if python < 3.5.3 as it would return
         # another instance of aio loop, take it from job_manager to make sure
         # we share the same one
         loop = self.managers["job_manager"].loop
         if self.routes:
-            self.logger.info(self.routes)
-            self.logger.info("Starting Hub API server")
+            self.logger.info("Starting Hub API server on port %s" % config.HUB_API_PORT)
+            #self.logger.info(self.routes)
             import tornado.web
             # register app into current event loop
             api = tornado.web.Application(self.routes)
@@ -338,10 +409,22 @@ class HubServer(object):
                       config.HUB_API_PORT,
                       settings=getattr(config, "TORNADO_SETTINGS", {})
                       )
+            if self.readonly_routes:
+                if not getattr(config, "READONLY_HUB_API_PORT", None):
+                    self.logger.warning("Read-only Hub API feature is set but READONLY_HUB_API_PORT"
+                                        + "isn't set in configuration")
+                else:
+                    self.logger.info("Starting read-only Hub API server on port %s" % config.READONLY_HUB_API_PORT)
+                    #self.logger.info(self.readonly_routes)
+                    ro_api = tornado.web.Application(self.readonly_routes)
+                    start_api(ro_api,
+                              config.READONLY_HUB_API_PORT,
+                              settings=getattr(config, "TORNADO_SETTINGS", {}))
         else:
             self.logger.info("No route defined, API server won't start")
         # at this point, everything is ready/set, last call for customizations
         self.before_start()
+        self.logger.info("Starting Hub SSH server on port %s" % config.HUB_SSH_PORT)
         self.ssh_server = start_ssh_server(loop,
                                            self.name,
                                            passwords=config.HUB_PASSWD,
@@ -353,7 +436,8 @@ class HubServer(object):
             sys.exit('Error starting server: ' + str(exc))
         loop.run_forever()
 
-    def mixargs(self, feat, params={}):
+    def mixargs(self, feat, params=None):
+        params = params or {}
         args = {}
         for p in params:
             args[p] = self.managers_custom_args.get(feat, {}).pop(
@@ -410,6 +494,7 @@ class HubServer(object):
             job_manager=self.managers["job_manager"], **args)
         build_manager.configure()
         self.managers["build_manager"] = build_manager
+        build_manager.poll()
 
     def configure_diff_manager(self):
         from biothings.hub.databuild.differ import DifferManager, SelfContainedJsonDiffer
@@ -519,12 +604,59 @@ class HubServer(object):
                     partial(self.managers["upload_manager"].upload_src, doc[
                         "_id"])))
 
+    def configure_autohub_feature(self):
+        """
+        See bt.hub.standalone.AutoHubFeature
+        """
+        # "autohub" feature is based on "dump","upload" and "sync" features.
+        # If autohub is running on its own (standalone instance only for instance)
+        # we don't list them in DEFAULT_FEATURES as we don't want them to produce
+        # commands such as dump() or upload() as these are renamed for clarity
+        # that said, those managers could still exist *if* autohub is mixed
+        # with "standard" hub, so we don't want to override them if already configured
+        if not self.managers.get("dump_manager"):
+            self.configure_dump_manager()
+        if not self.managers.get("upload_manager"):
+            self.configure_upload_manager()
+        if not self.managers.get("sync_manager"):
+            self.configure_sync_manager()
+
+        # Originally, autohub was a hub server on its own, it's now
+        # converted a feature;to avoid mixins and bringing complexity in this HubServer
+        # definition, we use composition pointing to an instance of that feature which
+        # encapsulates that complexity
+        from biothings.hub.standalone import AutoHubFeature
+        # only pass required manage rs
+        autohub_managers = {
+            "dump_manager": self.managers["dump_manager"],
+            "upload_manager": self.managers["upload_manager"],
+            "sync_manager": self.managers["sync_manager"],
+        }
+
+        version_urls = self.autohub_config["version_urls"]
+        indexer_factory = self.autohub_config["indexer_factory"]
+        es_host = self.autohub_config["es_host"]
+        factory = None
+        if indexer_factory:
+            assert es_host, "indexer_factory set but es_host not set (AUTOHUB_ES_HOST), can't know which ES server to use"
+            try:
+                factory_class = get_class_from_classpath(indexer_factory)
+                factory = factory_class(version_urls, es_host)
+            except (ImportError, ModuleNotFoundError) as e:
+                self.logger.error("Couldn't find indexer factory class from '%s': %s" % (indexer_factory, e))
+        self.autohub_feature = AutoHubFeature(autohub_managers, version_urls, factory)
+        try:
+            self.autohub_feature.configure()
+        except Exception as e:
+            self.logger.error("Could't configure feature 'autohub', will be deactivated: %s" % e)
+            self.features.remove("autohub")
+
     def configure_managers(self):
         if self.managers is not None:
             raise Exception("Managers have already been configured")
         self.managers = {}
 
-        self.logger.info("Setting up managers for following features: %s" %
+        self.logger.info("Setting up managers for following features: %s",
                          self.features)
         assert "job" in self.features, "'job' feature is mandatory"
         if "source" in self.features:
@@ -535,7 +667,7 @@ class HubServer(object):
         # specific order, eg. job_manager is used by all managers
         for feat in self.features:
             if hasattr(self, "configure_%s_manager" % feat):
-                self.logger.info("Configuring feature '%s'" % feat)
+                self.logger.info("Configuring feature '%s'", feat)
                 getattr(self, "configure_%s_manager" % feat)()
                 self.remaining_features.remove(feat)
             elif hasattr(self, "configure_%s_feature" % feat):
@@ -552,10 +684,66 @@ class HubServer(object):
         # just a placeholder
         pass
 
-    def configure_ws_feature(self):
-        # add websocket endpoint
-        import biothings.hub.api.handlers.ws as ws
+    def configure_upgrade_feature(self):
+        """
+        Allows a Hub to check for new versions (new commits to apply on running branch)
+        and apply them on current code base
+        """
+
+        if not getattr(config, "app_folder", None) or not getattr(config, "biothings_folder", None):
+            self.logger.warning("Can't schedule check for new code updates, "
+                                + "app folder and/or biothings folder not defined")
+            return
+
+        from biothings.hub.upgrade import BioThingsSystemUpgrade, ApplicationSystemUpgrade
+        def get_upgrader(klass, folder):
+            version = get_version(folder)
+            klass.SRC_ROOT_FOLDER = folder
+            klass.GIT_REPO_URL = version["giturl"]
+            klass.DEFAULT_BRANCH = version["branch"]
+            return klass
+
+        bt_upgrader_class = get_upgrader(BioThingsSystemUpgrade, config.biothings_folder)
+        app_upgrader_class = get_upgrader(ApplicationSystemUpgrade, config.app_folder)
+        self.managers["dump_manager"].register_classes([bt_upgrader_class, app_upgrader_class])
+
+        @asyncio.coroutine
+        def check_code_upgrade():
+            self.logger.info("Checking for new code updates")
+            bt_new = check_new_version(config.biothings_folder)
+            try:
+                app_new = check_new_version(config.app_folder)
+            except Exception as e:
+                self.logger.warning("Can't check for new version: %s" % e)
+                return
+            # enrich existing version information with an "upgrade" field.
+            # note: we do that on config.conf, the actual config.py module,
+            # *not* directly on config as it's a wrapper over config.conf
+            for (name, new, param) in (("app", app_new, "APP_VERSION"), ("biothings", bt_new, "BIOTHINGS_VERSION")):
+                if new:
+                    self.logger.info("Found updates for %s:\n%s" % (name, pformat(new)))
+                    getattr(config.conf, param)["upgrade"] = new
+                else:
+                    # just in case, we pop out the key
+                    getattr(config.conf, param).pop("upgrade", None)
+
+        loop = self.managers.get("job_manager") and self.managers[
+            "job_manager"].loop or asyncio.get_event_loop()
+
+        # check at startup, then regularly
+        asyncio.ensure_future(check_code_upgrade())
+        aiocron.crontab(HUB_CHECK_UPGRADE,
+                        func=check_code_upgrade,
+                        start=True,
+                        loop=loop)
+
+    def get_websocket_urls(self):
+
+        if self.ws_urls:
+            return self.ws_urls
+
         import sockjs.tornado
+        import biothings.hub.api.handlers.ws as ws
         from biothings.utils.hub_db import ChangeWatcher
         # monitor change in database to report activity in webapp
         self.db_listener = ws.HubDBListener()
@@ -568,11 +756,16 @@ class HubServer(object):
         # (ie. infinite loop), root logger not recommended)
         root_logger.addHandler(WSLogHandler(self.log_listener))
         self.ws_listeners.extend([self.db_listener, self.log_listener])
-
         ws_router = sockjs.tornado.SockJSRouter(
             partial(ws.WebSocketConnection, listeners=self.ws_listeners),
             '/ws')
-        self.routes.extend(ws_router.urls)
+        self.ws_urls = ws_router.urls
+        return self.ws_urls
+
+    def configure_ws_feature(self):
+        # add websocket endpoint
+        ws_urls = self.get_websocket_urls()
+        self.routes.extend(ws_urls)
 
     def configure_terminal_feature(self):
         assert "ws" in self.features, "'terminal' feature requires 'ws'"
@@ -607,19 +800,27 @@ class HubServer(object):
             "hub/dataload/sources",
             getattr(config, "DATA_PLUGIN_FOLDER", None)
         ]
-        reload_managers = [
-            self.managers[m] for m in self.reloader_config["managers"]
-            if m in self.managers
-        ]
         reload_func = self.reloader_config["reload_func"] or partial(
             self.shell.restart, force=True)
-        reloader = HubReloader(monitored_folders,
-                               reload_managers,
-                               reload_func=reload_func)
-        reloader.monitor()
+        reloader = get_hub_reloader(monitored_folders,
+                                    reload_func=reload_func)
+        reloader and reloader.monitor()
+
+    def configure_readonly_feature(self):
+        """
+        Define then expose read-only Hub API endpoints
+        so Hub can be accessed without any risk of modifying data
+        """
+        assert self.api_config is not False, "api_config (read/write API) is required " \
+                                             + "to defined a read-only API (it's derived from)"
+        # first websockets URLs (we only fetch data from websocket, so no
+        # risk of write operations there
+        ws_urls = self.get_websocket_urls()
+        self.readonly_routes.extend(ws_urls)
+        # the rest of the readonly feature setup is done as the end, when starting the server
 
     def configure_remaining_features(self):
-        self.logger.info("Setting up remaining features: %s" %
+        self.logger.info("Setting up remaining features: %s",
                          self.remaining_features)
         # specific order, eg. job_manager is used by all managers
         for feat in copy.deepcopy(self.remaining_features):
@@ -718,8 +919,20 @@ class HubServer(object):
         if self.managers.get("dataplugin_manager"):
             self.commands["dump_plugin"] = self.managers[
                 "dataplugin_manager"].dump_src
+        if "autohub" in self.DEFAULT_FEATURES:
+            self.commands["list"] = CommandDefinition(command=self.autohub_feature.list_biothings, tracked=False)
+            # dump commands
+            self.commands["versions"] = partial(self.managers["dump_manager"].call, method_name="versions")
+            self.commands["check"] = partial(self.managers["dump_manager"].dump_src, check_only=True)
+            self.commands["info"] = partial(self.managers["dump_manager"].call, method_name="info")
+            self.commands["download"] = partial(self.managers["dump_manager"].dump_src)
+            # upload commands
+            self.commands["apply"] = partial(self.managers["upload_manager"].upload_src)
+            self.commands["install"] = partial(self.autohub_feature.install)
+            self.commands["backend"] = partial(self.managers["dump_manager"].call, method_name="get_target_backend")
+            self.commands["reset_backend"] = partial(self.managers["dump_manager"].call, method_name="reset_target_backend")
 
-        logging.info("Registered commands: %s" % list(self.commands.keys()))
+        logging.info("Registered commands: %s", list(self.commands.keys()))
 
     def configure_extra_commands(self):
         """
@@ -851,8 +1064,14 @@ class HubServer(object):
                 command=self.managers["api_manager"].start_api)
             self.extra_commands["stop_api"] = self.managers[
                 "api_manager"].stop_api
+        if "upgrade" in self.DEFAULT_FEATURES:
+            def upgrade(code_base):  # just a wrapper over dumper
+                """Upgrade (git pull) repository for given code base name ("biothings_sdk" or "application")"""
+                assert code_base in ("application","biothings_sdk"), "Unknown code base '%s'" % code_base
+                return self.managers["dump_manager"].dump_src("__" + code_base)
+            self.commands["upgrade"] = CommandDefinition(command=upgrade)
 
-        logging.debug("Registered extra (private) commands: %s" %
+        logging.debug("Registered extra (private) commands: %s",
                       list(self.extra_commands.keys()))
 
     def configure_api_endpoints(self):
@@ -1088,6 +1307,29 @@ class HubServer(object):
         if "restart" in cmdnames:
             self.api_endpoints["restart"] = EndpointDefinition(name="restart",
                                                                method="put")
+        self.api_endpoints["standalone"] = []
+        if "list" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="list", method="get", suffix="list"))
+        if "versions" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="versions", method="get", suffix="versions"))
+        if "check" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="check", method="get", suffix="check"))
+        if "info" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="info", method="get", suffix="info"))
+        if "download" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="download", method="post", suffix="download"))
+        if "apply" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="apply", method="post", suffix="apply"))
+        if "install" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="install", method="post", suffix="install"))
+        if "backend" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="backend", method="get", suffix="backend"))
+        if "reset_backend" in cmdnames:
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="reset_backend", method="delete", suffix="backend"))
+        if not self.api_endpoints["standalone"]:
+            self.api_endpoints.pop("standalone")
+        if "upgrade" in self.commands:
+            self.api_endpoints["code/upgrade"] = EndpointDefinition(name="upgrade", method="put")
 
 
 class HubSSHServer(asyncssh.SSHServer):
@@ -1098,10 +1340,10 @@ class HubSSHServer(asyncssh.SSHServer):
     def session_requested(self):
         return HubSSHServerSession(self.__class__.NAME, self.__class__.SHELL)
 
-    def connection_made(self, conn):
-        self._conn = conn
+    def connection_made(self, connection):
+        self._conn = connection
         print('SSH connection received from %s.' %
-              conn.get_extra_info('peername')[0])
+              connection.get_extra_info('peername')[0])
 
     def connection_lost(self, exc):
         if exc:

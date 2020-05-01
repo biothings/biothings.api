@@ -71,7 +71,7 @@
                         <div class="six wide column" v-if="info.uploader">
                             <p v-if="info.uploader.dummy">This is a <i>dummy</i> uploader, meaning data isn't actually uploaded but rather already stored in a collection.
                                 In order to register data, a <b>release</b> is required in order the uploader to run properly.</p>
-                            <div :class="['ui upload form',subsrc]">
+                            <div :class="['ui upload form',actionable,subsrc]">
                                 <div class="fields">
                                     <div class="required ten wide field">
                                         <input type="text" id="release" placeholder="Specify a release (optional)" autofocus v-if="info.uploader.dummy">
@@ -99,11 +99,12 @@
 import axios from 'axios'
 import bus from './bus.js'
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 
 export default {
     name: 'data-source-upload',
     props: ['source'],
-    mixins: [ Loader, ],
+    mixins: [ Loader, Actionable, ],
     mounted () {
         this.setup();
     },

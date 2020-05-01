@@ -16,7 +16,7 @@ class Histogram(object):
         res = {
             'io_report': self.io_histogram,
             'edge_report': self.edge_histogram
-            }
+        }
         return str(res)
 
     def update_edge(self, vert1, vert2, size):

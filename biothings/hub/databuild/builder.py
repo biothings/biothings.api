@@ -1,40 +1,42 @@
-import sys, re, math
-import os, glob
+import sys
+import re
+import math
+import os
 import json
 import time
 import copy
-import importlib
 import pickle
 from datetime import datetime
 from pprint import pformat
 import asyncio
-from functools import partial
-import glob, random
 import aiocron
+from functools import partial
 
 from .mapper import TransparentMapper
 from ..dataload.uploader import ResourceNotReady
 from .differ import set_pending_to_diff
 from ..databuild.backend import SourceDocMongoBackend, TargetDocMongoBackend, \
-                                LinkTargetDocMongoBackend
-from biothings.utils.common import timesofar, iter_n, get_timestamp, dotdict, \
-                                   dump, rmdashfr, loadobj, open_compressed_file, \
-                                   get_class_from_classpath, find_classes_subclassing
+    LinkTargetDocMongoBackend
+from biothings.utils.common import timesofar, iter_n, dotdict, open_compressed_file, \
+    find_classes_subclassing, get_random_string
 from biothings.utils.mongo import doc_feeder, id_feeder
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseManager, ManagerError
-from biothings.utils.dataload import update_dict_recur, merge_struct
+from biothings.utils.manager import BaseManager
+from biothings.utils.dataload import merge_struct
 import biothings.utils.mongo as mongo
 from biothings.utils.hub_db import get_source_fullname, get_src_build_config, \
-                                   get_src_build, get_src_dump, get_src_master
+    get_src_build, get_src_dump, get_src_master
 from biothings import config as btconfig
 from biothings.hub import UPLOADER_CATEGORY, BUILDER_CATEGORY
 from .backend import create_backend
 
 logging = btconfig.logger
 
+
 class BuilderException(Exception):
     pass
+
+
 class ResumeException(Exception):
     pass
 
@@ -44,11 +46,19 @@ class DataBuilder(object):
     Generic data builder.
     """
 
-    keep_archive = 10 # number of archived collection to keep. Oldest get dropped first.
+    keep_archive = 10  # number of archived collection to keep. Oldest get dropped first.
 
-    def __init__(self, build_name, source_backend, target_backend, log_folder,
-                 doc_root_key="root", mappers=[], default_mapper_class=TransparentMapper,
-                 sources=None, target_name=None,**kwargs):
+    def __init__(self,
+                 build_name,
+                 source_backend,
+                 target_backend,
+                 log_folder,
+                 doc_root_key="root",
+                 mappers=[],
+                 default_mapper_class=TransparentMapper,
+                 sources=None,
+                 target_name=None,
+                 **kwargs):
         self.init_state()
         self.build_name = build_name
         self.sources = sources
@@ -82,53 +92,63 @@ class DataBuilder(object):
         self.log_folder = log_folder
         self.mappers = {}
         self.timestamp = datetime.now()
-        self.merge_stats = {} # keep track of cnt per source, etc...
-        self.src_meta = {} # sources involved in this build (includes versions)
-        self.stats = {} # can be customized
-        self.mapping = {} # ES mapping (merged from src_master's docs)
+        self.merge_stats = {}  # keep track of cnt per source, etc...
+        self.src_meta = {
+        }  # sources involved in this build (includes versions)
+        self.stats = {}  # can be customized
+        self.mapping = {}  # ES mapping (merged from src_master's docs)
 
         for mapper in mappers + [default_mapper_class()]:
             self.mappers[mapper.name] = mapper
 
-        self.step = kwargs.get("step",10000)
+        self.step = kwargs.get("step", 10000)
         self.prepared = False
 
     def init_state(self):
         self._state = {
-                "logger" : None,
-                "source_backend" : None,
-                "target_backend" : None,
-                "build_config" : None,
+            "logger": None,
+            "source_backend": None,
+            "target_backend": None,
+            "build_config": None,
         }
+
     @property
     def logger(self):
         if not self._state["logger"]:
             self.prepare()
         return self._state["logger"]
+
     @property
     def source_backend(self):
         if self._state["source_backend"] is None:
             self.prepare()
-            self._state["build_config"] = self._state["source_backend"].get_build_configuration(self.build_name)
+            self._state["build_config"] = self._state[
+                "source_backend"].get_build_configuration(self.build_name)
             self._state["source_backend"].validate_sources(self.sources)
         return self._state["source_backend"]
+
     @property
     def target_backend(self):
         if self._state["target_backend"] is None:
             self.prepare()
         return self._state["target_backend"]
+
     @property
     def build_config(self):
-        self._state["build_config"] = self.source_backend.get_build_configuration(self.build_name)
+        self._state[
+            "build_config"] = self.source_backend.get_build_configuration(
+                self.build_name)
         return self._state["build_config"]
+
     @logger.setter
     def logger(self, value):
         self._state["logger"] = value
+
     @build_config.setter
     def build_config(self, value):
         self._state["build_config"] = value
 
-    def prepare(self,state={}):
+    def prepare(self, state={}):
         if self.prepared:
             return
         if state:
@@ -152,10 +172,10 @@ class DataBuilder(object):
         """
         # TODO: use copy ?
         state = {
-            "logger" : self._state["logger"],
-            "source_backend" : self._state["source_backend"],
-            "target_backend" : self._state["target_backend"],
-            "build_config" : self._state["build_config"],
+            "logger": self._state["logger"],
+            "source_backend": self._state["source_backend"],
+            "target_backend": self._state["target_backend"],
+            "build_config": self._state["build_config"],
         }
         for k in state:
             self._state[k] = None
@@ -163,9 +183,17 @@ class DataBuilder(object):
         return state
 
     def get_predicates(self):
+        """
+        Return a list of predicates (functions returning true/false, as in math logic)
+        which instructs/dictates if job manager should start a job (process/thread)
+        """
         def no_uploader_running(job_manager):
             """Uploaders could change the data to be merged..."""
-            return len([j for j in job_manager.jobs.values() if j["category"] == UPLOADER_CATEGORY]) == 0
+            return len([
+                j for j in job_manager.jobs.values()
+                if j["category"] == UPLOADER_CATEGORY
+            ]) == 0
+
         #def no_merger_running():
         #    """
         #    Mergers use cache files, if more than one running and caches need to be built
@@ -179,19 +207,22 @@ class DataBuilder(object):
         Return dict containing information about the current process
         (used to report in the hub)
         """
-        pinfo = {"category" : BUILDER_CATEGORY,
-                "source" : "%s:%s" % (self.build_name,self.target_backend.target_name),
-                "step" : "",
-                "description" : ""}
+        pinfo = {
+            "category": BUILDER_CATEGORY,
+            "source":
+            "%s:%s" % (self.build_name, self.target_backend.target_name),
+            "step": "",
+            "description": ""
+        }
         preds = self.get_predicates()
         if preds:
             pinfo["__predicates__"] = preds
         return pinfo
 
     def setup_log(self):
-        self.logger,_ = get_logger('build_%s' % self.build_name)
+        self.logger, _ = get_logger('build_%s' % self.build_name)
 
-    def check_ready(self,force=False):
+    def check_ready(self, force=False):
         if force:
             # don't even bother
             return
@@ -204,11 +235,20 @@ class DataBuilder(object):
             if not fullname:
                 raise ResourceNotReady("Can't find source '%s'" % src_name)
             main_name = fullname.split(".")[0]
-            src_doc = src_dump.find_one({"_id":main_name})
+            src_doc = src_dump.find_one({"_id": main_name})
             if not src_doc:
-                raise ResourceNotReady("Missing information for source '%s' to start merging" % src_name)
-            if not src_doc.get("upload",{}).get("jobs",{}).get(src_name,{}).get("status") == "success":
-                raise ResourceNotReady("No successful upload found for resource '%s'" % src_name)
+                raise ResourceNotReady(
+                    "Missing information for source '%s' to start merging" %
+                    src_name)
+            if not src_doc.get("upload", {}).get("jobs", {}).get(
+                    src_name, {}).get("status") == "success":
+                raise ResourceNotReady(
+                    "No successful upload found for resource '%s'" % src_name)
+
+    def get_target_name(self):
+        return '{}_{}_{}'.format(self.build_name,
+                                 self.get_build_version(),
+                                 get_random_string()).lower()
 
     def get_build_version(self):
         """
@@ -216,9 +256,15 @@ class DataBuilder(object):
         '.' char isn't allowed in build version as it's reserved for minor versions
         """
         d = datetime.fromtimestamp(self.t0)
-        return "%d%02d%02d" % (d.year,d.month,d.day)
+        version_fmt = self.build_config.get("build_version")
+        if not version_fmt:
+            version_fmt = "%Y%m%d"
+        bversion = d.strftime(version_fmt)
+        self.logger.info("Build version: %s", bversion)
 
-    def register_status(self,status,transient=False,init=False,**extra):
+        return bversion
+
+    def register_status(self, status, transient=False, init=False, **extra):
         """
         Register current build status. A build status is a record in src_build
         The key used in this dict the target_name. Then, any operation
@@ -227,26 +273,25 @@ class DataBuilder(object):
         assert self.build_config, "build_config needs to be specified first"
         # get it from source_backend, kind of weird...
         src_build = self.source_backend.build
-        src_build_config = self.source_backend.build_config
-        all_sources = self.build_config.get("sources",[])
+        all_sources = self.build_config.get("sources", [])
         target_name = "%s" % self.target_backend.target_name
         backend_url = self.target_backend.get_backend_url()
         build_info = {
-                '_id' : target_name,
-                # TODO: deprecate target_backend & target_name, use backed_url instead
-                'target_backend': self.target_backend.name,
-                'target_name': target_name,
-                'backend_url' : backend_url,
-                'build_config': self.build_config,
-                # these are all the sources required to build target
-                # (not just the ones being processed, those are registered in jobs
-                'sources' : all_sources,
-                }
+            '_id': target_name,
+            # TODO: deprecate target_backend & target_name, use backed_url instead
+            'target_backend': self.target_backend.name,
+            'target_name': target_name,
+            'backend_url': backend_url,
+            'build_config': self.build_config,
+            # these are all the sources required to build target
+            # (not just the ones being processed, those are registered in jobs
+            'sources': all_sources,
+        }
         job_info = {
-                'status': status,
-                'step_started_at': datetime.now(),
-                'logfile': self.logfile,
-                }
+            'status': status,
+            'step_started_at': datetime.now(),
+            'logfile': self.logfile,
+        }
         if transient:
             # record some "in-progress" information
             job_info['pid'] = os.getpid()
@@ -269,7 +314,10 @@ class DataBuilder(object):
         if init:
             # init timer for this step
             self.ti = time.time()
-            src_build.update({'_id': target_name}, {"$push": {'jobs': job_info}})
+            src_build.update({'_id': target_name},
+                             {"$push": {
+                                 'jobs': job_info
+                             }})
             # now refresh/sync
             build = src_build.find_one({'_id': target_name})
         else:
@@ -277,27 +325,29 @@ class DataBuilder(object):
             # (to keep building data...) and update the last one
             # (it's been properly created before when init=True)
             build["jobs"] and build["jobs"][-1].update(job_info)
+
             # build_info is common to all jobs, so we want to keep
             # any existing data (well... except if it's explicitely specified)
-            def merge_build_info(target,d):
+            def merge_build_info(target, d):
                 if "__REPLACE__" in d.keys():
                     d.pop("__REPLACE__")
                     target = d
                 else:
-                    for k,v in d.items():
+                    for k, v in d.items():
                         if type(v) == dict:
                             if k in target:
-                                target[k] = merge_build_info(target[k],v)
+                                target[k] = merge_build_info(target[k], v)
                             else:
-                                v.pop("__REPLACE__",None)
+                                v.pop("__REPLACE__", None)
                                 # merge v with "nothing" just to make sure to remove any "__REPLACE__"
-                                v = merge_build_info({},v)
+                                v = merge_build_info({}, v)
                                 target[k] = v
                         else:
                             target[k] = v
                 return target
-            build = merge_build_info(build,build_info)
-            src_build.replace_one({"_id" : build["_id"]}, build)
+
+            build = merge_build_info(build, build_info)
+            src_build.replace_one({"_id": build["_id"]}, build)
 
     def clean_old_collections(self):
         # use target_name is given, otherwise build name will be used
@@ -306,13 +356,13 @@ class DataBuilder(object):
         db = mongo.get_target_db()
         cols = [c for c in db.collection_names() if c.startswith(prefix)]
         # timestamp is what's after _archive_, YYYYMMDD, so we can sort it safely
-        cols = sorted(cols,reverse=True)
+        cols = sorted(cols, reverse=True)
         to_drop = cols[self.keep_archive:]
         for colname in to_drop:
             self.logger.info("Cleaning old archive collection '%s'" % colname)
             db[colname].drop()
 
-    def init_mapper(self,mapper_name):
+    def init_mapper(self, mapper_name):
         if self.mappers[mapper_name].need_load():
             if mapper_name is None:
                 self.logger.info("Initializing default mapper")
@@ -324,15 +374,17 @@ class DataBuilder(object):
         return None
 
     def get_root_document_sources(self):
-        root_srcs = self.build_config.get(self.doc_root_key,[]) or []
+        root_srcs = self.build_config.get(self.doc_root_key, []) or []
         # check for "not this resource" and adjust the list
-        none_root_srcs = [src.replace("!","") for src in root_srcs if src.startswith("!")]
+        none_root_srcs = [
+            src.replace("!", "") for src in root_srcs if src.startswith("!")
+        ]
         if none_root_srcs:
             if len(none_root_srcs) != len(root_srcs):
-                raise BuilderException("If using '!' operator, all datasources must use it (cannot mix), got: %s" % \
-                        (repr(root_srcs)))
+                raise BuilderException("If using '!' operator, all datasources must use it (cannot mix), got: %s" %
+                                       (repr(root_srcs)))
             # ok, grab sources for this build,
-            srcs = self.build_config.get("sources",[])
+            srcs = self.build_config.get("sources", [])
             root_srcs = list(set(srcs).difference(set(none_root_srcs)))
             #self.logger.info("'except root' sources %s resolves to root source = %s" % (repr(none_root_srcs),root_srcs))
 
@@ -340,15 +392,19 @@ class DataBuilder(object):
         root_srcs = self.resolve_sources(root_srcs)
         return root_srcs
 
-    def setup(self,sources=None, target_name=None):
+    def setup(self, sources=None, target_name=None):
         sources = sources or self.sources
+        # try to get target_name from args, otherwise for now generate it
+        # using mongo backend (it'll be set later during merge() call)
         target_name = target_name or self.target_name
         self.target_backend.set_target_name(self.target_name, self.build_name)
         # root key is optional but if set, it must exist in build config
-        if self.doc_root_key and not self.doc_root_key in self.build_config:
-            raise BuilderException("Root document key '%s' can't be found in build configuration" % self.doc_root_key)
+        if self.doc_root_key and self.doc_root_key not in self.build_config:
+            raise BuilderException(
+                "Root document key '%s' can't be found in build configuration"
+                % self.doc_root_key)
 
-    def get_stats(self,sources,job_manager):
+    def get_stats(self, sources, job_manager):
         """
         Return a dictionnary of metadata for this build. It's usually app-specific
         and this method may be overridden as needed. By default though, the total
@@ -366,7 +422,7 @@ class DataBuilder(object):
         asyncio.set_event_loop(job_manager.loop)
         """
         total = self.target_backend.target_collection.count()
-        return {"total" : total}
+        return {"total": total}
 
     def get_custom_metadata(self, sources, job_manager):
         """
@@ -376,48 +432,49 @@ class DataBuilder(object):
         """
         return {}
 
-    def get_mapping(self,sources):
+    def get_mapping(self, sources):
         """
         Merge mappings from src_master
         """
         mapping = {}
         src_master = self.source_backend.master
         for collection in self.build_config['sources']:
-            meta = src_master.find_one({"_id" : collection})
+            meta = src_master.find_one({"_id": collection})
             if 'mapping' in meta and meta["mapping"]:
-                mapping = merge_struct(mapping,meta['mapping'])
+                mapping = merge_struct(mapping, meta['mapping'])
             else:
                 raise BuilderException('"%s" has no mapping data' % collection)
         return mapping
 
-    def store_metadata(self,res,sources,job_manager):
+    def store_metadata(self, res, sources, job_manager):
         self.target_backend.post_merge()
         self.src_meta = self.source_backend.get_src_metadata()
         # now that we have merge stats (count/srcs) + all src involved
         # we can propagate stats
         self.update_src_meta_stats()
         self.mapping = self.get_mapping(sources)
-        self.stats = self.get_stats(sources,job_manager)
-        self.custom_metadata = self.get_custom_metadata(sources,job_manager)
+        self.stats = self.get_stats(sources, job_manager)
+        self.custom_metadata = self.get_custom_metadata(sources, job_manager)
         # also search for _meta in build_config
         bmeta = self.build_config.get("_meta")
         if bmeta:
-            self.logger.info("Found _meta in build_config, merging: %s" % pformat(bmeta))
-            self.custom_metadata.update(self.build_config.get("_meta",{}))
+            self.logger.info("Found _meta in build_config, merging: %s" %
+                             pformat(bmeta))
+            self.custom_metadata.update(self.build_config.get("_meta", {}))
 
     def update_src_meta_stats(self):
-        for src,count in self.merge_stats.items():
+        for src, count in self.merge_stats.items():
             mainsrc = get_source_fullname(src).split(".")[0]
-            self.src_meta.setdefault(mainsrc,{}).setdefault("stats",{})
-            self.src_meta[mainsrc]["stats"].update({src:count})
+            self.src_meta.setdefault(mainsrc, {}).setdefault("stats", {})
+            self.src_meta[mainsrc]["stats"].update({src: count})
 
-    def resolve_sources(self,sources):
+    def resolve_sources(self, sources):
         """
         Source can be a string that may contain regex chars. It's usefull
         when you have plenty of sub-collections prefixed with a source name.
         For instance, given a source named "blah" stored in as many collections
         as chromosomes, insteand of passing each name as "blah_1", "blah_2", etc...
-        "blah\_.*" can be specified in build_config. This method resolves potential
+        "blah_.*" can be specified in build_config. This method resolves potential
         regexed source name into real, existing collection names
         """
         if type(sources) == str:
@@ -430,8 +487,8 @@ class DataBuilder(object):
             # check if master _id and name are different (meaning name is a regex)
             master = masters.get(src)
             if not master:
-                raise BuilderException("'%s'could not be found in master documents (%s)" % \
-                        (src,repr(list(masters.keys()))))
+                raise BuilderException("'%s'could not be found in master documents (%s)" %
+                                       (src, repr(list(masters.keys()))))
             search = src
             if master["_id"] != master["name"]:
                 search = master["name"]
@@ -442,8 +499,15 @@ class DataBuilder(object):
                     found.append(col)
         return found
 
-    def merge(self, sources=None, target_name=None, force=False, ids=None,steps=["merge","post","metadata"],
-            job_manager=None, *args,**kwargs):
+    def merge(self,
+              sources=None,
+              target_name=None,
+              force=False,
+              ids=None,
+              steps=["merge", "post", "metadata"],
+              job_manager=None,
+              *args,
+              **kwargs):
         """Merge given sources into a collection named target_name. If sources argument is omitted,
         all sources defined for this merger will be merged together, according to what is defined
         insrc_build_config. If target_name is not defined, a unique name will be generated.
@@ -468,8 +532,8 @@ class DataBuilder(object):
         if sources is None:
             self.target_backend.drop()
             self.target_backend.prepare()
-            sources = avail_sources # merge all
-        elif isinstance(sources,str):
+            sources = avail_sources  # merge all
+        elif isinstance(sources, str):
             sources = [sources]
 
         if ids is None:
@@ -479,87 +543,116 @@ class DataBuilder(object):
                 # config calls for a merge on specific _ids
                 if type(ids) == str:
                     # path to a file
-                    m = map(lambda l: l.decode().strip(),open_compressed_file(ids).readlines())
+                    m = map(lambda l: l.decode().strip(),
+                            open_compressed_file(ids).readlines())
                     ids = [_id for _id in m if not _id.startswith("#")]
 
         orig_sources = sources
         sources = self.resolve_sources(sources)
         if not sources and "merge" in steps:
-            raise BuilderException("No source found, got %s while available sources are: %s" % \
-                    (repr(orig_sources),repr(avail_sources)))
-        if target_name:
-            self.target_backend.set_target_name(target_name)
-        else:
-            target_name = self.target_backend.target_name
+            raise BuilderException("No source found, got %s while available sources are: %s" %
+                                   (repr(orig_sources), repr(avail_sources)))
+        if not target_name:
+            target_name = self.get_target_name()
         self.target_name = target_name
+        self.target_backend.set_target_name(self.target_name)
 
         self.custom_metadata = {}
-
         self.clean_old_collections()
-
-        self.logger.info("Merging into target collection '%s'" % self.target_backend.target_name)
-        strargs = "[sources=%s,target_name=%s]" % (sources,target_name)
+        self.logger.info("Merging into target collection '%s'" %
+                         self.target_backend.target_name)
+        strargs = "[sources=%s,target_name=%s]" % (sources, target_name)
 
         try:
+
             @asyncio.coroutine
             def do():
                 res = None
                 if "merge" in steps or "post" in steps:
-                    job = self.merge_sources(source_names=sources, ids=ids, steps=steps,
-                            job_manager=job_manager, *args, **kwargs)
+                    job = self.merge_sources(source_names=sources,
+                                             ids=ids,
+                                             steps=steps,
+                                             job_manager=job_manager,
+                                             *args,
+                                             **kwargs)
                     res = yield from job
                 if "metadata" in steps:
                     pinfo = self.get_pinfo()
                     pinfo["step"] = "metadata"
-                    self.register_status("building",transient=True,init=True,job={"step":"metadata"})
-                    postjob = yield from job_manager.defer_to_thread(pinfo,
-                            partial(self.store_metadata,res,sources=sources,job_manager=job_manager))
+                    self.register_status("building",
+                                         transient=True,
+                                         init=True,
+                                         job={"step": "metadata"})
+                    postjob = yield from job_manager.defer_to_thread(
+                        pinfo,
+                        partial(self.store_metadata,
+                                res,
+                                sources=sources,
+                                job_manager=job_manager))
+
                     def stored(f):
                         try:
                             nonlocal res
                             if res:
-                                res = f.result() # consume to trigger exceptions if any
+                                res = f.result(
+                                )  # consume to trigger exceptions if any
                             strargs = "[sources=%s,stats=%s]" % \
-                                    (sources,self.merge_stats)
+                                (sources, self.merge_stats)
                             build_version = self.get_build_version()
                             if "." in build_version:
-                                raise BuilderException("Can't use '.' in build version '%s', it's reserved for minor versions" % build_version)
+                                raise BuilderException(
+                                    "Can't use '.' in build version '%s', it's reserved for minor versions"
+                                    % build_version)
                             # get original start dt
                             src_build = self.source_backend.build
                             build = src_build.find_one({'_id': target_name})
                             _meta = {
-                                    "biothing_type" : build["build_config"]["doc_type"],
-                                    "src" : self.src_meta,
-                                    "stats" : self.stats,
-                                    "build_version" : build_version,
-                                    "build_date" : datetime.fromtimestamp(self.t0).isoformat()}
+                                "biothing_type":
+                                build["build_config"]["doc_type"],
+                                "src":
+                                self.src_meta,
+                                "stats":
+                                self.stats,
+                                "build_version":
+                                build_version,
+                                "build_date":
+                                datetime.fromtimestamp(self.t0).isoformat()
+                            }
                             # custom
                             _meta.update(self.custom_metadata)
-                            self.register_status('success',build={
-                                "merge_stats" : self.merge_stats,
-                                "mapping" : self.mapping,
-                                "_meta" : _meta,
-                                })
-                            self.logger.info("success %s" % strargs,extra={"notify":True})
+                            self.register_status('success',
+                                                 build={
+                                                     "merge_stats":
+                                                     self.merge_stats,
+                                                     "mapping": self.mapping,
+                                                     "_meta": _meta,
+                                                 })
+                            self.logger.info("success %s" % strargs,
+                                             extra={"notify": True})
                             set_pending_to_diff(target_name)
                         except Exception as e:
                             strargs = "[sources=%s]" % sources
-                            self.register_status("failed",job={"err": repr(e)})
-                            self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
+                            self.register_status("failed",
+                                                 job={"err": repr(e)})
+                            self.logger.exception("failed %s: %s" %
+                                                  (strargs, e),
+                                                  extra={"notify": True})
                             raise
+
                     postjob.add_done_callback(stored)
                     yield from postjob
 
             task = asyncio.ensure_future(do())
             return task
 
-        except (KeyboardInterrupt,Exception) as e:
+        except (KeyboardInterrupt, Exception) as e:
             self.logger.exception(e)
-            self.register_status("failed",job={"err": repr(e)})
-            self.logger.exception("failed %s: %s" % (strargs,e),extra={"notify":True})
+            self.register_status("failed", job={"err": repr(e)})
+            self.logger.exception("failed %s: %s" % (strargs, e),
+                                  extra={"notify": True})
             raise
 
-    def get_mapper_for_source(self,src_name,init=True):
+    def get_mapper_for_source(self, src_name, init=True):
         # src_name can be a regex (when source has split collections, they are merge but
         # comes from the same "template" sourcek
         docs = self.source_backend.get_src_master_docs()
@@ -572,13 +665,21 @@ class DataBuilder(object):
         try:
             init and self.init_mapper(mapper_name)
             mapper = self.mappers[mapper_name]
-            self.logger.info("Found mapper '%s' for source '%s'" % (mapper,src_name))
+            self.logger.info("Found mapper '%s' for source '%s'" %
+                             (mapper, src_name))
             return mapper
         except KeyError:
-            raise BuilderException("Found mapper named '%s' but no mapper associated" % mapper_name)
+            raise BuilderException(
+                "Found mapper named '%s' but no mapper associated" %
+                mapper_name)
 
     @asyncio.coroutine
-    def merge_sources(self, source_names, steps=["merge","post"], batch_size=100000, ids=None, job_manager=None):
+    def merge_sources(self,
+                      source_names,
+                      steps=["merge", "post"],
+                      batch_size=100000,
+                      ids=None,
+                      job_manager=None):
         """
         Merge resources from given source_names or from build config.
         Identify root document sources from the list to first process them.
@@ -590,18 +691,20 @@ class DataBuilder(object):
             steps = [steps]
         do_merge = "merge" in steps
         do_post_merge = "post" in steps
-        total_docs = 0
         self.merge_stats = {}
         self.stats = {}
         self.mapping = {}
         # try to identify root document sources amongst the list to first
         # process them (if any)
         defined_root_sources = self.get_root_document_sources()
-        root_sources = list(set(source_names).intersection(set(defined_root_sources)))
+        root_sources = list(
+            set(source_names).intersection(set(defined_root_sources)))
         other_sources = list(set(source_names).difference(set(root_sources)))
         # got root doc sources but not part of the merge ? that's weird...
         if defined_root_sources and not root_sources:
-            self.logger.warning("Root document sources found (%s) but not part of the merge..." % defined_root_sources)
+            self.logger.warning(
+                "Root document sources found (%s) but not part of the merge..."
+                % defined_root_sources)
 
         source_names = sorted(source_names)
         root_sources = sorted(root_sources)
@@ -616,20 +719,26 @@ class DataBuilder(object):
         @asyncio.coroutine
         def merge(src_names):
             jobs = []
-            for i,src_name in enumerate(src_names):
+            for i, src_name in enumerate(src_names):
                 yield from asyncio.sleep(0.0)
-                job = self.merge_source(src_name, batch_size=batch_size, ids=ids,
+                job = self.merge_source(src_name,
+                                        batch_size=batch_size,
+                                        ids=ids,
                                         job_manager=job_manager)
                 job = asyncio.ensure_future(job)
-                def merged(f,name,stats):
+
+                def merged(f, name, stats):
                     try:
                         res = f.result()
                         stats.update(res)
                     except Exception as e:
-                        self.logger.exception("Failed merging source '%s': %s" % (name, e))
+                        self.logger.exception(
+                            "Failed merging source '%s': %s" % (name, e))
                         nonlocal got_error
                         got_error = e
-                job.add_done_callback(partial(merged,name=src_name,stats=self.merge_stats))
+
+                job.add_done_callback(
+                    partial(merged, name=src_name, stats=self.merge_stats))
                 jobs.append(job)
                 yield from asyncio.wait([job])
                 # raise error as soon as we know something went wrong
@@ -640,44 +749,73 @@ class DataBuilder(object):
 
         if do_merge:
             if root_sources:
-                self.register_status("building",transient=True,init=True,
-                        job={"step":"merge-root","sources":root_sources})
-                self.logger.info("Merging root document sources: %s" % root_sources)
+                self.register_status("building",
+                                     transient=True,
+                                     init=True,
+                                     job={
+                                         "step": "merge-root",
+                                         "sources": root_sources
+                                     })
+                self.logger.info("Merging root document sources: %s" %
+                                 root_sources)
                 yield from merge(root_sources)
-                self.register_status("success",job={"step":"merge-root","sources":root_sources})
+                self.register_status("success",
+                                     job={
+                                         "step": "merge-root",
+                                         "sources": root_sources
+                                     })
 
             if other_sources:
-                self.register_status("building",transient=True,init=True,
-                        job={"step":"merge-others","sources":other_sources})
+                self.register_status("building",
+                                     transient=True,
+                                     init=True,
+                                     job={
+                                         "step": "merge-others",
+                                         "sources": other_sources
+                                     })
                 self.logger.info("Merging other resources: %s" % other_sources)
                 yield from merge(other_sources)
-                self.register_status("success",job={"step":"merge-others","sources":other_sources})
+                self.register_status("success",
+                                     job={
+                                         "step": "merge-others",
+                                         "sources": other_sources
+                                     })
 
-            self.register_status("building",transient=True,init=True,
-                    job={"step":"finalizing"})
+            self.register_status("building",
+                                 transient=True,
+                                 init=True,
+                                 job={"step": "finalizing"})
             self.logger.info("Finalizing target backend")
             self.target_backend.finalize()
-            self.register_status("success",job={"step":"finalizing"})
+            self.register_status("success", job={"step": "finalizing"})
         else:
             self.logger.info("Skip data merging")
 
         if do_post_merge:
             self.logger.info("Running post-merge process")
-            self.register_status("building",transient=True,init=True,job={"step":"post-merge"})
+            self.register_status("building",
+                                 transient=True,
+                                 init=True,
+                                 job={"step": "post-merge"})
             pinfo = self.get_pinfo()
             pinfo["step"] = "post-merge"
-            job = yield from job_manager.defer_to_thread(pinfo,partial(self.post_merge, source_names, batch_size, job_manager))
+            job = yield from job_manager.defer_to_thread(
+                pinfo,
+                partial(self.post_merge, source_names, batch_size,
+                        job_manager))
             job = asyncio.ensure_future(job)
+
             def postmerged(f):
                 try:
                     self.logger.info("Post-merge completed [%s]" % f.result())
-                    self.register_status("success",job={"step":"post-merge"})
+                    self.register_status("success", job={"step": "post-merge"})
                 except Exception as e:
                     self.logger.exception("Failed post-merging source: %s" % e)
                     nonlocal got_error
                     got_error = e
+
             job.add_done_callback(postmerged)
-            res = yield from job
+            yield from job
             if got_error:
                 raise got_error
         else:
@@ -686,7 +824,7 @@ class DataBuilder(object):
         yield from asyncio.sleep(0.0)
         return self.merge_stats
 
-    def document_cleaner(self,src_name,*args,**kwargs):
+    def document_cleaner(self, src_name, *args, **kwargs):
         """
         Return a function taking a document as argument, cleaning the doc
         as needed, and returning that doc. If no function is needed, None.
@@ -696,7 +834,11 @@ class DataBuilder(object):
         return None
 
     @asyncio.coroutine
-    def merge_source(self, src_name, batch_size=100000, ids=None, job_manager=None):
+    def merge_source(self,
+                     src_name,
+                     batch_size=100000,
+                     ids=None,
+                     job_manager=None):
         # it's actually not optional
         assert job_manager
         _query = self.generate_document_query(src_name)
@@ -708,68 +850,86 @@ class DataBuilder(object):
         defined_root_sources = self.get_root_document_sources()
         upsert = not defined_root_sources or src_name in defined_root_sources
         if not upsert:
-            self.logger.debug("Documents from source '%s' will be stored only if a previous document exists with same _id" % src_name)
+            self.logger.debug(
+                "Documents from source '%s' will be stored only if a previous document exists with same _id"
+                % src_name)
         jobs = []
         total = self.source_backend[src_name].count()
-        btotal = math.ceil(total/batch_size)
+        btotal = math.ceil(total / batch_size)
         bnum = 1
         cnt = 0
         got_error = False
         # grab ids only, so we can get more, let's say 10 times more
         id_batch_size = batch_size * 10
         if ids:
-            self.logger.info("Merging '%s' specific list of _ids, create merger job with batch_size=%d" % (src_name, batch_size))
+            self.logger.info(
+                "Merging '%s' specific list of _ids, create merger job with batch_size=%d"
+                % (src_name, batch_size))
             id_provider = [ids]
         else:
-            self.logger.info("Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d" % (src_name, id_batch_size, batch_size))
-            id_provider = id_feeder(self.source_backend[src_name], batch_size=id_batch_size)
+            self.logger.info(
+                "Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d"
+                % (src_name, id_batch_size, batch_size))
+            id_provider = id_feeder(self.source_backend[src_name],
+                                    batch_size=id_batch_size)
 
-        if _query and not ids is None:
-            self.logger.info("Query/filter involved, but also specific list of _ids. Ignoring query and use _ids")
+        if _query and ids is not None:
+            self.logger.info(
+                "Query/filter involved, but also specific list of _ids. Ignoring query and use _ids"
+            )
 
         if _query and ids is None:
-            self.logger.info("Query/filter involved, can't use cache to fetch _ids")
+            self.logger.info(
+                "Query/filter involved, can't use cache to fetch _ids")
             # use doc_feeder but post-process doc to keep only the _id
-            id_provider = map(lambda docs: [d["_id"] for d in docs],doc_feeder(self.source_backend[src_name], query=_query,
-                    step=batch_size, inbatch=True, fields={"_id":1}))
+            id_provider = map(
+                lambda docs: [d["_id"] for d in docs],
+                doc_feeder(self.source_backend[src_name],
+                           query=_query,
+                           step=batch_size,
+                           inbatch=True,
+                           fields={"_id": 1}))
         else:
             # when passing a list of _ids, IDs will be sent to the query, so we need to reduce the batch size
-            id_provider = ids and iter_n(ids,int(batch_size/100)) or id_feeder(self.source_backend[src_name],
-                    batch_size=id_batch_size,logger=self.logger)
+            id_provider = ids and iter_n(ids, int(
+                batch_size / 100)) or id_feeder(self.source_backend[src_name],
+                                                batch_size=id_batch_size,
+                                                logger=self.logger)
 
         src_master = self.source_backend.master
-        meta = src_master.find_one({"_id":src_name}) or {}
-        merger = meta.get("merger","upsert")
-        self.logger.info("Documents from source '%s' will be merged using %s" % (src_name,merger))
+        meta = src_master.find_one({"_id": src_name}) or {}
+        merger = meta.get("merger", "upsert")
+        self.logger.info("Documents from source '%s' will be merged using %s" %
+                         (src_name, merger))
 
         doc_cleaner = self.document_cleaner(src_name)
         for big_doc_ids in id_provider:
-            for doc_ids in iter_n(big_doc_ids,batch_size):
+            for doc_ids in iter_n(big_doc_ids, batch_size):
                 # try to put some async here to give control back
                 # (but everybody knows it's a blocking call: doc_feeder)
                 yield from asyncio.sleep(0.1)
                 cnt += len(doc_ids)
                 pinfo = self.get_pinfo()
                 pinfo["step"] = src_name
-                pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum,btotal,(cnt/total*100))
-                self.logger.info("Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)" % \
-                        (bnum,btotal,src_name,cnt,total,(cnt/total*100.)))
+                pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum, btotal,
+                                                            (cnt / total * 100))
+                self.logger.info("Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)" %
+                                 (bnum, btotal, src_name, cnt, total, (cnt/total*100.)))
                 job = yield from job_manager.defer_to_process(
-                        pinfo,
-                        partial(merger_worker,
-                            self.source_backend[src_name].name,
-                            self.target_backend.target_name,
-                            doc_ids,
-                            self.get_mapper_for_source(src_name,init=False),
-                            doc_cleaner,
-                            upsert,
-                            merger,
-                            bnum))
-                def batch_merged(f,batch_num):
+                    pinfo,
+                    partial(merger_worker, self.source_backend[src_name].name,
+                            self.target_backend.target_name, doc_ids,
+                            self.get_mapper_for_source(src_name, init=False),
+                            doc_cleaner, upsert, merger, bnum))
+
+                def batch_merged(f, batch_num):
                     nonlocal got_error
                     if type(f.result()) != int:
-                        got_error = Exception("Batch #%s failed while merging source '%s' [%s]" % (batch_num,src_name,f.result()))
-                job.add_done_callback(partial(batch_merged,batch_num=bnum))
+                        got_error = Exception(
+                            "Batch #%s failed while merging source '%s' [%s]" %
+                            (batch_num, src_name, f.result()))
+
+                job.add_done_callback(partial(batch_merged, batch_num=bnum))
                 jobs.append(job)
                 bnum += 1
                 # raise error as soon as we know
@@ -777,20 +937,21 @@ class DataBuilder(object):
                     raise got_error
         self.logger.info("%d jobs created for merging step" % len(jobs))
         tasks = asyncio.gather(*jobs)
+
         def done(f):
             nonlocal got_error
             if None in f.result():
                 got_error = Exception("Some batches failed")
                 return
-            # compute overall inserted/updated records
-            cnt = sum(f.result())
+            # compute overall inserted/updated records (consume result() and check summable)
+            _ = sum(f.result())
 
         tasks.add_done_callback(done)
         yield from tasks
         if got_error:
             raise got_error
         else:
-            return {"%s" % src_name : cnt}
+            return {"%s" % src_name: cnt}
 
     def post_merge(self, source_names, batch_size, job_manager):
         pass
@@ -804,24 +965,29 @@ class LinkDataBuilder(DataBuilder):
     the list of sources to be merged, and is useful to prevent data duplication between
     the datasource itself and the resulting merged collection.
     """
+    def __init__(self, build_name, source_backend, target_backend, *args,
+                 **kwargs):
 
-    def __init__(self, build_name, source_backend, target_backend, *args, **kwargs):
-
-        super().__init__(build_name, source_backend,
-                         target_backend=partial(LinkTargetDocMongoBackend),*args, **kwargs)
+        super().__init__(build_name,
+                         source_backend,
+                         target_backend=partial(LinkTargetDocMongoBackend),
+                         *args,
+                         **kwargs)
         conf = self.source_backend.get_build_configuration(self.build_name)
         assert len(conf["sources"]) == 1, \
-                "Found more than one source to link, not allowed: %s" % conf["sources"]
-        assert hasattr(self.target_backend,"datasource_name")
+            "Found more than one source to link, not allowed: %s" % conf["sources"]
+        assert hasattr(self.target_backend, "datasource_name")
         self.target_backend.datasource_name = conf["sources"][0]
         self.target_backend.source_db = self.source_backend
 
     @asyncio.coroutine
     def merge_source(self, src_name, *args, **kwargs):
         total = self.source_backend[src_name].count()
-        return {"%s" % src_name : total}
+        return {"%s" % src_name: total}
+
 
 from biothings.utils.backend import DocMongoBackend
+
 
 def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
     """
@@ -833,22 +999,25 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
     dids = {}
     # docs per _id
     for d in docs:
-        dids.setdefault(d["_id"],[]).append(d)
+        dids.setdefault(d["_id"], []).append(d)
     # now check doc structure for each duplicates
     # if same structure, replace with one occurence of the docs
     # if not the same, log all the docs as warning, and merge them all
     # as we would do if we were upserting doc one-by-one (no batch)
     # note: dict are unhashable (no set) so either compare one each other (n^2-ish)
     # or use json strings (let's try json...)
-    dfix = {}
     for _id in dids:
-        jl = set([json.dumps(e,sort_keys=True) for e in dids[_id]])
+        jl = set([json.dumps(e, sort_keys=True) for e in dids[_id]])
         if len(jl) > 1:
             # different structure
             if fail_if_struct_is_different:
-                raise ValueError("Found duplicated with different document structure: %s" % dids[_id])
+                raise ValueError(
+                    "Found duplicated with different document structure: %s" %
+                    dids[_id])
             else:
-                logging.warning("Found duplicated with different document structure, merging them altogether: %s" % dids[_id])
+                logging.warning(
+                    "Found duplicated with different document structure, merging them altogether: %s"
+                    % dids[_id])
             # merge docs on top of each other
             dupdocs = dids[_id]
             merged = {}
@@ -862,15 +1031,21 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
     return list(dids.values())
 
 
-def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,merger,batch_num):
+def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger,
+                  batch_num):
     try:
         src = mongo.get_src_db()
         tgt = mongo.get_target_db()
         col = src[col_name]
-        dest = DocMongoBackend(tgt,tgt[dest_name])
-        cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}})
+        dest = DocMongoBackend(tgt, tgt[dest_name])
+        cur = doc_feeder(col,
+                         step=len(ids),
+                         inbatch=False,
+                         query={'_id': {
+                             '$in': ids
+                         }})
         if cleaner:
-            cur = map(cleaner,cur)
+            cur = map(cleaner, cur)
         mapper.load()
         docs = [d for d in mapper.process(cur)]
         # while documents from cursor "cur" are unique, at this point, due to the use
@@ -884,27 +1059,28 @@ def merger_worker(col_name,dest_name,ids,mapper,cleaner,upsert,merger,batch_num)
             docs = fix_batch_duplicates(docs)
         if merger == "merge_struct":
             stored_docs = dest.mget_from_ids([d["_id"] for d in docs])
-            ddocs = dict([(d["_id"],d) for d in docs])
+            ddocs = dict([(d["_id"], d) for d in docs])
             for d in stored_docs:
-                ddocs[d["_id"]] = merge_struct(d,ddocs[d["_id"]])
+                ddocs[d["_id"]] = merge_struct(d, ddocs[d["_id"]])
             docs = list(ddocs.values())
         cnt = dest.update(docs, upsert=upsert)
         return cnt
     except Exception as e:
-        logger_name = "build_%s_%s_batch_%s" % (dest_name,col_name,batch_num)
-        logger,_ = get_logger(logger_name, btconfig.LOG_FOLDER)
+        logger_name = "build_%s_%s_batch_%s" % (dest_name, col_name, batch_num)
+        logger, _ = get_logger(logger_name, btconfig.LOG_FOLDER)
         logger.exception(e)
-        logger.error("col_name: %s, dest_name: %s, ids: see pickle, " % (col_name,dest_name) + \
-                "mapper: %s, cleaner: %s, upsert: %s, " % (mapper,cleaner,upsert) + \
-                "merger: %s, batch_num: %s" % (merger,batch_num))
-        exc_fn = os.path.join(btconfig.LOG_FOLDER,"%s.exc.pick" % logger_name)
-        pickle.dump(e,open(exc_fn,"wb"))
+        logger.error("col_name: %s, dest_name: %s, ids: see pickle, " % (col_name, dest_name)
+                     + "mapper: %s, cleaner: %s, upsert: %s, " % (mapper, cleaner, upsert)
+                     + "merger: %s, batch_num: %s" % (merger, batch_num))
+        exc_fn = os.path.join(btconfig.LOG_FOLDER, "%s.exc.pick" % logger_name)
+        pickle.dump(e, open(exc_fn, "wb"))
         logger.info("Exception was dumped in pickle file '%s'" % exc_fn)
-        ids_fn = os.path.join(btconfig.LOG_FOLDER,"%s.ids.pick" % logger_name)
-        pickle.dump(ids,open(ids_fn,"wb"))
+        ids_fn = os.path.join(btconfig.LOG_FOLDER, "%s.ids.pick" % logger_name)
+        pickle.dump(ids, open(ids_fn, "wb"))
         logger.info("IDs dumped in pickle file '%s'" % ids_fn)
-        dat_fn = os.path.join(btconfig.LOG_FOLDER,"%s.docs.pick" % logger_name)
-        pickle.dump(docs,open(dat_fn,"wb"))
+        dat_fn = os.path.join(btconfig.LOG_FOLDER,
+                              "%s.docs.pick" % logger_name)
+        pickle.dump(docs, open(dat_fn, "wb"))
         logger.info("Data (batch of docs) dumped in pickle file '%s'" % dat_fn)
         raise
 
@@ -913,17 +1089,20 @@ def set_pending_to_build(conf_name=None):
     src_build_config = get_src_build_config()
     qfilter = {}
     if conf_name:
-        qfilter = {"_id":conf_name}
-    logging.info("Setting pending_to_build flag for configuration(s): %s" % (conf_name and conf_name or "all configuraitons"))
-    src_build_config.update(qfilter,{"$addToSet" : {"pending":"build"} })
+        qfilter = {"_id": conf_name}
+    logging.info("Setting pending_to_build flag for configuration(s): %s" %
+                 (conf_name and conf_name or "all configuraitons"))
+    src_build_config.update(qfilter, {"$addToSet": {"pending": "build"}})
 
 
 class BuilderManager(BaseManager):
-
-    def __init__(self,source_backend_factory=None,
-                      target_backend_factory=None,
-                      builder_class=None,poll_schedule=None,
-                      *args,**kwargs):
+    def __init__(self,
+                 source_backend_factory=None,
+                 target_backend_factory=None,
+                 builder_class=None,
+                 poll_schedule=None,
+                 *args,
+                 **kwargs):
         """
         BuilderManager deals with the different builders used to merge datasources.
         It is connected to src_build() via sync(), where it grabs build information
@@ -935,7 +1114,7 @@ class BuilderManager(BaseManager):
         same arguments as the base DataBuilder. It can also be a list of classes, in which
         case the default used one is the first, when it's necessary to define multiple builders.
         """
-        super(BuilderManager,self).__init__(*args,**kwargs)
+        super(BuilderManager, self).__init__(*args, **kwargs)
         self.src_build_config = get_src_build_config()
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
@@ -953,18 +1132,20 @@ class BuilderManager(BaseManager):
         src_build = get_src_build()
         for build in src_build.find():
             dirty = False
-            for job in build.get("jobs",[]):
+            for job in build.get("jobs", []):
                 if job.get("status") == "building":
-                    logging.warning("Found stale build '%s', marking build status as 'canceled'" % build["_id"])
+                    logging.warning(
+                        "Found stale build '%s', marking build status as 'canceled'"
+                        % build["_id"])
                     job["status"] = "canceled"
                     dirty = True
             if dirty:
-                src_build.replace_one({"_id":build["_id"]},build)
+                src_build.replace_one({"_id": build["_id"]}, build)
 
     @property
     def source_backend(self):
-        source_backend =  self.source_backend_factory and self.source_backend_factory() or \
-                partial(SourceDocMongoBackend,
+        source_backend = self.source_backend_factory and self.source_backend_factory() or \
+            partial(SourceDocMongoBackend,
                     build_config=partial(get_src_build_config),
                     build=partial(get_src_build),
                     master=partial(get_src_master),
@@ -975,11 +1156,11 @@ class BuilderManager(BaseManager):
     @property
     def target_backend(self):
         target_backend = self.target_backend_factory and self.target_backend_factory() or \
-                partial(TargetDocMongoBackend,
-                        target_db=partial(mongo.get_target_db))
+            partial(TargetDocMongoBackend,
+                    target_db=partial(mongo.get_target_db))
         return target_backend
 
-    def get_builder_class(self,build_config_name):
+    def get_builder_class(self, build_config_name):
         """
         builder class can be specified different way (in order):
         1. within the build_config document (so, per configuration)
@@ -987,9 +1168,10 @@ class BuilderManager(BaseManager):
         3. or default to DataBuilder
         """
         builder_class = None
-        conf = self.src_build_config.find_one({"_id":build_config_name})
+        conf = self.src_build_config.find_one({"_id": build_config_name})
         if conf.get("builder_class"):
-            builder_class = self.builder_classes[conf["builder_class"]]["class"]
+            builder_class = self.builder_classes[
+                conf["builder_class"]]["class"]
         elif self.default_builder_class:
             builder_class = self.default_builder_class
         else:
@@ -997,8 +1179,7 @@ class BuilderManager(BaseManager):
 
         return builder_class
 
-
-    def register_builder(self,build_name):
+    def register_builder(self, build_name):
         # will use partial to postponse object creations and their db connection
         # as we don't want to keep connection alive for undetermined amount of time
         # declare source backend
@@ -1008,74 +1189,77 @@ class BuilderManager(BaseManager):
             from biothings import config
             # assemble the whole
             klass = self.get_builder_class(build_name)
-            self.logger.info("Build config '%s' will use builder class %s",build_name,klass)
-            bdr = klass(
-                    build_name,
-                    source_backend=self.source_backend,
-                    target_backend=self.target_backend,
-                    log_folder=config.LOG_FOLDER)
+            self.logger.info("Build config '%s' will use builder class %s",
+                             build_name, klass)
+            bdr = klass(build_name,
+                        source_backend=self.source_backend,
+                        target_backend=self.target_backend,
+                        log_folder=config.LOG_FOLDER)
 
             return bdr
 
-        self.register[build_name] = partial(create,build_name)
+        self.register[build_name] = partial(create, build_name)
 
-    def get_builder(self,col_name):
-        doc = get_src_build().find_one({"_id":col_name})
+    def get_builder(self, col_name):
+        doc = get_src_build().find_one({"_id": col_name})
         if not doc:
             raise BuilderException("No such build named '%s'" % repr(col_name))
         assert "build_config" in doc, "Expecting build_config information"
         klass = self.get_builder_class(doc["build_config"]["name"])
-        bdr = klass(
-                doc["build_config"]["name"],
-                source_backend=self.source_backend,
-                target_backend=self.target_backend,
-                log_folder=btconfig.LOG_FOLDER)
+        bdr = klass(doc["build_config"]["name"],
+                    source_backend=self.source_backend,
+                    target_backend=self.target_backend,
+                    log_folder=btconfig.LOG_FOLDER)
         # overwrite with existing values
         bdr.build_config = doc["build_config"]
         bdr.target_backend.set_target_name(col_name)
 
         return bdr
 
-    def delete_merged_data(self,merge_name):
+    def delete_merged_data(self, merge_name):
         target_db = mongo.get_target_db()
         col = target_db[merge_name]
         col.drop()
 
-    def delete_merge(self,merge_name):
+    def delete_merge(self, merge_name):
         """Delete merged collections and associated metadata"""
         db = get_src_build()
-        meta = db.find_one({"_id":merge_name})
+        meta = db.find_one({"_id": merge_name})
         if meta:
-            db.remove({"_id":merge_name})
+            db.remove({"_id": merge_name})
         else:
-            self.logger.warning("No metadata found for merged collection '%s'" % merge_name)
+            self.logger.warning(
+                "No metadata found for merged collection '%s'" % merge_name)
         self.delete_merged_data(merge_name)
 
-    def archive_merge(self,merge_name):
+    def archive_merge(self, merge_name):
         """Delete merged collections and associated metadata"""
         db = get_src_build()
-        meta = db.find_one({"_id":merge_name})
+        meta = db.find_one({"_id": merge_name})
         if meta:
-            meta["archived"] = datetime.now();
-            db.replace_one({"_id":merge_name},meta)
+            meta["archived"] = datetime.now()
+            db.replace_one({"_id": merge_name}, meta)
         else:
-            self.logger.warning("No metadata found for merged collection '%s'" % merge_name)
+            self.logger.warning(
+                "No metadata found for merged collection '%s'" % merge_name)
         self.delete_merged_data(merge_name)
 
-    def get_query_for_list_merge(self,only_archived):
-        q = {"archived" : {"$exists" : 0}}
+    def get_query_for_list_merge(self, only_archived):
+        q = {"archived": {"$exists": 0}}
         if only_archived:
-            q = {"archived" : {"$exists" : 1}}
+            q = {"archived": {"$exists": 1}}
         return q
 
-    def list_merge(self,build_config=None,only_archived=False):
+    def list_merge(self, build_config=None, only_archived=False):
         q = self.get_query_for_list_merge(only_archived)
         docs = get_src_build().find(q)
         by_confs = {}
         for d in docs:
-            by_confs.setdefault(d.get("build_config",{}).get("name",None),[]).append(d["_id"])
+            by_confs.setdefault(
+                d.get("build_config", {}).get("name", None),
+                []).append(d["_id"])
         if build_config:
-            return sorted(by_confs.get(build_config,[]))
+            return sorted(by_confs.get(build_config, []))
         else:
             for conf in by_confs:
                 by_confs[conf] = sorted(by_confs[conf])
@@ -1084,13 +1268,13 @@ class BuilderManager(BaseManager):
     def setup_log(self):
         self.logger, self.logfile = get_logger("buildmanager")
 
-    def __getitem__(self,build_name):
+    def __getitem__(self, build_name):
         """
         Return an instance of a builder for the build named 'build_name'
         Note: each call returns a different instance (factory call behind the scene...)
         """
         # we'll get a partial class but will return an instance
-        pclass = BaseManager.__getitem__(self,build_name)
+        pclass = BaseManager.__getitem__(self, build_name)
         return pclass()
 
     def configure(self):
@@ -1101,7 +1285,7 @@ class BuilderManager(BaseManager):
             self.register_builder(conf["_id"])
         self.find_builder_classes()
 
-    def resolve_builder_class(self,klass):
+    def resolve_builder_class(self, klass):
         """
         Resolve class/partial definition to (obj,"type","mod.class")
         where names (class name, module, docstring, etc...) can
@@ -1118,9 +1302,9 @@ class BuilderManager(BaseManager):
             raise TypeError("Unknown type for builder %s" % repr(klass))
         modstr = obj.__module__
         classstr = obj.__name__
-        classpathstr = "%s.%s" % (modstr,classstr)
+        classpathstr = "%s.%s" % (modstr, classstr)
 
-        return (obj,btype,classpathstr)
+        return (obj, btype, classpathstr)
 
     def find_builder_classes(self):
         """
@@ -1136,24 +1320,26 @@ class BuilderManager(BaseManager):
         try:
             import hub.databuild as m
             mods.append(m)
-        except ImportError as e:
+        except ImportError:
             pass
-        for klass in find_classes_subclassing(mods,DataBuilder):
+        for klass in find_classes_subclassing(mods, DataBuilder):
             bclasses.add(klass)
 
         for klass in bclasses:
             try:
-                obj,btype,classpathstr = self.resolve_builder_class(klass)
-                helpstr = obj.__doc__ and " ".join(map(str.strip, obj.__doc__.splitlines()))
+                obj, btype, classpathstr = self.resolve_builder_class(klass)
+                helpstr = obj.__doc__ and " ".join(
+                    map(str.strip, obj.__doc__.splitlines()))
                 self.builder_classes[classpathstr] = {
-                    "desc" : helpstr,
-                    "type" : btype,
-                    "class" : klass,
-                    "default" : klass == self.default_builder_class,
-                    }
+                    "desc": helpstr,
+                    "type": btype,
+                    "class": klass,
+                    "default": klass == self.default_builder_class,
+                }
             except Exception as e:
-                logging.exception("Can't extract information from builder class %s: %s" % (repr(klass),e))
-
+                logging.exception(
+                    "Can't extract information from builder class %s: %s" %
+                    (repr(klass), e))
 
     def merge(self, build_name, sources=None, target_name=None, **kwargs):
         """
@@ -1163,18 +1349,22 @@ class BuilderManager(BaseManager):
         """
         try:
             bdr = self[build_name]
-            job = bdr.merge(sources,target_name,job_manager=self.job_manager,**kwargs)
+            job = bdr.merge(sources,
+                            target_name,
+                            job_manager=self.job_manager,
+                            **kwargs)
             return job
-        except KeyError as e:
+        except KeyError:
             raise BuilderException("No such builder for '%s'" % build_name)
         except ResourceNotReady as e:
-            raise BuilderException("Some datasources aren't ready for the merge: %s" % e)
+            raise BuilderException(
+                "Some datasources aren't ready for the merge: %s" % e)
 
-    def list_sources(self,build_name):
+    def list_sources(self, build_name):
         """
         List all registered sources used to trigger a build named 'build_name'
         """
-        info = self.src_build_config.find_one({"_id":build_name})
+        info = self.src_build_config.find_one({"_id": build_name})
         return info and info["sources"] or []
 
     def whatsnew(self, build_name=None, old=None):
@@ -1186,51 +1376,85 @@ class BuilderManager(BaseManager):
         dbbuild = get_src_build()
         dbdump = get_src_dump()
 
-        def whatsnewcomparedto(build_name,old=None):
+        def whatsnewcomparedto(build_name, old=None):
             if old is None:
                 # TODO: this will get big... but needs to be generic
                 # because we handle different hub db backends (or it needs to be a
                 # specific helper func to be defined all backends
                 builds = dbbuild.find({"build_config.name": build_name})
-                builds = sorted(builds,key=lambda e: e["started_at"])
+                builds = sorted(builds, key=lambda e: e["started_at"])
                 if builds:
                     old = builds[-1]
                 else:
-                    raise BuilderException("Can't find a build associated to config '%s'" % build_name)
+                    raise BuilderException(
+                        "Can't find a build associated to config '%s'" %
+                        build_name)
             else:
-                old = dbbuild.find_one({"_id":old})
-            meta_srcs = old.get("_meta",{}).get("src",{})
-            new = {"old_build" : {"name" : old["_id"], "built_at" : old["started_at"]} ,"sources":{}}
-            for src_name,data in meta_srcs.items():
+                old = dbbuild.find_one({"_id": old})
+            meta_srcs = old.get("_meta", {}).get("src", {})
+            new = {
+                "old_build": {
+                    "name": old["_id"],
+                    "built_at": old["started_at"]
+                },
+                "sources": {}
+            }
+            for src_name, data in meta_srcs.items():
                 try:
-                    srcd = dbdump.find_one({"_id":src_name})
-                    if srcd and not srcd.get("download") and srcd.get("upload") :
+                    srcd = dbdump.find_one({"_id": src_name})
+                    if srcd and not srcd.get("download") and srcd.get(
+                            "upload"):
                         # this is a collection only source, find all releases in sub sources, hopefully all are the same
-                        rels = [sub["release"] for sub in srcd["upload"]["jobs"].values()]
+                        rels = [
+                            sub["release"]
+                            for sub in srcd["upload"]["jobs"].values()
+                        ]
                         srels = set(rels)
                         if len(srels) != 1:
-                            raise ValueError("Found different releases in sub-sources, expected only one common: %s" % repr(rels))
+                            raise ValueError(
+                                "Found different releases in sub-sources, expected only one common: %s"
+                                % repr(rels))
                         rel = rels[0]
                         if data.get("version") and rel != data["version"]:
                             new["sources"][src_name] = {
-                                    "old": {"version" : data["version"]},
-                                    "new": {"version" : rel}
-                                    }
-                    elif srcd and srcd.get("download",{}).get("release") and srcd["download"]["release"] != data["version"]:
-                        new["sources"][src_name] = {
-                                "old": {"version" : data["version"]},
-                                "new": {"version" : srcd["download"]["release"],
-                                        "downloaded_at" : srcd["download"].get("started_at")}
+                                "old": {
+                                    "version": data["version"]
+                                },
+                                "new": {
+                                    "version": rel
                                 }
+                            }
+                    elif srcd and srcd.get("download", {}).get(
+                            "release"
+                    ) and srcd["download"]["release"] != data["version"]:
+                        new["sources"][src_name] = {
+                            "old": {
+                                "version": data["version"]
+                            },
+                            "new": {
+                                "version": srcd["download"]["release"],
+                                "downloaded_at":
+                                srcd["download"].get("started_at")
+                            }
+                        }
                 except Exception as e:
-                    self.logger.warning("Can't check what's new for source '%s': %s" % (src_name,e))
-            return {build_name : new}
+                    self.logger.warning(
+                        "Can't check what's new for source '%s': %s" %
+                        (src_name, e))
+            return {build_name: new}
 
         if old is None and build_name is None:
             # do this for all build configs
             dbbuildconfig = get_src_build_config()
             configs = {}
-            for d in dbbuildconfig.find({"$or" : [{"archived" : {"$exists" : 0}}, {"archived" : False}]}):
+            for d in dbbuildconfig.find({
+                    "$or": [{
+                    "archived": {
+                    "$exists": 0
+                    }
+                    }, {
+                    "archived": False
+                    }]}):
                 try:
                     news = whatsnewcomparedto(d["_id"])
                     if news[d["_id"]]["sources"]:
@@ -1239,10 +1463,9 @@ class BuilderManager(BaseManager):
                     continue
             return configs
         else:
-            return whatsnewcomparedto(build_name,old)
+            return whatsnewcomparedto(build_name, old)
 
-
-    def clean_temp_collections(self,build_name,date=None,prefix=''):
+    def clean_temp_collections(self, build_name, date=None, prefix=''):
         """
         Delete all target collections created from builder named
         "build_name" at given date (or any date is none given -- carefull...).
@@ -1255,14 +1478,46 @@ class BuilderManager(BaseManager):
             search += build_name + '_'
             search += date and date + '_' or ''
             pat = re.compile(search)
-            if pat.match(col_name) and not 'current' in col_name:
+            if pat.match(col_name) and 'current' not in col_name:
                 logging.info("Dropping target collection '%s" % col_name)
                 target_db[col_name].drop()
 
-    def poll(self,state,func):
-        super(BuilderManager,self).poll(state,func,col=get_src_build_config())
+    def poll(self):
+        """
+        Check "whatsnew()" to idenfity builds which could be automatically built,
+        if {"autobuild" : {...}} is part of the build configuration. "autobuild" contains
+        a dict with "schedule" (aiocron/crontab format), so each build configuration can
+        have a different polling schedule.
+        """
+        # don't use $exists in find(), not all hub backend implements that
+        confs = get_src_build_config().find()
+        autobuild_confs = [conf for conf in confs if "autobuild" in conf]
 
-    def trigger_merge(self,doc):
+        @asyncio.coroutine
+        def check_new(conf_name):
+            new = self.whatsnew(conf_name)
+            if new[conf_name]["sources"]:
+                new_sources = [(name, info["new"].get("version")) for (name, info) in new[conf_name]["sources"].items()]
+                logging.info("Build configuration '%s' can be launched (autobuid) because" % conf_name
+                             + "some datasources are new: %s" % new_sources)
+                self.merge(conf_name)
+            else:
+                logging.debug("Nothing new for build configuration '%s'" % conf_name)
+
+        for conf in autobuild_confs:
+            try:
+                sch = conf["autobuild"].get("schedule")
+                if not sch:
+                    logging.error("Build configuration needs autobuild but 'schedule' isn't defined" % conf_name)
+                    continue
+                aiocron.crontab(
+                    sch, func=partial(check_new, conf["_id"]),
+                    start=True, loop=self.job_manager.loop
+                )
+            except Exception as e:
+                logging.exception("Invalid autobuild information for build config '%s': %s" % (conf["_id"], e))
+
+    def trigger_merge(self, doc):
         return self.merge(doc["_id"])
 
     def build_config_info(self):
@@ -1272,49 +1527,58 @@ class BuilderManager(BaseManager):
             try:
                 builder = self[name]
             except Exception as e:
-                conf = get_src_build_config().find_one({"_id":name})
-                if conf :
+                conf = get_src_build_config().find_one({"_id": name})
+                if conf:
                     builder = dotdict({"build_config": conf})
                 else:
                     builder = None
                 err = str(e)
 
-            if not builder or issubclass(builder.target_backend.__class__,LinkTargetDocMongoBackend) or \
-                    issubclass(builder.__class__,dict): # fake builder obj
-                target_db = None # it's not a traditional target database, it's pointing to
-                                 # somewhere else (TODO: maybe LinkTargetDocMongoBackend should
-                                 # implement more methods to return info about that
+            if not builder or issubclass(builder.target_backend.__class__, LinkTargetDocMongoBackend) or \
+                    issubclass(builder.__class__, dict):  # fake builder obj
+                target_db = None  # it's not a traditional target database, it's pointing to
+                # somewhere else (TODO: maybe LinkTargetDocMongoBackend should
+                # implement more methods to return info about that
             else:
                 target_db = builder.target_backend.target_collection.database.client.address
             configs[name] = {
-                    "build_config" : builder and builder.build_config,
-                    "archived" : "archived" in (builder and builder.build_config or [])
-                    }
+                "build_config": builder and builder.build_config,
+                "archived": "archived" in (builder and builder.build_config
+                                           or [])
+            }
             if builder and builder.source_backend:
                 configs[name]["source_backend"] = {
-                        "type" : builder and builder.source_backend.__class__.__name__,
-                        "source_db" : builder and builder.source_backend.sources.client.address,
-                        }
+                    "type":
+                    builder and builder.source_backend.__class__.__name__,
+                    "source_db":
+                    builder and builder.source_backend.sources.client.address,
+                }
             if builder and builder.target_backend:
                 configs[name]["target_backend"] = {
-                        "type" : builder and builder.target_backend.__class__.__name__,
-                        "target_db" : target_db
-                        }
+                    "type": builder
+                    and builder.target_backend.__class__.__name__,
+                    "target_db": target_db
+                }
             if err:
                 configs[name]["error"] = err
             if builder and builder.mappers:
                 configs[name]["mapper"] = {}
-                for mappername,mapper in builder.mappers.items():
-                    configs[name]["mapper"][mappername] = mapper.__class__.__name__
-        res = {"build_configs" : configs}
+                for mappername, mapper in builder.mappers.items():
+                    configs[name]["mapper"][
+                        mappername] = mapper.__class__.__name__
+        res = {"build_configs": configs}
         # dict contains an actual class, non-serializable, so adjust:
         bclasses = copy.deepcopy(self.builder_classes)
-        for k,v in bclasses.items():
+        for k, v in bclasses.items():
             v.pop("class")
         res["builder_classes"] = bclasses
         return res
 
-    def build_info(self,id=None,conf_name=None,fields=None,only_archived=False):
+    def build_info(self,
+                   id=None,
+                   conf_name=None,
+                   fields=None,
+                   only_archived=False):
         """
         Return build information given an build _id, or all builds
         if _id is None. "fields" can be passed to select which fields
@@ -1327,7 +1591,7 @@ class BuilderManager(BaseManager):
         """
         res = {}
         q = self.get_query_for_list_merge(only_archived)
-        if not id is None:
+        if id is not None:
             q = {"_id": id}
         else:
             fields = {}
@@ -1335,15 +1599,18 @@ class BuilderManager(BaseManager):
             fields["sources"] = 0
             fields["build_config.sources"] = 0
             fields["build_config.root"] = 0
-        if not conf_name is None:
+        if conf_name is not None:
             q["build_config._id"] = conf_name
-        builds = [b for b in get_src_build().find(q,fields)]
-        res = [b for b in sorted(builds, key=lambda e: str(e["started_at"]),reverse=True)]
+        builds = [b for b in get_src_build().find(q, fields)]
+        res = [
+            b for b in sorted(
+                builds, key=lambda e: str(e["started_at"]), reverse=True)
+        ]
         # set a global status (ie. latest job's status)
         # + get total #docs
         db = mongo.get_target_db()
         for b in res:
-            jobs = b.get("jobs",[])
+            jobs = b.get("jobs", [])
             b["status"] = "unknown"
             if jobs:
                 b["status"] = jobs[-1]["status"]
@@ -1361,41 +1628,63 @@ class BuilderManager(BaseManager):
         else:
             return res
 
-    def upsert_build_conf(self, name, doc_type, sources, roots, builder_class, params, archived):
+    def upsert_build_conf(self, name, doc_type, sources, roots, builder_class,
+                          params, archived):
         col = get_src_build_config()
-        builder_class = builder_class or self.resolve_builder_class(self.default_builder_class)[2] # class path string
-        doc = {"_id" : name, "name" : name, "doc_type" : doc_type,
-               "sources" : sources, "root" : roots,
-               "builder_class" : builder_class}
+        builder_class = builder_class or self.resolve_builder_class(
+            self.default_builder_class)[2]  # class path string
+        doc = {
+            "_id": name,
+            "name": name,
+            "doc_type": doc_type,
+            "sources": sources,
+            "root": roots,
+            "builder_class": builder_class
+        }
         if archived:
             doc["archived"] = True
         else:
-            doc.pop("archived",None)
+            doc.pop("archived", None)
         doc.update(params)
         col.save(doc)
         self.configure()
 
-    def create_build_configuration(self,name,doc_type,sources,roots=[],builder_class=None,
-                                   params={},archived=False):
+    def create_build_configuration(self,
+                                   name,
+                                   doc_type,
+                                   sources,
+                                   roots=[],
+                                   builder_class=None,
+                                   params={},
+                                   archived=False):
         col = get_src_build_config()
         # check conf doesn't exist yet
-        if [d for d in col.find({"_id":name})]:
+        if [d for d in col.find({"_id": name})]:
             raise ValueError("Configuration named '%s' already exists" % name)
-        self.upsert_build_conf(name,doc_type,sources,roots,builder_class,params,archived)
+        self.upsert_build_conf(name, doc_type, sources, roots, builder_class,
+                               params, archived)
 
-    def update_build_configuration(self,name,doc_type,sources,roots=[],builder_class=None,
-                                   params={},archived=False):
-        self.upsert_build_conf(name,doc_type,sources,roots,builder_class,params,archived)
+    def update_build_configuration(self,
+                                   name,
+                                   doc_type,
+                                   sources,
+                                   roots=[],
+                                   builder_class=None,
+                                   params={},
+                                   archived=False):
+        self.upsert_build_conf(name, doc_type, sources, roots, builder_class,
+                               params, archived)
 
-    def delete_build_configuration(self,name):
+    def delete_build_configuration(self, name):
         col = get_src_build_config()
-        col.remove({"_id":name})
+        col.remove({"_id": name})
         self.configure()
 
     def save_mapping(self, name, mapping=None, dest="build", mode="mapping"):
-        logging.debug("Saving mapping for build '%s' destination='%s':\n%s" % (name,dest,pformat(mapping)))
+        logging.debug("Saving mapping for build '%s' destination='%s':\n%s" %
+                      (name, dest, pformat(mapping)))
         src_build = get_src_build()
-        m = src_build.find_one({"_id":name})
+        m = src_build.find_one({"_id": name})
         assert m, "Can't find build document for '%s'" % name
         # either given a fully qualified source or just sub-source
         if dest == "build":
@@ -1406,7 +1695,8 @@ class BuilderManager(BaseManager):
                 m["inspect"]["results"][mode] = mapping
                 src_build.save(m)
             except KeyError as e:
-                raise ValueError("Can't save mapping, document doesn't contain expected inspection data" % e)
+                raise ValueError(
+                    "Can't save mapping, document doesn't contain expected inspection data"
+                    % e)
         else:
             raise ValueError("Unknow saving destination: %s" % repr(dest))
-

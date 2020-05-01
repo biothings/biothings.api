@@ -90,11 +90,11 @@
                 </div>
             </div>
 
-            <inspect-form v-bind:toinspect="source" v-bind:select_data_provider="true">
+            <inspect-form v-bind:toinspect="source" v-bind:select_data_provider="true" :class="actionable">
             </inspect-form>
 
             <!-- Register new data plugin -->
-            <div class="ui basic unregister modal" v-if="source.data_plugin">
+            <div class="ui basic unregister modal" v-if="source.data_plugin" :class="actionable">
                 <input class="plugin_url" type="hidden" :value="source.data_plugin.plugin.url">
                 <div class="ui icon header">
                     <i class="remove icon"></i>
@@ -134,13 +134,15 @@ import DataSourcePlugin from './DataSourcePlugin.vue'
 import DataSourceMapping from './DataSourceMapping.vue'
 import DiffModal from './DiffModal.vue'
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
+
 
 export default {
     name: 'data-source-detailed',
     props: ['_id'],
     components: { InspectForm, DataSourceDump, DataSourceUpload, DataSourceInspect,
                   DataSourcePlugin, DataSourceMapping, DiffModal, Loader},
-    mixins : [ BaseDataSource, Loader],
+    mixins : [ BaseDataSource, Loader, Actionable, ],
     mounted () {
         console.log("DataSourceDetailed mounted");
         this.loadData();

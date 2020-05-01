@@ -45,14 +45,12 @@ def generate_unique_id(user_agent='', screen_resolution='', screen_color_depth='
 class GAMixIn:
     def ga_track(self, event={}):
         no_tracking = self.get_argument('no_tracking', None)
-        is_prod = self.web_settings.GA_RUN_IN_PROD
+        is_prod = not self.settings.get('debug', False)
         if not no_tracking and is_prod and self.web_settings.GA_ACCOUNT:
             _req = self.request
             path = _req.path
             ln = _req.headers.get('Accept-Language', '')
-            remote_ip = _req.headers.get("X-Real-Ip",
-                        _req.headers.get("X-Forwarded-For",
-                        _req.remote_ip))
+            remote_ip = _req.headers.get("X-Real-Ip", _req.headers.get("X-Forwarded-For", _req.remote_ip))
             user_agent = _req.headers.get("User-Agent", "")
             host = _req.headers.get("Host", "N/A")
             this_user = generate_unique_id(user_agent=user_agent)
@@ -66,8 +64,8 @@ class GAMixIn:
             # add the event, if applicable
             if event:
                 request_body += '\nv=1&t=event&tid={}&ds=web&cid={}&uip={}&ua={}&an={}&av={}&dh={}&dp={}'.format(
-                self.web_settings.GA_ACCOUNT, this_user, remote_ip, user_agent,
-                self.web_settings.GA_TRACKER_URL, self.web_settings.API_VERSION, host, path)
+                    self.web_settings.GA_ACCOUNT, this_user, remote_ip, user_agent,
+                    self.web_settings.GA_TRACKER_URL, self.web_settings.API_VERSION, host, path)
                 # add event information also
                 request_body += '&ec={}&ea={}'.format(event['category'], event['action'])
                 if event.get('label', False) and event.get('value', False):

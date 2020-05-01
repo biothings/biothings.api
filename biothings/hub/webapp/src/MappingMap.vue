@@ -4,7 +4,7 @@
         <h3 class="center aligned" v-if="map_origin == 'inspect'">Mapping from inspection</h3>
         <h3 class="center aligned" v-else-if="map_origin == 'master'">Registered mapping</h3>
         <h3 class="center aligned" v-else-if="map_origin == 'build'">Merged mapping</h3>
-        <div class="center aligned">
+        <div class="center aligned" :class="actionable">
             <button class="ui labeled mini icon button" 
                 v-if="map && !read_only
                 && !map['errors']
@@ -158,7 +158,7 @@
                     <i class="remove icon"></i>
                     Cancel
                 </div>
-                <div class="ui green ok button">
+                <div class="ui green ok button" :class="actionable">
                     <i class="checkmark icon"></i>
                     OK
                 </div>
@@ -194,11 +194,13 @@ import axios from 'axios'
 import bus from './bus.js'
 import Vue from 'vue';
 import Utils from './Utils.vue'
+import Actionable from './Actionable.vue'
+
 
 export default {
     name: 'mapping-map',
     props: ['map_id','map','name','read_only','map_origin','can_commit','entity'],
-    mixins: [Utils],
+    mixins: [Utils, Actionable, ],
     mounted () {
         console.log("MappingMap mounted");
         this.htmlmap();

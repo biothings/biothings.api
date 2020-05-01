@@ -8,25 +8,25 @@
                 <div :class="['ui', build_colors[conf_name], 'empty circular label']"></div>
                 {{conf_name}} <b v-if="conf.error" class="red"><i class="red bell icon"></i></b>
                 <div class="ui inverted menu">
-                    <div v-if="!conf.error" class="item" :conf-name="conf_name" @click="newBuild($event)" :id="'create_' + conf_name">
+                    <div v-if="!conf.error" class="item" :class="actionable" :conf-name="conf_name" @click="newBuild($event)" :id="'create_' + conf_name">
                         <i class="cube icon"></i>
                         Create new build
                     </div>
                     <div class="item" :conf-name="conf_name" @click="editConfiguration($event)">
                         <i class="edit outline icon"></i>
-                        Edit configuration
+                        {{readonly ? 'View' : 'Edit' }} configuration
                         <b v-if="conf.error" class="red" :id="'edit_' + conf_name">
                             <i class="red bell icon"></i>
                         </b>
                     </div>
-                    <div class="item" :conf-name="conf_name" @click="deleteConfiguration($event)" :id="'delete_' + conf_name">
+                    <div class="item" :class="actionable" :conf-name="conf_name" @click="deleteConfiguration($event)" :id="'delete_' + conf_name">
                         <i class="trash alternate outline icon"></i>
                         Delete configuration
                     </div>
                 </div>
             </a>
             <div class="item"><i>Other actions</i></div>
-            <a class="item"  v-on:click="createConfiguration">
+            <a class="item"  v-on:click="createConfiguration" :class="actionable">
                 <i class="big icons">
                     <i class="configure icon"></i>
                     <i class="huge corner add icon"></i>
@@ -139,12 +139,14 @@
                                     is declared, any data sources can generate a new document in the merged data.
                                 </div>
 
-                                <label>Remove this configuration from list by default</label>
-                                <div><i>You can still access it by clicking on "show/hide archived configuration" in the menu on the side</i></div>
-                                <div class="ui checkbox">
-                                  <input type="checkbox" name="archive_conf">
-                                  <label class="white">Archive</label>
-                                </div>
+                                <span :class="actionable">
+                                    <label>Remove this configuration from list by default</label>
+                                    <div><i>You can still access it by clicking on "show/hide archived configuration" in the menu on the side</i></div>
+                                    <div class="ui checkbox">
+                                        <input type="checkbox" name="archive_conf">
+                                        <label class="white">Archive</label>
+                                    </div>
+                                </span>
 
                             </div>
                         </div>
@@ -162,7 +164,7 @@
                         <i class="remove icon"></i>
                         Cancel
                     </div>
-                    <div class="ui green ok inverted button" id="newbuildconf_ok">
+                    <div class="ui green ok inverted button" id="newbuildconf_ok" :class="actionable">
                         <i class="checkmark icon"></i>
                         OK
                     </div>
@@ -230,12 +232,13 @@
     import axios from 'axios'
     import Build from './Build.vue'
     import Loader from './Loader.vue'
+    import Actionable from './Actionable.vue'
     import bus from './bus.js'
 
 
     export default {
         name: 'build-grid',
-        mixins: [ Loader, ],
+        mixins: [ Loader, Actionable],
         mounted () {
             var self = this;
             console.log("BuildGrid mounted");

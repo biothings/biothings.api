@@ -31,6 +31,9 @@ avaiable Docker images from the following tables.
 
 .. _`contact us`: biothings@googlegroups.com
 
+List of standalone instances
+----------------------------
+
 |mygenelogo|
 ^^^^^^^^^^^^
 .. |mygenelogo| image:: ../_static/mygene-text.png

@@ -1,87 +1,71 @@
-'''BioThings API ioloop start utilities.
+"""
+    A simple Biothings API implementation.
 
-This module contains functions to configure and start the `base event loop <http://www.tornadoweb.org/en/stable/ioloop.html>`_ from command line args.  Command line processing is done using tornado.options, with the following arguments defined:
+    * Process command line arguments to setup the API.
+    * Add additional applicaion settings like handlers.
 
     * ``port``: the port to start the API on, **default** 8000
-    * ``address``: the address to start the API on, **default** 127.0.0.1
     * ``debug``: start the API in debug mode, **default** False
-    * ``appdir``: path to API configuration directory, **default**: current working directory
+    * ``address``: the address to start the API on, **default** 0.0.0.0
+    * ``autoreload``: restart the server when file changes, **default** False
+    * ``conf``: choose an alternative setting, **default** config
+    * ``dir``: path to app directory. **default**: current working directory
 
-    The **main** function is the boot script for all BioThings API webservers.
-'''
-import sys
+"""
+import logging
 import os
-import tornado.httpserver
-import tornado.ioloop
-import tornado.web
-import tornado.escape
-from tornado.options import define, options
+import sys
 
-__USE_SENTRY__ = True
-try:
-    from raven.contrib.tornado import AsyncSentryClient
-except ImportError:
-    __USE_SENTRY__ = False
+from tornado.options import Error, define, options
 
-    def AsyncSentryClient(*args, **kwargs):
-        pass
+from biothings.web import BiothingsAPI
 
 __USE_WSGI__ = False
 
-define("port", default=8000, help="run on the given port", type=int)
-define("address", default="127.0.0.1", help="run on localhost")
-define("debug", default=False, type=bool, help="run in debug mode")
-define("appdir", default=os.getcwd(), type=str,
-       help="path to app directory containing (at minimum) a config module")
+define("port", default=8000, help="run on the given port")
+define("debug", default=False, help="debug settings like logging preferences")
+define("address", default=None, help="host address to listen to, default to all interfaces")
+define("autoreload", default=False, help="auto reload the web server when file change detected")
+define("conf", default='config', help="specify a config module name to import")
+define("dir", default=os.getcwd(), help="path to app directory that includes config.py")
 
 try:
     options.parse_command_line()
-except BaseException:
+    _path = os.path.abspath(options.dir)
+    if _path not in sys.path:
+        sys.path.append(_path)
+    del _path
+except Error:
+    pass  # TODO
+else:
     pass
 
-# assume config file is root of appdir
-src_path = os.path.abspath(options.appdir)
-if src_path not in sys.path:
-    sys.path.append(src_path)
 
-if options.debug:
-    import tornado.autoreload
-    import logging
-    logging.getLogger().setLevel(logging.DEBUG)
-    options.address = '0.0.0.0'
+def main(app_handlers=None, app_settings=None, use_curl=False):
+    """ Start a Biothings API Server
 
-def get_app(APP_LIST, **settings):
-    ''' Return an Application instance. '''
-    return tornado.web.Application(APP_LIST, **settings)
+        :param app_handlers: additional web handlers to add to the app
+        :param app_settings: `Tornado application settings dictionary
+        <http://www.tornadoweb.org/en/stable/web.html#tornado.web.Application.settings>`_
+        :param use_curl: Overide the default simple_httpclient with curl_httpclient
+        <https://www.tornadoweb.org/en/stable/httpclient.html>
+    """
+    app_handlers = app_handlers or []
+    app_settings = app_settings or {}
+    api = BiothingsAPI(options.conf)
 
-def main(APP_LIST, app_settings={}, debug_settings={}, sentry_client_key=None, use_curl=False):
-    ''' Main ioloop configuration and start
-
-        :param APP_LIST: a list of `URLSpec objects or (regex, handler_class) tuples <http://www.tornadoweb.org/en/stable/web.html#tornado.web.Application>`_
-        :param app_settings: `Tornado application settings <http://www.tornadoweb.org/en/stable/web.html#tornado.web.Application.settings>`_
-        :param debug_settings: Additional application settings for API debug mode
-        :param sentry_client_key: Application-specific key for attaching Sentry monitor to the application
-        :param use_curl: Overide the default simple_httpclient with curl_httpclient (Useful for Github Login) <https://www.tornadoweb.org/en/stable/httpclient.html>
-    '''
-    settings = app_settings
-    if options.debug:
-        settings.update(debug_settings)
-        settings.update({"debug": True})
-    application = get_app(APP_LIST, **settings)
-    if __USE_SENTRY__ and sentry_client_key:
-        application.sentry_client = AsyncSentryClient(sentry_client_key)
+    if app_settings:
+        api.settings.update(app_settings)
+    if app_handlers:
+        api.handlers = app_handlers
     if use_curl:
-        tornado.httpclient.AsyncHTTPClient.configure(
-            "tornado.curl_httpclient.CurlAsyncHTTPClient")
-    http_server = tornado.httpserver.HTTPServer(application, xheaders=True)
-    http_server.listen(options.port, address=options.address)
-    loop = tornado.ioloop.IOLoop.instance()
-    if options.debug:
-        tornado.autoreload.start(loop)
-        logging.info('Server is running on "%s:%s"...' % (options.address, options.port))
-    loop.start()
+        api.use_curl()
+
+    api.host = options.address
+    api.debug = options.debug
+    api.update(autoreload=options.autoreload)
+    api.start(options.port)
 
 
 if __name__ == '__main__':
-    from biothings.web.settings import BiothingESWebSettings
-    main(BiothingESWebSettings().generate_app_list())
+    main()

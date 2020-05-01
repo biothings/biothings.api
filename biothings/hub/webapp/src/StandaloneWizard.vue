@@ -53,14 +53,14 @@
                             If remote data releases require authentication, please provide IAM Access Key ID and Secret Access Key:
                         </p>
                         <div class="ui input">
-                            <input type="text" size="50" placeholder="Access Key ID" v-model="access_key">
+                            <input type="password" :readonly="readonly" size="50" placeholder="Access Key ID" v-model="access_key">
                         </div>
                         <div class="ui left pointing blue basic label">
                             Enter an IAM Access Key ID
                         </div>
                         <br>
                         <div class="ui input">
-                            <input type="text" size="50" placeholder="Secret Access Key" v-model="secret_key">
+                            <input type="password" :readonly="readonly" size="50" placeholder="Secret Access Key" v-model="secret_key">
                         </div>
                         <div class="ui left pointing blue basic label">
                             Enter an IAM Secret Access Key
@@ -72,7 +72,7 @@
                             For extra security, it is recommanded to use credentials giving read-only permissions,
                             as well as regurlarly changing these.
                         </div>
-                        <button class="ui green ok labeled icon button" @click="saveKeys()">
+                        <button class="ui green ok labeled icon button" @click="saveKeys()" :class="actionable">
                             <i class="save icon"></i>
                             Save
                         </button>
@@ -97,11 +97,11 @@
                         <br>
                         <div class="ui form">
                             <div class="field">
-                                <textarea v-model="version_urls"></textarea>
+                                <textarea v-model="version_urls" :readonly="readonly"></textarea>
                             </div>
                         </div>
                         <br>
-                        <button class="ui green ok labeled icon button" @click="saveVersionURLs()">
+                        <button class="ui green ok labeled icon button" @click="saveVersionURLs()" :class="actionable">
                             <i class="save icon"></i>
                             Save
                         </button>
@@ -111,21 +111,21 @@
                             You can optionally rename this Hub and assign a custom icon.
                         </p>
                         <div class="ui input">
-                            <input type="text" size="50" placeholder="Name" v-model="hub_name">
+                            <input type="text" size="50" placeholder="Name" :readonly="readonly" v-model="hub_name">
                         </div>
                         <div class="ui left pointing blue basic label">
                             Give a name to this standalone hub
                         </div>
                         <br>
                         <div class="ui input">
-                            <input type="text" size="50" placeholder="Icon (url)" v-model="hub_icon">
+                            <input type="text" size="50" placeholder="Icon (url)" :readonly="readonly" v-model="hub_icon">
                         </div>
                         <div class="ui left pointing blue basic label">
                             Enter URL pointing to a custom icon
                         </div>
                         <br>
                         <br>
-                        <button class="ui green ok labeled icon button" @click="saveMisc()">
+                        <button class="ui green ok labeled icon button" @click="saveMisc()" :class="actionable">
                             <i class="save icon"></i>
                             Save
                         </button>
@@ -137,7 +137,7 @@
                             <div class="ui yellow compact message right floated" v-if="dirty_conf">Configuration has changed, Hub needs to restart</div>
                         </p>
                         <br>
-                        <button class="ui red ok labeled icon button" @click="restartHub()">
+                        <button class="ui red ok labeled icon button" @click="restartHub()" :class="actionable">
                             <i class="sync alternate icon"></i>
                             Restart
                         </button>
@@ -153,12 +153,13 @@
 import Vue from 'vue'
 import axios from 'axios'
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 import bus from './bus.js'
 
 
 export default {
 	name: 'standalone-wizard',
-	mixins: [ Loader, ],
+	mixins: [ Loader, Actionable, ],
 	mounted () {
         console.log("StandaloneWizard mounted");
         this.setup();

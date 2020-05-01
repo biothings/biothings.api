@@ -1,12 +1,12 @@
-from biothings.web.api.es.handlers import *
-from biothings.web.api.es.query import ESQuery as DefaultESQuery
-from biothings.web.api.es.query_builder import ESQueryBuilder as DefaultESQueryBuilder
-from biothings.web.api.es.transform import ESResultTransformer as DefaultESResultTransformer
-from biothings.web.templates import HTML_OUT_TEMPLATE
-import re
+"""
+    Biothings Web Settings Default
+"""
+
+
+from .descriptions import KWARG_DESCRIPTIONS
 
 # *****************************************************************************
-# Elasticsearch variables
+# Elasticsearch Settings
 # *****************************************************************************
 # elasticsearch server transport url
 ES_HOST = 'localhost:9200'
@@ -15,8 +15,8 @@ ES_CLIENT_TIMEOUT = 120
 # elasticsearch index name
 ES_INDEX = '_all'
 # elasticsearch document type for es<7, also biothing type
-ES_DOC_TYPE = 'doc'
-# multiple index support
+ES_DOC_TYPE = 'all'
+# additional index support
 ES_INDICES = {
     # "biothing_type_1": "index1",
     # "biothing_type_2": "index1,alias1,pattern_*"
@@ -30,205 +30,112 @@ ES_SIZE_CAP = 1000
 # Maximum result window => maximum for "from" parameter
 ES_RESULT_WINDOW_SIZE_CAP = 10000
 
-# For the userquery folder for this app
-USERQUERY_DIR = ''
+# *****************************************************************************
+# Web Application & Base Handler
+# *****************************************************************************
+BIOTHING_TYPES = ()
+
+# api version in the URL patterns and elsewhere
+API_PREFIX = ''
+API_VERSION = 'v1'
+
+# project URL routing
+APP_LIST = [
+    (r"/", 'biothings.web.handlers.FrontPageHandler'),
+    (r"/{pre}/status", 'biothings.web.handlers.StatusHandler'),
+    (r"/{pre}/{ver}/{typ}/metadata/fields/?", 'biothings.web.handlers.MetadataFieldHandler'),
+    (r"/{pre}/{ver}/{typ}/metadata/?", 'biothings.web.handlers.MetadataSourceHandler'),
+    (r"/{pre}/{ver}/{typ}/query/?", 'biothings.web.handlers.QueryHandler'),
+    (r"/{pre}/{ver}/{typ}/([^\/]+)/?", 'biothings.web.handlers.BiothingHandler'),
+    (r"/{pre}/{ver}/{typ}/?", 'biothings.web.handlers.BiothingHandler'),
+    (r"/{pre}/{ver}/metadata/fields/?", 'biothings.web.handlers.MetadataFieldHandler'),
+    (r"/{pre}/{ver}/metadata/?", 'biothings.web.handlers.MetadataSourceHandler'),
+    (r"/{pre}/{ver}/query/?", 'biothings.web.handlers.QueryHandler'),
+]
+
+# string used in headers to support CORS
+ACCESS_CONTROL_ALLOW_METHODS = 'GET,POST,OPTIONS'
+ACCESS_CONTROL_ALLOW_HEADERS = (
+    'Content-Type, Depth, User-Agent, If-Modified-Since,'
+    'Cache-Control, X-File-Size, X-Requested-With, X-File-Name'
+)
+# Caching behavior
+DISABLE_CACHING = False
+CACHE_MAX_AGE = 604800  # default 7 days
+
+# Global default cap for list inputs
+LIST_SIZE_CAP = 1000
+
+# For format=html
+HTML_OUT_HEADER_IMG = "https://biothings.io/static/favicon.ico"
+HTML_OUT_TITLE = "<p>Biothings API</p>"
+METADATA_DOCS_URL = "javascript:;"
+QUERY_DOCS_URL = "javascript:;"
+ANNOTATION_DOCS_URL = "javascript:;"
+
+# path to the git repository for the app-specific code, override
+APP_GIT_REPOSITORY = '.'
 
 # default static path, relative to current working dir
 # (from where app is launched)
 STATIC_PATH = "static"
 
-# api version in the URL patterns and elsewhere
-API_VERSION = 'v1'
+# color support is provided by tornado.log
+LOGGING_FORMAT = "%(color)s[%(levelname)s %(name)s %(module)s:%(lineno)d]%(end_color)s %(message)s"
 
-# project URL routing
-APP_LIST = [
-    (r"/status", StatusHandler),
-    (r"/metadata/?", MetadataHandler),
-    (r"/metadata/fields/?", MetadataHandler),
-    (r"/{}/{}/([^\/\n\r])/?".format(API_VERSION, ES_DOC_TYPE), BiothingHandler),
-    (r"/{}/query".format(API_VERSION), QueryHandler),
-    (r"/{}/metadata/?".format(API_VERSION), MetadataHandler),
-    (r"/{}/metadata/fields/?".format(API_VERSION), MetadataHandler),
-]
+# *****************************************************************************
+# User Input Control
+# *****************************************************************************
+COMMON_KWARGS = {
+    # control group
+    'raw': {'type': bool, 'default': False, 'group': 'control'},
+    'rawquery': {'type': bool, 'default': False, 'group': 'control'},
+    # esqb group
+    '_source': {'type': list, 'group': 'esqb', 'max': 1000, 'alias': ['fields', 'field', 'filter']},
+    'size': {'type': int, 'group': 'esqb', 'max': 1000, 'alias': 'limit'},
+    # transform group
+    'dotfield': {'type': bool, 'default': False, 'group': 'transform'},
+    '_sorted': {'type': bool, 'default': True, 'group': 'transform'},  # alaphabetically
+    'always_list': {'type': list, 'group': 'transform', 'max': 1000},
+    'allow_null': {'type': list, 'group': 'transform', 'max': 1000}
+}
+ANNOTATION_KWARGS = {
+    '*': COMMON_KWARGS.copy(),
+    'GET': {'id': {'type': str, 'path': 0}},
+    'POST': {'ids': {'type': list, 'max': 1000, 'required': True}}
+}
+QUERY_KWARGS = {
+    '*': COMMON_KWARGS.copy(),
+    'GET': {'q': {'type': str, 'default': '__all__', 'group': 'esqb'},
+            'aggs': {'type': list, 'max': 1000, 'group': 'esqb', 'alias': 'facets'},
+            'facet_size': {'type': int, 'default': 10, 'max': 1000, 'group': 'esqb', },
+            'from': {'type': int, 'max': 10000, 'group': 'esqb', 'alias': 'skip'},
+            'userquery': {'type': str, 'group': 'esqb', 'alias': ['userfilter']},
+            'sort': {'type': list, 'group': 'esqb', 'max': 1000},
+            'explain': {'type': bool, 'group': 'esqb'},
+            'fetch_all': {'type': bool, 'group': 'es'},
+            'scroll_id': {'type': str, 'group': 'es'}},
+    'POST': {'q': {'type': list, 'required': True, 'group': 'esqb'},
+             'scopes': {'type': list, 'default': ['_id'], 'group': 'esqb', 'max': 1000}}
+}
+# *****************************************************************************
+# Elasticsearch Query Pipeline
+# *****************************************************************************
+ES_QUERY_BUILDER = 'biothings.web.pipeline.ESQueryBuilder'
+# For the userquery folder for this app
+USERQUERY_DIR = 'userquery'
 # Allow the __any__ random doc retrieval
 ALLOW_RANDOM_QUERY = False
 # Allow facets to be nested with ( )
 ALLOW_NESTED_AGGS = False
 
-# *****************************************************************************
-# Subclass of biothings.web.api.es.query_builder.ESQueryBuilder to build
-# queries for this app
-# *****************************************************************************
-ES_QUERY_BUILDER = DefaultESQueryBuilder
-# *****************************************************************************
-# Subclass of biothings.web.api.es.query.ESQuery to execute queries for this app
-# *****************************************************************************
-ES_QUERY = DefaultESQuery
-# *****************************************************************************
-# Subclass of biothings.web.api.es.transform.ESResultTransformer to transform
-# ES results for this app
-# *****************************************************************************
-ES_RESULT_TRANSFORMER = DefaultESResultTransformer
-
-OUTPUT_KEY_ALIASES = {}
-#OUTPUT_KEY_ALIASES = {'cadd':'schmadd', 'cadd/gene/ccds_id': 'cces_id'}
-
-# Global default cap for list inputs
-LIST_SIZE_CAP = 1000
-
-# For Returning a custom message in 4xx responses (or really any response)
-ID_REQUIRED_MESSAGE = 'ID required'
-ID_NOT_FOUND_TEMPLATE = "ID '{bid}' not found"
+ES_QUERY_BACKEND = 'biothings.web.pipeline.ESQueryBackend'
+ES_RESULT_TRANSFORM = 'biothings.web.pipeline.ESResultTransform'
 
 # A list of fields to exclude from metadata/fields endpoint
 AVAILABLE_FIELDS_EXCLUDED = ['all']
-
-# A path to the available fields notes 
+# A path to the available fields notes
 AVAILABLE_FIELDS_NOTES_PATH = ''
-
-# TODO: Need to describe
-#ANNOTATION_ID_REGEX_LIST = [(re.compile(r'rs[0-9]+', re.I), 'dbsnp.rsid')]
-ANNOTATION_ID_REGEX_LIST = []
-
-# USERQUERY KWARGS
-
-# regex to identify a userquery arg
-USERQUERY_KWARG_REGEX = re.compile(r'^uq_\w+$')
-# transform to use on the userquery arg
-USERQUERY_KWARG_TRANSFORM = lambda x: x[3:]
-
-# kwargs passed into Elasticsearch.get() for /status endpoint
-STATUS_CHECK = {
-    'id': '',
-    'index': '',
-    'doc_type': ''
-}
-
-# string used in headers to support CORS
-ACCESS_CONTROL_ALLOW_METHODS = 'GET,POST,OPTIONS'
-ACCESS_CONTROL_ALLOW_HEADERS = 'Content-Type, Depth, User-Agent, X-File-Size, X-Requested-With, If-Modified-Since, X-File-Name, Cache-Control'
-
-# These kwarg descriptions are used in generating a swagger API spec
-KWARG_DESCRIPTIONS = {
-    '_source': {'name': 'fields', 'text_template': 'a comma-separated list of fields (in dotfield notation) used to limit the fields returned from the matching {biothing_object} hit(s). The supported field names can be found from any {biothing_object} object or from the /metadata/fields endpoint. If "fields=all", all available fields will be returned.{param_type}{param_default_value}{param_max}'},
-
-    'size': {'name': 'size', 'text_template': 'the maximum number of matching {biothing_object} hits to return per batch.{param_type}{param_default_value}{param_max}'},
-
-    'from': {'name': 'from', 'text_template': 'the number of matching {biothing_object} hits to skip, starting from 0.  This can be useful for paging in combination with the "size" parameter.{param_type}{param_default_value}{param_max}'},
-
-    'sort': {'name': 'sort', 'text_template':'the comma-separated list of fields to sort on. Prefix each with "-" for descending order, otherwise in ascending order. Default: sort by descending score.' },
-
-    'dotfield': {'name': 'dotfield', 'text_template': 'control the format of the returned {biothing_object} object. If "true" or "1", all fields will be collapsed into a single level deep object (all nested objects will be a single level deep, using dotfield notation to signify the nested structure){param_type}{param_default_value}{param_max}'},
-
-    'callback': {'name': 'callback', 'text_template': 'you can pass a "callback" parameter to make a JSONP call. Type: string.'},
-
-    'email': {'name': 'email', 'text_template': 'If you are regular users of our services, we encourage you to provide us with an email, so that we can better track the usage or follow up with you.'},
-
-    'out_format': {'name': 'format', 'text_template': 'controls output format of server response, currently supports: "json", "jsonld", "html".{param_type}{param_default_value}{param_max}'},
-
-    'aggs': {'name': 'facets', 'text_template': 'a comma-separated list of fields to return facets on.  In addition to query hits, the fields notated in "facets" will be aggregated by value and bucklet counts will be displayed in the "facets" field of the response object.{param_type}{param_default_value}{param_max}'},
-
-    'facet_size': {'name': 'facet_size', 'text_template': 'the number of facet buckets to return in the response.{param_type}{param_default_value}{param_max}'},
-    
-    'ids': {'name': 'ids', 'text_template': 'multiple {biothing_object} ids separated by comma. Note that currently we only take the input ids up to 1000 maximum, the rest will be omitted.{param_type}{param_default_value}{param_max}'},
-
-    'q': {'name': 'q', 'text_template': 'Query string.  The detailed query syntax can be found from our [docs]{doc_query_syntax_url}'},
-
-    'scopes': {'name': 'scopes', 'text_template': 'a comma-separated list of fields as the search "scopes" (fields to search through for query term). The available "fields" that can be passed to the "scopes" parameter are listed in the **/metadata/fields** endpoint.{param_type} Default: "scopes=_id".{param_max}'},
-
-    'search': {'name': 'search', 'text_template': 'Pass a search term to filter the available fields.{param_type}{param_default_value}{param_max}'},
-
-    'prefix': {'name': 'prefix', 'text_template': 'Pass a prefix string to filter the available fields.{param_type}{param_default_value}{param_max}'}
-}
-# Keyword Argument Control
-# 
-# These parameters control which input kwargs go to which kwarg group for each
-# endpoint and operation (e.g. query GET, annotation POST, etc).
-# This allows explicit grouping of parameters into inputs of the pipeline
-# section that they are germane to.
-# CONTROL_KWARGS - general category, used for handler parameters (e.g. raw, rawquery)
-# ES_KWARGS go directly to the ESQuery function (e.g. fields, size...)
-# ESQB_KWARGS are used to instantiate a query builder class
-# TRANSFORM_KWARGS are used to instantiate a result transformer class
-# 
-# keys are parameter names, values are default values.  If value == None, no
-# default is inserted.
-
-# For annotation GET endpoint
-ANNOTATION_GET_CONTROL_KWARGS = {'raw': {'default': False, 'type': bool}, 
-                                 'rawquery': {'default': False, 'type': bool},
-                                 'out_format': {'default': 'json', 'type': str, 'alias':'format'}}
-ANNOTATION_GET_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 1000, 'alias': ['fields', 'filter']}}
-ANNOTATION_GET_ESQB_KWARGS = {}
-ANNOTATION_GET_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool}, 
-                                   'jsonld': {'default': False, 'type': bool},
-                                   '_sorted': {'default': True, 'type': bool},
-                                    'always_list': {'default': [], 'type': list, 'max': 1000},
-                                    'allow_null': {'default': [], 'type': list, 'max': 1000}}
-
-# For annotation POST endpoint
-ANNOTATION_POST_CONTROL_KWARGS = {'raw': {'default': False, 'type': bool},
-                                  'rawquery': {'default': False, 'type': bool},
-                                  'ids': {'default': None, 'type': list, 'max': 1000},
-                                  'out_format': {'default': 'json', 'type': str, 'alias': 'format'}}
-ANNOTATION_POST_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 1000, 'alias': ['fields', 'filter']}}
-ANNOTATION_POST_ESQB_KWARGS = {}
-ANNOTATION_POST_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool},
-                                    'jsonld': {'default': False, 'type': bool},
-                                    '_sorted': {'default': True, 'type': bool},
-                                    'always_list': {'default': [], 'type': list, 'max': 1000},
-                                    'allow_null': {'default': [], 'type': list, 'max': 1000}}
-
-# For query GET endpoint
-QUERY_GET_CONTROL_KWARGS = {'raw': {'default': False, 'type': bool},
-                            'rawquery': {'default': False, 'type': bool},
-                            'q': {'default': None, 'type': str, 
-                                'translations': [
-                                    #(re.compile(r'chr:', re.I), r'chrom:')
-                                ]
-                            },
-                            'scroll_id': {'default': None, 'type': str},
-                            'fetch_all': {'default': False, 'type': bool},
-                            'out_format': {'default': 'json', 'type': str, 'alias': 'format'}}
-QUERY_GET_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 1000, 'alias': ['fields', 'filter']},
-                       'from': {'default': None, 'type': int, 'alias': 'skip'},
-                       'size': {'default': None, 'type': int, 'alias': 'limit'},
-                       'explain': {'default': None, 'type': bool},
-                       'aggs': {'default': None, 'type': list, 'max': 1000, 'alias': 'facets'},
-                       'sort': {'default': None, 'type': list, 'max': 1000}}
-QUERY_GET_ESQB_KWARGS = {'fetch_all': {'default': False, 'type': bool},
-                         'userquery': {'default': None, 'type': str, 'alias': ['userfilter']},
-                         'facet_size': {'default': 10, 'type': int, 'max': 1000}}
-QUERY_GET_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool},
-                              'jsonld': {'default': False, 'type': bool},
-                              '_sorted': {'default': True, 'type': bool},
-                              'always_list': {'default': [], 'type': list, 'max': 1000},
-                              'allow_null': {'default': [], 'type': list, 'max': 1000}}
-
-# For query POST endpoint
-QUERY_POST_CONTROL_KWARGS = {'q': {'default': None, 'type': list},
-                             'raw': {'default': False, 'type': bool},
-                             'rawquery': {'default': False, 'type': bool},
-                             'out_format': {'default': 'json', 'type': str, 'alias': 'format'}}
-QUERY_POST_ES_KWARGS = {'_source': {'default': None, 'type': list, 'max': 1000, 'alias': ['fields', 'filter']},
-                        'size': {'default': None, 'type': int}}
-QUERY_POST_ESQB_KWARGS = {'scopes': {'default': None, 'type': list, 'max': 1000, 
-                            'translations': [
-
-                            ]}}
-QUERY_POST_TRANSFORM_KWARGS = {'dotfield': {'default': False, 'type': bool}, 
-                               'jsonld': {'default': False, 'type': bool},
-                               '_sorted': {'default': True, 'type': bool},
-                               'always_list': {'default': [], 'type': list, 'max': 1000},
-                               'allow_null': {'default': [], 'type': list, 'max': 1000}}
-
-# For metadata GET endpoint
-METADATA_GET_CONTROL_KWARGS = {'out_format': {'default': 'json', 'type': str, 'alias': 'format'}}
-METADATA_GET_ES_KWARGS = {}
-METADATA_GET_ESQB_KWARGS = {}
-METADATA_GET_TRANSFORM_KWARGS = {'dev': {'default': False, 'type': bool}, 
-                                 'search': {'default': None, 'type': str},
-                                 'prefix': {'default': None, 'type': str}}
 
 LICENSE_TRANSFORM = {
     # "alias" :  "datasource",
@@ -236,17 +143,15 @@ LICENSE_TRANSFORM = {
 }
 
 # *****************************************************************************
-# Google Analytics Settings
+# Analytics Settings
 # *****************************************************************************
+
+# Sentry project address
+SENTRY_CLIENT_KEY = ''
 
 # Google Analytics Account ID
 GA_ACCOUNT = ''
-
-# Turn this to True to start google analytics tracking
-GA_RUN_IN_PROD = False
-
-# url for google analytics tracker
-GA_TRACKER_URL = 'mybiothing.info'
+GA_TRACKER_URL = 'mybiothing.info'  # TODO
 GA_ACTION_QUERY_GET = 'query_get'
 GA_ACTION_QUERY_POST = 'query_post'
 GA_ACTION_ANNOTATION_GET = 'biothing_get'
@@ -259,34 +164,22 @@ STANDALONE_AWS_CREDENTIALS = {}
 # batch size for standalone tracking (sending requests to AWS lambda)
 STANDALONE_TRACKING_BATCH_SIZE = 1000
 
-# override with url for specific project
-URL_BASE = 'http://mybiothing.info'
 
-# parameter for JSONP
-JSONP_PARAMETER = 'callback'
-
-# Caching behavior
-# should caching be disabled by default on handlers?
-DISABLE_CACHING = False
-CACHE_MAX_AGE = 604800
-
-# Sentry project address
-SENTRY_CLIENT_KEY = ''
-
-# Can turn msgpack functionality off here, will still load msgpack module if available, just won't
-# use it to compress requests
-ENABLE_MSGPACK = True
-
-LIST_SPLIT_REGEX = re.compile('[\s\r\n+|,]+')
-
-DEFAULT_SCOPES = ['_id']
-
-# path to the git repository for the app-specific code, override
-APP_GIT_REPOSITORY = '.'
-
-# For format=html
-HTML_OUT_HEADER_IMG = "//:0"
-HTML_OUT_TITLE = "<p>MyBioThing.info</p>"
-METADATA_DOCS_URL = "javascript:;"
-QUERY_DOCS_URL = "javascript:;"
-ANNOTATION_DOCS_URL = "javascript:;"
+# *****************************************************************************
+# Endpoints Specifics & Others
+# *****************************************************************************
+# Annotation #
+ANNOTATION_DEFAULT_SCOPES = ['_id']
+ANNOTATION_ID_REGEX_LIST = []  # [(re.compile(r'rs[0-9]+', re.I), 'dbsnp.rsid')]
+#
+# Status #
+# https://www.elastic.co/guide/en/elasticsearch/reference/master/docs-get.html
+STATUS_CHECK = {
+    # 'id': '',
+    # 'index': '',
+    # 'doc_type': ''
+}
+#
+# Biothing #
+ID_REQUIRED_MESSAGE = 'ID required'
+ID_NOT_FOUND_TEMPLATE = "ID '{bid}' not found"

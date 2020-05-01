@@ -1,6 +1,6 @@
 """
 hub_db module is a place-holder for internal hub database
-functions. Hub DB contains informations about sources, 
+functions. Hub DB contains informations about sources,
 configurations variables, etc... It's for internal usage.
 When biothings.config_for_app() is called, this module will be
 "filled" with the actual implementations from the specified backend
@@ -12,12 +12,12 @@ Any hub db backend implementation must implement the functions and
 classes below. See biothings.utils.mongo and biothings.utils.sqlit3 for
 some examples.
 """
-
-import os, asyncio, logging
+import os
+import asyncio
 from functools import wraps, partial
 
-from biothings.utils.common import dump as dumpobj, loadobj, \
-                        get_random_string, get_timestamp
+from biothings.utils.common import (dump as dumpobj, loadobj,
+                                    get_random_string, get_timestamp)
 
 def get_hub_db_conn():
     """Return a Database instance (connection to hub db)"""
@@ -66,8 +66,6 @@ def get_last_command():
     """Return the latest cmd document (according to _id)"""
     raise NotImplementedError()
 
-
-
 def get_source_fullname(col_name):
     """
     Assuming col_name is a collection created from an upload process,
@@ -77,15 +75,15 @@ def get_source_fullname(col_name):
 
 class IDatabase(object):
     """
-    This class declares an interface and partially implements some of it, 
+    This class declares an interface and partially implements some of it,
     mimicking mongokit.Connection class. It's used to keep used document model.
     Any internal backend should implement (derives) this interface
     """
 
     def __init__(self):
-        super(IDatabase,self).__init__()
-        self.name = None # should be set from config module
-        # any other initialization can be done here, 
+        super(IDatabase, self).__init__()
+        self.name = None   # should be set from config module
+        # any other initialization can be done here,
         # depending on the backend specifics
 
     @property
@@ -100,10 +98,10 @@ class IDatabase(object):
         """Return a list of all collections (or tables) found in this database"""
         raise NotImplementedError()
 
-    def create_collection(self,colname):
+    def create_collection(self, colname):
         """Create a table/colleciton named colname. If backend is using a schema-based
         database (ie. SQL), backend should enforce the schema with at least field "_id"
-        as the primary key (as a string).""" 
+        as the primary key (as a string)."""
         raise NotImplementedError()
 
     def __getitem__(self, colname):
@@ -112,7 +110,7 @@ class IDatabase(object):
         raise NotImplementedError()
 
     def __repr__(self):
-        return "<%s at %s, %s>" % (self.__class__.__name__,hex(id(self)),self.address)
+        return "<%s at %s, %s>" % (self.__class__.__name__, hex(id(self)), self.address)
 
 
 class Collection(object):
@@ -137,14 +135,14 @@ class Collection(object):
         """Return the database name"""
         raise NotImplementedError()
 
-    def find_one(self,*args,**kwargs):
-        """Return one document from the collection. *args will contain
+    def find_one(self, *args, **kwargs):
+        """Return one document from the collection. `*args` will contain
         a dict with the query parameters. See also find()"""
         raise NotImplementedError()
 
-    def find(self,*args,**kwargs):
-        """Return an iterable of documents matching criterias defined in 
-        *args[0] (which will be a dict). Query dialect is a minimal one, inspired
+    def find(self, *args, **kwargs):
+        """Return an iterable of documents matching criterias defined in
+        `*args[0]` (which will be a dict). Query dialect is a minimal one, inspired
         by MongoDB. Dict can contain the name of a key, and the value being searched for.
         Ex: {"field1":"value1"} will return all documents where field1 == "value1".
         Nested key (field1.subfield1) aren't supported (no need to implement).
@@ -154,31 +152,31 @@ class Collection(object):
         """
         raise NotImplementedError()
 
-    def insert_one(self,doc):
+    def insert_one(self, doc):
         """Insert a document in the collection. Raise an error if already inserted"""
         raise NotImplementedError()
 
-    def update_one(self,query,what,upsert=False):
+    def update_one(self, query, what, upsert=False):
         """Update one document (or the first matching query). See find() for query parameter.
         "what" tells how to update the document. $set/$unset/$push operators must be implemented
         (refer to MongoDB documentation for more). Nested keys operation aren't necesary.
         """
         raise NotImplementedError()
 
-    def update(self,query,what):
+    def update(self, query, what):
         """Same as update_one() but operate on all documents matching 'query'"""
         raise NotImplementedError()
 
-    def save(self,doc):
+    def save(self, doc):
         """Shortcut to update_one() or insert_one(). Save the document, by
         either inserting if it doesn't exist, or update existing one"""
         raise NotImplementedError()
 
-    def replace_one(self,query,doc):
+    def replace_one(self, query, doc):
         """Replace a document matching 'query' (or the first found one) with passed doc"""
         raise NotImplementedError()
 
-    def remove(self,query):
+    def remove(self, query):
         """Delete all documents matching 'query'"""
         raise NotImplementedError()
 
@@ -190,30 +188,31 @@ class Collection(object):
         """Shortcut to find_one({"_id":_id})"""
         raise NotImplementedError()
 
-def backup(folder=".",archive=None):
+def backup(folder=".", archive=None):
     """
     Dump the whole hub_db database in given folder. "archive" can be pass
     to specify the target filename, otherwise, it's randomly generated
-    Note: this doesn't backup source/merge data, just the internal data
-          used by the hub
+
+    .. note:: this doesn't backup source/merge data, just the internal data
+             used by the hub
     """
     # get database name (ie. hub_db internal database)
     db_name = get_src_dump().database.name
     dump = {}
-    for getter in [get_src_dump,get_src_master,get_src_build,
-                   get_src_build_config,get_data_plugin,get_api,
+    for getter in [get_src_dump, get_src_master, get_src_build,
+                   get_src_build_config, get_data_plugin, get_api,
                    get_cmd, get_event, get_hub_config]:
         col = getter()
         dump[col.name] = []
         for doc in col.find():
             dump[col.name].append(doc)
     if not archive:
-        archive = "backup_%s_%s.pyobj" % (get_timestamp(),get_random_string())
-    path = os.path.join(folder,archive)
-    dumpobj(dump,path)
+        archive = "backup_%s_%s.pyobj" % (get_timestamp(), get_random_string())
+    path = os.path.join(folder, archive)
+    dumpobj(dump, path)
     return path
 
-def restore(archive,drop=False):
+def restore(archive, drop=False):
     """Restore database from given archive. If drop is True, then delete existing collections"""
     data = loadobj(archive)
     # use src_dump collection which always exists to get the database object
@@ -245,22 +244,22 @@ class ChangeWatcher(object):
     do_publish = False
 
     col_entity = {
-            "src_dump" : "source",
-            "src_build" : "build",
-            "src_build_config" : "build_config",
-            "src_master" : "master",
-            "cmd" : "command",
-            "hub_config" : "config",
-            }
+        "src_dump": "source",
+        "src_build": "build",
+        "src_build_config": "build_config",
+        "src_master": "master",
+        "cmd": "command",
+        "hub_config": "config",
+    }
 
     @classmethod
-    def publish(klass):
-        klass.do_publish = True
+    def publish(cls):
+        cls.do_publish = True
         @asyncio.coroutine
         def do():
-            while klass.do_publish:
-                evt = yield from klass.event_queue.get()
-                for listener in klass.listeners:
+            while cls.do_publish:
+                evt = yield from cls.event_queue.get()
+                for listener in cls.listeners:
                     try:
                         listener.read(evt)
                     except Exception as e:
@@ -269,47 +268,50 @@ class ChangeWatcher(object):
         return asyncio.ensure_future(do())
 
     @classmethod
-    def add(klass,listener):
-        assert hasattr(listener,"read"), "Listener '%s' has no read() method" % listener
-        klass.listeners.add(listener)
-        klass.publish()
+    def add(cls, listener):
+        assert hasattr(listener, "read"), "Listener '%s' has no read() method" % listener
+        cls.listeners.add(listener)
+        cls.publish()
 
     @classmethod
-    def monitor(klass,func,entity,op):
+    def monitor(cls, func, entity, op):
         @wraps(func)
-        def func_wrapper(*args,**kwargs):
+        def func_wrapper(*args, **kwargs):
             # don't speak alone in the immensity of the void
-            if klass.listeners:
+            if cls.listeners:
                 # try to narrow down the event to a doc
                 # analyse the query/filter (1st elem in args), it tells how many docs are
                 # impacted, thus telling us wether to send a detailed or general event
-                if args and type(args[0]) == dict and "_id" in args[0]:
+                # if args and type(args[0]) == dict and "_id" in args[0]:     # TODO: replaced this line, delete it after confirmed.
+                if args and isinstance(args[0], dict) and "_id" in args[0]:
                     # single event associated to one ID, we send an "detailed" event
-                    event = {"_id" : args[0]["_id"], "obj" : entity, "op" : op}
+                    event = {"_id": args[0]["_id"], "obj": entity, "op": op}
                     if entity == "event":
                         # sends everything
                         event["data"] = args[0]
-                    klass.event_queue.put_nowait(event)
+                    cls.event_queue.put_nowait(event)
                 else:
                     # can't find ID, we send a general event (not specific to one doc)
-                    event = {"obj" : entity, "op" : op}
-                    klass.event_queue.put_nowait(event)
+                    event = {"obj": entity, "op": op}
+                    cls.event_queue.put_nowait(event)
 
-            return func(*args,**kwargs)
+            return func(*args, **kwargs)
         return func_wrapper
 
     @classmethod
-    def wrap(klass,getfunc):
+    def wrap(cls, getfunc):
         def decorate():
             col = getfunc()
-            for method in ["insert_one","update_one","update",
-                    "save","replace_one","remove"]:
-                colmethod = getattr(col,method)
-                colname = getfunc.__name__.replace("get_","")
-                colmethod = klass.monitor(colmethod,
-                    entity=klass.col_entity.get(colname,colname),
-                    op=method)
-                setattr(col,method,colmethod)
+            for method in ["insert_one", "update_one", "update",
+                           "save", "replace_one", "remove"]:
+                colmethod = getattr(col, method)
+                colname = getfunc.__name__.replace("get_", "")
+                colmethod = cls.monitor(
+                    colmethod,
+                    entity=cls.col_entity.get(colname, colname),
+                    op=method
+                )
+                setattr(col, method, colmethod)
             return col
         return partial(decorate)
 
@@ -342,5 +344,3 @@ def setup(config):
     get_last_command = config.hub_db.get_last_command
     # propagate config module to classes
     config.hub_db.Database.CONFIG = config
-
-

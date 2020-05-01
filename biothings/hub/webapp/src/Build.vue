@@ -69,7 +69,7 @@
             </div>
         </div>
 
-        <div class="extra content">
+        <div class="extra content" :class="actionable">
             <div class="ui icon buttons left floated mini">
                 <button class="ui button" :data-build_id="build._id" v-on:click="inspect">
                     <i class="unhide icon" :data-build_id="build._id"></i>
@@ -152,6 +152,7 @@ import BuildLogs from './BuildLogs.vue'
 import BuildStats from './BuildStats.vue'
 import BuildSources from './BuildSources.vue'
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 
 function build_time(jobs) {
     return jobs.map((q)=>q.time_in_s).reduce(
@@ -184,7 +185,7 @@ export default {
             build_from_api: null,
         }
     },
-    mixins: [ BaseBuild, Loader, ],
+    mixins: [ BaseBuild, Loader, Actionable, ],
     components: { InspectForm, BuildLogs, BuildStats, BuildSources, },
     computed: {
         build: function () {

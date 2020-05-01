@@ -3,6 +3,20 @@
     <div class="ui fixed inverted menu">
       <div class="ui studio container">
 
+          <div class="item">
+              <!-- check value, null means toggle deactivated (hub is read-only, can't switch back to read/write) -->
+              <span v-if="readonly_switch !== null">
+                  <div class="ui middle aligned mini" data-tooltip="Toggle read-only mode" data-position="bottom left">
+                      <i class="clickicon large icon" :class="readonly_mode ? 'red lock': 'unlock'" @click="switchReadOnly"></i>
+                  </div>
+              </span>
+              <span v-else>
+                  <div class="ui middle aligned mini"  data-tooltip="Hub is read-only" data-position="bottom left">
+                      <i class="large lock icon" :class="readonly_mode ? 'red': ''"></i>
+                  </div>
+              </span>
+          </div>
+
 		<div class="item">
 			<div class="ui middle aligned mini">
 				<choose-hub></choose-hub>
@@ -21,6 +35,15 @@
                     'Features: <b> ' + studio_features + '</b><br></div>'
                     " data-position="bottom center">{{conn.name || "John Doe"}}</div>
             </div>
+
+            <div class="ui item" v-if="needs_upgrade">
+                <div>
+                    <button class="mini circular ui icon button" @click="showUpgrades()">
+                        <i class="upgrade sync icon"></i>
+                    </button>
+                </div>
+            </div>
+
 
             <a class="clickable item" v-for="mitem in menu">
                 <i :class="['ui',mitem['icon'],'icon']"></i>
@@ -160,6 +183,22 @@
             <router-view></router-view>
         </div>
 
+        <div class="ui basic upgrade modal">
+            <h3 class="ui icon">
+                <i class="sync icon"></i>
+                Upgrade system
+            </h3>
+            <div class="content">
+                <system-upgrade v-bind:biothings_version="conn.biothings_version" v-bind:app_version="conn.app_version"></system-upgrade>
+            </div>
+            <div class="actions">
+                <div class="ui green ok inverted button">
+                    <i class="checkmark icon"></i>
+                    OK
+                </div>
+            </div>
+        </div>
+
         <event-alert></event-alert>
 
         <div class="ui mini grey bottom fixed inverted menu">
@@ -193,7 +232,7 @@
 
 <script>
 
-    const STUDIO_VERSION = "0.2a";
+    const STUDIO_VERSION = "0.2b";
 
     import Vue from 'vue';
     import axios from 'axios';
@@ -203,6 +242,7 @@
     import VueLocalStorage from 'vue-localstorage';
     Vue.use(VueLocalStorage);
     import Loader from './Loader.vue'
+    import Actionable from './Actionable.vue'
 
     import Vue2Filters from 'vue2-filters';
     import VueRouter from 'vue-router';
@@ -316,7 +356,8 @@
     import Terminal from './Terminal.vue';
     import FeatureChecker from './FeatureChecker.vue';
     import StandaloneReleases from './StandaloneReleases.vue';
-    import StandaloneWizard from './StandaloneWizard.vue'
+    import StandaloneWizard from './StandaloneWizard.vue';
+    import SystemUpgrade from './SystemUpgrade.vue';
 
     const router = new VueRouter();
 
@@ -325,10 +366,10 @@
     export default {
         name: 'app',
         router: router,
-        mixins: [ FeatureChecker, Loader, ],
+        mixins: [ FeatureChecker, Loader, Actionable, ],
         components: { JobSummary, EventMessages, EventAlert,
                       ChooseHub, HubConfig, Loader, LogViewer,
-                      Terminal},
+                      Terminal, SystemUpgrade, },
         mounted () {
             $('#conn')
             .popup({
@@ -393,6 +434,8 @@
                 current_studio_version: STUDIO_VERSION,
                 compat_urls: [],
                 redirect_delay: 5000,
+                readonly_mode: true, // from hub features
+                readonly_switch: true, // from UI (switch in config)
             }
         },
         computed : {
@@ -408,7 +451,24 @@
                  } else {
                      return "not listed";
                  }
-             }
+             },
+             biothings_needs_upgrade: function () {
+                 if(Object(this.conn.biothings_version).hasOwnProperty("upgrade")) {
+                    return true;
+                 } else {
+                    return false;
+                 }
+             },
+             app_needs_upgrade: function () {
+                 if(Object(this.conn.app_version).hasOwnProperty("upgrade")) {
+                    return true;
+                 } else {
+                    return false;
+                 }
+             },
+             needs_upgrade: function() {
+                 return this.biothings_needs_upgrade || this.app_needs_upgrade;
+             },
 
         },
         watch: {
@@ -424,14 +484,55 @@
                     else
                         $(".logo").attr("src",this.default_conn.icon);
                 }
-            }
+            },
+            readonly_mode: function(newv,oldv) {
+                this.actionable = newv;
+                bus.$emit("readonly_mode",newv);
+            },
+            readonly_switch: function(newv,oldv) {
+                // sync mode and switch together
+                // if null, we're just deactivating the switch, only true/false values
+                // are allowed to be considered and synced
+                if(newv !== null) {
+                    this.readonly_mode = newv;
+                    Vue.localStorage.set("readonly_switch",JSON.stringify(this.readonly_switch));
+                }
+            },
+            required_studio_version: function(newv, oldv) {
+                console.log(`this.required_studio_version, old ${oldv} new ${newv}`);
+                if(newv != oldv) {
+                    this.selectStudio(newv);
+                }
+            },
         },
         methods: {
             setupUIByFeatures() {
+                var self = this;
                 console.log("Setup UI according to listed features");
                 console.log(Vue.config.hub_features);
                 this.routes = [];
                 this.menu = [];
+                if(this.has_feature('readonly')) {
+                    this.readonly_mode = true;
+                    console.log("Hub is read-only, deactivate readonly switch");
+                    this.readonly_switch = null;
+                } else {
+                    this.readonly_mode = false;
+                    console.log("Hub is read/write, activate readonly switch");
+                    // restore from localstorage
+                    var stored_switch = Vue.localStorage.get('readonly_switch');
+                    if(stored_switch !== null) {
+                        // something previously stored, restore switch state, and sync
+                        // readonly mode accordingly
+                        this.readonly_switch = JSON.parse(stored_switch);
+                        this.readonly_mode = this.readonly_switch;
+                    } else {
+                        // nothing stored previously, so sync switch state to default mode
+                        // (ie. not readonly)
+                        this.readonly_switch = this.readonly_mode;
+                    }
+                }
+                this.actionable = this.readonly_mode;
                 if(this.has_feature('source') && this.has_feature('build')) {
                     console.log("Setup Home tab");
                     this.routes.push({ path: '/', component: Status });
@@ -481,16 +582,6 @@
                      // not ready yet ?
                      return null;
                  }
-            },
-            getCompatList () {
-                try {
-                var compat = require('./compat.json');
-                } catch(e) {
-                  console.log(e);
-                  console.log("Coulnd't find compat list");
-                  var compat = [];
-                }
-                return compat;
             },
             dispatchEvent(evt) {
                 if(evt.op == "log") {
@@ -580,24 +671,20 @@
                 if(/\/connect=/.test(window.location.hash)) {
                     var url = window.location.hash.replace(/.*\/connect=/,"");
                     console.log(`Connect from anchor hash: ${url}`);
+                    router.push({name: "/"})
                 } else {
                     var url = this.conn["url"].replace(/\/$/,"");
                     console.log(`Connecting to ${this.conn.name} (${url})`);
-                    hubapi.base(url);
                 }
+                hubapi.base(url);
                 this.refreshConnection(url);
                 Vue.localStorage.set('last_conn',JSON.stringify(this.conn));
                 this.setupSocket(redirect);
             },
-            checkCompat: function(data) {
-                // user asked to skip compat checks ?
-                if(Vue.localStorage.get('skip_studio_compat') == "true") {
-                    console.log("Skip Studio version compatibility, as instructed in local storage");
-                    return;
-                }
+            getStudioWebappRoots: function() {
                 // where should we look for compatible studio webapp
                 var current_host_port = new URI(location.protocol+'//'+location.hostname+(location.port ? ':'+location.port: ''));
-                var studio_roots = [current_host_port.toString()];
+                var studio_roots = [current_host_port.toString() + "/"];
                 var remote_webapps = ["https://studio.biothings.io"]; // default remote root if none configured
                 if(Vue.localStorage.get("remote_webapps")) {
                     studio_roots = Vue.localStorage.get("remote_webapps");
@@ -606,127 +693,32 @@
                 }
                 Array.prototype.push.apply(studio_roots,remote_webapps);
                 console.log(`Studio webapp roots: ${studio_roots}`);
+                return studio_roots;
+            },
+            selectStudio: function(studio_version) {
 
-                function evalDateCompat(refd,d) {
-                    // check comparator operator if any (>, <, >= or <=)
-                    var res = /^\D+/.exec(refd);
-                    var op = null;
-                    if(res) {
-                        var op = res[0];
-                        // adjust actual date string
-                        refd = refd.slice(op.length);
-                    } else {
-                        var op = "===";
-                    }
-                    var jsd = new Date(d);
-                    var jsrefd = new Date(refd);
-                    // "+" in front to allow comparison involving "=". https://stackoverflow.com/questions/492994/compare-two-dates-with-javascript
-                    console.log(`eval: ${jsd} ${op} ${jsrefd}`);
-                    var exp = String.prototype.concat("+jsd " , op , " +jsrefd");
-                    var isok = eval(String.prototype.concat("+jsd " , op , " +jsrefd"));
-                    return isok;
-                }
+                var studio_roots = this.getStudioWebappRoots();
+                var current_host_port = new URI(location.protocol+'//'+location.hostname+(location.port ? ':'+location.port: ''));
 
-
-                // start checks
                 var self = this;
-                var compat = self.getCompatList();
-                // find the first studio version compatible with current hub
-                for(var i in compat) {
-                    var when = compat[i]["when"];
-                    for(var k in when) {
-                        if(data[k]) {
-                            try {
-                                var vers = data[k].split(" ").map(function(e) { var r = /\[(.*)\]/.exec(e); return r && r[1] || e });
-                            } catch (e) {
-                                // object-like
-                                var vers = [data[k]["branch"],data[k]["commit"],data[k]["date"]];
-                            }
-                            var branch = vers[0];
-                            switch(vers.length) {
-                                case 2:
-                                    var commit = vers[1];
-                                    var commitdate = null;
-                                    break;
-                                case 3:
-                                    var commit = vers[1];
-                                    var commitdate = vers[2];
-                                    break;
-                                default:
-                                    var commit = null;
-                                    var commitdate = null;
-                            }
-                            var required_branch = when[k]["branch"];
-                            var required_commit = when[k]["commit"];
-                            var required_date = when[k]["date"];
-                            console.log(`Hub run ${k} branch:${branch} commit:${commit} commit-date:${commitdate}`);
-                            console.log(`Checking compat branch:${required_branch} commit:${required_commit} commit-date:${required_date}`);
-                            // first check branch
-                            if(required_branch == branch) {
-                              // then commit
-                              if(required_commit) {
-                                if(required_commit != commit) {
-                                  console.log(`Commit mismatch, need ${required_commit} but got ${commit}`);
-                                  continue;
-                                } else {
-                                  // commit more restrictive than date, if match, keep that version
-                                  console.log("Commits matches");
-                                  self.required_studio_version = compat[i]["requires"];
-                                  break;
-                                }
-                              }
-                              // then branch
-                              if(required_date) {
-                                if(!commitdate) {
-                                  console.log("Date compat needed but no commit date returned from Hub");
-                                  continue;
-                                }
-                                // can be an expression ("more recent than", "older than", etc...)
-                                var interval = required_date.split(",");
-                                if(interval.length == 2) {
-                                  var fromd = interval[0];
-                                  var tod = interval[1];
-                                  var dateok = evalDateCompat(fromd,commitdate) && evalDateCompat(tod,commitdate);
-                                } else {
-                                  var dateok = evalDateCompat(required_date,commitdate);
-                                }
-                                if(!dateok) {
-                                  console.log(`Date mismatch, need ${required_date} but got ${commitdate}`);
-                                  continue;
-                                } else {
-                                  console.log("Dates match");
-                                  self.required_studio_version = compat[i]["requires"];
-                                  break;
-                                }
-                              } else {
-                                // no commit, no date, but branches match
-                                console.log("Branches match");
-                                self.required_studio_version = compat[i]["requires"];
-                                break;
-                              }
-                            } else {
-                              console.log(`Branch mismatch, need ${required_branch} but got ${branch}`);
-                            }
-                        }
-                    }
-                    if(self.required_studio_version) {
-                      break; // again to exit main for loop
-                    } else {
-                      console.log("No match found or no required version specified");
-                    }
+                console.log(`Now selecting Studio version ${studio_version}`);
+
+                if(studio_version == "this") {
+                    console.log("Running version is the actual required one, all good");
+                    return;
                 }
-                if(!self.required_studio_version) {
+                if(!studio_version) {
                   console.log("Couldn't find any suitable version, will keep current as failover");
                   return;
                 } else {
-                  console.log(`Selected compatible version ${self.required_studio_version}`);
+                  console.log(`Selected compatible version ${studio_version}`);
                 }
                 for(var idx in studio_roots) {
                      var root = studio_roots[idx];
-                     if(self.required_studio_version == this.current_studio_version) {
+                     if(studio_version == this.current_studio_version) {
                          var uri = new URI(root);
                      } else {
-                         var uri = new URI([root,self.required_studio_version].join("/"));
+                         var uri = new URI([root,studio_version].join("/"));
                      }
                      uri.normalize(); // prevent double slashes
                      var url = uri.toString();
@@ -804,7 +796,7 @@
                             setTimeout(
                             function() {
                                 if(!self.cancel_redirect) {
-                                    console.log(`Redirecting to ${self.compat_urls[i]}`);
+                                    console.log(`Redirecting to ${self.redirect_url}`);
                                     window.location.replace(self.redirect_url + window.location.hash);
                                 }
                             }, self.redirect_delay);
@@ -812,6 +804,137 @@
                     }
                 }, poll_delay);
 
+            },
+            checkCompat: function(data) {
+                // user asked to skip compat checks ?
+                if(Vue.localStorage.get('skip_studio_compat') == "true") {
+                    console.log("Skip Studio version compatibility, as instructed in local storage");
+                    return;
+                }
+
+                function evalDateCompat(refd,d) {
+                    // check comparator operator if any (>, <, >= or <=)
+                    var res = /^\D+/.exec(refd);
+                    var op = null;
+                    if(res) {
+                        var op = res[0];
+                        // adjust actual date string
+                        refd = refd.slice(op.length);
+                    } else {
+                        var op = "===";
+                    }
+                    var jsd = new Date(d);
+                    var jsrefd = new Date(refd);
+                    // "+" in front to allow comparison involving "=". https://stackoverflow.com/questions/492994/compare-two-dates-with-javascript
+                    console.log(`eval: ${jsd} ${op} ${jsrefd}`);
+                    var exp = String.prototype.concat("+jsd " , op , " +jsrefd");
+                    var isok = eval(String.prototype.concat("+jsd " , op , " +jsrefd"));
+                    return isok;
+                }
+
+                var studio_roots = this.getStudioWebappRoots();
+
+                // start checks
+                var self = this;
+                // this loads a list of compatible versions (webapp versions matchings biothings versions)
+                var compat_url = studio_roots[0] + "/compat.json";
+                // remove any double slash
+                compat_url = compat_url.replace(/([^:]\/)\/+/g, "$1")
+                console.log(`Load compatibility list from ${compat_url}`);
+                axios.get(compat_url)
+                .then(response => {
+                  var compat = response.data;
+                  console.log("Compatibility options:");
+                  console.log(compat);
+                  // find the first studio version compatible with current hub
+                  for(var i in compat) {
+                    var when = compat[i]["when"];
+                    for(var k in when) {
+                      if(data[k]) {
+                        try {
+                          var vers = data[k].split(" ").map(function(e) { var r = /\[(.*)\]/.exec(e); return r && r[1] || e });
+                        } catch (e) {
+                          // object-like
+                          var vers = [data[k]["branch"],data[k]["commit"],data[k]["date"]];
+                        }
+                        var branch = vers[0];
+                        switch(vers.length) {
+                            case 2:
+                                var commit = vers[1];
+                                var commitdate = null;
+                                break;
+                            case 3:
+                                var commit = vers[1];
+                                var commitdate = vers[2];
+                                break;
+                            default:
+                                var commit = null;
+                                var commitdate = null;
+                        }
+                        var required_branch = when[k]["branch"];
+                        var required_commit = when[k]["commit"];
+                        var required_date = when[k]["date"];
+                        console.log(`Hub run ${k} branch:${branch} commit:${commit} commit-date:${commitdate}`);
+                        console.log(`Checking compat branch:${required_branch} commit:${required_commit} commit-date:${required_date}`);
+                        // first check branch
+                        if(required_branch == branch) {
+                          // then commit
+                          if(required_commit) {
+                            if(required_commit != commit) {
+                              console.log(`Commit mismatch, need ${required_commit} but got ${commit}`);
+                              continue;
+                            } else {
+                              // commit more restrictive than date, if match, keep that version
+                              console.log("Commits matches");
+                              self.required_studio_version = compat[i]["requires"];
+                              break;
+                            }
+                          }
+                          // then branch
+                          if(required_date) {
+                            if(!commitdate) {
+                              console.log("Date compat needed but no commit date returned from Hub");
+                              continue;
+                            }
+                            // can be an expression ("more recent than", "older than", etc...)
+                            var interval = required_date.split(",");
+                            if(interval.length == 2) {
+                              var fromd = interval[0];
+                              var tod = interval[1];
+                              var dateok = evalDateCompat(fromd,commitdate) && evalDateCompat(tod,commitdate);
+                            } else {
+                              var dateok = evalDateCompat(required_date,commitdate);
+                            }
+                            if(!dateok) {
+                              console.log(`Date mismatch, need ${required_date} but got ${commitdate}`);
+                              continue;
+                            } else {
+                              console.log("Dates match");
+                              self.required_studio_version = compat[i]["requires"];
+                              break;
+                            }
+                          } else {
+                            // no commit, no date, but branches match
+                            self.required_studio_version = compat[i]["requires"];
+                            console.log(`Branches match, required Studio version: ${self.required_studio_version}`);
+                            break;
+                          }
+                        } else {
+                          console.log(`Branch mismatch, need ${required_branch} but got ${branch}`);
+                        }
+                      }
+                    }
+                    if(self.required_studio_version) {
+                      break; // again to exit main for loop
+                    } else {
+                      console.log("No match found or no required version specified");
+                    }
+                }
+                })
+                .catch(err => {
+                      console.log("Couldn't load compat.json file");
+                      console.log(err);
+                })
         },
         refreshConnection: function(url) {
             var self = this;
@@ -905,6 +1028,9 @@
             this.skip_studio_compat = skip;
 
         },
+        switchReadOnly() {
+            this.readonly_switch = !this.readonly_switch;
+        },
         setupTerminal() {
             $('.terminal.item').popup({
                 popup: $('.terminal.popup'),
@@ -932,6 +1058,22 @@
         redirect: function(url, params) {
             console.log(`Redirecting to ${url}, with param ${JSON.stringify(params)}`);
             router.push({name : url, params: params});
+        },
+        showUpgrades() {
+            this.loading();
+            var self = this;
+            $('.ui.basic.upgrade.modal')
+            .modal("setting", {
+                detachable : false,
+                closable: false,
+                onApprove: function () {
+                    self.loaded();
+                },
+                onDeny: function() {
+                    self.loaded();
+                }
+            })
+            .modal("show");
         },
     }
 }
@@ -1022,6 +1164,14 @@
   -ms-animation: rotating 2s linear infinite;
   -o-animation: rotating 2s linear infinite;
   animation: rotating 2s linear infinite;
+}
+
+.clickicon {
+    cursor: pointer;
+}
+
+.upgrade {
+    color: red;
 }
 
     html,

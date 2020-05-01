@@ -211,9 +211,9 @@ class DataTransformAPI(DataTransform):
                 # Break out if an input type was used.
                 if new_doc:
                     break
-            if not new_doc and \
-                ((self.skip_w_regex and self.skip_w_regex.match(doc['_id'])) \
-                or not self.skip_on_failure):
+            if not new_doc and (
+                    (self.skip_w_regex and self.skip_w_regex.match(doc['_id']))
+                    or not self.skip_on_failure):
                 res_lst.append(doc)
 
         self.logger.info("_replace_keys:  Num of documents yielded:  {}".format(len(res_lst)))
@@ -259,7 +259,7 @@ class DataTransformMyChemInfo(DataTransformAPI):
             'drugbank.inchi',
             'chembl.inchi',
             'pubchem.inchi'
-            ],
+        ],
         'inchikey': [
             'drugbank.inchi_key',
             'chembl.inchi_key',
@@ -268,7 +268,7 @@ class DataTransformMyChemInfo(DataTransformAPI):
     }
     # The order of output_types decides the priority
     # of the key types we used to get _id value
-    output_types = ['inchikey', 'unii', 'rxnorm', 'drugbank', \
+    output_types = ['inchikey', 'unii', 'rxnorm', 'drugbank',
                     'chebi', 'chembl', 'pubchem', 'drugname'],
 
     def __init__(self, input_types,

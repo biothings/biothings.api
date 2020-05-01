@@ -1,0 +1,8 @@
+[
+  {
+    "when" : {
+      "biothings_version" : {"branch" : "master"}
+    },
+    "requires" : "this"
+  }
+]

@@ -14,7 +14,7 @@
                     </div>
                 </div>
                 <div class="meta">
-                    <div>
+                    <div :class="actionable">
                         <i class="file alternate icon"></i>{{release.diff.files.length}} diff file(s) created ({{ total_diff_size | pretty_size(precision=0) }})
                         <button class="ui tinytiny grey labeled icon button" @click="applyDiff(release)">
                             <i class="external link square alternate icon"></i>Apply
@@ -162,11 +162,10 @@ import Vue from 'vue';
 import ReleaseNoteSummary from './ReleaseNoteSummary.vue';
 import PublishSummary from './PublishSummary.vue';
 import BaseReleaseEvent from './BaseReleaseEvent.vue';
-import Loader from './Loader.vue'
 
 export default {
     name: 'diff-release-event',
-    mixins: [ Loader, BaseReleaseEvent, ],
+    mixins: [ BaseReleaseEvent, ],
     props: ['release','build','type'],
     mounted() {
         $(".ui.backendenv.dropdown").dropdown();

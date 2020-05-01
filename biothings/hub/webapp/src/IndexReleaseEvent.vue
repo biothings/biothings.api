@@ -16,7 +16,7 @@
                     Current version: <b>{{ build._meta.build_version }}</b>
                 </div>
                 <div class="meta">
-                  <div>
+                  <div :class="actionable">
                     <i class="file alternate icon"></i> {{ num_indexed | formatNumber }} documents indexed
                       <button :class="[release.snapshot ? 'disabled' : '','ui tinytiny grey labeled icon button']" @click="snapshot(release)">
                           <i class="bookmark icon"></i>Snapshot
@@ -30,7 +30,7 @@
                         <thead>
                           <tr>
                             <th>Snapshot Name</th>
-                            <th>Actions</th>
+                            <th :class="actionable">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -39,7 +39,7 @@
                                 <a>{{name}}</a>
                                 <publish-summary v-if="build.publish && build.publish.full && build.publish.full.hasOwnProperty(name)":publish="build.publish.full[name]" :type="type"></publish-summary>
                             </td>
-                            <td>
+                            <td :class="actionable">
                                 <button class="ui tinytiny grey labeled icon button"
                                         @click="publish(release,name,build._id)">
                                     <i class="share alternate square icon"></i>
@@ -189,11 +189,10 @@ import Vue from 'vue';
 import ReleaseNoteSummary from './ReleaseNoteSummary.vue';
 import BaseReleaseEvent from './BaseReleaseEvent.vue';
 import PublishSummary from './PublishSummary.vue';
-import Loader from './Loader.vue'
 
 export default {
     name: 'index-release-event',
-    mixins: [ Loader, BaseReleaseEvent, ],
+    mixins: [ BaseReleaseEvent, ],
     props: ['release','build','type'],
     mounted() {
     },

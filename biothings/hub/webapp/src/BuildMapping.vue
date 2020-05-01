@@ -1,6 +1,6 @@
 <template v-if="maps">
     <span>
-        <div class="ui fluid basic segment right aligned">
+        <div class="ui fluid basic segment right aligned" :class="actionable">
             <button class="ui button mini" v-on:click="inspect">
                 <i class="unhide icon"></i>
                 Inspect data
@@ -65,13 +65,14 @@
         </div>
         <div v-else class="ui segment">
             No mapping found.
-            <button class="ui button mini" v-on:click="inspect">
-                <i class="unhide icon"></i>
-                Inspect data
-            </button>
-            to create one.
+            <span :class="actionable">
+                <button class="ui button mini" v-on:click="inspect">
+                    <i class="unhide icon"></i>
+                    Inspect data
+                </button>
+                to create one.
+            </span>
         </div>
-
 
     </span>
 </template>
@@ -88,11 +89,12 @@ import BuildStats from './BuildStats.vue'
 import BuildLogs from './BuildLogs.vue'
 import BuildConfig from './BuildConfig.vue'
 import DiffUtils from './DiffUtils.vue'
+import Actionable from './Actionable.vue'
 
 export default {
     name: 'build-mapping',
     props: ['build'],
-    mixins: [DiffUtils], // for diff mapping
+    mixins: [DiffUtils, Actionable, ], // for diff mapping
     components: { InspectForm, MappingMap, JsonDiffResults, BuildReleases,
                   BuildSources, BuildStats, BuildLogs, BuildConfig, },
     mounted () {

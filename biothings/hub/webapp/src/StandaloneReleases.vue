@@ -1,6 +1,6 @@
 <template>
     <span>
-        <div class="ui grid">
+        <div class="ui grid" :class="actionable">
             <div class="fourteen wide column">
             </div>
             <div class="two wide column">
@@ -46,6 +46,7 @@
 import Vue from 'vue'
 import axios from 'axios'
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 import StandaloneRelease from './StandaloneRelease.vue'
 import StandaloneWizard from './StandaloneWizard.vue'
 import bus from './bus.js'
@@ -53,7 +54,7 @@ import bus from './bus.js'
 
 export default {
 	name: 'standalone-releases',
-	mixins: [ Loader, ],
+	mixins: [ Loader, Actionable, ],
 	mounted () {
 		$('select.dropdown').dropdown();
 		this.refresh();
@@ -65,6 +66,7 @@ export default {
 	},
 	beforeDestroy() {
         this.version_urls = [];
+        $('.ui.wizard.modal').remove();
 	},
 	watch: {
 	},

@@ -45,9 +45,24 @@ In addition to the standards outlined in PEP 8, we have a few guidelines:
         self.s = None    # number of records to skip, useful to continue indexing after an error.
 
 * docstring format
-  A typical docstring should follow this `sphinx` format:
 
-  a typical Sphinx docsting has the following format:
+  A typical docstring should follow this [Google style](http://google.github.io/styleguide/pyguide.html#381-docstrings):
+
+      """[Summary]
+
+      Args:
+          path (str): The path of the file to wrap
+          field_storage (FileStorage): The :class:`FileStorage` instance to wrap
+          temporary (bool): Whether or not to delete the file when the File
+            instance is destructed
+
+      Returns:
+          BufferedFileStorage: A buffered writable file descriptor
+      """
+
+  This is enabled by using [sphinx.ext.napoleon](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/) extension in the `docs/conf.py` file.
+
+  Alternatively, a default `sphinx` docstring style is also supported:
 
       """[Summary]
 
@@ -60,6 +75,8 @@ In addition to the standards outlined in PEP 8, we have a few guidelines:
       :rtype: [ReturnType]
       """
   See examples and additional details [here](https://sphinx-rtd-tutorial.readthedocs.io/en/latest/docstrings.html).
+
+Please also check this [CODING_STYLE_EXAMPLES.md](CODING_STYLE_EXAMPLES.md) doc for some common styling issues we should avoid.
 
 In some particular cases, the style guidelines may not be suitable. Use your own best judgment,
 and also raise the issue with the team members for their opinions. Read more about when to ignore a

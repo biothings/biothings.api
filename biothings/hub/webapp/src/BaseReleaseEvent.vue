@@ -7,10 +7,11 @@ import axios from 'axios'
 import bus from './bus.js'
 import Vue from 'vue';
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 
 export default {
     name: 'base-release-event',
-    mixins: [ Loader, ],
+    mixins: [ Loader, Actionable, ],
     props: ['release','build','type'],
     mounted() {
     },

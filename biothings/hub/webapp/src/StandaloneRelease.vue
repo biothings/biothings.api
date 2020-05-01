@@ -52,13 +52,13 @@
                             </div>
                         </div>
                     </div>
-                    <button class="ui small negative basic button" @click="reset()">Reset</button>
+                    <button class="ui small negative basic button" @click="reset()" :class="actionable">Reset</button>
 
                 </div>
             </div>
 		</div>
 
-        <div :class="['ui basic reset modal',name]">
+        <div :class="['ui basic reset modal',encoded_name]">
                 <h2 class="ui icon">
                     <i class="info circle icon"></i>
                     Reset backend
@@ -88,6 +88,7 @@
 import Vue from 'vue'
 import axios from 'axios'
 import Loader from './Loader.vue'
+import Actionable from './Actionable.vue'
 import AsyncCommandLauncher from './AsyncCommandLauncher.vue'
 import StandaloneReleaseVersions from './StandaloneReleaseVersions.vue'
 import bus from './bus.js'
@@ -96,7 +97,7 @@ import bus from './bus.js'
 export default {
     name: 'standalone-release',
     props: ['name', 'url'],
-    mixins: [ AsyncCommandLauncher, Loader, ],
+    mixins: [ AsyncCommandLauncher, Loader, Actionable, ],
     mounted () {
         this.refresh();
     },
@@ -115,6 +116,9 @@ export default {
         }
     },
     computed: {
+        encoded_name: function() {
+            return btoa(this.name).replace(/=/g,"_");
+        }
     },
     components: { StandaloneReleaseVersions, },
     methods: {
@@ -142,7 +146,7 @@ export default {
         },
         reset: function() {
             var self = this;
-            $(`.ui.basic.reset.modal.${this.name}`)
+            $(`.ui.basic.reset.modal.${this.encoded_name}`)
             .modal("setting", {
                 onApprove: function () {
                     self.resetBackend()

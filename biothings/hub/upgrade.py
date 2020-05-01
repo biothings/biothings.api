@@ -1,7 +1,11 @@
 import sys
+import os
+import subprocess
 
 from biothings.utils.hub_db import get_src_dump, get_data_plugin, get_hub_db_conn, backup, restore
 from biothings import config
+from biothings.hub.dataload.dumper import GitDumper
+
 logging = config.logger
 
 
@@ -113,3 +117,28 @@ def migrate(from_version, to_version, restore_if_failure=True):
             logging.info(
                 "*not* restoring original data. It can still be restored using file '%s'"
                 % path)
+
+
+class BaseSystemUpgrade(GitDumper):
+
+    def _pull(self, *args):
+        old = os.path.abspath(os.curdir)
+        try:
+            # SRC_ROOT_FOLDER is set to code base root
+            os.chdir(self.__class__.SRC_ROOT_FOLDER)
+            cmd = ["git", "pull", "--rebase"]
+            self.logger.debug("Pulling new code in '%s' using: %s" % (self.__class__.SRC_ROOT_FOLDER, cmd))
+            subprocess.check_call(cmd)
+        finally:
+            os.chdir(old)
+
+
+class BioThingsSystemUpgrade(BaseSystemUpgrade):
+    """Used to upgrade biothings SDK code"""
+    SRC_NAME = "__biothings_sdk"  # "__" means private, not listed
+
+
+class ApplicationSystemUpgrade(BaseSystemUpgrade):
+    """Used to upgrade application (api app) code"""
+    SRC_NAME = "__application"  # "__" means private, not listed
+    

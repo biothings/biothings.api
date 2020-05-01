@@ -3,7 +3,7 @@
         <div v-if="error" class="ui error message">
             {{error}}
         </div>
-        <button class="ui small grey newrelease right floated  button" @click="newRelease">
+        <button class="ui small grey newrelease right floated  button" @click="newRelease" :class="actionable">
             New release
         </button>
         <div class="ui feed"  v-if="releases">
@@ -102,7 +102,7 @@
                     <i class="remove icon"></i>
                     Cancel
                 </div>
-                <div class="ui green ok inverted button" id="newrelease_ok">
+                <div class="ui green ok inverted button" id="newrelease_ok" :class="actionable">
                     <i class="checkmark icon"></i>
                     OK
                 </div>
@@ -117,10 +117,12 @@ import bus from './bus.js'
 import Vue from 'vue';
 import IndexReleaseEvent from './IndexReleaseEvent.vue';
 import DiffReleaseEvent from './DiffReleaseEvent.vue';
+import Actionable from './Actionable.vue'
 
 export default {
     name: 'build-releases',
     props: ['build'],
+    mixins: [Actionable, ],
     mounted() {
         $(".ui.releasetype.dropdown").dropdown();
     },

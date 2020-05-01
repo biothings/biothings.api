@@ -345,13 +345,10 @@ class BaseDumper(object):
                 self.release_client()
 
     def get_predicates(self):
-        # TODO: can't use this one for parallized dumpers
-        #def no_same_dumper_running(job_manager):
-        #    """
-        #    Avoid collision at file's level (and what's the point anyway?)
-        #    """
-        #    return len([j for j in job_manager.jobs.values() if \
-        #            j["source"] == self.src_name and j["category"] == DUMPER_CATEGORY]) == 0
+        """
+        Return a list of predicates (functions returning true/false, as in math logic)
+        which instructs/dictates if job manager should start a job (process/thread)
+        """
         def no_corresponding_uploader_running(job_manager):
             """
             Don't download data if the associated uploader is running
@@ -1161,6 +1158,15 @@ class DumperManager(BaseSourceManager):
 
     SOURCE_CLASS = BaseDumper
 
+    def get_source_ids(self):
+        """Return displayable list of registered source names (not private)"""
+        # skip private ones starting with __
+        registered = sorted([src for src in self.register.keys() if not src.startswith("__")])
+        return registered
+
+    def __repr__(self):
+        return "<%s [%d registered]: %s>" % (self.__class__.__name__, len(self.register), self.get_source_ids())
+
     def clean_stale_status(self):
         # not uysing mongo query capabilities as hub backend could be ES, SQLlite, etc...
         # so manually iterate
@@ -1301,7 +1307,7 @@ class DumperManager(BaseSourceManager):
 
     def source_info(self, source=None):
         src_dump = get_src_dump()
-        src_ids = list(self.register.keys())
+        src_ids = self.get_source_ids()
         if source:
             if source in src_ids:
                 src_ids = [source]

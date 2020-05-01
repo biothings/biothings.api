@@ -3,8 +3,9 @@ import itertools
 import json
 import re
 import time
-from elasticsearch import Elasticsearch, NotFoundError, RequestError, \
-                          TransportError, ElasticsearchException
+
+from elasticsearch import (Elasticsearch, NotFoundError, RequestError,
+                           TransportError, ElasticsearchException)
 from elasticsearch import helpers
 
 from biothings.utils.common import iter_n, splitstr, nan, inf
@@ -70,7 +71,7 @@ class IndexerException(Exception):
 
 class ESIndexer():
     def __init__(self, index, doc_type, es_host, step=10000,
-                 number_of_shards=10, number_of_replicas=0, 
+                 number_of_shards=10, number_of_replicas=0,
                  check_index=True, **kwargs):
         self.es_host = es_host
         self._es = get_es(es_host, **kwargs)
@@ -202,9 +203,9 @@ class ESIndexer():
             })
             return ndoc
         actions = (_get_bulk(doc) for doc in docs)
-        num_ok,errors = helpers.bulk(self._es, actions, chunk_size=step)
+        num_ok, errors = helpers.bulk(self._es, actions, chunk_size=step)
         if errors:
-            raise ElasticsearchException("%d errors while bulk-indexing: %s" % (len(errors),[str(e) for e in errors]))
+            raise ElasticsearchException("%d errors while bulk-indexing: %s" % (len(errors), [str(e) for e in errors]))
         return num_ok, errors
 
     def delete_doc(self, id):                # pylint: disable=redefined-builtin
@@ -700,7 +701,7 @@ def generate_es_mapping(inspect_doc, init=True, level=0):
             except KeyError:
                 errors.append("Can't find map type %s for key %s" % (inspect_doc[rootk], rootk))
             except TypeError:
-                errors.append("Type %s for key %s isn't allowed in ES mapping" % (typ,rootk))
+                errors.append("Type %s for key %s isn't allowed in ES mapping" % (typ, rootk))
         elif inspect_doc[rootk] == {}:
             typ = rootk
             return map_tpl[typ]
@@ -761,7 +762,7 @@ def get_event():
 
 def get_hub_config():
     db = Database()
-    return db[getattr(db.CONFIG,"HUB_CONFIG_COLLECTION","hub_config")]
+    return db[getattr(db.CONFIG, "HUB_CONFIG_COLLECTION", "hub_config")]
 
 def get_source_fullname(col_name):
     pass

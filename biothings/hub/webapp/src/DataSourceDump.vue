@@ -51,7 +51,7 @@
                 </table>
             </div>
             <div class="six wide column">
-                <div :class="['ui dump form',source._id]">
+                <div :class="['ui dump form',source._id, actionable]">
                     <div class="fields">
                         <div class="ten wide field">
                             <div class="ui checkbox">
@@ -75,6 +75,7 @@
 <script>
 import axios from 'axios'
 import bus from './bus.js'
+import Actionable from './Actionable.vue'
 
 export default {
     name: 'data-source-dump',
@@ -83,6 +84,7 @@ export default {
         $('.ui.checkbox')
         .checkbox();
     },
+    mixins: [Actionable, ],
     components: { },
     methods: {
         do_dump() {

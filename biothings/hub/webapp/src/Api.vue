@@ -55,7 +55,7 @@
             </div>
         </div>
 
-        <div class="extra content">
+        <div class="extra content" :class="actionable">
             <div class="ui icon buttons left floated mini" v-if="api.status != 'running'">
                 <button class="ui button" v-on:click="startAPI">
                     <i class="play icon"></i>
@@ -101,11 +101,11 @@ import axios from 'axios'
 import bus from './bus.js'
 import Vue from 'vue';
 import Loader from './Loader.vue'
-import InspectForm from './InspectForm.vue'
+import Actionable from './Actionable.vue'
 
 export default {
     name: 'api',
-    mixins: [ Loader, ],
+    mixins: [ Loader, Actionable, ],
     props: ['api',],
     mounted() {
         $('.menu .item')
@@ -120,7 +120,7 @@ export default {
             errors : [],
         }
     },
-    components: { InspectForm, },
+    components: { },
     computed : {
         url_metadata : function() {
             return this.api.url + "/metadata";
