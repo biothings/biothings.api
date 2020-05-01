@@ -22,6 +22,7 @@ biothings.web.handlers.BaseESRequestHandler
 biothings.web.handlers.ESRequestHandler
 
 """
+import copy
 import logging
 
 from elasticsearch.exceptions import ElasticsearchException
@@ -80,10 +81,7 @@ class BaseHandler(SentryMixin, RequestHandler):
         """
         Implement this method to handle streamed request data.
         """
-
-
         # this dummy implementation silences the pylint abstract-class error
-import copy
 
 class StatusHandler(BaseHandler):
     '''
