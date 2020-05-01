@@ -59,9 +59,14 @@ class ESQueryBackend(object):
                 res = await query.using(self.client).execute()
             except ConnectionError:
                 raise HTTPError(503)
-            except RequestError as err:
-                raise BadRequest(_es_error=err)
-            else:
+            except RequestError as exc:
+                raise BadRequest(_es_error=exc)
+            except TransportError as exc:
+                if exc.error == 'search_phase_execution_exception':
+                    raise BadRequest(reason=exc.error)
+                else:  # unexpected
+                    raise
+            else:  # format to {} or [{}...]
                 if isinstance(res, list):
                     return [res_.to_dict() for res_ in res]
                 return res.to_dict()
