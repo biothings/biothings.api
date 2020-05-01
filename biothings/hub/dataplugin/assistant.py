@@ -423,6 +423,8 @@ class AdvancedPluginLoader(BasePluginLoader):
                 tmpdf, elem = os.path.split(tmpdf)
                 if elem == ".":
                     continue
+                if tmpdf == "/":
+                    break  # this is what's remaining if absolute path
                 path_elements.append(elem)
             path_elements.reverse()  # we got elems from the end, back to forward
             modpath = ".".join(path_elements)
