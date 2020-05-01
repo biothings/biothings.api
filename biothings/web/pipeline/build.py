@@ -40,7 +40,7 @@ class ESQueryBuilder(object):
 
     def _build(self, q, options):
 
-        if options.scopes:
+        if options.scopes is not None:
             build_query = self.build_match_query
         else:  # no scopes, only q
             build_query = self.build_string_query
