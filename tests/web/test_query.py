@@ -771,3 +771,100 @@ class TestQueryString(BiothingsTestCase):
         # Event 922fc99638cb4987bccbfd30c914ff03
         _q = '/v1/query?q=c("ZNF398", "U2AF...'
         self.request(_q, expect=400)
+
+class TestQueryMatch(BiothingsTestCase):
+
+    def test_01(self):
+        self.query(method='POST', json={'q': '1017'})
+
+    def test_02(self):
+        self.query(method='POST', json={'q': 1017})
+
+    def test_03(self):
+        self.query(method='POST', json={'q': ['1017']})
+
+    def test_04(self):
+        self.query(method='POST', json={'q': [1017]})
+
+    def test_05(self):
+        self.query(method='POST', json={'q': ['1017'], 'scopes': []})  # default es *.*
+
+    def test_06(self):
+        payload = {
+            "q": "cdk2",
+            "scopes": ["symbol", "entrezgene"],
+            "fields": ["symbol", "name", "taxid", "entrezgene", "ensemblgene"]
+        }
+        ans = self.query(method='POST', json=payload)
+        assert len(ans) == 10
+
+    def test_10(self):
+        self.request('query', method='POST', json={'q': [1017], 'scopes': '*'}, expect=400)
+
+    def test_11(self):
+        self.request('query', method='POST', json={'q': [1017], 'scopes': '*'}, expect=400)
+
+    def test_20_nested(self):
+        """
+        [
+            {
+                "query": [
+                    "cdk2",
+                    "9555"
+                ],
+                "_id": "101025892",
+                "_score": 1.0840356,
+                "entrezgene": "101025892",
+                "name": "cyclin dependent kinase 2",
+                "symbol": "CDK2",
+                "taxid": 9555
+            }
+        ]
+        """
+        payload = {
+            "q": [["cdk2", "9555"]],
+            "scopes": ["symbol", "taxid"],
+            "fields": ["symbol", "name", "taxid", "entrezgene", "ensemblgene"]
+        }
+        ans = self.query(method='POST', json=payload)
+        assert len(ans) == 1
+
+    def test_21_nested(self):
+        """
+        [
+            {
+                "query": [
+                    "101025892",
+                    "9555"
+                ],
+                "_id": "101025892",
+                "_score": 3.8134108,
+                "entrezgene": "101025892",
+                "name": "cyclin dependent kinase 2",
+                "symbol": "CDK2",
+                "taxid": 9555
+            }
+        ]
+        """
+        payload = {
+            "q": [["101025892", "9555"]],
+            "scopes": [["symbol", "entrezgene"], "taxid"],
+            "fields": ["symbol", "name", "taxid", "entrezgene", "ensemblgene"]
+        }
+        ans = self.query(method='POST', json=payload)
+        assert len(ans) == 1
+
+    def test_30_nested_invalid(self):
+        """
+        {
+            "code": 400,
+            "success": false,
+            ...
+        }
+        """
+        payload = {
+            "q": [["101025892", "9555"]],  # 2 values
+            "scopes": [["symbol", "entrezgene"], "taxid", "taxi"],  # 3 values
+            "fields": ["symbol", "name", "taxid", "entrezgene", "ensemblgene"]
+        }
+        self.request('query', method='POST', json=payload, expect=400)
