@@ -774,6 +774,9 @@ class TestQueryString(BiothingsTestCase):
 
 class TestQueryMatch(BiothingsTestCase):
 
+    # nested match
+    # https://github.com/biothings/biothings.api/issues/49
+
     def test_01(self):
         self.query(method='POST', json={'q': '1017'})
 
