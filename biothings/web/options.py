@@ -194,50 +194,6 @@ class OptionArg():
             )
         return value
 
-
-class OptionSets():
-
-    def __init__(self):
-
-        self.options = defaultdict(partial(defaultdict, dict))
-        self.groups = defaultdict()
-        self.methods = defaultdict()
-
-    def add(self, name, optionset):
-        if name:
-            for method, options in optionset.items():
-                self.options[name][method.upper()].update(options)
-
-    def get(self, name):
-
-        return Options(
-            self.options[name],
-            self.groups[name],
-            self.methods[name]
-        )
-
-    def log(self):
-
-        res = copy.deepcopy(self.options)
-        res = self._serialize(res)
-        for api, groups in self.groups.items():
-            res[api]['_groups'] = groups
-        for api, methods in self.methods.items():
-            res[api]['_methods'] = methods
-        return res
-
-    def _serialize(self, obj):
-        if isinstance(obj, dict):
-            for key, val in obj.items():
-                obj[key] = self._serialize(val)
-            return obj
-        elif isinstance(obj, (list, tuple)):
-            return [self._serialize(item) for item in obj]
-        elif isinstance(obj, (str, int)):
-            return obj
-        else:  # best effort
-            return str(obj)
-
 class Options():
 
     def __init__(self, options, groups, methods):
@@ -282,3 +238,46 @@ class Options():
                 result[group] = {}
 
         return dotdict(result)
+
+class OptionSets():
+
+    def __init__(self):
+
+        self.options = defaultdict(partial(defaultdict, dict))
+        self.groups = defaultdict()
+        self.methods = defaultdict()
+
+    def add(self, name, optionset):
+        if name:
+            for method, options in optionset.items():
+                self.options[name][method.upper()].update(options)
+
+    def get(self, name):
+
+        return Options(
+            self.options[name],
+            self.groups[name],
+            self.methods[name]
+        )
+
+    def log(self):
+
+        res = copy.deepcopy(self.options)
+        res = self._serialize(res)
+        for api, groups in self.groups.items():
+            res[api]['_groups'] = groups
+        for api, methods in self.methods.items():
+            res[api]['_methods'] = methods
+        return res
+
+    def _serialize(self, obj):
+        if isinstance(obj, dict):
+            for key, val in obj.items():
+                obj[key] = self._serialize(val)
+            return obj
+        elif isinstance(obj, (list, tuple)):
+            return [self._serialize(item) for item in obj]
+        elif isinstance(obj, (str, int)):
+            return obj
+        else:  # best effort
+            return str(obj)
