@@ -66,7 +66,6 @@ CACHE_MAX_AGE = 604800  # default 7 days
 # Global default cap for list inputs
 LIST_SIZE_CAP = 1000
 
-
 # For format=html
 HTML_OUT_HEADER_IMG = "https://biothings.io/static/favicon.ico"
 HTML_OUT_TITLE = "<p>Biothings API</p>"
@@ -87,34 +86,26 @@ LOGGING_FORMAT = "%(color)s[%(levelname)s %(name)s %(module)s:%(lineno)d]%(end_c
 # *****************************************************************************
 # User Input Control
 # *****************************************************************************
-
-COMMON_CONTROL_KWARGS = {
+COMMON_KWARGS = {
+    # control group
     'raw': {'type': bool, 'default': False, 'group': 'control'},
     'rawquery': {'type': bool, 'default': False, 'group': 'control'},
-}
-COMMON_ESQB_KWARGS = {
+    # esqb group
     '_source': {'type': list, 'group': 'esqb', 'max': 1000, 'alias': ['fields', 'field', 'filter']},
     'size': {'type': int, 'group': 'esqb', 'max': 1000, 'alias': 'limit'},
-}
-COMMON_TRANSFORM_KWARGS = {
+    # transform group
     'dotfield': {'type': bool, 'default': False, 'group': 'transform'},
     '_sorted': {'type': bool, 'default': True, 'group': 'transform'},  # alaphabetically
     'always_list': {'type': list, 'group': 'transform', 'max': 1000},
     'allow_null': {'type': list, 'group': 'transform', 'max': 1000}
 }
-
-COMMON_KWARGS = {}
-COMMON_KWARGS.update(COMMON_CONTROL_KWARGS)
-COMMON_KWARGS.update(COMMON_ESQB_KWARGS)
-COMMON_KWARGS.update(COMMON_TRANSFORM_KWARGS)
-
 ANNOTATION_KWARGS = {
-    '*': COMMON_KWARGS,
+    '*': COMMON_KWARGS.copy(),
     'GET': {'id': {'type': str, 'path': 0}},
     'POST': {'ids': {'type': list, 'max': 1000, 'required': True}}
 }
 QUERY_KWARGS = {
-    '*': COMMON_KWARGS,
+    '*': COMMON_KWARGS.copy(),
     'GET': {'q': {'type': str, 'default': '__all__', 'group': 'esqb'},
             'aggs': {'type': list, 'max': 1000, 'group': 'esqb', 'alias': 'facets'},
             'facet_size': {'type': int, 'default': 10, 'max': 1000, 'group': 'esqb', },
