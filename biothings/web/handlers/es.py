@@ -112,7 +112,7 @@ class MetadataSourceHandler(BaseESRequestHandler):
 
     async def get(self):
 
-        await self.web_settings.read_index_mappings()
+        await self.web_settings.read_index_mappings(self.biothing_type)
         _meta = self.web_settings.source_metadata[self.biothing_type]
 
         if self.args.dev:
