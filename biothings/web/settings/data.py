@@ -16,10 +16,6 @@ from biothings.web.settings import BiothingWebSettings
 class BiothingESWebSettings(BiothingWebSettings):
     '''
     `BiothingWebSettings`_ subclass with functions specific to an elasticsearch backend.
-
-    * Use the known live ES connection if more than one is specified.
-    * Cache source metadata stored under the _meta field in es indices.
-
     '''
 
     def __init__(self, config=None, **kwargs):
