@@ -213,7 +213,7 @@ class Indexer(object):
             bnum = 1
             if ids:
                 self.logger.info("Indexing from '%s' with specific list of _ids, create indexer job with batch_size=%d" % (target_name, batch_size))
-                id_provider = [ids]
+                id_provider = iter_n(ids,batch_size)
             else:
                 self.logger.info("Fetch _ids from '%s', and create indexer job with batch_size=%d" % (target_name, batch_size))
                 id_provider = id_feeder(target_collection, batch_size=batch_size,logger=self.logger)
