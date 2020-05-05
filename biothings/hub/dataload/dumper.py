@@ -1161,7 +1161,11 @@ class DumperManager(BaseSourceManager):
     def get_source_ids(self):
         """Return displayable list of registered source names (not private)"""
         # skip private ones starting with __
-        registered = sorted([src for src in self.register.keys() if not src.startswith("__")])
+        # skip those deriving from bt.h.autoupdate.dumper.BiothingsDumper, they're used for autohub
+        # and considered internal (note: only one dumper per source, so [0])
+        from biothings.hub.autoupdate.dumper import BiothingsDumper
+        registered = sorted([src for src,klasses in self.register.items() if not src.startswith("__") and
+                             not issubclass(klasses[0],BiothingsDumper)])
         return registered
 
     def __repr__(self):

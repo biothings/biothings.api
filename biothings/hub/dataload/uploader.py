@@ -705,6 +705,20 @@ class UploaderManager(BaseSourceManager):
         super(UploaderManager, self).__init__(*args, **kwargs)
         self.poll_schedule = poll_schedule
 
+    def get_source_ids(self):
+        """Return displayable list of registered source names (not private)"""
+        # skip private ones starting with __
+        # skip those deriving from bt.h.autoupdate.uploader.BiothingsUploader, they're used for autohub
+        # and considered internal (note: while there could be more than 1 uploader per source, when it's
+        # an autoupdate one, there's only one, so [0])
+        from biothings.hub.autoupdate.uploader import BiothingsUploader  # prevent circular imports
+        registered = sorted([src for src,klasses in self.register.items() if not src.startswith("__") and
+                             not issubclass(klasses[0],BiothingsUploader)])
+        return registered
+
+    def __repr__(self):
+        return "<%s [%d registered]: %s>" % (self.__class__.__name__, len(self.register), self.get_source_ids())
+
     def clean_stale_status(self):
         src_dump = get_src_dump()
         srcs = src_dump.find()
@@ -806,7 +820,7 @@ class UploaderManager(BaseSourceManager):
 
     def source_info(self, source=None):
         src_dump = get_src_dump()
-        src_ids = list(self.register.keys())
+        src_ids = self.get_source_ids()
         if source:
             if source in src_ids:
                 src_ids = [source]
