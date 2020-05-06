@@ -415,19 +415,7 @@ class AdvancedPluginLoader(BasePluginLoader):
         if os.path.exists(df):
             # we assume there's a __init__ module exposing Dumper and Uploader classes
             # as necessary
-            # we could strip and split on "/" manually but let's use os.path for that
-            # just to make sure we'll handle any cases (supposedly)
-            tmpdf = copy.deepcopy(df)
-            path_elements = []
-            while tmpdf:
-                tmpdf, elem = os.path.split(tmpdf)
-                if elem == ".":
-                    continue
-                if tmpdf == "/":
-                    break  # this is what's remaining if absolute path
-                path_elements.append(elem)
-            path_elements.reverse()  # we got elems from the end, back to forward
-            modpath = ".".join(path_elements)
+            modpath = df.split("/")[-1]
             # before registering, process optional requirements.txt
             reqfile = os.path.join(df,"requirements.txt")
             if os.path.exists(reqfile):
