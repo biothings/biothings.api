@@ -33,7 +33,7 @@ class SimpleConfigTest(object):
 
     def test_00_structure(self):
         conf = self.confobj.show()
-        eq_(list(conf.keys()),["scope","_dirty"])
+        eq_(list(conf.keys()),["scope","allow_edits","_dirty"])
         eq_(list(conf["scope"].keys()), ["config","class"])
         eq_(conf["scope"]["class"],{}) # no config for superseded class
 
