@@ -35,7 +35,7 @@
                         <a :class="['red item',idx == 0 ? 'active' : '']" :data-tab="config_tabs[idx]" v-if="config" v-for="idx in config_tabs.keys()" >{{ config_tabs[idx] }} </a>
                     </div>
                     <div :class="['ui bottom attached tab segment',idx == 0 ? 'active':'']" :data-tab="config_tabs[idx]" v-if="config" v-for="idx in config_tabs.keys()">
-                        <hub-config-tab v-bind:section="config_tabs[idx]" v-bind:params="config[config_tabs[idx]]"></hub-config-tab>
+                        <hub-config-tab v-bind:section="config_tabs[idx]" v-bind:params="config[config_tabs[idx]]" v-bind:allow_edits="allow_edits"></hub-config-tab>
                     </div>
                 </p>
             </div>
@@ -103,6 +103,7 @@ export default {
         return {
             config: {},
             dirty: false,
+            allow_edits: false,
             error: null,
         }
     },
@@ -120,6 +121,7 @@ export default {
                 try {
                     var conf = response.data.result.scope.config; // shorten...
                     self.dirty = response.data.result._dirty;
+                    self.allow_edits = response.data.result.allow_edits;
                     // re-organize by section
                     var bysections = {};
                     for(var param in conf) {
