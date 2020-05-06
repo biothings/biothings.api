@@ -3,10 +3,10 @@
         <td class="eight wide">
             <div class="param-name">
                 {{ param.name }}
-                <button :class="['ui mini label button', saving ? 'loading' : '', actionable]" v-bind:[save_disabled]="1" @click="saveParameter">
+                <button :class="['ui mini label button', saving ? 'loading' : '', (allow_edits ? actionable : 'readonly')]" v-bind:[save_disabled]="1" @click="saveParameter">
                     Save
                 </button>
-                <button :class="['ui mini label button', actionable, resetting ? 'loading' : '']" data-tooltip="Reset to default value" @click="resetParameter" v-bind:[reset_disabled]="1">
+                <button :class="['ui mini label button', (allow_edits ? actionable : 'readonly'), resetting ? 'loading' : '']" data-tooltip="Reset to default value" @click="resetParameter" v-bind:[reset_disabled]="1">
                     Reset
                 </button>
                 <a class="ui mini label" v-if="error" :data-tooltip="error">
@@ -21,7 +21,7 @@
         <td class="eight wide">
             <form class="ui form">
                 <div class="field">
-                    <span v-if="readonly || param.readonly">
+                    <span v-if="!allow_edits || readonly || param.readonly">
                         <pre class="param-readonly">{{ displayed_value }}</pre>
                         <div class="param-legend">(value is read-only, it cannot be edited)</div>
                     </span>
@@ -67,7 +67,7 @@ import Actionable from './Actionable.vue'
 
 export default {
     name: 'hub-config-param',
-    props: ["param"],
+    props: ["param","allow_edits"],
     components: { },
     mixins : [ Actionable, ],
     mounted () {

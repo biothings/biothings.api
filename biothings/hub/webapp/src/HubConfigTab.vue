@@ -3,7 +3,7 @@
         <div class="ui info message">All values must be in JSON format</div>
         <table class="ui basic table">
             <tbody>
-                <hub-config-param v-bind:param="param" v-for="param in params"></hub-config-param>
+                <hub-config-param v-bind:param="param" v-for="param in params" v-bind:allow_edits="allow_edits"></hub-config-param>
             </tbody>
         </table>
     </div>
@@ -16,7 +16,7 @@ import HubConfigParam from './HubConfigParam.vue'
 
 export default {
     name: 'hub-config-tab',
-    props: ["section","params"],
+    props: ["section","params","allow_edits"],
     components: { HubConfigParam },
     mixins : [ ],
     mounted () {
