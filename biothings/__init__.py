@@ -138,6 +138,7 @@ class ConfigurationManager(types.ModuleType):
         # set a flag to indicate if config is dirty and the hub needs to reload
         # (something's changed but not taken yet into account)
         byscopes["_dirty"] = self.dirty
+        byscopes["allow_edits"] = self.allow_edits
         return byscopes
 
     def clear_cache(self):
