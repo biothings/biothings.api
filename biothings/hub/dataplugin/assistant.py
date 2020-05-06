@@ -423,8 +423,16 @@ class AdvancedPluginLoader(BasePluginLoader):
                 subprocess.check_call([sys.executable,"-m","pip","install","-r",reqfile])
             # submit to managers to register datasources
             self.logger.info("Registering '%s' to dump/upload managers" % modpath)
-            self.__class__.dumper_manager.register_source(modpath)
-            self.__class__.uploader_manager.register_source(modpath)
+            # register dumpers if any
+            try:
+                self.__class__.dumper_manager.register_source(modpath)
+            except Exception as e:
+                self.logger.info("Couldn't register dumper from module '%s': %s" % (modpath,e))
+            # register uploaders if any
+            try:
+                self.__class__.uploader_manager.register_source(modpath)
+            except Exception as e:
+                self.logger.info("Couldn't register uploader from module '%s': %s" % (modpath,e))
         else:
             self.invalidate_plugin("Missing plugin folder '%s'" % df)
 
