@@ -680,8 +680,7 @@ class HubServer(object):
     def process_hook_file(self, hook_file):
         strcode = open(hook_file).read()
         code = compile(strcode, "<string>", "exec") 
-        print(self.shell.extra_ns.keys())
-        eval(code,self.shell.extra_ns, self.shell.extra_ns)
+        eval(code, self.shell.extra_ns, self.shell.extra_ns)
 
     def configure_managers(self):
         if self.managers is not None:
