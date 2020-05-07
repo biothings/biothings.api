@@ -766,6 +766,37 @@ class JobManager(object):
             ff = asyncio.ensure_future(pfunc())
             return ff
 
+    def schedule(self, crontab, func, *args, **kwargs):
+        """
+        Helper to create a cron job from a callable "func". *argd, and **kwargs
+        are passed to func. "crontab" follows aicron notation.
+        """
+        # we need to dynamically create a wrapper coroutine with a name
+        # that makes sense, taken from func, otherwise all scheduled jobs would
+        # have the same wrapping coroutine name
+        if isinstance(func,partial):
+            func_name = func.func.__name__
+        else:
+            func_name = func.__name__
+        strcode = """
+@asyncio.coroutine
+def %s():
+    func(*args, **kwargs)
+""" % func_name
+        code = compile(strcode, "<string>", "exec")
+        command_globals = {}
+        command_locals = {
+            "asyncio": asyncio,
+            "func": func,
+            "args": args,
+            "kwargs": kwargs
+        }
+        eval(code, command_locals, command_globals)
+        run_func = command_globals[func_name]
+        job = self.submit(run_func,schedule=crontab)
+
+        return job
+
     @property
     def hub_process(self):
         if not self._phub:
