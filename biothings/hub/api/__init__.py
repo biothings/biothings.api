@@ -185,7 +185,9 @@ def generate_handler(shell, name, command_defs):
         cmdname = commanddef["name"]
         try:
             # retrieve the actual command from the shell
-            command = shell.commands[cmdname]
+            command = shell.commands.get(cmdname)  # first try public commands
+            if command is None:
+                command = shell.extra_ns[cmdname]  # then private/hidden commands
             # could be directly a callable or an encapsulating CommandDefinition
             if type(command) == CommandDefinition:
                 command = command["command"]

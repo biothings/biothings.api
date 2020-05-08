@@ -282,7 +282,7 @@ class HubServer(object):
         self.api_config = api_config or self.DEFAULT_API_CONFIG
         # set during configure()
         self.managers = None
-        self.api_endpoints = None
+        self.api_endpoints = {}
         self.readonly_api_endpoints = None
         self.shell = None
         self.commands = None  # default "public" commands
@@ -1105,15 +1105,28 @@ class HubServer(object):
                 return self.managers["dump_manager"].dump_src("__" + code_base)
             self.commands["upgrade"] = CommandDefinition(command=upgrade)
 
+        self.extra_commands["expose"] = self.add_api_endpoint
+
         logging.debug("Registered extra (private) commands: %s",
                       list(self.extra_commands.keys()))
+
+    def add_api_endpoint(self, endpoint_name, command_name, method, **kwargs):
+        """
+        Add an API endpoint to expose command named "command_name"
+        using HTTP method "method". **kwargs are used to specify
+        more arguments for EndpointDefinition
+        """
+        if self.configured:
+            raise Exception("API endpoint creation must be done before Hub is configured")
+        from biothings.hub.api import EndpointDefinition
+        endpoint = EndpointDefinition(name=command_name,method=method,**kwargs)
+        self.api_endpoints[endpoint_name] = endpoint
 
     def configure_api_endpoints(self):
         cmdnames = list(self.commands.keys())
         if self.extra_commands:
             cmdnames.extend(list(self.extra_commands.keys()))
         from biothings.hub.api import EndpointDefinition
-        self.api_endpoints = {}
         self.api_endpoints["config"] = []
         if "config" in cmdnames:
             self.api_endpoints["config"].append(
