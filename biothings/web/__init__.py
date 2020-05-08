@@ -59,6 +59,7 @@ import tornado.httpserver
 import tornado.ioloop
 import tornado.web
 
+from biothings import get_version
 from biothings.web.settings import BiothingESWebSettings
 
 
@@ -85,6 +86,7 @@ class BiothingsAPI():
         # About debug mode in tornado:
         # https://www.tornadoweb.org/en/stable/guide/running.html \
         # #debug-mode-and-automatic-reloading
+        logging.info("Biothings API %s", get_version())
         self.config = BiothingESWebSettings(config_module)
         self.handlers = []  # additional handlers
         self.settings = dict(autoreload=False)
@@ -125,10 +127,8 @@ class BiothingsAPI():
         """
         Run API in an external event loop.
         """
-        settings = dict(self.settings)
-        settings.update(self.config.generate_app_settings(self.debug))
-        handlers = self.config.generate_app_handlers(self.handlers)
-        webapp = tornado.web.Application(handlers, **settings)
+        webapp = self.config.get_app(self.debug, self.handlers)
+        webapp.settings.update(self.settings)  # tornado settings
         server = tornado.httpserver.HTTPServer(webapp, xheaders=True)
         return server
 

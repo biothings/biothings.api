@@ -9,9 +9,12 @@ from elasticsearch_dsl.connections import Connections
 from tornado.ioloop import IOLoop
 
 from biothings.utils.web.es import get_es_versions
+from biothings.utils.web.run import run_once
 from biothings.utils.web.userquery import ESUserQuery
 from biothings.web.settings import BiothingWebSettings
 
+should_log_es_py_ver = run_once()  # evaluate to true once
+should_log_es_host_ver = run_once()  # evaluate to true once per host
 
 class BiothingESWebSettings(BiothingWebSettings):
     '''
@@ -74,12 +77,18 @@ class BiothingESWebSettings(BiothingWebSettings):
         # failures will be logged concisely
         logging.getLogger('elasticsearch.trace').propagate = False
 
-        self.logger.info("Python Elasticsearch Version: %s", elasticsearch.__version__)
-        self.logger.info("Python Elasticsearch DSL Version: %s", elasticsearch_dsl.__version__)
-        versions = await get_es_versions(self.async_es_client)
-        versions = iter(versions.values())
-        self.logger.info('Elasticsearch Version: %s', next(versions))
-        self.logger.info('Elasticsearch Cluster: %s', next(versions))
+        if should_log_es_py_ver():
+            self.logger.info("Python Elasticsearch Version: %s", elasticsearch.__version__)
+            self.logger.info("Python Elasticsearch DSL Version: %s", elasticsearch_dsl.__version__)
+            if elasticsearch.__version__[0] != elasticsearch_dsl.__version__[0]:
+                self.logger.error("ES Pacakge Version Mismatch with ES-DSL.")
+        if should_log_es_host_ver(self.ES_HOST):
+            versions = await get_es_versions(self.async_es_client)
+            versions = iter(versions.values())
+            self.logger.info('Elasticsearch Version: %s', next(versions))
+            self.logger.info('Elasticsearch Cluster: %s', next(versions))
+            if next(versions) != elasticsearch.__version__[0]:
+                self.logger.error("ES Python Version Mismatch.")
 
         # populate source mappings
         for biothing_type in self.ES_INDICES:
@@ -166,12 +175,14 @@ class BiothingESWebSettings(BiothingWebSettings):
 
             if '_meta' in mapping:
                 for key, val in mapping['_meta'].items():
+                    # combine dict from multiple index
                     if key in metadata and isinstance(val, dict) \
                             and isinstance(metadata[key], dict):
                         metadata[key].update(val)
-                    else:
+                        metadata['_type'] = 'combined'
+                    else:  # otherwise set/replace
                         metadata[key] = val
-                metadata.update(mapping['_meta'])
+                # metadata.update(mapping['_meta'])  # alternative, no combine
 
                 if 'src' in mapping['_meta']:
                     for src, info in mapping['_meta']['src'].items():

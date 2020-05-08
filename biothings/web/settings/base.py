@@ -9,9 +9,9 @@ from pprint import pformat
 from pydoc import locate
 
 import tornado.log
+from tornado.web import Application
 
 import biothings.web.settings.default
-from biothings import get_version
 from biothings.web.handlers import BaseAPIHandler, BaseESRequestHandler
 from biothings.web.options import OptionSets
 
@@ -42,7 +42,6 @@ class BiothingWebSettings():
         '''
         self._default = biothings.web.settings.default
         self._user = self.load_module(config, self._default)
-        self.logger.info("Biothings API %s", get_version())
         self.logger.info("%s", self._user)  # log file location
 
         # process keyword setting override
@@ -110,7 +109,7 @@ class BiothingWebSettings():
             return locate(kls)
         raise BiothingConfigError()
 
-    def generate_app_settings(self, debug=False):
+    def _generate_app_settings(self, debug=False):
         """
         Generates settings for tornado.web.Application. This result and the
         method below can define a tornado application to start a web server.
@@ -135,7 +134,7 @@ class BiothingWebSettings():
 
         return settings
 
-    def generate_app_handlers(self, addons=None):
+    def _generate_app_handlers(self, addons=None):
         '''
         Generates the tornado.web.Application `(regex, handler_class, options) tuples
         <http://www.tornadoweb.org/en/stable/web.html#application-configuration>`_.
@@ -179,6 +178,28 @@ class BiothingWebSettings():
         handlers = list(handlers.values())
         self.logger.info('API Handlers:\n%s', pformat(handlers, width=200))
         return handlers
+
+    def get_app(self, debug=False, addons=None):
+        """
+        Return the tornado.web.Application defined by this settings.
+        This is primarily how an HTTP server interacts with this class.
+        """
+        # config package
+        if self._user.__name__ == self._user.__package__:
+            configs = []
+            for attr in dir(self._user):
+                _attr = getattr(self._user, attr)
+                if isinstance(_attr, types.ModuleType):
+                    configs.append(self.__class__(_attr))
+            handlers = [
+                (f'/{config.API_PREFIX}/.*', config.get_app(debug))
+                for config in configs  # parent level routing
+            ] + addons or []
+        else:  # config module
+            handlers = self._generate_app_handlers(addons)
+
+        settings = self._generate_app_settings(debug)
+        return Application(handlers, **settings)
 
     def get_git_repo_path(self):
         '''
