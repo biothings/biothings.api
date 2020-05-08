@@ -829,7 +829,8 @@ class HubServer(object):
     def configure_reloader_feature(self):
         monitored_folders = self.reloader_config["folders"] or [
             "hub/dataload/sources",
-            getattr(config, "DATA_PLUGIN_FOLDER", None)
+            getattr(config, "DATA_PLUGIN_FOLDER", None),
+            getattr(config, "HOOKS_FOLDER", "./hooks"),
         ]
         reload_func = self.reloader_config["reload_func"] or partial(
             self.shell.restart, force=True)
