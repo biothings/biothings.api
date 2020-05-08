@@ -7,7 +7,7 @@ to a fully operational BioThings API. In a second part, this API will enrich for
 
 .. note:: You may also want to read the `developer's guide <studio_guide.html>`_ for more detailed informations.
 
-.. note:: The following tutorial is only valid for **BioThings Studio** release **0.2a**. Check
+.. note:: The following tutorial is only valid for **BioThings Studio** release **0.2b**. Check
    all available `releases <https://github.com/biothings/biothings_studio/releases>`_ for more.
 
 =================
@@ -56,26 +56,29 @@ Installation
 
 .. code:: bash
 
-  $ docker pull biothings/biothings-studio:0.2a
+  $ docker pull biothings/biothings-studio:0.2b
 
 A **BioThings Studio** instance expose several services on different ports:
 
 * **8080**: **BioThings Studio** web application port
 * **7022**: **BioThings Hub** SSH port
 * **7080**: **BioThings Hub** REST API port
+* **7081°°: **BioThings Hub** REST API port, read-only access
 * **9200**: ElasticSearch port
 * **27017**: MongoDB port
 * **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
-* **9000**: Cerebro, a webapp used to easily interact with ElasticSearch clusters
+* **9000**: `Cerebro <https://github.com/lmenezes/cerebro>`_, a webapp used to easily interact with ElasticSearch clusters 
+* **60080**: `Code-Server <https://github.com/cdr/code-server>`_, a webapp used to directly edit code in the container 
 
 We will map and expose those ports to the host server using option ``-p`` so we can access BioThings services without
 having to enter the container:
 
 .. code:: bash
 
-  $ docker run --rm --name studio -p 8080:8080 -p 7022:7022 -p 7080:7080 -p 9200:9200 -p 27017:27017 -p 8000:8000 -p 9000:9000 -d biothings/biothings-studio:0.2a
+  $ docker run --rm --name studio -p 8080:8080 -p 7022:7022 -p 7080:7080 -p 7081:7081 -p 9200:9200 \
+    -p 27017:27017 -p 8000:8000 -p 9000:9000 -p 60080:60080 -d biothings/biothings-studio:0.2b
 
-.. note:: we need to add the release number after the image name: biothings-studio:**0.2a**. Should you use another release (including unstable releases,
+.. note:: we need to add the release number after the image name: biothings-studio:**0.2b**. Should you use another release (including unstable releases,
    tagged as ``master``) you would need to adjust this parameter accordingly.
 
 .. note:: Biothings Studio and the Hub are not designed to be publicly accessible. Those ports should **not** be exposed. When
