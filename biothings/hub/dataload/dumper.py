@@ -1054,19 +1054,19 @@ class GitDumper(BaseDumper):
 
     def _pull(self, localdir, commit):
         # fetch+merge
-        self.logger.info("git pull latest data into '%s'" % localdir)
+        self.logger.info("git pull data (commit %s) into '%s'" % (commit,localdir))
         old = os.path.abspath(os.curdir)
         try:
             os.chdir(localdir)
             # discard changes, we don't want to activate a conflit resolution session...
-            # TODO: origin could be named differently ?
             cmd = ["git", "reset", "--hard", "HEAD"]
+            subprocess.check_call(cmd)
+            # then fetch latest code (local repo, not applied to code base yet)
+            cmd = ["git", "fetch", "--all"]
             subprocess.check_call(cmd)
             if commit != "HEAD":
                 # first get the latest code from repo
                 # (if a newly created branch is avail in remote, we can't check it out)
-                cmd = ["git", "fetch", "--all"]
-                subprocess.check_call(cmd)
                 self.logger.info("git checkout to commit %s" % commit)
                 cmd = ["git", "checkout", commit]
                 subprocess.check_call(cmd)
@@ -1074,6 +1074,9 @@ class GitDumper(BaseDumper):
                 # if we were on a detached branch (due to specific commit checkout)
                 # we need to make sure to go back to master (re-attach)
                 cmd = ["git", "checkout", self.__class__.DEFAULT_BRANCH]
+                subprocess.check_call(cmd)
+                # then merge
+                cmd = ["git", "merge"]
                 subprocess.check_call(cmd)
                 # and then get the commit hash
                 out = subprocess.check_output(["git", "rev-parse", "HEAD"])

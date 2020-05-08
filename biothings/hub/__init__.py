@@ -414,7 +414,7 @@ class HubServer(object):
                       )
             if self.readonly_routes:
                 if not getattr(config, "READONLY_HUB_API_PORT", None):
-                    self.logger.warning("Read-only Hub API feature is set but READONLY_HUB_API_PORT"
+                    self.logger.warning("Read-only Hub API feature is set but READONLY_HUB_API_PORT "
                                         + "isn't set in configuration")
                 else:
                     self.logger.info("Starting read-only Hub API server on port %s" % config.READONLY_HUB_API_PORT)
