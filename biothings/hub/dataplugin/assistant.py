@@ -415,19 +415,7 @@ class AdvancedPluginLoader(BasePluginLoader):
         if os.path.exists(df):
             # we assume there's a __init__ module exposing Dumper and Uploader classes
             # as necessary
-            # we could strip and split on "/" manually but let's use os.path for that
-            # just to make sure we'll handle any cases (supposedly)
-            tmpdf = copy.deepcopy(df)
-            path_elements = []
-            while tmpdf:
-                tmpdf, elem = os.path.split(tmpdf)
-                if elem == ".":
-                    continue
-                if tmpdf == "/":
-                    break  # this is what's remaining if absolute path
-                path_elements.append(elem)
-            path_elements.reverse()  # we got elems from the end, back to forward
-            modpath = ".".join(path_elements)
+            modpath = df.split("/")[-1]
             # before registering, process optional requirements.txt
             reqfile = os.path.join(df,"requirements.txt")
             if os.path.exists(reqfile):
@@ -435,8 +423,16 @@ class AdvancedPluginLoader(BasePluginLoader):
                 subprocess.check_call([sys.executable,"-m","pip","install","-r",reqfile])
             # submit to managers to register datasources
             self.logger.info("Registering '%s' to dump/upload managers" % modpath)
-            self.__class__.dumper_manager.register_source(modpath)
-            self.__class__.uploader_manager.register_source(modpath)
+            # register dumpers if any
+            try:
+                self.__class__.dumper_manager.register_source(modpath)
+            except Exception as e:
+                self.logger.info("Couldn't register dumper from module '%s': %s" % (modpath,e))
+            # register uploaders if any
+            try:
+                self.__class__.uploader_manager.register_source(modpath)
+            except Exception as e:
+                self.logger.info("Couldn't register uploader from module '%s': %s" % (modpath,e))
         else:
             self.invalidate_plugin("Missing plugin folder '%s'" % df)
 

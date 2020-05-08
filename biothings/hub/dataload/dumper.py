@@ -1054,19 +1054,19 @@ class GitDumper(BaseDumper):
 
     def _pull(self, localdir, commit):
         # fetch+merge
-        self.logger.info("git pull latest data into '%s'" % localdir)
+        self.logger.info("git pull data (commit %s) into '%s'" % (commit,localdir))
         old = os.path.abspath(os.curdir)
         try:
             os.chdir(localdir)
             # discard changes, we don't want to activate a conflit resolution session...
-            # TODO: origin could be named differently ?
             cmd = ["git", "reset", "--hard", "HEAD"]
+            subprocess.check_call(cmd)
+            # then fetch latest code (local repo, not applied to code base yet)
+            cmd = ["git", "fetch", "--all"]
             subprocess.check_call(cmd)
             if commit != "HEAD":
                 # first get the latest code from repo
                 # (if a newly created branch is avail in remote, we can't check it out)
-                cmd = ["git", "fetch", "--all"]
-                subprocess.check_call(cmd)
                 self.logger.info("git checkout to commit %s" % commit)
                 cmd = ["git", "checkout", commit]
                 subprocess.check_call(cmd)
@@ -1074,6 +1074,9 @@ class GitDumper(BaseDumper):
                 # if we were on a detached branch (due to specific commit checkout)
                 # we need to make sure to go back to master (re-attach)
                 cmd = ["git", "checkout", self.__class__.DEFAULT_BRANCH]
+                subprocess.check_call(cmd)
+                # then merge
+                cmd = ["git", "merge"]
                 subprocess.check_call(cmd)
                 # and then get the commit hash
                 out = subprocess.check_output(["git", "rev-parse", "HEAD"])
@@ -1161,7 +1164,11 @@ class DumperManager(BaseSourceManager):
     def get_source_ids(self):
         """Return displayable list of registered source names (not private)"""
         # skip private ones starting with __
-        registered = sorted([src for src in self.register.keys() if not src.startswith("__")])
+        # skip those deriving from bt.h.autoupdate.dumper.BiothingsDumper, they're used for autohub
+        # and considered internal (note: only one dumper per source, so [0])
+        from biothings.hub.autoupdate.dumper import BiothingsDumper
+        registered = sorted([src for src,klasses in self.register.items() if not src.startswith("__") and
+                             not issubclass(klasses[0],BiothingsDumper)])
         return registered
 
     def __repr__(self):

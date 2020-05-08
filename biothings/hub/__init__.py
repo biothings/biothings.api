@@ -6,6 +6,7 @@ import types
 import time
 import copy
 import logging
+import glob
 from collections import OrderedDict
 from functools import partial
 from pprint import pformat
@@ -158,7 +159,7 @@ def status(managers):
     }
 
 
-def schedule(loop):
+def get_schedule(loop):
     """try to render job in a human-readable way..."""
     out = []
     for sch in loop._scheduled:
@@ -217,7 +218,7 @@ class HubServer(object):
         "config", "job", "dump", "upload", "dataplugin", "source", "build",
         "diff", "index", "snapshot", "release", "inspect", "sync", "api",
         "terminal", "reloader", "dataupload", "ws", "readonly", "upgrade",
-        "autohub",
+        "autohub","hooks",
     ]
     DEFAULT_MANAGERS_ARGS = {"upload": {"poll_schedule": "* * * * * */10"}}
     DEFAULT_RELOADER_CONFIG = {
@@ -281,11 +282,12 @@ class HubServer(object):
         self.api_config = api_config or self.DEFAULT_API_CONFIG
         # set during configure()
         self.managers = None
-        self.api_endpoints = None
+        self.api_endpoints = {}
         self.readonly_api_endpoints = None
         self.shell = None
-        self.commands = None
-        self.extra_commands = None
+        self.commands = None  # default "public" commands
+        self.extra_commands = None  # "hidden" commands, but still useful for advanced usage
+        self.hook_files = None  # user-defined commands as hook files
         self.routes = []
         self.readonly_routes = []
         self.ws_urls = []  # only one set, shared between r/w and r/o hub api server
@@ -344,6 +346,7 @@ class HubServer(object):
         self.configure_commands()
         self.configure_extra_commands()
         self.shell.set_commands(self.commands, self.extra_commands)
+        self.ingest_hooks()
         # setapi
         if self.api_config is not False:
             self.configure_api_endpoints(
@@ -411,7 +414,7 @@ class HubServer(object):
                       )
             if self.readonly_routes:
                 if not getattr(config, "READONLY_HUB_API_PORT", None):
-                    self.logger.warning("Read-only Hub API feature is set but READONLY_HUB_API_PORT"
+                    self.logger.warning("Read-only Hub API feature is set but READONLY_HUB_API_PORT "
                                         + "isn't set in configuration")
                 else:
                     self.logger.info("Starting read-only Hub API server on port %s" % config.READONLY_HUB_API_PORT)
@@ -651,6 +654,34 @@ class HubServer(object):
             self.logger.error("Could't configure feature 'autohub', will be deactivated: %s" % e)
             self.features.remove("autohub")
 
+    def configure_hooks_feature(self):
+        """
+        Ingest user-defined commands into hub namespace, giving access
+        to all pre-defined commands (commands, extra_commands).
+        This method prepare the hooks but the ingestion is done later
+        when all commands are defined
+        """
+        hooks_folder = getattr(config, "HOOKS_FOLDER", "./hooks")
+        if not os.path.exists(hooks_folder):
+            self.logger.info("Hooks folder '%s' doesn't exist, creating it" % hooks_folder)
+            os.makedirs(hooks_folder)
+        self.hook_files = glob.glob(os.path.join(hooks_folder,"*.py"))
+
+    def ingest_hooks(self):
+        if not self.hook_files:
+            return
+        for pyfile in self.hook_files:
+            try:
+                self.logger.info("Processing hook file '%s'" % pyfile)
+                self.process_hook_file(pyfile)
+            except Exception as e:
+                self.logger.exception("Can't process hook file: %s" % e)
+
+    def process_hook_file(self, hook_file):
+        strcode = open(hook_file).read()
+        code = compile(strcode, "<string>", "exec") 
+        eval(code, self.shell.extra_ns, self.shell.extra_ns)
+
     def configure_managers(self):
         if self.managers is not None:
             raise Exception("Managers have already been configured")
@@ -798,7 +829,8 @@ class HubServer(object):
     def configure_reloader_feature(self):
         monitored_folders = self.reloader_config["folders"] or [
             "hub/dataload/sources",
-            getattr(config, "DATA_PLUGIN_FOLDER", None)
+            getattr(config, "DATA_PLUGIN_FOLDER", None),
+            getattr(config, "HOOKS_FOLDER", "./hooks"),
         ]
         reload_func = self.reloader_config["reload_func"] or partial(
             self.shell.restart, force=True)
@@ -945,7 +977,7 @@ class HubServer(object):
             "job_manager"].loop or asyncio.get_event_loop()
         self.extra_commands["g"] = CommandDefinition(command=globals(),
                                                      tracked=False)
-        self.extra_commands["sch"] = CommandDefinition(command=partial(schedule, loop),
+        self.extra_commands["sch"] = CommandDefinition(command=partial(get_schedule, loop),
                                                        tracked=False)
         # expose contant so no need to put quotes (eg. top(pending) instead of top("pending")
         self.extra_commands["pending"] = CommandDefinition(command=pending,
@@ -966,6 +998,8 @@ class HubServer(object):
                 command=self.managers["job_manager"].top, tracked=False)
             self.extra_commands["job_info"] = CommandDefinition(
                 command=self.managers["job_manager"].job_info, tracked=False)
+            self.extra_commands["schedule"] = CommandDefinition(
+                command=self.managers["job_manager"].schedule, tracked=False)
         if self.managers.get("source_manager"):
             self.extra_commands["sm"] = CommandDefinition(
                 command=self.managers["source_manager"], tracked=False)
@@ -1071,15 +1105,28 @@ class HubServer(object):
                 return self.managers["dump_manager"].dump_src("__" + code_base)
             self.commands["upgrade"] = CommandDefinition(command=upgrade)
 
+        self.extra_commands["expose"] = self.add_api_endpoint
+
         logging.debug("Registered extra (private) commands: %s",
                       list(self.extra_commands.keys()))
+
+    def add_api_endpoint(self, endpoint_name, command_name, method, **kwargs):
+        """
+        Add an API endpoint to expose command named "command_name"
+        using HTTP method "method". **kwargs are used to specify
+        more arguments for EndpointDefinition
+        """
+        if self.configured:
+            raise Exception("API endpoint creation must be done before Hub is configured")
+        from biothings.hub.api import EndpointDefinition
+        endpoint = EndpointDefinition(name=command_name,method=method,**kwargs)
+        self.api_endpoints[endpoint_name] = endpoint
 
     def configure_api_endpoints(self):
         cmdnames = list(self.commands.keys())
         if self.extra_commands:
             cmdnames.extend(list(self.extra_commands.keys()))
         from biothings.hub.api import EndpointDefinition
-        self.api_endpoints = {}
         self.api_endpoints["config"] = []
         if "config" in cmdnames:
             self.api_endpoints["config"].append(
