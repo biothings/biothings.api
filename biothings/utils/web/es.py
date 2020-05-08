@@ -26,7 +26,6 @@ async def get_es_versions(client):
     return {
         "elasticsearch_version": es_version,
         "elasticsearch_cluster": es_cluster,
-        "_major_version": int(es_version.split('.')[0])
     }
 
 def exists_or_null(doc, field, val=None):

@@ -84,10 +84,10 @@ class BiothingESWebSettings(BiothingWebSettings):
                 self.logger.error("ES Pacakge Version Mismatch with ES-DSL.")
         if should_log_es_host_ver(self.ES_HOST):
             versions = await get_es_versions(self.async_es_client)
-            versions = iter(versions.values())
-            self.logger.info('Elasticsearch Version: %s', next(versions))
-            self.logger.info('Elasticsearch Cluster: %s', next(versions))
-            if next(versions) != elasticsearch.__version__[0]:
+            self.logger.info('Elasticsearch Version: %s', versions["elasticsearch_version"])
+            self.logger.info('Elasticsearch Cluster: %s', versions["elasticsearch_cluster"])
+            major_version = versions["elasticsearch_version"].split('.')[0]
+            if major_version.isdigit() and int(major_version) != elasticsearch.__version__[0]:
                 self.logger.error("ES Python Version Mismatch.")
 
         # populate source mappings
@@ -169,7 +169,7 @@ class BiothingESWebSettings(BiothingWebSettings):
 
             mapping = mappings[index]['mappings']
 
-            if elasticsearch.__version__[0] < 7:
+            if mapping and elasticsearch.__version__[0] < 7:
                 # remove doc_type, support 1 type per index
                 mapping = next(iter(mapping.values()))
 
