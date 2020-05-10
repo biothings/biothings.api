@@ -4,11 +4,12 @@ from collections import defaultdict
 
 import elasticsearch
 import elasticsearch_dsl
-from elasticsearch_async.transport import AsyncTransport
 from elasticsearch_dsl.connections import Connections
 from tornado.ioloop import IOLoop
 
 from biothings.utils.web.es import get_es_versions
+from biothings.utils.web.es_transport import (BiothingsAsyncTransport,
+                                              BiothingsTransport)
 from biothings.utils.web.run import run_once
 from biothings.utils.web.userquery import ESUserQuery
 from biothings.web.settings import BiothingWebSettings
@@ -33,14 +34,15 @@ class BiothingESWebSettings(BiothingWebSettings):
 
         connection_settings = {
             "hosts": self.ES_HOST,
-            "timeout": self.ES_CLIENT_TIMEOUT,
-            "max_retries": 1,  # maximum number of retries before an exception is propagated
-            "timeout_cutoff": 1,  # timeout freezes after this number of consecutive failures
-            # "sniff_on_connection_fail": True, TODO
-            # "sniffer_timeout": 60
+            "timeout": self.ES_CLIENT_TIMEOUT
         }
+        connection_settings.update(transport_class=BiothingsTransport)
         self._connections.create_connection(alias='sync', **connection_settings)
-        connection_settings.update(transport_class=AsyncTransport)
+        connection_settings.update(transport_class=BiothingsAsyncTransport)
+        if self.ES_SNIFF:
+            connection_settings.update(sniffer_timeout=60)
+            connection_settings.update(sniff_on_start=True)
+            connection_settings.update(sniff_on_connection_fail=True)
         self._connections.create_connection(alias='async', **connection_settings)
 
         # cached index mappings
@@ -154,7 +156,7 @@ class BiothingESWebSettings(BiothingWebSettings):
                 local=False)
         except elasticsearch.TransportError as exc:
             self.logger.error('Error loading index mapping for [%s].', biothing_type)
-            self.logger.debug(exc)
+            self.logger.debug(str(exc))
             return None
 
         metadata = self.source_metadata[biothing_type]

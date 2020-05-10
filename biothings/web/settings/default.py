@@ -10,6 +10,8 @@ from .descriptions import KWARG_DESCRIPTIONS
 # *****************************************************************************
 # elasticsearch server transport url
 ES_HOST = 'localhost:9200'
+# load balancing by connecting to all nodes in the cluster
+ES_SNIFF = False
 # timeout for python es client (global request timeout)
 ES_CLIENT_TIMEOUT = 120
 # elasticsearch index name
