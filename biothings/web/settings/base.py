@@ -50,9 +50,17 @@ class BiothingWebSettings():
 
         # process environment variable override of named settings
         for name in os.environ:
-            if hasattr(self, name) and isinstance(getattr(self, name), str):
-                self.logger.info("Env %s = %s", name, os.environ[name])
-                setattr(self._user, name, os.environ[name])
+            if hasattr(self, name):
+                new_value = None
+                if isinstance(getattr(self, name), str):
+                    new_value = os.environ[name]
+                elif isinstance(getattr(self, name), bool):
+                    new_value = os.environ[name].lower() in ('true', '1')
+                if new_value is not None:
+                    self.logger.info("$ %s = %s", name, os.environ[name])
+                    setattr(self._user, name, new_value)
+                else:  # cannot override dict, array, object type...
+                    self.logger.error("Env %s is not suppored.", name)
 
         # for metadata dev details
         if os.path.isdir(os.path.join(self.APP_GIT_REPOSITORY, '.git')):
