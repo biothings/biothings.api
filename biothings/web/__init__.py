@@ -114,7 +114,7 @@ class BiothingsAPI():
         root_logger = logging.getLogger()
         self.config.configure_logger(root_logger)
         logging.getLogger('urllib3').setLevel(logging.ERROR)
-        logging.getLogger('elasticsearch').setLevel(logging.ERROR)
+        logging.getLogger('elasticsearch').setLevel(logging.WARNING)
         if self.debug:
             root_logger.setLevel(logging.DEBUG)
             es_tracer = logging.getLogger('elasticsearch.trace')
