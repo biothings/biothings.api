@@ -11,7 +11,7 @@ from pydoc import locate
 import tornado.log
 from tornado.web import Application
 
-import biothings.web.settings.default
+from biothings.web.settings import default as web_default
 from biothings.web.handlers import BaseAPIHandler, BaseESRequestHandler
 from biothings.web.options import OptionSets
 
@@ -33,15 +33,19 @@ class BiothingWebSettings():
     * Default values are defined in biothings.web.settings.default.
 
     '''
+    _default = object()
+    _parent = object()
+    _user = object()
 
-    def __init__(self, config=None, **kwargs):
+    def __init__(self, config=None, parent=None, **kwargs):
         '''
         :param config: a module that configures this biothing
             or its fully qualified name,
             or its module file path.
         '''
-        self._default = biothings.web.settings.default
-        self._user = self.load_module(config, self._default)
+        self._default = web_default
+        self._parent = parent  # config package
+        self._user = self.load_module(config, object())
         self.logger.info("%s", self._user)  # log file location
 
         # process keyword setting override
@@ -95,6 +99,8 @@ class BiothingWebSettings():
     def __getattr__(self, name):
         if hasattr(self._user, name):
             return getattr(self._user, name)
+        elif hasattr(self._parent, name):
+            return getattr(self._parent, name)
         elif hasattr(self._default, name):
             return getattr(self._default, name)
         else:  # not provided and no default
@@ -198,7 +204,7 @@ class BiothingWebSettings():
             for attr in dir(self._user):
                 _attr = getattr(self._user, attr)
                 if isinstance(_attr, types.ModuleType):
-                    configs.append(self.__class__(_attr))
+                    configs.append(self.__class__(_attr, self._user))
             handlers = [
                 (f'/{config.API_PREFIX}/.*', config.get_app(debug))
                 for config in configs  # parent level routing
