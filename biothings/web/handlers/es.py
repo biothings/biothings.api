@@ -292,6 +292,8 @@ class BiothingHandler(ESRequestHandler):
                 template = self.web_settings.ID_NOT_FOUND_TEMPLATE
                 reason = template.format(bid=options.esqb.q)
                 raise EndRequest(404, reason=reason)
+            if len(res['hits']) > 1:
+                raise EndRequest(404, reason='not a unique id.')
             res = res['hits'][0]
             res.pop('_score', None)
 
