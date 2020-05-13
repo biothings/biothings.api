@@ -22,12 +22,12 @@ class BiothingESWebSettings(BiothingWebSettings):
     `BiothingWebSettings`_ subclass with functions specific to an elasticsearch backend.
     '''
 
-    def __init__(self, config=None, **kwargs):
+    def __init__(self, config=None, parent=None, **kwargs):
         '''
         The ``config`` init parameter specifies a module that configures
         this biothing.  For more information see `config module`_ documentation.
         '''
-        super(BiothingESWebSettings, self).__init__(config, **kwargs)
+        super(BiothingESWebSettings, self).__init__(config, parent, **kwargs)
 
         # elasticsearch connections
         self._connections = Connections()
@@ -167,6 +167,9 @@ class BiothingESWebSettings(BiothingWebSettings):
         properties.clear()
         licenses.clear()
 
+        metadata['_biothing'] = biothing_type
+        metadata['_indices'] = list(mappings.keys())
+
         for index in mappings:
 
             mapping = mappings[index]['mappings']
@@ -181,9 +184,9 @@ class BiothingESWebSettings(BiothingWebSettings):
                     if key in metadata and isinstance(val, dict) \
                             and isinstance(metadata[key], dict):
                         metadata[key].update(val)
-                        metadata['_type'] = 'combined'
                     else:  # otherwise set/replace
                         metadata[key] = val
+
                 # metadata.update(mapping['_meta'])  # alternative, no combine
 
                 if 'src' in mapping['_meta']:
