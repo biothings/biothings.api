@@ -51,8 +51,8 @@ class BiothingsAsyncTransport(AsyncTransport):
             session = aiohttp.ClientSession(timeout=timeout)
             try:
                 url = f"http://{host['host']}:{host['port']}"
-                yield from session.head(url, raise_for_status=True)
-                # yield from session.head(url, raise_for_status=True, timeout=1.5)
+                # yield from session.head(url, raise_for_status=True) TODO
+                yield from session.head(url, raise_for_status=True, timeout=1.5)
                 valid_hosts.append(host)
             except aiohttp.ClientError as exc:
                 logger.warning(str(exc))
