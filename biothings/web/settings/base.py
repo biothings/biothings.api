@@ -200,18 +200,13 @@ class BiothingWebSettings():
         """
         # config package
         if self._user.__name__ == self._user.__package__:
-            configs = []
-            for attr in dir(self._user):
-                _attr = getattr(self._user, attr)
-                if isinstance(_attr, types.ModuleType):
-                    configs.append(self.__class__(_attr, self._user))
-            handlers = [
-                (f'/{config.API_PREFIX}/.*', config.get_app(debug))
-                for config in configs  # parent level routing
-            ] + addons or []
+            attrs = [getattr(self._user, attr) for attr in dir(self._user)]
+            confs = [attr for attr in attrs if isinstance(attr, types.ModuleType)]
+            settings = [self.__class__(_attr, self._user) for _attr in confs]
+            handlers = [(f'/{c.API_PREFIX}/.*', c.get_app(debug)) for c in settings]
+            handlers += addons or []  # second level front pages won't be exposed
         else:  # config module
             handlers = self._generate_app_handlers(addons)
-
         settings = self._generate_app_settings(debug)
         return Application(handlers, **settings)
 
