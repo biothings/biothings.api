@@ -118,8 +118,9 @@ class MetadataSourceHandler(BaseESRequestHandler):
         if self.args.dev:
             _meta['software'] = get_software_info(
                 app_dir=self.web_settings.get_git_repo_path())
-            _meta['server'] = await get_es_versions(
+            _meta['cluster'] = await get_es_versions(
                 client=self.web_settings.async_es_client)
+            _meta['hosts'] = self.web_settings.async_es_client.transport.hosts
         else:  # remove correlation info
             _meta.pop('_biothing', None)
             _meta.pop('_indices', None)
