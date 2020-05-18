@@ -95,8 +95,6 @@ class StatusHandler(BaseHandler):
 
     async def get(self):
         res = await self._check()
-        if 'dev' in self.request.arguments:
-            res['options'] = self.web_settings.optionsets.log()
         self.finish(res)
 
     async def _check(self):

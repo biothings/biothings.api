@@ -45,6 +45,7 @@ API_VERSION = 'v1'
 APP_LIST = [
     (r"/", 'biothings.web.handlers.FrontPageHandler'),
     (r"/{pre}/status", 'biothings.web.handlers.StatusHandler'),
+    (r"/{pre}/{ver}/spec/?", 'biothings.web.handlers.APISpecificationHandler'),
     (r"/{pre}/{ver}/{typ}/metadata/fields/?", 'biothings.web.handlers.MetadataFieldHandler'),
     (r"/{pre}/{ver}/{typ}/metadata/?", 'biothings.web.handlers.MetadataSourceHandler'),
     (r"/{pre}/{ver}/{typ}/query/?", 'biothings.web.handlers.QueryHandler'),

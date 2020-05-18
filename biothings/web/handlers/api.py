@@ -53,7 +53,10 @@ except ImportError:
 else:
     SUPPORT_YAML = True
 
-__all__ = ['BaseAPIHandler']
+__all__ = [
+    'BaseAPIHandler',
+    'APISpecificationHandler'
+]
 
 class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
 
@@ -100,13 +103,14 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
                           self.request.uri,
                           pformat(args, width=150))
 
-        options = self.web_settings.optionsets.get(self.name)
-        try:
-            self.args = options.parse(
-                self.request.method, args,
-                self.path_args, self.path_kwargs)
-        except OptionArgError as err:
-            raise BadRequest(**err.info)
+        if self.name:
+            options = self.web_settings.optionsets.get(self.name)
+            try:
+                self.args = options.parse(
+                    self.request.method, args,
+                    self.path_args, self.path_kwargs)
+            except OptionArgError as err:
+                raise BadRequest(**err.info)
 
         self.logger.debug("Processed Arguments:\n%s", pformat(self.args, width=150))
 
@@ -229,3 +233,8 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         if not self.web_settings.DISABLE_CACHING:
             seconds = self.web_settings.CACHE_MAX_AGE
             self.set_header("Cache-Control", f"max-age={seconds}, public")
+
+class APISpecificationHandler(BaseAPIHandler):
+
+    def get(self):
+        self.finish(self.web_settings.optionsets.log())
