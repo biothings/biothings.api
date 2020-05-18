@@ -89,8 +89,7 @@ class BiothingsAPI():
         logging.info("Biothings API %s", get_version())
         self.config = BiothingESWebSettings(config_module)
         self.handlers = []  # additional handlers
-        self.settings = dict(autoreload=False)
-        self.debug = True
+        self.settings = dict(debug=False)
         self.host = None
 
     @staticmethod
@@ -115,7 +114,7 @@ class BiothingsAPI():
         self.config.configure_logger(root_logger)
         logging.getLogger('urllib3').setLevel(logging.ERROR)
         logging.getLogger('elasticsearch').setLevel(logging.WARNING)
-        if self.debug:
+        if self.settings['debug']:
             root_logger.setLevel(logging.DEBUG)
             es_tracer = logging.getLogger('elasticsearch.trace')
             es_tracer.setLevel(logging.DEBUG)
@@ -127,8 +126,7 @@ class BiothingsAPI():
         """
         Run API in an external event loop.
         """
-        webapp = self.config.get_app(self.debug, self.handlers)
-        webapp.settings.update(self.settings)  # tornado settings
+        webapp = self.config.get_app(self.settings, self.handlers)
         server = tornado.httpserver.HTTPServer(webapp, xheaders=True)
         return server
 

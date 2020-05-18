@@ -62,7 +62,7 @@ def main(app_handlers=None, app_settings=None, use_curl=False):
         api.use_curl()
 
     api.host = options.address
-    api.debug = options.debug
+    api.update(debug=options.debug)
     api.update(autoreload=options.autoreload)
     api.start(options.port)
 

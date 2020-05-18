@@ -123,15 +123,17 @@ class BiothingWebSettings():
             return locate(kls)
         raise BiothingConfigError()
 
-    def _generate_app_settings(self, debug=False):
+    def _generate_app_settings(self, override=None):
         """
         Generates settings for tornado.web.Application. This result and the
         method below can define a tornado application to start a web server.
         """
         settings = {
             'biothings': self,
-            'debug': bool(debug)
+            'autoreload': False,
+            'debug': False,
         }
+        settings.update(override or {})
         supported_keywords = (
             'default_handler_class', 'default_handler_args', 'template_path',
             'log_function', 'compress_response', 'cookie_secret',
@@ -160,7 +162,7 @@ class BiothingWebSettings():
             handler = self.load_class(rule[1])
             setting = rule[2] if len(rule) == 3 else {}
             assert handler, rule[1]
-            if issubclass(handler, BaseAPIHandler):
+            if issubclass(handler, BaseAPIHandler) and handler.name:
                 handler_name = handler.name
                 handler_options = handler.kwargs
                 setting_attr = '_'.join((handler_name, 'kwargs')).upper()
@@ -193,22 +195,23 @@ class BiothingWebSettings():
         self.logger.info('API Handlers:\n%s', pformat(handlers, width=200))
         return handlers
 
-    def get_app(self, debug=False, addons=None):
+    def get_app(self, settings=False, handlers=None):
         """
         Return the tornado.web.Application defined by this settings.
         This is primarily how an HTTP server interacts with this class.
+        Additional settings and handlers accepted as parameters.
         """
         # config package
         if self._user.__name__ == self._user.__package__:
             attrs = [getattr(self._user, attr) for attr in dir(self._user)]
             confs = [attr for attr in attrs if isinstance(attr, types.ModuleType)]
-            settings = [self.__class__(_attr, self._user) for _attr in confs]
-            handlers = [(f'/{c.API_PREFIX}/.*', c.get_app(debug)) for c in settings]
-            handlers += addons or []  # second level front pages won't be exposed
+            _settings = [self.__class__(_attr, self._user) for _attr in confs]
+            _handlers = [(f'/{c.API_PREFIX}/.*', c.get_app(settings)) for c in _settings]
+            _handlers += handlers or []  # second level front pages won't be exposed
         else:  # config module
-            handlers = self._generate_app_handlers(addons)
-        settings = self._generate_app_settings(debug)
-        return Application(handlers, **settings)
+            _handlers = self._generate_app_handlers(handlers)
+        _settings = self._generate_app_settings(settings)
+        return Application(_handlers, **_settings)
 
     def get_git_repo_path(self):
         '''
