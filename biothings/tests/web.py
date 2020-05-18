@@ -48,7 +48,7 @@ class BiothingsTestCase(AsyncHTTPTestCase):
 
     # override
     def get_app(self):
-        return self.settings.get_app(debug=True)
+        return self.settings.get_app()
 
     # override
     def request(self, path, method="GET", expect=200, *args, **kwargs):
