@@ -125,7 +125,7 @@ class MetadataSourceHandler(BaseESRequestHandler):
                 app_dir=self.web_settings.get_git_repo_path())
             _meta['cluster'] = await get_es_versions(
                 client=self.web_settings.async_es_client)
-            _meta['hosts'] = self.web_settings.async_es_client.transport.hosts
+            _meta['hosts'] = self.web_settings.async_es_client.transport.info
         else:  # remove correlation info
             _meta.pop('_biothing', None)
             _meta.pop('_indices', None)

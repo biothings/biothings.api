@@ -17,6 +17,16 @@ class BiothingsAsyncTransport(AsyncTransport):
     def __init__(self, *args, connection_class=BiothingsAIOHttpConnection, **kwargs):
         super().__init__(*args, connection_class=connection_class, **kwargs)
 
+    @property
+    def info(self):
+        """
+        Report hosts in connection pool.
+        """
+        return {
+            "seed": self.hosts,
+            "active": [conn.host for conn in self.connection_pool.connections]
+        }
+
     @asyncio.coroutine
     def sniff_hosts(self, initial=False):
         """
