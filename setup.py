@@ -100,6 +100,7 @@ setup(
     keywords="biology annotation web service client api",
     url=REPO_URL,
     packages=find_packages(),
+    package_data={'': ['*.html']},
     include_package_data=True,
     scripts=list(glob.glob('biothings/bin/*')),
     long_description=read('README.md'),

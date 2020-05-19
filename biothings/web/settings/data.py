@@ -4,44 +4,45 @@ from collections import defaultdict
 
 import elasticsearch
 import elasticsearch_dsl
-from elasticsearch_async.transport import AsyncTransport
 from elasticsearch_dsl.connections import Connections
 from tornado.ioloop import IOLoop
 
 from biothings.utils.web.es import get_es_versions
+from biothings.utils.web.es_transport import (BiothingsAsyncTransport,
+                                              BiothingsTransport)
+from biothings.utils.web.run import run_once
 from biothings.utils.web.userquery import ESUserQuery
 from biothings.web.settings import BiothingWebSettings
 
+should_log_es_py_ver = run_once()  # evaluate to true once
+should_log_es_host_ver = run_once()  # evaluate to true once per host
 
 class BiothingESWebSettings(BiothingWebSettings):
     '''
     `BiothingWebSettings`_ subclass with functions specific to an elasticsearch backend.
-
-    * Use the known live ES connection if more than one is specified.
-    * Cache source metadata stored under the _meta field in es indices.
-
     '''
 
-    def __init__(self, config=None, **kwargs):
+    def __init__(self, config=None, parent=None, **kwargs):
         '''
         The ``config`` init parameter specifies a module that configures
         this biothing.  For more information see `config module`_ documentation.
         '''
-        super(BiothingESWebSettings, self).__init__(config, **kwargs)
+        super(BiothingESWebSettings, self).__init__(config, parent, **kwargs)
 
         # elasticsearch connections
         self._connections = Connections()
 
         connection_settings = {
             "hosts": self.ES_HOST,
-            "timeout": self.ES_CLIENT_TIMEOUT,
-            "max_retries": 1,  # maximum number of retries before an exception is propagated
-            "timeout_cutoff": 1,  # timeout freezes after this number of consecutive failures
-            # "sniff_on_connection_fail": True, TODO
-            # "sniffer_timeout": 60
+            "timeout": self.ES_CLIENT_TIMEOUT
         }
+        connection_settings.update(transport_class=BiothingsTransport)
         self._connections.create_connection(alias='sync', **connection_settings)
-        connection_settings.update(transport_class=AsyncTransport)
+        connection_settings.update(transport_class=BiothingsAsyncTransport)
+        if self.ES_SNIFF:
+            connection_settings.update(sniffer_timeout=60)
+            connection_settings.update(sniff_on_start=True)
+            connection_settings.update(sniff_on_connection_fail=True)
         self._connections.create_connection(alias='async', **connection_settings)
 
         # cached index mappings
@@ -78,12 +79,18 @@ class BiothingESWebSettings(BiothingWebSettings):
         # failures will be logged concisely
         logging.getLogger('elasticsearch.trace').propagate = False
 
-        self.logger.info("Python Elasticsearch Version: %s", elasticsearch.__version__)
-        self.logger.info("Python Elasticsearch DSL Version: %s", elasticsearch_dsl.__version__)
-        versions = await get_es_versions(self.async_es_client)
-        versions = iter(versions.values())
-        self.logger.info('Elasticsearch Version: %s', next(versions))
-        self.logger.info('Elasticsearch Cluster: %s', next(versions))
+        if should_log_es_py_ver():
+            self.logger.info("Python Elasticsearch Version: %s", elasticsearch.__version__)
+            self.logger.info("Python Elasticsearch DSL Version: %s", elasticsearch_dsl.__version__)
+            if elasticsearch.__version__[0] != elasticsearch_dsl.__version__[0]:
+                self.logger.error("ES Pacakge Version Mismatch with ES-DSL.")
+        if should_log_es_host_ver(self.ES_HOST):
+            versions = await get_es_versions(self.async_es_client)
+            self.logger.info('Elasticsearch Version: %s', versions["elasticsearch_version"])
+            self.logger.info('Elasticsearch Cluster: %s', versions["elasticsearch_cluster"])
+            major_version = versions["elasticsearch_version"].split('.')[0]
+            if major_version.isdigit() and int(major_version) != elasticsearch.__version__[0]:
+                self.logger.error("ES Python Version Mismatch.")
 
         # populate source mappings
         for biothing_type in self.ES_INDICES:
@@ -149,7 +156,7 @@ class BiothingESWebSettings(BiothingWebSettings):
                 local=False)
         except elasticsearch.TransportError as exc:
             self.logger.error('Error loading index mapping for [%s].', biothing_type)
-            self.logger.debug(exc)
+            self.logger.debug(str(exc))
             return None
 
         metadata = self.source_metadata[biothing_type]
@@ -160,22 +167,27 @@ class BiothingESWebSettings(BiothingWebSettings):
         properties.clear()
         licenses.clear()
 
+        metadata['_biothing'] = biothing_type
+        metadata['_indices'] = list(mappings.keys())
+
         for index in mappings:
 
             mapping = mappings[index]['mappings']
 
-            if elasticsearch.__version__[0] < 7:
+            if mapping and elasticsearch.__version__[0] < 7:
                 # remove doc_type, support 1 type per index
                 mapping = next(iter(mapping.values()))
 
             if '_meta' in mapping:
                 for key, val in mapping['_meta'].items():
+                    # combine dict from multiple index
                     if key in metadata and isinstance(val, dict) \
                             and isinstance(metadata[key], dict):
                         metadata[key].update(val)
-                    else:
+                    else:  # otherwise set/replace
                         metadata[key] = val
-                metadata.update(mapping['_meta'])
+
+                # metadata.update(mapping['_meta'])  # alternative, no combine
 
                 if 'src' in mapping['_meta']:
                     for src, info in mapping['_meta']['src'].items():

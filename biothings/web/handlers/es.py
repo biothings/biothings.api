@@ -108,18 +108,27 @@ class MetadataSourceHandler(BaseESRequestHandler):
     """
     name = 'metadata'
     kwargs = dict(BaseESRequestHandler.kwargs)
-    kwargs['GET'] = {'dev': {'type': bool, 'default': False}}
+    kwargs['GET'] = {
+        'dev': {'type': bool, 'default': False},
+        'raw': {'type': bool, 'default': False}
+    }
 
     async def get(self):
 
-        await self.web_settings.read_index_mappings(self.biothing_type)
+        _raw = await self.web_settings.read_index_mappings(self.biothing_type)
         _meta = self.web_settings.source_metadata[self.biothing_type]
 
-        if self.args.dev:
+        if self.args.raw:
+            raise Finish(_raw)
+        elif self.args.dev:
             _meta['software'] = get_software_info(
                 app_dir=self.web_settings.get_git_repo_path())
-            _meta['server'] = await get_es_versions(
+            _meta['cluster'] = await get_es_versions(
                 client=self.web_settings.async_es_client)
+            _meta['hosts'] = self.web_settings.async_es_client.transport.hosts
+        else:  # remove correlation info
+            _meta.pop('_biothing', None)
+            _meta.pop('_indices', None)
 
         _meta = self.extras(_meta)  # override here
 
@@ -292,6 +301,8 @@ class BiothingHandler(ESRequestHandler):
                 template = self.web_settings.ID_NOT_FOUND_TEMPLATE
                 reason = template.format(bid=options.esqb.q)
                 raise EndRequest(404, reason=reason)
+            if len(res['hits']) > 1:
+                raise EndRequest(404, reason='not a unique id.')
             res = res['hits'][0]
             res.pop('_score', None)
 

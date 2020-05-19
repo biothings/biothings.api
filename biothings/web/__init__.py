@@ -59,6 +59,7 @@ import tornado.httpserver
 import tornado.ioloop
 import tornado.web
 
+from biothings import get_version
 from biothings.web.settings import BiothingESWebSettings
 
 
@@ -85,10 +86,10 @@ class BiothingsAPI():
         # About debug mode in tornado:
         # https://www.tornadoweb.org/en/stable/guide/running.html \
         # #debug-mode-and-automatic-reloading
+        logging.info("Biothings API %s", get_version())
         self.config = BiothingESWebSettings(config_module)
         self.handlers = []  # additional handlers
-        self.settings = dict(autoreload=False)
-        self.debug = True
+        self.settings = dict(debug=False)
         self.host = None
 
     @staticmethod
@@ -112,8 +113,8 @@ class BiothingsAPI():
         root_logger = logging.getLogger()
         self.config.configure_logger(root_logger)
         logging.getLogger('urllib3').setLevel(logging.ERROR)
-        logging.getLogger('elasticsearch').setLevel(logging.ERROR)
-        if self.debug:
+        logging.getLogger('elasticsearch').setLevel(logging.WARNING)
+        if self.settings['debug']:
             root_logger.setLevel(logging.DEBUG)
             es_tracer = logging.getLogger('elasticsearch.trace')
             es_tracer.setLevel(logging.DEBUG)
@@ -125,10 +126,7 @@ class BiothingsAPI():
         """
         Run API in an external event loop.
         """
-        settings = dict(self.settings)
-        settings.update(self.config.generate_app_settings(self.debug))
-        handlers = self.config.generate_app_handlers(self.handlers)
-        webapp = tornado.web.Application(handlers, **settings)
+        webapp = self.config.get_app(self.settings, self.handlers)
         server = tornado.httpserver.HTTPServer(webapp, xheaders=True)
         return server
 

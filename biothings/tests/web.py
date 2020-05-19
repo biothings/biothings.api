@@ -19,7 +19,6 @@ import pytest
 import requests
 from tornado.ioloop import IOLoop
 from tornado.testing import AsyncHTTPTestCase
-from tornado.web import Application
 
 from biothings.web.settings import BiothingESWebSettings
 
@@ -30,13 +29,13 @@ class BiothingsTestCase(AsyncHTTPTestCase):
         Need a config.py under the current working dir.
         If a host is specified, test against that host.
     """
-
+    conf = 'config'
     host = os.getenv("TEST_HOST", '')  # test locally when empty.
     path = ''  # api path with prefix, populated from web settings.
 
     @classmethod
     def setup_class(cls):
-        cls.settings = BiothingESWebSettings('config')
+        cls.settings = BiothingESWebSettings(cls.conf)
         prefix = cls.settings.API_PREFIX
         version = cls.settings.API_VERSION
         cls.path = f'/{prefix}/{version}/'
@@ -49,9 +48,7 @@ class BiothingsTestCase(AsyncHTTPTestCase):
 
     # override
     def get_app(self):
-        handlers = self.settings.generate_app_handlers()
-        settings = self.settings.generate_app_settings()
-        return Application(handlers, **settings)
+        return self.settings.get_app()
 
     # override
     def request(self, path, method="GET", expect=200, *args, **kwargs):

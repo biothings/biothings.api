@@ -2,7 +2,6 @@ import logging
 from collections import OrderedDict
 
 import elasticsearch
-import elasticsearch_dsl
 
 from biothings.utils.common import is_seq
 from biothings.utils.doc_traversal import depth_first_traversal
@@ -26,7 +25,7 @@ async def get_es_versions(client):
         es_cluster = f"{cluster} ({status})"
     return {
         "elasticsearch_version": es_version,
-        "elasticsearch_cluster": es_cluster
+        "elasticsearch_cluster": es_cluster,
     }
 
 def exists_or_null(doc, field, val=None):

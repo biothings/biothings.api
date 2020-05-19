@@ -277,7 +277,11 @@ Note each time a parameter is changed, **Hub** needs to be restarted, as shown o
 Data plugin architecture and specifications
 ===========================================
 
-**BioThings Studio** allows to easily define and register datasources using *data plugins*. Such a plugin is defined by:
+**BioThings Studio** allows to easily define and register datasources using *data plugins*. As of **BioThings Studio 0.2b**, there are two
+different types of data plugin.
+
+1. Manifest-based data plugins
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
  - a *manifest.json* file
  - other python files supporting the declaration in the manifest.
@@ -416,3 +420,41 @@ take an filename as input, it should select the file(s) to parse.
 .. note:: Please see https://github.com/sirloon/mvcgi for a simple plugin definition. https://github.com/sirloon/gwascatalog will show how to use
    the ``release`` key and https://github.com/sirloon/FIRE will demonstrate the parallelization in the uploader section.
 
+
+2. "Advanced" data plugins
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This type of plugins is more advanced in the sense that it's plain python code. They typically come from a code export of a manifest-based plugin. The resulting python code defines
+dumpers and uploaders as python class, inheriting from BioThings SDK components. These plugins can be written from scratch, they're "advanced" because they require more knowledge about
+BioThings SDK.
+
+In the root folder (local folder or remote git repository), a ``__init__.py`` is expected to be found, and should
+contains imports for one dumper, and one or more uploaders.
+
+An example of advanced data plugin can found at https://github.com/sirloon/mvcgi_advanced.git. It's coming from "mvcgi" manifest-based plugin, where code was exported.
+
+
+=========================
+Hooks and custom commands
+=========================
+
+While it's possible to define custom commands for the Hub console, by deriving class ``biothings.hub.HubServer``, there's also an easy way to enrich existing commands using **hooks**.
+A **hook** is a python file located in ``HOOKS_FOLDER`` (defaulting to ``./hooks/``). When the Hub starts, it inspects this folder and "inject" hook's namespace into its console. Everything
+available from within the hook file becomes available in the console. On the other hand, hook can use any commands available in the Hub console.
+
+**Hooks** provides an easy way to "program" the Hub, based on existing commands. The following example defines a new command, which will archive any builds older than X days. Code can be
+found at https://github.com/sirloon/auto_archive_hook.git. File ``auto_archive.py`` should be copied into ``./hooks/`` folder. Upon restart, a new command named ``auto_archive`` is now
+part of the Hub. It's also been scheduled automatically using ``schedule(...)`` command at the end of the hook.
+
+The auto_archive function uses several existing Hub commands:
+
+- ``lsmerge``: when given a build config name, returns a list of all existing build names.
+- ``archive``: will delete underlying data but keep existing metadata for a given build name
+- ``bm.build_info``: ``bm`` isn't a command, but a shortcut for **build_manager** instance. From this instance, we can call ``build_info`` method which, given a build name, returns information
+  about it, including the ``build_date`` field we're interested in.
+
+.. note:: Hub console is actually a python interpreter. When connecting to the Hub using SSH, the connection "lands" into that interpreter. That's why it's possible to inject python code
+   into the console.
+
+.. note:: Be careful. User-defined hooks can be conflicting with existing commands and may break the Hub. Ex: if a hook defines a command "dump", it will replace, and potentially break
+   existing one!

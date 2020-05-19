@@ -10,6 +10,8 @@ from .descriptions import KWARG_DESCRIPTIONS
 # *****************************************************************************
 # elasticsearch server transport url
 ES_HOST = 'localhost:9200'
+# load balancing by connecting to all nodes in the cluster
+ES_SNIFF = False
 # timeout for python es client (global request timeout)
 ES_CLIENT_TIMEOUT = 120
 # elasticsearch index name
@@ -43,6 +45,7 @@ API_VERSION = 'v1'
 APP_LIST = [
     (r"/", 'biothings.web.handlers.FrontPageHandler'),
     (r"/{pre}/status", 'biothings.web.handlers.StatusHandler'),
+    (r"/{pre}/{ver}/spec/?", 'biothings.web.handlers.APISpecificationHandler'),
     (r"/{pre}/{ver}/{typ}/metadata/fields/?", 'biothings.web.handlers.MetadataFieldHandler'),
     (r"/{pre}/{ver}/{typ}/metadata/?", 'biothings.web.handlers.MetadataSourceHandler'),
     (r"/{pre}/{ver}/{typ}/query/?", 'biothings.web.handlers.QueryHandler'),
