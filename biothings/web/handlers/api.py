@@ -2,7 +2,7 @@
 
 Biothings Web API Handlers
 
-    Supports: (all features above and)
+    Supports: (all features in parent classes and ...)
     - payload type 'application/json' (through self.json_arguments)
     - parsing keyword argument options (type, default, alias, ...)
     - multi-type dictionary output (json, yaml, html, msgpack)
@@ -89,7 +89,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
 
         Extend to add more customizations.
         '''
-        if self.request.headers.get('Content-Type') == 'application/json':
+        if self.request.headers.get('Content-Type', '').startswith('application/json'):
             try:
                 self.args_json = json_decode(self.request.body)
             except json.JSONDecodeError:
