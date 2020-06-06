@@ -114,7 +114,7 @@ class ESResultTransform(object):
                     if options.dotfield:
                         self.option_dotfield(hit, options)
             if 'aggregations' in response:
-                self.transform_aggregations(response['aggregations'])
+                self.transform_aggs(response['aggregations'])
                 response['facets'] = response.pop('aggregations')
                 response['hits'] = response.pop('hits')  # order
             return response
@@ -232,21 +232,54 @@ class ESResultTransform(object):
         if path in licenses and isinstance(doc, dict):
             doc['_license'] = licenses[path]
 
-    def transform_aggregations(self, res):
+    def transform_aggs(self, res):
+        """
+        Transform the aggregations field and make it more presentable.
+        For example, these are the fields of a two level nested aggregations:
+
+            aggregations.<term>.doc_count_error_upper_bound
+            aggregations.<term>.sum_other_doc_count
+            aggregations.<term>.buckets.key
+            aggregations.<term>.buckets.key_as_string
+            aggregations.<term>.buckets.doc_count
+            aggregations.<term>.buckets.<nested_term>.* (recursive)
+
+        After the transformation, we'll have:
+
+            facets.<term>._type
+            facets.<term>.total
+            facets.<term>.missing
+            facets.<term>.other
+            facets.<term>.terms.count
+            facets.<term>.terms.term
+            facets.<term>.terms.<nested_term>.* (recursive)
+
+        Note the first level key change doesn't happen here.
+        """
+
         for facet in res:
-            res[facet]['_type'] = 'terms'
+
+            res[facet]['_type'] = 'terms' # a type of ES Bucket Aggs
             res[facet]['terms'] = res[facet].pop('buckets')
             res[facet]['other'] = res[facet].pop('sum_other_doc_count')
             res[facet]['missing'] = res[facet].pop('doc_count_error_upper_bound')
+            
             count = 0
-            for term in res[facet]['terms']:
-                term['count'] = term.pop('doc_count')
-                count += term['count']
-                term['term'] = term.pop('key')
-                for agg_k in list(term.keys()):
-                    if agg_k not in ['count', 'term']:
-                        term.update(self.transform_aggregations({agg_k: term[agg_k]}))
+
+            for bucket in res[facet]['terms']:
+                bucket['count'] = bucket.pop('doc_count')
+                bucket['term'] = bucket.pop('key')
+                if 'key_as_string' in bucket:
+                    bucket['term'] = bucket.pop('key_as_string')
+                count += bucket['count']
+
+                # nested aggs
+                for agg_k in list(bucket.keys()):
+                    if isinstance(bucket[agg_k], dict):
+                        bucket.update(self.transform_aggs(dict({agg_k:bucket[agg_k]})))
+
             res[facet]['total'] = count
+
         return res
 
     def transform_mapping(self, mapping, prefix, search):
