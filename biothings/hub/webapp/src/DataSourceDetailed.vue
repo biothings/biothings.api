@@ -1,5 +1,8 @@
 <template>
     <div class="ui fluid container">
+    	<div class="ui container">
+    	        <h1 class="ui header">Sources</h1>
+    	</div>
         <div id="data-source" class="ui centered fluid card" v-if="source">
             <div class="content">
 

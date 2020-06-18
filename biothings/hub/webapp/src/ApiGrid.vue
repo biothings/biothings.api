@@ -1,5 +1,8 @@
 <template>
     <div id="apis">
+        <div class="ui container">
+                <h1>APIs</h1>
+        </div>
 
         <div class="ui left vertical labeled icon small inverted sidebar menu" :class="actionable">
             <a class="item"  v-on:click="createAPI">
