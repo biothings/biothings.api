@@ -1,5 +1,8 @@
 <template>
     <div id="sources">
+    	<div class="ui container">
+    	        <h1 class="ui header">Sources</h1>
+    	</div>
         <div class="ui left vertical labeled icon small inverted sidebar menu actionable">
             <a class="item" v-on:click="register">
                 <i class="plug icon"></i>
