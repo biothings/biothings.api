@@ -383,7 +383,8 @@ class BiothingHubMeta(BiothingMetaProp):
     def __init__(self, **metadata):  # dict
 
         self.biothing_type = metadata.get('biothing_type')
-        self.build_date = datetime.fromisoformat(metadata['build_date'])
+        # self.build_date = datetime.fromisoformat(metadata['build_date']) # python3.7 syntax
+        self.build_date = datetime.strptime(metadata['build_date'], "%Y-%m-%dT%H:%M:%S.%f")
         self.build_version = metadata.get('build_version')
         self.src = metadata.get('src', {})
         self.stats = metadata.get('stats', {})
@@ -398,23 +399,28 @@ class BiothingHubMeta(BiothingMetaProp):
             'stats': self.stats
         }
 
-    def __add__(self, other):  # TODO
+    def __add__(self, other):
 
+        # combine biothing_type field
         biothing_type = self.biothing_type,
         if other.biothing_type != self.biothing_type:
             biothing_type = '__multiple__'
 
+        # take the latest build_date
         build_date = self.build_date
         if other.build_date > self.build_date:
             build_date = other.build_date
 
+        # combine build_version field
         build_version = self.build_version
         if other.build_version != build_version:
             build_version = '__multiple__'
 
+        # combine source field
         src = dict(self.src)
         src.update(other.src)
 
+        # add up stats field
         stats = dict(self.stats)
         for key, value in other.stats.items():
             if key in stats:
