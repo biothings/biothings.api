@@ -1,3 +1,21 @@
+v0.7.3 (2020/06/05)
+    Support aggregation on date type fields.
+    Support additional json content type headers.
+
+v0.7.2 (2020/05/20)
+    Add API root path trailing slash redirection.
+
+v0.7.1 (2020/05/19)
+    Improve metadata host info display under dev mode. 
+
+v0.7.0 (2020/05/19)
+    Support application/json input.
+    Support elasticsearch 7.x in addition to 6.x.
+    Support load balancing to database.
+    Support multiple web configs.
+    Add web parameter options module.
+    Restructure web module.
+
 v0.6.0 (2020/04/25):
     Add functionalities to create and publish data release (full & incremental)
 
