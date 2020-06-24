@@ -23,3 +23,6 @@ biothings/.git-info
 biothings/tests/hub/**/output
 package-lock.json
 node_modules
+
+# testing
+config.py

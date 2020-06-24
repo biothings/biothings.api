@@ -4,6 +4,8 @@
 from collections import defaultdict
 
 from biothings.utils.common import dotdict
+
+
 class ResultTransformException(Exception):
     pass
 
@@ -16,11 +18,11 @@ class ESResultTransform(object):
     def __init__(self, web_settings):
 
         # license appending settings
-        self.source_licenses = defaultdict(dict)  # will be populated by web setting
+        self.source_licenses = web_settings.metadata.biothing_licenses
         self.license_transform = web_settings.LICENSE_TRANSFORM
 
         # mapping transform
-        self.field_notes = web_settings.get_field_notes()
+        self.field_notes = web_settings.fieldnote.get_field_notes()
         self.excluded_keys = web_settings.AVAILABLE_FIELDS_EXCLUDED
 
     @classmethod
@@ -259,11 +261,11 @@ class ESResultTransform(object):
 
         for facet in res:
 
-            res[facet]['_type'] = 'terms' # a type of ES Bucket Aggs
+            res[facet]['_type'] = 'terms'  # a type of ES Bucket Aggs
             res[facet]['terms'] = res[facet].pop('buckets')
             res[facet]['other'] = res[facet].pop('sum_other_doc_count')
             res[facet]['missing'] = res[facet].pop('doc_count_error_upper_bound')
-            
+
             count = 0
 
             for bucket in res[facet]['terms']:
@@ -276,7 +278,7 @@ class ESResultTransform(object):
                 # nested aggs
                 for agg_k in list(bucket.keys()):
                     if isinstance(bucket[agg_k], dict):
-                        bucket.update(self.transform_aggs(dict({agg_k:bucket[agg_k]})))
+                        bucket.update(self.transform_aggs(dict({agg_k: bucket[agg_k]})))
 
             res[facet]['total'] = count
 

@@ -99,7 +99,7 @@ class StatusHandler(BaseHandler):
 
     async def _check(self):
 
-        client = self.web_settings.async_es_client
+        client = self.web_settings.connections.async_client
         payload = self.web_settings.STATUS_CHECK
 
         status = None  # green, red, yellow

@@ -67,9 +67,7 @@ class BaseESRequestHandler(BaseAPIHandler):
 
         super(BaseESRequestHandler, self).initialize()
         self.biothing_type = biothing_type or self.web_settings.ES_DOC_TYPE
-        self.query_builder = self.web_settings.query_builder
-        self.query_backend = self.web_settings.query_backend
-        self.result_transform = self.web_settings.result_transform
+        self.pipeline = self.web_settings.pipeline
 
     def prepare(self):
 
@@ -115,17 +113,17 @@ class MetadataSourceHandler(BaseESRequestHandler):
 
     async def get(self):
 
-        _raw = await self.web_settings.read_index_mappings(self.biothing_type)
-        _meta = self.web_settings.source_metadata[self.biothing_type]
+        _raw = await self.web_settings.metadata.refresh(self.biothing_type)
+        _meta = self.web_settings.metadata.biothing_metadata[self.biothing_type]
 
         if self.args.raw:
             raise Finish(_raw)
         elif self.args.dev:
             _meta['software'] = get_software_info(
-                app_dir=self.web_settings.get_git_repo_path())
+                app_dir=self.web_settings.devinfo.get_git_repo_path())
             _meta['cluster'] = await get_es_versions(
-                client=self.web_settings.async_es_client)
-            _meta['hosts'] = self.web_settings.async_es_client.transport.info
+                client=self.web_settings.connections.async_client)
+            _meta['hosts'] = self.web_settings.connections.async_client.transport.info
         else:  # remove correlation info
             _meta.pop('_biothing', None)
             _meta.pop('_indices', None)
@@ -155,14 +153,14 @@ class MetadataFieldHandler(BaseESRequestHandler):
 
     async def get(self):
 
-        await self.web_settings.read_index_mappings(self.biothing_type)
-        mapping = self.web_settings.source_properties[self.biothing_type]
+        await self.web_settings.metadata.refresh(self.biothing_type)
+        mapping = self.web_settings.metadata.biothing_mappings[self.biothing_type]
 
         if self.args.raw:
             raise Finish(mapping)
 
         # reformat
-        result = self.result_transform.transform_mapping(
+        result = self.pipeline.transform_mapping(
             mapping, self.args.prefix, self.args.search)
 
         self.finish(result)
@@ -190,21 +188,21 @@ class ESRequestHandler(BaseESRequestHandler):
         #                   Build query
         ###################################################
 
-        self._query = self.query_builder.build(options.esqb.q, options.esqb)
+        self._query = self.pipeline.build(options.esqb.q, options.esqb)
         self._query = self.pre_query_hook(options, self._query)
 
         ###################################################
         #                   Execute query
         ###################################################
 
-        self._res = await self.query_backend.execute(self._query, options.es)
+        self._res = await self.pipeline.execute(self._query, options.es)
         self._res = self.pre_transform_hook(options, self._res)
 
         ###################################################
         #                 Transform result
         ###################################################
 
-        res = self.result_transform.transform(self._res, options.transform)
+        res = self.pipeline.transform(self._res, options.transform)
         res = self.pre_finish_hook(options, res)
 
         self.finish(res)

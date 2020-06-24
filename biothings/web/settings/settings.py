@@ -9,11 +9,16 @@ from pprint import pformat
 from pydoc import locate
 
 import tornado.log
+from tornado.ioloop import IOLoop
 from tornado.web import Application
 
-from biothings.web.settings import default as web_default
+from biothings.utils.web.userquery import ESUserQuery
 from biothings.web.handlers import BaseAPIHandler, BaseESRequestHandler
 from biothings.web.options import OptionSets
+from biothings.web.utils import DevInfo, FieldNote
+
+from . import default as web_default
+from .data import DataConnections, DataMetadata, DataPipeline
 
 try:
     from raven.contrib.tornado import AsyncSentryClient
@@ -66,15 +71,18 @@ class BiothingWebSettings():
                 else:  # cannot override dict, array, object type...
                     self.logger.error("Env %s is not suppored.", name)
 
-        # for metadata dev details
-        if os.path.isdir(os.path.join(self.APP_GIT_REPOSITORY, '.git')):
-            self._git_repo_path = self.APP_GIT_REPOSITORY
-        else:
-            self._git_repo_path = None
+        # ----------- #
+        self.validate()
+        # ----------- #
+
+        self.fieldnote = FieldNote(self.AVAILABLE_FIELDS_NOTES_PATH)
+        self.devinfo = DevInfo(self.APP_GIT_REPOSITORY)
+
+        # initialize payload for standalone tracking batch
+        self.tracking_payload = []
 
         self.optionsets = OptionSets()
         self.handlers = {}
-        self.validate()
 
     @staticmethod
     def load_module(config, default=None):
@@ -104,7 +112,7 @@ class BiothingWebSettings():
         elif hasattr(self._default, name):
             return getattr(self._default, name)
         else:  # not provided and no default
-            raise AttributeError()
+            raise AttributeError(name)
 
     @property
     def logger(self):
@@ -186,7 +194,8 @@ class BiothingWebSettings():
                 pattern = pattern.format(
                     pre=self.API_PREFIX,
                     ver=self.API_VERSION).replace('//', '/')
-                handlers[pattern] = (pattern, handler, setting)
+                if '()' not in pattern:
+                    handlers[pattern] = (pattern, handler, setting)
             else:  # no pattern translation
                 handlers[pattern] = (pattern, handler, setting)
 
@@ -213,12 +222,6 @@ class BiothingWebSettings():
         _settings = self._generate_app_settings(settings)
         return Application(_handlers, **_settings)
 
-    def get_git_repo_path(self):
-        '''
-        Return the path of the codebase if the specified folder in settings exists or `None`.
-        '''
-        return self._git_repo_path
-
     def configure_logger(self, logger):
         '''
         Configure a logger's formatter to use the format defined in this web setting.
@@ -239,3 +242,50 @@ class BiothingWebSettings():
         assert isinstance(self.LIST_SIZE_CAP, int)
         assert isinstance(self.ACCESS_CONTROL_ALLOW_METHODS, str)
         assert isinstance(self.ACCESS_CONTROL_ALLOW_HEADERS, str)
+
+        self.ES_INDICES = dict(self.ES_INDICES)
+        self.ES_INDICES[self.ES_DOC_TYPE] = self.ES_INDEX
+        self.BIOTHING_TYPES = list(self.ES_INDICES.keys())
+
+class BiothingESWebSettings(BiothingWebSettings):
+    """
+    With additional settings pecific to an elasticsearch backend.
+    """
+
+    def __init__(self, config=None, parent=None, **kwargs):
+
+        super(BiothingESWebSettings, self).__init__(config, parent, **kwargs)
+
+        # user query data
+        self.userquery = ESUserQuery(self.USERQUERY_DIR)
+
+        self.connections = DataConnections(self)
+        self.metadata = DataMetadata(self)
+        self.pipeline = DataPipeline(self)
+
+        IOLoop.current().add_callback(self._initialize)
+
+    async def _initialize(self):
+
+        # failures will be logged concisely
+        logging.getLogger('elasticsearch.trace').propagate = False
+
+        await self.connections.log_versions()
+
+        # populate source mappings
+        for biothing_type in self.ES_INDICES:
+            await self.metadata.refresh(biothing_type)
+
+        # resume normal log flow
+        logging.getLogger('elasticsearch.trace').propagate = True
+
+    def validate(self):
+        '''
+        Additional ES settings to validate.
+        '''
+        super().validate()
+
+        assert isinstance(self.ES_INDEX, str)
+        assert isinstance(self.ES_DOC_TYPE, str)
+        assert isinstance(self.ES_INDICES, dict)
+        assert '*' not in self.ES_DOC_TYPE

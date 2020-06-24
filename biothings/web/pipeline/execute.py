@@ -17,7 +17,7 @@ class ESQueryBackend(object):
 
     def __init__(self, web_settings):
 
-        self.client = web_settings.get_async_es_client()
+        self.client = web_settings.connections.async_client
 
         # es indices
         self.indices = web_settings.ES_INDICES

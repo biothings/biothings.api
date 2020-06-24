@@ -1,2 +1,1 @@
-from .base import BiothingConfigError, BiothingWebSettings
-from .data import BiothingESWebSettings
+from .settings import BiothingConfigError, BiothingWebSettings, BiothingESWebSettings
