@@ -1,3 +1,8 @@
+v0.8.0 (2020/06/24)
+    Add active data metadata generation utility.
+    Add metadata routing directly after app prefix.
+    Restructure web settings module.
+
 v0.7.3 (2020/06/05)
     Support aggregation on date type fields.
     Support additional json content type headers.
