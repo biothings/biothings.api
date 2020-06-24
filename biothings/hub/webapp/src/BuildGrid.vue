@@ -1,6 +1,9 @@
 <template>
     <div id="builds">
 
+        <div class="ui container">
+		<h1 class="ui header">Builds</h1>
+        </div>
         <div class="ui left vertical labeled icon small inverted sidebar menu">
             <div class="item"><i>Existing configurations</i></div>
             <a class="ui buildconfigs dropdown item" v-for="(conf,conf_name) in build_configs" :id="'config_' + conf_name">
