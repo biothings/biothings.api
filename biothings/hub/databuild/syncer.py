@@ -129,7 +129,7 @@ class BaseSyncer(object):
                     target = d
                 else:
                     for k, v in d.items():
-                        if type(v) == dict:
+                        if isinstance(v, dict):
                             if k in target:
                                 target[k] = merge_info(target[k], v)
                             else:
@@ -178,7 +178,7 @@ class BaseSyncer(object):
         If target_backend (bt.databbuild.backend.create_backend() notation), then it will replace "old" (that is, the one
         being synced)
         """
-        if type(steps) == str:
+        if isinstance(steps, str):
             steps = [steps]
         assert self.old and self.new, "'self.old' and 'self.new' must be set to old/new collections"
         self.target_backend = target_backend
@@ -440,7 +440,7 @@ class ThrottlerSyncer(BaseSyncer):
             would kill the ES server otherwise... (or at least produces timeout errors)
             """
             return len([j for j in job_manager.jobs.values() if
-                       j["category"] == SYNCER_CATEGORY]) < self.max_sync_workers
+                        j["category"] == SYNCER_CATEGORY]) < self.max_sync_workers
 
         preds.append(not_too_much_syncers)
         return preds
@@ -864,8 +864,8 @@ class SyncerManager(BaseManager):
                 src_build.replace_one({"_id": build["_id"]}, build)
 
     def register_syncer(self, klass):
-        if type(klass) == partial:
-            assert type(klass.func) == type, "%s is not a class" % klass.func
+        if isinstance(klass, partial):
+            assert isinstance(klass.func, type), "%s is not a class" % klass.func
             diff_type, target_backend_type = klass.func.diff_type, klass.func.target_backend_type
         else:
             diff_type, target_backend_type = klass.diff_type, klass.target_backend_type
@@ -904,7 +904,7 @@ class SyncerManager(BaseManager):
              old_db_col_names,
              new_db_col_names,
              diff_folder=None,
-             batch_size=100000,
+             batch_size=10000,
              mode=None,
              target_backend=None,
              steps=["mapping", "content", "meta", "post"],
