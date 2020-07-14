@@ -802,10 +802,18 @@ class TestQueryMatch(BiothingsTestCase):
         assert len(ans) == 10
 
     def test_10(self):
-        self.request('query', method='POST', json={'q': [1017], 'scopes': '*'}, expect=400)
-
-    def test_11(self):
-        self.request('query', method='POST', json={'q': [1017], 'scopes': '*'}, expect=400)
+        """
+        [
+            {
+                "query": "cdk2",
+                "_id": "100689039",
+                "_score": 1.2667861,
+                ...
+            },
+            ...
+        ]
+        """
+        self.request('query', method='POST', json={'q': [1017], 'scopes': '*'})
 
     def test_20_nested(self):
         """
