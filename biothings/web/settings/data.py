@@ -251,7 +251,10 @@ class ESIndex:
         Fill in empty stats field if not provided.
         """
         if self.mappings.metadata:
-            return BiothingHubMeta(**self.mappings.metadata)
+            try:
+                return BiothingHubMeta(**self.mappings.metadata)
+            except KeyError:
+                pass
         return BiothingHubMeta(
             biothing_type=self.biothing,
             build_date=self.settings.get_creation_date().isoformat(),
