@@ -81,7 +81,8 @@ class ESQueryBuilder(object):
         '''
         if isinstance(q, (str, int, float)):
             query = Q('multi_match', query=str(q),
-                      operator="and", fields=scopes)
+                      operator="and", fields=scopes,
+                      lenient=True)
 
         elif isinstance(q, list):
             if not isinstance(scopes, list):
@@ -93,7 +94,8 @@ class ESQueryBuilder(object):
             for _q, _scopes in zip(q, scopes):
                 query = query & Q(
                     'multi_match', query=_q,
-                    operator="and", fields=_scopes)
+                    operator="and", fields=_scopes,
+                    lenient=True)
 
         else:  # invalid
             raise TypeError(q)
