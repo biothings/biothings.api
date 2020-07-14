@@ -1,3 +1,8 @@
+v0.8.1 (2020/07/14)
+    Improve field type mismatch query behavior.
+    Improve requried argument parsing restraint logic.
+    Improve metadata generation stability.
+
 v0.8.0 (2020/06/24)
     Add active data metadata generation utility.
     Add metadata routing directly after app prefix.
