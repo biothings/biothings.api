@@ -103,6 +103,9 @@ class OptionArg():
         if 'type' in self.setting:
             value = self._typify(value, jsoninput)
 
+        if 'required' in self.setting:
+            value = self._required(value)
+
         if 'translations' in self.setting:
             value = self._translate(value)
 
@@ -140,6 +143,13 @@ class OptionArg():
         if self.setting.get('required'):
             raise OptionArgError(missing=self.keyword)
         return self.setting.get('default')
+
+    def _required(self, value):
+        if self.setting.get('required'):
+            if isinstance(value, (str, list)):
+                if not value:  # should evaluate to true
+                    raise OptionArgError(missing=self.keyword)
+        return value
 
     def _typify(self, value, jsoninput):
         # convert to the desired value type and format
