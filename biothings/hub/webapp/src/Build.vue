@@ -31,7 +31,9 @@
             </div>
 
             <div class="left aligned header" v-model="build">
-                <router-link :to="{name:'build', params: {_id: build._id, color:color}}"><a>{{ build.target_name }}</a></router-link>
+                <small>
+                    <router-link :to="{name:'build', params: {_id: build._id, color:color}}"><a>{{ build.target_name }}</a></router-link>
+                </small>
             </div>
             <div class="left aligned description">
                 <div>
@@ -72,17 +74,17 @@
         <div class="extra content" :class="actionable">
             <div class="ui icon buttons left floated mini">
                 <button class="ui button" :data-build_id="build._id" v-on:click="inspect">
-                    <i class="unhide icon" :data-build_id="build._id"></i>
+                    <i class="unhide icon" :data-build_id="build._id"></i> inspect
                 </button>
             </div>
             <div class="ui icon buttons right floated mini">
                 <button class="ui button">
-                    <i class="trash icon" @click="deleteBuild()"></i>
+                    <i class="trash icon" @click="deleteBuild()"></i> delete
                 </button>
             </div>
             <div class="ui icon buttons right floated mini" v-if="!build.archived">
                 <button class="ui button">
-                    <i :class="[build.archived ? 'archived' : '', 'archive icon']" @click="archiveBuild()"></i>
+                    <i :class="[build.archived ? 'archived' : '', 'archive icon']" @click="archiveBuild()"></i> archive
                 </button>
             </div>
         </div>

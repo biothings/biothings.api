@@ -52,11 +52,23 @@
                             Menu
                         </a>
                         <a class="right aligned item">
+                            <select class="ui filterbuilds dropdown" v-model="showSelection">
+                                <option value="">Date Filter</option>
+                                <optgroup label="view builds from">
+                                    <option value="today">from today</option>
+                                    <option value="1 day ago">from 1 day ago</option>
+                                    <option value="2 days ago">from 2 days ago</option>
+                                    <option value="3 days ago">from 3 days ago</option>
+                                    <option value="all time">view all</option>
+                                </optgroup>
+                            </select>
+                        </a>
+                        <a class="right aligned item">
                             <button class="ui clearconffilter button" v-if="conf_filter" @click="clearFilter">
                                 Clear 
                             </button>
                             <select class="ui filterbuilds dropdown" v-model="conf_filter">
-                                <option value="">Filter</option>
+                                <option value="">Source Filter</option>
                                 <option :value="name" v-for="(conf,name) in build_configs">
                                     <div :class="['ui', build_colors[name], 'empty circular label']"></div>
                                     {{name}}
@@ -64,17 +76,30 @@
                             </select>
                         </a>
                         <a class="item">
-                                <div class="ui includearchived checkbox">
-                                    <input type="checkbox" name="includearchived" v-model="only_archived">
-                                    <label>Show archived builds only</label>
-                                </div>
-                            </a>
-                          </div>
-                    </div>
-                    <div class="ui centered grid">
-                        <div class="ui five wide column" v-for="build in builds">
-                            <build v-bind:pbuild="build" v-bind:color="build_colors[build.build_config.name]"></build>
+                            <div class="ui includearchived checkbox">
+                                <input type="checkbox" name="includearchived" v-model="only_archived">
+                                <label>Show archived builds only</label>
+                            </div>
+                        </a>
                         </div>
+                    </div>
+                    <div class="ui center showBox">
+                        <small class="m-1">Showing <b v-text="shown < builds.length ? shown : builds.length"></b> out of <b v-text="builds.length"></b> from <b v-text="showSelection"></b></small>
+                        <button v-if="shown < builds.length" class="ui button mini m-1" @click="shown = shown-10">
+                          -10
+                        </button>
+                        <button v-if="shown < builds.length" class="ui button mini m-1" @click="shown = shown+10">
+                          +10
+                        </button>
+                        
+                    </div>
+
+                    <div class="ui centered grid">
+                        <template v-for="(build,i) in builds">
+                            <div class="ui five wide column" v-bind:key="i" v-if="i < shown">
+                                <build v-bind:pbuild="build" v-bind:color="build_colors[build.build_config.name]"></build>
+                            </div>
+                        </template>
                     </div>
                 </div>
             </div>
@@ -237,6 +262,7 @@
     import Loader from './Loader.vue'
     import Actionable from './Actionable.vue'
     import bus from './bus.js'
+    import moment from 'moment'
 
 
     export default {
@@ -314,6 +340,11 @@
                 this.getBuilds();
             }
         },
+        showSelection: function(s,os){
+            if(s != os) {
+                this.getBuilds();
+            }
+        }
     },
     data () {
         return  {
@@ -333,6 +364,8 @@
             conf_filter : "",
             only_archived : false,
             include_archived_configs: false,
+            shown: 10,
+            showSelection:''
         }
     },
     computed: {
@@ -360,7 +393,9 @@
             $('#root_sources').dropdown().dropdown("refresh");
         },
         getBuilds: function() {
-            var filter = this.conf_filter == "" ? '' : `?conf_name=${this.conf_filter}`;
+            var self = this;
+
+            var filter = self.conf_filter == "" ? '' : `?conf_name=${self.conf_filter}`;
             // https://vuejs.org/v2/guide/list.html#Caveats:
             // "Vue implements some smart heuristics to maximize DOM element reuse, so replacing an 
             //  array with another array containing overlapping objects is a very efficient operation."
@@ -369,18 +404,57 @@
             // (and if emptied in "response", I guess there's a race condition because builds aren't
             // rendered properly again...). Anyway, I don't know if it's related but that's the only
             // explanation I have...
-            if(this.only_archived) {
+            if(self.only_archived) {
                 if(filter == "")
                     filter += "?only_archived=1";
                 else
                     filter += "&only_archived=1";
             }
-            this.loading();
-            this.builds = [];
+            self.loading();
+            self.builds = [];
             axios.get(axios.defaults.baseURL + '/builds' + filter)
             .then(response => {
-                this.builds = response.data.result;
-                this.loaded();
+                self.builds = response.data.result;
+                console.log('TOTAL BUILDS', self.builds.length )
+                if (!self.showSelection) {
+                    self.showSelection = 'today'
+                }
+
+                let filtered = []
+                for(let i=0; i < self.builds.length; i++){
+                    switch(self.showSelection){
+                        case "today":
+                            let isFromToday = moment().isSame(moment(self.builds[i]['started_at']), 'day')
+                            if (isFromToday) {
+                                filtered.push(self.builds[i])
+                            }
+                            break;
+                        case "1 day ago":
+                            let onedayago = moment(moment().subtract(1,'days')).isSame(moment(self.builds[i]['started_at']), 'day')
+                            if ( onedayago ) {
+                                filtered.push(self.builds[i])
+                            }
+                            break;
+                        case "2 days ago":
+                            let twodayago = moment(moment().subtract(2,'days')).isSame(moment(self.builds[i]['started_at']), 'day')
+                            if ( twodayago ) {
+                                filtered.push(self.builds[i])
+                            }
+                            break;
+                        case "3 days ago":
+                            let threedayago = moment(moment().subtract(3,'days')).isSame(moment(self.builds[i]['started_at']), 'day')
+                            if ( threedayago ) {
+                                filtered.push(self.builds[i])
+                            }
+                            break;
+                        default:
+                            filtered.push(self.builds[i])
+                            break;
+                    }
+                }
+                self.builds = filtered
+                
+                self.loaded();
             })
             .catch(err => {
                 console.log("Error getting builds information: " + err);
@@ -686,5 +760,13 @@
 
 .red{
   color: red !important;
+}
+
+.showBox{
+    padding:10px;
+}
+
+.m-1{
+    margin:.25rem;
 }
 </style>
