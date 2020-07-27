@@ -616,7 +616,7 @@ class DataBuilder(object):
                                 "build_version":
                                 build_version,
                                 "build_date":
-                                datetime.fromtimestamp(self.t0).isoformat()
+                                datetime.fromtimestamp(self.t0).astimezone().isoformat()
                             }
                             # custom
                             _meta.update(self.custom_metadata)
