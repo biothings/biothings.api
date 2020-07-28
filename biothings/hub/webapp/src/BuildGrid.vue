@@ -59,7 +59,7 @@
                                     <option value="1 day ago">from 1 day ago</option>
                                     <option value="2 days ago">from 2 days ago</option>
                                     <option value="3 days ago">from 3 days ago</option>
-                                    <option value="all time">view all</option>
+                                    <option value="all time">view all (most recent)</option>
                                 </optgroup>
                             </select>
                         </a>
@@ -85,7 +85,7 @@
                     </div>
                     <div class="ui center showBox">
                         <small class="m-1">Showing <b v-text="shown < builds.length ? shown : builds.length"></b> out of <b v-text="builds.length"></b> from <b v-text="showSelection"></b></small>
-                        <button v-if="shown < builds.length" class="ui button mini m-1" @click="shown = shown-10">
+                        <button v-if="shown < builds.length && shown !== 10" class="ui button mini m-1" @click="shown = shown-10">
                           -10
                         </button>
                         <button v-if="shown < builds.length" class="ui button mini m-1" @click="shown = shown+10">
@@ -417,7 +417,7 @@
                 self.builds = response.data.result;
                 console.log('TOTAL BUILDS', self.builds.length )
                 if (!self.showSelection) {
-                    self.showSelection = 'today'
+                    self.showSelection = 'most recent'
                 }
 
                 let filtered = []
