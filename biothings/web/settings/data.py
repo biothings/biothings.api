@@ -389,7 +389,7 @@ class BiothingHubMeta(BiothingMetaProp):
         self.biothing_type = metadata.get('biothing_type')
         # self.build_date = datetime.fromisoformat(metadata['build_date']) # python3.7 syntax
         # self.build_date = datetime.strptime(metadata['build_date'], "%Y-%m-%dT%H:%M:%S.%f")
-        self.build_date = dtparse(metadata['build_date'])    # this handles with timestamp string w/wo timezone
+        self.build_date = dtparse(metadata['build_date']).astimezone()    # this handles with timestamp string w/wo timezone
         self.build_version = metadata.get('build_version')
         self.src = metadata.get('src', {})
         self.stats = metadata.get('stats', {})
