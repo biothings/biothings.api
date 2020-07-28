@@ -74,17 +74,17 @@
         <div class="extra content" :class="actionable">
             <div class="ui icon buttons left floated mini">
                 <button class="ui button" :data-build_id="build._id" v-on:click="inspect">
-                    <i class="unhide icon" :data-build_id="build._id"></i> inspect
+                    <i class="unhide icon" :data-build_id="build._id"></i>
                 </button>
             </div>
             <div class="ui icon buttons right floated mini">
                 <button class="ui button">
-                    <i class="trash icon" @click="deleteBuild()"></i> delete
+                    <i class="trash icon" @click="deleteBuild()"></i>
                 </button>
             </div>
             <div class="ui icon buttons right floated mini" v-if="!build.archived">
                 <button class="ui button">
-                    <i :class="[build.archived ? 'archived' : '', 'archive icon']" @click="archiveBuild()"></i> archive
+                    <i :class="[build.archived ? 'archived' : '', 'archive icon']" @click="archiveBuild()"></i>
                 </button>
             </div>
         </div>

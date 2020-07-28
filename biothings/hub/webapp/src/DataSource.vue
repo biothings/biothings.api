@@ -55,17 +55,17 @@
             <span v-else>
                 <div class="ui icon buttons left floated mini">
                     <button class="ui button" v-on:click="do_dump" v-if="source.download">
-                        <i class="download cloud icon labeled" data-content="Dump" ></i> Dump
+                        <i class="download cloud icon labeled" data-content="Dump" ></i>
                     </button>
                 </div>
                 <div class="ui icon buttons left floated mini">
                     <button class="ui button" v-on:click="do_upload" v-if="source.upload">
-                        <i class="database icon labeled" data-content="Upload"></i> Upload
+                        <i class="database icon labeled" data-content="Upload"></i>
                     </button>
                 </div>
                 <div class="ui icon buttons left floated mini">
                     <button class="ui button" v-on:click="inspect">
-                        <i class="unhide icon labeled" data-content="Inspect"></i> Inspect
+                        <i class="unhide icon labeled" data-content="Inspect"></i>
                     </button>
                 </div>
             </span>
