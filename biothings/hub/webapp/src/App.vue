@@ -45,10 +45,10 @@
             </div>
 
 
-            <a class="clickable item" v-for="mitem in menu">
+            <router-link :to="mitem['path']" class="clickable item" v-for="mitem in menu" v-bind:key="mitem.name" exact>
                 <i :class="['ui',mitem['icon'],'icon']"></i>
-                <router-link :to="mitem['path']">{{ mitem['name'] }}</router-link>
-            </a>
+                {{ mitem['name'] }}
+            </router-link>
             <!--a class="clickable item" v-if="has_feature('source') && has_feature('build')">
                 <i class="ui home icon"></i>
                 <router-link to="/">Home</router-link>
@@ -359,7 +359,7 @@
     import StandaloneWizard from './StandaloneWizard.vue';
     import SystemUpgrade from './SystemUpgrade.vue';
 
-    const router = new VueRouter();
+    const router = new VueRouter({linkActiveClass:"active"});
 
     const PING_INTERVAL_MS = 10000;
 
