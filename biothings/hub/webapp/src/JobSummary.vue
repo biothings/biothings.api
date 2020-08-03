@@ -2,7 +2,7 @@
   <div class="ui center aligned tiny">
     <!-- commands -->
     <button
-        class="ui compact labeled icon commands button tiny">
+        class="ui compact labeled icon commands button tiny" :class="[!num_commands?'':'yellow']">
         <i class="settings icon"></i>
         {{num_commands}}
     </button>

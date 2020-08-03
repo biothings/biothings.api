@@ -31,7 +31,9 @@
             </div>
 
             <div class="left aligned header" v-model="build">
-                <router-link :to="{name:'build', params: {_id: build._id, color:color}}"><a>{{ build.target_name }}</a></router-link>
+                <small>
+                    <router-link :to="{name:'build', params: {_id: build._id, color:color}}"><a>{{ build.target_name }}</a></router-link>
+                </small>
             </div>
             <div class="left aligned description">
                 <div>
