@@ -154,9 +154,7 @@ class ESResultTransform(object):
         Sort a container in-place.
         """
         try:
-            if isinstance(obj, list):
-                obj.sort()  # TODO list of object might is a problem here
-            elif isinstance(obj, dict):
+            if isinstance(obj, dict):
                 sorted_items = sorted(obj.items())
                 obj.clear()
                 obj.update(sorted_items)
