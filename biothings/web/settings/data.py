@@ -50,6 +50,7 @@ class DataConnections:
             connection_settings.update(sniffer_timeout=60)
             connection_settings.update(sniff_on_start=True)
             connection_settings.update(sniff_on_connection_fail=True)
+            connection_settings.update(retry_on_timeout=True)
         self._connections.create_connection(alias='async', **connection_settings)
 
     async def log_versions(self):
