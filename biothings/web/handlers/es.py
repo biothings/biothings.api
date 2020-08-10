@@ -346,8 +346,12 @@ class QueryHandler(ESRequestHandler):
 
         # GA
         if self.request.method == 'GET':
-            if options.esqb.fetch_all:
+            if options.es.fetch_all:
                 self.event['action'] = 'fetch_all'
                 self.event['total'] = res.get('total', 0)
+
+        # Headers
+        if options.es.fetch_all or options.es.scroll_id:
+            self.clear_header('Cache-Control')
 
         return res

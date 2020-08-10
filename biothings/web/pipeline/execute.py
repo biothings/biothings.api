@@ -49,10 +49,10 @@ class ESQueryBackend(object):
                 return res
 
         if query:
-            biothing_type = options.pop('biothing_type', None) or self.default_type
+            biothing_type = options.get('biothing_type', None) or self.default_type
             query = query.index(self.indices.get(biothing_type, self.default_index))
 
-            if options.pop('fetch_all', False):
+            if options.get('fetch_all', False):
                 query = query.params(scroll=self.scroll_time)
                 query = query.extra(size=self.scroll_size)
             try:
