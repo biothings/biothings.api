@@ -1680,7 +1680,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                 "updated": {},
             },
             "note": note,
-            "generated_on": str(datetime.now()),
+            "generated_on": str(datetime.now().astimezone()),
             "sources": {
                 "added": {},
                 "deleted": {},

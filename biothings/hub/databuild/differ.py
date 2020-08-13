@@ -219,7 +219,7 @@ class BaseDiffer(object):
                     # when "new" is a target collection:
                     "mapping_file": None,
                     "info": {
-                        "generated_on": str(datetime.now()),
+                        "generated_on": str(datetime.now().astimezone()),
                         "exclude": exclude,
                         "steps": steps,
                         "mode": mode,
