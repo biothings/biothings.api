@@ -253,7 +253,7 @@ class BaseStatusRegisterer(object):
         # stage: "snapshot", "publish", etc... depending on the what's being done
         job_info = {
             'status': status,
-            'step_started_at': datetime.datetime.now(),
+            'step_started_at': datetime.datetime.now().astimezone(),
             'logfile': self.logfile
         }
         stage_info = {}

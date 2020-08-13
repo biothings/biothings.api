@@ -381,7 +381,7 @@ class Indexer(object):
         src_build = get_src_build()
         job_info = {
             'status': status,
-            'step_started_at': datetime.now(),
+            'step_started_at': datetime.now().astimezone(),
             'logfile': self.logfile,
         }
         index_info = {
