@@ -234,7 +234,7 @@ class BaseDumper(object):
                 'release': release,
                 'data_folder': data_folder,
                 'logfile': self.logfile,
-                'started_at': datetime.now(),
+                'started_at': datetime.now().astimezone(),
                 'status': status
             }
         })

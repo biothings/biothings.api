@@ -308,7 +308,7 @@ class DataBuilder(object):
         build = src_build.find_one({'_id': target_name})
         if not build:
             # first record for target_name, keep a timestamp
-            build_info["started_at"] = datetime.fromtimestamp(self.t0)
+            build_info["started_at"] = datetime.fromtimestamp(self.t0).astimezone()
             build_info["jobs"] = []
             src_build.insert_one(build_info)
         if init:

@@ -91,7 +91,7 @@ class InspectorManager(BaseManager):
         data_provider_type = None  # where to register results (if possible to do so)
         registerer_obj = None  # who should register result
         t0 = time.time()
-        started_at = datetime.now()
+        started_at = datetime.now().astimezone()
         self.logger.info("Inspecting data with mode %s and data_provider %s" % (repr(mode), repr(data_provider)))
         if callable(data_provider):
             raise NotImplementedError("data_provider as callable untested...")
