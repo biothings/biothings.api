@@ -271,7 +271,7 @@ class BaseStatusRegisterer(object):
             job_info["time"] = timesofar(self.ti)
             t1 = round(time.time() - self.ti, 0)
             job_info["time_in_s"] = t1
-            stage_info.setdefault(stage, {}).setdefault(stage_key, {}).update({"created_at": datetime.datetime.now()})
+            stage_info.setdefault(stage, {}).setdefault(stage_key, {}).update({"created_at": datetime.datetime.now().astimezone()})
         if "job" in extra:
             job_info.update(extra["job"])
         # since the base is the merged collection, we register info there

@@ -93,7 +93,7 @@ class BaseSyncer(object):
             job_info["time"] = timesofar(self.ti)
             t1 = round(time.time() - self.ti, 0)
             job_info["time_in_s"] = t1
-            sync_info[sync_key]["created_at"] = datetime.now()
+            sync_info[sync_key]["created_at"] = datetime.now().astimezone()
         if "sync" in extra:
             sync_info[sync_key].update(extra["sync"])
         if "job" in extra:

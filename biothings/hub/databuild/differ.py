@@ -89,7 +89,7 @@ class BaseDiffer(object):
             job_info["time"] = timesofar(self.ti)
             t1 = round(time.time() - self.ti, 0)
             job_info["time_in_s"] = t1
-            diff_info["diff"][diff_key]["created_at"] = datetime.now()
+            diff_info["diff"][diff_key]["created_at"] = datetime.now().astimezone()
         if "diff" in extra:
             diff_info["diff"][diff_key].update(extra["diff"])
         if "job" in extra:
