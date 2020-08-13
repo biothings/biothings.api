@@ -89,7 +89,7 @@ class RootHandler(DefaultHandler):
             "icon":
             getattr(config, "HUB_ICON", None),
             "now":
-            datetime.datetime.now(),
+            datetime.datetime.now().astimezone(),
             "features":
             self.features,
         })
