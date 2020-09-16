@@ -113,6 +113,11 @@ class AutoHubFeature(object):
         return folder.replace(".", "_").replace("-", "_")
 
     def list_biothings(self):
+        """
+        Example:
+        [{'name': 'mygene.info',
+        'url': 'https://biothings-releases.s3-us-west-2.amazonaws.com/mygene.info/versions.json'}]
+        """
         return self.version_urls
 
     def configure(self):

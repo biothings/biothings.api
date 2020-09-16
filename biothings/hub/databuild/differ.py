@@ -1097,6 +1097,8 @@ class DifferManager(BaseManager):
             def diffed(f):
                 try:
                     _ = f.result()
+                    # after creating a build diff, indicate
+                    # a release note should be auto generated
                     set_pending_to_release_note(new)
                 except Exception as e:
                     self.logger.error("Error during diff: %s" % e)
