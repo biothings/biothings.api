@@ -1454,8 +1454,12 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                 "snapshot", {}):
             # doc was returend with snapshot_or_build_name matching _id, not snapshot name, invalidate
             snapshot_doc = None
-        if diff_doc and snapshot_or_build_name not in diff_doc.get("diff", {}):
-            diff_doc = None
+        # TODO 
+        # diff is wrt another diff, maybe should be this way?
+        #-------------------------------------- 
+        # if diff_doc and snapshot_or_build_name not in diff_doc.get("diff", {}):
+        #     diff_doc = None
+        #--------------------------------------
         # do we still have something ambiguous ?
         if snapshot_doc and diff_doc:
             # so we have 2 releases associated, we can't know which one user wants
