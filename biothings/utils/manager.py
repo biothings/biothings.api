@@ -135,8 +135,9 @@ class ResourceNotFound(Exception):
 
 class BaseManager(object):
 
-    def __init__(self, job_manager):
+    def __init__(self, job_manager, poll_schedule=None):
         self.register = {}
+        self.poll_schedule = poll_schedule
         self.job_manager = job_manager
         self.clean_stale_status()
 
@@ -168,14 +169,10 @@ class BaseManager(object):
                 # so we want to make sure user is aware of this and not just return one
                 # uploader when many are needed
                 # on the other hand, if only one avail, just return it
-                res = []
-                for src in srcs:
-                    if src.name == sub:
-                        res.append(src)
-                if len(res) == 0:
+                res = [src for src in srcs if src.name == sub]
+                if not res:
                     raise KeyError(src_name)
-                else:
-                    return res
+                return res
             except (ValueError, AttributeError, KeyError):
                 # nope, can't find it...
                 raise KeyError(src_name)
@@ -191,7 +188,6 @@ class BaseManager(object):
 
         @asyncio.coroutine
         def check_pending(state):
-            # sources = [src for src in col.find({'pending': state}) if type(src['_id']) == str]   # TODO: remove this line
             sources = [src for src in col.find({'pending': state}) if isinstance(src['_id'], str)]
             if sources:
                 logger.info(
@@ -207,7 +203,8 @@ class BaseManager(object):
                 except ResourceNotFound:
                     logger.error("Resource '%s' has a pending flag set to %s but is not registered in manager",
                                  src["_id"], state)
-        cron = aiocron.crontab(
+
+        return aiocron.crontab(
             self.poll_schedule, func=partial(check_pending, state),
             start=True, loop=self.job_manager.loop
         )

@@ -24,7 +24,7 @@ from biothings.hub.databuild.backend import generate_folder, create_backend
 from biothings.hub import RELEASEMANAGER_CATEGORY, RELEASER_CATEGORY
 from biothings.hub.datarelease.releasenote import ReleaseNoteTxt
 from biothings.hub.datarelease import set_pending_to_publish
-
+from biothings.hub.databuild.buildconfig import AutoBuildConfig
 # default from config
 logging = btconfig.logger
 
@@ -348,16 +348,13 @@ class SnapshotPublisher(BasePublisher):
         self.setup()
 
     def get_pre_post_previous_result(self, build_doc, key_value):
-        assert len(build_doc["snapshot"][key_value]["repository"]) == 1
-        repo_name = list(
-            build_doc["snapshot"][key_value]["repository"].keys())[0]
-        previous_result = build_doc["snapshot"][key_value]["repository"][
-            repo_name]
+        assert build_doc["snapshot"][key_value], "previous step not successful"
+        assert build_doc["snapshot"][key_value]["snapshot"]
+        previous_result = build_doc["snapshot"][key_value]["conf"]["repository"]
         return previous_result
 
     def run_pre_publish_snapshot(self, snapshot_name, repo_conf, build_doc):
-        return self.run_pre_post("snapshot", "pre", snapshot_name, repo_conf,
-                                 build_doc)
+        return self.run_pre_post("snapshot", "pre", snapshot_name, repo_conf, build_doc)
 
     def publish(self,
                 snapshot,
@@ -529,17 +526,14 @@ class SnapshotPublisher(BasePublisher):
                     "biothings_version": btconfig.BIOTHINGS_VERSION,
                     "standalone_version": btconfig.STANDALONE_VERSION,
                     "metadata": {
-                        "repository": bdoc["snapshot"][snapshot]["repository"],
+                        "repository": bdoc["snapshot"][snapshot]["conf"]["repository"],
                         "snapshot_name": snapshot,
                     }
                 }
                 # if snapshot tyoe is "fs" (so it means it's stored locally) and we publish (so it means we want it to
                 # be available remotely) it means we should have an pre-"upload" step in the publish pipeline
                 # let's try to get the archive url
-                repo_name = list(
-                    bdoc["snapshot"][snapshot]["repository"].keys())[0]
-                if bdoc["snapshot"][snapshot]["repository"][repo_name][
-                        "type"] == "fs":
+                if bdoc["snapshot"][snapshot]["conf"]["repository"]["type"] == "fs":
                     pre_steps = bdoc.get("publish",
                                          {}).get("full",
                                                  {}).get(snapshot,
@@ -1433,6 +1427,15 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                                  steps=steps)
 
     def publish(self, publisher_env, snapshot_or_build_name, *args, **kwargs):
+
+        if not publisher_env:
+            build_doc = self.load_build(snapshot_or_build_name)
+            build_conf = build_doc['build_config']
+            try:
+                publisher_env = build_conf['autopublish']['env']
+            except KeyError:
+                raise PublisherException("Cannot infer publish environment.")
+
         snapshot_doc = None
         diff_doc = None
         try:
@@ -1458,7 +1461,8 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         # diff is wrt another diff, maybe should be this way?
         #-------------------------------------- 
         # if diff_doc and snapshot_or_build_name not in diff_doc.get("diff", {}):
-        #     diff_doc = None
+        if diff_doc and not diff_doc.get("diff", {}):
+            diff_doc = None
         #--------------------------------------
         # do we still have something ambiguous ?
         if snapshot_doc and diff_doc:
@@ -1480,6 +1484,16 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
             raise PublisherException("No release associated to '%s'" %
                                      snapshot_or_build_name)
 
+    def publish_build(self, build_doc):
+        build_conf = AutoBuildConfig(build_doc['build_config'])
+        if build_conf.should_publish_new_diff() or build_conf.should_publish_new_snapshot():
+            # differentiate TODO
+            logging.info("Publish new build.")
+            self.publish(None, build_doc["_id"])
+            # if build_conf.should_install_new_release():
+            #     logging.info("Should install new release next.")
+            #     # TODO
+
     def get_release_note(self, old, new, format="txt", prefix="release_*"):
         release_folder = generate_folder(btconfig.RELEASE_PATH, old, new)
         if not os.path.exists(release_folder):
@@ -1496,6 +1510,18 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         if format == "json":
             content = json.loads(content)
         return content
+
+    def create_release_note_from_build(self, build_doc):
+        @asyncio.coroutine
+        def _():
+            yield from self.create_release_note(old=None, new=build_doc["_id"])
+            # release note created, now we consider what's next
+            build_conf = AutoBuildConfig(build_doc['build_config'])
+            if build_conf.should_publish_new_diff() or build_conf.should_publish_new_snapshot():
+                # TODO differentiate at some level
+                logging.info("Set pending publish for %s.", build_doc['_id'])
+                set_pending_to_publish(build_doc['_id'])
+        return asyncio.ensure_future(_())
 
     def create_release_note(self,
                             old,

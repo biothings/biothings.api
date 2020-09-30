@@ -1,36 +1,46 @@
-import sys
-import re
+import asyncio
+import copy
+import json
 import math
 import os
-import json
-import time
-import copy
 import pickle
+import re
+import sys
+import time
 from datetime import datetime
-from pprint import pformat
-import asyncio
-import aiocron
 from functools import partial
+from pprint import pformat
 
-from .mapper import TransparentMapper
-from ..dataload.uploader import ResourceNotReady
-from .differ import set_pending_to_diff
-from ..databuild.backend import SourceDocMongoBackend, TargetDocMongoBackend, \
-    LinkTargetDocMongoBackend
-from biothings.utils.common import timesofar, iter_n, dotdict, open_compressed_file, \
-    find_classes_subclassing, get_random_string
-from biothings.utils.mongo import doc_feeder, id_feeder
+import aiocron
+
+import biothings.utils.mongo as mongo
+from biothings import config as btconfig
+from biothings.hub import BUILDER_CATEGORY, UPLOADER_CATEGORY
+from biothings.utils.backend import DocMongoBackend
+from biothings.utils.common import (dotdict, find_classes_subclassing,
+                                    get_random_string, iter_n,
+                                    open_compressed_file, timesofar)
+from biothings.utils.dataload import merge_struct
+from biothings.utils.hub_db import (get_source_fullname, get_src_build,
+                                    get_src_build_config, get_src_dump,
+                                    get_src_master)
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
-from biothings.utils.dataload import merge_struct
-import biothings.utils.mongo as mongo
-from biothings.utils.hub_db import get_source_fullname, get_src_build_config, \
-    get_src_build, get_src_dump, get_src_master
-from biothings import config as btconfig
-from biothings.hub import UPLOADER_CATEGORY, BUILDER_CATEGORY
+from biothings.utils.mongo import doc_feeder, id_feeder
+
+from ..databuild.backend import (LinkTargetDocMongoBackend,
+                                 SourceDocMongoBackend, TargetDocMongoBackend)
+from ..dataload.uploader import ResourceNotReady
 from .backend import create_backend
+from .buildconfig import AutoBuildConfig
+from .differ import set_pending_to_diff
+from .mapper import TransparentMapper
 
 logging = btconfig.logger
+
+def pending(build_name, action_name):
+    src_build = get_src_build()
+    src_build.update({"_id": build_name}, {"$addToSet": {"pending": action_name}})
 
 
 class BuilderException(Exception):
@@ -607,16 +617,11 @@ class DataBuilder(object):
                             src_build = self.source_backend.build
                             build = src_build.find_one({'_id': target_name})
                             _meta = {
-                                "biothing_type":
-                                build["build_config"]["doc_type"],
-                                "src":
-                                self.src_meta,
-                                "stats":
-                                self.stats,
-                                "build_version":
-                                build_version,
-                                "build_date":
-                                datetime.fromtimestamp(self.t0).astimezone().isoformat()
+                                "biothing_type": build["build_config"]["doc_type"],
+                                "src": self.src_meta,
+                                "stats": self.stats,
+                                "build_version": build_version,
+                                "build_date": datetime.fromtimestamp(self.t0).astimezone().isoformat()
                             }
                             # custom
                             _meta.update(self.custom_metadata)
@@ -629,7 +634,12 @@ class DataBuilder(object):
                                                  })
                             self.logger.info("success %s" % strargs,
                                              extra={"notify": True})
-                            set_pending_to_diff(target_name)
+                            # set next step
+                            build_conf = AutoBuildConfig(build['build_config'])
+                            if build_conf.should_diff_new_build():
+                                pending(target_name, 'diff')
+                            if build_conf.should_snapshot_new_build():
+                                pending(target_name, 'snapshot')
                         except Exception as e:
                             strargs = "[sources=%s]" % sources
                             self.register_status("failed",
@@ -957,6 +967,8 @@ class DataBuilder(object):
         pass
 
 
+
+
 class LinkDataBuilder(DataBuilder):
     """
     LinkDataBuilder creates a link to the original datasource to be merged, without
@@ -965,6 +977,7 @@ class LinkDataBuilder(DataBuilder):
     the list of sources to be merged, and is useful to prevent data duplication between
     the datasource itself and the resulting merged collection.
     """
+
     def __init__(self, build_name, source_backend, target_backend, *args,
                  **kwargs):
 
@@ -984,9 +997,6 @@ class LinkDataBuilder(DataBuilder):
     def merge_source(self, src_name, *args, **kwargs):
         total = self.source_backend[src_name].count()
         return {"%s" % src_name: total}
-
-
-from biothings.utils.backend import DocMongoBackend
 
 
 def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
