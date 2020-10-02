@@ -156,7 +156,11 @@ def check_new_version(folder, max_commits=10):
     return new_info
 
 def get_version(folder):
-    repo = Repo(folder)  # app or lib dir
+    try:
+        repo = Repo(folder)  # app or lib dir
+    except InvalidGitRepositoryError:
+        logging.warning("Not a valid git repository for folder '%s', skipped for getting its version." % folder)
+        return
     url = repo.remotes.origin.url
     try:
         commit = repo.head.object.hexsha[:6]
