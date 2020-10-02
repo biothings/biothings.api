@@ -103,7 +103,12 @@ def check_new_version(folder, max_commits=10):
     new.
     """
     # from https://stackoverflow.com/questions/8290233/gitpython-get-list-of-remote-commits-not-yet-applied
-    repo = Repo(folder)
+    try:
+        repo = Repo(folder)
+    except InvalidGitRepositoryError:
+        logging.warning("Not a valid git repository for folder '%s', skipped for checking new version." % folder)
+        return
+
     try:
         repo_url = re.sub(r"\.git$", "", repo.remotes.origin.url)
     except Exception as e:
@@ -145,7 +150,6 @@ def check_new_version(folder, max_commits=10):
                 "total": len(new_commits),
             }
     except Exception as e:
-
         logging.warning("Can't check for new version: %s" % e)
         raise e
 
