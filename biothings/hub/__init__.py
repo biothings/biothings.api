@@ -766,7 +766,9 @@ class HubServer(object):
                     getattr(config.conf, param)["upgrade"] = new
                 else:
                     # just in case, we pop out the key
-                    getattr(config.conf, param).pop("upgrade", None)
+                    val = getattr(config.conf, param)
+                    if val:
+                        val.pop("upgrade", None)
 
         loop = self.managers.get("job_manager") and self.managers[
             "job_manager"].loop or asyncio.get_event_loop()
