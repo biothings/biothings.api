@@ -540,7 +540,11 @@ class ESIndexer():
         try:
             return self._es.snapshot.create(repo, snapshot, body=body, params=params)
         except RequestError as e:
-            raise IndexerException("Can't snapshot '%s': %s" % (self._index, e))
+            try:
+                err_msg = e.info['error']['reason']
+            except KeyError:
+                err_msg = e.error
+            raise IndexerException("Can't snapshot '%s': %s" % (self._index, err_msg))
 
     def restore(self, repo_name, snapshot_name, index_name=None, purge=False, body=None):
         index_name = index_name or snapshot_name

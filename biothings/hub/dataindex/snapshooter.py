@@ -1,71 +1,79 @@
-import time
-import copy
-from datetime import datetime
-import json
-from pprint import pformat
-import asyncio
-from functools import partial
+"""
+Elasticsearch Snapshot Feature
 
-from biothings.utils.hub_db import get_src_build
+Snapshot Config Example:
+{
+    "cloud": {
+        "type": "aws",  # default, only one supported by now
+        "access_key": None,
+        "secret_key": None,
+    },
+    "repository": {
+        "name": "s3-$(Y)",
+        "type": "s3",
+        "settings": {
+            "bucket": "<SNAPSHOT_BUCKET_NAME>",
+            "base_path": "mynews.info/$(Y)",  # per year
+            "region": "us-west-2",
+        },
+        "acl": "private",
+    },
+    #----------------------------- inferred from build doc from now on
+    "indexer": {
+        # reference to INDEX_CONFIG
+        "env": "local",
+    },
+    #-----------------------------
+    # when creating a snapshot, how long should we wait before querying ES
+    # to check snapshot status/completion ? (in seconds)
+    "monitor_delay": 60 * 5,
+}
+
+SnapshotManager => SnapshotEnvConfig(s)
+SnapshotEnvConfig + (Build) -> SnapshotEnv
+SnapshotEnv + Index + Snapshot -> SnapshotTaskEnv
+"""
+
+import asyncio
+import copy
+import json
+from functools import partial
+from pprint import pformat
+import time
 import biothings.utils.aws as aws
+try:
+    from biothings import config as btconfig
+    from config import logger as logging
+except ImportError:
+    import sys
+    sys.path.insert(1, '/home/biothings/mychem.info/src')
+    import config
+    from biothings import config_for_app
+    config_for_app(config)
+    from biothings import config as btconfig
+    from config import logger as logging
+
+
+from biothings.hub import SNAPSHOOTER_CATEGORY, SNAPSHOTMANAGER_CATEGORY
+from biothings.hub.databuild.buildconfig import AutoBuildConfig
+from biothings.hub.datarelease import set_pending_to_release_note
+from biothings.utils.es import ESIndexer
+from biothings.utils.es import IndexerException as ESIndexerException
+from biothings.utils.hub import template_out
+from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager, BaseStatusRegisterer
-from biothings.utils.es import ESIndexer, IndexerException as ESIndexerException
-from biothings import config as btconfig
-from config import logger as logging
-from biothings.utils.hub import template_out
-from biothings.hub import SNAPSHOOTER_CATEGORY, SNAPSHOTMANAGER_CATEGORY
 
 
-class Snapshooter(BaseStatusRegisterer):
-    def __init__(self, job_manager, index_manager, envconf, log_folder, *args,
-                 **kwargs):
-        super().__init__(*args, **kwargs)
-        self.index_manager = index_manager
-        self.job_manager = job_manager
-        self.envconf = envconf
-        self.log_folder = log_folder
-        self.ti = time.time()
-        self.setup()
-        # extract some "special" values depending on the config type, etc...
-        if self.envconf.get("repository", {}).get("type") == "fs":
-            self.es_backups_folder = self.envconf["repository"][
-                "es_backups_folder"]
+class BuildSpecificEnv(dict):
+    """
+    Snapshot Env % Build
+    """
 
-    @property
-    def collection(self):
-        return get_src_build()
+    def __init__(self, env_conf, build_doc):
+        super().__init__(self._template_out_config(env_conf, build_doc))
 
-    def setup(self):
-        self.setup_log()
-
-    def setup_log(self):
-        self.logger, self.logfile = get_logger(SNAPSHOOTER_CATEGORY,
-                                               self.log_folder)
-
-    def get_predicates(self):
-        return []
-
-    def get_pinfo(self):
-        """
-        Return dict containing information about the current process
-        (used to report in the hub)
-        """
-        pinfo = {
-            "category": SNAPSHOOTER_CATEGORY,
-            "source": "",
-            "step": "",
-            "description": ""
-        }
-        preds = self.get_predicates()
-        if preds:
-            pinfo["__predicates__"] = preds
-        return pinfo
-
-    def load_build(self, index_name):
-        return self.load_doc(index_name, "index")
-
-    def template_out_conf(self, build_doc):
+    def _template_out_config(self, env_conf, build_doc):
         """
         Template out for special value using build_doc
         Templated values can look like:
@@ -75,414 +83,495 @@ class Snapshooter(BaseStatusRegisterer):
         and potentially change for each index/snapshot created.
         """
         try:
-            strconf = template_out(json.dumps(self.envconf), build_doc)
+            strconf = template_out(json.dumps(env_conf), build_doc)
             return json.loads(strconf)
-        except Exception as e:
-            self.logger.exception("Coudn't template out configuration: %s" % e)
+        except Exception as exc:
+            logging.exception("Coudn't template out configuration: %s", exc)
             raise
 
-    def reset_repository_info(self, bdoc, snapshot_name):
+class SnapshotTaskStatusRegister(BaseStatusRegisterer):
+
+    STATUS_NAME = {
+        "pre": "pre-snapshot",
+        "snapshot": "snapshot",
+        "post": "post-snapshot"
+    }
+
+    def __init__(self, index_name, snapshot_name, env_conf, build_doc):
+
+        self.index_name = index_name
+        self.snapshot_name = snapshot_name
+        self.build_doc = build_doc
+        self.env_conf = env_conf
+
+        self.logger, self.logfile = get_logger(
+            SNAPSHOOTER_CATEGORY, btconfig.LOG_FOLDER)
+
+    @property  # override
+    def collection(self):
+        return get_src_build()
+
+    def reset_repository_info(self, snapshot_name):
+        bdoc = self.build_doc
         if bdoc.get("snapshot", {}).get(snapshot_name):
             if bdoc["snapshot"][snapshot_name].pop("repository", None):
                 self.collection.save(bdoc)
 
-    def register_status(self,
-                        bdoc,
-                        status,
-                        transient=False,
-                        init=False,
-                        **extra):
-        super().register_status(bdoc,
-                                "snapshot",
-                                status,
-                                transient=transient,
-                                init=init,
-                                **extra)
+    # override
+    def register_status(
+            self, status, job_info, snapshot_info,
+            transient=False, init=False, **extra):
 
-    def get_es_idxr(self, envconf, index=None):
-        if envconf["indexer"].get("env"):
-            # we should take indexer params from INDEX_CONFIG, ie. index_manager
-            idxklass = self.index_manager.find_indexer(index)
-            idxkwargs = self.index_manager[envconf["indexer"]["env"]]
+        super().register_status(
+            self.build_doc, "snapshot", status,
+            transient=transient, init=init, job=job_info,
+            snapshot={self.snapshot_name: snapshot_info},
+            **extra
+        )
+
+    def register_start(self, step):
+
+        return self.register_status(
+            status='in progress',
+            transient=True, init=True,
+            job_info={"step": self.STATUS_NAME[step]},
+            snapshot_info={}
+        )
+
+    def register_result(self, step, success, res):
+
+        params = {
+            'status': 'success' if success else 'failed',
+            'job_info': {
+                "step": self.STATUS_NAME[step],
+            },
+            'snapshot_info': {
+                "conf": self.env_conf
+            }
+        }
+        if success:
+            params['job_info']['result'] = res
+            params['snapshot_info'][step] = res
         else:
-            idxklass = self.index_manager.DEFAULT_INDEXER
-            idxkwargs = envconf["indexer"]["host"]["args"]
-        idxr = idxklass(**idxkwargs)
-        es_idxr = ESIndexer(index=index,
-                            doc_type=idxr.doc_type,
-                            es_host=idxr.host,
-                            check_index=index is not None)
+            params['job_info']['err'] = res
+            params['snapshot_info'][step] = None
 
-        return es_idxr
+        return self.register_status(**params)
 
-    def pre_snapshot(self, envconf, repo_conf, index_meta):
-        pass
 
-    def snapshot(self,
-                 index,
-                 snapshot=None,
-                 steps=["pre", "snapshot", "post"]):
-        bdoc = self.load_build(index)
-        self.envconf = self.template_out_conf(bdoc)
-        # check what to do
-        if type(steps) == str:
-            steps = [steps]
-        snapshot_name = snapshot or index
-        es_idxr = self.get_es_idxr(self.envconf, index)
-        # create repo if needed
-        index_meta = es_idxr.get_mapping_meta()["_meta"]  # read from index
-        repo_name, repo_conf = self.create_repository(self.envconf, bdoc,
-                                                      index_meta)
-        monitor_delay = self.envconf["monitor_delay"]
-        # will hold the overall result
-        fut = asyncio.Future()
+class SnapshotTaskProcessInfo():
+    """
+    Generate information about the current process.
+    (used to report in the hub)
+    """
 
-        def get_status():
-            try:
-                res = es_idxr.get_snapshot_status(repo_name, snapshot_name)
-                assert "snapshots" in res, "Can't find snapshot '%s' in repository '%s'" % (
-                    snapshot_name, repo_name)
-                # assuming only one index in the snapshot, so only check first elem
-                info = res["snapshots"][0]
-                assert info.get(
-                    "state"
-                ), "Can't find state in snapshot '%s'" % snapshot_name
-                return info
-            except Exception:
-                # something went wrong, report as failure
-                return "FAILED"
+    def __init__(self, task_env):
+        self.source = task_env.index_name
+        self.category = SNAPSHOOTER_CATEGORY,
+        self.predicates = self.get_predicates()
+        self.es_host = task_env.indexer.es_host
+
+    def get_predicates(self):
+        return []
+
+    def get_pinfo(self, step, description):
+        pinfo = {
+            "category": self.category,
+            "source": self.source,
+            "step": step,
+            "description": description
+        }
+        if self.predicates:
+            pinfo["__predicates__"] = self.predicates
+        return pinfo
+
+    def get_pinfo_for(self, step):
+        step_info = {
+            "pre": ("pre-snapshot", None),
+            "snapshot": ("snapshot", self.es_host),
+            "post": ("post-snapshot", None)
+        }
+        return self.get_pinfo(*step_info[step])
+
+
+class SnapshotTaskESStatusInterpreter():
+
+    def __init__(self, res, task_env):
+
+        assert "snapshots" in res,\
+            "Can't find snapshot '%s' in repository '%s'" % \
+            (task_env.snapshot_name, task_env.repo)
+
+        # assuming only one index in the snapshot,
+        # so only check first element
+        info = res["snapshots"][0]
+
+        assert "state" in info, \
+            "Can't find state in snapshot '%s'" \
+            % task_env.snapshot_name
+
+        self.info = info
+        self.state = info["state"]
+        self.failed_shards = info["shards_stats"]["failed"]
+
+    def is_running(self):
+        return self.state in ("INIT", "IN_PROGRESS", "STARTED")
+
+    def is_succeed(self):
+        return self.state == "SUCCESS" and self.failed_shards == 0
+
+    def is_partially_succeed(self):
+        return self.state == "SUCCESS" and self.failed_shards != 0
+
+class SnapshotTaskEnv():
+    """
+    SnapshotEnv + Index Name + Snapshot Name
+    Access to status register and ES indexer.
+    """
+
+    def __init__(self, env, index, snapshot):
+
+        self.env = env
+        self.index_name = index
+        self.snapshot_name = snapshot
+        self.repo = env.env_config['repository']['name']
+
+        self.status = SnapshotTaskStatusRegister(
+            index, self.snapshot_name, env.env_config, env.build_doc
+        )
+        self.indexer = ESIndexer(
+            index=index,
+            doc_type=env.build_doc['index'][index]['doc_type'],
+            es_host=env.build_doc['index'][index]['host'],
+            check_index=index is not None
+        )
+
+    def snapshot(self):
+        return self.indexer.snapshot(self.repo, self.snapshot_name)
+
+    def wait_for_error(self):
+        """
+        Blocking, execute in a thread.
+        """
+
+        while True:
+            info = self.indexer.get_snapshot_status(self.repo, self.snapshot_name)
+            status = SnapshotTaskESStatusInterpreter(info, self)
+
+            if status.is_running():
+                time.sleep(self.env.env_config.get('monitor_delay', 60))
+
+            elif status.is_succeed():
+                logging.info(
+                    "Snapshot '%s' successfully created (host: '%s', repository: '%s')" %
+                    (self.snapshot_name, self.indexer.es_host, self.repo),
+                    extra={"notify": True}
+                )
+                return None
+
+            else:  # failed
+                if status.is_partially_succeed():
+                    e = ESIndexerException(
+                        "Snapshot '%s' partially failed: state is %s but %s shards failed" %
+                        (self.snapshot_name, status.state, status.failed_shards))
+                else:
+                    e = ESIndexerException(
+                        "Snapshot '%s' failed: state is %s" %
+                        (self.snapshot_name, status.state))
+
+                logging.error(
+                    "Failed creating snapshot '%s' (host: %s, repository: %s), state: %s" %
+                    (self.snapshot_name, self.indexer.es_host, self.repo, status.state),
+                    extra={"notify": True})
+
+                return e
+
+
+class SnapshotEnv():
+    """
+    Corresponds to an ES repository for a specific build.
+    The repository type can be what are supported by ES.
+    """
+
+    def __init__(self, job_manager, env_config, build_doc):
+
+        self.job_manager = job_manager
+        self.env_config = env_config  # already build specific
+        self.build_doc = build_doc
+
+    def snapshot(self, index, snapshot=None, steps=("pre", "snapshot", "post")):
+        """
+        Make a snapshot of 'index', with name 'snapshot' in this env.
+        Typically used to make a snapshot of an index created by the hub.
+        """
+
+        # process params
+        if isinstance(steps, str):
+            steps = (steps,)
+        snapshot = snapshot or index
+
+        # create a task env, so we have access to indexers, etc.
+        task_env = SnapshotTaskEnv(self, index, snapshot)
 
         @asyncio.coroutine
-        def do(index):
-            try:
-                global_state = None
-                got_error = None
+        def do():
+            pinfo = SnapshotTaskProcessInfo(task_env)
 
-                def snapshot_launched(f):
-                    try:
-                        self.logger.info("Snapshot launched: %s" % f.result())
-                    except Exception as e:
-                        self.logger.error("Error while lauching snapshot: %s" %
-                                          e)
-                        nonlocal got_error
-                        got_error = e
+            # we only allow one repo conf per snapshot name
+            task_env.status.reset_repository_info(snapshot)
 
-                def done(f, step):
-                    try:
-                        res = f.result()
-                        self.register_status(bdoc,
-                                             "success",
-                                             job={
-                                                 "step": "%s-snapshot" % step,
-                                                 "result": res
-                                             },
-                                             snapshot={
-                                                 snapshot_name: {
-                                                     "conf": self.envconf,
-                                                     step: res
-                                                 }
-                                             })
-                        self.logger.info("%s-snapshot done: %s" % (step, res))
-                    except Exception as e:
-                        nonlocal got_error
-                        got_error = e
-                        self.register_status(bdoc,
-                                             "failed",
-                                             job={
-                                                 "step": "%s-snapshot" % step,
-                                                 "err": str(e)
-                                             },
-                                             snapshot={
-                                                 snapshot_name: {
-                                                     "conf": self.envconf,
-                                                     step: None
-                                                 }
-                                             })
-                        self.logger.exception(
-                            "Error while running pre-snapshot: %s" % e)
+            funcs = {
+                'pre': partial(self.pre_snapshot, task_env),
+                'snapshot': partial(self._snapshot, task_env),
+                'post': partial(self.post_snapshot, task_env)
+            }
 
-                pinfo = self.get_pinfo()
-                pinfo["source"] = index
-
-                # we only allow one repo conf per snapshot name
-                self.reset_repository_info(bdoc, snapshot_name)
-
-                if "pre" in steps:
-                    self.register_status(bdoc,
-                                         "pre-snapshotting",
-                                         transient=True,
-                                         init=True,
-                                         job={"step": "pre-snapshot"},
-                                         snapshot={snapshot_name: {}})
-                    pinfo["step"] = "pre-snapshot"
-                    pinfo.pop("description", None)
+            for step in ('pre', 'snapshot', 'post'):
+                if step in steps:
+                    task_env.status.register_start(step)
                     job = yield from self.job_manager.defer_to_thread(
-                        pinfo,
-                        partial(self.pre_snapshot, self.envconf, repo_conf,
-                                index_meta))
-                    job.add_done_callback(partial(done, step="pre"))
-                    yield from job
-                    if got_error:
-                        fut.set_exception(got_error)
-                        return
-
-                if "snapshot" in steps:
-                    self.register_status(bdoc,
-                                         "snapshotting",
-                                         transient=True,
-                                         init=True,
-                                         job={"step": "snapshot"},
-                                         snapshot={snapshot_name: {}})
-                    pinfo["step"] = "snapshot"
-                    pinfo["description"] = es_idxr.es_host
-                    self.logger.info(
-                        "Creating snapshot for index '%s' on host '%s', repository '%s'"
-                        % (index, es_idxr.es_host, repo_name))
-                    job = yield from self.job_manager.defer_to_thread(
-                        pinfo,
-                        partial(es_idxr.snapshot, repo_name, snapshot_name))
-                    job.add_done_callback(snapshot_launched)
-                    yield from job
-
-                    # launched, so now monitor completion
-                    while True:
-                        info = get_status()
-                        state = info["state"]
-                        failed_shards = info["shards_stats"]["failed"]
-                        if state in ["INIT", "IN_PROGRESS", "STARTED"]:
-                            yield from asyncio.sleep(monitor_delay)
-                        else:
-                            if state == "SUCCESS" and failed_shards == 0:
-                                global_state = state.lower()
-                                self.logger.info("Snapshot '%s' successfully created (host: '%s', repository: '%s')" %
-                                                 (snapshot_name, es_idxr.es_host, repo_name), extra={"notify": True})
-                            else:
-                                if state == "SUCCESS":
-                                    e = IndexerException(
-                                        "Snapshot '%s' partially failed: state is %s but %s shards failed"
-                                        %
-                                        (snapshot_name, state, failed_shards))
-                                else:
-                                    e = IndexerException(
-                                        "Snapshot '%s' failed: state is %s" %
-                                        (snapshot_name, state))
-                                self.logger.error("Failed creating snapshot '%s' (host: %s, repository: %s), state: %s" %
-                                                  (snapshot_name, es_idxr.es_host, repo_name, state), extra={"notify": True})
-                                got_error = e
-                            break
-
-                    if got_error:
-                        self.register_status(bdoc,
-                                             "failed",
-                                             job={
-                                                 "step": "snapshot",
-                                                 "err": str(got_error)
-                                             },
-                                             snapshot={
-                                                 snapshot_name: {
-                                                     "conf": self.envconf,
-                                                     "repository": None,
-                                                 }
-                                             })
-                        fut.set_exception(got_error)
-                        return
-
+                        pinfo.get_pinfo_for(step), funcs[step])
+                    try:
+                        result = yield from job
+                    except Exception as e:
+                        task_env.status.register_result(step, False, str(e))
+                        logging.error("Error running %s.", step)
+                        raise
                     else:
-                        self.register_status(bdoc,
-                                             "success",
-                                             job={
-                                                 "step": "snapshot",
-                                                 "status": global_state,
-                                             },
-                                             snapshot={
-                                                 snapshot_name: {
-                                                     "conf": self.envconf,
-                                                     "repository": {
-                                                         repo_name: repo_conf
-                                                     }
-                                                 }
-                                             })
+                        task_env.status.register_result(step, True, result)
+                        logging.info("Step %s done: %s.", step, result)
+            
+            set_pending_to_release_note(self.build_doc['_id']) # TODO: conditional
 
-                if "post" in steps:
-                    self.register_status(bdoc,
-                                         "post-snapshotting",
-                                         transient=True,
-                                         init=True,
-                                         job={"step": "post-snapshot"},
-                                         snapshot={snapshot_name: {}})
-                    pinfo["step"] = "post-snapshot"
-                    pinfo.pop("description", None)
-                    job = yield from self.job_manager.defer_to_thread(
-                        pinfo,
-                        partial(self.post_snapshot, self.envconf, repo_conf,
-                                index_meta))
-                    job.add_done_callback(partial(done, step="post"))
-                    yield from job
-                    if got_error:
-                        fut.set_exception(got_error)
-                        return
+        return asyncio.ensure_future(do())
 
-                # if  we get there all is fine
-                fut.set_result(global_state)
+    def _snapshot(self, task_env):
+        task_env.snapshot()
+        logging.info("Snapshot successfully launched.")
 
-            except Exception as e:
-                self.logger.exception(e)
-                fut.set_exception(e)
+        error = task_env.wait_for_error()
+        if error:
+            raise RuntimeError("Snapshot failed: %s" % error)
 
-        asyncio.ensure_future(do(index))
-        return fut
+        return "created"
 
-    def post_snapshot(self, envconf, repo_conf, index_meta):
+    def pre_snapshot(self, task_env):
         pass
 
-    def get_repository_config(self, repo_conf, build_doc, index_meta):
-        repo_name = repo_conf["name"]
-        repo_type = repo_conf["type"]
-        repo_settings = {}
-        for setting in repo_conf["settings"]:
-            repo_settings[setting] = repo_conf["settings"][setting]
-        return repo_name, {"type": repo_type, "settings": repo_settings}
+    def post_snapshot(self, task_env):
+        pass
 
-    def create_repository(self, envconf, build_doc, index_meta):
-        aws_key = envconf.get("cloud", {}).get("access_key")
-        aws_secret = envconf.get("cloud", {}).get("secret_key")
-        repo_name, repo_conf = self.get_repository_config(
-            envconf["repository"], build_doc, index_meta)
-        self.logger.info("Repository config: %s" % repo_conf)
-        settings = repo_conf["settings"]
-        repo_type = repo_conf["type"]
-        es_idxr = self.get_es_idxr(envconf)
-        try:
-            es_idxr.get_repository(repo_name)
+
+class SnapshotFSEnv(SnapshotEnv):
+
+    def __init__(self, job_manager, env_config, build_doc):
+        super().__init__(job_manager, env_config, build_doc)
+        assert env_config['repository']['type'] == 'fs'
+        raise NotImplementedError
+
+class SnapshotS3Env(SnapshotEnv):
+    """
+    Relevent Config Entries:
+    {
+        "cloud": {
+            "type": "aws",  # default, only one supported by now
+            "access_key": None,
+            "secret_key": None,
+        },
+        "repository": {
+            "name": "s3-$(Y)",
+            "type": "s3",
+            "settings": {
+                "bucket": "<SNAPSHOT_BUCKET_NAME>",
+                "base_path": "mynews.info/$(Y)",  # per year
+                "region": "us-west-2",
+            },
+            "acl": "private",
+        }
+    }
+    """
+
+    def __init__(self, job_manager, env_config, build_doc):
+        super().__init__(job_manager, env_config, build_doc)
+        assert env_config['repository']['type'] == 's3'
+
+    def pre_snapshot(self, task_env):
+        """
+        Ensure the destination repository is ready.
+        Create the bucket and repository if necessary.
+        """
+        cloud = self.env_config.get("cloud", {})
+        repository = self.env_config.get("repository", {})
+
+        try:  # check if already created
+            task_env.indexer.get_repository(repository["name"])
+
         except ESIndexerException:
-            # need to create that repo
-            if repo_type == "s3":
-                acl = repo_conf.get("acl",
-                                    None)  # let aws.create_bucket default it
-                # first make sure bucket exists
-                aws.create_bucket(name=settings["bucket"],
-                                  region=settings["region"],
-                                  aws_key=aws_key,
-                                  aws_secret=aws_secret,
-                                  acl=acl,
-                                  ignore_already_exists=True)
-            settings = {"type": repo_type, "settings": settings}
-            self.logger.info("Create repository named '%s': %s" %
-                             (repo_name, pformat(settings)))
-            es_idxr.create_repository(repo_name, settings=settings)
+            # first make sure bucket exists
+            aws.create_bucket(
+                name=repository["settings"]["bucket"],
+                region=repository["settings"]["region"],
+                aws_key=cloud.get("access_key"),
+                aws_secret=cloud.get("secret_key"),
+                acl=repository.get("acl", None),  # let aws.create_bucket default it
+                ignore_already_exists=True
+            )
+            logging.info("Create repository: %s" % pformat(repository))
+            task_env.indexer.create_repository(repository["name"], repository["settings"])
 
-        return repo_name, repo_conf
+        return "repo_ready"
 
+
+class SnapshotEnvConfig():
+    """
+    Snapshot Env before Combining with Build Info.
+    """
+
+    def __init__(self, name, env_class, env_config):
+        self.name = name
+        self.env_class = env_class
+        self.env_config = env_config
+
+    def get_env(self, job_manager, build_doc=None):
+        """
+        Get build specific snapshot environment.
+        """
+        env = BuildSpecificEnv(self.env_config, build_doc or {})
+        return self.env_class(job_manager, env, build_doc or {})
 
 class SnapshotManager(BaseManager):
 
-    DEFAULT_SNAPSHOOTER_CLASS = Snapshooter
+    SNAPSHOT_ENV = {
+        "s3": SnapshotS3Env,
+        "fs": SnapshotFSEnv
+    }
 
-    def __init__(self, index_manager, poll_schedule=None, *args, **kwargs):
+    def __init__(self, index_manager, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.index_manager = index_manager
-        self.t0 = time.time()
-        self.log_folder = btconfig.LOG_FOLDER
-        self.timestamp = datetime.now()
-        self.snapshot_config = {}
-        self.poll_schedule = poll_schedule
-        self.es_backups_folder = getattr(btconfig, "ES_BACKUPS_FOLDER", None)
-        self.setup()
+        self.snapshot_config = {}  # user specified config
 
+    @staticmethod
+    def pending_snapshot(build_name):
+        src_build = get_src_build()
+        src_build.update({"_id": build_name}, {"$addToSet": {"pending": "snapshot"}})
+
+    @staticmethod
+    def get_build_doc(index_name):
+        src_build = get_src_build()
+        doc = src_build.find_one({"index." + index_name: {"$exists": True}})
+        if not doc:
+            logging.error("No build associated with index %s.", index_name)
+        return doc
+
+    # override
     def clean_stale_status(self):
         src_build = get_src_build()
         for build in src_build.find():
             for job in build.get("jobs", []):
-                if job.get("status", "").endswith("snapshotting"):
+                if job.get("status", "") == "in progress":
                     logging.warning(
                         "Found stale build '%s', marking snapshot status as 'canceled'"
                         % build["_id"])
                     job["status"] = "canceled"
             src_build.replace_one({"_id": build["_id"]}, build)
 
-    def setup(self):
-        self.setup_log()
-
-    def setup_log(self):
-        self.logger, self.logfile = get_logger(SNAPSHOTMANAGER_CATEGORY,
-                                               self.log_folder)
-
+    # override
     def poll(self, state, func):
         super().poll(state, func, col=get_src_build())
 
-    def __getitem__(self, env):
-        """
-        Return an instance of a snapshooter for snapshot environment named "env"
-        """
-        d = self.register[env]
-        envconf = self.snapshot_config["env"][env]
-        return d["class"](index_manager=d["index_manager"],
-                          job_manager=d["job_manager"],
-                          envconf=envconf,
-                          log_folder=self.log_folder)
-
     def configure(self, snapshot_confdict):
         """
-        Configure manager with snapshot config dict. See SNAPSHOT_CONFIG in config_hub.py
-        for the format.
+        Configure manager with snapshot config dict.
+        See SNAPSHOT_CONFIG in config_hub.py for the format.
         """
         self.snapshot_config = copy.deepcopy(snapshot_confdict)
         for env, envconf in self.snapshot_config.get("env", {}).items():
+            if envconf.get("cloud"):
+                assert envconf["cloud"]["type"] == "aws", \
+                    "Only Amazon AWS cloud is supported at the moment"
+            repo_type = envconf.get("repository", {}).get("type")
+            if not repo_type:
+                raise ValueError("Repository type not specified.")
+            if repo_type not in self.SNAPSHOT_ENV.keys():
+                raise ValueError("Unsupported repository type %s.", repo_type)
             try:
-                if envconf.get("cloud"):
-                    assert envconf["cloud"]["type"] == "aws", \
-                        "Only Amazon AWS cloud is supported at the moment"
-                self.register[env] = {
-                    "class": self.DEFAULT_SNAPSHOOTER_CLASS,
-                    "conf": envconf,
-                    "job_manager": self.job_manager,
-                    "index_manager": self.index_manager
-                }
+                self.register[env] = SnapshotEnvConfig(
+                    name=env,
+                    env_class=self.SNAPSHOT_ENV[repo_type],
+                    env_config=envconf
+                )
             except Exception as e:
-                self.logger.exception(
+                logging.exception(
                     "Couldn't setup snapshot environment '%s' because: %s" %
                     (env, e))
 
-    def snapshot(self,
-                 snapshot_env,
-                 index,
-                 snapshot=None,
-                 steps=["pre", "snapshot", "post"]):
+    def snapshot(self, env, index, snapshot=None,
+                 steps=("pre", "snapshot", "post")):
         """
-        Create a snapshot named "snapshot" (or, by default, same name as the index) from "index"
-        according to environment definition (repository, etc...) "snapshot_env".
+        Create a snapshot named "snapshot" (or, by default, same name as the index)
+        from "index" according to environment definition (repository, etc...) "env".
+        """
+        if env not in self.register:
+            raise ValueError("Unknown snapshot environment '%s'." % env)
+        build_doc = self.get_build_doc(index)
+        if not build_doc:
+            logging.warning("The index is not created by the hub.")
+        env_for_build = self[env].get_env(self.job_manager, build_doc)
+        return env_for_build.snapshot(index, snapshot=snapshot, steps=steps)
 
+    def snapshot_build(self, build_doc):
         """
-        if snapshot_env not in self.snapshot_config.get("env", {}):
-            raise ValueError("Unknonw snapshot environment '%s'" %
-                             snapshot_env)
-        snapshooter = self[snapshot_env]
-        return snapshooter.snapshot(index, snapshot=snapshot, steps=steps)
+        Create a snapshot basing on the autobuild settings in the build config.
+        If the build config associated with this build has:
+        {
+            "autobuild": {
+                "type": "snapshot", // implied when env is set. env must be set.
+                "env": "local" // which es env to make the snapshot.
+            },
+            ...
+        }
+        Attempt to make a snapshot for this build on the specified es env "local".
+        """
+        @asyncio.coroutine
+        def _():
+            autoconf = AutoBuildConfig(build_doc['build_config'])
+            env = autoconf.auto_build.get('env')
+            assert env, "Unknown autobuild env."
+            try:
+                latest_index = list(build_doc['index'].keys())[-1]
+            except Exception:
+                logging.info("No index already created, now create one.")
+                yield from self.index_manager.index(env, build_doc['_id'])
+                latest_index = build_doc['_id']
+            return self.snapshot(env, latest_index)
+        return asyncio.ensure_future(_())
 
     def snapshot_info(self, env=None, remote=False):
-        res = copy.deepcopy(self.snapshot_config)
-        for kenv in self.snapshot_config["env"]:
-            if env and env != kenv:
-                continue
-            if remote:
-                raise NotImplementedError()
-                # TODO: could list snapshot from ES
-                #try:
-                #    cl = Elasticsearch(res["env"][kenv]["host"],timeout=1,max_retries=0)
-                #    indices = [{"index":k,
-                #        "doc_type":list(v["mappings"].keys())[0],
-                #        "aliases":list(v["aliases"].keys())}
-                #        for k,v in cl.indices.get("*").items()]
-                #    # for now, we just consider
-                #    if type(res["env"][kenv]["index"]) == dict:
-                #        # we don't where to put those indices because we don't
-                #        # have that information, so we just put those in a default category
-                #        # TODO: put that info in metadata ?
-                #        res["env"][kenv]["index"].setdefault(None,[]).extend(indices)
-                #    else:
-                #        assert type(res["env"][kenv]["index"]) == list
-                #        res["env"][kenv]["index"].extend(indices)
-                #except Exception as e:
-                #    self.logger.warning("Can't load remote indices: %s" % e)
-                #    continue
-        return res
+        raise NotImplementedError()
+
+
+def test():
+    from biothings.utils.manager import JobManager
+    from biothings.hub.dataindex.indexer import IndexManager
+    loop = asyncio.get_event_loop()
+    job_manager = JobManager(loop)
+    index_manager = IndexManager(job_manager=job_manager)
+    index_manager.configure(config.INDEX_CONFIG)
+    snapshot_manager = SnapshotManager(
+        index_manager=index_manager,
+        job_manager=job_manager,
+        poll_schedule="* * * * * */10"
+    )
+    snapshot_manager.configure(config.SNAPSHOT_CONFIG)
+    # snapshot_manager.poll("snapshot",snapshot_manager.snapshot_build)
+
+    async def test_code():
+        snapshot_manager.snapshot('prod', 'mynews_202009170234_fjvg7skx', steps="post")
+
+    asyncio.ensure_future(test_code())
+    loop.run_forever()
+
+
+if __name__ == '__main__':
+    test()

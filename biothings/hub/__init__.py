@@ -528,9 +528,9 @@ class HubServer(object):
         snapshot_manager = SnapshotManager(
             index_manager=self.managers["index_manager"],
             job_manager=self.managers["job_manager"],
-            **args)
+            poll_schedule="* * * * * */10", **args)
         snapshot_manager.configure(config.SNAPSHOT_CONFIG)
-        #snapshot_manager.poll("snapshot",lambda doc: snapshot_manager.snapshot(snapshot_env=???,index=doc["_id"]))
+        snapshot_manager.poll("snapshot",snapshot_manager.snapshot_build)
         self.managers["snapshot_manager"] = snapshot_manager
 
     def configure_release_manager(self):
@@ -545,10 +545,9 @@ class HubServer(object):
             poll_schedule="* * * * * */10",
             **args)
         release_manager.configure(config.RELEASE_CONFIG)
-        release_manager.poll(
-            "release_note",
-            lambda doc: release_manager.create_release_note(old=None,
-                                                            new=doc["_id"]))
+        release_manager.poll("release_note", release_manager.create_release_note_from_build)
+        release_manager.poll("publish", release_manager.publish_build)
+
         self.managers["release_manager"] = release_manager
 
     def configure_sync_manager(self):
@@ -634,8 +633,8 @@ class HubServer(object):
             "dump_manager": self.managers["dump_manager"],
             "upload_manager": self.managers["upload_manager"],
             "sync_manager": self.managers["sync_manager"],
+            "job_manager": self.managers["job_manager"]
         }
-
         version_urls = self.autohub_config["version_urls"]
         indexer_factory = self.autohub_config["indexer_factory"]
         es_host = self.autohub_config["es_host"]
@@ -650,9 +649,11 @@ class HubServer(object):
         self.autohub_feature = AutoHubFeature(autohub_managers, version_urls, factory)
         try:
             self.autohub_feature.configure()
+            self.autohub_feature.configure_auto_release(config)
         except Exception as e:
             self.logger.error("Could't configure feature 'autohub', will be deactivated: %s" % e)
             self.features.remove("autohub")
+
 
     def configure_hooks_feature(self):
         """

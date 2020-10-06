@@ -418,7 +418,7 @@ class BaseSourceUploader(object):
             upload_info['temp_collection'] = self.temp_collection_name
             upload_info['pid'] = os.getpid()
             upload_info['logfile'] = self.logfile
-            upload_info['started_at'] = datetime.datetime.now()
+            upload_info['started_at'] = datetime.datetime.now().astimezone()
             self.src_dump.update_one({"_id": self.main_source},
                                      {"$set": {
                                          job_key: upload_info

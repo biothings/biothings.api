@@ -110,6 +110,15 @@ class BiothingsDumper(HTTPDumper):
 
     @asyncio.coroutine
     def get_target_backend(self):
+        """
+        Example:
+        [{
+            'host': 'es6.mygene.info:9200', 
+            'index': 'mygene_allspecies_20200823_ufkwdv79', 
+            'version': '20200906', 
+            'count': 38729977
+        }]
+        """
         @asyncio.coroutine
         def do():
             cnt = self.target_backend.count()
@@ -451,11 +460,14 @@ class BiothingsDumper(HTTPDumper):
                     "remote": file_url,
                     "local": new_localfile
                 })
+                # -------------------------------
+                # TODO review
+                # -------------------------------
                 # if repo type is fs, we assume metadata contains url to archive
-                repo_name = list(
-                    build_meta["metadata"]["repository"].keys())[0]
-                if build_meta["metadata"]["repository"][repo_name][
-                        "type"] == "fs":
+                # repo_name = list(
+                #     build_meta["metadata"]["repository"].keys())[0]
+                # if build_meta["metadata"]["repository"][repo_name]["type"] == "fs":
+                if build_meta["metadata"]["repository"]["type"] == "fs":
                     archive_url = build_meta["metadata"]["archive_url"]
                     archive = os.path.basename(archive_url)
                     new_localfile = os.path.join(self.new_data_folder, archive)
@@ -496,13 +508,21 @@ class BiothingsDumper(HTTPDumper):
                                       fname)
         elif build_meta["type"] == "full":
             # if type=fs, check if archive must be uncompressed
-            repo_name = list(build_meta["metadata"]["repository"].keys())[0]
-            if build_meta["metadata"]["repository"][repo_name]["type"] == "fs":
+            # TODO
+
+            # repo_name = list(build_meta["metadata"]["repository"].keys())[0]
+            if build_meta["metadata"]["repository"]["type"] == "fs":
                 uncompressall(self.new_data_folder)
 
     @asyncio.coroutine
     def info(self, version='latest'):
-        """Display version information (release note, etc...) for given version"""
+        """
+        Display version information (release note, etc...) for given version
+        {
+            "info": ...
+            "release_note": ...
+        }
+        """
         file_url = urljoin(self.base_url, "%s.json" % version)
         result = {}
         build_meta = self.load_remote_json(file_url)
@@ -527,7 +547,18 @@ class BiothingsDumper(HTTPDumper):
 
     @asyncio.coroutine
     def versions(self):
-        """Display all available versions"""
+        """
+        Display all available versions.
+        Example:
+        [{
+            'build_version': '20171003', 
+            'url': 'https://biothings-releases.s3.amazonaws.com:443/mygene.info/20171003.json', 
+            'release_date': '2017-10-06T11:58:39.749357', 
+            'require_version': None, 
+            'target_version': '20171003', 
+            'type': 'full'
+        }, ...]
+        """
         avail_versions = self.load_remote_json(self.__class__.VERSION_URL)
         if not avail_versions:
             raise DumperException("Can't find any versions available...")

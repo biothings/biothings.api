@@ -113,6 +113,11 @@ class AutoHubFeature(object):
         return folder.replace(".", "_").replace("-", "_")
 
     def list_biothings(self):
+        """
+        Example:
+        [{'name': 'mygene.info',
+        'url': 'https://biothings-releases.s3-us-west-2.amazonaws.com/mygene.info/versions.json'}]
+        """
         return self.version_urls
 
     def configure(self):
@@ -174,3 +179,13 @@ class AutoHubFeature(object):
             )
             sys.modules["biothings.hub.standalone"].__dict__[uploader_class_name] = uploader_klass
             self.managers["upload_manager"].register_classes([uploader_klass])
+
+    def configure_auto_release(self, config):
+        if hasattr(config, "AUTO_RELEASE_CONFIG"):
+            if isinstance(config.AUTO_RELEASE_CONFIG, dict):
+                for src in config.AUTO_RELEASE_CONFIG:
+                    self.logger.info("Scheduling auto release for %s.", src)
+                    self.managers["job_manager"].submit(
+                        partial(self.install, src),
+                        config.AUTO_RELEASE_CONFIG[src]
+                    )

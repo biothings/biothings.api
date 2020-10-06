@@ -381,7 +381,7 @@ class Indexer(object):
         src_build = get_src_build()
         job_info = {
             'status': status,
-            'step_started_at': datetime.now(),
+            'step_started_at': datetime.now().astimezone(),
             'logfile': self.logfile,
         }
         index_info = {
@@ -406,7 +406,7 @@ class Indexer(object):
             job_info["time"] = timesofar(self.ti)
             t1 = round(time.time() - self.ti, 0)
             job_info["time_in_s"] = t1
-            index_info["index"][self.index_name]["created_at"] = datetime.now()
+            index_info["index"][self.index_name]["created_at"] = datetime.now().astimezone()
         if "index" in extra:
             index_info["index"][self.index_name].update(extra["index"])
         if "job" in extra:

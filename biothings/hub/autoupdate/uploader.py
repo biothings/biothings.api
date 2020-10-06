@@ -76,8 +76,11 @@ class BiothingsUploader(uploader.BaseSourceUploader):
     def get_snapshot_repository_config(self, build_meta):
         """Return (name,config) tuple from build_meta, where
         name is the repo name, and config is the repo config"""
-        repo_name, repo_settings = list(
-            build_meta["metadata"]["repository"].items())[0]
+        # repo_name, repo_settings = list(
+        #     build_meta["metadata"]["repository"].items())[0]
+        # TODO
+        repo_name = build_meta["metadata"]["repository"]["name"]
+        repo_settings = build_meta["metadata"]["repository"]
         return (repo_name, repo_settings)
 
     @asyncio.coroutine
@@ -107,7 +110,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                     % repo_name)
                 self.logger.debug("Existing setting: %s" % repo[repo_name])
                 self.logger.debug("Required (new) setting: %s" % repo_settings)
-                raise IndexerException
+                # raise IndexerException # TODO update comparision logic
         except IndexerException:
             # ok, it doesn't exist let's try to create it
             try:
@@ -193,7 +196,13 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         meta = json.load(open(os.path.join(self.data_folder, "metadata.json")))
         # old: index we want to update
         old = (self.target_backend.target_esidxer.es_host,
-               self.target_backend.target_name,
+               meta["old"]["backend"],
+            # TODO 
+            # target name can be release index name, 
+            # maybe should refer to old backend name
+            #----------------------------------------
+            #  self.target_backend.target_name,
+            #----------------------------------------
                self.target_backend.target_esidxer._doc_type)
         # new: index's data we will reach once updated (just informative)
         new = (self.target_backend.target_esidxer.es_host,
