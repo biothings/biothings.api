@@ -5,7 +5,7 @@
         <h3 class="center aligned" v-else-if="map_origin == 'master'">Registered mapping</h3>
         <h3 class="center aligned" v-else-if="map_origin == 'build'">Merged mapping</h3>
         <div class="center aligned" :class="actionable">
-            <button class="ui labeled mini icon button" 
+            <button class="ui labeled mini icon button"
                 v-if="map && !read_only
                 && !map['errors']
                 && !map['pre-mapping']"
@@ -133,7 +133,7 @@
                                 <i class="right triangle icon"></i>
                                 <div class="content">
                                     <div class="description">
-                                      ElasticSearch field data type can be changed if needed. See 
+                                      ElasticSearch field data type can be changed if needed. See
                                       <a target="_blank" href="https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-types.html">
                                         Field datatypes
                                       </a> for more information.
@@ -172,7 +172,7 @@
             </div>
             <div class="content">
                 <p>Are you sure you want to commit mapping from inspection?</p>
-                <p>This will be replace current registered one.</p>
+                <p>This will replace current registered one.</p>
             </div>
             <div class="actions">
                 <div class="ui red basic cancel button">
@@ -280,7 +280,7 @@ export default {
         copied_to_all: {
             cache : false,
             get : function() {
-                if("copy_to" in this.submap 
+                if("copy_to" in this.submap
                     //&& typeof this.submap["copy_to"] == "array"
                     &&  this.submap["copy_to"].indexOf("all") != -1) {
                     return true;

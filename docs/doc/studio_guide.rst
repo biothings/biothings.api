@@ -174,19 +174,19 @@ Overview of BioThings Studio web application
 ============================================
 
 **BioThings Studio** web application can simply be accessed using any browser pointing to port 8080. The home page
-shows a summary of current data recent updates. For now, it's pretty quiet since we didn't integrate any data yet.
+shows a summary of current data and recent updates. For now, it's pretty quiet since we didn't integrate any data yet.
 
 
 .. image:: ../_static/homeempty.png
 
 Let's have a quick overview of the different elements accessible through the webapp. On the top left is the connection widget.
-By default, **BioThings Studio** webapp will connect to the hub API through port 7080, the one running with docker. But the webapp
-is a static web page so you can access any other Hub API by configuring a new connection:
+By default, **BioThings Studio** webapp will connect to the hub API through port 7080, the one running within docker. But the webapp
+is a static web page, so you can access any other Hub API by configuring a new connection:
 
 .. image:: ../_static/connectionlist.png
    :width: 250px
 
-Enter the Hub API URL, ``http://<host>:<port>`` (you can omit ``http://``, the webapp will use that scheme by default)
+Enter the Hub API URL, ``http://<host>:<port>`` (you can omit ``http://``, the webapp will use that scheme by default):
 
 .. image:: ../_static/connectioncreate.png
 
@@ -197,7 +197,7 @@ but cannot be edited.
    :width: 250px
 
 Following are several tabs giving access to the main steps involved in building a BioThings API.
-We'll get into those in more details while we create our
+We'll get into those in more details while creating our
 new API. On the right, we have different information about jobs and resources:
 
 .. figure:: ../_static/commands.png
@@ -215,7 +215,7 @@ new API. On the right, we have different information about jobs and resources:
 .. figure:: ../_static/threads.png
    :width: 600px
 
-   **BioThings Hub** also uses threads for parallelization, their activity will be show here.
+   **BioThings Hub** also uses threads for parallelization, their activity will be shown here.
    Number of queued jobs, waiting for a free process or thread, is showned, as well as the total amount of memory the **Hub**
    is currenly using
 
@@ -227,16 +227,15 @@ new API. On the right, we have different information about jobs and resources:
 .. figure:: ../_static/loader.png
    :width: 600px
 
-   A first circle shows the page loading activity. Gray means nothing active, flashing blue means webapp is loading information from the Hub, and red means an
-   error occured (error should be found in either notifications or by openin the logs from the bottom right corner).
+   The first circle shows the page loading activity. Gray means nothing active, flashing blue means webapp is loading information from the Hub, and red means an
+   error occured (error should be found either in notifications or by opening the logs from the bottom right corner).
 
    The next button with a cog icon gives access to the configuration and is described in the next section.
 
 .. figure:: ../_static/websocket.png
    :width: 600px
 
-   Finally, a logo shows the websocket connection status (green power button means "connected", red plug means "not connected")
-   on average)
+   Finally, a logo shows the websocket connection status (green power button means "connected", red plug means "not connected").
 
 =============
 Configuration
@@ -249,8 +248,8 @@ By clicking on the cog icon in the bar on the right, **Hub** configuration can b
 .. figure:: ../_static/configform.png
    :width: 100%
 
-Any parameter must be entered in a JSON format. Ex: double quotes for strings, square brackets to define lists, etc... Once a parameter has been changed, change can be saved using
-the "Save" button, available for each parameters. The "Reset" button can be used to switch back the original, default value that was defined in the configuration files.
+All parameters must be entered in a JSON format. Ex: double quotes for strings, square brackets to define lists, etc. A changed parameter can be saved using
+the "Save" button, available for each parameter. The "Reset" button can be used to switch it backto the original default value that was defined in the configuration files.
 
 Ex: Update Hub's name
 
@@ -262,8 +261,7 @@ First enter the new name, for paramerer ``HUB_NAME``. Because the value has chan
 .. figure:: ../_static/savehubname.png
    :width: 200px
 
-Upon validation, a green check mark is shown, and because the value is not the default one, the "Reset" button is now available. Clicking on it will switch back the
-value for that parameter to the original, default one.
+Upon validation, a green check mark is shown, and because the value is not the default one, the "Reset" button is now available. Clicking on it will switch the parameter's value back to its original default one.
 
 .. figure:: ../_static/resethubname.png
    :width: 200px
@@ -324,17 +322,17 @@ A manifest file is defined like this:
 
 - a *version* defines the specification version the manifest is using. Currently, version 0.2 should be used. This is not the version of the datasource itself.
 - an optional (but highly recommended) *__metadata__* key provides information about the datasource itself, such as a website, a link to its license, the license name.
-  This information, when provided, are displayed in the /metadata endpoint of the resulting API.
+  This information, when provided, is displayed in the ``/metadata`` endpoint of the resulting API.
 - a *requires* section, optional, describes dependencies that should be installed for the plugin to work. This uses `pip` behind the scene, and each element of that list
   is passed to `pip install` command line. If one dependency installation fails, the plugin is invalidated. Alternately, a single string can be passed, instead of a list.
-- a *dumper* section specifies how to download the actual data.
+- a *dumper* section specifies how to download the actual data:
 
   * *data_url* specifies where to download the data from. It can be a URL (string) or a list of URLs (list of strings). Currently supported protocols are **http(s)** and **ftp**.
-    URLs must point to individual files (no wildcards) and only one protocol is allowed within a list of URLs (no mix of URLs using htttp and ftp are allowed). All files
+    URLs must point to individual files (no wildcards), and only one protocol is allowed within a list of URLs (no mix of URLs using http and ftp are allowed). All files
     are download in a data folder, determined by ``config.DATA_ARCHIVE_ROOT``/<plugin_name>/<release>
 
-  * *uncompress*: once downloaded, this flag, if set to true, will uncompress all supported archived found in the data folder.
-    Currently supported format are: ``*.zip``, ``*.gz``, ``*.tar.gz`` (includes untar step)
+  * *uncompress*: once data is downloaded, this flag, if set to true, will uncompress all supported archives found in the data folder.
+    Currently supported formats are: ``*.zip``, ``*.gz``, ``*.tar.gz`` (includes untar step)
 
   * *schedule* will trigger the scheduling of the dumper, so it automatically checks for new data on a regular basis. Format is the same as crontabs, with the
     addition of an optional sixth parameter for scheduling by the seconds.
@@ -350,9 +348,9 @@ A manifest file is defined like this:
     - ``MDTM`` ftp command if URL is FTP-based.
 
     If a list of URLs is specified in *data_url*, the last URL is the one used to determine the release.
-    If none of those are available, or not satisfactory, a *release* section can be specified, and should point to a python module and a function name
+    If none of those are available or satisfactory, a *release* section can be specified, and should point to a python module and a function name
     following this format: ``module:function_name``. Within this module, function has the following signature and should return the release, as a string.
-    ``set_release`` is a reserver name and must not be used.
+    ``set_release`` is a reserved name and must not be used.
 
 .. code:: python
 
@@ -366,10 +364,10 @@ A manifest file is defined like this:
 
 
 
-``self`` refers to the actual dumper instance, that is, either a ``biothings.hub.dataload.dumper.HTTPDumper`` or a ``biothings.hub.dataload.dumper.FTPDumper`` depending
-on the protocol. All properties, methods from the instance are available, specifically:
+``self`` refers to the actual dumper instance, which is one of either a ``biothings.hub.dataload.dumper.HTTPDumper`` or a ``biothings.hub.dataload.dumper.FTPDumper``, depending
+on the protocol. All properties and methods from the instance are available, specifically:
 
-  * ``self.client``, the actual underlying client used to download files, which is either a ``request.Session`` or ``ftplib.FTP`` instance, and should be prefered
+  * ``self.client``, the actual underlying client used to download files, which is either a ``request.Session`` or a ``ftplib.FTP`` instance, and should be preferred
     over initializing a new connection/client.
   * ``self.SRC_URLS``, containing the list of URLs (if only one URL was specified in *data_url*, this will be a list of one element), which is commonly
     used to inspect and possibly determine the release.
@@ -377,7 +375,7 @@ on the protocol. All properties, methods from the instance are available, specif
 
 - an *uploader* section specifies how to parse and store (upload):
 
-  * *parser* key defined a module and a function name within that module. Format: ``module:function_name``. Function has the following signature and return a list of dictionary
+  * *parser* key defines a module and a function name within that module. Format: ``module:function_name``. Function has the following signature and returns a list of dictionary
   (or ``yield`` dictionaries) containing at least a ``_id`` key reprensenting a unique identifier (string) for this document:
 
 
@@ -391,7 +389,7 @@ on the protocol. All properties, methods from the instance are available, specif
 ``data_folder`` is the folder containing the previously downloaded (dumped) data, it is automatically set to the latest release available. Note the function doesn't
 take an filename as input, it should select the file(s) to parse.
 
-  * *on_duplicates* defines the strategy to use when duplicated record are found (according to the ``_id`` key):
+  * *on_duplicates* defines the strategy to use when duplicated records are found (according to the ``_id`` key):
 
     - ``error`` (default) will raise an exception if duplicates are found
     - ``ignore`` will skip any duplicates, only the first one found will be store
@@ -403,7 +401,7 @@ take an filename as input, it should select the file(s) to parse.
     be used.
 
   * *mapping* points to a ``module:classmethod_name`` that can be used to specify a custom ElasticSearch mapping. Class method must return a python dictionary with a
-    valid mapping. ``get_mapping`` is a reserved name and must not be used. There's no need to add ``@classmethod`` decorator, **Hub** will take care of it, the first
+    valid mapping. ``get_mapping`` is a reserved name and must not be used. There's no need to add ``@classmethod`` decorator, **Hub** will take care of it. The first
     and only argument is a class. Ex:
 
 .. code:: python
@@ -421,7 +419,7 @@ take an filename as input, it should select the file(s) to parse.
 
 
 .. note:: Please see https://github.com/sirloon/mvcgi for a simple plugin definition. https://github.com/sirloon/gwascatalog will show how to use
-   the ``release`` key and https://github.com/sirloon/FIRE will demonstrate the parallelization in the uploader section.
+   the ``release`` key; https://github.com/sirloon/FIRE will demonstrate the parallelization in the uploader section.
 
 
 2. "Advanced" data plugins
@@ -431,25 +429,25 @@ This type of plugins is more advanced in the sense that it's plain python code. 
 dumpers and uploaders as python class, inheriting from BioThings SDK components. These plugins can be written from scratch, they're "advanced" because they require more knowledge about
 BioThings SDK.
 
-In the root folder (local folder or remote git repository), a ``__init__.py`` is expected to be found, and should
-contains imports for one dumper, and one or more uploaders.
+In the root folder (local folder or remote git repository), a ``__init__.py`` is expected, and should
+contain imports for one dumper, and one or more uploaders.
 
-An example of advanced data plugin can found at https://github.com/sirloon/mvcgi_advanced.git. It's coming from "mvcgi" manifest-based plugin, where code was exported.
+An example of advanced data plugin can be found at https://github.com/sirloon/mvcgi_advanced.git. It comes from "mvcgi" manifest-based plugin, where code was exported.
 
 
 =========================
 Hooks and custom commands
 =========================
 
-While it's possible to define custom commands for the Hub console, by deriving class ``biothings.hub.HubServer``, there's also an easy way to enrich existing commands using **hooks**.
-A **hook** is a python file located in ``HOOKS_FOLDER`` (defaulting to ``./hooks/``). When the Hub starts, it inspects this folder and "inject" hook's namespace into its console. Everything
+While it's possible to define custom commands for the Hub console by deriving class ``biothings.hub.HubServer``, there's also an easy way to enrich existing commands using **hooks**.
+A **hook** is a python file located in ``HOOKS_FOLDER`` (defaulting to ``./hooks/``). When the Hub starts, it inspects this folder and "injects" hook's namespace into its console. Everything
 available from within the hook file becomes available in the console. On the other hand, hook can use any commands available in the Hub console.
 
-**Hooks** provides an easy way to "program" the Hub, based on existing commands. The following example defines a new command, which will archive any builds older than X days. Code can be
+**Hooks** provide an easy way to "program" the Hub, based on existing commands. The following example defines a new command, which will archive any builds older than X days. Code can be
 found at https://github.com/sirloon/auto_archive_hook.git. File ``auto_archive.py`` should be copied into ``./hooks/`` folder. Upon restart, a new command named ``auto_archive`` is now
 part of the Hub. It's also been scheduled automatically using ``schedule(...)`` command at the end of the hook.
 
-The auto_archive function uses several existing Hub commands:
+The ``auto_archive`` function uses several existing Hub commands:
 
 - ``lsmerge``: when given a build config name, returns a list of all existing build names.
 - ``archive``: will delete underlying data but keep existing metadata for a given build name

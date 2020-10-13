@@ -2,13 +2,13 @@
 BioThings Standalone
 ####################
 
-This step-by-step guide shows how to use Biothings standalone instances. Standalones instances
-are based on Docker containers and provide and fully pre-configured, ready-to-use Biothings API
+This step-by-step guide shows how to use Biothings standalone instances. Standalone instances
+are based on Docker containers and provide a fully pre-configured, ready-to-use Biothings API
 that can easily be maintained and kept up-to-date. The idea is, for any user, to be able to run
-her own APIs locally, fulfulling differents needs:
+his/her own APIs locally and fulfill differents needs:
 
-* keep all APIs requests private and local to your own server
-* enriching existing and publicly available data found on our APIs with some private data
+* keep all API requests private and local to your own server
+* enrich existing and publicly available data found on our APIs with some private data
 * run API on your own architecture to perform heavy queries that would sometimes be throttled out from
   online services
 
@@ -597,4 +597,3 @@ Logs are available in ``/data/mygene.info/logs/``. You can have a look at:
 * and ``hub_*.log`` files for general logs about the hub process
 
 Finally, you can report issues and request for help, by joining Biothings Google Groups (https://groups.google.com/forum/#!forum/biothings)
-
