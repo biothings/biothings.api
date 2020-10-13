@@ -2,10 +2,10 @@
 Developer's guide
 *****************
 
-This section provides both an overview and detailed information abouth **BioThings Studio**,
+This section provides both an overview and detailed information about **BioThings Studio**,
 and is specifically aimed to developers who like to know more about internals.
 
-A complementary `tutorial <studio_tutorial.html>`_ is also available, explaining how to setup and use **BioThings Studio**,
+A complementary `tutorial <studio_tutorial.html>`_ is also available, explaining how to set up and use **BioThings Studio**,
 step-by-step, by building an API from a flat file.
 
 ========================
@@ -30,7 +30,7 @@ in the following diagram:
 * data is first downloaded locally using `dumpers`
 * `parsers` will then convert data into JSON documents, those will be stored in a Mongo database using `uploaders`
 * when using multiple sources, data can be combined together using `mergers`
-* data releases are then created by either indexing data to an ElasticSearch cluster with `indexers`, or
+* data releases are then created either by indexing data to an ElasticSearch cluster with `indexers`, or
   by computing the differences between the current release and previous one, using `differs`, and applying these
   differences using `syncers`
 
@@ -41,9 +41,9 @@ different available clients, and is out of this document's scope.
 BioThings Studio
 ^^^^^^^^^^^^^^^^
 
-The architecture and different software involved in this system can be quite intimidating. To help
+The architecture and different software involved in this system can be quite intimidating. To help,
 the whole service is packaged as a pre-configured application, **BioThings Studio**. A docker image is available
-Docker Hub registry, and be pulled using:
+Docker Hub registry, and can be pulled using:
 
 .. code:: bash
 
@@ -52,18 +52,20 @@ Docker Hub registry, and be pulled using:
 .. image:: ../_static/hubstack.png
    :width: 100%
 
-A **BioThings Studio** instance expose several services on different ports:
+A **BioThings Studio** instance exposes several services on different ports:
 
 * **8080**: **BioThings Studio** web application port
 * **7022**: **BioThings Hub** SSH port
 * **7080**: **BioThings Hub** REST API port
+* **7081**: **BioThings Hub** read-only REST API port
 * **9200**: ElasticSearch port
 * **27017**: MongoDB port
 * **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
 * **9000**: Cerebro, a webapp used to easily interact with ElasticSearch clusters
+* **60080**: Code-Server, a webapp used to directly edit code in the container
 
 **BioThings Hub** and the whole backend service can be accessed through different options according to some
-of these services
+of these services:
 
 * a web application allows interaction with the most used elements of the service (port 8080)
 * a console, accessible through SSH, gives access to more commands, for advanced usage (port 7022)
@@ -77,57 +79,58 @@ Who should use BioThings Studio ?
 **BioThings Studio** can be used in different scenarios:
 
 * you want to contribute to an existing BioThings API by integrating a new data source
-* you want to run your own BioThings API but don't want to have to install all the dependencies and
+* you want to run your own BioThings API but don't want to install all the dependencies and
   learn how to configure all the sub-systems
 
 
 Filesystem overview
 ^^^^^^^^^^^^^^^^^^^
 
-Several locations on the filesystem are important to notice, when it comes to change default configuration or troubleshoot the application.
+Several locations on the filesystem are important, when it comes to change default configuration or troubleshoot the application:
 
-* **Hub** (backend service) is running under ``biothings`` user, running code is located in ``/home/biothings/biothings_studio``. It heavely relies on
+* **Hub** (backend service) is running under ``biothings`` user, running code is located in ``/home/biothings/biothings_studio``. It heavily relies on
   BioThings SDK located in ``/home/biothings/biothings.api``.
 * Several scripts/helpers can be found in ``/home/biothings/bin``:
 
-  - ``run_studio`` is used to run the Hub in a tmux session. If a session is already running, it will first kill it and create new one. We don't have
+  - ``run_studio`` is used to run the Hub in a tmux session. If a session is already running, it will first kill the session and create a new one. We don't have
     to run this manually when the studio first starts, it is part of the starting sequence.
   - ``update_studio`` is used to fetch the latest code for **BioThings Studio**
-  - ``update_biotnings``, same as above but for BioThings SDK
+  - ``update_biothings``, same as above but for BioThings SDK
 
 * ``/data`` contains several important folders:
 
   - ``mongodb`` folder, where MongoDB server stores its data
   - ``elasticsearch`` folder, where ElasticSearch stores its data
-  - ``biothings_studio`` folder, containing different sub-folders used by the **Hub**
+  - ``biothings_studio`` folder, containing different sub-folders used by the **Hub**:
 
     - ``datasources`` contains data downloaded by the different ``dumpers``, it contains sub-folders named according to the datasource's name.
       Inside the datasource folder can be found the different releases, one per folder.
-    - ``dataupload`` is where data is stored when uploading data to the Hub (see below dedicated section for more).
+    - ``dataupload`` is where data is stored when uploaded to the Hub (see below dedicated section for more).
     - ``logs`` contains all log files produced by the **Hub**
     - ``plugins`` is where data plugins can be found (one sub-folder per plugin's name)
 
 .. note:: Instance will store MongoDB data in `/data/mongodb`, ElasticSearch data in `/data/elasticsearch/` directory,
-   and downloaded data and logs in `/data/biothings_studio`. Those locations could require extra disk space,
-   if needed Docker option ``-v`` can be used to mount a directory from the host, inside the container.
-   Please refer to Docker documentation. It's also important to give enough permissions so the differences services
+   and downloaded data and logs in `/data/biothings_studio`. Those locations could require extra disk space;
+   if necessary, Docker option ``-v`` can be used to mount a directory from the host, inside the container.
+   Please refer to Docker documentation. It's also important to give enough permissions so the different services
    (MongoDB, ElasticSearch, NGNIX, BioThings Hub, ...) can actually write data on the docker host.
 
 Configuration files
 ^^^^^^^^^^^^^^^^^^^
 
 **BioThings Hub** expects some configuration variables to be defined first, in order to properly work. In most **BioThings Studio**, a ``config_hub.py`` defines
-those parameters, either by providing default value(s), or by setting it as ``ConfigurationError`` exception. In that latter case, it means no defaults can be used
+those parameters, either by providing default value(s), or by setting them as ``ConfigurationError`` exception. In the latter case, it means no defaults can be used
 and user/developer has to define it. A final ``config.py`` file must be defined, it usually imports all parameters from ``config_hub.py`` (``from config_hub import *``).
 That ``config.py`` *has* to be defined before the **Hub** can run.
 
-.. note:: This process is only required when implementing or initializing a Hub from scratch. All **BioThings Studio** applications comes with that file defined, the **Hub**
+.. note:: This process is only required when implementing or initializing a Hub from scratch. All **BioThings Studio** applications come with that file defined, and the **Hub**
    is ready to be used.
 
 It's also possible to override parameters directly from the webapp/UI. In that case, new parameters' values are stored in the internal Hub database. Upon start, **Hub** will check
-that database and supersed any values that are defined directly in the python configuration files. This process is handled by class ``biothings.ConfigurationManager``.
+that database and supersede any values that are defined directly in the python configuration files. This process is handled by class ``biothings.ConfigurationManager``.
 
 Finally, a special (simple) dialect can be used while defining configuration parameters, using special markup within comments above declaration. This allows to:
+
 * provide documentation for parameters
 * put parameters under different categories
 * mark a parameter as read-only
@@ -326,7 +329,7 @@ A manifest file is defined like this:
   is passed to `pip install` command line. If one dependency installation fails, the plugin is invalidated. Alternately, a single string can be passed, instead of a list.
 - a *dumper* section specifies how to download the actual data.
 
-  * *data_url* specifies where to download the data from. It can be a URL (string) or a list of URLs (list of strings). Currently supported protocols are **http(s)** and **ftp**. 
+  * *data_url* specifies where to download the data from. It can be a URL (string) or a list of URLs (list of strings). Currently supported protocols are **http(s)** and **ftp**.
     URLs must point to individual files (no wildcards) and only one protocol is allowed within a list of URLs (no mix of URLs using htttp and ftp are allowed). All files
     are download in a data folder, determined by ``config.DATA_ARCHIVE_ROOT``/<plugin_name>/<release>
 
