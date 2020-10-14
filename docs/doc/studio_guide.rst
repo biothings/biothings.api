@@ -249,7 +249,7 @@ By clicking on the cog icon in the bar on the right, **Hub** configuration can b
    :width: 100%
 
 All parameters must be entered in a JSON format. Ex: double quotes for strings, square brackets to define lists, etc. A changed parameter can be saved using
-the "Save" button, available for each parameter. The "Reset" button can be used to switch it backto the original default value that was defined in the configuration files.
+the "Save" button, available for each parameter. The "Reset" button can be used to switch it back to the original default value that was defined in the configuration files.
 
 Ex: Update Hub's name
 
@@ -364,7 +364,7 @@ A manifest file is defined like this:
 
 
 
-``self`` refers to the actual dumper instance, which is one of either a ``biothings.hub.dataload.dumper.HTTPDumper`` or a ``biothings.hub.dataload.dumper.FTPDumper``, depending
+``self`` refers to the actual dumper instance of either ``biothings.hub.dataload.dumper.HTTPDumper`` or ``biothings.hub.dataload.dumper.FTPDumper``, depending
 on the protocol. All properties and methods from the instance are available, specifically:
 
   * ``self.client``, the actual underlying client used to download files, which is either a ``request.Session`` or a ``ftplib.FTP`` instance, and should be preferred

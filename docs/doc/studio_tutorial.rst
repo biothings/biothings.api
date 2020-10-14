@@ -1196,7 +1196,7 @@ be useful to troubleshoot an issue. Typing ``help()``, or even passing a command
 
 On a lower level, make sure all services are running in the docker container. Enter the container with
 ``docker exec -ti studio /bin/bash`` and type ``netstat -tnlp``, you should see services running on ports
-(see usual running `services <studio_guide.html#services-check>`_). If services running on port 7080 or 7022 aren't running, it means the
+(see usual running `services <studio_guide.html#services-check>`_). If services on ports 7080 and 7022 aren't running, it means the
 **Hub** has not started. If you just started the instance, wait a little more as services may take a while
 before they're fully started and ready.
 
