@@ -54,17 +54,17 @@
             </span>
             <span v-else>
                 <div class="ui icon buttons left floated mini">
-                    <button class="ui button" v-on:click="do_dump" v-if="source.download">
+                    <button class="ui button" v-on:click="do_dump" v-bind:class="{ yellow: (download_status == 'downloading')}" v-if="source.download">
                         <i class="download cloud icon labeled" data-content="Dump" ></i>
                     </button>
                 </div>
                 <div class="ui icon buttons left floated mini">
-                    <button class="ui button" v-on:click="do_upload" v-if="source.upload">
+                    <button class="ui button" v-on:click="do_upload" v-bind:class="{ yellow: (upload_status == 'uploading')}" v-if="source.upload">
                         <i class="database icon labeled" data-content="Upload"></i>
                     </button>
                 </div>
                 <div class="ui icon buttons left floated mini">
-                    <button class="ui button" v-on:click="inspect">
+                    <button class="ui button" v-on:click="inspect" v-bind:class="{ yellow: (inspect_status == 'inspecting')}">
                         <i class="unhide icon labeled" data-content="Inspect"></i>
                     </button>
                 </div>
@@ -120,7 +120,6 @@ export default {
     mounted () {
         $('select.dropdown').dropdown();
         $('.plugin-popup').popup();
-        $('.labeled').popup();
     },
     data() {
         return {
