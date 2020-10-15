@@ -34,7 +34,9 @@ class ESQueryBackend(object):
 
         Options:
             Required: either an es-dsl query object or scroll_id
-            Optional: fetch_all: also return a scroll_id for this query
+            Optional:
+                fetch_all: also return a scroll_id for this query (default: false)
+                biothing_type: which type's corresponding indices to query (default in config.py)
         '''
         if options.scroll_id:
             try:
