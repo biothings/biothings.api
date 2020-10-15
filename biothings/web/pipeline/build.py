@@ -25,7 +25,27 @@ class ESQueryBuilder(object):
 
     def build(self, q, options):
         '''
-        Build the corresponding query.
+        Build a query according to q and options.
+        This is the public method called by API handlers.
+
+        Options:
+
+            q: string query or queries
+            scopes: fields to query q(s)
+
+                _source: fields to return
+                size: maximum number of hits to return
+                from: starting index of result list to return
+                sort: customized sort keys for result list
+                explain: include es scoring information
+                userquery: customized function to interpret q
+
+            aggs: customized aggregation string
+            facet_size: maximum number of agg results
+
+            * additional es keywords are passed through
+              for example: 'explain', 'version' ...
+
         '''
         try:  # TODO clarify
             return self._build(q, options)
@@ -39,6 +59,11 @@ class ESQueryBuilder(object):
                 details=str(exc))
 
     def _build(self, q, options):
+        """
+        Process single q vs list of q(s).
+        Dispatch 'val' vs 'key:val' to corresponding functions.
+        Pass through es query options. (from, size ...)
+        """
 
         if options.scopes is not None:
             build_query = self.build_match_query
@@ -149,6 +174,10 @@ class ESQueryBuilder(object):
         return self.default_match_query(q, scopes, options)
 
     def _apply_extras(self, search, options):
+        """
+        Process non-query options and customize their behaviors.
+        Customized aggregation syntax string is translated here.
+        """
 
         # add aggregations
         facet_size = options.facet_size or 10
