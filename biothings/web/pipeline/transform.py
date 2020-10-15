@@ -84,12 +84,13 @@ class ESResultTransform(object):
             always_list: ensure the fields specified are lists or wrapped in a list
             allow_null: ensure the fields specified are present in the result,
                         the fields may be provided as type None or [].
+            biothing_type: result document type to apply customized transformation.
+                        for example, add license field basing on document type's metadata.
             # only related to multiqueries
             template: base dict for every result, for example: {"success": true}
             templates: a different base for every result, replaces the setting above
             template_hit: a dict to update every positive hit result, default: {"found": true}
             template_miss: a dict to update every query with no hit, default: {"found": false}
-
         """
         if not isinstance(options, dotdict):
             options = dotdict(options)
