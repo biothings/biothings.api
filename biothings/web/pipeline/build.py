@@ -39,6 +39,7 @@ class ESQueryBuilder(object):
                 sort: customized sort keys for result list
                 explain: include es scoring information
                 userquery: customized function to interpret q
+                regexs: substitution groups to infer scopes
 
             aggs: customized aggregation string
             facet_size: maximum number of agg results
