@@ -2,7 +2,7 @@
 Utility modules
 ###############
 
-The utility modules under `biothings.utils` provide a collections of utilities used across the BioThings SDK code base.
+The utility modules under `biothings.utils` provides a collections of utilities used across the BioThings SDK code base.
 They also provide a level of abstraction for individual functionalities.
 
 .. toctree::
