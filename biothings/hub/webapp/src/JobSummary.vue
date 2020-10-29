@@ -6,7 +6,7 @@
         <i class="settings icon"></i>
         {{num_commands}}
     </button>
-    <div class="ui commands popup top left transition hidden">
+    <div class="ui commands popup transition hidden">
         <commands-list></commands-list>
     </div>
     <!-- jobs (processes) -->
@@ -16,7 +16,7 @@
         <i class="rocket icon"></i>
         {{job_manager.queue ? job_manager.queue.process.running.length : '?'}}/{{job_manager.queue ? job_manager.queue.process.max : '?'}}
     </button>
-    <div class="ui processes popup top left transition hidden">
+    <div class="ui processes popup transition hidden">
         <processes-list v-bind:processes="processes"></processes-list>
     </div>
     <!-- jobs (threads) -->
@@ -25,25 +25,25 @@
       <i class="lightning icon"></i>
       {{job_manager.queue ? job_manager.queue.thread.running.length : '?'}}/{{job_manager.queue ? job_manager.queue.thread.max : '?' }}
     </button>
-    <div class="ui threads popup top left transition hidden">
+    <div class="ui threads popup transition hidden">
         <threads-list v-bind:threads="threads"></threads-list>
     </div>
     <!-- jobs (pendings) -->
-    <div class="ui small grey label"
+    <button class="ui compact labeled icon button tiny"
       data-tooltip="Number of queued jobs"
-      data-position="bottom center"
+      data-position="top right"
       v-if="job_manager.queue">
       <i class="hourglass start icon"></i>
       {{job_manager.queue.thread.pending.length + job_manager.queue.process.pending.length }}
-    </div>
+    </button>
     <!-- memory -->
-    <div class="ui small grey label"
+    <button class="ui compact labeled icon button tiny"
       data-tooltip="Amount of memory hub is currently using"
-      data-position="bottom center"
+      data-position="top right"
       v-if="job_manager.queue">
       <i class="right microchip icon"></i>
       {{ job_manager.memory | pretty_size}}
-    </div>
+    </button>
   </div>
 </template>
 
@@ -65,14 +65,14 @@ export default {
     $('.processes.button').popup({
         popup: $('.processes.popup'),
         on: 'click' ,
-        lastResort: 'bottom right',
+        lastResort: 'top right',
         onVisible: () => {this.onJobsOpened(true)},
         onHide: () => {this.onJobsOpened(false)},
     });
     $('.threads.button').popup({
         popup: $('.threads.popup'),
         on: 'click' ,
-        lastResort: 'bottom right',
+        lastResort: 'top right',
         onVisible: () => {this.onJobsOpened(true)},
         onHide: () => {this.onJobsOpened(false)},
     });
