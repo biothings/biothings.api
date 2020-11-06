@@ -45,7 +45,7 @@ install_requires = [
     'elasticsearch>=6, <8',
     'elasticsearch-dsl>=6, <8',
     'elasticsearch-async>=6.2.0'
-    'aiohttp==3.6.2'
+    'aiohttp==3.6.2'    # for compatibility with elasticsearch-async==6.x
 ]
 
 # extra requirements for biothings.web
@@ -58,7 +58,7 @@ web_extra_requires = [
 hub_requires = [
     'beautifulsoup4',   # used in dumper.GoogleDriveDumper
     'aiocron',          # setup scheduled jobs
-    'aiohttp==3.6.2',
+    'aiohttp==3.6.2',   # for compatibility with elasticsearch-async==6.x
     'asyncssh==1.7.1',  # needs libffi-dev installed (apt-get)
     'pymongo',
     'psutil',
