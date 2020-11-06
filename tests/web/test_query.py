@@ -274,11 +274,14 @@ class TestQueryKeywords(BiothingsTestCase):
             ]
         }
         """
-        res = self.request('/v1/query?q=1017&dotfield').json()
-        protein = res['hits'][0]['accession.translation.protein']
-        for index, value in enumerate(protein):
-            if index > 0:
-                assert value > protein[index-1]
+        # res = self.request('/v1/query?q=1017&dotfield').json()
+        # protein = res['hits'][0]['accession.translation.protein']
+        # for index, value in enumerate(protein):
+        #     if index > 0:
+        #         assert value > protein[index-1]
+        #
+        # TODO list sorting feature is under revision
+        #
 
     def test_17_sorted_false_dotfield(self):
         """ GET /v1/query?q=1017&dotfield&_sorted=false

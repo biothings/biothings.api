@@ -2,7 +2,7 @@
 BioThings Hub
 *************
 
-.. note:: this tutorial uses an old/deprecated version of BioThings SDK. It will be updated very soon.
+.. note:: This tutorial uses an old/deprecated version of BioThings SDK. It will be updated very soon.
 
 In this tutorial, we will build the whole process, or "hub", which produces the data
 for Taxonomy BioThings API, accessible at `<t.biothings.io>`_. This API serves information
@@ -1420,4 +1420,3 @@ Coming soon!
 Full updated and maintained code for this hub is available here: https://github.com/biothings/biothings.species
 
 Also, taxonomy BioThings API can be queried as this URL: http://t.biothings.io
-

@@ -548,7 +548,7 @@ class SnapshotManager(BaseManager):
         return asyncio.ensure_future(_())
 
     def snapshot_info(self, env=None, remote=False):
-        raise NotImplementedError()
+        return copy.deepcopy(self.snapshot_config)
 
 
 def test():

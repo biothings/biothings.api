@@ -58,17 +58,17 @@ Installation
 
   $ docker pull biothings/biothings-studio:0.2b
 
-A **BioThings Studio** instance expose several services on different ports:
+A **BioThings Studio** instance exposes several services on different ports:
 
 * **8080**: **BioThings Studio** web application port
 * **7022**: **BioThings Hub** SSH port
 * **7080**: **BioThings Hub** REST API port
-* **7081°°: **BioThings Hub** REST API port, read-only access
+* **7081**: **BioThings Hub** REST API port, read-only access
 * **9200**: ElasticSearch port
 * **27017**: MongoDB port
 * **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
-* **9000**: `Cerebro <https://github.com/lmenezes/cerebro>`_, a webapp used to easily interact with ElasticSearch clusters 
-* **60080**: `Code-Server <https://github.com/cdr/code-server>`_, a webapp used to directly edit code in the container 
+* **9000**: `Cerebro <https://github.com/lmenezes/cerebro>`_, a webapp used to easily interact with ElasticSearch clusters
+* **60080**: `Code-Server <https://github.com/cdr/code-server>`_, a webapp used to directly edit code in the container
 
 We will map and expose those ports to the host server using option ``-p`` so we can access BioThings services without
 having to enter the container:
@@ -83,10 +83,10 @@ having to enter the container:
 
 .. note:: Biothings Studio and the Hub are not designed to be publicly accessible. Those ports should **not** be exposed. When
    accessing the Studio and any of these ports, SSH tunneling can be used to safely access the services from outside.
-   Ex: ``ssh -L 7080:localhost:7080 -L 8080:localhost:8080 user@mydockerserver`` will expose the web application,
-   the REST API, Hub SSH and Cerebro app ports  to your computer, so you can access the webapp using http://localhost:8080, the API using http://localhost:7080,
+   Ex: ``ssh -L 7080:localhost:7080 -L 8080:localhost:8080 -L 7022:localhost:7022 -L 9000:localhost:9000 user@mydockerserver`` will expose the Hub REST API, the web application,
+   the Hub SSH, and Cerebro app ports to your computer, so you can access the webapp using http://localhost:8080, the Hub REST API using http://localhost:7080,
    http://localhost:9000 for Cerebro, and directly type ``ssh -p 7022 biothings@localhost`` to access Hub's internals via the console.
-   See https://www.howtogeek.com/168145/how-to-use-ssh-tunneling for more
+   See https://www.howtogeek.com/168145/how-to-use-ssh-tunneling for more details.
 
 We can follow the starting sequence using ``docker logs`` command:
 
@@ -102,7 +102,7 @@ We can follow the starting sequence using ``docker logs`` command:
   now run webapp
   not interactive
 
-Please refer `Filesystem overview <studio_guide.html#filesystem-overview>`_ and  `Services check <studio_guide.html#services-check>`_ for
+Please refer to `Filesystem overview <studio_guide.html#filesystem-overview>`_ and  `Services check <studio_guide.html#services-check>`_ for
 more details about Studio's internals.
 
 By default, the studio will auto-update its source code to the latest version available and install all required dependencies. This behavior can be skipped
@@ -142,7 +142,7 @@ Parser
 
 In order to ingest this data and make it available as an API, we first need to write a parser. Data is pretty simple, tab-separated files, and we'll
 make it even simpler by using ``pandas`` python library. The first version of this parser is available in branch ``pharmgkb_v1`` at
-https://github.com/sirloon/pharmgkb/blob/pharmgkb_v1/parser.py. After some boiler plate code at the beginning for dependencies and initialization,
+https://github.com/sirloon/pharmgkb/blob/pharmgkb_v1/parser.py. After some boilerplate code at the beginning for dependencies and initialization,
 the main logic is the following:
 
 
@@ -157,8 +157,8 @@ the main logic is the following:
             logging.warning("No gene information for annotation ID '%s'", rec["Annotation ID"])
             continue
         _id = re.match(".* \((.*?)\)",rec["Gene"]).groups()[0]
-        # we'll remove space in keys to make queries easier. Also, lowercase is preferred
-        # for a BioThings API. We'll an helper function from BioThings SDK
+        # We'll remove space in keys to make queries easier. Also, lowercase is preferred
+        # for a BioThings API. We'll use an helper function `dict_convert()` from BioThings SDK
         process_key = lambda k: k.replace(" ","_").lower()
         rec = dict_convert(rec,keyfn=process_key)
         results.setdefault(_id,[]).append(rec)
@@ -168,7 +168,7 @@ the main logic is the following:
         yield doc
 
 
-Our parsing function is named ``load_annotations``, it could be name anything else, but it has to take a folder path ``data_folder``
+Our parsing function is named ``load_annotations``, it could be named anything else, but it has to take a folder path ``data_folder``
 containing the downloaded data. This path is automatically set by the Hub and points to the latest version available. More on this later.
 
 .. code:: python
@@ -204,7 +204,7 @@ We then open and read the TSV file using ``pandas.read_csv()`` function. At this
    'Variant': 'rs1131873'}
 
 Keys are uppercase, for a BioThings API, we like to have them as lowercase. More importantly, we want to remove spaces in those keys
-as querying the API in the end will be hard with spaces. We'll use a special helper from BioThings SDK to process these.
+as querying the API in the end will be hard with spaces. We'll use a special helper function from BioThings SDK to process these.
 
 .. code:: python
 
@@ -224,12 +224,12 @@ in a dictionary indexed by gene ID. The final documents are assembled in the las
         yield doc
 
 
-.. note:: The `_id` key is mandatory and represents a unique identifier for this document. The type must a string. The _id key is
+.. note:: The `_id` key is mandatory and represents a unique identifier for this document. The type must be a string. The _id key is
    used when data from multiple datasources are merged together, that process is done according to its value
    (all documents sharing the same _id from different datasources will be merged together).
 
-.. note:: In this specific example, we read the whole content of this input file in memory, when store annotations per gene. The data itself
-   is small enough to do this, but memory usage always needs to cautiously considered when writing a parser.
+.. note:: In this specific example, we read the whole content of this input file in memory, then store annotations per gene. The data itself
+   is small enough to do this, but memory usage always needs to be cautiously considered when we write a parser.
 
 
 Data plugin
@@ -242,12 +242,12 @@ Parser is ready, it's now time to glue everything together and build our API. We
 * all necessary files supporting the declarations in the manifest, such as a python file containing the parsing function for instance.
 
 This folder must be located in the plugins directory (by default ``/data/biothings_studio/plugins``, where the **Hub** monitors changes and
-reloads itself accordingly to register data plugins. Another way to declare such plugin is to register a github repository,
-containing everything useful for the datasource. This is what we'll do in the following section.
+reloads itself accordingly to register data plugins. Another way to declare such plugin is to register a github repository
+that contains everything useful for the datasource. This is what we'll do in the following section.
 
 .. note:: Whether the plugin comes from a github repository or directly found in the plugins directory doesn't really matter. In the end, the code
-   will be found in that same ``plugins`` directory, whether it comes from a ``git clone`` command while registering the github URL or whether it comes
-   from folder and files manually created in that location. It's however easier, when developing a plugin, to directly work on local files first
+   will be found in that same ``plugins`` directory, whether it comes from a ``git clone`` command while registering the github URL or
+   from folder(s) and file(s) manually created in that location. However, when developing a plugin, it's easier to directly work on local files first
    so we don't have to regurlarly update the plugin code (``git pull``) from the webapp, to fetch the latest code. That said, since the plugin
    is already defined in github in our case, we'll use the github repo registration method.
 
@@ -286,7 +286,7 @@ Let's register that data plugin using the Studio. First, copy the repository URL
 .. image:: ../_static/githuburl.png
    :width: 100%
 
-Moving back to the Studio, click on the |sources| tab, then |menu| icon, this will open a side bar on the left. Click on `New data plugin`, you will be asked to enter the github URL.
+Now go to the Studio web application at http://localhost:8080, click on the |sources| tab, then |menu| icon, this will open a side bar on the left. Click on `New data plugin`, you will be asked to enter the github URL.
 Click "OK" to register the data plugin.
 
 .. image:: ../_static/registerdp.png
@@ -318,7 +318,7 @@ The Hub shows an error though:
    :width: 250px
 
 Indeed, we fetch source code from branch ``master``, which doesn't contain any manifest file. We need to switch to another branch (this tutorial is organized using branches,
-and also it's a perfect oportunity to learn how to use a specific branch/commit using **BioThings Studio**...)
+and also it's a perfect opportunity to learn how to use a specific branch/commit using **BioThings Studio**...)
 
 Let's click on ``pharmgkb`` link, then |plugin|. In the textbox on the right, enter ``pharmgkb_v1`` then click on ``Update``.
 
@@ -369,7 +369,7 @@ We also have new notifications as shown by the red number on the right. Let's ha
    :width: 450px
 
 Going back to the source's details, we can see the `Dumper` has been populated. We now know the
-release number, the data folder, when was the last download, how long it tooks to download the file, etc...
+release number, the data folder, when the last download was, how long it tooks to download the file, etc...
 
 .. image:: ../_static/dumptab.png
    :width: 450px
@@ -425,8 +425,8 @@ Since the collection is very small, inspection is fast. But... it seems like we 
 .. image:: ../_static/fielderr.png
    :width: 350px
 
-This results means documents sometimes have ``notes`` key equal to ``NaN``, and sometimes equal to a string (a splittable string, meaning there are spaces in it).
-This is a problem for ElasticSearch because it wouldn't how to index the data properly. And furthermore, ElasticSearch doesn't allow ``NaN`` values anyway. So we need
+This result means documents sometimes have ``notes`` key equal to ``NaN``, and sometimes equal to a string (a splittable string, meaning there are spaces in it).
+This is a problem for ElasticSearch because it wouldn't index the data properly. And furthermore, ElasticSearch doesn't allow ``NaN`` values anyway. So we need
 to fix the parser. The fixed version is available in branch ``pharmgkb_v2`` (go back to Plugin tab, enter that branch name and update the code).
 The fix consists in `removing key/value <https://github.com/sirloon/pharmgkb/blob/pharmgkb_v2/parser.py#L24>`_ from the records, whenever a value is equal to ``NaN``.
 
@@ -465,13 +465,12 @@ moving forwared, we want to make sure the mapping is valid, let's click on |vali
 .. image:: ../_static/validated.png
    :width: 500px
 
-.. note:: "Validate on test" means **Hub** will send the mapping to ElasticSearch by creating a temporary, empty index to make sure the mapping syntax
-   and content are valid. It's immediately deleted after validation (wheter successful or not). Also, "test" is the name of an environment, by default,
-   and without further manual configuration, this is the only development environment available in the Studio, pointing to embedded ElasticSearch server.
+.. note:: "Validate on localhub" means **Hub** will send the mapping to ElasticSearch by creating a temporary, empty index to make sure the mapping syntax
+   and content are valid. It's immediately deleted after validation (whether successful or not). Also, "localhub" is the default name of an environment.
+   Without further manual configuration, this is the only development environment available in the Studio, pointing to embedded ElasticSearch server.
 
-Everything looks fine, one last step is to "commit" the mapping, meaning we're ok to use this mapping as the official, registered mapping,
-the one that will actually be used by ElasticSearch. Indeed the left side of the page is about inspected mapping, we can re-launch the
-inspection as many time as we want, without impacting active/registered mapping (this is usefull when the data structure changes). Click on
+Everything looks fine, the last step is to "commit" the mapping, meaning we're ok to use this mapping as the official, registered mapping that will actually be used by ElasticSearch. Indeed the left side of the page is about inspected mapping, we can re-launch the
+inspection as many times as we want, without impacting active/registered mapping (this is usefull when the data structure changes). Click on
 |commit| then "OK", and you now should see the final, registered mapping on the right:
 
 .. |commit| image:: ../_static/commit.png
@@ -483,7 +482,7 @@ inspection as many time as we want, without impacting active/registered mapping 
 Build
 ^^^^^
 
-Once we have integrated data and a valid ElasticSeach mapping, we can move forward by creating a build configuration. A `build configuration`
+Once we have integrated data and a valid ElasticSearch mapping, we can move forward by creating a build configuration. A `build configuration`
 tells the **Hub** which datasources should be merged together, and how. Click on |builds| then |menu| and finally, click on |newbuildconf|.
 
 .. |builds| image:: ../_static/builds.png
@@ -499,10 +498,10 @@ tells the **Hub** which datasources should be merged together, and how. Click on
   is about gene annotations, so "gene" it is...
 * open the dropdown list and select the `sources` you want to be part of the merge. We only have one, "pharmgkb"
 * in `root sources`, we can declare which sources are allowed to create new documents in the merged collection, that is merge documents from a
-  datasource, but only if corresponding documents exist in the merged collection. It's usefull if data from a specific source relates to data on
+  datasource, but only if corresponding documents exist in the merged collection. It's useful if data from a specific source relates to data on
   another source (it only makes sense to merge that relating data if the data itself is present). If root sources are declared, **Hub** will first
   merge them, then the others. In our case, we can leave it empty (no root sources specified, all sources can create documents in the merged collection)
-* selecting a builder is optional, but the sake of this tutorial, we'll choose ``LinkDataBuilder``. This special builder will fetch documents directly from
+* selecting a builder is optional, but for the sake of this tutorial, we'll choose ``LinkDataBuilder``. This special builder will fetch documents directly from
   our datasources `pharmgkb` when indexing documents, instead of duplicating documents into another connection (called `target` or `merged` collection). We can
   do this (and save time and disk space) because we only have one datasource here.
 * the other fields are for advanced usage and are out-of-topic for this tutorial
@@ -517,7 +516,7 @@ Click on it and create a new build.
 .. image:: ../_static/newbuild.png
    :width: 100%
 
-You can give a specific name for that build, or let the **Hub** generate one for you. Click "OK", after few seconds, you should see the new build displayed on the page.
+You can give a specific name for that build, or let the **Hub** generate one for you. Click "OK", after a few seconds, you should see the new build displayed on the page.
 
 .. image:: ../_static/builddone.png
    :width: 300px
@@ -535,23 +534,23 @@ If not there yet, open the new created build and go the "Release" tab. This is t
 .. image:: ../_static/newreleaseform.png
    :width: 100%
 
-Since we only have one build available, we can't generate an `incremental` release so we'll have to select `full` this time. Click "OK" to launch the process.
+Since we only have one build available, we can't generate an `incremental` release, so we'll have to select `full` this time. Click "OK" to launch the process.
 
 .. note:: Should there be a new build available (coming from the same configuration), and should there be data differences, we could generate an
    incremental release. In this case, **Hub** would compute a diff between previous and new builds and generate diff files (using `JSON diff`_ format).
-   Incremental releases are usually smaller than full releases, usually take less time to deploy (appying diff data) unless diff content is too big
-   (there's a threshold between using an incremental and a full release, depending on the hardware and the data, because applying a diff requires to first
-   fetch the document from ElasticSearch, patch it, and then save it back)
+   Incremental releases are usually smaller than full releases, usually take less time to deploy (applying diff data) unless diff content is too big
+   (there's a threshold between using an incremental and a full release, depending on the hardware and the data, because applying a diff requires you to first
+   fetch the document from ElasticSearch, patch it, and then save it back).
 
 .. _`JSON diff`: http://www.jsondiff.com/
 
-**Hub** will directly index the data on its locally installed ElasticSearch server (``test`` environment). After few seconds, a new `full` release is created.
+**Hub** will directly index the data on its locally installed ElasticSearch server (``localhub`` environment). After few seconds, a new `full` release is created.
 
 .. image:: ../_static/newfullrelease.png
    :width: 100%
 
-We can easily access ElasticSearch server using the application **Cerebro** which comes pre-configured with the studio. Let's access it through http://localhost:9000/#/connect
-(assuming ports 9200 and 9000 have properly been mapped, as mentioned earlier). **Cerebro** provides an easy to manager ElasticSearch and check/query indices.
+We can easily access ElasticSearch server using the application **Cerebro**, which comes pre-configured with the studio. Let's access it through http://localhost:9000/#/connect
+(assuming ports 9200 and 9000 have properly been mapped, as mentioned earlier). **Cerebro** provides an easy-to-manage ElasticSearch and check/query indices.
 
 Click on the pre-configured server named ``BioThings Studio``.
 
@@ -597,7 +596,7 @@ can be accessed:
 .. image:: ../_static/apirunning.png
    :width: 300px
 
-.. note:: When running, queries such ``/metadata`` and ``/query?q=*`` are provided as examples. They contain a hostname set by Docker though (it's the Docker instance hostname), which probably
+.. note:: When running, queries such ``/metadata`` and ``/query?q=*`` are provided as examples. They contain a hostname set by Docker though (it's the Docker instance's hostname), which probably
    means nothing outside of Docker's context. In order to use the API you may need to replace this hostname by the one actually used to access the
    Docker instance.
 
@@ -1180,16 +1179,16 @@ Troubleshooting
 
 We test and make sure, as much as we can, that the **BioThings Studio** image is up-to-date and running properly. But things can still go wrong...
 
-A good starting point investigating an issue is to look at the logs from the **BioThings Studio**. Make sure connected (green power button on the top right),
+A good starting point investigating an issue is to look at the logs from the **BioThings Studio**. Make sure it's connected (green power button on the top right),
 then click "Logs" button, on the bottom right. You will see logs in real-time (if not connected, it will complain about a disconnected websocket). As you click
-and perform actions through out the web application, you will see log message in that windows, and potentially errors not displayed (or with less details) in the
+and perform actions throughout the web application, you will see log message in that window, and potentially errors not displayed (or with less details) in the
 application.
 
 .. image:: ../_static/logs.png
    :width: 500px
 
-The "Terminal" (click on the bottom left button). gives access to commands you can manually type from the web application. Basically, any action performed clicking on the application
-is converted into a command call. You can even see what commands were launched, which ones are running. This terminal gives also access to more commands, and advanced options that may
+The "Terminal" (click on the bottom left button) gives access to commands you can manually type from the web application. Basically, any action performed clicking on the application
+is converted into a command call. You can even see what commands were launched and which ones are running. This terminal also gives access to more commands, and advanced options that may
 be useful to troubleshoot an issue. Typing ``help()``, or even passing a command name such as ``help(dump)`` will print documentation on available commands and how to use them.
 
 .. image:: ../_static/term.png
@@ -1197,13 +1196,13 @@ be useful to troubleshoot an issue. Typing ``help()``, or even passing a command
 
 On a lower level, make sure all services are running in the docker container. Enter the container with
 ``docker exec -ti studio /bin/bash`` and type ``netstat -tnlp``, you should see services running on ports
-(see usual running `services <studio_guide.html#services-check>`_). If services running on ports 7080 or 7022 aren't running, it means the
+(see usual running `services <studio_guide.html#services-check>`_). If services on ports 7080 and 7022 aren't running, it means the
 **Hub** has not started. If you just started the instance, wait a little more as services may take a while
 before they're fully started and ready.
 
-If after ~1 min, you still don't see the **Hub** running, log to user ``biothings`` and check the starting sequence.
+If after ~1 min, you still don't see the **Hub** running, log in as user ``biothings`` and check the starting sequence.
 
-.. note:: **Hub** is running in a tmux session, under user ``biothings``
+.. note:: **Hub** is running in a tmux session, under user ``biothings``.
 
 .. code:: bash
 
@@ -1236,13 +1235,12 @@ If after ~1 min, you still don't see the **Hub** running, log to user ``biothing
    ['/home/biothings/biothings_studio/hub/dataload/sources',
     '/home/biothings/biothings_studio/plugins']
 
-You should see something looking like this above. If not, you should see the actual error, and depending on the error, you may be able to
+You should see something like above. If not, you should see the actual error, and depending on the error, you may be able to
 fix it (not enough disk space, etc...). **BioThings Hub** can be started again using ``python bin/hub.py`` from within the application
 directory (in our case, ``/home/biothings/biothings_studio``)
 
-.. note:: Press Control-B then D to dettach the tmux session and let the **Hub** running in background.
+.. note:: Press Control-B then D to dettach the tmux session and let the **Hub** run in background.
 
 By default, logs are available in ``/data/biothings_studio/logs/``.
 
-Finally, you can report issues and request for help, by joining Biothings Google Groups (https://groups.google.com/forum/#!forum/biothings)
-
+Finally, you can report issues and request for help, by joining Biothings Google Groups (https://groups.google.com/forum/#!forum/biothings).

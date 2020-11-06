@@ -52,19 +52,19 @@
             <div class="left aligned description">
                 <p>
                     <div class="ui top attached pointing secondary menu">
-                        <a class="item active" data-tab="sources">Sources</a>
-                        <a class="item" data-tab="stats">Stats</a>
-                        <a class="item" data-tab="logs">Logs</a>
+                        <a class="item active" :data-tab="'sources' + build.build_config.name">Sources</a>
+                        <a class="item" :data-tab="'stats' + build.build_config.name">Stats</a>
+                        <a class="item" :data-tab="'logs' + build.build_config.name">Logs</a>
                     </div>
-                    <div class="ui bottom attached tab segment active" data-tab="sources">
+                    <div class="ui bottom attached tab segment active" :data-tab="'sources' + build.build_config.name">
                         <build-sources v-bind:build="build"></build-sources>
                     </div>
 
-                    <div class="ui bottom attached tab segment" data-tab="stats">
+                    <div class="ui bottom attached tab segment" :data-tab="'stats' + build.build_config.name">
                         <build-stats v-bind:build="build"></build-stats>
                     </div>
 
-                    <div class="ui bottom attached tab segment" data-tab="logs">
+                    <div class="ui bottom attached tab segment" :data-tab="'logs' + build.build_config.name">
                         <build-logs v-bind:build="build"></build-logs>
                     </div>
                 </p>
@@ -169,7 +169,7 @@ export default {
     props: ['pbuild','color'],
     mounted() {
         $('.menu .item')
-        .tab()
+        .tab({context: 'parent'})
         ;
     },
     created() {

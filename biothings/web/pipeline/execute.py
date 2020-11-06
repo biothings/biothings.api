@@ -3,11 +3,10 @@
 """
 import asyncio
 
-from elasticsearch import (ConnectionError, NotFoundError, RequestError,
-                           TransportError)
-from tornado.web import HTTPError
-
 from biothings.web.handlers.exceptions import BadRequest, EndRequest
+from elasticsearch import (ConnectionError, ConnectionTimeout, NotFoundError,
+                           RequestError, TransportError)
+from tornado.web import HTTPError
 
 
 class ESQueryBackend(object):
@@ -30,9 +29,14 @@ class ESQueryBackend(object):
 
     async def execute(self, query, options):
         '''
-        Execute the corresponding query.
+        Execute the corresponding query. Must return an awaitable.
         May override to add more. Handle uncaught exceptions.
-        Must return an awaitable.
+
+        Options:
+            Required: either an es-dsl query object or scroll_id
+            Optional:
+                fetch_all: also return a scroll_id for this query (default: false)
+                biothing_type: which type's corresponding indices to query (default in config.py)
         '''
         if options.scroll_id:
             try:
@@ -57,7 +61,7 @@ class ESQueryBackend(object):
                 query = query.extra(size=self.scroll_size)
             try:
                 res = await query.using(self.client).execute()
-            except ConnectionError:
+            except (ConnectionError, ConnectionTimeout):
                 raise HTTPError(503)
             except RequestError as exc:
                 raise BadRequest(_es_error=exc)
