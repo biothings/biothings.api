@@ -58,6 +58,7 @@ web_extra_requires = [
 hub_requires = [
     'beautifulsoup4',   # used in dumper.GoogleDriveDumper
     'aiocron',          # setup scheduled jobs
+    'aiohttp==3.6.2',
     'asyncssh==1.7.1',  # needs libffi-dev installed (apt-get)
     'pymongo',
     'psutil',
