@@ -41,10 +41,11 @@ if commit_hash or num_commits:
 install_requires = [
     'requests>=2.21.0',
     'tornado==5.1.1',
-    'gitpython>=3.1.0'
+    'gitpython>=3.1.0',
     'elasticsearch>=6, <8',
     'elasticsearch-dsl>=6, <8',
     'elasticsearch-async>=6.2.0'
+    'aiohttp==3.6.2'
 ]
 
 # extra requirements for biothings.web
