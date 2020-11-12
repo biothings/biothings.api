@@ -1,5 +1,5 @@
 <template>
-    <div id="logviewer" class="ui inverted segment" style="overflow: auto; width: 45vw; max-height: 33vh; max-width: 45vw;">
+    <div id="logviewer" class="ui inverted segment" style="overflow-y: auto; width: 85vw; max-height: 73vh; max-width: 85vw;">
         <table class="ui single line super compact inverted table" v-if="records.length">
             <tbody>
                 <log-record v-for="record of records" v-bind:record="record"></log-record>
