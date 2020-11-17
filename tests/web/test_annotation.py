@@ -355,3 +355,7 @@ class TestAnnotationPOST(BiothingsTestCase):
             headers={"Content-Type": "application/json"}, expect=400).json()
         assert not res['success']
         assert res['error'] == "Invalid JSON body."
+
+    # TODO
+    # Add multiple hit test case
+    # Add malformed json (str/list) test cases (maybe not in this file)

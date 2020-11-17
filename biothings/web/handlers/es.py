@@ -265,7 +265,7 @@ class BiothingHandler(ESRequestHandler):
         queries a term against a pre-determined field that
         represents the id of a document, like _id and dbsnp.rsid
 
-        GET -> {...}
+        GET -> {...} or [{...}, ...]
         POST -> [{...}, ...]
     """
     name = 'annotation'
@@ -288,22 +288,25 @@ class BiothingHandler(ESRequestHandler):
 
     def pre_finish_hook(self, options, res):
         """
-        Return single result for GET.
-        Empty results trigger 404 error.
-
-        Keep _version field,
-        Discard _score field.
+        Empty result in GET triggers 404.
+        Keep _version, discard _score field.
         """
+        # GET
         if isinstance(res, dict):
+
             if not res.get('hits'):
                 template = self.web_settings.ID_NOT_FOUND_TEMPLATE
                 reason = template.format(bid=options.esqb.q)
                 raise EndRequest(404, reason=reason)
+
             if len(res['hits']) > 1:
-                raise EndRequest(404, reason='not a unique id.')
+                # more than one match, treat as multi-match
+                return self.pre_finish_hook(options, res['hits'])
+
             res = res['hits'][0]
             res.pop('_score', None)
 
+        # POST Multi-Match
         elif isinstance(res, list):
             for hit in res:
                 hit.pop('_score', None)
