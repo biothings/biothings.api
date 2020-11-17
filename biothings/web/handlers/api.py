@@ -78,7 +78,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         }
 
     def prepare(self):
-        '''
+        """
         Extract body and url query parameters into functional groups.
         Typify predefined user inputs patterns here. Rules:
 
@@ -88,31 +88,43 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
             * Path arguments can overwirte all other existing values.
 
         Extend to add more customizations.
-        '''
+        """
         if self.request.headers.get('Content-Type', '').startswith('application/json'):
+            if not self.request.body:
+                raise HTTPError(400, reason=(
+                    'Empty body is not a valid JSON. '
+                    'Remove the content-type header, or '
+                    'provide an empty object in the body.'))
             try:
+                # pylint: disable=attribute-defined-outside-init
                 self.args_json = json_decode(self.request.body)
             except json.JSONDecodeError:
                 raise HTTPError(400, reason='Invalid JSON body.')
 
-        args = dict(self.args_json)
+        if isinstance(self.args_json, dict):
+            args = dict(self.args_json)
+        else:  # json can also be a list & values
+            args = {}
+
+        # url args can replace json args
         args.update({key: self.get_argument(key)
                      for key in self.request.arguments})
 
         self.logger.debug("Incoming Requests:\n%s\n%s",
-                          self.request.uri,
-                          pformat(args, width=150))
+                          self.request.uri, pformat(args, width=150))
 
         if self.name:
             options = self.web_settings.optionsets.get(self.name)
             try:
+                # pylint: disable=attribute-defined-outside-init
                 self.args = options.parse(
                     self.request.method, args,
                     self.path_args, self.path_kwargs)
             except OptionArgError as err:
                 raise BadRequest(**err.info)
 
-        self.logger.debug("Processed Arguments:\n%s", pformat(self.args, width=150))
+        self.logger.debug("Processed Arguments:\n%s",
+                          pformat(self.args, width=150))
 
     def write(self, chunk):
         """
