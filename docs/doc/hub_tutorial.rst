@@ -203,7 +203,7 @@ available at this location: ftp://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz.
 
 When defining a dumper, we’ll need to choose a base class to derive our dumper class from.
 There are different base dumper classes available in BioThings SDK, depending on the protocol
-we want to use to download data. In this case, we’ll derive our class from ``biothings.dataload.dumper.FTPDumper``.
+we want to use to download data. In this case, we’ll derive our class from ``biothings.hub.dataload.dumper.FTPDumper``.
 In addition to defining some specific class attributes, we will need to implement a method called ``create_todump_list()``.
 This method fills ``self.to_dump`` list, which is later going to be used to download data.
 One element in that list is a dictionary with the following structure:
@@ -227,7 +227,7 @@ Those lines are used to configure BioThings SDK according to our own configurati
 .. code-block:: python
 
    from config import DATA_ARCHIVE_ROOT
-   from biothings.dataload.dumper import FTPDumper
+   from biothings.hub.dataload.dumper import FTPDumper
 
 We then import a configuration constant, and the FTPDumper base class.
 
@@ -282,7 +282,7 @@ In `hub.py <https://github.com/biothings/biothings.species/blob/master/src/bin/h
 .. code-block:: python
 
    import dataload
-   import biothings.dataload.dumper as dumper
+   import biothings.hub.dataload.dumper as dumper
 
    dmanager = dumper.DumperManager(job_manager=jmanager)
    dmanager.register_sources(dataload.__sources__)
@@ -487,7 +487,7 @@ Before going further, we’ll first create an UploaderManager instance and regis
 
 .. code-block:: python
 
-   import biothings.dataload.uploader as uploader
+   import biothings.hub.dataload.uploader as uploader
    # will check every 10 seconds for sources to upload
    umanager = uploader.UploaderManager(poll_schedule = '* * * * * */10', job_manager=jmanager)
    umanager.register_sources(dataload.__sources__)
@@ -525,11 +525,11 @@ need to "connect" those parsers to uploaders.
 
 Following the same approach as for dumpers, we’re going to implement our first uploaders by inheriting one the base classes available in BioThings SDK.
 We have two files to parse, data will stored in two different MongoDB collections, so we’re going to have two uploaders. Each inherits from
-``biothings.dataload.uploader.BaseSourceUploader``, ``load_data`` method has to be implemented, this is where we "connect" parsers.
+``biothings.hub.dataload.uploader.BaseSourceUploader``, ``load_data`` method has to be implemented, this is where we "connect" parsers.
 
 Beside this method, another important point relates to the storage engine. ``load_data`` will, through the parser, yield documents (dictionaries).
 This data is processed internally by the base uploader class (``BaseSourceUploader``) using a storage engine. ``BaseSourceUploader`` uses
-``biothings.dataload.storage.BasicStorage`` as its engine. This storage inserts data in MongoDB collection using bulk operations for better performances.
+``biothings.hub.dataload.storage.BasicStorage`` as its engine. This storage inserts data in MongoDB collection using bulk operations for better performances.
 There are other storages available, depending on how data should be inserted (eg. IgnoreDuplicatedStorage will ignore any duplicated data error).
 While choosing a base uploader class, we need to consider which storage class it’s actually using behind-the-scene (an alternative way to do this is
 using ``BaseSourceUploader`` and set the class attribute storage_class, such as in this uploader:
@@ -539,7 +539,7 @@ The first uploader will take care of nodes.dmp parsing and storage.
 
 .. code-block:: python
 
-   import biothings.dataload.uploader as uploader
+   import biothings.hub.dataload.uploader as uploader
    from .parser import parse_refseq_names, parse_refseq_nodes
 
    class TaxonomyNodesUploader(uploader.BaseSourceUploader):
@@ -711,7 +711,7 @@ Following the same guideline, we’re going to create another uploader for speci
 
 .. code-block:: python
 
-   import biothings.dataload.uploader as uploader
+   import biothings.hub.dataload.uploader as uploader
    from .parser import parse_uniprot_speclist
 
    class UniprotSpeciesUploader(uploader.BaseSourceUploader):
@@ -773,8 +773,8 @@ Though we could process data in memory -- processed data is rather small in the 
 
 .. code-block:: python
 
-   import biothings.dataload.uploader as uploader
-   import biothings.dataload.storage as storage
+   import biothings.hub.dataload.uploader as uploader
+   import biothings.hub.dataload.storage as storage
    from .parser import parse_geneinfo_taxid
 
    class GeneInfoUploader(uploader.BaseSourceUploader):
@@ -864,7 +864,7 @@ Let’s first define a BuilderManager in the hub.
 
 .. code-block:: python
 
-   import biothings.databuild.builder as builder
+   import biothings.hub.databuild.builder as builder
    bmanager = builder.BuilderManager(poll_schedule='* * * * * */10', job_manager=jmanager)
    bmanager.configure()
    bmanager.poll()
@@ -1071,7 +1071,7 @@ Let’s define that mapper in `databuild/mapper.py <https://github.com/biothings
    biothings.config_for_app(config)
    from biothings.utils.common import loadobj
    import biothings.utils.mongo as mongo
-   import biothings.databuild.mapper as mapper
+   import biothings.hub.databuild.mapper as mapper
    # just to get the collection name
    from dataload.sources.geneinfo.uploader import GeneInfoUploader
 
@@ -1096,7 +1096,7 @@ Let’s define that mapper in `databuild/mapper.py <https://github.com/biothings
                    doc["has_gene"] = False
                yield doc
 
-We derive our mapper from ``biothings.databuild.mapper.BaseMapper``, which expects ``load`` and ``process`` methods to be defined.
+We derive our mapper from ``biothings.hub.databuild.mapper.BaseMapper``, which expects ``load`` and ``process`` methods to be defined.
 ``load`` is automatically called when the mapper is used by the builder, and ``process`` contains the main logic, iterating over documents,
 optionally enrich them (it can also be used to filter documents, by not yielding them). The implementation is pretty straightforward.
 We get and cache the data from geneinfo collection (the whole collection is very small, less than 20’000 IDs, so it can fit nicely and
@@ -1107,7 +1107,7 @@ we modify the way we define the builder manager:
 
 .. code-block:: python
 
-   import biothings.databuild.builder as builder
+   import biothings.hub.databuild.builder as builder
    from databuild.mapper import HasGeneMapper
    hasgene = HasGeneMapper(name="has_gene")
    pbuilder = partial(builder.DataBuilder,mappers=[hasgene])
@@ -1132,14 +1132,14 @@ First we get a builder instance from the manager:
 
    hub> builder = bm["mytaxonomy"]
    hub> builder
-   <biothings.databuild.builder.DataBuilder object at 0x7f278aecf400>
+   <biothings.hub.databuild.builder.DataBuilder object at 0x7f278aecf400>
 
 Let’s check the mappers and get ours:
 
 .. code:: bash
 
    hub> builder.mappers
-   {None: <biothings.databuild.mapper.TransparentMapper object at 0x7f278aecf4e0>, 'has_gene': <databuild.mapper.HasGeneMapper object at 0x7f27ac6c0a90>}
+   {None: <biothings.hub.databuild.mapper.TransparentMapper object at 0x7f278aecf4e0>, 'has_gene': <databuild.mapper.HasGeneMapper object at 0x7f27ac6c0a90>}
 
 We have our ``has_gene`` mapper (it’s the name we gave). We also have a ``TransparentMapper``. This mapper is automatically added and is used as the default
 mapper for any document (there has to be one...).
@@ -1267,7 +1267,7 @@ our own builder class to override proper methodes there. Let’s define it in `d
 
 .. code-block:: python
 
-   import biothings.databuild.builder as builder
+   import biothings.hub.databuild.builder as builder
    import config
 
    class TaxonomyDataBuilder(builder.DataBuilder):
@@ -1341,8 +1341,8 @@ To do so, we’ll use doc_feeder utility function:
 .. code-block:: python
 
    from biothings.utils.mongo import doc_feeder, get_target_db
-   from biothings.databuild.builder import DataBuilder
-   from biothings.dataload.storage import UpsertStorage
+   from biothings.hub.databuild.builder import DataBuilder
+   from biothings.hub.dataload.storage import UpsertStorage
 
    from databuild.mapper import LineageMapper
    import config
@@ -1369,7 +1369,7 @@ To do so, we’ll use doc_feeder utility function:
 Since we’re using the mapper manually, we need to load the cache
 
 * **db** and **col_name** are used to create our storage engine. Builder has an attribute called ``target_backend``
-  (a ``biothings.dataload.backend.TargetDocMongoBackend`` object) which can be used to reach the collection we want to work with.
+  (a ``biothings.hub.dataload.backend.TargetDocMongoBackend`` object) which can be used to reach the collection we want to work with.
 * **doc_feeder** iterates over all the collection, fetching documents in batch. ``inbatch=True`` tells the function to return data
   as a list (default is a dict indexed by ``_id``).
 * those documents are processed by our mapper, setting the lineage information and then are stored using our UpsertStorage object.
