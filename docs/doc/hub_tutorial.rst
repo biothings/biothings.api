@@ -5,7 +5,7 @@ BioThings Hub
 .. note:: This tutorial uses an old/deprecated version of BioThings SDK. It will be updated very soon.
 
 In this tutorial, we will build the whole process, or "hub", which produces the data
-for Taxonomy BioThings API, accessible at `<t.biothings.io>`_. This API serves information
+for Taxonomy BioThings API, accessible at `t.biothings.io <https://t.biothings.io>`_. This API serves information
 about species, lineage, etc... This "hub" is used to download, maintain up-to-date,
 process, merge data. At the end of this process, an Elasticsearch index is created
 containing all the data of interest, ready to be served as an API, using
@@ -45,7 +45,7 @@ Configuration file
 ^^^^^^^^^^^^^^^^^^
 
 Before starting to implement our hub, we first need to define a configuration file. A
-`config_common.py <https://github.com/biothings/biothings.species/blob/master/src/config_common.py>` file
+`config_hub.py <https://github.com/biothings/biothings.species/blob/master/src/config_hub.py>` file
 contains all the required configuration variables, some **have** to be defined in your own application, other
 **can** be overriden as needed.
 
@@ -215,7 +215,7 @@ One element in that list is a dictionary with the following structure:
 Remote information are relative to the working directory specified as class attribute. Local information is an absolute path,
 containing filename used to save data.
 
-Let’s start coding. We’ll save that python module in `dataload/sources/taxonomy/dumper.py <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/taxonomy/dumper.py>`_.
+Let’s start coding. We’ll save that python module in `dataload/sources/taxonomy/dumper.py <https://github.com/biothings/biothings.species/blob/master/src/hub/dataload/sources/taxonomy/dumper.py>`_.
 
 .. code-block:: python
 
@@ -271,7 +271,7 @@ We now need to tell the dumper what to download, that is, create that self.to_du
            self.to_dump.append({"remote": file_to_dump, "local":new_localfile})
 
 That method tries to get the latest downloaded file and then compare that file with the remote file using
-``self.remote_is_better(file_to_dump, current_localfile)``, which compares the dates and return True if the remote is more recent.
+``self.remote_is_better(file_to_dump, current_localfile)``, which compares the dates and returns True if the remote is more recent.
 A dict is then created with required elements and appened to ``self.to_dump`` list.
 
 When the dump is running, each element from that self.to_dump list will be submitted to a job and be downloaded in parallel.
@@ -302,7 +302,7 @@ Let’s also register new commands in the hub:
 
 Manager is auto-registering dumpers from list defines in dataload package. Let’s define that list:
 
-In `dataload/__init__.py <https://github.com/biothings/biothings.species/blob/master/src/dataload/__init__.py>`_:
+In `dataload/__init__.py <https://github.com/biothings/biothings.species/blob/master/src/hub/dataload/__init__.py>`_:
 
 .. code-block:: python
 
@@ -314,7 +314,7 @@ That’s it, it’s just a string pointing to our taxonomy package. We’ll expo
 so the manager can inspect it and find our dumper (note: we could use give the full path to our dumper module,
 ``dataload.sources.taxonomy.dumper``, but we’ll add uploaders later, it’s better to have one single line per resource).
 
-In `dataload/sources/taxonomy/__init__.py <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/taxonomy/__init__.py>`_
+In `dataload/sources/taxonomy/__init__.py <https://github.com/biothings/biothings.species/blob/master/src/hub/dataload/sources/taxonomy/__init__.py>`_
 
 .. code-block:: python
 
@@ -465,7 +465,7 @@ There’s just one file to be downloaded from ftp://ftp.uniprot.org/pub/database
 Same as before, dumper will inherits FTPDumper base class. File is not compressed, so except this, this dumper will look the same.
 
 Code is available on github for further details: `ee674c55bad849b43c8514fcc6b7139423c70074 <https://github.com/biothings/biothings.species/commit/ee674c55bad849b43c8514fcc6b7139423c70074>`_
-for the whole commit changes, and `dataload/sources/uniprot/dumper.py <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/uniprot/dumper.py>`_ for the actual dumper.
+for the whole commit changes, and `dataload/sources/uniprot/dumper.py <https://github.com/biothings/biothings.species/blob/master/src/hub/dataload/sources/uniprot/dumper.py>`_ for the actual dumper.
 
 Gene information dumper
 =======================
@@ -475,7 +475,7 @@ It’s very similar to the first one (we could even have merged them together).
 
 Code is available on github:
 `d3b3486f71e865235efd673d2f371b53eaa0bc5b <https://github.com/biothings/biothings.species/commit/d3b3486f71e865235efd673d2f371b53eaa0bc5b>`_
-for whole changes and `dataload/sources/geneinfo/dumper.py <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/geneinfo/dumper.py>`_ for the dumper.
+for whole changes and `dataload/sources/geneinfo/dumper.py <https://github.com/biothings/biothings.species/blob/master/src/hub/dataload/sources/geneinfo/dumper.py>`_ for the dumper.
 
 Uploaders
 ^^^^^^^^^
@@ -576,7 +576,7 @@ The other parser, for names.dmp, is almost the same:
            self.logger.info("Load data from file '%s'" % names_file)
            return parse_refseq_names(open(names_file))
 
-We then need to "expose" those parsers in taxonomy package, in `dataload/sources/taxonomy/__init__.py <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/taxonomy/__init__.py>`_:
+We then need to "expose" those parsers in taxonomy package, in `dataload/sources/taxonomy/__init__.py <https://github.com/biothings/biothings.species/blob/master/src/hub/dataload/sources/taxonomy/__init__.py>`_:
 
 .. code-block:: python
 
@@ -726,7 +726,7 @@ Following the same guideline, we’re going to create another uploader for speci
 
 In that case, we need only one uploader, so we just define "name" (no need to define main_source here).
 
-We need to expose that uploader from the package, in `dataload/sources/uniprot/__init__.py <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/uniprot/__init__.py>`_:
+We need to expose that uploader from the package, in `dataload/sources/uniprot/__init__.py <https://github.com/biothings/biothings.species/blob/master/src/hub/dataload/sources/uniprot/__init__.py>`_:
 
 .. code-block:: python
 
@@ -792,7 +792,7 @@ Though we could process data in memory -- processed data is rather small in the 
 * ``parse_geneinfo_taxid`` : is the parsing function, yield documents as ``{"_id" : "taxid"}``
 
 The rest is closed to what we already encountered. Code is available on github in
-`dataload/sources/geneinfo/uploader.py <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/geneinfo/uploader.py>`_
+`dataload/sources/geneinfo/uploader.py <https://github.com/biothings/biothings.species/blob/master/src/hub/dataload/sources/geneinfo/uploader.py>`_
 
 When running the uploader, logs show statements like these:
 
@@ -1063,7 +1063,7 @@ The next bit of data we need to merge is **geneinfo**. As a reminder, this colle
 which have known NCBI genes. We’ll create a mapper, containing this information. A mapper basically acts as an object that
 can pre-process documents while they are merged.
 
-Let’s define that mapper in `databuild/mapper.py <https://github.com/biothings/biothings.species/blob/master/src/databuild/mapper.py>`_
+Let’s define that mapper in `databuild/mapper.py <https://github.com/biothings/biothings.species/blob/master/src/hub/databuild/mapper.py>`_
 
 .. code-block:: python
 
@@ -1161,7 +1161,7 @@ Oops, cache isn’t loaded yet, we have to do it manually here (but it’s done 
 OK, it’s ready. Let’s now talk more about the mapper’s name. A mapper can applied to different sources, and we have to define
 which sources’ data should go through that mapper. In our case, we want **names** and **species** collection’s data to go through.
 In order to do that, we have to instruct the uploader with a special attribute.
-Let’s modify `dataload.sources.species.uploader.UniprotSpeciesUploader <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/uniprot/uploader.py>`_ class
+Let’s modify `dataload.sources.species.uploader.UniprotSpeciesUploader <https://github.com/biothings/biothings.species/blob/master/src/hub/dataload/sources/uniprot/uploader.py>`_ class
 
 .. code-block:: python
 
@@ -1171,7 +1171,7 @@ Let’s modify `dataload.sources.species.uploader.UniprotSpeciesUploader <https:
        __metadata__ = {"mapper" : 'has_gene'}
 
 ``__metadata__`` dictionary is going to be used to create a master document. That document is stored in src_master collection (we talked about it earlier).
-Let’s add this metadata to `dataload.sources.taxonomy.uploader.TaxonomyNamesUploader <https://github.com/biothings/biothings.species/blob/master/src/dataload/sources/taxonomy/uploader.py>`_
+Let’s add this metadata to `dataload.sources.taxonomy.uploader.TaxonomyNamesUploader <https://github.com/biothings/biothings.species/blob/master/src/hub/dataload/sources/taxonomy/uploader.py>`_
 
 .. code-block:: python
 
@@ -1263,7 +1263,7 @@ Post-merge process
 
 We need to add lineage and parent taxid information for each of these documents.
 We’ll implement that last part as a post-merge step, iterating over each of them. In order to do so, we need to define
-our own builder class to override proper methodes there. Let’s define it in `databuild/builder.py. <https://github.com/biothings/biothings.species/blob/master/src/databuild/builder.py>`_.
+our own builder class to override proper methodes there. Let’s define it in `databuild/builder.py. <https://github.com/biothings/biothings.species/blob/master/src/hub/databuild/builder.py>`_.
 
 .. code-block:: python
 
@@ -1296,7 +1296,7 @@ We just need ``taxid`` and ``parent_taxid`` information to build the lineage, ma
 let’s assume that ok… (note: using `pympler <https://pythonhosted.org/Pympler/>`_ lib, we can actually know that dictionary size will be closed to 200MB…)
 
 We’re going to use another mapper here, but no sources will use it.We’ll just instantiate it from post_merge method.
-In `databuild/mapper.py <https://github.com/biothings/biothings.species/blob/master/src/databuild/mapper.py>`_, let’s add another class:
+In `databuild/mapper.py <https://github.com/biothings/biothings.species/blob/master/src/hub/databuild/mapper.py>`_, let’s add another class:
 
 from dataload.sources.taxonomy.uploader import TaxonomyNodesUploader
 
