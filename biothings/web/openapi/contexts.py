@@ -59,9 +59,29 @@ class _BaseContext(metaclass=_BaseMetaClass):
     CHILD_CONTEXTS = {}
     # {'method_name: 'fieldName'}
     ATTRIBUTE_FIELDS = {}
+    EXTENSION = False
 
     def __init__(self):
         self.document = {}
+
+    def __getattr__(self, item: str):
+        if self.EXTENSION and item.startswith("x_") and len(item) > 2:
+            default_field_name = item.replace('_', '-')
+
+            def set_extension_value(__value, field: str = default_field_name):
+                if not field.startswith("x-") or len(field) < 3:
+                    raise ValueError(f"Invalid extension field '{field}'")
+                self.document[field] = __value
+                return self
+
+            set_extension_value.__name__ = f"{item}"
+            set_extension_value.__doc__ = "Set extension"
+
+            return set_extension_value
+
+        raise AttributeError(
+            f"'{self.__class__.__name__}' has no attribute '{item}'"
+        )
 
 
 class _ChildContext(_BaseContext):
@@ -78,6 +98,7 @@ class _ChildContext(_BaseContext):
         return self.parent
 
     def __getattr__(self, attr_name: str):
+        # FIXME: This has conflicts with the x_extensions in _BaseContext
         multilevel_allow = ['path', 'get', 'put', 'post', 'delete', 'options',
                             'head', 'patch', 'trace']
         if not attr_name.startswith('_'):
@@ -125,6 +146,7 @@ class OpenAPIContext(_HasExternalDocs):
     CHILD_CONTEXTS = {
         'info': ('OpenAPIInfoContext', 'info'),
     }
+    EXTENSION = True
 
     def __init__(self):
         super(OpenAPIContext, self).__init__()
