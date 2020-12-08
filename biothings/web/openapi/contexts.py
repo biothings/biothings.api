@@ -17,10 +17,7 @@ class _BaseMetaClass(type):
                             continue
                     raise AttributeError(f"Child does not have {at}")
                 self.document[field] = ch_context.document
-                if len(kwargs) > 0:
-                    return self
-                else:
-                    return ch_context
+                return ch_context
             return fn
 
         # produce the method that updates attributes
