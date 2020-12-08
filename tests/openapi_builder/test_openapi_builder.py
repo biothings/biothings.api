@@ -67,9 +67,9 @@ def test_non_allowed_multilevel_raises():
     o = OpenAPIDocumentBuilder()
     with pytest.raises(AttributeError):
         o.path('/api')\
-        .get()\
-            .parameter('p', in_='query', required=False)\
-        .info(title='t')
+            .get()\
+                .parameter('p', in_='query', required=False)\
+            .info(title='t')
 
 
 def test_bad_kwarg_raises():
@@ -134,7 +134,7 @@ def test_parameter_init():
             'parameters': [
                 {'name': 'p',
                  'in': 'path',
-                 'required': True,},
+                 'required': True, },
             ]
         },
     }
