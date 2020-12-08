@@ -116,7 +116,7 @@ class _HasExternalDocs(_BaseContext):
 
 class _HasTags(_BaseContext):
     def tag(self, t):
-        tags = self.document.setdefault('tag', [])
+        tags = self.document.setdefault('tags', [])
         tags.append(t)
         return self
 
