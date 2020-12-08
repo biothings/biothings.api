@@ -6,11 +6,11 @@
 
 '''
 
-from biothings.tests.web import BiothingsTestCase
+from biothings.tests.web import BiothingsWebAppTest
 from setup import setup_es  # pylint: disable=unused-import
 
 
-class TestAnnotationGET(BiothingsTestCase):
+class TestAnnotationGET(BiothingsWebAppTest):
 
     ### Query Builder Keywords ###
 
@@ -199,7 +199,7 @@ class TestAnnotationGET(BiothingsTestCase):
         assert res['_index'] is None
 
 
-class TestAnnotationPOST(BiothingsTestCase):
+class TestAnnotationPOST(BiothingsWebAppTest):
 
     def request(self, *args, **kwargs):
         method = kwargs.pop('method', 'POST')
