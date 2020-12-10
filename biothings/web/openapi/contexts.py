@@ -98,7 +98,10 @@ class _ChildContext(_BaseContext):
         return self.parent
 
     def __getattr__(self, attr_name: str):
-        # FIXME: This has conflicts with the x_extensions in _BaseContext
+        try:
+            return super(_ChildContext, self).__getattr__(attr_name)
+        except AttributeError:
+            pass  # would have returned if it's an extension
         multilevel_allow = ['path', 'get', 'put', 'post', 'delete', 'options',
                             'head', 'patch', 'trace']
         if not attr_name.startswith('_'):
