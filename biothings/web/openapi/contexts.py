@@ -171,7 +171,7 @@ class OpenAPIContext(_HasExternalDocs):
     def path(self, path: str,
              summary: Optional[str] = None,
              description: Optional[str] = None):
-        path_item = OpenAPIPathContext(self)
+        path_item = OpenAPIPathItemContext(self)
         if summary:
             path_item.summary(summary)
         if description:
@@ -190,6 +190,7 @@ class OpenAPIInfoContext(_ChildContext, _HasDescription):
         'contact': ('OpenAPIContactContext', 'contact'),
         'license': ('OpenAPILicenseContext', 'license'),
     }
+    EXTENSION = True
 
 
 class OpenAPIContactContext(_ChildContext):
@@ -198,6 +199,7 @@ class OpenAPIContactContext(_ChildContext):
         'url': 'url',
         'email': 'email',
     }
+    EXTENSION = True
 
 
 class OpenAPILicenseContext(_ChildContext):
@@ -205,14 +207,16 @@ class OpenAPILicenseContext(_ChildContext):
         'name': 'name',
         'url': 'url',
     }
+    EXTENSION = True
 
 
-class OpenAPIPathContext(_ChildContext, _HasSummary, _HasDescription,
-                         _HasParameters):
+class OpenAPIPathItemContext(_ChildContext, _HasSummary, _HasDescription,
+                             _HasParameters):
     CHILD_CONTEXTS = {}
     for http_method in ['get', 'put', 'post', 'delete', 'options', 'head',
                         'patch', 'trace']:
         CHILD_CONTEXTS[http_method] = ('OpenAPIOperation', http_method)
+    EXTENSION = True
 
 
 class OpenAPIOperation(_ChildContext, _HasSummary, _HasExternalDocs, _HasTags,
@@ -220,6 +224,7 @@ class OpenAPIOperation(_ChildContext, _HasSummary, _HasExternalDocs, _HasTags,
     ATTRIBUTE_FIELDS = {
         'operation_id': 'operationId'
     }
+    EXTENSION = True
 
     def __init__(self, parent):
         super(OpenAPIOperation, self).__init__(parent)
@@ -241,6 +246,7 @@ class OpenAPIParameterContext(_ChildContext, _HasDescription):
         'allow_reserved': 'allowReserved',
         'schema': 'schema',
     }
+    EXTENSION = True
 
     def __init__(self, parent, name: str, in_: str, required: bool):
         super(OpenAPIParameterContext, self).__init__(parent)
@@ -266,3 +272,4 @@ class OpenAPIExternalDocsContext(_ChildContext, _HasDescription):
     ATTRIBUTE_FIELDS = {
         'url': 'url',
     }
+    EXTENSION = True

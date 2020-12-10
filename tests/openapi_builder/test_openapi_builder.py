@@ -1,6 +1,6 @@
 import pytest
 from biothings.web.openapi import OpenAPIDocumentBuilder
-from biothings.web.openapi.contexts import OpenAPIContext, OpenAPIPathContext
+from biothings.web.openapi.contexts import OpenAPIContext, OpenAPIPathItemContext
 from copy import deepcopy
 
 _base_document = {
@@ -60,7 +60,7 @@ def test_implicit_change_multi_level():
         .get()\
             .parameter('p', in_='query', required=False)\
         .path('/api2')
-    assert type(c) == OpenAPIPathContext
+    assert type(c) == OpenAPIPathItemContext
 
 
 def test_non_allowed_multilevel_raises():
