@@ -210,3 +210,17 @@ def test_method_name_different_field():
         },
     }
     assert o.document == r
+
+
+def test_x_extension():
+    o = OpenAPIDocumentBuilder()
+    o.info().x_test('test')
+    r = deepcopy(_base_document)
+    r['info'] = {'x-test': 'test'}
+    assert o.document == r
+
+
+def test_invalid_extension_field():
+    o = OpenAPIDocumentBuilder()
+    with pytest.raises(ValueError):
+        o.info().x_test('test', 'bad-field')
