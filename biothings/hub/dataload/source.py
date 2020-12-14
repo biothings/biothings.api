@@ -140,6 +140,8 @@ class SourceManager(BaseSourceManager):
             mini["download"]["dumper"] = src["download"].get("dumper", {})
             if src["download"].get("err"):
                 mini["download"]["error"] = src["download"]["err"]
+            if src["download"].get("tb"):
+                mini["download"]["traceback"] = src["download"]["tb"]
 
         count = 0
         if src.get("upload"):
@@ -155,6 +157,8 @@ class SourceManager(BaseSourceManager):
                 }
                 if info.get("err"):
                     mini["upload"]["sources"][job]["error"] = info["err"]
+                if info.get("tb"):
+                    mini["upload"]["sources"][job]["traceback"] = info["tb"]
                 count += info.get("count") or 0
                 if detailed:
                     self.set_mapping_src_meta(job, mini)
@@ -257,6 +261,8 @@ class SourceManager(BaseSourceManager):
                     sources.setdefault(_id, {"data_plugin": {}})
                     if src.get("download", {}).get("err"):
                         src["download"]["error"] = src["download"].pop("err")
+                    if src.get("download", {}).get("tb"):
+                        src["download"]["traceback"] = src["download"].pop("tb")
                     sources[_id]["data_plugin"] = src
                     sources[_id]["_id"] = _id
                     sources[_id]["name"] = _id

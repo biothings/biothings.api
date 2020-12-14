@@ -516,7 +516,9 @@ class BaseSourceUploader(object):
         except Exception as e:
             self.logger.exception("failed %s: %s" % (strargs, e),
                                   extra={"notify": True})
-            self.register_status("failed", err=str(e))
+            import traceback
+            self.logger.error(traceback.format_exc())
+            self.register_status("failed", err=str(e), tb=traceback.format_exc())
             raise
 
     def prepare_src_dump(self):

@@ -336,7 +336,7 @@ class BaseDumper(object):
             self.logger.error("Error while dumping source: %s" % e)
             import traceback
             self.logger.error(traceback.format_exc())
-            self.register_status("failed", download={"err": str(e)})
+            self.register_status("failed", download={"err": str(e), "tb": traceback.format_exc()})
             self.logger.error("failed %s: %s" % (strargs, e),
                               extra={"notify": True})
             raise
