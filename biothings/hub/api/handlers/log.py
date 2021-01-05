@@ -32,7 +32,6 @@ logfile = Template("""
         <body>
             <h1> {{ name }} </h1>
             <p>
-                {{ "<empty>" if not lines else "-" }} </br>
                 {% for line in lines %}
                     {{ line }} </br>
                 {% end %}
