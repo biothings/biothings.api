@@ -340,8 +340,8 @@ class SnapshotEnv():
                     else:
                         task_env.status.register_result(step, True, result)
                         logging.info("Step %s done: %s.", step, result)
-            
-            set_pending_to_release_note(self.build_doc['_id']) # TODO: conditional
+
+            set_pending_to_release_note(self.build_doc['_id'])  # TODO: conditional
 
         return asyncio.ensure_future(do())
 
@@ -400,8 +400,8 @@ class SnapshotS3Env(SnapshotEnv):
         Ensure the destination repository is ready.
         Create the bucket and repository if necessary.
         """
-        cloud = self.env_config.get("cloud", {})
-        repository = self.env_config.get("repository", {})
+        cloud = dict(self.env_config.get("cloud", {}))
+        repository = dict(self.env_config.get("repository", {}))
 
         try:  # check if already created
             task_env.indexer.get_repository(repository["name"])
@@ -416,8 +416,8 @@ class SnapshotS3Env(SnapshotEnv):
                 acl=repository.get("acl", None),  # let aws.create_bucket default it
                 ignore_already_exists=True
             )
-            logging.info("Create repository: %s" % pformat(repository))
-            task_env.indexer.create_repository(repository["name"], repository["settings"])
+            logging.info("Create repository:\n%s" % pformat(repository))
+            task_env.indexer.create_repository(repository.pop("name"), repository)
 
         return "repo_ready"
 
@@ -548,7 +548,7 @@ class SnapshotManager(BaseManager):
         return asyncio.ensure_future(_())
 
     def snapshot_info(self, env=None, remote=False):
-        raise NotImplementedError()
+        return copy.deepcopy(self.snapshot_config)
 
 
 def test():

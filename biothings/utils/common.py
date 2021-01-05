@@ -763,3 +763,51 @@ class nan(object):
 
 class inf(object):
     """Represents Inf type, but not as a float"""
+
+def traverse(obj, leaf_node=False):
+    """
+    Output path-dictionary pairs. For example, input:
+    {
+        'exac_nontcga': {'af': 0.00001883},
+        'gnomad_exome': {'af': {'af': 0.0000119429, 'af_afr': 0.000123077}},
+        'snpeff': {'ann': [{'effect': 'intron_variant',
+                            'feature_id': 'NM_014672.3'},
+                            {'effect': 'intron_variant',
+                            'feature_id': 'NM_001256678.1'}]}
+    }
+    will be translated to a generator:
+    (
+        ("exac_nontcga", {"af": 0.00001883}),
+        ("gnomad_exome.af", {"af": 0.0000119429, "af_afr": 0.000123077}),
+        ("gnomad_exome", {"af": {"af": 0.0000119429, "af_afr": 0.000123077}}),
+        ("snpeff.ann", {"effect": "intron_variant", "feature_id": "NM_014672.3"}),
+        ("snpeff.ann", {"effect": "intron_variant", "feature_id": "NM_001256678.1"}),
+        ("snpeff.ann", [{ ... },{ ... }]),
+        ("snpeff", {"ann": [{ ... },{ ... }]}),
+        ('', {'exac_nontcga': {...}, 'gnomad_exome': {...}, 'snpeff': {...}})
+    )
+    or when traversing leaf nodes:
+    (
+        ('exac_nontcga.af', 0.00001883),
+        ('gnomad_exome.af.af', 0.0000119429),
+        ('gnomad_exome.af.af_afr', 0.000123077),
+        ('snpeff.ann.effect', 'intron_variant'),
+        ('snpeff.ann.feature_id', 'NM_014672.3'),
+        ('snpeff.ann.effect', 'intron_variant'),
+        ('snpeff.ann.feature_id', 'NM_001256678.1')
+    )
+    """
+    if isinstance(obj, dict):  # path level increases
+        for key in obj:
+            for sub_path, val in traverse(obj[key], leaf_node):
+                yield '.'.join((key, sub_path)).strip('.'), val
+        if not leaf_node:
+            yield '', obj
+    elif isinstance(obj, list):  # does not affect path
+        for item in obj:
+            for sub_path, val in traverse(item, leaf_node):
+                yield sub_path, val
+        if not leaf_node or not obj:  # [] count as a leaf node
+            yield '', obj
+    elif leaf_node:  # including str, int, float, and *None*.
+        yield '', obj

@@ -109,7 +109,7 @@ export default {
             .then(response => {
                 function displayable(src) {
                     // if base is an autoupdate dumper, it means it's a "internal" datasource used to managed data releases
-                    if(src.download && src.download.dumper) {
+                    if(src.download && src.download.dumper && src.download.dumper.bases) {
                         return !src.download.dumper.bases.includes("biothings.hub.autoupdate.dumper.BiothingsDumper");
                     }
                     return true;

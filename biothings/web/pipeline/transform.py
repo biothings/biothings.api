@@ -3,8 +3,7 @@
 """
 from collections import defaultdict
 
-from biothings.utils.common import dotdict
-
+from biothings.utils.common import dotdict, traverse
 
 class ResultTransformException(Exception):
     pass
@@ -25,58 +24,26 @@ class ESResultTransform(object):
         self.field_notes = web_settings.fieldnote.get_field_notes()
         self.excluded_keys = web_settings.AVAILABLE_FIELDS_EXCLUDED
 
-    @classmethod
-    def traverse(cls, obj, leaf_node=False):
-        """
-        Output path-dictionary pairs. For example, input:
-        {
-            'exac_nontcga': {'af': 0.00001883},
-            'gnomad_exome': {'af': {'af': 0.0000119429, 'af_afr': 0.000123077}},
-            'snpeff': {'ann': [{'effect': 'intron_variant',
-                                'feature_id': 'NM_014672.3'},
-                               {'effect': 'intron_variant',
-                                'feature_id': 'NM_001256678.1'}]}
-        }
-        will be translated to a generator:
-        (
-            ("exac_nontcga", {"af": 0.00001883}),
-            ("gnomad_exome.af", {"af": 0.0000119429, "af_afr": 0.000123077}),
-            ("gnomad_exome", {"af": {"af": 0.0000119429, "af_afr": 0.000123077}}),
-            ("snpeff.ann", {"effect": "intron_variant", "feature_id": "NM_014672.3"}),
-            ("snpeff.ann", {"effect": "intron_variant", "feature_id": "NM_001256678.1"}),
-            ("snpeff.ann", [{ ... },{ ... }]),
-            ("snpeff", {"ann": [{ ... },{ ... }]}),
-            ('', {'exac_nontcga': {...}, 'gnomad_exome': {...}, 'snpeff': {...}})
-        )
-        or when traversing leaf nodes:
-        (
-            ('exac_nontcga.af', 0.00001883),
-            ('gnomad_exome.af.af', 0.0000119429),
-            ('gnomad_exome.af.af_afr', 0.000123077),
-            ('snpeff.ann.effect', 'intron_variant'),
-            ('snpeff.ann.feature_id', 'NM_014672.3'),
-            ('snpeff.ann.effect', 'intron_variant'),
-            ('snpeff.ann.feature_id', 'NM_001256678.1')
-        )
-        """
-        if isinstance(obj, dict):  # path level increases
-            for key in obj:
-                for sub_path, val in cls.traverse(obj[key], leaf_node):
-                    yield '.'.join((key, sub_path)).strip('.'), val
-            if not leaf_node:
-                yield '', obj
-        elif isinstance(obj, list):  # does not affect path
-            for item in obj:
-                for sub_path, val in cls.traverse(item, leaf_node):
-                    yield sub_path, val
-            if not leaf_node or not obj:  # [] count as a leaf node
-                yield '', obj
-        elif leaf_node:  # including str, int, float, and *None*.
-            yield '', obj
+    # for compatibility
+    traverse = staticmethod(traverse)
 
     def transform(self, response, options):
         """
-        Transform the query result. TODO more
+        Transform the query response to a user-friendly structure.
+
+        Options:
+            dotfield: flatten a dictionary using dotfield notation
+            _sorted: sort keys alaphabetically in ascending order
+            always_list: ensure the fields specified are lists or wrapped in a list
+            allow_null: ensure the fields specified are present in the result,
+                        the fields may be provided as type None or [].
+            biothing_type: result document type to apply customized transformation.
+                        for example, add license field basing on document type's metadata.
+            # only related to multiqueries
+            template: base dict for every result, for example: {"success": true}
+            templates: a different base for every result, replaces the setting above
+            template_hit: a dict to update every positive hit result, default: {"found": true}
+            template_miss: a dict to update every query with no hit, default: {"found": false}
         """
         if not isinstance(options, dotdict):
             options = dotdict(options)

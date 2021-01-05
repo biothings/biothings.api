@@ -6,11 +6,11 @@
 
 """
 
-from biothings.tests.web import BiothingsTestCase
+from biothings.tests.web import BiothingsWebAppTest
 from setup import setup_es  # pylint: disable=unused-import
 
 
-class TestStatus(BiothingsTestCase):
+class TestStatus(BiothingsWebAppTest):
 
     def test_01_get(self):
         """

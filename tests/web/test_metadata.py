@@ -6,11 +6,11 @@
 
 '''
 
-from biothings.tests.web import BiothingsTestCase
+from biothings.tests.web import BiothingsWebAppTest
 from setup import setup_es  # pylint: disable=unused-import
 
 
-class TestMetadata(BiothingsTestCase):
+class TestMetadata(BiothingsWebAppTest):
 
     def test_00_meta(self):
         """ GET /v1/metadata

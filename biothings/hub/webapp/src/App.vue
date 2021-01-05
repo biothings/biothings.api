@@ -74,16 +74,9 @@
                 </router-link>
             </a-->
 
-            <div class="clickable ui item right" v-if="has_feature('job')">
-              <job-summary></job-summary>
-            </div>
-
-            <div class="clickable ui item" v-if="has_feature('ws')">
-                <event-messages>
+            <div class="ui item right">
+                <event-messages v-if="has_feature('ws')">
                 </event-messages>
-            </div>
-
-            <div class="ui item">
                 <loader></loader>
                 <div id="settings" v-if="has_feature('config')">
                     <button class="mini circular ui icon button" @click="openConfig">
@@ -208,11 +201,18 @@
                   Terminal
               </a>
             </div>
+
+
             <div class="right menu">
+              <a class="ui segment mini grey inverted jobs" v-if="has_feature('job')">
+                  <job-summary></job-summary>
+              </a>
+
               <a class="clickable logs item" v-if="has_feature('ws')">
                   <i class="bell outline icon"></i>
                   Logs
               </a>
+            </div>
           </div>
 
           <div class="ui terminal popup top left transition hidden" style="width:50%;">
@@ -1197,9 +1197,13 @@
         margin-right: 2em !important;
     }
 
-    ; very small buttons
+    /*; very small buttons*/
     .tinytiny {
         padding: .5em 1em .5em;
         font-size: .6em;
+    }
+
+    .segment.jobs {
+        margin:0;
     }
 </style>

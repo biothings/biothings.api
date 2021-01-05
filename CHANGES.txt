@@ -1,3 +1,13 @@
+v0.8.4 (2020/12/8)
+    Expose a utility function for convenience.
+
+v0.8.3 (2020/12/8)
+    Separate data testing utility from app test.
+
+v0.8.2 (2020/11/17)
+    Allow multiple hits in annotation endpoint.
+    Refine multi-type JSON argument processing.
+
 v0.8.1 (2020/07/14)
     Improve field type mismatch query behavior.
     Improve requried argument parsing restraint logic.

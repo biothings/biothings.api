@@ -236,10 +236,11 @@ def test():
         "autobuild": {
             "schedule": "0 8 * * *",
             "type": "snapshot",
-            "env": "local"  # snapshot location
+            "env": "auto"  # snapshot location, indexing ES.
         },
         "autopublish": {
-            "type": "snapshot"
+            "type": "snapshot",
+            "env": "auto"
         },
         "autorelease": {
             "schedule": "0 10 * * *"

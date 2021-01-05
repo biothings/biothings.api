@@ -633,8 +633,8 @@ class HubServer(object):
             "dump_manager": self.managers["dump_manager"],
             "upload_manager": self.managers["upload_manager"],
             "sync_manager": self.managers["sync_manager"],
+            "job_manager": self.managers["job_manager"]
         }
-
         version_urls = self.autohub_config["version_urls"]
         indexer_factory = self.autohub_config["indexer_factory"]
         es_host = self.autohub_config["es_host"]
@@ -649,14 +649,7 @@ class HubServer(object):
         self.autohub_feature = AutoHubFeature(autohub_managers, version_urls, factory)
         try:
             self.autohub_feature.configure()
-            # ---------------------------------------------
-            if hasattr(config, "AUTO_RELEASE_SRC"):
-                if isinstance(config.AUTO_RELEASE_SRC, list): # TODO support both src and list
-                    for src in config.AUTO_RELEASE_SRC:
-                        self.logger.info("Scheduling auto release.")
-                        auto_release = partial(self.shell.launch, partial(self.autohub_feature.install, src))
-                        self.managers["job_manager"].submit(auto_release, "*/10 * * * *")
-            #---------------------------------------------
+            self.autohub_feature.configure_auto_release(config)
         except Exception as e:
             self.logger.error("Could't configure feature 'autohub', will be deactivated: %s" % e)
             self.features.remove("autohub")
