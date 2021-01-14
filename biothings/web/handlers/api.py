@@ -27,7 +27,7 @@ from tornado.web import HTTPError
 from biothings.utils.common import DateTimeJSONEncoder
 from biothings.utils.web.analytics import GAMixIn
 from biothings.utils.web.tracking import StandaloneTrackingMixin
-from biothings.web.options import OptionArgError
+from biothings.web.options import OptionError, ReqArgs
 
 from . import BaseHandler
 from .exceptions import BadRequest
@@ -69,6 +69,8 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
     def initialize(self):
 
         self.args = {}  # processed args will be available here
+        self.args_query = {}  # query parameters in the URL
+        self.args_form = {}  # form-data and x-www-form-urlencoded
         self.args_json = {}  # applicatoin/json type body
         self.event = {
             'category': '{}_api'.format(self.web_settings.API_VERSION),
@@ -101,26 +103,32 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
             except json.JSONDecodeError:
                 raise HTTPError(400, reason='Invalid JSON body.')
 
-        if isinstance(self.args_json, dict):
-            args = dict(self.args_json)
-        else:  # json can also be a list & values
-            args = {}
+        # pylint: disable=attribute-defined-outside-init
+        self.args_query = {
+            key: self.get_query_argument(key)
+            for key in self.request.query_arguments}
+        # pylint: disable=attribute-defined-outside-init
+        self.args_form = {
+            key: self.get_body_argument(key)
+            for key in self.request.body_arguments}
 
-        # url args can replace json args
-        args.update({key: self.get_argument(key)
-                     for key in self.request.arguments})
-
-        self.logger.debug("Incoming Requests:\n%s\n%s",
-                          self.request.uri, pformat(args, width=150))
+        # self.logger.debug("Incoming Requests:\n%s\n%s", # TODO: one request, one log
+        #                   self.request.uri, pformat(args, width=150))
 
         if self.name:
-            options = self.web_settings.optionsets.get(self.name)
+            optionset = self.web_settings.optionsets.get(self.name)
             try:
                 # pylint: disable=attribute-defined-outside-init
-                self.args = options.parse(
-                    self.request.method, args,
-                    self.path_args, self.path_kwargs)
-            except OptionArgError as err:
+                self.args = optionset.parse(
+                    self.request.method, ReqArgs(
+                        ReqArgs.Path(
+                            args=self.path_args,
+                            kwargs=self.path_kwargs),
+                        query=self.args_query,
+                        form=self.args_form,
+                        json=self.args_json
+                    ))
+            except OptionError as err:
                 raise BadRequest(**err.info)
 
         self.logger.debug("Processed Arguments:\n%s",

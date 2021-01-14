@@ -14,7 +14,7 @@ from tornado.web import Application
 
 from biothings.utils.web.userquery import ESUserQuery
 from biothings.web.handlers import BaseAPIHandler, BaseESRequestHandler
-from biothings.web.options import OptionSets
+from biothings.web.options import OptionsManager as OptionSets
 from biothings.web.utils import DevInfo, FieldNote
 
 from . import default as web_default
