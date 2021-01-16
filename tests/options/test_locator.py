@@ -53,7 +53,7 @@ def test_03():
         query={
             "format": "yaml",
             "size": "1002"},
-        json={
+        json_={
             "q": "cdk2",
             "scopes": ["ensembl", "entrez"],
             "format": "json"}

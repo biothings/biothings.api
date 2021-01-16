@@ -47,3 +47,32 @@ def test_02():
     assert "alias" not in err.value.info
     assert "keyword" not in err.value.info
     assert "reason" not in err.value.info
+
+def test_03():
+    commondef = {
+        "*": {"format": {"type": str, "default": "json"}},
+        "GET": {"raw": {"type": bool, "default": False}}
+    }
+    optionset = OptionSet(commondef)
+    optionset["GET"]["raw"]["default"] = True
+    optionset["POST"] = {"dev": {"type": bool}}
+    optionset.setup()
+
+    assert optionset.parse("DELETE", (None, {"format": "yaml"})).format == "yaml"
+    assert optionset.parse("POST", (None, {"dev": "true"})).dev is True
+    assert optionset.parse("GET", ()).raw is True
+
+def test_04():
+    option = OptionSet({
+        "*": {"p1": {"group": "a"}},
+        "PUT": {"p2": {"group": "b"}},
+        "GET": {"p3": {"group": "c"}},
+        "DELETE": {"p4": {"group": "d"}},
+    })
+    assert option.groups == {"a", "b", "c", "d"}
+    assert "a" in option.parse("PUT", ())
+    assert "b" in option.parse("PUT", ())
+
+    option["*"]["p5"] = {"group": "e"}
+    option.setup()
+    assert option.groups == {"a", "b", "c", "d", "e"}

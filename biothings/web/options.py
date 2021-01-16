@@ -271,11 +271,10 @@ class ReqArgs():
             except (KeyError, IndexError):
                 return None
 
-    def __init__(self, path=None, query=None, form=None, json=None):
+    def __init__(self, path=None, query=None, form=None, json_=None):
 
         assert isinstance(query, (dict, type(None)))
         assert isinstance(form, (dict, type(None)))
-        assert isinstance(json, (dict, type(None)))
 
         if not isinstance(path, (self.Path, type(None))):
             path = self.Path(*path)
@@ -283,7 +282,7 @@ class ReqArgs():
         self.path = path  # positional and named capture group in a routing pattern
         self.query = query  # key value pairs after a question mark at the end of an url
         self.form = form  # type multipart/form-data and application/x-www-form-urlencoded
-        self.json = json  # type application/json
+        self.json = json_ if isinstance(json_, dict) else {}  # type application/json
 
     def lookup(self, locator, order=None, src=False):
 
@@ -530,25 +529,45 @@ class OptionSet(UserDict):
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
-        self._methods = defaultdict(dict)
+        self.groups = set()  # explicit result access groups
+        self.setup()  # populate self.optset variable
+
+    def __missing__(self, key):
+        self.data[key] = {}
+        return self[key]
+
+    def setup(self):
+        """
+        Apply the wildcard method configurations dict.
+        Must call this method after changes to this object.
+        """
+        # store Option objects used for parse method
+        self.optset = defaultdict(dict)
 
         for method, options in self.data.items():
             for keyword, defdict in options.items():
-                defdict["keyword"] = keyword
-                option = Option(defdict)  # persistent
-                self._methods[method][keyword] = option
+                option = dict(defdict)
+                option["keyword"] = keyword
+                self.optset[method][keyword] = Option(option)
+                if "group" in option:
+                    if isinstance(option["group"], (list, tuple, set)):
+                        self.groups.update(option["group"])
+                    elif isinstance(option["group"], str):
+                        self.groups.add(option["group"])
 
-        wildcards = self._methods.pop("*")
-        for method, options in self._methods.items():
+        wildcards = self.optset.get("*", {})
+        for method, options in self.optset.items():
             for keyword, option in wildcards.items():
                 options.setdefault(keyword, option)
 
-        self.groups = ()  # always create these groups
-
     def parse(self, method, reqargs):
+        """
+        Parse a HTTP request, represented by its method and args,
+        with this OptionSet and return an attribute dictionary.
+        """
 
-        options = self._methods.get(method, {})
-        result = defaultdict(dict)  # accomodate groups
+        options = self.optset.get(method, self.optset["*"])
+        result = defaultdict(dict)  # to accomodate groups
 
         for keyword, option in options.items():
             try:
@@ -578,47 +597,48 @@ class OptionSet(UserDict):
 
         return dotdict(result)
 
-class OptionsManager():
+class OptionsManager(UserDict):
     """
-    A collection of OptionSet that makes up an application.
+    A collection of OptionSet(s) that makes up an application.
     Provide an interface to setup and serialize.
+
+    Example:
+    {
+        "annotation": {"*": {...}, "GET": {...}, "POST": {... }},
+        "query": {"*": {...},  "GET": {...}, "POST": {... }},
+        "metadata": {"GET": {...}, "POST": {... }}
+    }
     """
 
-    def __init__(self):
-
-        self.options = defaultdict(partial(defaultdict, dict))
-        self.groups = defaultdict()
-        self.methods = defaultdict()
-
-    def add(self, name, optionset):
-        if name:
+    def add(self, name, optionset, groups=()):
+        if not name:
+            logging.warning("Ignore unnamed optionset:\n%s", optionset)
+        if name not in self.data:
+            self.data[name] = OptionSet(optionset)
+            self.data[name].groups.update(groups)
+        else:  # update existing optionset
             for method, options in optionset.items():
-                self.options[name][method.upper()].update(options)
-
-    def get(self, name):
-
-        optionset = OptionSet(self.options[name])
-        optionset.groups = self.groups[name]
-        return optionset
+                # merge second level objects
+                self.data[name][method].update(options)
+                self.data[name].groups.update(groups)
+                self.data[name].setup()  # required
 
     def log(self):
 
-        res = copy.deepcopy(self.options)
-        res = self._serialize(res)
-        for api, groups in self.groups.items():
-            res[api]['_groups'] = groups
-        for api, methods in self.methods.items():
-            res[api]['_methods'] = methods
+        res = self._serialize(self)
         return res
 
     def _serialize(self, obj):
-        if isinstance(obj, dict):
-            for key, val in obj.items():
-                obj[key] = self._serialize(val)
-            return obj
-        elif isinstance(obj, (list, tuple)):
+        if isinstance(obj, abc.Mapping):
+            _obj = {}
+            items = list(obj.items())
+            for key, val in sorted(items):
+                _obj[key] = self._serialize(val)
+            return _obj
+        if isinstance(obj, (list, tuple)):
             return [self._serialize(item) for item in obj]
-        elif isinstance(obj, (str, int)):
+        if isinstance(obj, (str, int)):
             return obj
-        else:  # best effort
-            return str(obj)
+        if hasattr(obj, "__name__"):
+            return obj.__name__
+        return str(obj)  # best effort

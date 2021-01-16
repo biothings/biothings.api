@@ -47,7 +47,7 @@ def test_02():
             "size": "10",
             "format": "html"
         },
-        json={
+        json_={
             "q": "cdk2",
             "scopes": ["ensembl", "entrez"],
             "format": "json"

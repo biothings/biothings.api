@@ -175,10 +175,8 @@ class BiothingWebSettings():
                 handler_options = handler.kwargs
                 setting_attr = '_'.join((handler_name, 'kwargs')).upper()
                 setting_options = getattr(self, setting_attr, {})
-                self.optionsets.add(handler_name, handler_options)
+                self.optionsets.add(handler_name, handler_options, handler.kwarg_groups)
                 self.optionsets.add(handler_name, setting_options)
-                self.optionsets.groups[handler_name] = handler.kwarg_groups
-                self.optionsets.methods[handler_name] = handler.kwarg_methods
             if '{typ}' in pattern:
                 if not issubclass(handler, BaseESRequestHandler):
                     raise BiothingConfigError()

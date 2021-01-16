@@ -126,7 +126,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
                             kwargs=self.path_kwargs),
                         query=self.args_query,
                         form=self.args_form,
-                        json=self.args_json
+                        json_=self.args_json
                     ))
             except OptionError as err:
                 raise BadRequest(**err.info)
