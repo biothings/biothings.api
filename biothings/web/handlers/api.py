@@ -213,7 +213,9 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
     def write_error(self, status_code, **kwargs):
 
         reason = kwargs.pop('reason', self._reason)
-        assert isinstance(reason, str)  # TODO explain why
+        # "reason" is a reserved tornado keyword
+        # see RequestHandler.send_error
+        assert isinstance(reason, str)
         assert '\n' not in reason
 
         message = {
@@ -221,6 +223,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
             "success": False,
             "error": reason
         }
+        # add exception info
         if 'exc_info' in kwargs:
             exception = kwargs['exc_info'][1]
             message.update(self.parse_exception(exception))
