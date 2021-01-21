@@ -102,3 +102,37 @@ def test_05():
 
     assert args.lookup(locator) == "taxid"
     assert args.lookup(locator, ("form", "query")) == "_id"
+
+def test_06():
+    args = ReqArgs(
+        query={
+            "q": "cdk2",
+            "fields": "taxid"
+        },
+        json_={
+            "fields": "ensembl"
+        }  # THIS IS A DICT
+    )
+    locator = {
+        "keyword": "_source",
+        'alias': ['fields', 'field', 'filter']
+    }
+
+    assert args.lookup(locator) == "taxid"
+    assert args.lookup(locator, ("json", "query")) == "ensembl"
+
+    args = ReqArgs(
+        query={
+            "q": "cdk2",
+            "fields": "taxid"
+        },
+        json_=[{
+            "fields": "ensembl"
+        }]  # THIS IS A LIST
+    )
+
+    # JSON input may not be a dictionay
+    # in those cases, we ignore its content
+    # and should not by itself throw an error
+    assert args.lookup(locator) == "taxid"
+    assert args.lookup(locator, ("json", "query")) == "taxid"
