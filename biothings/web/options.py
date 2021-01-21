@@ -28,6 +28,7 @@ class OptionError(ValueError):
     def simplify(self):
         self.info = {k: v for k, v in self.info.items() if v}
 
+
 class Converter():
     """
         A generic HTTP request argument processing unit.
