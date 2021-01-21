@@ -90,7 +90,8 @@ class BaseESRequestHandler(BaseAPIHandler):
             _es_error = message.pop('_es_error')
             message['error'] = _es_error.error
             try:
-                root_cause = _es_error.info['error']['root_cause'][0]['reason']
+                root_cause = _es_error.info.get('error', _es_error.info)
+                root_cause = root_cause['root_cause'][0]['reason']
                 root_cause = root_cause.replace('\"', '\'').split('\n')
                 for index, cause in enumerate(root_cause):
                     message['root_cuase_line_'+f'{index:02}'] = cause

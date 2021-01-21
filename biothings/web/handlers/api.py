@@ -30,7 +30,7 @@ from biothings.utils.web.tracking import StandaloneTrackingMixin
 from biothings.web.options import OptionError, ReqArgs
 
 from . import BaseHandler
-from .exceptions import BadRequest
+from .exceptions import EndRequest, BadRequest
 
 try:
     import msgpack
@@ -213,6 +213,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
     def write_error(self, status_code, **kwargs):
 
         reason = kwargs.pop('reason', self._reason)
+        assert isinstance(reason, str)  # TODO explain why
         assert '\n' not in reason
 
         message = {
@@ -230,7 +231,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         """
         Return customized error message basing on exception types.
         """
-        if isinstance(exception, BadRequest):
+        if isinstance(exception, EndRequest):
             if exception.kwargs:
                 return exception.kwargs
         return {}
