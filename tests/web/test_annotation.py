@@ -331,13 +331,17 @@ class TestAnnotationPOST(BiothingsWebAppTest):
         }
         [
             {
-                "query": "2",
+                "query": 2,
                 "notfound": true
             }
         ]
         """
+        # although internally queries are translated to strings
+        # we try to preserve its original data type so that
+        # it is easier to programtically match the results
+        # to the original queires sent in a batch request
         res = self.request('/v1/gene', json={"ids": 2}).json()
-        assert res[0]['query'] == '2'
+        assert res[0]['query'] == 2
         assert res[0]['notfound']
 
     def test_13_json_invalid(self):
@@ -358,4 +362,3 @@ class TestAnnotationPOST(BiothingsWebAppTest):
 
     # TODO
     # Add multiple hit test case
-    # Add malformed json (str/list) test cases (maybe not in this file)
