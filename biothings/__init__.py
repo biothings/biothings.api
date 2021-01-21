@@ -19,6 +19,9 @@ def get_version():
     return '{}.{}.{}'.format(MAJOR_VER, MINOR_VER, MICRO_VER)
 
 
+# TODO
+# config = object()
+
 # re pattern to find config param
 # (by convention, all upper caps, _ allowed, that's all)
 PARAM_PAT = re.compile("^([A-Z_]+)$")
@@ -39,6 +42,7 @@ class ConfigurationValue(object):
     a variable should be created in these statements (named the same as the original
     config variable) so the proper value can be through ConfigurationManager.
     """
+
     def __init__(self, code):
         self.code = code
 
@@ -80,6 +84,7 @@ class ConfigurationManager(types.ModuleType):
     or database, config manager can supersede attributes of a class with values
     coming from the database, allowing dynamic configuration of hub's elements.
     """
+
     def __init__(self, conf):
         self.conf = conf
         self.conf_parser = ConfigParser(conf)
@@ -399,6 +404,7 @@ class ConfigParser(object):
             #- hidden -#
       will make the parameter read-only, and its value won't be displayed
     """
+
     def __init__(self, config_mod):
         self.config = config_mod
         self.lines = inspect.getsourcelines(self.config)[0]
@@ -621,7 +627,7 @@ def get_loop(max_workers=None):
 
 
 # adjust some loggers...
-if os.environ.get("HUB_VERBOSE","0") != "1":
+if os.environ.get("HUB_VERBOSE", "0") != "1":
     logging.getLogger("elasticsearch").setLevel(logging.ERROR)
     logging.getLogger("urllib3").setLevel(logging.ERROR)
     logging.getLogger("requests").setLevel(logging.ERROR)
