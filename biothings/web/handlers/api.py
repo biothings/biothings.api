@@ -86,8 +86,6 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
 
             * Inputs are combined and then separated into functional catagories.
             * Duplicated query or body arguments will overwrite the previous value.
-            * JSON body input will not overwrite query arguments in URL.
-            * Path arguments can overwirte all other existing values.
 
         Extend to add more customizations.
         """
