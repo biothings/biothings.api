@@ -1,3 +1,8 @@
+v0.9.0
+    Add features to request argument parsing module.
+    Support batch query concurrency control.
+    Improve elasticsearch error response.
+
 v0.8.5 (2021/1/7)
     Improve es sniff stability under high load.
 
