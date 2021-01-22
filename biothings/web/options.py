@@ -525,8 +525,9 @@ class Option(UserDict):
             reqargs = ReqArgs(*reqargs)
 
         # ------- debug here -------
-        if self.get("keyword") == "q":
-            print()  # breakpoint
+        # if self.get("keyword") == "q":
+        #     print()  # breakpoint
+        # ---------------------------
 
         # find the user input
         val, loc = reqargs.lookup(
