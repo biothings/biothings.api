@@ -101,6 +101,9 @@ class Converter():
         if isinstance(value, (tuple, list, set)):
             return (type(value))(self.translate(item) for item in value)
 
+        if not isinstance(value, str):
+            return value  # can only perform translations to strings
+
         # https://docs.python.org/3/library/re.html#re.sub
         for pattern, repl in self.translations:
             value = re.sub(pattern, repl, value)
@@ -517,6 +520,10 @@ class Option(UserDict):
 
         if not isinstance(reqargs, ReqArgs):
             reqargs = ReqArgs(*reqargs)
+
+        # ------- debug here -------
+        # if self.get("keyword") == "<keyword>":
+        #     print() # breakpoint
 
         # find the user input
         val, loc = reqargs.lookup(
