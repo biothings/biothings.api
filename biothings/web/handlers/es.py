@@ -95,6 +95,8 @@ class BaseESRequestHandler(BaseAPIHandler):
                 root_cause = root_cause.replace('\"', '\'').split('\n')
                 for index, cause in enumerate(root_cause):
                     message['root_cuase_line_'+f'{index:02}'] = cause
+            except IndexError:
+                pass  # no root cause
             except Exception:
                 self.logger.exception('Error parsing es exception.')
 

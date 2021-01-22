@@ -67,7 +67,11 @@ class ESQueryBackend(object):
                 raise BadRequest(_es_error=exc)
             except TransportError as exc:
                 if exc.error == 'search_phase_execution_exception':
-                    raise EndRequest(500, _es_error=exc, **exc.info)
+                    reason = exc.info.get("caused_by", {}).get("reason", "")
+                    if "rejected execution" in reason:
+                        raise EndRequest(503, reason="server overload")
+                    else:  # unexpected, provide additional information
+                        raise EndRequest(500, _es_error=exc, **exc.info)
                 elif exc.error == 'index_not_found_exception':
                     raise HTTPError(500, reason=exc.error)
                 elif exc.status_code == 'N/A':
