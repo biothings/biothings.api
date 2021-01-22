@@ -241,7 +241,7 @@ class JsonArgCvter(Converter):
             # since JSON support value types
             # strict mode enforces it and essentially
             # makes this step a validation step.
-            raise OptionError("Type mismatch.")
+            raise OptionError(f"Expect type {to_type.__name__}.")
 
         return self.to_type(value, to_type)
 
