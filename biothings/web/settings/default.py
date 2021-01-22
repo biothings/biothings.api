@@ -107,7 +107,7 @@ COMMON_KWARGS = {
 }
 ANNOTATION_KWARGS = {
     '*': COMMON_KWARGS.copy(),
-    'GET': {'id': {'type': str, 'path': 0}},
+    'GET': {'id': {'type': str, 'path': 0, 'required': True}},
     'POST': {'ids': {'type': list, 'max': 1000, 'required': True, 'strict': False}}
 }
 QUERY_KWARGS = {
