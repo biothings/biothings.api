@@ -650,8 +650,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
         ]
         """
         data = {'q': '[1017, "1018"]',
-                'scopes': 'entrezgene',
-                'jsoninput': 'true'}
+                'scopes': 'entrezgene'}
         res = self.request('query', method='POST', data=data).json()
         assert len(res) == 2
         assert res[0]['_id'] == '1017'
