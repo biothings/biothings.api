@@ -257,7 +257,7 @@ class ReqArgs():
 
     class Path():
 
-        def __init__(self, args, kwargs):
+        def __init__(self, args=(), kwargs={}):
             assert isinstance(args, (tuple, list))
             assert isinstance(kwargs, dict)
             self.args = args or ()
@@ -271,6 +271,18 @@ class ReqArgs():
                     return self.kwargs[key]
             except (KeyError, IndexError):
                 return None
+
+        def __bool__(self):
+            return bool(self.args) or bool(self.kwargs)
+
+        def __str__(self):
+            lines = []
+            for src in ("args", "kwargs"):
+                if getattr(self, src):
+                    lines.append("{}={}".format(
+                        src, str(getattr(self, src))
+                    ))
+            return "Path(" + ", ".join(lines) + (")")
 
     def __init__(self, path=None, query=None, form=None, json_=None):
 
@@ -312,6 +324,15 @@ class ReqArgs():
                 return (val, loc) if src else val
 
         return (None, None) if src else None
+
+    def __str__(self):
+        lines = []
+        for src in ("path", "query", "form", "json"):
+            if getattr(self, src):
+                lines.append("{}={}".format(
+                    src, str(getattr(self, src))
+                ))
+        return "ReqArgs(" + ",\n".join(lines) + (")")
 
 class Locator():
     """
