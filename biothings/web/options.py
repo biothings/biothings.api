@@ -215,9 +215,12 @@ class FormArgCvter(Converter):
     def convert_to(self, value, to_type):
         if self.jsoninput:
             try:  # attempt to load as json first
-                value = json.loads(value)
+                _value = json.loads(value)
             except json.JSONDecodeError as exc:
                 logging.debug(str(exc))
+            else:  # no more conversions
+                if isinstance(_value, to_type):
+                    return _value
         if isinstance(value, to_type):
             return value
         if isinstance(value, str):
@@ -522,8 +525,8 @@ class Option(UserDict):
             reqargs = ReqArgs(*reqargs)
 
         # ------- debug here -------
-        # if self.get("keyword") == "<keyword>":
-        #     print() # breakpoint
+        if self.get("keyword") == "q":
+            print()  # breakpoint
 
         # find the user input
         val, loc = reqargs.lookup(

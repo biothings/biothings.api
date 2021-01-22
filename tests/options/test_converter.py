@@ -74,6 +74,7 @@ def test_body_with_jsoninput():
     cvt = FormArgCvter(jsoninput=True)
     assert cvt("null", object) is None
     assert cvt("123", int) == 123
+    assert cvt("123", list) == ["123"]
     assert cvt('{"a":"b"}', dict) == {"a": "b"}
     assert cvt("[1,2,3]", list) == [1, 2, 3]
 
