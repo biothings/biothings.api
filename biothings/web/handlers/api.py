@@ -112,27 +112,29 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
             key: self.get_body_argument(key)
             for key in self.request.body_arguments}
 
-        # self.logger.debug("Incoming Requests:\n%s\n%s", # TODO: one request, one log
-        #                   self.request.uri, pformat(args, width=150))
+        regargs = ReqArgs(
+            ReqArgs.Path(
+                args=self.path_args,
+                kwargs=self.path_kwargs),
+            query=self.args_query,
+            form=self.args_form,
+            json_=self.args_json
+        )
+
+        # per request logging should not be combined in one message
+        # it's possible to encounter OptionError during parsing
+        self.logger.debug("%s %s\n%s", self.request.method, self.request.uri, regargs)
 
         if self.name:
             optionset = self.web_settings.optionsets.get(self.name)
             try:
                 # pylint: disable=attribute-defined-outside-init
                 self.args = optionset.parse(
-                    self.request.method, ReqArgs(
-                        ReqArgs.Path(
-                            args=self.path_args,
-                            kwargs=self.path_kwargs),
-                        query=self.args_query,
-                        form=self.args_form,
-                        json_=self.args_json
-                    ))
+                    self.request.method, regargs)
             except OptionError as err:
                 raise BadRequest(**err.info)
 
-        self.logger.debug("Processed Arguments:\n%s",
-                          pformat(self.args, width=150))
+            self.logger.debug("↓ (%s)\n%s", self.name, pformat(self.args, width=150))
 
     def write(self, chunk):
         """

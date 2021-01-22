@@ -60,7 +60,7 @@ class BaseHandler(SentryMixin, RequestHandler):
 
     @property
     def logger(self):
-        return logging.getLogger(__name__)
+        return logging.getLogger("biothings.web.handlers")
 
     def log_exception(self, *args, **kwargs):
         """
