@@ -6,8 +6,10 @@ import asyncio
 from biothings.web.handlers.exceptions import BadRequest, EndRequest
 from elasticsearch import (ConnectionError, ConnectionTimeout, NotFoundError,
                            RequestError, TransportError)
+from elasticsearch_dsl import MultiSearch
 from tornado.web import HTTPError
 
+semaphore = asyncio.Semaphore()
 
 class ESQueryBackend(object):
     '''
@@ -53,6 +55,10 @@ class ESQueryBackend(object):
                 return res
 
         if query:
+
+            if isinstance(query, MultiSearch):
+                await semaphore.acquire()
+
             biothing_type = options.get('biothing_type', None) or self.default_type
             query = query.index(self.indices.get(biothing_type, self.default_index))
 
@@ -82,5 +88,8 @@ class ESQueryBackend(object):
                 if isinstance(res, list):
                     return [res_.to_dict() for res_ in res]
                 return res.to_dict()
+            finally:
+                if isinstance(query, MultiSearch):
+                    semaphore.release()
 
         return asyncio.sleep(0, {})
