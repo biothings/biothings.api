@@ -2,7 +2,7 @@ v0.9.0
     Add features to request argument parsing module.
     Support YAML content-type parsing in request body.
     Support batch query concurrency control.
-    Improve elasticsearch error response.
+    Improve a few elasticsearch error responses.
     Revise query builder customization hook.
 
 v0.8.5 (2021/1/7)

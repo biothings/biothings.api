@@ -4,6 +4,7 @@
 import re
 
 from elasticsearch_dsl import Q
+from elasticsearch_dsl.exceptions import IllegalOperation
 
 from biothings.utils.web.es_dsl import AsyncMultiSearch, AsyncSearch
 from biothings.web.handlers.exceptions import BadRequest
@@ -68,10 +69,10 @@ class ESQueryBuilder(object):
                 # pass through es query options. (from, size ...)
                 search = self._apply_extras(search, options)
 
-        except TypeError as exc:
-            raise BadRequest(reason='TypeError', value=str(exc))
-        except ValueError as exc:
-            raise BadRequest(reason='ValueError', details=str(exc))
+        except (TypeError, ValueError) as exc:
+            raise BadRequest(reason=type(exc).__name__, details=str(exc))
+        except IllegalOperation as exc:
+            raise BadRequest(reason=str(exc)) # ex. sorting by -_score
         else:
             return search
 
