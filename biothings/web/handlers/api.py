@@ -21,16 +21,16 @@ from pprint import pformat
 from urllib.parse import (parse_qs, unquote_plus, urlencode, urlparse,
                           urlunparse)
 
-from tornado.escape import json_decode
-from tornado.web import HTTPError
-
+import yaml
 from biothings.utils.common import DateTimeJSONEncoder
 from biothings.utils.web.analytics import GAMixIn
 from biothings.utils.web.tracking import StandaloneTrackingMixin
 from biothings.web.options import OptionError, ReqArgs
+from tornado.escape import json_decode
+from tornado.web import HTTPError
 
 from . import BaseHandler
-from .exceptions import EndRequest, BadRequest
+from .exceptions import BadRequest, EndRequest
 
 try:
     import msgpack
@@ -72,6 +72,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         self.args_query = {}  # query parameters in the URL
         self.args_form = {}  # form-data and x-www-form-urlencoded
         self.args_json = {}  # applicatoin/json type body
+        self.args_yaml = {}  # applicatoin/yaml type body
         self.event = {
             'category': '{}_api'.format(self.web_settings.API_VERSION),
             'action': self.request.method,  # 'query_get', 'fetch_all', etc.
@@ -89,7 +90,9 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
 
         Extend to add more customizations.
         """
-        if self.request.headers.get('Content-Type', '').startswith('application/json'):
+        content_type = self.request.headers.get('Content-Type', '')
+
+        if content_type.startswith('application/json'):
             if not self.request.body:
                 raise HTTPError(400, reason=(
                     'Empty body is not a valid JSON. '
@@ -100,6 +103,12 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
                 self.args_json = json_decode(self.request.body)
             except json.JSONDecodeError:
                 raise HTTPError(400, reason='Invalid JSON body.')
+
+        elif content_type.startswith('application/yaml'):
+            try:
+                self.args_yaml = yaml.load(self.request.body, Loader=yaml.SafeLoader)
+            except (yaml.scanner.ScannerError, yaml.parser.ParserError) as err:
+                raise HTTPError(400, reason='Invalid YAML body.')
 
         # pylint: disable=attribute-defined-outside-init
         self.args_query = {
