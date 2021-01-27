@@ -45,6 +45,7 @@ install_requires = [
     'elasticsearch>=6, <8',
     'elasticsearch-dsl>=6, <8',
     'elasticsearch-async>=6.2.0',
+    'singledispatchmethod; python_version < "3.8.0"',
     'aiohttp==3.6.2'    # for compatibility with elasticsearch-async==6.x
 ]
 
