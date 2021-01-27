@@ -326,8 +326,9 @@ class ReqArgs():
             except AttributeError:
                 _ = "No such location: %s."
                 logging.warning(_, loc)
-            if val is not None:
-                return (val, loc) if src else val
+            else:
+                if val is not None:
+                    return (val, loc) if src else val
 
         return (None, None) if src else None
 
