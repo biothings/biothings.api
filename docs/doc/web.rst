@@ -43,7 +43,7 @@ Handlers
 BaseHandler
 ===========
 
-.. autoclass:: biothings.web.handlers.BaseHanlder
+.. autoclass:: biothings.web.handlers.BaseHandler
     :members:
 
 FrontPageHandler
