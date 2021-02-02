@@ -47,13 +47,13 @@ BaseHandler
     :members:
 
 FrontPageHandler
----------------
+----------------
 
 .. autoclass:: biothings.web.handlers.FrontPageHandler
     :members:
 
 StatusHandler
----------------
+-------------
 
 .. autoclass:: biothings.web.handlers.StatusHandler
     :members:
@@ -78,32 +78,32 @@ QueryHandler
     :members:
 
 MetadataFieldHandler
----------------
+--------------------
 
 .. autoclass:: biothings.web.handlers.MetadataFieldHandler
     :members:
 
 
 MetadataSourceHandler
----------------
+---------------------
 
 .. autoclass:: biothings.web.handlers.MetadataSourceHandler
     :members:
 
 ESRequestHandler
----------------
+----------------
 
 .. autoclass:: biothings.web.handlers.ESRequestHandler
     :members:
 
 BaseAPIHandler
-====================
+==============
 
 .. autoclass:: biothings.web.handlers.BaseAPIHandler
     :members:
 
 APISpecificationHandler
----------------
+-----------------------
 
 .. autoclass:: biothings.web.handlers.APISpecificationHandler
     :members:
@@ -115,7 +115,7 @@ Elasticsearch Query Builder
 .. autoclass:: biothings.web.api.es.query_builder.ESQueries
     :members:
 
-.. autoclass:: biothings.web.api.es.query_builder.ESQueryBuilder
+.. autoclass:: biothings.web.pipeline.ESQueryBuilder
     :members:
 
 *******************
@@ -129,5 +129,5 @@ Elasticsearch Query
 Elasticsearch Result Transformer
 ********************************
 
-.. autoclass:: biothings.web.api.es.transform.ESResultTransformer
+.. autoclass:: biothings.web.pipeline.ESResultTransformer
     :members:
