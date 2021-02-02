@@ -112,9 +112,6 @@ APISpecificationHandler
 Elasticsearch Query Builder
 ***************************
 
-.. autoclass:: biothings.web.api.es.query_builder.ESQueries
-    :members:
-
 .. autoclass:: biothings.web.pipeline.ESQueryBuilder
     :members:
 
@@ -122,12 +119,12 @@ Elasticsearch Query Builder
 Elasticsearch Query
 *******************
 
-.. autoclass:: biothings.web.api.es.query.ESQuery
+.. autoclass:: biothings.web.pipeline.ESQueryBackend
     :members:
 
 ********************************
 Elasticsearch Result Transformer
 ********************************
 
-.. autoclass:: biothings.web.pipeline.ESResultTransformer
+.. autoclass:: biothings.web.pipeline.ESResultTransform
     :members:
