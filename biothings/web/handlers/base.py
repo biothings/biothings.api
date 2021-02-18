@@ -127,7 +127,6 @@ class StatusHandler(BaseHandler):
             "response": res
         }
 
-
 class FrontPageHandler(BaseHandler):
 
     def get(self):
