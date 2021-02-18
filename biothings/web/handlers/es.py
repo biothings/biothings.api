@@ -29,10 +29,11 @@ biothings.web.handlers.ESRequestHandler
 
 """
 
-from tornado.web import Finish
+from collections import UserList
 
 from biothings.utils.version import get_software_info
 from biothings.utils.web.es import get_es_versions
+from tornado.web import Finish
 
 from .api import BaseAPIHandler
 from .exceptions import BadRequest, EndRequest
@@ -220,7 +221,7 @@ class ESRequestHandler(BaseESRequestHandler):
         options.transform.biothing_type = self.biothing_type
 
         # define multi-query response format
-        if self.request.method == 'POST':
+        if isinstance(options.esqb.q, (list, UserList)):
             queries = options.esqb.q
             options.transform.templates = (dict(query=q) for q in queries)
             options.transform.template_miss = dict(notfound=True)
