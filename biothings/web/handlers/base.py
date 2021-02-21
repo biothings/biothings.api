@@ -94,10 +94,11 @@ class StatusHandler(BaseHandler):
         return self._check()
 
     async def get(self):
-        res = await self._check()
+        dev = self.get_argument('dev', None)
+        res = await self._check(dev is not None)
         self.finish(res)
 
-    async def _check(self):
+    async def _check(self, dev=False):
 
         client = self.web_settings.connections.async_client
         payload = self.web_settings.STATUS_CHECK
@@ -120,12 +121,16 @@ class StatusHandler(BaseHandler):
             if payload and not res:
                 self.set_status(503)
 
-        return {
+        ret = {
             "code": self.get_status(),
             "status": status,
-            "payload": payload,
-            "response": res
         }
+        if dev:
+            ret.update({
+                "payload": payload,
+                "response": res
+            })
+        return ret
 
 class FrontPageHandler(BaseHandler):
 
