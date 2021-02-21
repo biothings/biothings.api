@@ -48,7 +48,7 @@ class Converter():
             translations = translations.items()
 
         for pattern, repl in translations:
-            if isinstance(pattern, re.Pattern):
+            if hasattr(re, "Pattern") and isinstance(pattern, re.Pattern): # PY3.6 COMPATIBILITY
                 self.translations.append(
                     (pattern, repl))
             elif isinstance(pattern, tuple):
