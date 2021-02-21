@@ -11,7 +11,12 @@ from functools import partial
 from types import MappingProxyType
 
 try:
-    from functools import singledispatchmethod
+    from re import Pattern  # py>=3.7
+except ImportError:
+    from typing import Pattern
+    
+try:
+    from functools import singledispatchmethod  # py>=3.7
 except ImportError:
     from singledispatchmethod import singledispatchmethod
 
@@ -48,7 +53,7 @@ class Converter():
             translations = translations.items()
 
         for pattern, repl in translations:
-            if hasattr(re, "Pattern") and isinstance(pattern, re.Pattern): # PY3.6 COMPATIBILITY
+            if isinstance(pattern, Pattern):
                 self.translations.append(
                     (pattern, repl))
             elif isinstance(pattern, tuple):
