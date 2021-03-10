@@ -14,7 +14,7 @@ try:
     from re import Pattern  # py>=3.7
 except ImportError:
     from typing import Pattern
-    
+
 try:
     from functools import singledispatchmethod  # py>=3.7
 except ImportError:
@@ -369,7 +369,7 @@ class Locator():
         assert isinstance(self.path, (str, int, type(None)))
         assert isinstance(self.keyword, (str, type(None)))
 
-        if isinstance(aliases, list):
+        if isinstance(aliases, (list, tuple)):
             self.aliases = aliases
         elif isinstance(aliases, str):
             self.aliases = [aliases]
