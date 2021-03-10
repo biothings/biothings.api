@@ -59,6 +59,8 @@ class ESQueryBuilder(object):
                 build_query = self._build_string_query
 
             if isinstance(q, list):
+                if not q:  # es cannot execute empty multisearch
+                    raise ValueError("No search terms.")
                 search = AsyncMultiSearch()
                 for _q in q:
                     _search = build_query(_q, options)
@@ -72,7 +74,7 @@ class ESQueryBuilder(object):
         except (TypeError, ValueError) as exc:
             raise BadRequest(reason=type(exc).__name__, details=str(exc))
         except IllegalOperation as exc:
-            raise BadRequest(reason=str(exc)) # ex. sorting by -_score
+            raise BadRequest(reason=str(exc))  # ex. sorting by -_score
         else:
             return search
 
@@ -99,8 +101,9 @@ class ESQueryBuilder(object):
         Override this to customize default match query.
         By default it implements a multi_match query.
         """
-        if isinstance(q, (str, int, float)):
-            query = Q('multi_match', query=str(q),
+
+        if isinstance(q, (str, int, float, bool)):
+            query = Q('multi_match', query=q,
                       operator="and", fields=scopes,
                       lenient=True)
 
@@ -132,7 +135,10 @@ class ESQueryBuilder(object):
         search = AsyncSearch()
         userquery = options.userquery or ''
 
-        if self.user_query.has_query(userquery):
+        if not q:  # same empty q behavior as that of ES.
+            search = search.query("match_none")
+
+        elif self.user_query.has_query(userquery):
             userquery_ = self.user_query.get_query(userquery, q=q)
             search = search.query(userquery_)
 
@@ -152,6 +158,8 @@ class ESQueryBuilder(object):
                 scopes - default scopes
                 regexs - q -> scopes override
         """
+
+        # takes care of implied scopes from q
         scopes = options.scopes or []
         if isinstance(q, str):
             for regex, scope in options.regexs or []:
