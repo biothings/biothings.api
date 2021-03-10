@@ -254,6 +254,10 @@ class JsonArgCvter(Converter):
             # makes this step a validation step.
             raise OptionError(f"Expect type {to_type.__name__}.")
 
+        # mostly for biothings client 0.2.3 compatibility
+        if isinstance(value, str) and to_type is list:
+            return self.str_to_list(value)
+
         return self.to_type(value, to_type)
 
     def to_type(self, val, type_):
