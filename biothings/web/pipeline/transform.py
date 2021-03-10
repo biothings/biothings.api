@@ -30,6 +30,8 @@ class ESResultTransform(object):
     def transform(self, response, options):
         """
         Transform the query response to a user-friendly structure.
+        Mainly deconstruct the elasticsearch response structure and
+        hand over to transform_doc to apply the options below.
 
         Options:
             dotfield: flatten a dictionary using dotfield notation
@@ -72,22 +74,33 @@ class ESResultTransform(object):
             if 'hits' in response:
                 for hit in response['hits']:
                     hit.update(hit.pop('_source', {}))  # collapse one level
-                    for path, obj in self.traverse(hit):
-                        self.transform_hit(path, obj, options)
-                        if options.allow_null:
-                            self.option_allow_null(path, obj, options.allow_null)
-                        if options.always_list:
-                            self.option_always_list(path, obj, options.always_list)
-                        if options._sorted:
-                            self.option_sorted(path, obj)
-                    if options.dotfield:
-                        self.option_dotfield(hit, options)
+                    self.transform_doc(hit, options)
             if 'aggregations' in response:
                 self.transform_aggs(response['aggregations'])
                 response['facets'] = response.pop('aggregations')
                 response['hits'] = response.pop('hits')  # order
             return response
         return {}
+
+    def transform_doc(self, doc, options):
+        """
+        In-place apply a variety of transformations to a document like:
+        {
+            "_id": ... ,
+            "_index": ... ,
+            ...
+        }
+        """
+        for path, obj in self.traverse(doc):
+            self.transform_hit(path, obj, options)
+            if options.allow_null:
+                self.option_allow_null(path, obj, options.allow_null)
+            if options.always_list:
+                self.option_always_list(path, obj, options.always_list)
+            if options._sorted:
+                self.option_sorted(path, obj)
+        if options.dotfield:
+            self.option_dotfield(doc, options)
 
     @staticmethod
     def option_allow_null(path, obj, fields):
