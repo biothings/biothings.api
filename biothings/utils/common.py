@@ -2,29 +2,31 @@
 This module contains util functions may be shared by both BioThings data-hub and web components.
 In general, do not include utils depending on any third-party modules.
 """
+import asyncio
 import base64
+import glob
+import gzip
+import hashlib
+import importlib
+import inspect
+import io
+import json
+import logging
 import os
 import os.path
-import io
+import pickle
 import random
 import string
 import sys
 import time
-from itertools import islice
-from contextlib import contextmanager
-from shlex import shlex
-import pickle
-import json
-import logging
-import importlib
-import hashlib
-import asyncio
-import inspect
 import types
-import gzip
-import glob
+from collections import UserDict
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from functools import partial
+from itertools import islice
+from shlex import shlex
+
 # from json serial, catching special type
 # import _sre     # TODO: unused import;remove it once confirmed
 
@@ -342,6 +344,7 @@ def dump(obj, filename, protocol=2, compress='gzip'):
 def dump2gridfs(obj, filename, db, protocol=2):
     '''Save a compressed (support gzip only) object to MongoDB gridfs.'''
     import gridfs
+
     # import gzip
     fs = gridfs.GridFS(db)
     if fs.exists(_id=filename):
@@ -797,10 +800,10 @@ def traverse(obj, leaf_node=False):
         ('snpeff.ann.feature_id', 'NM_001256678.1')
     )
     """
-    if isinstance(obj, dict):  # path level increases
+    if isinstance(obj, (dict, UserDict)):  # path level increases
         for key in obj:
             for sub_path, val in traverse(obj[key], leaf_node):
-                yield '.'.join((key, sub_path)).strip('.'), val
+                yield '.'.join((str(key), str(sub_path))).strip('.'), val
         if not leaf_node:
             yield '', obj
     elif isinstance(obj, list):  # does not affect path
