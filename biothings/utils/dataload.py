@@ -992,7 +992,10 @@ def dict_traverse(d, func, traverse_list=False):
         items = sorted(d.items(), key=lambda x: x[0])
     except TypeError:
         # not sortable
-        items = d.items()
+        # need to make a copy first, because d will be updated during
+        #   the iteration, a RuntimeError will be raised otherwise:
+        #   RuntimeError: dictionary keys changed during iteration
+        items = d.copy().items()
     for k, v in items:
         if isinstance(v, dict):
             dict_traverse(v, func, traverse_list=traverse_list)
