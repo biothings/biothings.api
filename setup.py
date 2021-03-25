@@ -60,7 +60,7 @@ hub_requires = [
     'beautifulsoup4',   # used in dumper.GoogleDriveDumper
     'aiocron',          # setup scheduled jobs
     'aiohttp==3.6.2',   # for compatibility with elasticsearch-async==6.x
-    'asyncssh==1.7.1',  # needs libffi-dev installed (apt-get)
+    'asyncssh==1.18.0', # needs libffi-dev installed (apt-get)
     'pymongo',
     'psutil',
     'jsonpointer',      # for utils.jsonpatch
@@ -114,6 +114,7 @@ setup(
         "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
         "Development Status :: 4 - Beta",
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
