@@ -1,4 +1,3 @@
-import sys
 import os
 import glob
 from subprocess import check_output
@@ -70,7 +69,7 @@ hub_requires = [
     'boto3',
     'multiprocessing_on_dill',  # can replace pickler in concurrent.futures
     'dill',             # a pickle alternative with extra object type support
-
+    'pyinotify; sys_platform == "linux"',        # Linux-only; used in utils.hub.PyInotifyHubReloader
     'prettytable',      # diff report renderer
     'sockjs-tornado==1.0.6',   # websocket server for HubServer
     'jsonschema>=2.6.0',
@@ -81,11 +80,6 @@ hub_requires = [
     'networkx>=2.1',            # datatransform
     'biothings_client==0.2.1'   # datatransform (api client)
 ]
-
-if sys.platform == 'linux':
-    hub_requires.extend([
-        'pyinotify',        # used in utils.hub.PyInotifyHubReloader
-    ])
 
 # extra requirements for building docs
 docs_requires = [
