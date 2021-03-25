@@ -1,44 +1,104 @@
 ''' For Google Analytics tracking in web '''
 from tornado.httpclient import HTTPRequest, AsyncHTTPClient
-import re
-from random import randint
-from operator import itemgetter
+from ipaddress import ip_address, IPv6Address, IPv4Address
+import hashlib
+
 from urllib.parse import quote_plus as _q
+import time
+import random
+import uuid
+from collections import OrderedDict
 
-RE_LOCALE = re.compile(r'(^|\s*,\s*)([a-zA-Z]{1,8}(-[a-zA-Z]{1,8})*)\s*(;\s*q\s*=\s*(1(\.0{0,3})?|0(\.[0-9]{0,3})))?', re.I)
+from typing import Union, Optional
 
-def get_user_language(lang):
-    user_locals = []
-    matched_locales = RE_LOCALE.findall(str(lang))
-    if matched_locales:
-        lang_lst = map((lambda x: x.replace('-', '_')), (i[1] for i in matched_locales))
-        quality_lst = map((lambda x: x and x or 1), (float(i[4] and i[4] or '0') for i in matched_locales))
-        lang_quality_map = map((lambda x, y: (x, y)), lang_lst, quality_lst)
-        user_locals = [x[0] for x in sorted(lang_quality_map, key=itemgetter(1), reverse=True)]
 
-    if user_locals:
-        return user_locals[0]
-    else:
-        return ''
+class ExpiringDict:
+    # assuming that I do not need to worry about threads
+    # loosely based on https://github.com/mailgun/expiringdict
+    # cleanup on contain/get, does not clean on set
 
-def generate_hash(user_agent, screen_resolution, screen_color_depth):
-    tmpstr = "%s%s%s" % (user_agent, screen_resolution, screen_color_depth)
-    hash_val = 1
+    def __init__(self, max_size: int = 1000, ttl: int = 3600):
+        self.od = OrderedDict()  # {key: (v, t)} eldest in the front
+        self.max_size = max_size
+        self.ttl = ttl
 
-    if tmpstr:
-        hash_val = 0
-        for ordinal in map(ord, tmpstr[::-1]):
-            hash_val = ((hash_val << 6) & 0xfffffff) + ordinal + (ordinal << 14)
-            left_most_7 = hash_val & 0xfe00000
-            if left_most_7 != 0:
-                hash_val ^= left_most_7 >> 21
+    def _cleanup(self, stop_key):
+        while True:
+            k, v = self.od.popitem(last=False)
+            if k == stop_key:
+                return
 
-    return hash_val
+    def __contains__(self, key):
+        try:
+            item = self.od[key]
+            if time.time() - item[1] < self.ttl:
+                return True
+            else:
+                self._cleanup(key)
+        except KeyError:
+            pass
+        return False
 
-def generate_unique_id(user_agent='', screen_resolution='', screen_color_depth=''):
-    '''Generates a unique user ID from the current user-specific properties.'''
-    return ((randint(0, 0x7fffffff) ^ generate_hash(user_agent, screen_resolution, screen_color_depth))
-            & 0x7fffffff)
+    def __getitem__(self, key):
+        item = self.od[key]
+        if time.time() - item[1] < self.ttl:
+            item[1] = time.time()
+            self.od.move_to_end(key, last=True)
+            return item[0]
+        else:
+            self._cleanup(key)
+            raise KeyError
+
+    def __setitem__(self, key, value):
+        if len(self.od) == self.max_size:
+            if key in self:
+                pass
+            else:
+                self.od.popitem()
+        self.od[key] = [value, time.time()]
+
+
+exp_dict_uid = ExpiringDict(max_size=1000, ttl=3600)
+
+
+def generate_unique_id(remote_ip: str, user_agent: str,
+                       tm: Optional[int] = None):
+    """Generates a unique user ID
+
+    Using the remote IP and client user agent, to produce a somewhat
+    unique identifier for users. A UUID version 4 conforming to RFC 4122
+    is produced which is generally acceptable. It is not entirely random,
+    but looks random enough to the outside. Using a hash func. the user
+    info is completely anonymized.
+
+    """
+    global exp_dict_uid
+
+    try:
+        rip: Union[IPv4Address, IPv6Address] = ip_address(remote_ip)
+        ip_packed = rip.packed
+        key = (ip_packed, user_agent)
+    except ValueError:  # in the weird case I don't get an IP
+        ip_packed = random.randint(0, 0xffffffff).to_bytes(4, 'big')
+        key = (remote_ip, user_agent)
+    if key in exp_dict_uid:
+        return exp_dict_uid[key]
+    # else, generate the thing
+    if tm is None:
+        tm = int(time.time())
+    tm = tm >> 8  # one bucket every 256 seconds, err. < 1%
+    h = hashlib.blake2b(digest_size=16, salt=b'biothings')
+    h.update(ip_packed)
+    h.update(user_agent.encode('utf-8', errors='replace'))
+    h.update(tm.to_bytes(8, 'big'))
+    d = bytearray(h.digest())
+    # truncating hash is not that bad, fixing some bits should be okay, too
+    d[6] = 0x40 | (d[6] & 0x0f)  # set version
+    d[8] = 0x80 | (d[8] & 0x3f)  # set variant
+    u = str(uuid.UUID(bytes=bytes(d)))
+    exp_dict_uid[key] = u
+    return u
+
 
 # This is a mixin for biothing handlers, and references class variables from that class, cannot be used
 # without mixing in
@@ -53,9 +113,8 @@ class GAMixIn:
             remote_ip = _req.headers.get("X-Real-Ip", _req.headers.get("X-Forwarded-For", _req.remote_ip))
             user_agent = _req.headers.get("User-Agent", "")
             host = _req.headers.get("Host", "N/A")
-            this_user = generate_unique_id(user_agent=user_agent)
+            this_user = generate_unique_id(remote_ip, user_agent)
             user_agent = _q(user_agent)
-            langua = get_user_language(ln)
             # compile measurement protocol string for google
             # first do the pageview hit type
             request_body = 'v=1&t=pageview&tid={}&ds=web&cid={}&uip={}&ua={}&an={}&av={}&dh={}&dp={}'.format(
