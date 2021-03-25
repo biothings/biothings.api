@@ -527,7 +527,15 @@ class ESIndexer():
                         return (cnt, q)
 
     def snapshot(self, repo, snapshot, mode=None, **params):
-        body = {"indices": self._index}
+        body = {
+            "indices": self._index,
+            "include_global_state": False
+            # there is no reason to include global state in our application
+            # we want to separate the staging env from the production env
+            # (global state includes index templates and ingest pipeline)
+            # but this doesn't mean this setting has to be here
+            # maybe move this line to where it belongs later
+        }
         if mode == "purge":
             # Note: this works, just for small one when deletion is done instantly
             try:

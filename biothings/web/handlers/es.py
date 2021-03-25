@@ -29,10 +29,11 @@ biothings.web.handlers.ESRequestHandler
 
 """
 
-from tornado.web import Finish
+from collections import UserList
 
 from biothings.utils.version import get_software_info
 from biothings.utils.web.es import get_es_versions
+from tornado.web import Finish
 
 from .api import BaseAPIHandler
 from .exceptions import BadRequest, EndRequest
@@ -90,10 +91,13 @@ class BaseESRequestHandler(BaseAPIHandler):
             _es_error = message.pop('_es_error')
             message['error'] = _es_error.error
             try:
-                root_cause = _es_error.info['error']['root_cause'][0]['reason']
+                root_cause = _es_error.info.get('error', _es_error.info)
+                root_cause = root_cause['root_cause'][0]['reason']
                 root_cause = root_cause.replace('\"', '\'').split('\n')
                 for index, cause in enumerate(root_cause):
                     message['root_cuase_line_'+f'{index:02}'] = cause
+            except IndexError:
+                pass  # no root cause
             except Exception:
                 self.logger.exception('Error parsing es exception.')
 
@@ -217,7 +221,7 @@ class ESRequestHandler(BaseESRequestHandler):
         options.transform.biothing_type = self.biothing_type
 
         # define multi-query response format
-        if self.request.method == 'POST':
+        if isinstance(options.esqb.q, (list, UserList)):
             queries = options.esqb.q
             options.transform.templates = (dict(query=q) for q in queries)
             options.transform.template_miss = dict(notfound=True)

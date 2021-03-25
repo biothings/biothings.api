@@ -4,6 +4,7 @@
 import re
 
 from elasticsearch_dsl import Q
+from elasticsearch_dsl.exceptions import IllegalOperation
 
 from biothings.utils.web.es_dsl import AsyncMultiSearch, AsyncSearch
 from biothings.web.handlers.exceptions import BadRequest
@@ -24,7 +25,7 @@ class ESQueryBuilder(object):
         self.allow_nested_query = web_settings.ALLOW_NESTED_AGGS
 
     def build(self, q, options):
-        '''
+        """
         Build a query according to q and options.
         This is the public method called by API handlers.
 
@@ -47,66 +48,62 @@ class ESQueryBuilder(object):
             * additional es keywords are passed through
               for example: 'explain', 'version' ...
 
-        '''
-        try:  # TODO clarify
-            return self._build(q, options)
-        except TypeError as exc:
-            raise BadRequest(
-                reason='TypeError',
-                value=str(exc))
-        except ValueError as exc:
-            raise BadRequest(
-                reason='ValueError',
-                details=str(exc))
-
-    def _build(self, q, options):
         """
-        Process single q vs list of q(s).
-        Dispatch 'val' vs 'key:val' to corresponding functions.
-        Pass through es query options. (from, size ...)
+        try:
+            # process single q vs list of q(s).
+            # dispatch 'val' vs 'key:val' to corresponding functions.
+
+            if options.scopes is not None:
+                build_query = self._build_match_query
+            else:  # no scopes, only q
+                build_query = self._build_string_query
+
+            if isinstance(q, list):
+                if not q:  # es cannot execute empty multisearch
+                    raise ValueError("No search terms.")
+                search = AsyncMultiSearch()
+                for _q in q:
+                    _search = build_query(_q, options)
+                    _search = self._apply_extras(_search, options)
+                    search = search.add(_search)
+            else:  # str, int ...
+                search = build_query(str(q), options)
+                # pass through es query options. (from, size ...)
+                search = self._apply_extras(search, options)
+
+        except (TypeError, ValueError) as exc:
+            raise BadRequest(reason=type(exc).__name__, details=str(exc))
+        except IllegalOperation as exc:
+            raise BadRequest(reason=str(exc))  # ex. sorting by -_score
+        else:
+            return search
+
+    def default_string_query(self, q, options):
         """
+        Override this to customize default string query.
+        By default it implements a query string query.
+        """
+        search = AsyncSearch()
 
-        if options.scopes is not None:
-            build_query = self.build_match_query
-        else:  # no scopes, only q
-            build_query = self.build_string_query
+        if q == '__all__':
+            search = search.query()
 
-        if isinstance(q, list):
-            search = AsyncMultiSearch()
-            for _q in q:
-                _search = build_query(_q, options)
-                _search = self._apply_extras(_search, options)
-                search = search.add(_search)
-        else:  # str, int ...
-            search = build_query(str(q), options)
-            search = self._apply_extras(search, options)
+        elif q == '__any__' and self.allow_random_query:
+            search = search.query('function_score', random_score={})
+
+        else:  # elasticsearch default
+            search = search.query("query_string", query=str(q))
 
         return search
 
-    def default_string_query(self, q, options):
-        '''
-        Override this to customize default string query.
-        By default it implements a query string query.
-        '''
-
-        ## for extra query types:
-        #
-        # if q == 'case_1':
-        #    return case_1(q)
-        # elif q == 'case_2':
-        #    return case_2(q)
-        #
-        # return default_case(q)
-
-        return AsyncSearch().query("query_string", query=str(q))
-
     def default_match_query(self, q, scopes, options):
-        '''
+        """
         Override this to customize default match query.
         By default it implements a multi_match query.
-        '''
-        if isinstance(q, (str, int, float)):
-            query = Q('multi_match', query=str(q),
+        """
+
+        if isinstance(q, (str, int, float, bool)):
+            query = Q('multi_match', query=q,
                       operator="and", fields=scopes,
                       lenient=True)
 
@@ -128,7 +125,7 @@ class ESQueryBuilder(object):
 
         return AsyncSearch().query(query)
 
-    def build_string_query(self, q, options):
+    def _build_string_query(self, q, options):
         """ q + options -> query object
 
             options:
@@ -138,15 +135,12 @@ class ESQueryBuilder(object):
         search = AsyncSearch()
         userquery = options.userquery or ''
 
-        if self.user_query.has_query(userquery):
+        if not q:  # same empty q behavior as that of ES.
+            search = search.query("match_none")
+
+        elif self.user_query.has_query(userquery):
             userquery_ = self.user_query.get_query(userquery, q=q)
             search = search.query(userquery_)
-
-        elif q == '__all__':
-            search = search.query()
-
-        elif q == '__any__' and self.allow_random_query:
-            search = search.query('function_score', random_score={})
 
         else:  # customization here
             search = self.default_string_query(q, options)
@@ -157,13 +151,15 @@ class ESQueryBuilder(object):
 
         return search
 
-    def build_match_query(self, q, options):
+    def _build_match_query(self, q, options):
         """ q + options -> query object
 
             options:
                 scopes - default scopes
                 regexs - q -> scopes override
         """
+
+        # takes care of implied scopes from q
         scopes = options.scopes or []
         if isinstance(q, str):
             for regex, scope in options.regexs or []:

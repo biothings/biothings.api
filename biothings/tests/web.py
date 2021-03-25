@@ -118,7 +118,7 @@ class BiothingsWebAppTest(BiothingsDataTest, AsyncHTTPTestCase):
 
     @classmethod
     def setup_class(cls):
-        conf = os.getenv("TEST_PREFIX", 'config')
+        conf = os.getenv("TEST_CONF", 'config')
         cls.settings = BiothingESWebSettings(conf)
         prefix = cls.settings.API_PREFIX
         version = cls.settings.API_VERSION

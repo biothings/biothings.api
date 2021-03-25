@@ -506,18 +506,18 @@ class SnapshotManager(BaseManager):
                     "Couldn't setup snapshot environment '%s' because: %s" %
                     (env, e))
 
-    def snapshot(self, env, index, snapshot=None,
+    def snapshot(self, snapshot_env, index, snapshot=None,
                  steps=("pre", "snapshot", "post")):
         """
         Create a snapshot named "snapshot" (or, by default, same name as the index)
         from "index" according to environment definition (repository, etc...) "env".
         """
-        if env not in self.register:
-            raise ValueError("Unknown snapshot environment '%s'." % env)
+        if snapshot_env not in self.register:
+            raise ValueError("Unknown snapshot environment '%s'." % snapshot_env)
         build_doc = self.get_build_doc(index)
         if not build_doc:
             logging.warning("The index is not created by the hub.")
-        env_for_build = self[env].get_env(self.job_manager, build_doc)
+        env_for_build = self[snapshot_env].get_env(self.job_manager, build_doc)
         return env_for_build.snapshot(index, snapshot=snapshot, steps=steps)
 
     def snapshot_build(self, build_doc):

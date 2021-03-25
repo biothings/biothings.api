@@ -45,13 +45,14 @@ install_requires = [
     'elasticsearch>=6, <8',
     'elasticsearch-dsl>=6, <8',
     'elasticsearch-async>=6.2.0',
-    'aiohttp==3.6.2'    # for compatibility with elasticsearch-async==6.x
+    'singledispatchmethod; python_version < "3.8.0"',
+    'aiohttp==3.6.2',    # for compatibility with elasticsearch-async==6.x
+    'PyYAML>=5.1',
 ]
 
 # extra requirements for biothings.web
 web_extra_requires = [
     'msgpack>=0.6.1',   # support format=msgpack
-    'PyYAML>=5.1',      # support format=yaml
 ]
 
 # extra requirements to run biothings.hub

@@ -21,6 +21,7 @@ from biothings.utils.hub import (HubShell, get_hub_reloader, CommandDefinition, 
 from biothings.utils.jsondiff import make as jsondiff
 from biothings.utils.version import check_new_version, get_version
 from biothings.utils.common import get_class_from_classpath
+from biothings.hub.api.handlers.log import HubLogHandler
 
 # Keys used as category in pinfo (description of jobs submitted to JobManager)
 # Those are used in different places
@@ -378,6 +379,9 @@ class HubServer(object):
             # Then deal with read-write API
             self.routes.extend(
                 generate_api_routes(self.shell, self.api_endpoints))
+            from tornado.web import StaticFileHandler
+            self.routes.append(("/logs/(.*)", HubLogHandler, {"path": config.LOG_FOLDER}))
+            self.routes.append(("/log/(.+)", StaticFileHandler, {"path": config.LOG_FOLDER}))
             self.routes.append(("/", RootHandler, {
                 "features": self.features,
             }))

@@ -650,8 +650,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
         ]
         """
         data = {'q': '[1017, "1018"]',
-                'scopes': 'entrezgene',
-                'jsoninput': 'true'}
+                'scopes': 'entrezgene'}
         res = self.request('query', method='POST', data=data).json()
         assert len(res) == 2
         assert res[0]['_id'] == '1017'
@@ -687,7 +686,17 @@ class TestQueryString(BiothingsWebAppTest):
         res2 = self.query(q='__any__')
         assert res1['hits'][0]['_id'] != res2['hits'][0]['_id']
 
-    def test_02_querystring(self):
+    def test_02_none(self):
+        """ GET /query?q=
+        {
+            ...
+            "total": 0,
+            "hits" : [],
+        }
+        """
+        self.query(q="", hits=False)
+
+    def test_03_querystring(self):
         """ GET /query?q=taxid:9606
         {
             "max_score": 1,
@@ -804,7 +813,7 @@ class TestQueryMatch(BiothingsWebAppTest):
         ans = self.query(method='POST', json=payload)
         assert len(ans) == 10
 
-    def test_10(self):
+    def test_07(self):
         """
         [
             {
@@ -817,6 +826,17 @@ class TestQueryMatch(BiothingsWebAppTest):
         ]
         """
         self.request('query', method='POST', json={'q': [1017], 'scopes': '*'})
+
+    def test_08(self):
+        # related to sentry issue 2230892501
+        self.request('query', method='POST', data={'q': "", 'scopes': "symbol"}, expect=400)
+
+    def test_09(self):
+        self.request('query', method='POST', json={'q': [], 'scopes': "taxid"}, expect=400)
+
+    def test_10(self):
+        # for biothings client 0.2.3 compatibility
+        self.query(method='POST', json={'q': "8167, 8036", 'scopes': "taxid"})
 
     def test_20_nested(self):
         """
@@ -868,7 +888,7 @@ class TestQueryMatch(BiothingsWebAppTest):
         ans = self.query(method='POST', json=payload)
         assert len(ans) == 1
 
-    def test_30_nested_invalid(self):
+    def test_22_nested_invalid(self):
         """
         {
             "code": 400,

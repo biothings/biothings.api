@@ -43,53 +43,89 @@ Handlers
 BaseHandler
 ===========
 
-.. autoclass:: biothings.web.api.helper.BaseHandler
+.. autoclass:: biothings.web.handlers.BaseHandler
     :members:
+
+FrontPageHandler
+----------------
+
+.. autoclass:: biothings.web.handlers.FrontPageHandler
+    :members:
+
+StatusHandler
+-------------
+
+.. autoclass:: biothings.web.handlers.StatusHandler
+    :members:
+
 
 BaseESRequestHandler
 ====================
 
-.. autoclass:: biothings.web.api.es.handlers.base_handler.BaseESRequestHandler
+.. autoclass:: biothings.web.handlers.BaseESRequestHandler
     :members:
 
 BiothingHandler
 ---------------
 
-.. autoclass:: biothings.web.api.es.handlers.biothing_handler.BiothingHandler
+.. autoclass:: biothings.web.handlers.BiothingHandler
     :members:
 
 QueryHandler
 ------------
 
-.. autoclass:: biothings.web.api.es.handlers.query_handler.QueryHandler
+.. autoclass:: biothings.web.handlers.QueryHandler
     :members:
 
-MetadataHandler
----------------
+MetadataFieldHandler
+--------------------
 
-.. autoclass:: biothings.web.api.es.handlers.metadata_handler.MetadataHandler
+.. autoclass:: biothings.web.handlers.MetadataFieldHandler
     :members:
 
-***************************
+
+MetadataSourceHandler
+---------------------
+
+.. autoclass:: biothings.web.handlers.MetadataSourceHandler
+    :members:
+
+ESRequestHandler
+----------------
+
+.. autoclass:: biothings.web.handlers.ESRequestHandler
+    :members:
+
+BaseAPIHandler
+==============
+
+.. autoclass:: biothings.web.handlers.BaseAPIHandler
+    :members:
+
+APISpecificationHandler
+-----------------------
+
+.. autoclass:: biothings.web.handlers.APISpecificationHandler
+    :members:
+
+********
+Pipeline
+********
+
 Elasticsearch Query Builder
-***************************
+===========================
 
-.. autoclass:: biothings.web.api.es.query_builder.ESQueries
+.. autoclass:: biothings.web.pipeline.ESQueryBuilder
     :members:
 
-.. autoclass:: biothings.web.api.es.query_builder.ESQueryBuilder
+Elasticsearch Query Execution
+=============================
+
+.. autoclass:: biothings.web.pipeline.ESQueryBackend
     :members:
 
-*******************
-Elasticsearch Query
-*******************
-
-.. autoclass:: biothings.web.api.es.query.ESQuery
-    :members:
-
-********************************
 Elasticsearch Result Transformer
-********************************
+================================
 
-.. autoclass:: biothings.web.api.es.transform.ESResultTransformer
+.. autoclass:: biothings.web.pipeline.ESResultTransform
     :members:

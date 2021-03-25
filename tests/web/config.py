@@ -18,6 +18,7 @@ ES_SCROLL_SIZE = 60
 # use a smaller size for testing
 QUERY_KWARGS['GET']['facet_size']['default'] = 3
 QUERY_KWARGS['GET']['facet_size']['max'] = 5
+QUERY_KWARGS['POST']['q']['jsoninput'] = True
 
 # *****************************************************************************
 # Elasticsearch Query Builder

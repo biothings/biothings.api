@@ -14,7 +14,7 @@ from tornado.web import Application
 
 from biothings.utils.web.userquery import ESUserQuery
 from biothings.web.handlers import BaseAPIHandler, BaseESRequestHandler
-from biothings.web.options import OptionSets
+from biothings.web.options import OptionsManager as OptionSets
 from biothings.web.utils import DevInfo, FieldNote
 
 from . import default as web_default
@@ -175,10 +175,8 @@ class BiothingWebSettings():
                 handler_options = handler.kwargs
                 setting_attr = '_'.join((handler_name, 'kwargs')).upper()
                 setting_options = getattr(self, setting_attr, {})
-                self.optionsets.add(handler_name, handler_options)
                 self.optionsets.add(handler_name, setting_options)
-                self.optionsets.groups[handler_name] = handler.kwarg_groups
-                self.optionsets.methods[handler_name] = handler.kwarg_methods
+                self.optionsets.add(handler_name, handler_options, handler.kwarg_groups)
             if '{typ}' in pattern:
                 if not issubclass(handler, BaseESRequestHandler):
                     raise BiothingConfigError()

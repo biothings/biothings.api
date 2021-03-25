@@ -26,3 +26,4 @@ node_modules
 
 # testing
 config.py
+.pytest_cache/

@@ -107,22 +107,22 @@ COMMON_KWARGS = {
 }
 ANNOTATION_KWARGS = {
     '*': COMMON_KWARGS.copy(),
-    'GET': {'id': {'type': str, 'path': 0}},
-    'POST': {'ids': {'type': list, 'max': 1000, 'required': True}}
+    'GET': {'id': {'type': str, 'path': 0, 'required': True}},
+    'POST': {'ids': {'type': list, 'max': 1000, 'required': True, 'strict': False}}
 }
 QUERY_KWARGS = {
     '*': COMMON_KWARGS.copy(),
-    'GET': {'q': {'type': str, 'default': '__all__', 'group': 'esqb'},
+    'GET': {'q': {'type': str, 'default': '__all__', 'group': 'esqb', 'strict': False},
             'aggs': {'type': list, 'max': 1000, 'group': 'esqb', 'alias': 'facets'},
-            'facet_size': {'type': int, 'default': 10, 'max': 1000, 'group': 'esqb', },
+            'facet_size': {'type': int, 'default': 10, 'max': 1000, 'group': 'esqb'},
             'from': {'type': int, 'max': 10000, 'group': 'esqb', 'alias': 'skip'},
             'userquery': {'type': str, 'group': 'esqb', 'alias': ['userfilter']},
             'sort': {'type': list, 'group': 'esqb', 'max': 1000},
             'explain': {'type': bool, 'group': 'esqb'},
             'fetch_all': {'type': bool, 'group': 'es'},
             'scroll_id': {'type': str, 'group': 'es'}},
-    'POST': {'q': {'type': list, 'required': True, 'group': 'esqb'},
-             'scopes': {'type': list, 'default': ['_id'], 'group': 'esqb', 'max': 1000}}
+    'POST': {'q': {'type': list, 'required': True, 'group': 'esqb', 'strict': False},
+             'scopes': {'type': list, 'default': ['_id'], 'group': 'esqb', 'max': 1000, 'strict': False}}
 }
 # *****************************************************************************
 # Elasticsearch Query Pipeline

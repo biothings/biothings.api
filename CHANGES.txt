@@ -1,3 +1,16 @@
+v0.9.1
+    Revise str -> list parsing for backward compatibility.
+
+v0.9.0
+    Add features to request argument parsing module.
+    Support YAML content-type parsing in request body.
+    Support batch query concurrency control.
+    Improve a few elasticsearch error responses.
+    Revise query builder customization hook.
+
+v0.8.5 (2021/1/7)
+    Improve es sniff stability under high load.
+
 v0.8.4 (2020/12/8)
     Expose a utility function for convenience.
 

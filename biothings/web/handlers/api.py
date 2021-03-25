@@ -21,16 +21,16 @@ from pprint import pformat
 from urllib.parse import (parse_qs, unquote_plus, urlencode, urlparse,
                           urlunparse)
 
-from tornado.escape import json_decode
-from tornado.web import HTTPError
-
+import yaml
 from biothings.utils.common import DateTimeJSONEncoder
 from biothings.utils.web.analytics import GAMixIn
 from biothings.utils.web.tracking import StandaloneTrackingMixin
-from biothings.web.options import OptionArgError
+from biothings.web.options import OptionError, ReqArgs
+from tornado.escape import json_decode
+from tornado.web import HTTPError
 
 from . import BaseHandler
-from .exceptions import BadRequest
+from .exceptions import BadRequest, EndRequest
 
 try:
     import msgpack
@@ -69,7 +69,10 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
     def initialize(self):
 
         self.args = {}  # processed args will be available here
+        self.args_query = {}  # query parameters in the URL
+        self.args_form = {}  # form-data and x-www-form-urlencoded
         self.args_json = {}  # applicatoin/json type body
+        self.args_yaml = {}  # applicatoin/yaml type body
         self.event = {
             'category': '{}_api'.format(self.web_settings.API_VERSION),
             'action': self.request.method,  # 'query_get', 'fetch_all', etc.
@@ -84,12 +87,12 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
 
             * Inputs are combined and then separated into functional catagories.
             * Duplicated query or body arguments will overwrite the previous value.
-            * JSON body input will not overwrite query arguments in URL.
-            * Path arguments can overwirte all other existing values.
 
         Extend to add more customizations.
         """
-        if self.request.headers.get('Content-Type', '').startswith('application/json'):
+        content_type = self.request.headers.get('Content-Type', '')
+
+        if content_type.startswith('application/json'):
             if not self.request.body:
                 raise HTTPError(400, reason=(
                     'Empty body is not a valid JSON. '
@@ -101,30 +104,44 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
             except json.JSONDecodeError:
                 raise HTTPError(400, reason='Invalid JSON body.')
 
-        if isinstance(self.args_json, dict):
-            args = dict(self.args_json)
-        else:  # json can also be a list & values
-            args = {}
+        elif content_type.startswith('application/yaml'):
+            try:
+                self.args_yaml = yaml.load(self.request.body, Loader=yaml.SafeLoader)
+            except (yaml.scanner.ScannerError, yaml.parser.ParserError) as err:
+                raise HTTPError(400, reason='Invalid YAML body.')
 
-        # url args can replace json args
-        args.update({key: self.get_argument(key)
-                     for key in self.request.arguments})
+        # pylint: disable=attribute-defined-outside-init
+        self.args_query = {
+            key: self.get_query_argument(key)
+            for key in self.request.query_arguments}
+        # pylint: disable=attribute-defined-outside-init
+        self.args_form = {
+            key: self.get_body_argument(key)
+            for key in self.request.body_arguments}
 
-        self.logger.debug("Incoming Requests:\n%s\n%s",
-                          self.request.uri, pformat(args, width=150))
+        regargs = ReqArgs(
+            ReqArgs.Path(
+                args=self.path_args,
+                kwargs=self.path_kwargs),
+            query=self.args_query,
+            form=self.args_form,
+            json_=self.args_json
+        )
+
+        # per request logging should not be combined in one message
+        # it's possible to encounter OptionError during parsing
+        self.logger.debug("%s %s\n%s", self.request.method, self.request.uri, regargs)
 
         if self.name:
-            options = self.web_settings.optionsets.get(self.name)
+            optionset = self.web_settings.optionsets.get(self.name)
             try:
                 # pylint: disable=attribute-defined-outside-init
-                self.args = options.parse(
-                    self.request.method, args,
-                    self.path_args, self.path_kwargs)
-            except OptionArgError as err:
+                self.args = optionset.parse(
+                    self.request.method, regargs)
+            except OptionError as err:
                 raise BadRequest(**err.info)
 
-        self.logger.debug("Processed Arguments:\n%s",
-                          pformat(self.args, width=150))
+            self.logger.debug("↓ (%s)\n%s", self.name, pformat(self.args, width=150))
 
     def write(self, chunk):
         """
@@ -205,6 +222,9 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
     def write_error(self, status_code, **kwargs):
 
         reason = kwargs.pop('reason', self._reason)
+        # "reason" is a reserved tornado keyword
+        # see RequestHandler.send_error
+        assert isinstance(reason, str)
         assert '\n' not in reason
 
         message = {
@@ -212,6 +232,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
             "success": False,
             "error": reason
         }
+        # add exception info
         if 'exc_info' in kwargs:
             exception = kwargs['exc_info'][1]
             message.update(self.parse_exception(exception))
@@ -222,7 +243,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         """
         Return customized error message basing on exception types.
         """
-        if isinstance(exception, BadRequest):
+        if isinstance(exception, EndRequest):
             if exception.kwargs:
                 return exception.kwargs
         return {}

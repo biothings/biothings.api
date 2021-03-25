@@ -32,7 +32,7 @@ class TestStatus(BiothingsWebAppTest):
             }
         }
         """
-        res = self.request('/status').json()
+        res = self.request('/status?dev').json()
         assert res['code'] == 200
         assert res['response']['found']
 
