@@ -731,6 +731,7 @@ class HubServer(object):
             return
 
         from biothings.hub.upgrade import BioThingsSystemUpgrade, ApplicationSystemUpgrade
+
         def get_upgrader(klass, folder):
             version = get_version(folder)
             if version:
@@ -738,6 +739,12 @@ class HubServer(object):
                 klass.GIT_REPO_URL = version["giturl"]
                 klass.DEFAULT_BRANCH = version["branch"]
                 return klass
+            else:
+                # set a flag to skip version checks, folder is likely not a git folder
+                _skip_list = getattr(self, 'upgrader_skip_folders', [])
+                if folder not in _skip_list:
+                    _skip_list.append(folder)
+                    setattr(self, 'upgrader_skip_folders', _skip_list)
 
         bt_upgrader_class = get_upgrader(BioThingsSystemUpgrade, config.biothings_folder)
         app_upgrader_class = get_upgrader(ApplicationSystemUpgrade, config.app_folder)
@@ -747,13 +754,24 @@ class HubServer(object):
 
         @asyncio.coroutine
         def check_code_upgrade():
-            self.logger.info("Checking for new code updates")
-            bt_new = check_new_version(config.biothings_folder)
-            try:
-                app_new = check_new_version(config.app_folder)
-            except Exception as e:
-                self.logger.warning("Can't check for new version: %s" % e)
+            _skip_list = getattr(self, 'upgrader_skip_folders', [])
+            if _skip_list and config.biothings_folder in _skip_list and config.app_folder in _skip_list:
+                # both folders cannot be checked for versions, exit now
                 return
+
+            self.logger.info("Checking for new code updates")
+            if config.biothings_folder in _skip_list:
+                bt_new = None
+            else:
+                bt_new = check_new_version(config.biothings_folder)
+            if config.app_folder in _skip_list:
+                app_new = None
+            else:
+                try:
+                    app_new = check_new_version(config.app_folder)
+                except Exception as e:
+                    self.logger.warning("Can't check for new version: %s" % e)
+                    return
             # enrich existing version information with an "upgrade" field.
             # note: we do that on config.conf, the actual config.py module,
             # *not* directly on config as it's a wrapper over config.conf
