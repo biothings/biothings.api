@@ -73,8 +73,7 @@ exp_dict_uid = ExpiringDict(max_size=1000, ttl=3600)
 
 def generate_unique_id(remote_ip: str, user_agent: str,
                        tm: Optional[int] = None):
-    """
-    Generates a unique user ID
+    """Generates a unique user ID
 
     Using the remote IP and client user agent, to produce a somewhat
     unique identifier for users. A UUID version 4 conforming to RFC 4122
