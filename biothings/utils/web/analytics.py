@@ -77,7 +77,7 @@ class ExpiringDict:
         return len(self.od)
 
 
-exp_dict_uid = ExpiringDict(max_size=1000, ttl=3600)
+exp_dict_uid = ExpiringDict(max_size=0, ttl=0)
 
 
 def generate_unique_id(remote_ip: str, user_agent: str,
@@ -138,7 +138,7 @@ class GAMixIn:
             remote_ip = _req.headers.get("X-Real-Ip", _req.headers.get("X-Forwarded-For", _req.remote_ip))
             user_agent = _req.headers.get("User-Agent", "")
             host = _req.headers.get("Host", "N/A")
-            this_user = generate_unique_id(remote_ip, user_agent)
+            this_user = generate_unique_id(remote_ip, user_agent, tm=0)
             user_agent = _q(user_agent)
             # compile measurement protocol string for google
             # first do the pageview hit type
