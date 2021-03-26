@@ -18,13 +18,23 @@ class ExpiringDict:
     # cleanup on contain/get, does not clean on set
 
     def __init__(self, max_size: int = 1000, ttl: int = 3600):
+        """
+        Initialize a self expiring Dictionary
+
+        Configure a maximum allowed size and a time to live on items.
+        When an item is accessed, the TTL is reset. Removes exired items
+        on access (but not on set)
+        Args:
+            max_size: Maximum number of items that can be stored
+            ttl: time to live for items, in seconds
+        """
         self.od = OrderedDict()  # {key: (v, t)} eldest in the front
         self.max_size = max_size
         self.ttl = ttl
 
     def _cleanup(self, stop_key):
         while True:
-            k, v = self.od.popitem(last=False)
+            k, _ = self.od.popitem(last=False)
             if k == stop_key:
                 return
 
@@ -63,13 +73,20 @@ exp_dict_uid = ExpiringDict(max_size=1000, ttl=3600)
 
 def generate_unique_id(remote_ip: str, user_agent: str,
                        tm: Optional[int] = None):
-    """Generates a unique user ID
+    """
+    Generates a unique user ID
 
     Using the remote IP and client user agent, to produce a somewhat
     unique identifier for users. A UUID version 4 conforming to RFC 4122
     is produced which is generally acceptable. It is not entirely random,
     but looks random enough to the outside. Using a hash func. the user
     info is completely anonymized.
+
+    Args:
+        remote_ip: Client IP address, IPv4 or IPv6
+        user_agent: User agent string of the client
+        tm: Optional timestamp, as the generation is time dependent, setting
+            this will make it as if the generation was done at the given time.
 
     """
     global exp_dict_uid
