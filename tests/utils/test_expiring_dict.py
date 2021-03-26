@@ -57,6 +57,12 @@ class TestExpiringDict:
         d['k2'] = 'v2'
         assert len(d.od) <= 1
 
+    def test_zero_size(self):
+        d = ExpiringDict(max_size=0)
+        d['k1'] = 'v1'
+        d['k2'] = 'v2'
+        assert len(d) == 0
+
     def test_max_size_same_key(self):
         d = ExpiringDict(max_size=1)
         d['k1'] = 'v1'

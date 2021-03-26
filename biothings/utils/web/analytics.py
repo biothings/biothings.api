@@ -64,8 +64,17 @@ class ExpiringDict:
             if key in self:
                 pass
             else:
-                self.od.popitem()
-        self.od[key] = [value, time.time()]
+                try:
+                    self.od.popitem()
+                except KeyError:
+                    pass
+        if self.max_size > 0:
+            self.od[key] = [value, time.time()]
+        else:
+            pass  # just fail silently
+
+    def __len__(self):
+        return len(self.od)
 
 
 exp_dict_uid = ExpiringDict(max_size=1000, ttl=3600)
