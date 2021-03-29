@@ -497,6 +497,7 @@ class FTPDumper(BaseDumper):
         # else:
         known_optimal_sizes = {
             'ftp.ncbi.nlm.nih.gov': 33554432,
+            # see https://ftp.ncbi.nlm.nih.gov/README.ftp for reason
             # add new ones above
             'DEFAULT': 8192,
         }
