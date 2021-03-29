@@ -19,6 +19,9 @@ from biothings.hub.dataload.uploader import set_pending_to_upload
 logging = btconfig.logger
 
 
+from typing import Optional
+
+
 class DumperException(Exception):
     pass
 
@@ -483,9 +486,26 @@ class FTPDumper(BaseDumper):
     FTP_USER = ''
     FTP_PASSWD = ''
     FTP_TIMEOUT = 10 * 60.0  # we want dumper to timout if necessary
+    BLOCK_SIZE: Optional[int] = None  # default is still kept at 8KB
 
     # TODO: should we add a __del__ to make sure to close ftp connection ?
     # ftplib has a context __enter__, but we don't use it that way ("with ...")
+
+    def _get_optimal_buffer_size(self) -> int:
+        if self.BLOCK_SIZE is not None:
+            return self.BLOCK_SIZE
+        # else:
+        known_optimal_sizes = {
+            'ftp.ncbi.nlm.nih.gov': 33554432,
+            # see https://ftp.ncbi.nlm.nih.gov/README.ftp for reason
+            # add new ones above
+            'DEFAULT': 8192,
+        }
+        normalized_host = self.FTP_HOST.lower()
+        if normalized_host in known_optimal_sizes:
+            return known_optimal_sizes[normalized_host]
+        else:
+            return known_optimal_sizes['DEFAULT']
 
     def prepare_client(self):
         # FTP side
@@ -505,11 +525,14 @@ class FTPDumper(BaseDumper):
     def download(self, remotefile, localfile):
         self.prepare_local_folders(localfile)
         self.logger.debug("Downloading '%s' as '%s'" % (remotefile, localfile))
+        block_size = self._get_optimal_buffer_size()
         if self.need_prepare():
             self.prepare_client()
         try:
             with open(localfile, "wb") as out_f:
-                self.client.retrbinary('RETR %s' % remotefile, out_f.write)
+                self.client.retrbinary(cmd='RETR %s' % remotefile,
+                                       callback=out_f.write,
+                                       blocksize=block_size)
             # set the mtime to match remote ftp server
             response = self.client.sendcmd('MDTM ' + remotefile)
             code, lastmodified = response.split()
