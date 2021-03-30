@@ -110,7 +110,11 @@ def check_new_version(folder, max_commits=10):
         return
 
     try:
-        repo_url = re.sub(r"\.git$", "", repo.remotes.origin.url)
+        # Get URL from actual remote branch name that is being tracked.
+        # more details: see comments in get_version
+        remote_name = repo.active_branch.tracking_branch().remote_name
+        url = repo.remote(remote_name).url
+        repo_url = re.sub(r"\.git$", "", url)
     except Exception as e:
         logging.debug("Can't determine repository URL: %s" % e)
         repo_url = None
@@ -161,7 +165,14 @@ def get_version(folder):
     except InvalidGitRepositoryError:
         logging.warning("Not a valid git repository for folder '%s', skipped for getting its version." % folder)
         return
-    url = repo.remotes.origin.url
+    try:
+        # Get URL from actual remote branch name that is being tracked.
+        # do not assume that the active branch is tracking origin,
+        # or if it is tracking anything, or if the alias origin exists
+        remote_name = repo.active_branch.tracking_branch().remote_name
+        url = repo.remote(remote_name).url
+    except:  # it is possible that the active branch is not tracking anything
+        url = None
     try:
         commit = repo.head.object.hexsha[:6]
         commitdate = repo.head.object.committed_datetime.isoformat()
