@@ -439,7 +439,7 @@ class JobManager(object):
         if not os.path.exists(config.RUN_DIR):
             logger.info("Creating RUN_DIR directory '%s'", config.RUN_DIR)
             os.makedirs(config.RUN_DIR)
-        self.loop = loop
+        self.loop = loop  # usu. it's the asyncio event loop
         self.num_workers = num_workers
         if self.num_workers == 0:
             logger.debug("Adjusting number of worker to 1")
@@ -448,10 +448,18 @@ class JobManager(object):
         self.process_queue = process_queue or concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
         # TODO: limit the number of threads (as argument) ?
         self.thread_queue = thread_queue or concurrent.futures.ThreadPoolExecutor(max_workers=self.num_threads)
+
+        # FIXME: In Py38 using an executor that is not a ThreadPoolExecutor is
+        #  deprecated. And it seems in Py39 , it must be a ThreadPoolExecutor,
+        #  using a ProcessPoolExecutor will trigger an error.
         if default_executor == "thread":
             self.loop.set_default_executor(self.thread_queue)
         else:
             self.loop.set_default_executor(self.process_queue)
+        # this lock is acquired when defer_to_process/thread is invoked
+        # and released when the inner coroutine is run
+        #  purpose being: "control job submission", as it only creates a new
+        #  "task" when the previous one has completed checking its constraints
         self.ok_to_run = asyncio.Semaphore()
         # auto-creata RUN_DIR
         if not os.path.exists(config.RUN_DIR):
@@ -683,6 +691,8 @@ class JobManager(object):
                 try:
                     # consume future, just to trigger potential exceptions
                     r = f.result()
+                except concurrent.futures.process.BrokenProcessPool:
+                    print("caught exception")
                 finally:
                     # whatever the result we want to make sure to clean the job registry
                     # to keep it sync with actual running jobs
