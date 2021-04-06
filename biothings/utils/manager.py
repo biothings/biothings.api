@@ -699,6 +699,15 @@ class JobManager(object):
             copy_pinfo.pop("__predicates__", None)
             self.jobs[job_id] = copy_pinfo
 
+            try:
+                # test to see if Executor still alive
+                _ = self.process_queue.submit(int, 1)
+            except concurrent.futures.process.BrokenProcessPool as e:
+                # recreate if not
+                logger.warning("Broken Process Pool: %s, restarting.", e)
+                self.process_queue = concurrent.futures.ProcessPoolExecutor(
+                    max_workers=self.num_workers
+                )
             res = self.loop.run_in_executor(
                 self.process_queue,
                 partial(do_work, job_id, "process", copy_pinfo, func, *args)
