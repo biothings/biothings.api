@@ -25,6 +25,9 @@ from biothings.utils.common import timesofar, get_random_string, sizeof_fmt
 
 
 def track(func):
+    # only wraps do_work defined later
+    # seems to create a pickled dict for process/thread info (pinfo) and
+    # some other metadata
     @wraps(func)
     def func_wrapper(*args, **kwargs):
         job_id = args[0]
@@ -84,6 +87,7 @@ def track(func):
             # add random chars: 2 jobs handled by the same slot (pid or thread)
             # would override filename otherwise
             fn = "%s_%s" % (_id, job_id)
+            # despite saying "job" "id" this is pid/thread name
             worker["job"]["id"] = _id
             pidfile = os.path.join(config.RUN_DIR, "%s.pickle" % fn)
             pickle.dump(worker, open(pidfile, "wb"))
@@ -106,6 +110,8 @@ def track(func):
 
 @track
 def do_work(job_id, ptype, pinfo=None, func=None, *args, **kwargs):
+    # purpose: to be wrapped by @track
+    # only used in defer_to_process / defer_to_thread in JobManager
     # pinfo is optional, and func is not. and args and kwargs must
     # be after func. just to say func is mandatory, despite what the
     # signature says
@@ -117,10 +123,13 @@ def do_work(job_id, ptype, pinfo=None, func=None, *args, **kwargs):
 
 
 def find_process(pid):
+    # It seems that it's only used once to find the hub process
+    # I wonder why not just try to use psutil.Process(pid)
     g = psutil.process_iter()
     for p in g:
         if p.pid == pid:
             break
+    # apparently a non-existent pid could trigger a NameError
     return p
 
 
@@ -477,6 +486,7 @@ class JobManager(object):
         self.max_memory_usage = max_memory_usage
         self.avail_memory = int(psutil.virtual_memory().available)
         self._phub = None
+        # Process obj. for hub (process which JobManager is in)
         self.auto_recycle = auto_recycle  # active
         self.auto_recycle_setting = auto_recycle  # keep setting if we need to restore it its orig value
         self.jobs = {}  # all active jobs (thread/process)
@@ -691,8 +701,6 @@ class JobManager(object):
                 try:
                     # consume future, just to trigger potential exceptions
                     r = f.result()
-                except concurrent.futures.process.BrokenProcessPool:
-                    print("caught exception")
                 finally:
                     # whatever the result we want to make sure to clean the job registry
                     # to keep it sync with actual running jobs
