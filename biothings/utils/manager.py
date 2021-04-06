@@ -721,6 +721,8 @@ class JobManager(object):
             # do_work will create and clean up the pickle files unless
             # the worker process gets killed unexpectedly
 
+            # callback to consume executor future to trigger exception
+            # and remove the job from self.jobs
             def ran(f):
                 try:
                     # consume future, just to trigger potential exceptions
@@ -739,10 +741,16 @@ class JobManager(object):
             if type(res) == asyncio.Task:
                 res = yield from res
             future.set_result(res)
+
+        # lock is released in run coroutine
         yield from self.ok_to_run.acquire()
         f = asyncio.Future()
 
         def runned(innerf, job_id):
+            # not exactly inner future, if f is the most outside future
+            # and res is the innermost future, then innerf is in-between
+            # res is an asyncio future that represents the concurrent.futures.
+            # Future from the Executor
             if innerf.exception():
                 f.set_exception(innerf.exception())
         job_id = get_random_string()
