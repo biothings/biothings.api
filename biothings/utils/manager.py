@@ -455,12 +455,18 @@ class JobManager(object):
             self.num_workers = 1
         self.num_threads = num_threads or self.num_workers
         self.process_queue = process_queue or concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
+        # notes on fixing BPE (BrokenProcessPool Exception):
+        # whenever a process exits unexpectedly, BPE is raised, and while that
+        # all the processes in the pool gets a SIGTERM from the management
+        # thread (see _queue_management_worker in concurrent.futures.process)
         # TODO: limit the number of threads (as argument) ?
         self.thread_queue = thread_queue or concurrent.futures.ThreadPoolExecutor(max_workers=self.num_threads)
 
         # FIXME: In Py38 using an executor that is not a ThreadPoolExecutor is
         #  deprecated. And it seems in Py39 , it must be a ThreadPoolExecutor,
         #  using a ProcessPoolExecutor will trigger an error.
+        #  However, loop.run_in_executor still accepts ProcessPoolExecutor
+        #  see https://bugs.python.org/issue34075
         if default_executor == "thread":
             self.loop.set_default_executor(self.thread_queue)
         else:
@@ -692,6 +698,7 @@ class JobManager(object):
             copy_pinfo = copy.deepcopy(pinfo)
             copy_pinfo.pop("__predicates__", None)
             self.jobs[job_id] = copy_pinfo
+
             res = self.loop.run_in_executor(
                 self.process_queue,
                 partial(do_work, job_id, "process", copy_pinfo, func, *args)
@@ -704,6 +711,9 @@ class JobManager(object):
                 finally:
                     # whatever the result we want to make sure to clean the job registry
                     # to keep it sync with actual running jobs
+                    # -- actually it can't the job_id is added in
+                    # defer_to_process, but this is inside the try-finally
+                    # block indefer_to_process.run.ran (names are hard, I know)
                     self.jobs.pop(job_id)
             res.add_done_callback(ran)
             res = yield from res
