@@ -513,7 +513,9 @@ class JobManager(object):
                          "source": "maintenance",
                          "step": "",
                          "description": "Stopping process queue"}
+                # await on coroutine
                 j = yield from self.defer_to_thread(pinfo, self.process_queue.shutdown)
+                # await on the future to be done
                 yield from j
                 if recycling:
                     # now replace
@@ -704,6 +706,10 @@ class JobManager(object):
                 _ = self.process_queue.submit(int, 1)
             except concurrent.futures.process.BrokenProcessPool as e:
                 # recreate if not
+                # we don't need to care about the remaining tasks because
+                # they'd all be SIGTERM'd anyways. But ...
+                # FIXME: cleanup self.jobs so that remaining process jobs
+                #  are removed
                 logger.warning("Broken Process Pool: %s, restarting.", e)
                 self.process_queue = concurrent.futures.ProcessPoolExecutor(
                     max_workers=self.num_workers
