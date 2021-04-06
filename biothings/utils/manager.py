@@ -712,6 +712,8 @@ class JobManager(object):
                 self.process_queue,
                 partial(do_work, job_id, "process", copy_pinfo, func, *args)
             )
+            # do_work will create and clean up the pickle files unless
+            # the worker process gets killed unexpectedly
 
             def ran(f):
                 try:
