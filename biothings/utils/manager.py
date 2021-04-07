@@ -496,6 +496,12 @@ class JobManager(object):
         self.auto_recycle = auto_recycle  # active
         self.auto_recycle_setting = auto_recycle  # keep setting if we need to restore it its orig value
         self.jobs = {}  # all active jobs (thread/process)
+        # _process_job_ids is for storing Job IDs of calls deferred in process
+        # executor, so that when Executor is recreated, staled Job IDs can
+        # be removed
+        # FIXME: drop this when structure of pinfo is clear so we can rely on
+        #  that instead of storing _process_job_ids
+        self._process_job_ids = set()
         self._pchildren = []
         self.clean_staled()
 
@@ -700,6 +706,7 @@ class JobManager(object):
             copy_pinfo = copy.deepcopy(pinfo)
             copy_pinfo.pop("__predicates__", None)
             self.jobs[job_id] = copy_pinfo
+            self._process_job_ids.add(job_id)
 
             try:
                 # test to see if Executor still alive
@@ -708,12 +715,14 @@ class JobManager(object):
                 # recreate if not
                 # we don't need to care about the remaining tasks because
                 # they'd all be SIGTERM'd anyways. But ...
-                # FIXME: cleanup self.jobs so that remaining process jobs
-                #  are removed
                 logger.warning("Broken Process Pool: %s, restarting.", e)
                 self.process_queue = concurrent.futures.ProcessPoolExecutor(
                     max_workers=self.num_workers
                 )
+                for stale_id in self._process_job_ids:
+                    self.jobs.pop(stale_id, None)  # in the rare case that
+                    # somehow they de-sync
+                self._process_job_ids.clear()
             res = self.loop.run_in_executor(
                 self.process_queue,
                 partial(do_work, job_id, "process", copy_pinfo, func, *args)
@@ -734,6 +743,7 @@ class JobManager(object):
                     # defer_to_process, but this is inside the try-finally
                     # block indefer_to_process.run.ran (names are hard, I know)
                     self.jobs.pop(job_id)
+                    self._process_job_ids.discard(job_id)
             res.add_done_callback(ran)
             res = yield from res
             # process could generate other parallelized jobs and return a Future/Task
