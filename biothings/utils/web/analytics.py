@@ -83,6 +83,8 @@ def generate_unique_id_v2(remote_ip: str, user_agent: str):
 # without mixing in
 class GAMixIn:
     def ga_track(self, event={}):
+        # to control UID generation behavior to use the new algorithm
+        # explicitly set GA_UID_GENERATOR_VERSION = 2 in config
         no_tracking = self.get_argument('no_tracking', None)
         is_prod = not self.settings.get('debug', False)
         if not no_tracking and is_prod and self.web_settings.GA_ACCOUNT:
