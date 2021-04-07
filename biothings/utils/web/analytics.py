@@ -1,13 +1,14 @@
 ''' For Google Analytics tracking in web '''
 import hashlib
-import uuid
-from typing import Union
-from ipaddress import ip_address, IPv4Address, IPv6Address
-from tornado.httpclient import HTTPRequest, AsyncHTTPClient
 import re
-from random import randint
+import uuid
+from ipaddress import ip_address, IPv4Address, IPv6Address
 from operator import itemgetter
+from random import randint
+from typing import Union
 from urllib.parse import quote_plus as _q
+
+from tornado.httpclient import HTTPRequest, AsyncHTTPClient
 
 RE_LOCALE = re.compile(r'(^|\s*,\s*)([a-zA-Z]{1,8}(-[a-zA-Z]{1,8})*)\s*(;\s*q\s*=\s*(1(\.0{0,3})?|0(\.[0-9]{0,3})))?', re.I)
 
