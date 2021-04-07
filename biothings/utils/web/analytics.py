@@ -1,4 +1,8 @@
 ''' For Google Analytics tracking in web '''
+import hashlib
+import uuid
+from typing import Union
+from ipaddress import ip_address, IPv4Address, IPv6Address
 from tornado.httpclient import HTTPRequest, AsyncHTTPClient
 import re
 from random import randint
@@ -40,6 +44,40 @@ def generate_unique_id(user_agent='', screen_resolution='', screen_color_depth='
     return ((randint(0, 0x7fffffff) ^ generate_hash(user_agent, screen_resolution, screen_color_depth))
             & 0x7fffffff)
 
+
+def generate_unique_id_v2(remote_ip: str, user_agent: str):
+    """
+    Generates a unique user ID
+
+    Using the remote IP and client user agent, to produce a somewhat
+    unique identifier for users. A UUID version 4 conforming to RFC 4122
+    is produced which is generally acceptable. It is not entirely random,
+    but looks random enough to the outside. Using a hash func. the user
+    info is completely anonymized.
+
+    Args:
+        remote_ip: Client IP address as a string, IPv4 or IPv6
+        user_agent: User agent string of the client
+    """
+
+    try:
+        rip: Union[IPv4Address, IPv6Address] = ip_address(remote_ip)
+        ip_packed = rip.packed
+    except ValueError:  # in the weird case I don't get an IP
+        ip_packed = randint(0, 0xffffffff).to_bytes(4, 'big')  # nosec
+
+    h = hashlib.blake2b(digest_size=16, salt=b'biothings')
+    h.update(ip_packed)
+    h.update(user_agent.encode('utf-8', errors='replace'))
+
+    d = bytearray(h.digest())
+    # truncating hash is not that bad, fixing some bits should be okay, too
+    d[6] = 0x40 | (d[6] & 0x0f)  # set version
+    d[8] = 0x80 | (d[8] & 0x3f)  # set variant
+    u = str(uuid.UUID(bytes=bytes(d)))
+    return u
+
+
 # This is a mixin for biothing handlers, and references class variables from that class, cannot be used
 # without mixing in
 class GAMixIn:
@@ -54,6 +92,8 @@ class GAMixIn:
             user_agent = _req.headers.get("User-Agent", "")
             host = _req.headers.get("Host", "N/A")
             this_user = generate_unique_id(user_agent=user_agent)
+            if getattr(self.web_settings, 'GA_UID_GENERATOR_VERSION', 1) == 2:
+                this_user = generate_unique_id_v2(remote_ip, user_agent)
             user_agent = _q(user_agent)
             langua = get_user_language(ln)
             # compile measurement protocol string for google
