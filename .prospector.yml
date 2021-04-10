@@ -1,0 +1,3 @@
+pep257:
+  disable:
+    - D212  # Multi-line docstring summary should start at the first line
