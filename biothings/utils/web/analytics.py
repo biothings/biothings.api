@@ -1,4 +1,8 @@
 ''' For Google Analytics tracking in web '''
+
+from tornado.httpclient import HTTPRequest, AsyncHTTPClient
+from tornado.escape import url_escape
+
 import hashlib
 import re
 import uuid
@@ -99,11 +103,26 @@ class GAMixIn:
                 this_user = generate_unique_id_v2(remote_ip, user_agent)
             user_agent = _q(user_agent)
             langua = get_user_language(ln)
+            referrer = _req.headers.get("Referer", None)  # headers is c.i.
+            # FIXME: in the case that the encoded value is actually more than
+            #  2048 bytes (GA Limit), this truncate may break some things.
+            # Typically we don't have to worry about it because most browsers
+            # only send the host part now, not the full URL.
+            # Legitimate requests from modern browsers is unlikely to be over
+            # the limit, as domain names are limited to 255 chars. An attacker
+            # might try to put really big headers here but we don't need to
+            # worry about it.
+            # Use 2047 here in case GA counts a \0 internally
+            if referrer:
+                referrer = url_escape(referrer)[:2047]
             # compile measurement protocol string for google
             # first do the pageview hit type
             request_body = 'v=1&t=pageview&tid={}&ds=web&cid={}&uip={}&ua={}&an={}&av={}&dh={}&dp={}'.format(
                 self.web_settings.GA_ACCOUNT, this_user, remote_ip, user_agent,
                 self.web_settings.GA_TRACKER_URL, self.web_settings.API_VERSION, host, path)
+            # add referrer
+            if referrer:
+                request_body += f'&dr={referrer}'
             # add the event, if applicable
             if event:
                 request_body += '\nv=1&t=event&tid={}&ds=web&cid={}&uip={}&ua={}&an={}&av={}&dh={}&dp={}'.format(
@@ -113,6 +132,8 @@ class GAMixIn:
                 request_body += '&ec={}&ea={}'.format(event['category'], event['action'])
                 if event.get('label', False) and event.get('value', False):
                     request_body += '&el={}&ev={}'.format(event['label'], event['value'])
+                if referrer:
+                    request_body += f'&dr={referrer}'
 
             req = HTTPRequest('http://www.google-analytics.com/batch', method='POST', body=request_body)
 
