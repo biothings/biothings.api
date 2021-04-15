@@ -1420,7 +1420,7 @@ class BuilderManager(BaseManager):
                             if not srcd['download']['status'] == "success":
                                 srcd = None
                         if srcd and srcd.get('upload'):
-                            for sub_name, sub in srcd['upload']['jobs'].items():
+                            for sub in srcd['upload']['jobs'].values():
                                 if not sub['status'] == "success":
                                     srcd = None
                                     break
