@@ -1391,6 +1391,9 @@ class BuilderManager(BaseManager):
                 # TODO: this will get big... but needs to be generic
                 # because we handle different hub db backends (or it needs to be a
                 # specific helper func to be defined all backends
+                # FIXME: this gets slower as hub gets more builds, we are
+                #  finding all builds of all build configs when /whatsnew gets
+                #  requested
                 builds = dbbuild.find({"build_config.name": build_name})
                 builds = sorted(builds, key=lambda e: e["started_at"])
                 if builds:
@@ -1412,6 +1415,20 @@ class BuilderManager(BaseManager):
             for src_name, data in meta_srcs.items():
                 try:
                     srcd = dbdump.find_one({"_id": src_name})
+                    try:
+                        if srcd and srcd.get('download'):
+                            if not srcd['download']['status'] == "success":
+                                srcd = None
+                        if srcd and srcd.get('upload'):
+                            for sub_name, sub in srcd['upload']['jobs'].items():
+                                if not sub['status'] == "success":
+                                    srcd = None
+                                    break
+                    except KeyError as e:
+                        self.logger.warning(
+                            "whatsnew: src_dump:%s missing keys: %s, not touching",
+                            src_name, e
+                        )
                     if srcd and not srcd.get("download") and srcd.get(
                             "upload"):
                         # this is a collection only source, find all releases in sub sources, hopefully all are the same
