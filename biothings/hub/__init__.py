@@ -179,8 +179,8 @@ def get_schedule(loop):
     return "\n".join(out)
 
 
-@asyncio.coroutine
-def start_ssh_server(loop,
+# @asyncio.coroutine
+async def start_ssh_server(loop,
                      name,
                      passwords,
                      keys=['bin/ssh_host_key'],
@@ -199,11 +199,16 @@ def start_ssh_server(loop,
                     func=shell.__class__.refresh_commands,
                     start=True,
                     loop=loop)
-    yield from asyncssh.create_server(HubSSHServer,
-                                      host,
-                                      port,
-                                      loop=loop,
-                                      server_host_keys=keys)
+    # yield from asyncssh.create_server(HubSSHServer,
+    #                                   host,
+    #                                   port,
+    #                                   loop=loop,
+    #                                   server_host_keys=keys)
+    await asyncssh.create_server(HubSSHServer,
+                                 host,
+                                 port,
+                                 #loop=loop,
+                                 server_host_keys=keys)
 
 
 class HubCommands(OrderedDict):
