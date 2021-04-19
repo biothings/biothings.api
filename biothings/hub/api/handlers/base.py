@@ -2,6 +2,10 @@ import asyncio
 from tornado.web import RequestHandler
 import logging
 import datetime
+
+# pandas.io.json encoder to deal with non-json compliant values NaN, Inf
+# (based on ujson, but pandas has its own way to deal with these values)
+# see https://github.com/biothings/biothings.api/commit/59c0d78f758018b0d87836657a2b5d1a700503a1
 import pandas.io.json as pdjson
 
 from biothings import config
