@@ -61,7 +61,6 @@ hub_requires = [
     'aiocron',          # setup scheduled jobs
     'aiohttp==3.6.2',   # for compatibility with elasticsearch-async==6.x
     'asyncssh==2.5.0',  # needs libffi-dev installed (apt-get)
-    'tornado==6.1.0',   # more this to general requirements when tested on web
     'pymongo',
     'psutil',
     'jsonpointer',      # for utils.jsonpatch
