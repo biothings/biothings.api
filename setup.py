@@ -75,7 +75,8 @@ hub_requires = [
     'sockjs-tornado==1.0.7',   # websocket server for HubServer
     'jsonschema>=2.6.0',
     'pip',              # auto-install requirements from plugins
-    'pandas==1.0.1',    # json with inf/nan and more to come
+    # 'pandas==1.0.1',    # json with inf/nan and more to come (replaced by orjson below now)
+    'orjson>=3.5.2',    # this is a faster json lib support inf/nan and datetime
     'yapf',             # code reformatter, better results than autopep8
     'requests-aws4auth',    # aws s3 auth requests for autohub
     'networkx>=2.1',            # datatransform
