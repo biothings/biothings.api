@@ -60,7 +60,8 @@ hub_requires = [
     'beautifulsoup4',   # used in dumper.GoogleDriveDumper
     'aiocron',          # setup scheduled jobs
     'aiohttp==3.6.2',   # for compatibility with elasticsearch-async==6.x
-    'asyncssh==1.18.0', # needs libffi-dev installed (apt-get)
+    'asyncssh==2.5.0',  # needs libffi-dev installed (apt-get)
+    'tornado==6.1.0',   # more this to general requirements when tested on web
     'pymongo',
     'psutil',
     'jsonpointer',      # for utils.jsonpatch
@@ -71,7 +72,7 @@ hub_requires = [
     'dill',             # a pickle alternative with extra object type support
     'pyinotify; sys_platform == "linux"',        # Linux-only; used in utils.hub.PyInotifyHubReloader
     'prettytable',      # diff report renderer
-    'sockjs-tornado==1.0.6',   # websocket server for HubServer
+    'sockjs-tornado==1.0.7',   # websocket server for HubServer
     'jsonschema>=2.6.0',
     'pip',              # auto-install requirements from plugins
     'pandas==1.0.1',    # json with inf/nan and more to come
