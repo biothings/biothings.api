@@ -40,7 +40,7 @@ if commit_hash or num_commits:
 # very minimal requirement for running biothings.web
 install_requires = [
     'requests>=2.21.0',
-    'tornado==5.1.1',
+    'tornado==6.1.0',
     'gitpython>=3.1.0',
     'elasticsearch>=6, <8',
     'elasticsearch-dsl>=6, <8',
@@ -79,7 +79,7 @@ hub_requires = [
     'yapf',             # code reformatter, better results than autopep8
     'requests-aws4auth',    # aws s3 auth requests for autohub
     'networkx>=2.1',            # datatransform
-    'biothings_client==0.2.1'   # datatransform (api client)
+    'biothings_client>=0.2.6'   # datatransform (api client)
 ]
 
 # extra requirements for building docs
