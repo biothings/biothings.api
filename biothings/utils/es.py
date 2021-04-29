@@ -71,7 +71,7 @@ class IndexerException(Exception):
 
 class ESIndexer():
     def __init__(self, index, doc_type, es_host, step=10000,
-                 number_of_shards=10, number_of_replicas=0,
+                 number_of_shards=1, number_of_replicas=0,
                  check_index=True, **kwargs):
         self.es_host = es_host
         self._es = get_es(es_host, **kwargs)
@@ -174,9 +174,22 @@ class ESIndexer():
             extra_settings = extra_settings or {}
             body["settings"].update(extra_settings)
             if mapping:
+
+                # the mapping is passed in for elasticsearch 6
+                # if the remote server is of elasticsearch version 7 or later
+                # drop the doc_type first level key as it is no longer supported
+                self._populate_es_version()
+                if self._es_version > 6:
+                    if len(mapping) == 1 and next(iter(mapping)) not in ('properties', 'dynamic', '_meta'):
+                        mapping = next(iter(mapping.values()))
+
                 mapping = {"mappings": mapping}
                 body.update(mapping)
             self._es.indices.create(index=self._index, body=body)
+
+    def _populate_es_version(self):
+        if not hasattr(self, "_es_version"):
+            self._es_version = int(self._es.info()['version']['number'].split('.')[0])
 
     @wrapper
     def exists_index(self):
@@ -189,6 +202,8 @@ class ESIndexer():
         self._es.index(self._index, self._doc_type, doc, id=id, params={"op_type": action})
 
     def index_bulk(self, docs, step=None, action='index'):
+
+        self._populate_es_version()
         index_name = self._index
         doc_type = self._doc_type
         step = step or self.step
@@ -201,6 +216,8 @@ class ESIndexer():
                 "_type": doc_type,
                 "_op_type": action,
             })
+            if self._es_version > 6:
+                ndoc.pop("_type")
             return ndoc
         actions = (_get_bulk(doc) for doc in docs)
         num_ok, errors = helpers.bulk(self._es, actions, chunk_size=step)
@@ -466,7 +483,7 @@ class ESIndexer():
         # assert len(res['hits']['hits']) == 0
         assert not res['hits']['hits']
 
-        while 1:
+        while True:
             # if verbose:
             #     t1 = time.time()
             res = self._es.scroll(res['_scroll_id'], scroll=scroll)
@@ -899,7 +916,7 @@ class Collection(object):
 
     def update_one(self, query, what, upsert=False):
         assert (len(what) == 1 and ("$set" in what or "$unset" in what or "$push" in what)), \
-               "$set/$unset/$push operators not found"
+            "$set/$unset/$push operators not found"
         doc = self.find_one(query)
         if doc:
             if "$set" in what:
