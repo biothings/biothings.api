@@ -20,6 +20,7 @@ import requests
 from tornado.ioloop import IOLoop
 from tornado.testing import AsyncHTTPTestCase
 
+from biothings.utils.common import traverse
 from biothings.web.settings import BiothingESWebSettings
 
 
@@ -110,6 +111,34 @@ class BiothingsDataTest:
         except BaseException:  # pylint: disable=bare-except
             assert False, 'Not a valid Msgpack binary.'
         return dic
+
+    @staticmethod
+    def value_in_result(value, result: Union[dict, list], key: str) -> bool:
+        """
+        Check if value is in result at specific key
+
+        Elasticsearch does not care if a field has one or more values (arrays),
+        so you may get a search with multiple values in one field.
+        You were expecting a result of type T but now you have a List[T] which
+        is bad.
+        In testing, usually any one element in the list eq. to the value you're
+        looking for, you don't really care which.
+        This helper function checks if the value is at a key, regardless
+        of the details of nesting, so you can just do this:
+            assert self.value_in_result(value, result, 'where.it.should.be')
+
+        Args:
+            value: value to look for
+            result: dict or list of input, most likely from the APIs
+            key: dot delimited key notation
+        Returns:
+            boolean indicating whether the value is found at the key
+        """
+        res_at_key = []
+        for k, v in traverse(result, leaf_node=True):
+            if k == key:
+                res_at_key.append(v)
+        return value in res_at_key
 
 
 class BiothingsWebAppTest(BiothingsDataTest, AsyncHTTPTestCase):
@@ -203,48 +232,6 @@ class BiothingsWebAppTest(BiothingsDataTest, AsyncHTTPTestCase):
 
         path = BiothingsDataTest.get_url(self, path)
         return AsyncHTTPTestCase.get_url(self, path)
-
-    @staticmethod
-    def get_all_nested(d: Union[dict, list], k: str) -> list:
-        """
-        Get all values given a dot delimited key notation
-
-        Elasticsearch does not care if a field has one or more values (arrays),
-        so you may get a search with multiple values in one field.
-        You were expecting a result of type T but now you have a List[T] which
-        is bad.
-        In testing, usually any one element in the list eq. to the value you're
-        looking for, you don't really care which.
-        This helper function always returns a list, so you can say
-            value_searched in get_all_nested(res, 'where.it.should.be')
-
-        Args:
-            d: dict or list of input
-            k: dot delimited key notation
-        Returns:
-            list of values obtained from that location (no None)
-        Raises:
-            KeyError: If no results were to be returned
-            TypeError: If input is of unexpected type
-        """
-        def _inner_fn(d, k: list):
-            if isinstance(d, list):
-                for inner_doc in d:
-                    yield from _inner_fn(inner_doc, k)
-            else:
-                if k:  # non-empty: d has to be a dict
-                    if k[0] in d:
-                        yield from _inner_fn(d[k[0]], k[1:])
-                    else:  # nothing found
-                        return
-                else:  # last level, guaranteed not none
-                    yield d
-        keys = k.split('.')
-        ret = list(_inner_fn(d, keys))
-        if ret:
-            return ret
-        else:
-            raise KeyError
 
 
 # Compatibility
