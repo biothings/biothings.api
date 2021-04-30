@@ -193,6 +193,7 @@ class BiothingsWebAppTest(BiothingsDataTest, AsyncHTTPTestCase):
         data_dir_path = os.path.join('test_data', self.TEST_DATA_DIR_NAME)
         glob_json_pattern = os.path.join(data_dir_path, '*.json')
         # wrap around in try-finally so the index is guaranteed to be
+        err_flag = False
         try:
             for index_mapping_path in glob.glob(glob_json_pattern):
                 index_name = os.path.basename(index_mapping_path)
@@ -220,10 +221,13 @@ class BiothingsWebAppTest(BiothingsDataTest, AsyncHTTPTestCase):
                 r.raise_for_status()
                 s.post(f'{es_host}/{index_name}/_refresh')
                 yield
+        except Exception:
+            err_flag = True
         finally:
             for index_name in indices:
                 s.delete(f'{es_host}/{index_name}')
-            pytest.exit("Error setting up ES for tests")
+            if err_flag:
+                pytest.exit("Error setting up ES for tests")
 
     # override
     def get_new_ioloop(self):
