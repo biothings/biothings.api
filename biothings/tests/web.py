@@ -9,8 +9,11 @@
     TEST_CONF
 
 """
+import glob
+import json
 import os
 from functools import partial
+from typing import Optional
 
 import pytest
 import requests
@@ -20,8 +23,7 @@ from tornado.testing import AsyncHTTPTestCase
 from biothings.web.settings import BiothingESWebSettings
 
 
-class BiothingsDataTest():
-
+class BiothingsDataTest:
     # relative path parsing configuration
     scheme = 'http'
     prefix = 'v1'
@@ -115,6 +117,7 @@ class BiothingsWebAppTest(BiothingsDataTest, AsyncHTTPTestCase):
         Starts the tornado application to run tests locally.
         Need a config.py under the current working dir.
     """
+    TEST_DATA_DIR_NAME: Optional[str] = None  # set sub-dir name
 
     @classmethod
     def setup_class(cls):
@@ -123,6 +126,62 @@ class BiothingsWebAppTest(BiothingsDataTest, AsyncHTTPTestCase):
         prefix = cls.settings.API_PREFIX
         version = cls.settings.API_VERSION
         cls.prefix = f'{prefix}/{version}'
+
+    def __new__(cls, *args, **kwargs):
+        if cls is BiothingsDataTest:
+            raise TypeError("Inherit BiothingsDataTest, don't use directly")
+        return super().__new__(cls, *args, **kwargs)
+
+    @pytest.fixture(scope="class", autouse=True)
+    def _setup_elasticsearch(self):
+        if not self.TEST_DATA_DIR_NAME:
+            yield  # do no setup and yield control to pytest
+            return
+
+        s = requests.Session()
+        es_host = 'http://' + self.settings.ES_HOST
+
+        server_info = s.get(es_host).json()
+        version_info = tuple(int(v) for v
+                             in server_info['version']['number'].split('.'))
+        if version_info[0] < 6 or version_info[0] == 6 and version_info[1] < 8:
+            pytest.exit("Tests need to be running on ES6.8+")
+
+        indices = []  # for cleanup later
+        data_dir_path = os.path.join('test_data', self.TEST_DATA_DIR_NAME)
+        glob_json_pattern = os.path.join(data_dir_path, '*.json')
+        # wrap around in try-finally so the index is guaranteed to be
+        try:
+            for index_mapping_path in glob.glob(glob_json_pattern):
+                index_name = os.path.basename(index_mapping_path)
+                index_name = os.path.splitext(index_name)[0]
+                indices.append(index_name)
+                r = s.head(f'{es_host}/{index_name}')
+                if r.status_code != 404:
+                    raise RuntimeError(f"{index_name} already exists!")
+                with open(index_mapping_path, 'r') as f:
+                    mapping = json.load(f)
+                data_path = os.path.join(data_dir_path, index_name + '.ndjson')
+                with open(data_path, 'r') as f:
+                    bulk_data = f.read()
+                if version_info[0] == 6:
+                    r = s.put(f'{es_host}/{index_name}', json=mapping,
+                              params={'include_type_name': 'false'})
+                elif version_info[0] > 6:
+                    r = s.put(f'{es_host}/{index_name}', json=mapping)
+                else:
+                    raise RuntimeError("This shouldn't have happened")
+                r.raise_for_status()
+                r = s.post(f'{es_host}/{index_name}/_doc/_bulk',
+                           data=bulk_data,
+                           headers={'Content-type': 'application/x-ndjson'})
+                r.raise_for_status()
+                s.post(f'{es_host}/{index_name}/_refresh')
+                yield
+        finally:
+            for index_name in indices:
+                s.delete(f'{es_host}/{index_name}')
+            pytest.exit("Error setting up ES for tests")
 
     # override
     def get_new_ioloop(self):
