@@ -20,6 +20,10 @@ class TestBiothingsWebAppTestGetNested:
         }
         assert 1 in BiothingsWebAppTest.get_all_nested(d, 'k1.k2')
 
+    def test_list_l2(self):
+        d = {'k1': {'k2': [1, 2, 3]}}
+        assert BiothingsWebAppTest.get_all_nested(d, 'k1.k2') == [1, 2, 3]
+
     def test_with_none(self):
         d = {'k1': {'k2': None}}
         assert BiothingsWebAppTest.get_all_nested(d, 'k1.k2') == [None]
