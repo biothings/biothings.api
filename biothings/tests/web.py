@@ -113,7 +113,8 @@ class BiothingsDataTest:
         return dic
 
     @staticmethod
-    def value_in_result(value, result: Union[dict, list], key: str) -> bool:
+    def value_in_result(value, result: Union[dict, list], key: str,
+                        case_insensitive: bool = False) -> bool:
         """
         Check if value is in result at specific key
 
@@ -127,16 +128,33 @@ class BiothingsDataTest:
         of the details of nesting, so you can just do this:
             assert self.value_in_result(value, result, 'where.it.should.be')
 
+        Caveats:
+        case_insensitive only calls .lower() and does not care about locale/
+        unicode/anything
+
         Args:
             value: value to look for
             result: dict or list of input, most likely from the APIs
             key: dot delimited key notation
+            case_insensitive: for str comparisons, invoke .lower() first
         Returns:
             boolean indicating whether the value is found at the key
+        Raises:
+            TypeError: when case_insensitive set to true on unsupported types
         """
         res_at_key = []
+        if case_insensitive:
+            try:
+                value = value.lower()
+            except Exception:
+                raise TypeError("failed to invoke method .lower()")
         for k, v in traverse(result, leaf_node=True):
             if k == key:
+                if case_insensitive:
+                    try:
+                        v = v.lower()
+                    except Exception:
+                        raise TypeError("failed to invoke method .lower()")
                 res_at_key.append(v)
         return value in res_at_key
 

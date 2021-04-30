@@ -1,3 +1,4 @@
+import pytest
 from biothings.tests.web import BiothingsDataTest
 
 
@@ -41,3 +42,17 @@ class TestBiothingsWebAppTestGetNested(BiothingsDataTest):
     def test_no_result(self):
         d = {}
         assert not self.value_in_result(None, d, 'k1.k2')
+
+    def test_ci(self):
+        d = {'k': 'K'}
+        assert self.value_in_result('k', d, 'k', case_insensitive=True)
+
+    def test_ci_bad_value_raises(self):
+        d = {'k': 'K'}
+        with pytest.raises(TypeError):
+            self.value_in_result(1, d, 'k', case_insensitive=True)
+
+    def test_ci_bad_result_raises(self):
+        d = {'k': 1}
+        with pytest.raises(TypeError):
+            self.value_in_result('k', d, 'k', case_insensitive=True)
