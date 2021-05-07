@@ -17,15 +17,14 @@ def merge(x, dx):
     assert isinstance(x, dict)
     assert isinstance(dx, dict)
 
-    if "__REPLACE__" in dx.keys():
-        if dx.pop("__REPLACE__"):
-            x.clear()
-            # merge v with "nothing" just to
-            # make sure to remove any "__REPLACE__"
-            _y = {}
-            merge(_y, dx)
-            x.update(_y)
-            return
+    if dx.pop("__REPLACE__", None):
+        # merge dx with "nothing" just to
+        # make sure to remove any "__REPLACE__"
+        _y = {}
+        merge(_y, dx)
+        x.clear()
+        x.update(_y)
+        return
 
     for k, v in dx.items():
         if isinstance(v, dict):
