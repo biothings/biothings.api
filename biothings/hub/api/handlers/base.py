@@ -11,6 +11,7 @@ import datetime
 import orjson
 
 from biothings import config
+from biothings import ConfigurationDefault, ConfigurationValue
 
 
 class DefaultHandler(RequestHandler):
@@ -25,6 +26,28 @@ class DefaultHandler(RequestHandler):
             'Content-Type,X-BioThings-API,X-Biothings-Access-Token')
 
     def write(self, result):
+        def configuration_default_handler(obj: ConfigurationDefault):
+            return f"ConfigurationDefault: default: {obj.default}, desc: {obj.desc}"
+
+        def configuration_value_handler(obj: ConfigurationValue):
+            return f"ConfigurationValue: FIXME!!"
+
+        handlers = {
+            'biothings.ConfigurationDefault': configuration_default_handler,
+            'biothings.ConfigurationValue': configuration_value_handler,
+        }
+
+        def serialization_default_handler(obj):
+            # use names like biothings.ConfigurationDefault, builtins.set, etc. note "builtins"
+            cls = getattr(obj, '__class__', None)
+            cls_name = getattr(cls, '__qualname__', None)
+            module_name = getattr(cls, '__module__', None)
+            if cls_name and module_name:
+                handler_name = f'{module_name}.{cls_name}'
+                if handler_name in handlers:
+                    return handlers[handler_name](obj)
+            raise TypeError("Cannot serialize %s: %s" % (type(obj), obj))
+
         super(DefaultHandler, self).write(
             # pdjson.dumps({
             #     "result": result,
@@ -33,7 +56,7 @@ class DefaultHandler(RequestHandler):
             orjson.dumps({
                 "result": result,
                 "status": "ok"
-            }, option=orjson.OPT_NON_STR_KEYS).decode()
+            }, option=orjson.OPT_NON_STR_KEYS, default=serialization_default_handler).decode()
         )
 
     def write_error(self, status_code, **kwargs):
