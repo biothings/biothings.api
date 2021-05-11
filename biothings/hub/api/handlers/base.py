@@ -30,7 +30,7 @@ class DefaultHandler(RequestHandler):
             return f"ConfigurationDefault: default: {obj.default}, desc: {obj.desc}"
 
         def configuration_value_handler(obj: ConfigurationValue):
-            return f"ConfigurationValue: FIXME!!"
+            return f"ConfigurationValue: {str(obj)}"
 
         handlers = {
             'biothings.ConfigurationDefault': configuration_default_handler,
