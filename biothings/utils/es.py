@@ -70,7 +70,8 @@ class IndexerException(Exception):
     pass
 
 class ESIndexer():
-    def __init__(self, index, doc_type, es_host, step=10000,
+    def __init__(self, index, doc_type='_doc', 
+                 es_host='localhost:9200', step=10000,
                  number_of_shards=1, number_of_replicas=0,
                  check_index=True, **kwargs):
         self.es_host = es_host
