@@ -120,15 +120,16 @@ def get_s3_folder(s3folder, basedir=None, aws_key=None, aws_secret=None, s3_buck
     aws_key = aws_key or getattr(config, "AWS_SECRET")
     aws_secret = aws_secret or getattr(config, "AWS_SECRET")
     s3_bucket = s3_bucket or getattr(config, "S3_BUCKET")
-    s3 = connect_s3(aws_key, aws_secret)
-    bucket = s3.get_bucket(s3_bucket)
+    s3 = boto3.resource('s3', aws_access_key_id=aws_key,
+                       aws_secret_access_key=aws_secret)
+    bucket = s3.Bucket(s3_bucket)
     cwd = os.getcwd()
     try:
         if basedir:
             os.chdir(basedir)
         if not os.path.exists(s3folder):
             os.makedirs(s3folder)
-        for k in bucket.list(s3folder):
+        for k in bucket.objects.filter(Prefix=s3folder):
             get_s3_file(k.key, localfile=k.key, aws_key=aws_key, aws_secret=aws_secret, s3_bucket=s3_bucket)
     finally:
         os.chdir(cwd)
