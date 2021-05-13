@@ -41,25 +41,29 @@ def send_s3_file(localfile, s3key, overwrite=False, permissions=None, metadata=N
     except AttributeError:
         logging.info("Skip sending file to S3, missing information in config file: AWS_KEY, AWS_SECRET or S3_BUCKET")
         return
-    s3 = connect_s3(aws_key, aws_secret)
-    bucket = s3.get_bucket(s3_bucket)
-    # bucket_location = bucket.get_location()  # TODO: delete this unused variable
-    k = bucket.new_key(s3key)
+    s3 = boto3.resource('s3', aws_access_key_id=aws_key,
+                        aws_secret_access_key=aws_secret)
+    target_object = s3.Object(s3_bucket, s3key)
     if not overwrite:
-        assert not k.exists(), 's3key "{}" already exists.'.format(s3key)
-    for header in metadata:
-        k.set_metadata(header, metadata[header])
+        assert not key_exists(
+            bucket=s3_bucket, s3key=s3key,
+            aws_key=aws_key, aws_secret=aws_secret
+        ), 's3key "{}" already exists.'.format(s3key)
+    # assuming metadata is a Mapping type
+    put_request = {'Metadata': metadata}
     if content_type:
-        k.content_type = content_type
+        put_request['ContentType'] =content_type
     if content:
-        k.set_contents_from_string(content)
+        put_request['Body'] = content
     else:
         assert os.path.exists(localfile), 'localfile "{}" does not exist.'.format(localfile)
         lastmodified = os.stat(localfile)[-2]
-        k.set_metadata('lastmodified', lastmodified)
-        k.set_contents_from_filename(localfile)
+        put_request['Body'] = open(localfile, 'rb')
+        put_request['Metadata']['lastmodified'] = str(lastmodified)
+    target_object.put(**put_request)
+
     if permissions:
-        k.set_acl(permissions)
+        target_object.Acl().put(ACL=permissions)
 
 
 def send_s3_big_file(localfile, s3key, overwrite=False, acl=None,
