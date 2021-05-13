@@ -140,8 +140,9 @@ def send_s3_folder(folder, s3basedir=None, acl=None, overwrite=False,
     aws_key = aws_key or getattr(config, "AWS_SECRET")
     aws_secret = aws_secret or getattr(config, "AWS_SECRET")
     s3_bucket = s3_bucket or getattr(config, "S3_BUCKET")
-    s3 = connect_s3(aws_key, aws_secret)
-    s3.get_bucket(s3_bucket)    # check if s3_bucket exists
+    s3 = boto3.client("s3", aws_access_key_id=aws_key,
+                      aws_secret_access_key=aws_secret)
+    s3.head_bucket(Bucket=s3_bucket)  # will raise when not 200
     cwd = os.getcwd()
     if not s3basedir:
         s3basedir = os.path.basename(cwd)
