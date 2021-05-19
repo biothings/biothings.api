@@ -583,17 +583,9 @@ def publish_data_version(s3_bucket, s3_folder, version_info, update_latest=True,
     # update latest
     if not isinstance(version_info, list) and update_latest:
         latestkey = os.path.join(s3_folder, "%s.json" % LATEST)
-        key = None
-        try:
-            key = aws.get_s3_file(
-                latestkey,
-                return_what="key",
-                aws_key=aws_key,
-                aws_secret=aws_secret,
-                s3_bucket=s3_bucket
-            )
-        except FileNotFoundError:
-            pass
+        newredir = os.path.join("/", s3_folder, "{}.json".format(version_info["build_version"]))
+        # the consensus is that we will upload the data and have the
+        # redirection, for record-keep purpose
         aws.send_s3_file(
             None, latestkey,
             content=json.dumps(version_info["build_version"], indent=True),
@@ -601,18 +593,9 @@ def publish_data_version(s3_bucket, s3_folder, version_info, update_latest=True,
             aws_key=aws_key,
             aws_secret=aws_secret,
             s3_bucket=s3_bucket,
-            overwrite=True
+            overwrite=True,
+            redirect=newredir
         )
-        if not key:
-            key = aws.get_s3_file(
-                latestkey,
-                return_what="key",
-                aws_key=aws_key,
-                aws_secret=aws_secret,
-                s3_bucket=s3_bucket
-            )
-        newredir = os.path.join("/", s3_folder, "{}.json".format(version_info["build_version"]))
-        key.set_redirect(newredir)
 
 
 def _and(*funcs):
