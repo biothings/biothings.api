@@ -29,10 +29,15 @@ def key_exists(bucket, s3key, aws_key=None, aws_secret=None):
 
 
 def send_s3_file(localfile, s3key, overwrite=False, permissions=None, metadata=None,
-                 content=None, content_type=None, aws_key=None, aws_secret=None, s3_bucket=None):
+                 content=None, content_type=None, aws_key=None, aws_secret=None, s3_bucket=None,
+                 redirect=None):
     '''save a localfile to s3 bucket with the given key.
        bucket is set via S3_BUCKET
        it also save localfile's lastmodified time in s3 file's metadata
+
+       Args:
+           redirect (str): if not None, set the redirect property
+               of the object so it produces a 301 when accessed
     '''
     metadata = metadata or {}
     try:
@@ -55,9 +60,11 @@ def send_s3_file(localfile, s3key, overwrite=False, permissions=None, metadata=N
             raise FileExistsError('s3key "{}" already exists.'.format(s3key))
     # assuming metadata is a Mapping type
     put_request = {'Metadata': metadata}
+    if redirect:
+        put_request['WebsiteRedirectLocation'] = redirect
     if content_type:
-        put_request['ContentType'] =content_type
-    if content:
+        put_request['ContentType'] = content_type
+    if content is not None:
         put_request['Body'] = content
     else:
         assert os.path.exists(localfile), 'localfile "{}" does not exist.'.format(localfile)
