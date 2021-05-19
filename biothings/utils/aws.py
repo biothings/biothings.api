@@ -183,7 +183,9 @@ def get_s3_folder(s3folder, basedir=None, aws_key=None, aws_secret=None, s3_buck
         if not os.path.exists(s3folder):
             os.makedirs(s3folder)
         for k in bucket.objects.filter(Prefix=s3folder):
-            get_s3_file(k.key, localfile=k.key, aws_key=aws_key, aws_secret=aws_secret, s3_bucket=s3_bucket)
+            download_s3_file(k.key, localfile=k.key,
+                             aws_key=aws_key, aws_secret=aws_secret,
+                             s3_bucket=s3_bucket, overwrite=True)
     finally:
         os.chdir(cwd)
 
