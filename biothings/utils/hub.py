@@ -552,15 +552,14 @@ def publish_data_version(s3_bucket, s3_folder, version_info, update_latest=True,
     # register version
     versionskey = os.path.join(s3_folder, "%s.json" % VERSIONS)
     try:
-        versions = aws.get_s3_file(versionskey,
-                                   return_what="content",
-                                   aws_key=aws_key,
-                                   aws_secret=aws_secret,
-                                   s3_bucket=s3_bucket)
-        versions = json.loads(versions.decode())  # S3 returns bytes
+        versions = json.loads(
+            aws.get_s3_file_contents(
+                versionskey,
+                aws_key=aws_key, aws_secret=aws_secret, s3_bucket=s3_bucket
+            ).decode()
+        )
     except (FileNotFoundError, json.JSONDecodeError):
         versions = {"format": "1.0", "versions": []}
-    # if type(version_info) == list:     # remove this line
     if isinstance(version_info, list):
         versions["versions"] = version_info
     else:
@@ -582,7 +581,6 @@ def publish_data_version(s3_bucket, s3_folder, version_info, update_latest=True,
                      overwrite=True)
 
     # update latest
-    # if type(version_info) != list and update_latest:    # TODO: remove this line
     if not isinstance(version_info, list) and update_latest:
         latestkey = os.path.join(s3_folder, "%s.json" % LATEST)
         key = None
