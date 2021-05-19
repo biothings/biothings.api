@@ -220,6 +220,17 @@ def get_s3_url(s3key, aws_key=None, aws_secret=None, s3_bucket=None):
         return None
 
 
+def get_s3_static_website_url(s3key, aws_key=None, aws_secret=None, s3_bucket=None):
+    aws_key, aws_secret, s3_bucket = _populate_s3_info(
+        aws_key, aws_secret, s3_bucket
+    )
+    s3 = boto3.client('s3', aws_access_key_id=aws_key,
+                      aws_secret_access_key=aws_secret)
+    location_resp = s3.get_bucket_location(Bucket=s3_bucket)
+    region = location_resp.get('LocationConstraint', 'us-east-1')
+    return f"http://{s3_bucket}.s3-website.{region}.amazonaws.com/{quote(s3key)}"
+
+
 def create_bucket(name, region=None, aws_key=None, aws_secret=None, acl=None,
                   ignore_already_exists=False):
     """Create a S3 bucket "name" in optional "region". If aws_key and aws_secret
