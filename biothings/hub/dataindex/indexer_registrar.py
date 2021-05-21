@@ -89,6 +89,9 @@ class Stage(Enum):
     STARTED = 1
     DONE = 2
 
+# an implementation like this should be further
+# generalized to replace utils.manager.BaseStatusRegisterer
+
 class IndexJobStatusRegistrar():
 
     def __init__(self, indexer, collection):
@@ -164,6 +167,10 @@ class IndexJobStatusRegistrar():
         merge(build, delta_build)
         self.collection.replace_one({"_id": build["_id"]}, build)
 
+class PreIndexJSR(IndexJobStatusRegistrar):
+
+    def started(self):
+        super().started('pre-index')
 
 class MainIndexJSR(IndexJobStatusRegistrar):
 
