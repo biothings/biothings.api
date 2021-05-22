@@ -332,7 +332,7 @@ class SlackMentionPolicy():
                 logging.ERROR: ReceiverGroup([policy])
             })
 
-        else:  # see test cases below for supported values.
+        else:  # see test cases for supported values.
             raise TypeError("Unsupported Slack Mentions.")
 
         _prev = None

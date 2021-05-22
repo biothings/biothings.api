@@ -422,7 +422,7 @@ def tabfile_tester(datafile, header=1, sep='\t'):
         for ld in reader:
             del ld
             lineno += 1
-    except:
+    except Exception:
         print("Error at line number:", lineno)
         raise
 
@@ -597,6 +597,8 @@ class MinType(object):
 
     def __eq__(self, other):
         return self is other
+
+
 Min = MinType()
 
 
@@ -1001,7 +1003,8 @@ def dict_traverse(d, func, traverse_list=False):
             dict_traverse(v, func, traverse_list=traverse_list)
         elif traverse_list and isinstance(v, list):
             for e in v:
-                dict_traverse(e, func, traverse_list=traverse_list)
+                if isinstance(e, dict):
+                    dict_traverse(e, func, traverse_list=traverse_list)
         else:
             newk, newv = func(k, v)
             d.pop(k)
