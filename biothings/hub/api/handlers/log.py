@@ -1,7 +1,7 @@
 from os import listdir
 from os.path import isfile, join
 
-from tornado.web import RequestHandler
+from tornado.web import RequestHandler, StaticFileHandler
 from tornado.template import Template
 
 catalog = Template("""
@@ -40,7 +40,7 @@ logfile = Template("""
     </html>
 """)
 
-class HubLogHandler(RequestHandler):
+class HubLogDirHandler(RequestHandler):
 
     def initialize(self, path):
         self.path = path
@@ -64,3 +64,13 @@ class HubLogHandler(RequestHandler):
                 name=filename,
                 lines=file.read().split('\n')
             ))
+
+class HubLogFileHandler(StaticFileHandler):
+
+    def set_default_headers(self):
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Access-Control-Allow-Methods", "GET,OPTIONS")
+        self.set_header("Access-Control-Allow-Headers", "*")
+
+    def options(self, *args, **kwargs):
+        self.set_status(204)
