@@ -24,7 +24,7 @@ from biothings.utils.common import timesofar
 import biothings.utils.aws as aws
 from biothings.utils.hub_db import get_cmd, get_last_command, backup, restore
 from biothings.utils.loggers import ShellLogger
-from biothings.utils.web.es import flatten_doc
+from biothings.utils.docs import flatten_doc
 from biothings import config
 if hasattr(config, 'logger'):
     logging = config.logger

@@ -9,15 +9,16 @@
     TEST_CONF
 
 """
+import inspect
 import os
 from functools import partial
 
 import pytest
 import requests
+from biothings.web import BiothingsAPI
+from biothings.web.settings import configs
 from tornado.ioloop import IOLoop
 from tornado.testing import AsyncHTTPTestCase
-
-from biothings.web.settings import BiothingESWebSettings
 
 
 class BiothingsDataTest():
@@ -116,21 +117,20 @@ class BiothingsWebAppTest(BiothingsDataTest, AsyncHTTPTestCase):
         Need a config.py under the current working dir.
     """
 
-    @classmethod
-    def setup_class(cls):
-        conf = os.getenv("TEST_CONF", 'config')
-        cls.settings = BiothingESWebSettings(conf)
-        prefix = cls.settings.API_PREFIX
-        version = cls.settings.API_VERSION
-        cls.prefix = f'{prefix}/{version}'
-
     # override
     def get_new_ioloop(self):
         return IOLoop.current()
 
     # override
     def get_app(self):
-        return self.settings.get_app()
+        conf = os.getenv("TEST_CONF", 'config.py')
+        base = os.path.dirname(inspect.getfile(type(self)))
+        file = os.path.join(base, conf)
+        config = configs.load(file)
+        prefix = config.API_PREFIX
+        version = config.API_VERSION
+        self.prefix = f'{prefix}/{version}'
+        return BiothingsAPI.get_app(config)
 
     # override
     def request(self, path, method="GET", expect=200, **kwargs):

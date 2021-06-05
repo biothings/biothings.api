@@ -115,17 +115,17 @@ Pipeline
 Elasticsearch Query Builder
 ===========================
 
-.. autoclass:: biothings.web.pipeline.ESQueryBuilder
+.. autoclass:: biothings.web.query.ESQueryBuilder
     :members:
 
 Elasticsearch Query Execution
 =============================
 
-.. autoclass:: biothings.web.pipeline.ESQueryBackend
+.. autoclass:: biothings.web.query.ESQueryBackend
     :members:
 
 Elasticsearch Result Transformer
 ================================
 
-.. autoclass:: biothings.web.pipeline.ESResultTransform
+.. autoclass:: biothings.web.query.ESResultFormatter
     :members:
