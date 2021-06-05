@@ -25,5 +25,7 @@ package-lock.json
 node_modules
 
 # testing
-config.py
 .pytest_cache/
+config.py
+/config
+!tests/web/handlers/config.py
