@@ -103,7 +103,7 @@ class StatusHandler(BaseHandler):
     async def _check(self, dev=False):
 
         try:  # some db connections support async operations
-            response = await self.biothings.health.async_check()
+            response = await self.biothings.health.async_check(info=dev)
         except (AttributeError, NotImplementedError):
             response = self.biothings.health.check()
 

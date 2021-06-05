@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import KeysView
 from elasticsearch import Elasticsearch, AsyncElasticsearch
 from collections import UserDict
 
@@ -10,7 +11,7 @@ class DBHealth():
     def __init__(self, client):
         self.client = client
 
-    def check(self):
+    def check(self, **kwargs):
         # raise Exception in case of an error
         # return db server status details.
         raise NotImplementedError()
@@ -38,9 +39,8 @@ class ESHealth(DBHealth):
     # }
 
     # TODO
-    # Add transport level cluster information, like
-    # cluster name, version, connected nodes, etc
-    # from biothings.web.connections import get_cluster_info_async
+    # Add transport level cluster information,
+    # like connected nodes, etc
 
     # TODO
     # It is useful to provide two endpoints,
@@ -59,9 +59,13 @@ class ESHealth(DBHealth):
         #   "id": "1017"
         # }
 
-    async def async_check(self):
+    async def async_check(self, **kwargs):
         assert isinstance(self.client, AsyncElasticsearch)
-        response = HCResult(await self.client.cluster.health())
+        response = HCResult()
+        response.update(await self.client.cluster.health())
+
+        if kwargs.get('info'):
+            response.update(await self.client.info())
 
         if self.payload:
             document = await self.client.get(**self.payload)
@@ -76,13 +80,13 @@ class ESHealth(DBHealth):
 
 class MongoHealth(DBHealth):
 
-    def check(self):
+    def check(self, **kwargs):
         # typical response: {'ok': 1.0}
         return HCResult(self.client.command('ping'))
 
 class SQLHealth(DBHealth):
 
-    def check(self):
+    def check(self, **kwargs):
         # https://docs.sqlalchemy.org/en/13/core/connections.html
         # #sqlalchemy.engine.Connection.closed
         return HCResult(closed=self.client.closed)

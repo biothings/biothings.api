@@ -5,66 +5,16 @@ Improve logging output for Elasticsearch Connections
 import hashlib
 import logging
 import pickle
-# from elasticsearch_async.connection import AIOHttpConnection
-from collections import UserString, namedtuple
 from functools import partial
-from typing import NamedTuple
 
 import elasticsearch
 import elasticsearch_dsl
+from tornado.ioloop import IOLoop
 
 logger = logging.getLogger(__name__)
 
-# logger = logging.getLogger("elasticsearch")
-# tracer = logging.getLogger("elasticsearch.trace")
 
-from tornado.ioloop import IOLoop
-
-
-class ESClusterInfo(NamedTuple):
-    name: str
-    version: str
-
-async def get_cluster_info_async(client):
-    es_version = 'unknown'
-    es_cluster = 'unknown'
-    try:
-        info = await client.info(request_timeout=3)
-        version = info['version']['number']
-        cluster = info['cluster_name']
-        health = await client.cluster.health(request_timeout=3)
-        status = health['status']
-    except elasticsearch.TransportError as exc:
-        logger = logging.getLogger(__name__)
-        logger.error('Error reading elasticsearch status.')
-        logger.debug(exc)
-    else:
-        es_version = version
-        es_cluster = f"{cluster} ({status})"
-
-    return ESClusterInfo(es_cluster, es_version)
-
-def get_cluster_info(client):
-    es_version = 'unknown'
-    es_cluster = 'unknown'
-    try:
-        info = client.info(request_timeout=3)
-        version = info['version']['number']
-        cluster = info['cluster_name']
-        health = client.cluster.health(request_timeout=3)
-        status = health['status']
-    except elasticsearch.TransportError as exc:
-        logger = logging.getLogger(__name__)
-        logger.error('Error reading elasticsearch status.')
-        logger.debug(exc)
-    else:
-        es_version = version
-        es_cluster = f"{cluster} ({status})"
-
-    return ESClusterInfo(es_cluster, es_version)
-
-
-class ESPackageInfo():  # TODO combine this with get_cluster_info_async
+class ESPackageInfo():
 
     def __init__(self):
         self.es_ver = elasticsearch.__version__
@@ -86,7 +36,7 @@ class ESPackageInfo():  # TODO combine this with get_cluster_info_async
         return int(major_version) == self.es_ver[0]
 
 
-espi = ESPackageInfo()
+es_local = ESPackageInfo()
 
 def _log_db(client, uri):
     logger.info(client)
@@ -99,14 +49,19 @@ def _log_es(client, hosts):
     if isinstance(client, elasticsearch.AsyncElasticsearch):
         async def log_cluster(async_client):
             logger = logging.getLogger(__name__ + '.healthcheck')
-            cluster = await get_cluster_info_async(async_client)
-            if espi.is_compatible(cluster.version):
+            cluster = await async_client.info(request_timeout=3)
+
+            cluster_name = cluster['cluster_name']
+            version = cluster['version']['number']
+
+            if es_local.is_compatible(version):
                 level = logging.INFO
-                suffix = "✓" # TODO
+                suffix = "Compatible"
             else:
                 level = logging.WARNING
                 suffix = "Incompatible"
-            logger.log(level, 'ES [%s] %s: %s [%s]', hosts, cluster.name, cluster.version, suffix)  # TOO JUST ADD A X
+
+            logger.log(level, 'ES [%s] %s: %s [%s]', hosts, cluster_name, version, suffix)
         IOLoop.current().add_callback(log_cluster, client)
 
 
