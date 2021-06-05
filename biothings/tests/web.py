@@ -15,7 +15,7 @@ from functools import partial
 
 import pytest
 import requests
-from biothings.web import BiothingsAPI
+from biothings.web.launcher import BiothingsAPI
 from biothings.web.settings import configs
 from tornado.ioloop import IOLoop
 from tornado.testing import AsyncHTTPTestCase

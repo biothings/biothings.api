@@ -8,7 +8,10 @@
     of the query term and query options vary. At a minimum,
     a query builder should support:
 
-    q: str, a query term, it is the only required input.
+    q: str, a query term, 
+        when not provided, always perform a match all query.
+        when provided as an empty string, always match none.
+
     options: dotdict, optional query options.
 
         scopes: list[str], the fields to look for the query term.
@@ -133,10 +136,10 @@ class ESQueryBuilder():
             # process single q vs list of q(s).
             # dispatch 'val' vs 'key:val' to corresponding functions.
 
-            if options.scopes is not None:
-                build_query = self._build_match_query
-            else:  # no scopes, only q
+            if options.scopes is None:  # scopes depend on es
                 build_query = self._build_string_query
+            else:  # may still (need to) infer scopes from q
+                build_query = self._build_match_query
 
             if options.fetch_all:
                 options.pop('sort', None)
@@ -155,11 +158,8 @@ class ESQueryBuilder():
                 # pass through es query options. (from, size ...)
                 search = self.apply_extras(search, options)
 
-        # except (TypeError, ValueError) as exc:
-        #     raise BadRequest(reason=type(exc).__name__, details=str(exc))
         except IllegalOperation as exc:
-            raise TypeError(str(exc))  # ex. sorting by -_score
-            # raise BadRequest(reason=str(exc))
+            raise ValueError(str(exc))  # ex. sorting by -_score
 
         if options.get('rawquery'):
             raise RawQueryInterrupt(search.to_dict())

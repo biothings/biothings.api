@@ -1,7 +1,7 @@
 from copy import deepcopy
 
 import pytest
-from biothings.web.specifications.openapi import *
+from biothings.web.options.openapi import *
 
 _base_document = {
     'openapi': '3.0.3',

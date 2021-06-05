@@ -29,13 +29,14 @@ biothings.web.handlers.ESRequestHandler
 
 """
 
+import logging
 from collections import UserDict
 from types import coroutine
 
 import elasticsearch
-from biothings.web.query.pipeline import QueryPipelineException
 from biothings.web.query.builder import RawQueryInterrupt
-from biothings.web.query.engine import RawResultInterrupt, EndScrollInterrupt
+from biothings.web.query.engine import EndScrollInterrupt, RawResultInterrupt
+from biothings.web.query.pipeline import QueryPipelineException
 from tornado.web import Finish, HTTPError
 
 from .api import BaseAPIHandler
@@ -184,8 +185,16 @@ def ESQueryPipelineHandler(handler_class):
                 # use a non-dict wrapper so that the data
                 # is not merged with the error template.
                 raise _exc
-            except (ValueError, TypeError, AssertionError) as exc:
-                raise BadRequest(reason=str(exc))
+
+            except AssertionError as exc:
+                # in our application, AssertionError should be internal
+                # the individual components raising the error should instead
+                # rasie exceptions like ValueError and TypeError for bad input
+                logging.error("FIXME: Unexpected Assertion Error.")
+                raise HTTPError(reason=str(exc))
+
+            except (ValueError, TypeError) as exc:
+                raise BadRequest(reason=type(exc).__name__, details=str(exc))
 
             except QueryPipelineException as exc:
                 raise HTTPError(exc.code, reason=str(exc))
@@ -217,6 +226,7 @@ def ESQueryPipelineHandler(handler_class):
 
 
 from types import CoroutineType
+
 
 async def ensure_awaitable(obj):
     if isinstance(obj, CoroutineType):
