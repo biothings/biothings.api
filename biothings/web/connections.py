@@ -102,7 +102,7 @@ def _not_implemented_client():
 #   High Level Utilities
 # ------------------------
 
-class _Connections:
+class _ClientPool:
 
     def __init__(self, client_factory, async_factory, callback=None):
 
@@ -143,6 +143,6 @@ class _Connections:
         )
 
 
-es = _Connections(get_es_client, partial(get_es_client, async_=True), _log_es)
-sql = _Connections(get_sql_client, _not_implemented_client)
-mongo = _Connections(get_mongo_client, _not_implemented_client)
+es = _ClientPool(get_es_client, partial(get_es_client, async_=True), _log_es)
+sql = _ClientPool(get_sql_client, _not_implemented_client)
+mongo = _ClientPool(get_mongo_client, _not_implemented_client)
