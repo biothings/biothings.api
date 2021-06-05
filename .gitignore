@@ -28,4 +28,4 @@ node_modules
 .pytest_cache/
 config.py
 /config
-!tests/web/handlers/config.py
+!/tests/web/handlers/config.py
