@@ -8,7 +8,6 @@
 # color support is provided by tornado.log
 LOGGING_FORMAT = "%(color)s[%(levelname)s %(name)s %(module)s:%(lineno)d]%(end_color)s %(message)s"
 
-
 # *****************************************************************************
 # Elasticsearch Settings
 # *****************************************************************************
@@ -66,11 +65,9 @@ SQL_ARGS = {
 # Web Application & Base Handler
 # *****************************************************************************
 
-# api version in the URL patterns and elsewhere
+# Routing
 API_PREFIX = ''
 API_VERSION = 'v1'
-
-# project URL routing
 APP_LIST = [
     (r"/", 'biothings.web.handlers.FrontPageHandler'),
     (r"/({pre})/", 'tornado.web.RedirectHandler', {"url": "/{0}"}),
@@ -87,19 +84,6 @@ APP_LIST = [
     (r"/{pre}/{ver}/metadata/?", 'biothings.web.handlers.MetadataSourceHandler'),
     (r"/{pre}/{ver}/query/?", 'biothings.web.handlers.QueryHandler'),
 ]
-
-# string used in headers to support CORS
-ACCESS_CONTROL_ALLOW_METHODS = 'GET,POST,OPTIONS'
-ACCESS_CONTROL_ALLOW_HEADERS = (
-    'Content-Type, Depth, User-Agent, If-Modified-Since,'
-    'Cache-Control, X-File-Size, X-Requested-With, X-File-Name'
-)
-# Caching behavior
-DISABLE_CACHING = False
-CACHE_MAX_AGE = 604800  # default 7 days
-
-# Global default cap for list inputs
-LIST_SIZE_CAP = 1000
 
 # For format=html
 HTML_OUT_HEADER_IMG = "https://biothings.io/static/favicon.ico"
@@ -124,7 +108,7 @@ COMMON_KWARGS = {
     'raw': {'type': bool, 'default': False},
     'rawquery': {'type': bool, 'default': False},
     # query builder stage
-    '_source': {'type': list, 'max': 1000, 'alias': ['fields', 'field', 'filter'], 'strict': False},
+    '_source': {'type': list, 'max': 1000, 'alias': ('fields', 'field', 'filter'), 'strict': False},
     'size': {'type': int, 'max': 1000, 'alias': 'limit'},
     # formatter stage
     'dotfield': {'type': bool, 'default': False},
@@ -222,11 +206,6 @@ ANNOTATION_ID_REGEX_LIST = []  # [(re.compile(r'rs[0-9]+', re.I), 'dbsnp.rsid')]
 # Status #
 # https://www.elastic.co/guide/en/elasticsearch/reference/master/docs-get.html
 STATUS_CHECK = {
+    # 'index': ''
     # 'id': '',
-    # 'index': '',
-    # 'doc_type': ''
 }
-#
-# Biothing #
-ID_REQUIRED_MESSAGE = 'ID required'
-ID_NOT_FOUND_TEMPLATE = "ID '{bid}' not found"

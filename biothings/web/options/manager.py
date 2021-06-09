@@ -268,6 +268,7 @@ class JsonArgCvter(Converter):
 
         return super().to_type(val, type_)
 
+
 class ReqResult(dotdict):
 
     def __str__(self):
@@ -354,6 +355,7 @@ class ReqArgs():
                     src, str(getattr(self, src))
                 ))
         return "ReqArgs(" + ",\n".join(lines) + (")")
+
 
 class Locator():
     """
@@ -674,7 +676,7 @@ class OptionsManager(UserDict):
                 self.data[name].setup()  # required
 
     def log(self):
-
+        # TODO OpenAPI Serialization here.
         res = self._serialize(self)
         return res
 

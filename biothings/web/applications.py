@@ -141,7 +141,7 @@ class AsyncTornadoBiothingsAPI(tornado.web.Application):
                 setting_attr = '_'.join((handler_name, 'kwargs')).upper()
                 setting_options = getattr(config, setting_attr, {})
                 self.biothings.optionsets.add(handler_name, setting_options)
-                self.biothings.optionsets.add(handler_name, handler_options, handler.kwarg_groups)
+                self.biothings.optionsets.add(handler_name, handler_options)
 
     def _populate_handlers(self, handlers):
         for handler in handlers:
