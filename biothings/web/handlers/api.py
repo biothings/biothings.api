@@ -63,9 +63,8 @@ class BaseAPIHandler(BaseHandler):
 
     name = ''
     kwargs = None  # dict
-    kwarg_groups = ()
-    kwarg_methods = ()
     format = 'json'
+    cache = 604800  # 7 days
 
     def initialize(self):
 
@@ -271,16 +270,17 @@ class BaseAPIHandler(BaseHandler):
     def set_default_headers(self):
 
         self.set_header("Access-Control-Allow-Origin", "*")
-        self.set_header("Access-Control-Allow-Methods",
-                        self.biothings.config.ACCESS_CONTROL_ALLOW_METHODS)
-        self.set_header("Access-Control-Allow-Headers",
-                        self.biothings.config.ACCESS_CONTROL_ALLOW_HEADERS)
+        self.set_header("Access-Control-Allow-Methods", "*")
+        self.set_header("Access-Control-Allow-Headers", "*")
         self.set_header("Access-Control-Allow-Credentials", "false")
         self.set_header("Access-Control-Max-Age", "60")
 
-        if not self.biothings.config.DISABLE_CACHING:
-            seconds = self.biothings.config.CACHE_MAX_AGE
-            self.set_header("Cache-Control", f"max-age={seconds}, public")
+        if self.cache and isinstance(self.cache, int):
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+            self.set_header("Cache-Control", f"max-age={self.cache}, public")
+
+        # to disable caching for a handler, set cls.cache to 0 or
+        # run self.clear_header('Cache-Control') in an HTTP method
 
 
 class APISpecificationHandler(BaseAPIHandler):
