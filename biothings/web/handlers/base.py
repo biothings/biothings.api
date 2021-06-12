@@ -25,7 +25,6 @@ biothings.web.handlers.ESRequestHandler
 
 import logging
 
-from elasticsearch.exceptions import ElasticsearchException
 from tornado.web import RequestHandler
 
 try:
@@ -44,7 +43,7 @@ class BaseHandler(SentryMixin, RequestHandler):
         return self.application.biothings
 
     # ------------
-    #  legacy API
+    #  legacy API TODO REVISIT IF IT'S POSSIBLE TO PROVIDE THIS ACCESS
     # ------------
     @property
     def web_settings(self):
@@ -129,6 +128,6 @@ class FrontPageHandler(BaseHandler):
             alert='Front Page Not Configured.',
             title='Biothings API',
             contents=self.application.biothings.handlers.keys(),
-            support=self.biothings.config.BIOTHING_TYPES,
+            support=self.biothings.metadata.types,
             url='http://biothings.io/'
         )

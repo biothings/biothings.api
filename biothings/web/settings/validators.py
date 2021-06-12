@@ -3,10 +3,7 @@ class WebAPIValidator():
 
     def validate(self, config):
 
-        assert config.API_VERSION or config.API_PREFIX
-        assert isinstance(config.LIST_SIZE_CAP, int)
-        assert isinstance(config.ACCESS_CONTROL_ALLOW_METHODS, str)
-        assert isinstance(config.ACCESS_CONTROL_ALLOW_HEADERS, str)
+        assert config.API_VERSION or config.API_PREFIX  # TODO explain why
 
 
 class DBParamValidator():
