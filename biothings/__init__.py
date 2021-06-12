@@ -1,37 +1,33 @@
-import sys
-import os
 import asyncio
-import types
+import concurrent.futures
 import copy
 import inspect
-import importlib
-import re
 import json
 import logging
-import concurrent.futures
-from .version import MAJOR_VER, MINOR_VER, MICRO_VER
-from .utils.dotfield import merge_object, make_object
-from .utils.jsondiff import make as jsondiff
+import os
+import re
+import sys
+from collections import UserList, UserString, deque
+from copy import deepcopy
+from dataclasses import asdict, dataclass, field
+from importlib import import_module
+from types import ModuleType
+
 from .utils.dataload import dict_traverse
+from .utils.dotfield import make_object, merge_object
+from .utils.jsondiff import make as jsondiff
+from .version import MAJOR_VER, MICRO_VER, MINOR_VER
 
 
 def get_version():
     return '{}.{}.{}'.format(MAJOR_VER, MINOR_VER, MICRO_VER)
 
 
-# TODO
-# config = object()
-
-# re pattern to find config param
-# (by convention, all upper caps, _ allowed, that's all)
-PARAM_PAT = re.compile("^([A-Z_]+)$")
-
-
 class ConfigurationError(Exception):
     pass
 
 
-class ConfigurationValue(object):
+class ConfigurationValue:
     """
     type to wrap default value when it's code and needs to be interpreted later
     code is passed to eval() in the context of the whole "config" dict
@@ -62,20 +58,13 @@ class ConfigurationValue(object):
             return conf.__dict__[name]
 
 
-class ConfigurationDefault(object):
+class ConfigurationDefault:
     def __init__(self, default, desc):
         self.default = default
         self.desc = desc
 
 
-def check_config(config_mod):
-    for attr in dir(config_mod):
-        if isinstance(getattr(config_mod, attr), ConfigurationError):
-            raise ConfigurationError("%s: %s" %
-                                     (attr, str(getattr(config_mod, attr))))
-
-
-class ConfigurationManager(types.ModuleType):
+class ConfigurationManager(ModuleType):
     """
     Wraps and manages configuration access and edit. A singleton
     instance is available throughout all hub apps using biothings.config
@@ -87,26 +76,91 @@ class ConfigurationManager(types.ModuleType):
 
     def __init__(self, conf):
         self.conf = conf
-        self.conf_parser = ConfigParser(conf)
         self.hub_config = None  # collection containing config value, set when wrapped, see config_for_app()
         self.bykeys = {}  # caching values from hub db
-        self.byroots = {
-        }  # for dotfield notation, all config names starting with first elem
-        self.allow_edits = False
+        self.byroots = {}  # for dotfield notation, all config names starting with first elem
         self.dirty = False  # gets dirty (needs reload) when config is changed in db
-        self._original_params = {
-        }  # cache config params as defined in config files
-        self.setup()
+        self._original_params = {}  # cache config params as defined in config files
+
+        self.allow_edits = False
+        if hasattr(self.conf, "CONFIG_READONLY"):
+            self.allow_edits = not self.conf.CONFIG_READONLY
+            delattr(self.conf, "CONFIG_READONLY")
 
     @property
     def original_params(self):
         if not self._original_params:
-            self._original_params = self.get_config_params()
+
+            conf_parser = ConfigParser(self.conf)
+            conf_markups = conf_parser.find_information()
+
+            params = {}
+            for attrname in conf_parser.list():
+                value = getattr(self, attrname)
+                info = conf_markups.get(attrname)
+                if info is None:
+                    # if no information could be found, not even the field,
+                    # (if field was found in a config file but without any information,
+                    # we would have had a {"found" : True}), it means the parameter (field)
+                    # as been set dynamically somewhere in the code. It's not coming from
+                    # config files, we need to tag it as-is, and make it readonly
+                    # (we don't want to allow config changes other than those specified in
+                    # config files)
+                    params[attrname] = {
+                        "value": value,
+                        "dynamic": True,
+                        "readonly": True,
+                        "default": value  # for compatibilty
+                    }
+                else:
+                    if info["invisible"]:
+                        continue
+                    origvalue = getattr(info["confmod"], attrname)
+
+                    # TODO
+                    # this is in a way is a repeatation of what's in
+                    # get_value_from_file, maybe possible to extract it?
+
+                    def eval_default_value(k, v):
+                        if isinstance(v, ConfigurationDefault):
+                            if isinstance(v.default, ConfigurationValue):
+                                return (k, v.default.get_value(attrname, self.conf))
+                            else:
+                                return (k, v.default)
+                        elif isinstance(v, ConfigurationValue):
+                            return (k, v.get_value(k, self.conf))
+                        elif isinstance(v, ConfigurationError):
+                            return k, repr(v)
+                        else:
+                            return k, v
+
+                    if isinstance(origvalue, dict):
+                        # walk the dict and instantiate values when special
+                        dict_traverse(origvalue, eval_default_value, traverse_list=True)
+                    else:
+                        # just use the same func but ignore "k" key, not a dict
+                        # pass unhashable "k" to make sure we'd raise an error
+                        # while dict traversing  if we're not supposed to be here
+                        _, origvalue = eval_default_value({}, origvalue)
+
+                    params[attrname] = {
+                        "value": info["hidden"] and "********" or value,
+                        "section": info["section"],
+                        "desc": info["description"],
+                        "default": info["hidden"] and "********" or origvalue
+                    }
+                    if info["hidden"]:
+                        params[attrname]["hidden"] = True
+                    if info["readonly"]:
+                        params[attrname]["readonly"] = True
+
+            self._original_params = params
         return self._original_params
 
     def __getattr__(self, name):
         # first try value from Hub DB, they have precedence
         # if nothing, then take it from file
+
         try:
             val = self.get_value_from_db(name)
         except (KeyError, ValueError):
@@ -120,13 +174,6 @@ class ConfigurationManager(types.ModuleType):
     def __getitem__(self, name):
         # for dotfield notation
         return self.__getattr__(name)
-
-    def setup(self):
-        can_edit = False
-        if hasattr(self.conf, "CONFIG_READONLY"):
-            can_edit = not self.conf.CONFIG_READONLY
-            delattr(self.conf, "CONFIG_READONLY")
-        self.allow_edits = bool(can_edit)
 
     def show(self):
         origparams = copy.deepcopy(self.original_params)
@@ -180,8 +227,7 @@ class ConfigurationManager(types.ModuleType):
         self.check_editable(name, scope)
         res = self.hub_config.remove({"_id": name})
         self.dirty = True  # may need a reload
-        self.clear_cache(
-        )  # will force reload everything to get up-to-date values
+        self.clear_cache()  # will force reload everything to get up-to-date values
         return res["ok"]
 
     def store_value_to_db(self, name, value, scope="config"):
@@ -204,47 +250,44 @@ class ConfigurationManager(types.ModuleType):
         return res
 
     def get_value_from_db(self, name, scope="config"):
-        if self.hub_config:
-            # cache on first call
-            if not self.bykeys:
-                for d in self.hub_config.find():
-                    # tricky: get it from file to cast to correct type
-                    val = d["value"]
-                    try:
-                        tval = self.get_value_from_file(d["_id"])
-                        typ = type(tval)
-                        val = typ(val)  # recast
-                    except AttributeError:
-                        # only exists in db
-                        pass
-                    # fill in cache, by scope then by config key
-                    scope = d.get("scope", "config")
-                    self.bykeys.setdefault(scope, {})
-                    self.bykeys[scope][d["_id"]] = val
-                    elems = d["_id"].split(".")
-                    if len(elems) > 1:  # we have a dotfield notation there
-                        # tricky; read the comments below, extracting the root has a different meaning depending on the scope
-                        if scope == "config":
-                            # first elem in the path a config variable, the rest is a path inside that variable (which
-                            # is a dict)
-                            self.byroots.setdefault(elems[0], []).append({
-                                "_id":
-                                d["_id"],
-                                "value":
-                                val
-                            })
-                        else:
-                            # the root is everything up to the last element in the path, that is, the full path
-                            # of the class, etc... The last element is the attribute to set.
-                            self.byroots.setdefault(".".join(elems[:-1]),
-                                                    []).append({
-                                                        "_id": d["_id"],
-                                                        "value": val
-                                                    })
-
-            return self.bykeys.get(scope, {})[name]
-        else:
+        if not self.hub_config:
             raise ValueError("hub_config not set yet")
+
+        # cache on first call
+        if not self.bykeys:
+            for d in self.hub_config.find():
+                # tricky: get it from file to cast to correct type
+                val = d["value"]
+                try:
+                    tval = self.get_value_from_file(d["_id"])
+                    typ = type(tval)
+                    val = typ(val)  # recast
+                except AttributeError:
+                    # only exists in db
+                    pass
+                # fill in cache, by scope then by config key
+                scope = d.get("scope", "config")
+                self.bykeys.setdefault(scope, {})
+                self.bykeys[scope][d["_id"]] = val
+                elems = d["_id"].split(".")
+                if len(elems) > 1:  # we have a dotfield notation there
+                    # tricky; read the comments below, extracting the root has a different meaning depending on the scope
+                    if scope == "config":
+                        # first elem in the path a config variable, the rest is a path inside that variable (which
+                        # is a dict)
+                        self.byroots.setdefault(elems[0], []).append({
+                            "_id": d["_id"],
+                            "value": val
+                        })
+                    else:
+                        # the root is everything up to the last element in the path, that is, the full path
+                        # of the class, etc... The last element is the attribute to set.
+                        self.byroots.setdefault(".".join(elems[:-1]), []).append({
+                            "_id": d["_id"],
+                            "value": val
+                        })
+
+        return self.bykeys.get(scope, {})[name]
 
     def get_value_from_file(self, name):
         # if "name" corresponds to a dict, we may have
@@ -252,8 +295,7 @@ class ConfigurationManager(types.ModuleType):
         # we'd need to merge that path with
         val = getattr(self.conf, name)
         try:
-            copiedval = copy.deepcopy(
-                val)  # we want to keep original value (if it's a dict)
+            copiedval = copy.deepcopy(val)  # we want to keep original value (if it's a dict)
             # as this will be merged with value from db
         except TypeError:
             # it can't be copied, it probably means it can't even be stored in db
@@ -293,45 +335,6 @@ class ConfigurationManager(types.ModuleType):
             attr = key.split(".")[-1]
             setattr(something, attr, value)
 
-    def get_config_params(self):
-        """
-        Return all configuration parameters with their description, by section"
-        """
-        params = {}
-        for attrname in self.conf_parser.list():
-            value = getattr(self, attrname)
-            info = self.conf_parser.find_information(attrname)
-            if info is None:
-                # if no information could be found, not even the field,
-                # (if field was found in a config file but without any information,
-                # we would have had a {"found" : True}), it means the parameter (field)
-                # as been set dynamically somewhere in the code. It's not coming from
-                # config files, we need to tag it as-is, and make it readonly
-                # (we don't want to allow config changes other than those specified in
-                # config files)
-                params[attrname] = {
-                    "value": value,
-                    "dynamic": True,
-                    "readonly": True,
-                    "default": value  # for compatibilty
-                }
-            else:
-                if info["invisible"]:
-                    continue
-                origvalue = getattr(info["confmod"], attrname)
-                params[attrname] = {
-                    "value": info["hidden"] and "********" or value,
-                    "section": info["section"],
-                    "desc": info["desc"],
-                    "default": info["hidden"] and "********" or origvalue
-                }
-                if info["hidden"]:
-                    params[attrname]["hidden"] = True
-                if info["readonly"]:
-                    params[attrname]["readonly"] = True
-
-        return params
-
     def supersede(self, something):
         # find config values with scope corresponding to something's type
         # Note: any conf key will look like a dotfield notation, eg. MyClass.myattr
@@ -358,10 +361,10 @@ class ConfigurationManager(types.ModuleType):
             self.patch(something, valids, scope)
 
     def __repr__(self):
-        return "<%s over %s>" % (self.__class__.__name__, self.conf.__name__)
+        return "<%s over %s>" % (self.__class__.__name__, str(self.conf))
 
 
-class ConfigParser(object):
+class ConfigParser():  # TODO CONSIDER MAKING THIS A COMMENT PARSER ONLY
     """
     Parse configuration module and extract documentation from it.
     Documentation can be found in different place (in order):
@@ -407,206 +410,214 @@ class ConfigParser(object):
 
     def __init__(self, config_mod):
         self.config = config_mod
-        self.lines = inspect.getsourcelines(self.config)[0]
-        self.find_base_config()
 
-    def list(self):
-        """
-        Return a list of all config parameters' names found in config file
-        (including base config files)
-        """
+    def list(self):  # TODO RENAME
+
+        # re pattern to find config param
+        # (by convention, all upper caps, _ allowed, that's all)
+
+        # opinion
+        # should this function be a part of this class?
+        # maybe it's helpful to separate text parsing vs module parsing?
+
+        attrs = set()
         for attrname in dir(self.config):
-            if PARAM_PAT.match(attrname):
-                yield attrname
+            if re.compile("^([A-Z_]+)$").match(attrname):
+                attrs.add(attrname)
+        return attrs
 
-    def find_base_config(self):
-        self.config_bases = []
-        pat = re.compile(r"^from\s+(.*?)\s+import\s+\*")
-        for l in self.lines:
-            m = pat.match(l)
-            if m:
-                base = m.groups()[0]
-                base_mod = importlib.import_module(base)
-                self.config_bases.append(base_mod)
+    def find_information(self):
+        attrs = self.list()
+        configs = []
+        _configs = deque([self.config])
+        while _configs:
+            config = _configs.popleft()
+            lines = inspect.getsourcelines(config)[0]
+            lines = ConfigLines(ConfigLine(line) for line in lines)
 
-    def find_information(self, field):
-        # search all config files, trying to get max infor
-        # (field can be set in a base config file containing the description
-        # and re-defined in main config without description)
-        infos = []
-        for conf in [self.config] + self.config_bases:
-            info = self.find_docstring_in_config(conf, field)
-            if info["found"]:
-                info["confmod"] = conf
-                infos.insert(0, info)
+            pat = re.compile(r"^from\s+(.*?)\s+import\s+\*")
+            for line in lines:
+                match = pat.match(line.data)
+                if match:
+                    base = match.groups()[0]
+                    base_mod = import_module(base)
+                    _configs.append(base_mod)
 
-        if infos:
-            # merge everything we have about the field, in the order
-            # so most recent config in import history has precedence
-            master = infos[0]
-            for info in infos[1:]:
-                for k, v in info.items():
-                    if v:
-                        master[k] = v
-            return master
+            result = lines.parse(attrs)
+            configs.append((config, result))
 
-        # if we get there, it means field couldn't be found in any config files
-        return None
-
-    def find_docstring_in_config(self, config, field):
-        field = field.strip()
-        if "." in field:
-            # dotfield notation, explore a dict
-            raise NotImplementedError("docstring no supported in dict")
-            pass
-        if not hasattr(config, field):
-            return {"found": False}
-        confval = getattr(config, field)
-        desc = None
-        section = None
-        invisible = None
-        hidden = None
-        readonly = None
-        if isinstance(confval, ConfigurationDefault):
-            desc = confval.desc
-        if isinstance(confval, ConfigurationError):
-            # it's an Exception, just take the text
-            desc = confval.args[0]
-
-        found_field = False
-        lines = inspect.getsourcelines(config)[0]
-        for i, l in enumerate(lines):
-            if l.startswith(field):
-                found_field = True
-                break
-        if found_field:
-            section = self.find_section(field, lines, i)
-            invisible = self.is_invisible(field, lines, i)
-            hidden = self.is_hidden(field, lines, i)
-            readonly = self.is_readonly(field, lines, i)
-            if not desc:
-                # no desc previously found in ConfigurationDefault or ConfigurationError
-                desc = self.find_description(field, lines, i)
-        return {
-            "found": found_field,
-            "section": section,
-            "desc": desc,
-            "invisible": invisible,
-            "hidden": hidden,
-            "readonly": readonly
-        }
-
-    def find_description(self, field, lines, lineno):
-        # at least one space after # to consider this a description
-        descpat = re.compile(r".*\s*#\s+(.*)$")
-        # inline comment
-        line = lines[lineno]
-        m = descpat.match(line)
-        if m:
-            return m.groups()[0].strip()
-        else:
-            # comment above
-            cmts = []
-            i = lineno
-            while i > 0:
-                i -= 1
-                line = lines[i]
-                if line.startswith("\n"):
-                    break
+        _info = {}  # merged
+        for config, result in configs:
+            for attr, meta in result.items():
+                meta.confmod.feed(config)
+                if attr in _info:
+                    _info[attr].update(meta)
                 else:
-                    m = descpat.match(line)
-                    if m:
-                        cmts.insert(0, m.groups()[0])
-                    else:
-                        break
-            # filter out empty lines
-            cmts = [c for c in cmts if c]
-            if cmts:
-                return "\n".join(cmts)
-            else:
-                return None
+                    _info[attr] = meta
 
-    def find_special_comment(self,
-                             pattern,
-                             field,
-                             lines,
-                             lineno,
-                             stop_on_eol=True):
-        pat = re.compile(pattern)
-        commentpat = re.compile(r"^\s*#")
-        i = lineno
-        while i > 0:
-            i -= 1
-            line = lines[i]
-            if stop_on_eol and not commentpat.match(line):
-                # not even a comment, brek
-                return False
-            if stop_on_eol and line.startswith("\n"):
-                break
-            m = pat.match(line)
-            if m:
-                return m
-
-    def find_section(self, field, lines, lineno):
-        match = self.find_special_comment(r"^#\*\s*(.*)\s*\*#\s*$",
-                                          field,
-                                          lines,
-                                          lineno,
-                                          stop_on_eol=False)
-        if match:
-            section = match.groups()[0]
-            if not section:  # if we have "#* *#" it's a section breaker
-                section = None  # back to None if empty string
-            else:
-                section = section.strip()
-            return section
-
-    def is_invisible(self, field, lines, lineno):
-        match = self.find_special_comment(r"^#-\s*invisible\s*-#\s*$", field,
-                                          lines, lineno)
-        if match:
-            return True
-        else:
-            return False
-
-    def is_hidden(self, field, lines, lineno):
-        match = self.find_special_comment(r"^#-\s*hide\s*-#\s*$", field, lines,
-                                          lineno)
-        if match:
-            return True
-        else:
-            return False
-
-    def is_readonly(self, field, lines, lineno):
-        match = self.find_special_comment(r"^#-\s*readonly\s*-#\s*$", field,
-                                          lines, lineno)
-        if match:
-            return True
-        else:
-            return False
+        return {k: v.asdict() for k, v in _info.items()}
 
 
-def config_for_app(config_mod, check=True):
-    if check is True:
-        check_config(config_mod)
+class MetaField():
+    default = type(None)
+
+    def __init__(self, value=None):
+        self._value = value or self.default()
+
+    @property
+    def value(self):
+        return self._value
+
+    def feed(self, value):
+        self._value = value
+
+    def clear(self):
+        self._value = self.default()
+
+class Text(MetaField):
+
+    def feed(self, value):
+        assert isinstance(value, str)
+        self._value = value.strip()
+
+class Flag(MetaField):
+    default = bool
+
+class Paragraph(MetaField):
+    default = list
+
+    @property
+    def value(self):
+        _value = ' '.join(self._value)
+        return _value or None
+
+    def feed(self, value):
+        if isinstance(value, Paragraph):
+            value = value.value
+        assert isinstance(value, str)
+        self._value.append(value.strip())
+
+
+# TODO currently not processing SKIPs
+# I noticed SKIPs in the config file
+# But it seems that it wasn't processed
+# in the previous version either
+
+@dataclass
+class ConfigAttrMeta():
+
+    confmod: MetaField = field(default_factory=MetaField)
+    section: Text = field(default_factory=Text)  # persistent
+    description: Paragraph = field(default_factory=Paragraph)
+    readonly: Flag = field(default_factory=Flag)
+    hidden: Flag = field(default_factory=Flag)
+    invisible: Flag = field(default_factory=Flag)
+
+    def update(self, meta):
+        assert isinstance(meta, ConfigAttrMeta)
+        for field, value in meta.asdict().items():
+            self.feed(field, value)
+
+    def asdict(self):
+        confmod, self.confmod = self.confmod, MetaField()
+        result = {k: v.value for k, v in asdict(self).items()}
+        result['confmod'] = confmod.value  # cannot pickle in asdict
+        return result
+
+    ## ------------------------------------
+
+    def feed(self, field, value):
+        if field and value:
+            getattr(self, field).feed(value)
+
+    def reset(self):
+        self.description.clear()
+        self.readonly.clear()
+        self.hidden.clear()
+        self.invisible.clear()
+
+    def commit(self):
+        result = deepcopy(self)
+        self.reset()
+        return result
+
+
+class ConfigLines(UserList):
+
+    def parse(self, attrs=()):
+
+        result = {}
+        attrs = set(attrs)
+        current = ConfigAttrMeta()
+
+        for line in self.data:
+
+            # feed
+            field, value = line.match()
+            current.feed(field, value)
+
+            # commit
+            if '=' in line:
+                attr = line.split("=")[0].strip()
+                if attr in attrs:
+                    result[attr] = current.commit()
+
+            # reset
+            if not line.strip():
+                current.reset()
+
+        return result
+
+
+class ConfigLine(UserString):
+
+    PATTERNS = (
+        ("hidden", re.compile(r"^#-\s*hide\s*-#\s*$"), lambda m: True),
+        ("invisible", re.compile(r"^#-\s*invisible\s*-#\s*$"), lambda m: True),
+        ("readonly", re.compile(r"^#-\s*readonly\s*-#\s*$"), lambda m: True),
+        ("section", re.compile(r"^#\*\s*(.*)\s*\*#\s*$"), lambda m: m.groups()[0]),
+        ("description", re.compile(r".*\s*#\s+(.*)$"), lambda m: m.groups()[0]),
+    )
+
+    def match(self):
+        for _type, pattern, func in self.PATTERNS:
+            match = pattern.match(self.data)
+            if match:
+                return _type, func(match)
+        return None, None
+
+def config_for_app(config_mod):
+
+    for attr in dir(config_mod):
+        value = getattr(config_mod, attr)
+        if isinstance(value, ConfigurationError):
+            raise ConfigurationError("%s: %s" % (attr, str(value)))
+
     app_path = os.path.split(config_mod.__file__)[0]
     sys.path.insert(0, app_path)
+
+    wrapper = ConfigurationManager(config_mod)
+    wrapper.APP_PATH = app_path
+
+    if not hasattr(config_mod, "HUB_DB_BACKEND"):
+        raise AttributeError("HUB_DB_BACKEND Not Found.")
+
+    # global config
+    # config = wrapper
+    # TODO NEED FURTHER WORK TO GET THIS WORKING
+    # to support import biothings.config
+
     # this will create a "biothings.config" module
     # so "from biothings from config" will get app config at lib level
     # (but "import biothings.config" won't b/c not a real module within biothings
-    wrapper = ConfigurationManager(config_mod)
     globals()["config"] = wrapper
-    config.APP_PATH = app_path
-    if not hasattr(config_mod, "HUB_DB_BACKEND"):
-        raise AttributeError(
-            "Can't find HUB_DB_BACKEND in configutation module")
-    else:
-        import importlib
-        config.hub_db = importlib.import_module(
-            config_mod.HUB_DB_BACKEND["module"])
-        import biothings.utils.hub_db
-        biothings.utils.hub_db.setup(config)
-        wrapper.hub_config = biothings.utils.hub_db.get_hub_config()
+
+    import biothings.utils.hub_db  # the order of the following commands matter
+    wrapper.hub_db = import_module(config_mod.HUB_DB_BACKEND["module"])
+    biothings.utils.hub_db.setup(wrapper)
+    wrapper.hub_config = biothings.utils.hub_db.get_hub_config()
+
+    # setup logging
     from biothings.utils.loggers import EventRecorder
     logger = logging.getLogger()
     fmt = logging.Formatter(
