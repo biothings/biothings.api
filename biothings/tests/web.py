@@ -12,6 +12,7 @@
 import inspect
 import os
 from functools import partial
+from typing import Optional, Union
 
 import pytest
 import requests
@@ -21,8 +22,7 @@ from tornado.ioloop import IOLoop
 from tornado.testing import AsyncHTTPTestCase
 
 
-class BiothingsDataTest():
-
+class BiothingsDataTest:
     # relative path parsing configuration
     scheme = 'http'
     prefix = 'v1'
@@ -110,12 +110,59 @@ class BiothingsDataTest():
             assert False, 'Not a valid Msgpack binary.'
         return dic
 
+    @staticmethod
+    def value_in_result(value, result: Union[dict, list], key: str,
+                        case_insensitive: bool = False) -> bool:
+        """
+        Check if value is in result at specific key
+
+        Elasticsearch does not care if a field has one or more values (arrays),
+        so you may get a search with multiple values in one field.
+        You were expecting a result of type T but now you have a List[T] which
+        is bad.
+        In testing, usually any one element in the list eq. to the value you're
+        looking for, you don't really care which.
+        This helper function checks if the value is at a key, regardless
+        of the details of nesting, so you can just do this:
+            assert self.value_in_result(value, result, 'where.it.should.be')
+
+        Caveats:
+        case_insensitive only calls .lower() and does not care about locale/
+        unicode/anything
+
+        Args:
+            value: value to look for
+            result: dict or list of input, most likely from the APIs
+            key: dot delimited key notation
+            case_insensitive: for str comparisons, invoke .lower() first
+        Returns:
+            boolean indicating whether the value is found at the key
+        Raises:
+            TypeError: when case_insensitive set to true on unsupported types
+        """
+        res_at_key = []
+        if case_insensitive:
+            try:
+                value = value.lower()
+            except Exception:
+                raise TypeError("failed to invoke method .lower()")
+        for k, v in traverse(result, leaf_node=True):
+            if k == key:
+                if case_insensitive:
+                    try:
+                        v = v.lower()
+                    except Exception:
+                        raise TypeError("failed to invoke method .lower()")
+                res_at_key.append(v)
+        return value in res_at_key
+
 
 class BiothingsWebAppTest(BiothingsDataTest, AsyncHTTPTestCase):
     """
         Starts the tornado application to run tests locally.
         Need a config.py under the current working dir.
     """
+    TEST_DATA_DIR_NAME: Optional[str] = None  # set sub-dir name
 
     # override
     def get_new_ioloop(self):

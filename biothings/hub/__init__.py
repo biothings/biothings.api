@@ -21,7 +21,7 @@ from biothings.utils.hub import (HubShell, get_hub_reloader, CommandDefinition, 
 from biothings.utils.jsondiff import make as jsondiff
 from biothings.utils.version import check_new_version, get_version
 from biothings.utils.common import get_class_from_classpath
-from biothings.hub.api.handlers.log import HubLogHandler
+from biothings.hub.api.handlers.log import HubLogDirHandler, HubLogFileHandler
 
 # Keys used as category in pinfo (description of jobs submitted to JobManager)
 # Those are used in different places
@@ -179,14 +179,14 @@ def get_schedule(loop):
     return "\n".join(out)
 
 
-@asyncio.coroutine
-def start_ssh_server(loop,
-                     name,
-                     passwords,
-                     keys=['bin/ssh_host_key'],
-                     shell=None,
-                     host='',
-                     port=8022):
+# @asyncio.coroutine
+async def start_ssh_server(loop,
+                           name,
+                           passwords,
+                           keys=['bin/ssh_host_key'],
+                           shell=None,
+                           host='',
+                           port=8022):
     for key in keys:
         assert os.path.exists(
             key
@@ -199,11 +199,16 @@ def start_ssh_server(loop,
                     func=shell.__class__.refresh_commands,
                     start=True,
                     loop=loop)
-    yield from asyncssh.create_server(HubSSHServer,
-                                      host,
-                                      port,
-                                      loop=loop,
-                                      server_host_keys=keys)
+    # yield from asyncssh.create_server(HubSSHServer,
+    #                                   host,
+    #                                   port,
+    #                                   loop=loop,
+    #                                   server_host_keys=keys)
+    await asyncssh.create_server(HubSSHServer,
+                                 host,
+                                 port,
+                                 #loop=loop,
+                                 server_host_keys=keys)
 
 
 class HubCommands(OrderedDict):
@@ -379,9 +384,8 @@ class HubServer(object):
             # Then deal with read-write API
             self.routes.extend(
                 generate_api_routes(self.shell, self.api_endpoints))
-            from tornado.web import StaticFileHandler
-            self.routes.append(("/logs/(.*)", HubLogHandler, {"path": config.LOG_FOLDER}))
-            self.routes.append(("/log/(.+)", StaticFileHandler, {"path": config.LOG_FOLDER}))
+            self.routes.append(("/logs/(.*)", HubLogDirHandler, {"path": config.LOG_FOLDER}))
+            self.routes.append(("/log/(.+)", HubLogFileHandler, {"path": config.LOG_FOLDER}))
             self.routes.append(("/", RootHandler, {
                 "features": self.features,
             }))
@@ -520,8 +524,7 @@ class HubServer(object):
     def configure_index_manager(self):
         from biothings.hub.dataindex.indexer import IndexManager
         args = self.mixargs("index")
-        index_manager = IndexManager(job_manager=self.managers["job_manager"],
-                                     **args)
+        index_manager = IndexManager(job_manager=self.managers["job_manager"], **args)
         index_manager.configure(config.INDEX_CONFIG)
         self.managers["index_manager"] = index_manager
 

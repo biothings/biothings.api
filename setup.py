@@ -40,7 +40,7 @@ if commit_hash or num_commits:
 # very minimal requirement for running biothings.web
 install_requires = [
     'requests>=2.21.0',
-    'tornado==5.1.1',
+    'tornado==6.1.0',
     'gitpython>=3.1.0',
     'elasticsearch[async]>=6, <8',
     'elasticsearch-dsl>=6, <8',
@@ -60,7 +60,7 @@ hub_requires = [
     'beautifulsoup4',   # used in dumper.GoogleDriveDumper
     'aiocron',          # setup scheduled jobs
     'aiohttp==3.6.2',   # for compatibility with elasticsearch-async==6.x
-    'asyncssh==1.18.0',  # needs libffi-dev installed (apt-get)
+    'asyncssh==2.5.0',  # needs libffi-dev installed (apt-get)
     'pymongo',
     'psutil',
     'jsonpointer',      # for utils.jsonpatch
@@ -71,14 +71,15 @@ hub_requires = [
     'dill',             # a pickle alternative with extra object type support
     'pyinotify; sys_platform == "linux"',        # Linux-only; used in utils.hub.PyInotifyHubReloader
     'prettytable',      # diff report renderer
-    'sockjs-tornado==1.0.6',   # websocket server for HubServer
+    'sockjs-tornado==1.0.7',   # websocket server for HubServer
     'jsonschema>=2.6.0',
     'pip',              # auto-install requirements from plugins
-    'pandas==1.0.1',    # json with inf/nan and more to come
+    # 'pandas==1.0.1',    # json with inf/nan and more to come (replaced by orjson below now)
+    'orjson>=3.5.2',    # this is a faster json lib support inf/nan and datetime
     'yapf',             # code reformatter, better results than autopep8
     'requests-aws4auth',    # aws s3 auth requests for autohub
     'networkx>=2.1',            # datatransform
-    'biothings_client==0.2.1'   # datatransform (api client)
+    'biothings_client>=0.2.6'   # datatransform (api client)
 ]
 
 # extra requirements for building docs

@@ -2,7 +2,13 @@ import asyncio
 from tornado.web import RequestHandler
 import logging
 import datetime
-import pandas.io.json as pdjson
+
+# pandas.io.json encoder to deal with non-json compliant values NaN, Inf
+# (based on ujson, but pandas has its own way to deal with these values)
+# see https://github.com/biothings/biothings.api/commit/59c0d78f758018b0d87836657a2b5d1a700503a1
+# import pandas.io.json as pdjson
+# replace pandas json encoder with orjson:
+import orjson
 
 from biothings import config
 
@@ -20,10 +26,15 @@ class DefaultHandler(RequestHandler):
 
     def write(self, result):
         super(DefaultHandler, self).write(
-            pdjson.dumps({
+            # pdjson.dumps({
+            #     "result": result,
+            #     "status": "ok"
+            # }, iso_dates=True)
+            orjson.dumps({
                 "result": result,
                 "status": "ok"
-            }, iso_dates=True))
+            }, option=orjson.OPT_NON_STR_KEYS).decode()
+        )
 
     def write_error(self, status_code, **kwargs):
         self.set_status(status_code)
@@ -80,16 +91,10 @@ class RootHandler(DefaultHandler):
     @asyncio.coroutine
     def get(self):
         self.write({
-            "name": self.hub_name or \
-            getattr(config, "HUB_NAME", None),
-            "biothings_version":
-            getattr(config, "BIOTHINGS_VERSION", None),
-            "app_version":
-            getattr(config, "APP_VERSION", None),
-            "icon":
-            getattr(config, "HUB_ICON", None),
-            "now":
-            datetime.datetime.now().astimezone(),
-            "features":
-            self.features,
+            "name": self.hub_name or getattr(config, "HUB_NAME", None),
+            "biothings_version": getattr(config, "BIOTHINGS_VERSION", None),
+            "app_version": getattr(config, "APP_VERSION", None),
+            "icon": getattr(config, "HUB_ICON", None),
+            "now": datetime.datetime.now().astimezone(),
+            "features": self.features
         })
