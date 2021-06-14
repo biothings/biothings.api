@@ -123,17 +123,22 @@ ANNOTATION_KWARGS = {
 }
 QUERY_KWARGS = {
     '*': COMMON_KWARGS.copy(),
-    'GET': {'q': {'type': str, 'default': None, 'strict': False},
-            'aggs': {'type': list, 'max': 1000, 'alias': 'facets'},
-            'facet_size': {'type': int, 'default': 10, 'max': 1000},
-            'from': {'type': int, 'max': 10000, 'alias': 'skip'},
-            'userquery': {'type': str, 'alias': ['userfilter']},
-            'sort': {'type': list, 'max': 10},
-            'explain': {'type': bool},
-            'fetch_all': {'type': bool},
-            'scroll_id': {'type': str}},
-    'POST': {'q': {'type': list, 'required': True, 'strict': False},
-             'scopes': {'type': list, 'default': ['_id'], 'max': 1000, 'strict': False}}
+    'GET': {
+        'q': {'type': str, 'default': None, 'strict': False},
+        'aggs': {'type': list, 'max': 1000, 'alias': 'facets'},
+        'facet_size': {'type': int, 'default': 10, 'max': 1000},
+        'from': {'type': int, 'max': 10000, 'alias': 'skip'},
+        'userquery': {'type': str, 'alias': ['userfilter']},
+        'sort': {'type': list, 'max': 10},
+        'explain': {'type': bool},
+        'fetch_all': {'type': bool},
+        'scroll_id': {'type': str}},
+    'POST': {
+        'q': {'type': list, 'required': True, 'strict': False},
+        'scopes': {'type': list, 'default': ['_id'], 'max': 1000, 'strict': False},
+        'from': {'type': int, 'max': 10000, 'alias': 'skip'},
+        'sort': {'type': list, 'max': 10},
+    }
 }
 
 # *****************************************************************************
