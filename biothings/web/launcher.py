@@ -20,7 +20,7 @@ import tornado.httpserver
 import tornado.ioloop
 import tornado.log
 import tornado.web
-from biothings import get_version
+from biothings import __version__
 from biothings.web.applications import BiothingsAPI
 from biothings.web.settings import configs
 from tornado.options import define, options
@@ -28,7 +28,6 @@ from tornado.options import define, options
 
 logger = logging.getLogger(__name__)
 
-__USE_WSGI__ = False
 
 class BiothingsAPILauncher():
     """
@@ -53,7 +52,7 @@ class BiothingsAPILauncher():
         # About debug mode in tornado:
         # https://www.tornadoweb.org/en/stable/guide/running.html \
         # #debug-mode-and-automatic-reloading
-        logging.info("Biothings API %s", get_version())
+        logging.info("Biothings API %s", __version__)
         self.config = configs.load(config)
         self.handlers = []  # additional handlers
         self.settings = dict(debug=False)
