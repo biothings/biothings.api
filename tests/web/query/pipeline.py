@@ -20,16 +20,16 @@ def test_mongo():
     print(pipeline.search("slc27a2b", scopes=["symbol"], _source=fields))
 
 def test_es():
-    client = connections.get_es_client("localhost:9200")
+    client = connections.get_es_client("localhost:9200", True)
     pipeline = ESQueryPipeline(
         ESQueryBuilder(),
         ESQueryBackend(client),
         ESResultFormatter()
     )
     # print(pipeline.fetch("ecf3767159a74988", rawquery=1))
-    # print(pipeline.fetch("ecf3767159a74988", _source=['_*']))
-    # print(pipeline.fetch("nonexists"))
-    # print(pipeline.search("infection", scopes=["name"], _source=['_*', 'name']))
+    print(pipeline.fetch("ecf3767159a74988", _source=['_*']))
+    print(pipeline.fetch("nonexists"))
+    print(pipeline.search("infection", scopes=["name"], _source=['_*', 'name']))
     print(pipeline.search("nonexists", scopes=["name"]))
 
 
@@ -50,4 +50,4 @@ def test_sql():
 
 
 if __name__ == '__main__':
-    test_mongo()
+    test_es()

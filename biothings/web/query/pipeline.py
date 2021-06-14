@@ -1,4 +1,5 @@
 
+import asyncio
 
 # here this module defines two types of operations supported in
 # each query pipeline class, one called "search" which corresponds to
@@ -46,11 +47,6 @@ class QueryPipeline():
         return result
 
 
-# TODO
-# Support synchronous service interface so that it can
-# run in a synchronous web framework that works with
-# platform as a service solutions.
-
 class AsyncESQueryPipeline(QueryPipeline):
 
     async def search(self, q, **options):
@@ -74,6 +70,27 @@ class AsyncESQueryPipeline(QueryPipeline):
         result = await self.search(id, **options)
         return result
 
+class ESQueryPipeline(QueryPipeline):  # over async client
+
+    # These implementations may not be performance optimized
+    # It is used as a proof of concept and helps the design
+    # of upper layer constructs, it also simplifies testing
+    # the async piepeline without managing an event loop.
+
+    def _run_coroutine(self, coro, *args, **kwargs):
+        loop = asyncio.get_event_loop()
+        pipeline = AsyncESQueryPipeline(
+            self.builder, self.backend, self.formatter)
+        return loop.run_until_complete(
+            coro(pipeline, *args, **kwargs))
+
+    def search(self, q, **options):
+        return self._run_coroutine(
+            AsyncESQueryPipeline.search, q, **options)
+
+    def fetch(self, id, **options):
+        return self._run_coroutine(
+            AsyncESQueryPipeline.fetch, id, **options)
 
 class MongoQueryPipeline(QueryPipeline):
     pass
