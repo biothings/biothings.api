@@ -212,7 +212,7 @@ class BaseAPIHandler(BaseHandler):
             link=_link,  # url to get regular format
             link_decode=unquote_plus(_link),
             title_html=self.biothings.config.HTML_OUT_TITLE,
-            docs_link=getattr(self.web_settings, self.name.upper()+'_DOCS_URL', '')
+            docs_link=getattr(self.web_settings, self.name.upper()+'_DOCS_URL', '')  # TODO Evaluate if this belongs in the base handler
         )
 
     def on_finish(self):

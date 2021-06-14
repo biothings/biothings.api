@@ -18,7 +18,7 @@
 # TODO make sure assertions are for internal error checking
 # and use ValueError or TypeError for external errors.
 
-class QueryPipelineException(Exception):
+class QueryPipelineException(Exception):  # TODO
     # use code here to indicate error types instead of
     # exception types, this reduces the number of potential
     # exception types this module needs to create.
@@ -46,25 +46,10 @@ class QueryPipeline():
         return result
 
 
-class ESQueryPipeline(QueryPipeline):
-
-    def search(self, q, **options):
-
-        if isinstance(q, list):
-            options['templates'] = (dict(query=_q) for _q in q)
-            options['template_miss'] = dict(notfound=True)
-            options['template_hit'] = dict()
-
-        return super().search(q, **options)
-
-    def fetch(self, id, **options):
-        assert options.get('scopes') is None
-        options['scopes'] = []
-        options['version'] = True
-        options['score'] = False
-        options['one'] = True
-        result = self.search(id, **options)
-        return result
+# TODO
+# Support synchronous service interface so that it can
+# run in a synchronous web framework that works with
+# platform as a service solutions.
 
 class AsyncESQueryPipeline(QueryPipeline):
 

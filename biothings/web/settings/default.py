@@ -62,11 +62,11 @@ SQL_ARGS = {
 
 
 # *****************************************************************************
-# Web Application & Base Handler
+# Web Application
 # *****************************************************************************
 
 # Routing
-API_PREFIX = ''
+API_PREFIX = ''  # TODO change these to APP_SOMETHING
 API_VERSION = 'v1'
 APP_LIST = [
     (r"/", 'biothings.web.handlers.FrontPageHandler'),
@@ -84,6 +84,10 @@ APP_LIST = [
     (r"/{pre}/{ver}/metadata/?", 'biothings.web.handlers.MetadataSourceHandler'),
     (r"/{pre}/{ver}/query/?", 'biothings.web.handlers.QueryHandler'),
 ]
+
+# *****************************************************************************
+# Base API Handler
+# *****************************************************************************
 
 # For format=html
 HTML_OUT_HEADER_IMG = "https://biothings.io/static/favicon.ico"
@@ -159,10 +163,7 @@ ALLOW_NESTED_AGGS = False
 ES_SCROLL_TIME = '1m'
 # Size of each scroll request return
 ES_SCROLL_SIZE = 1000
-# Maximum size of result return
-ES_SIZE_CAP = 1000
-# Maximum result window => maximum for "from" parameter
-ES_RESULT_WINDOW_SIZE_CAP = 10000
+
 
 ES_QUERY_BACKEND = 'biothings.web.query.AsyncESQueryBackend'
 ES_RESULT_TRANSFORM = 'biothings.web.query.ESResultFormatter'
