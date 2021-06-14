@@ -5,6 +5,8 @@ import json
 import re
 import time
 import functools
+import warnings
+from typing import Optional
 
 from elasticsearch import (Elasticsearch, NotFoundError, RequestError,
                            TransportError, ElasticsearchException)
@@ -119,6 +121,10 @@ class ESIndexer():
         self.es_host = es_host
         self._es = get_es(es_host, **kwargs)
         self._host_major_ver = int(self._es.info()['version']['number'].split('.')[0])
+        # the name of the index when ESIndexer is initialized
+        self.canonical_index_name = index
+        # whether the initial index name is an alias. None = Don't know.
+        self.canon_index_is_alias = None
         if check_index:
             # if index is actually an alias, resolve the alias to
             # the real underlying index
@@ -127,9 +133,12 @@ class ESIndexer():
                 # this was an alias
                 assert len(res) == 1, "Expecing '%s' to be an alias, but got nothing..." % index
                 self._index = list(res.keys())[0]
+                self.canon_index_is_alias = True
             except NotFoundError:
                 # this was a real index name
                 self._index = index
+                self.canon_index_is_alias = False
+
         self._doc_type = None
         if doc_type:
             self._doc_type = doc_type
@@ -702,6 +711,188 @@ class ESIndexer():
         except TransportError as e:
             raise IndexerException("Can't restore snapshot '%s' (does index '%s' already exist ?): %s" %
                                    (snapshot_name, index_name, e))
+
+    def update_alias(self, alias_name: str, index: Optional[str] = None):
+        """
+        Create or update an ES alias pointing to an index
+
+        Creates or updates an alias in Elasticsearch, associated with the
+        given index name or the underlying index of the ESIndexer instance.
+
+        When the alias name does not exist, it will be created. If an existing
+        alias already exists, it will be updated to only associate with the
+        index.
+
+        When the alias name already exists, an exception will be raised,
+        UNLESS the alias name is the same as index name that the ESIndexer is
+        initialized with, and the underlying _index does not equal to alias
+        name, and the index parameter is equal to _index. For example,
+        if alias_name == self.canonical_index_name == data,
+        and self._index = data_20210614. In this case, the existing index
+        with the name collision will be deleted, and the alias will be created
+        in its place. This feature is intended for seamless migration from
+        an index to an alias associated with an index for zero-downtime
+        installs.
+
+        Args:
+            alias_name: name of the alias
+            index: name of the index to associate with alias. If None, the
+                index of the ESIndexer instance is used.
+
+        Raises:
+            IndexerException
+        """
+        if index is None:
+            index = self._index
+
+        if not self._es.exists(index=alias_name):
+            # case 1 it does not already exist
+            #  create the alias pointing to _index
+            self._es.indices.put_alias(index=index, name=alias_name)
+        else:  # case 2 it already exists
+            if self._es.indices.exists_alias(name=alias_name):
+                # if it is an alias, blindly update
+                #  This removes any other indices associated with the alias
+                actions = {
+                    "actions": [
+                        {"add": {"index": index, "alias": alias_name}}
+                    ]
+                }
+                removes = [
+                    {
+                        "remove": {"index": index_name, "alias": alias_name}
+                    } for index_name in self._es.indices.get_alias(alias_name)
+                ]
+                actions["actions"].extend(removes)
+                self._es.indices.update_aliases(actions)
+            else:  # it is an index
+                # if not _index and is the canonical index name
+                #  then delete the index and create alias
+                if alias_name == self.canonical_index_name and \
+                        not alias_name == self._index and \
+                        index == self._index:
+                    self._es.indices.delete(alias_name)
+                    self._es.indices.put_alias(index=index, name=alias_name)
+                else:
+                    raise IndexerException(f"Cannot create alias {alias_name} "
+                                           "an index with the same name "
+                                           "already exists")
+
+    def restore_and_alias(self, repo_name, snapshot_name, purge):
+        """
+        Restores a snapshot and create an alias
+
+        This method restores a snapshot from a repository, and then updates
+        or creates an alias associated with the newly restored index, finally
+        deleting the old index. This minimizes the index/service down time.
+
+        Caveats:
+        When the initial name of the ESIndexer is already an alias, the purge
+        option has no effects. When it is already an alias, this method will
+        *always* restore to a new index and perform an atomic swap of the
+        indices in the alias. The purge option only has an effect when the
+        target index name is not an alias. In that case it will delete the
+        target index immediately prior to creating the alias.
+
+        Args:
+            repo_name: name of the repository to locate the snapshot.
+            snapshot_name: name of the snapshot.
+            purge: whether allow deleting the original index when moving from
+                index to alias. Has no effects when original index name already
+                points to an alias. See Caveats.
+
+        Raises:
+            IndexerException:
+            RuntimeError:
+
+        """
+        is_alias = False
+        try:
+            res = self._es.indices.get_alias(self.canonical_index_name)
+            if len(res) != 1:
+                raise RuntimeError("Attempting to restore to and update an "
+                                   "alias associated with multiple indices")
+            old_index_name = list(res.keys())[0]
+            is_alias = True
+        except NotFoundError:
+            old_index_name = self.canonical_index_name
+
+        # check for if something has altered _index and created a mismatch
+        if old_index_name != self._index:
+            raise RuntimeError("The underlying index name mismatches "
+                               "the index associated with the alias, "
+                               "cannot proceed with the restore")
+
+        if not purge:
+            if is_alias:
+                warnings.warn(RuntimeWarning(
+                    "Setting purge=False when target index name is an alias "
+                    "has no effects! The snapshot will be restored and the "
+                    "alias will be updated, and the old index WILL BE DELETED!"
+                ))
+            else:  # not alias
+                try:
+                    self._es.indices.get(old_index_name)
+                    # technically a closed index can be overwritten
+                    # open an issue if this becomes an issue
+                    raise IndexerException("An index with the name already "
+                                           "exists and purge=False is set. "
+                                           "Not restoring snapshot.")
+                except NotFoundError:
+                    pass
+
+        # FIXME: generate new index name
+        dupe_name = True
+        new_idx_count = 0
+        d = datetime.datetime.now().strftime('%Y%m%d')
+        while dupe_name:
+            new_index_name = f'{snapshot_name}_{d}_rs{new_idx_count}'
+            try:
+                self._es.indices.get(new_index_name)
+                new_idx_count += 1
+            except NotFoundError:
+                dupe_name = False
+
+        self.restore(repo_name, snapshot_name, new_index_name, purge=False)
+
+        # delete old index if that is allowed
+        if not is_alias and purge:
+            try:
+                self._es.indices.delete(old_index_name)
+            except NotFoundError:
+                pass
+
+        # create/update alias
+        if not is_alias:
+            self._es.indices.put_alias(index=new_index_name,
+                                       name=self.canonical_index_name
+                                       )
+        else:  # is an alias
+            actions = {
+                "actions": [
+                    {"add": {
+                        "index": new_index_name,
+                        "alias": self.canonical_index_name,
+                    }},
+                    {"remove": {
+                        "index": old_index_name,
+                        "alias": self.canonical_index_name
+                    }}
+                ]
+            }
+            self._es.indices.update_aliases(actions)
+
+        # update instance states
+        self._index = new_index_name
+        self.canon_index_is_alias = True
+
+        # delete old index
+        self._es.indices.delete(old_index_name)
+
+        # three things that needs to be done
+        #  - restore snapshot
+        #  - update self._index to point to the new index
+        #  - perform alias creation, delete old index
 
     def get_repository(self, repo_name):
         try:
