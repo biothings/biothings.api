@@ -15,7 +15,7 @@ REPO_URL = "https://github.com/biothings/biothings.api"
 
 
 # get version
-version = __import__('biothings').get_version()
+version = '.'.join(map(str, __import__('biothings').__version__))
 
 # should fail if installed from source or from pypi,
 # version gets set to MAJOR.MINOR.# commits on master branch if installed from pip repo

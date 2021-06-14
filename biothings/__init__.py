@@ -16,11 +16,8 @@ from types import ModuleType
 from .utils.dataload import dict_traverse
 from .utils.dotfield import make_object, merge_object
 from .utils.jsondiff import make as jsondiff
-from .version import MAJOR_VER, MICRO_VER, MINOR_VER
 
-
-def get_version():
-    return '{}.{}.{}'.format(MAJOR_VER, MINOR_VER, MICRO_VER)
+__version__ = (0, 10, 0)
 
 
 class ConfigurationError(Exception):
