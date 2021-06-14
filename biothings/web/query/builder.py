@@ -271,9 +271,9 @@ class ESQueryBuilder():
         if isinstance(options._source, list):
             if 'all' not in options._source:
                 search = search.source(options._source)
-        for key, value in options.items():
-            if key in ('from', 'size', 'explain', 'version'):
-                search = search.extra(**{key: value})
+        for key in ('from', 'size', 'explain', 'version'):
+            if key in options:
+                search = search.extra(**{key: options[key]})
 
         return search
 
