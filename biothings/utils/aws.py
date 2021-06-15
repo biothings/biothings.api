@@ -146,6 +146,17 @@ def _populate_s3_info(aws_key, aws_secret, s3_bucket):
     return aws_key, aws_secret, s3_bucket
 
 
+def _get_s3_object(aws_key, aws_secret, s3_bucket, s3key):
+    aws_key, aws_secret, s3_bucket = _populate_s3_info(
+        aws_key, aws_secret, s3_bucket)
+    if not key_exists(s3_bucket, s3key, aws_key, aws_secret):
+        raise FileNotFoundError(s3key)
+    s3 = boto3.resource('s3', aws_access_key_id=aws_key,
+                        aws_secret_access_key=aws_secret)
+    target_object = s3.Object(s3_bucket, s3key)
+    return target_object
+
+
 # pylint:disable=too-many-arguments
 # at the moment we do not intend to merge parameters (to sth. like S3Config)
 def download_s3_file(s3key, localfile=None, aws_key=None, aws_secret=None,
@@ -154,13 +165,7 @@ def download_s3_file(s3key, localfile=None, aws_key=None, aws_secret=None,
     if not overwrite and os.path.exists(localfile):
         raise FileExistsError(f"download_s3_file: {localfile} already exists"
                               f" and not overwriting")
-    aws_key, aws_secret, s3_bucket = _populate_s3_info(
-        aws_key, aws_secret, s3_bucket)
-    if not key_exists(s3_bucket, s3key, aws_key, aws_secret):
-        raise FileNotFoundError(s3key)
-    s3 = boto3.resource('s3', aws_access_key_id=aws_key,
-                        aws_secret_access_key=aws_secret)
-    target_object = s3.Object(s3_bucket, s3key)
+    target_object = _get_s3_object(aws_key, aws_secret, s3_bucket, s3key)
     with tempfile.NamedTemporaryFile('xb', delete=False) as tmp:
         body = target_object.get()['Body']
         for chunk in body.iter_chunks():
@@ -174,13 +179,7 @@ def download_s3_file(s3key, localfile=None, aws_key=None, aws_secret=None,
 # pylint:enable=too-many-arguments
 def get_s3_file_contents(s3key, aws_key=None, aws_secret=None, s3_bucket=None)\
         -> bytes:
-    aws_key, aws_secret, s3_bucket = _populate_s3_info(
-        aws_key, aws_secret, s3_bucket)
-    if not key_exists(s3_bucket, s3key, aws_key, aws_secret):
-        raise FileNotFoundError(s3key)
-    s3 = boto3.resource('s3', aws_access_key_id=aws_key,
-                        aws_secret_access_key=aws_secret)
-    target_object = s3.Object(s3_bucket, s3key)
+    target_object = _get_s3_object(aws_key, aws_secret, s3_bucket, s3key)
     return target_object.get()['Body'].read()
 
 
