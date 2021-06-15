@@ -122,11 +122,11 @@ def get_s3_file(s3key, localfile=None, return_what=False,
                                          "deprecated, use other ways "
                                          "instead"))
         try:
-            # pylint: disable=wrong-import-position
+            # pylint:disable=import-outside-toplevel
             # this is so that only those who need return_what="key"
             # will depend on boto
             from boto import connect_s3
-            # pylint: enable=wrong-import-position
+            # pylint:enable=import-outside-toplevel
             s3 = connect_s3(aws_key, aws_secret)
             bucket = s3.get_bucket(s3_bucket)
             k = bucket.get_key(s3key)
@@ -147,10 +147,10 @@ def _populate_s3_info(aws_key, aws_secret, s3_bucket):
 
 
 # at the moment we do not intend to merge parameters (to sth. like S3Config)
-# pylint: disable=too-many-arguments
+# pylint:disable=too-many-arguments
 def download_s3_file(s3key, localfile=None, aws_key=None, aws_secret=None,
                      s3_bucket=None, overwrite=False):
-    # pylint: enable=too-many-arguments
+    # pylint:enable=too-many-arguments
     localfile = localfile or os.path.basename(s3key)
     if not overwrite and os.path.exists(localfile):
         raise FileExistsError(f"download_s3_file: {localfile} already exists"
