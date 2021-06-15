@@ -146,11 +146,10 @@ def _populate_s3_info(aws_key, aws_secret, s3_bucket):
     return aws_key, aws_secret, s3_bucket
 
 
-# at the moment we do not intend to merge parameters (to sth. like S3Config)
 # pylint:disable=too-many-arguments
+# at the moment we do not intend to merge parameters (to sth. like S3Config)
 def download_s3_file(s3key, localfile=None, aws_key=None, aws_secret=None,
                      s3_bucket=None, overwrite=False):
-    # pylint:enable=too-many-arguments
     localfile = localfile or os.path.basename(s3key)
     if not overwrite and os.path.exists(localfile):
         raise FileExistsError(f"download_s3_file: {localfile} already exists"
@@ -172,6 +171,7 @@ def download_s3_file(s3key, localfile=None, aws_key=None, aws_secret=None,
             os.rename(tmp.name, localfile)
 
 
+# pylint:enable=too-many-arguments
 def get_s3_file_contents(s3key, aws_key=None, aws_secret=None, s3_bucket=None)\
         -> bytes:
     aws_key, aws_secret, s3_bucket = _populate_s3_info(
