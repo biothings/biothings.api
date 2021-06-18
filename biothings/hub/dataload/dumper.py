@@ -1083,7 +1083,7 @@ class GitDumper(BaseDumper):
             result = subprocess.run(cmd, stdout=subprocess.PIPE, timeout=5,
                                     env={'LC_ALL': 'C'})
             if result.returncode == 0:
-                r = re.compile(rb'^ref:\s+refs/heads/(.*)\s+HEAD$',
+                r = re.compile(rb'^ref:\s+refs\/heads\/(.*)\s+HEAD$',
                                flags=re.MULTILINE)
                 m = r.match(result.stdout)
                 if m is not None:
@@ -1100,11 +1100,10 @@ class GitDumper(BaseDumper):
             result = subprocess.run(cmd, stdout=subprocess.PIPE, timeout=5,
                                     env={'LC_ALL': 'C'})
             if result.returncode == 0:
-                r = re.compile(rb'^ref:\s+refs/heads/(.*)$',
+                r = re.compile(rb'^[0-9a-f]{40}\s+refs\/heads\/(.*)$',
                                flags=re.MULTILINE)
-                m = r.match(result.stdout)
-                if m is not None:
-                    ret.append(m[1])
+                for m in re.findall(r, result.stdout):
+                    ret.append(m)
         except TimeoutError:
             pass
         return ret
