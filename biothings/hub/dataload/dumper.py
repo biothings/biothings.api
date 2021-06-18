@@ -1098,7 +1098,9 @@ class GitDumper(BaseDumper):
         try:
             # set locale to C so the output may have more reliable format
             result = subprocess.run(cmd, stdout=subprocess.PIPE, timeout=5,
-                                    env={'LC_ALL': 'C'})
+                                    env={'LC_ALL': 'C'})  # noseq
+            # user controls the URL anyways, and we don't use a shell
+            # so it is safe
             if result.returncode == 0:
                 r = re.compile(rb'^[0-9a-f]{40}\s+refs\/heads\/(.*)$',
                                flags=re.MULTILINE)
@@ -1123,7 +1125,7 @@ class GitDumper(BaseDumper):
             branches = self._get_remote_branches()
             if b'main' in branches and b'master' not in branches:
                 return 'main'
-        except:  # noqa: E722
+        except:  # noseq
             # fallback anything goes wrong
             pass
         # Case 4, use 'master' for compatibility reasons
