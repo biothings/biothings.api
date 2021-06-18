@@ -12,12 +12,22 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from importlib import import_module
 from types import ModuleType
+from typing import NamedTuple
 
 from .utils.dataload import dict_traverse
 from .utils.dotfield import make_object, merge_object
 from .utils.jsondiff import make as jsondiff
 
-__version__ = (0, 10, 0)
+
+class _version_info(NamedTuple):
+    # similar to sys._version_info
+    major: int
+    minor: int
+    micro: int
+
+
+version_info = _version_info(0, 10, 0)
+__version__ = '.'.join(map(str, version_info))
 
 
 class ConfigurationError(Exception):

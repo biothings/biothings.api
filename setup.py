@@ -13,10 +13,6 @@ def read(fname):
 
 REPO_URL = "https://github.com/biothings/biothings.api"
 
-
-# get version
-version = '.'.join(map(str, __import__('biothings').__version__))
-
 # should fail if installed from source or from pypi,
 # version gets set to MAJOR.MINOR.# commits on master branch if installed from pip repo
 # otherwise to MAJOR.MINOR.MICRO as defined in biothings.version
@@ -96,7 +92,7 @@ test_requires = [
 
 setup(
     name="biothings",
-    version=version,
+    version=__import__('biothings').__version__,
     author="Cyrus Afrasiabi, Sebastien Lelong, Xinghua Zhou, Chunlei Wu",
     author_email="cwu@scripps.edu",
     description="a toolkit for building high-performance data APIs in biology",

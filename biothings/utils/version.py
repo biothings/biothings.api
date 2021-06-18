@@ -33,14 +33,14 @@ def get_biothings_commit():
                 'repository-url': lines[0],
                 'commit-hash': lines[1],
                 'master-commits': lines[2],
-                'version': biothings.get_version()
+                'version': biothings.__version__
             }
     except Exception:
         return {
             'repository-url': '',
             'commit-hash': '',
             'master-commits': '',
-            'version': biothings.get_version()
+            'version': biothings.__version__
         }
 
 
