@@ -70,7 +70,7 @@ def _log_es(client, hosts):
 # ------------------------
 
 
-def get_es_client(hosts, async_=False, **settings):
+def get_es_client(hosts=None, async_=False, **settings):
 
     if settings.pop('sniff', None):
         settings.update({
