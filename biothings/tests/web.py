@@ -16,6 +16,7 @@ from typing import Optional, Union
 
 import pytest
 import requests
+from biothings.utils.common import traverse
 from biothings.web.launcher import BiothingsAPI
 from biothings.web.settings import configs
 from tornado.ioloop import IOLoop
@@ -160,7 +161,7 @@ class BiothingsDataTest:
 class BiothingsWebAppTest(BiothingsDataTest, AsyncHTTPTestCase):
     """
         Starts the tornado application to run tests locally.
-        Need a config.py under the current working dir.
+        Need a config.py under the test class folder.
     """
     TEST_DATA_DIR_NAME: Optional[str] = None  # set sub-dir name
 
