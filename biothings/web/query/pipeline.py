@@ -51,7 +51,7 @@ class AsyncESQueryPipeline(QueryPipeline):
 
     async def search(self, q, **options):
 
-        if isinstance(q, list):
+        if isinstance(q, list):  # multisearch
             options['templates'] = (dict(query=_q) for _q in q)
             options['template_miss'] = dict(notfound=True)
             options['template_hit'] = dict()
@@ -62,12 +62,19 @@ class AsyncESQueryPipeline(QueryPipeline):
         return result
 
     async def fetch(self, id, **options):
-        assert options.get('scopes') is None
-        options['scopes'] = []
+        if options.get('scopes'):
+            raise ValueError("Scopes Not Allowed.")
+
+        # for builder
+        options['autoscope'] = True
+        # for formatter
         options['version'] = True
         options['score'] = False
         options['one'] = True
+
         result = await self.search(id, **options)
+        if result is None:
+            raise QueryPipelineException(404, "Not Found.")
         return result
 
 class ESQueryPipeline(QueryPipeline):  # over async client
@@ -75,7 +82,26 @@ class ESQueryPipeline(QueryPipeline):  # over async client
     # These implementations may not be performance optimized
     # It is used as a proof of concept and helps the design
     # of upper layer constructs, it also simplifies testing
-    # the async piepeline without managing an event loop.
+    # by providing ioloop management, enabling sync access.
+
+    def __init__(
+        self, builder=None, backend=None, formatter=None, *args, **kwargs
+    ):
+        if not builder:
+            from biothings.web.query.builder import ESQueryBuilder
+            builder = ESQueryBuilder()
+
+        if not backend:
+            from biothings.web.query.engine import ESQueryBackend
+            from biothings.web.connections import get_es_client
+            client = get_es_client(async_=True)
+            backend = ESQueryBackend(client)
+
+        if not formatter:
+            from biothings.web.query.formatter import ESResultFormatter
+            formatter = ESResultFormatter()
+
+        super().__init__(builder, backend, formatter, *args, **kwargs)
 
     def _run_coroutine(self, coro, *args, **kwargs):
         loop = asyncio.get_event_loop()

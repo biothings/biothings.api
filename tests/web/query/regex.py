@@ -1,6 +1,6 @@
 import re
 
-from biothings.web.query.builder import QueryStringParser as Parser
+from biothings.web.query.builder import QStringParser as Parser
 
 
 def test_01():

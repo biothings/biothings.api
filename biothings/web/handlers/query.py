@@ -31,7 +31,7 @@ biothings.web.handlers.ESRequestHandler
 
 import logging
 from collections import UserDict
-from types import coroutine
+from types import CoroutineType
 
 import elasticsearch
 from biothings.web.query.builder import RawQueryInterrupt
@@ -197,7 +197,7 @@ def ESQueryPipelineHandler(handler_class):
                 raise BadRequest(reason=type(exc).__name__, details=str(exc))
 
             except QueryPipelineException as exc:
-                raise HTTPError(exc.code, reason=str(exc))
+                raise HTTPError(exc.code, reason=exc.data)
 
             except elasticsearch.ConnectionError:  # like timeouts..
                 raise HTTPError(503)
@@ -225,9 +225,6 @@ def ESQueryPipelineHandler(handler_class):
     return handler_class
 
 
-from types import CoroutineType
-
-
 async def ensure_awaitable(obj):
     if isinstance(obj, CoroutineType):
         return await obj
@@ -253,6 +250,7 @@ class BiothingHandler(BaseESRequestHandler):
 
     async def post(self, *args, **kwargs):
         self.event['qsize'] = len(self.args['id'])
+
         result = await ensure_awaitable(
             self.pipeline.fetch(**self.args))
         self.finish(result)
@@ -260,10 +258,7 @@ class BiothingHandler(BaseESRequestHandler):
     async def get(self, *args, **kwargs):
         result = await ensure_awaitable(
             self.pipeline.fetch(**self.args))
-        if result:
-            self.finish(result)
-        else:
-            self.send_error(404)  # TODO exception should come from fetch
+        self.finish(result)
 
 
 @ESQueryPipelineHandler
@@ -283,6 +278,7 @@ class QueryHandler(BaseESRequestHandler):
 
     async def post(self, *args, **kwargs):
         self.event['qsize'] = len(self.args['q'])
+
         result = await ensure_awaitable(
             self.pipeline.search(**self.args))
         self.finish(result)
