@@ -1122,7 +1122,7 @@ class GitDumper(BaseDumper):
             branches = self._get_remote_branches()
             if b'main' in branches and b'master' not in branches:
                 return 'main'
-        except:  # nosec
+        except:  # nosec  # noqa
             # fallback anything goes wrong
             pass
         # Case 4, use 'master' for compatibility reasons
