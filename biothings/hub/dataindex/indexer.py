@@ -1,159 +1,185 @@
-import os
-import time
-import math
-import copy
-from datetime import datetime
-import pickle
 import asyncio
+import copy
+import math
+import os
+import pickle
+from copy import deepcopy
 from functools import partial
+from types import SimpleNamespace
 
-from elasticsearch import Elasticsearch
-
+from biothings import config as btconfig
+from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
+from biothings.hub.databuild.backend import (create_backend,
+                                             merge_src_build_metadata)
+from biothings.utils import es
+from biothings.utils.common import (get_class_from_classpath,
+                                    get_random_string, iter_n, timesofar,
+                                    traverse)
+from biothings.utils.es import ESIndexer
 from biothings.utils.hub_db import get_src_build
-from biothings.utils.common import timesofar, get_random_string, \
-    get_class_from_classpath
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
-from biothings.utils.es import ESIndexer
-from biothings import config as btconfig
 from biothings.utils.mongo import doc_feeder, id_feeder
-from config import LOG_FOLDER, logger as logging
-from biothings.hub.databuild.backend import create_backend, merge_src_build_metadata
-from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
+from config import LOG_FOLDER
+from config import logger as logging
+from elasticsearch import Elasticsearch
+from elasticsearch.exceptions import ElasticsearchException
 
+from . import indexer_registrar as registrar
+from .indexer_task import dispatch_task
 
-def new_index_worker(col_name, ids, pindexer, batch_num):
-    col = create_backend(col_name).target_collection
-    idxer = pindexer()
-    cur = doc_feeder(col,
-                     step=len(ids),
-                     inbatch=False,
-                     query={'_id': {
-                         '$in': ids
-                     }})
-    cnt = idxer.index_bulk(cur)
-    return cnt
+# TODO
+# except Exception as exc:
 
+#     self.logger.exception("indexer_worker failed")
+#     exc_fn = os.path.join(btconfig.LOG_FOLDER, "%s.pick" % logger_name)
+#     pickle.dump({"exc": e, "ids": ids}, open(exc_fn, "wb"))
+#     self.logger.info("Exception and IDs were dumped in pickle file '%s'", exc_fn)
+#     raise
+# logger_name = "index_%s_%s_batch_%s" % (pindexer.keywords.get(
+#     "index", "index"), col_name, batch_num)
+# logger, _ = get_logger(logger_name, btconfig.LOG_FOLDER)
 
-def merge_index_worker(col_name, ids, pindexer, batch_num):
-    col = create_backend(col_name).target_collection
-    idxer = pindexer()
-    upd_cnt = 0
-    new_cnt = 0
-    cur = doc_feeder(col,
-                     step=len(ids),
-                     inbatch=False,
-                     query={'_id': {
-                         '$in': ids
-                     }})
-    docs = [d for d in cur]
-    [d.pop("_timestamp", None) for d in docs]
-    # dids = dict([(d["_id"], d) for d in docs])
-    dids = {d["_id"]: d for d in docs}
-    # dexistings = dict([(d["_id"], d)
-    #                    for d in idxer.get_docs([k for k in dids.keys()])])
-    dexistings = {d["_id"]: d for d in idxer.get_docs([k for k in dids.keys()])}
-    for _id in dexistings:
-        d = dexistings[_id]
-        # update in-place
-        d.update(dids[_id])
-        # mark as processed/updated
-        dids.pop(_id)
-    # updated docs (those existing in col *and* index)
-    upd_cnt = idxer.index_bulk(dexistings.values(), len(dexistings))
-    logging.debug("%s documents updated in index", repr(upd_cnt))
-    # new docs (only in col, *not* in index)
-    new_cnt = idxer.index_bulk(dids.values(), len(dids))
-    logging.debug("%s new documents in index", repr(new_cnt))
-    # need to return one: tuple(cnt,list)
-    ret = (upd_cnt[0] + new_cnt[0], upd_cnt[1] + new_cnt[1])
-    return ret
-
-
-def indexer_worker(col_name,
-                   ids,
-                   pindexer,
-                   batch_num,
-                   mode="index",
-                   worker=new_index_worker):
-    try:
-        if mode in ["index", "merge"]:
-            return worker(col_name, ids, pindexer, batch_num)
-        elif mode == "resume":
-            idxr = pindexer()
-            es_ids = idxr.mexists(ids)
-            missing_ids = [e[0] for e in es_ids if e[1] is False]
-            if missing_ids:
-                return worker(col_name, missing_ids, pindexer, batch_num)
-            else:
-                # fake indexer results, it has to be a tuple, first elem is num of indexed docs
-                return (0, None)
-    except Exception as e:
-        logger_name = "index_%s_%s_batch_%s" % (pindexer.keywords.get(
-            "index", "index"), col_name, batch_num)
-        logger, _ = get_logger(logger_name, btconfig.LOG_FOLDER)
-        logger.exception("indexer_worker failed")
-        exc_fn = os.path.join(btconfig.LOG_FOLDER, "%s.pick" % logger_name)
-        pickle.dump({"exc": e, "ids": ids}, open(exc_fn, "wb"))
-        logger.info("Exception and IDs were dumped in pickle file '%s'", exc_fn)
-        raise
+# Summary
+# -------
+# IndexManager: a hub feature, providing top level commands and config environments(env).
+# Indexer/ColdHotIndexer: the "index" command, handles jobs, db state and errors.
+# .indexer_task.IndexingTask: the data handling component of an indexer, supports modes.
+# biothings.utils.es.Indexer: an index-aware elasticsearch client used in a task.
+# elasticsearch.Elasticsearch: native elasticsearch python client used in an indexer.
 
 
 class IndexerException(Exception):
     pass
 
+class ProcessInfo():
 
-class Indexer(object):
-    """
-    Basic indexer, reading documents from a mongo collection (target_name)
-    and sending documents to ES.
-    """
-    def __init__(self, es_host, target_name=None, **kwargs):
-        self.host = es_host
-        self.env = None
-        self.log_folder = LOG_FOLDER
-        self.timestamp = datetime.now()
-        self.conf_name = None
-        self.build_doc = None
-        self.target_name = None
-        self.index_name = None
-        self.doc_type = None
-        self.num_shards = None
-        self.num_replicas = None
-        self.kwargs = kwargs
-        self.ti = time.time()
+    def __init__(self, indexer):
+        self.indexer = indexer
 
     def get_predicates(self):
         return []
 
-    def get_pinfo(self):
+    def get_pinfo(self, step="", description=""):
         """
         Return dict containing information about the current process
         (used to report in the hub)
         """
-        return {
+        pinfo = {
             "category": INDEXER_CATEGORY,
-            "source": "%s:%s" % (self.conf_name, self.index_name),
-            "step": "",
-            "description": ""
+            "source": "%s:%s" % (self.indexer.conf_name, self.indexer.index_name),
+            "description": description,
+            "step": step
         }
         preds = self.get_predicates()
         if preds:
             pinfo["__predicates__"] = preds
         return pinfo
 
+
+DEFAULT_INDEX_SETTINGS = {
+    # as of ES6, include_in_all was removed, we need to create our own "all" field
+    "query": {
+        "default_field": "_id,all"
+    },
+    "codec": "best_compression",
+    # as of ES6, analysers/tokenizers must be defined in index settings, during creation
+    "analysis": {
+        "analyzer": {
+            # soon deprecated in favor of keyword_lowercase_normalizer
+            "string_lowercase": {
+                "tokenizer": "keyword",
+                "filter": "lowercase"
+            },
+            "whitespace_lowercase": {
+                "tokenizer": "whitespace",
+                "filter": "lowercase"
+            },
+        },
+        "normalizer": {
+            "keyword_lowercase_normalizer": {
+                "filter": ["lowercase"],
+                "type": "custom",
+                "char_filter": []
+            },
+        }
+    },
+}
+
+DEFAULT_INDEX_MAPPINGS = {
+    "dynamic": "false",
+    "properties": {"all": {'type': 'text'}}
+}
+
+def _clean_ids(ids, logger):  # TODO should this be in the task level?
+    # can't use a generator, it's going to be pickled TODO: hah?
+    cleaned = []
+    for _id in ids:
+        if not isinstance(_id, str):
+            logger.warning(
+                "_id '%s' has invalid type (!str), skipped", repr(_id)
+            )
+            continue
+        if len(_id) > 512:  # this is an ES6 limitation
+            logger.warning("_id is too long: '%s'", _id)
+            continue
+        cleaned.append(_id)
+    return cleaned
+
+# def _get_mongo_client(backend_url):
+#     return create_backend(backend_url).target_collection
+
+
+class Indexer():
+    """
+    Basic indexer, reading documents from a mongo collection (target_name)
+    and sending documents to ES.
+    """
+
+    def __init__(self, build_doc, indexer_env, target_name, index_name):
+
+        # ----------from----------
+
+        self.backend_url = build_doc["backend_url"]  # for example, mongo connection URI
+        self.target_name = target_name  # for example, mongo collection name
+
+        # -----------to-----------
+
+        self.host = indexer_env["host"]  # like localhost:9200
+        self.kwargs = indexer_env["args"]  # es client kws like use_ssl=True
+
+        self.index_name = index_name or target_name  # elasticsearch index name (destination)
+        self.index_settings = deepcopy(DEFAULT_INDEX_SETTINGS)
+        self.index_mappings = deepcopy(DEFAULT_INDEX_MAPPINGS)
+
+        self.index_mappings["properties"].update(build_doc.get("mapping", {}))
+        self.index_mappings["_meta"] = build_doc.get("_meta", {})
+
+        build_config = build_doc.get("build_config", {})
+        self.doc_type = build_config.get("doc_type")  # TODO: remove support in ES7
+        self.num_shards = build_config.get("num_shards", 1)  # consider having the default auto-inferred from data size
+        self.num_replicas = build_config.get("num_replicas", 0)  # this field is almost always 0 for a staging server
+
+        # ----------meta----------
+        self.env = indexer_env.get("name")
+        self.conf_name = build_config.get("name")
+        self.logger, self.logfile = get_logger('index_%s' % self.index_name, LOG_FOLDER)
+        self.pinfo = ProcessInfo(self)
+
+    # TODO
+    # catch error if anything internal is wrong, like when registering status
+    # may need to explicitly do this or add it to defer_to_* in job manager.
+
     @asyncio.coroutine
     def index(self,
-              target_name,
-              index_name,
               job_manager,
-              steps=["index", "post"],
+              steps=("pre", "index", "post"),
               batch_size=10000,
               ids=None,
-              mode="index",
-              worker=None):
+              mode="index"):
         """
-        Build an index named "index_name" with data from collection "target_collection".
+        Build an Elasticsearch index (self.index_name) 
+        with data from MongoDB collection (self.target_name).
 
         "ids" can be passed to selectively index documents.
 
@@ -165,418 +191,196 @@ class Indexer(object):
             - 'merge': will merge data with existing index' documents, used when populated several distinct times (cold/hot merge for instance)
             - None (default): will create a new index, assuming it doesn't already exist
         """
-        assert job_manager
-        # check what to do
-        if type(steps) == str:
-            steps = [steps]
-        self.target_name = target_name
-        self.index_name = index_name
-        self.load_build()
-        self.setup_log()
-        # select proper index worker according to mode:
-        if worker is None:  # none specified, choose correct one
-            if mode == "merge":
-                worker = merge_index_worker
-            else:
-                worker = new_index_worker
 
-        got_error = False
+        if isinstance(steps, str):
+            steps = [steps]
+
+        assert job_manager
+        assert isinstance(steps, (list, tuple))
+        assert isinstance(mode, str)
+
         cnt = 0
 
-        if "index" in steps:
-            self.register_status("indexing",
-                                 transient=True,
-                                 init=True,
-                                 job={"step": "index"})
-            assert self.build_doc.get("backend_url")
-            target_collection = create_backend(
-                self.build_doc["backend_url"]).target_collection
-            backend_url = self.build_doc["backend_url"]
-            _mapping = self.get_mapping()
-            _extra = self.get_index_creation_settings()
-            # partially instantiated indexer instance for process workers
-            partial_idxer = partial(ESIndexer,
-                                    doc_type=self.doc_type,
-                                    index=index_name,
-                                    es_host=self.host,
-                                    step=batch_size,
-                                    number_of_shards=self.num_shards,
-                                    number_of_replicas=self.num_replicas,
-                                    **self.kwargs)
-            # instantiate one here for index creation
-            es_idxer = partial_idxer()
-            if es_idxer.exists_index():
-                if mode == "purge":
-                    es_idxer.delete_index()
-                elif mode not in ["resume", "merge"]:
-                    msg = "Index already '%s' exists, (use mode='purge' to auto-delete it or mode='resume' to add more documents)" % index_name
-                    self.register_status("failed", job={"err": msg})
-                    raise IndexerException(msg)
-
-            if mode not in ["resume", "merge"]:
-                try:
-                    es_idxer.create_index({self.doc_type: _mapping}, _extra)
-                except Exception as e:
-                    self.logger.exception("Failed to create index")
-                    self.register_status("failed", job={"err": repr(e)})
-                    raise
-
-            def clean_ids(ids):
-                # can't use a generator, it's going to be pickled
-                cleaned = []
-                for _id in ids:
-                    if type(_id) != str:
-                        self.logger.warning(
-                            "_id '%s' has invalid type (!str), skipped", repr(_id)
-                        )
-                        continue
-                    if len(_id) > 512:  # this is an ES6 limitation
-                        self.logger.warning("_id is too long: '%s'", _id)
-                        continue
-                    cleaned.append(_id)
-                return cleaned
-
-            jobs = []
-            total = target_collection.count()
-            btotal = math.ceil(total / batch_size)
-            bnum = 1
-            if ids:
-                self.logger.info(
-                    "Indexing from '%s' with specific list of _ids, create indexer job with batch_size=%d",
-                    target_name, batch_size)
-                id_provider = iter_n(ids,batch_size)
+        if "pre" in steps:
+            self.logger.info("Running pre-index process for index '%s'", self.index_name)
+            status = registrar.PreIndexJSR(self, get_src_build())
+            status.started()
+            try:
+                # currently the pre_indexing jobs are quick to perform,
+                # thus not scheduling it with threading or multi-processing
+                self.pre_index(mode)
+            except Exception as exc:
+                self.logger.error(str(exc))
+                status.failed(str(exc))
+                raise
             else:
-                self.logger.info(
-                    "Fetch _ids from '%s', and create indexer job with batch_size=%d",
-                    target_name, batch_size)
-                id_provider = id_feeder(target_collection,
-                                        batch_size=batch_size,
-                                        logger=self.logger)
-            for ids in id_provider:
-                yield from asyncio.sleep(0.0)
-                origcnt = len(ids)
-                ids = clean_ids(ids)
-                newcnt = len(ids)
-                if origcnt != newcnt:
-                    self.logger.warning(
-                        "%d document(s) can't be indexed and will be skipped (invalid _id)",
-                        origcnt-newcnt)
-                # progress count
-                cnt += len(ids)
-                pinfo = self.get_pinfo()
-                pinfo["step"] = self.target_name
-                try:
-                    descprogress = cnt / total * 100
-                except ZeroDivisionError:
-                    descprogress = 0.0
-                pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum, btotal,
-                                                            descprogress)
-                self.logger.info("Creating indexer job #%d/%d, to index '%s' %d/%d (%.1f%%)",
-                                 bnum, btotal, backend_url, cnt, total, descprogress)
-                job = yield from job_manager.defer_to_process(
-                    pinfo,
-                    partial(indexer_worker, backend_url, ids, partial_idxer,
-                            bnum, mode, worker))
+                status.succeed()
 
-                def batch_indexed(f, batch_num):
-                    nonlocal got_error
-                    try:
-                        res = f.result()
-                        if type(res) != tuple or type(res[0]) != int:
-                            got_error = Exception("Batch #%s failed while indexing collection '%s' [result:%s]" %
-                                                  (batch_num, self.target_name, repr(res)))
-                    except Exception as e:
-                        got_error = e
-                        self.logger.exception("Batch indexed error")
-                        return
-
-                job.add_done_callback(partial(batch_indexed, batch_num=bnum))
-                jobs.append(job)
-                bnum += 1
-                # raise error as soon as we know
-                if got_error:
-                    self.register_status("failed",
-                                         job={"err": repr(got_error)})
-                    raise got_error
-            self.logger.info("%d jobs created for indexing step", len(jobs))
-            tasks = asyncio.gather(*jobs)
-
-            def done(f):
-                nonlocal got_error
-                if None in f.result():
-                    got_error = None
-                    return
-                # compute overall inserted/updated records
-                # returned values looks like [(num,[]),(num,[]),...]
-                cnt = sum((val[0] for val in f.result()))
-                self.register_status("success",
-                                     job={"step": "index"},
-                                     index={"count": cnt})
-                if total != cnt:
-                    # raise error if counts don't match, but index is still created,
-                    # fully registered in case we want to use it anyways
-                    err = "Merged collection has %d documents but %d have been indexed (check logs for more)" % (
-                        total, cnt)
-                    raise IndexerException(err)
-                self.logger.info(
-                    "Index '%s' successfully created using merged collection %s",
-                    index_name, target_name,
-                    extra={"notify": True})
-
-            tasks.add_done_callback(done)
-            yield from tasks
+        if "index" in steps:
+            self.logger.info("Running indexing process for index '%s'", self.index_name)
+            status = registrar.MainIndexJSR(self, get_src_build())
+            status.started()
+            try:
+                # the indexing stage does its own scheduling,
+                # there could be multiple jobs because of batching
+                cnt = yield from self.do_index(job_manager, batch_size, ids, mode)
+            except Exception as exc:
+                self.logger.error(str(exc))
+                status.failed(str(exc))
+                raise
+            else:
+                status.succeed(index={self.index_name: {"count": cnt}})
 
         if "post" in steps:
-            self.logger.info("Running post-index process for index '%s'",
-                             index_name)
-            self.register_status("indexing",
-                                 transient=True,
-                                 init=True,
-                                 job={"step": "post-index"})
-            pinfo = self.get_pinfo()
-            pinfo["step"] = "post_index"
+            self.logger.info("Running post-index process for index '%s'", self.index_name)
+            status = registrar.PostIndexJSR(self, get_src_build())
+            status.started()
+
+            # -------------------- Sebastien's Note --------------------
             # for some reason (like maintaining object's state between pickling).
-            # we can't use process there. Need to use thread to maintain that state without
-            # building an unmaintainable monster
-            job = yield from job_manager.defer_to_thread(
-                pinfo,
-                partial(self.post_index,
-                        target_name,
-                        index_name,
-                        job_manager,
-                        steps=steps,
-                        batch_size=batch_size,
-                        ids=ids,
-                        mode=mode))
+            # we can't use process there. Need to use thread to maintain that state
+            # without building an unmaintainable monster.
+            # ----------------------------------------------------------
+            pinfo = self.pinfo.get_pinfo("post_index")
+            job = yield from job_manager.defer_to_thread(pinfo, self.post_index)
 
-            def posted(f):
-                nonlocal got_error
-                try:
-                    res = f.result()
-                    self.logger.info(
-                        "Post-index process done for index '%s': %s",
-                        index_name, res)
-                    self.register_status("indexing",
-                                         job={"step": "post-index"})
-                except Exception as e:
-                    got_error = e
-                    self.logger.exception(
-                        "Post-index process failed for index '%s':",
-                        index_name,
-                        extra={"notify": True})
-                    return
+            try:
+                res = yield from job
 
-            job.add_done_callback(posted)
-            yield from job  # consume future
+            except Exception as exc:
+                self.logger.exception(
+                    "Post-index process failed for index '%s':",
+                    self.index_name, extra={"notify": True})
+                status.failed(str(exc))
+                raise
 
-        if got_error:
-            self.register_status("failed", job={"err": repr(got_error)})
-            raise got_error
+            else:
+                self.logger.info(
+                    "Post-index process done for index '%s': %s",
+                    self.index_name, res)
+                status.succeed()
+
+        return {self.index_name: cnt}
+
+    # -------
+    #  steps
+    # -------
+
+    def pre_index(self, mode):
+
+        es_idxer = ESIndexer(
+            self.index_name, self.doc_type,
+            self.host, **self.kwargs)
+
+        if mode == "purge":
+            if es_idxer.exists_index():
+                es_idxer.delete_index()
+
+        elif mode in ("resume", "merge"):
+            return
+
+        if es_idxer.exists_index():
+            msg = (
+                "Index already '%s' exists, (use mode='purge' to "
+                "auto-delete it or mode='resume' to add more documents)"
+            )
+            raise IndexerException(msg % self.index_name)
+
+        es_idxer.create_index(
+            {self.doc_type: self.index_mappings},
+            self.index_settings)
+
+    @asyncio.coroutine
+    def do_index(self, job_manager, batch_size, ids, mode):
+
+        assert batch_size
+        target_collection = create_backend(self.backend_url).target_collection
+
+        jobs = []
+        docs_scheduled = 0
+        docs_finished = 0
+        docs_total = target_collection.count()
+
+        if not docs_total:
+            self.logger.warning("No documents to index.")
+            return
+
+        if ids:
+            self.logger.info(
+                ("Indexing from '%s' with specific list of _ids, "
+                 "create indexer job with batch_size=%d"),
+                self.target_name, batch_size)
+            # use user provided ids in batch
+            id_provider = iter_n(ids, batch_size)
         else:
-            self.register_status("success")
-            return {"%s" % self.index_name: cnt}
+            self.logger.info(
+                "Fetch _ids from '%s', and create indexer job with batch_size=%d",
+                self.target_name, batch_size)
+            # use ids from the target mongodb collection in batch
+            id_provider = id_feeder(target_collection, batch_size, logger=self.logger)
 
-    def register_status(self, status, transient=False, init=False, **extra):
-        assert self.build_doc
-        src_build = get_src_build()
-        job_info = {
-            'status': status,
-            'step_started_at': datetime.now().astimezone(),
-            'logfile': self.logfile,
-        }
-        index_info = {
-            "index": {
-                self.index_name: {
-                    'host': self.host,
-                    'environment': self.env,
-                    'conf_name': self.conf_name,
-                    'target_name': self.target_name,
-                    'index_name': self.index_name,
-                    'doc_type': self.doc_type,
-                    'num_shards': self.num_shards,
-                    'num_replicas': self.num_replicas
-                }
-            }
-        }
-        if transient:
-            # record some "in-progress" information
-            job_info['pid'] = os.getpid()
-        else:
-            # only register time when it's a final state
-            job_info["time"] = timesofar(self.ti)
-            t1 = round(time.time() - self.ti, 0)
-            job_info["time_in_s"] = t1
-            index_info["index"][self.index_name]["created_at"] = datetime.now().astimezone()
-        if "index" in extra:
-            index_info["index"][self.index_name].update(extra["index"])
-        if "job" in extra:
-            job_info.update(extra["job"])
-        # since the base is the merged collection, we register info there
-        build = src_build.find_one({'_id': self.target_name})
-        assert build, "Can't find build document '%s'" % self.target_name
-        if init:
-            # init timer for this step
-            self.ti = time.time()
-            src_build.update({'_id': self.target_name},
-                             {"$push": {
-                                 'jobs': job_info
-                             }})
-            # now refresh/sync
-            build = src_build.find_one({'_id': self.target_name})
-        else:
-            # merge extra at root level
-            # (to keep building data...) and update the last one
-            # (it's been properly created before when init=True)
-            build["jobs"] and build["jobs"][-1].update(job_info)
+        batches = math.ceil(docs_total / batch_size)
+        for batch_num, ids in enumerate(id_provider):
+            yield from asyncio.sleep(0.0)
 
-            def merge_index_info(target, d):
-                if "__REPLACE__" in d.keys():
-                    d.pop("__REPLACE__")
-                    target = d
-                else:
-                    for k, v in d.items():
-                        if type(v) == dict:
-                            if k in target:
-                                target[k] = merge_index_info(target[k], v)
-                            else:
-                                v.pop("__REPLACE__", None)
-                                # merge v with "nothing" just to make sure to remove any "__REPLACE__"
-                                v = merge_index_info({}, v)
-                                target[k] = v
-                        else:
-                            target[k] = v
-                return target
+            origcnt = len(ids)
+            ids = _clean_ids(ids, self.logger)
+            newcnt = len(ids)
+            docs_scheduled += newcnt
 
-            build = merge_index_info(build, index_info)
-            src_build.replace_one({"_id": build["_id"]}, build)
+            if origcnt != newcnt:
+                self.logger.warning(
+                    "%d document(s) can't be indexed and will be skipped (invalid _id)",
+                    origcnt - newcnt)
 
-    def post_index(self,
-                   target_name,
-                   index_name,
-                   job_manager,
-                   steps=["index", "post"],
-                   batch_size=10000,
-                   ids=None,
-                   mode=None):
+            _percentage = docs_scheduled / docs_total * 100
+            description = "#%d/%d (%.1f%%)" % (batch_num, batches, _percentage)
+
+            self.logger.info(
+                "Creating indexer job #%d/%d, to index '%s' %d/%d (%.1f%%)",
+                batch_num, batches, self.backend_url, docs_scheduled, docs_total, _percentage)
+
+            pinfo = self.pinfo.get_pinfo(self.target_name, description)
+            job = yield from job_manager.defer_to_process(
+                pinfo, dispatch_task,
+                self.backend_url, ids, mode, batch_num,
+                self.index_name, self.doc_type,
+                self.host, batch_size, self.num_shards,
+                self.num_replicas, **self.kwargs)
+            jobs.append(job)
+
+            # TODO
+            # propagate error as soon as we know
+
+        self.logger.info("%d jobs created for the indexing step.", len(jobs))
+        results = yield from asyncio.gather(*jobs)
+
+        # compute overall inserted/updated records
+        # returned values looks like [(num,[]),(num,[]),...]
+        docs_finished = sum((val[0] for val in results))
+
+        if docs_total != docs_finished:
+            # raise error if counts don't match, but index is still created,
+            # fully registered in case we want to use it anyways TODO registered?
+            err = ("Merged collection has %d documents "
+                   "but %d have been indexed (check logs for more)")
+            raise IndexerException(err % (docs_total, docs_finished))
+
+        self.logger.info(
+            "Index '%s' successfully created using merged collection %s",
+            self.index_name, self.target_name, extra={"notify": True})
+        return docs_total
+
+    def post_index(self):
         """
-        Override in sub-class to add a post-index process. Method's signature is the same as index() to get
-        the full context. This method will run in a thread (using job_manager.defer_to_thread())
+        Override in sub-class to add a post-index process.
+        This method will run in a thread (using job_manager.defer_to_thread())
         """
         pass
 
-    def setup_log(self):
-        self.logger, self.logfile = get_logger('index_%s' % self.index_name,
-                                               self.log_folder)
 
-    def get_index_creation_settings(self):
-        """
-        Override to return a dict containing some extra settings
-        for index creation. Dict will be merged with mandatory settings,
-        see biothings.utils.es.ESIndexer.create_index for more.
-        """
-        return {
-            # as of ES6, include_in_all was removed, we need to create our own "all" field
-            "query": {
-                "default_field": "all"
-            },
-            "codec": "best_compression",
-            # as of ES6, analysers/tokenizers must be defined in index settings, during creation
-            "analysis": {
-                "analyzer": {
-                    # soon deprecated in favor of keyword_lowercase_normalizer
-                    "string_lowercase": {
-                        "tokenizer": "keyword",
-                        "filter": "lowercase"
-                    },
-                    "whitespace_lowercase": {
-                        "tokenizer": "whitespace",
-                        "filter": "lowercase"
-                    },
-                },
-                "normalizer": {
-                    "keyword_lowercase_normalizer": {
-                        "filter": ["lowercase"],
-                        "type": "custom",
-                        "char_filter": []
-                    },
-                }
-            },
-        }
-
-    def enrich_final_mapping(self, final_mapping):
-        """
-        final_mapping is the ES mapping ready to be sent,
-        (with "dynamic" and "all" at its root for instance)
-        this method gives opportunity to add more mapping definitions
-        not directly related to datasources, such as other root keys
-        """
-        return final_mapping
-
-    def get_mapping(self):
-        '''collect mapping data from data sources.
-        '''
-        mapping = self.build_doc.get("mapping", {})
-        # default "all" field to replace include_in_all field in older versions of ES
-        mapping["all"] = {'type': 'text'}
-        final_mapping = {"properties": mapping, "dynamic": "false"}
-        final_mapping = self.enrich_final_mapping(final_mapping)
-        final_mapping["_meta"] = self.get_metadata()
-
-        return final_mapping
-
-    def get_metadata(self):
-        return self.build_doc.get("_meta", {})
-
-    def get_build(self, target_name=None):
-        target_name = target_name or self.target_name
-        assert target_name, "target_name must be defined first before searching for builds"
-        builds = [b for b in self.build_config["build"] if b == target_name]
-        assert len(
-            builds
-        ) == 1, "Can't find build for config '%s' and target_name '%s'" % (
-            self.conf_name, self.target_name)
-        return self.build_config["build"][builds[0]]
-
-    def get_src_versions(self):
-        build = self.get_build()
-        return build["src_version"]
-
-    def get_stats(self):
-        build = self.get_build()
-        return build["stats"]
-
-    def get_timestamp(self):
-        build = self.get_build()
-        return build["build_date"]
-
-    def get_build_version(self):
-        build = self.get_build()
-        return build["build_version"]
-
-    def load_build(self, target_name=None):
-        '''Load build info from src_build collection.'''
-        target_name = target_name or self.target_name
-        src_build = get_src_build()
-        self.build_doc = src_build.find_one({'_id': target_name})
-        assert self.build_doc, "Can't find build document associated to '%s'" % target_name
-        _cfg = self.build_doc.get("build_config")
-        if _cfg:
-            self.build_config = _cfg
-            #if not "doc_type" in _cfg:
-            #    raise ValueError("Missing 'doc_type' in build config")
-            self.doc_type = _cfg.get("doc_type")
-            self.num_shards = _cfg.get("num_shards", 10)  # optional
-            self.num_shards = self.num_shards and int(
-                self.num_shards) or self.num_shards
-            self.num_replicas = _cfg.get("num_replicas", 0)  # optional
-            self.num_replicas = self.num_replicas and int(
-                self.num_replicas) or self.num_replicas
-            self.conf_name = _cfg["name"]
-        else:
-            raise ValueError("Cannot find build config associated to '%s'" %
-                             target_name)
-        return _cfg
-
+# TODO Mapping merge should be handled in indexer
+# meta merging merge_src_build_metadata not used yet..
 
 class ColdHotIndexer(Indexer):
     """
@@ -586,19 +390,16 @@ class ColdHotIndexer(Indexer):
     Index is created fetching the premerge documents. Then, documents from the hot collection
     are merged by fetching docs from the index, updating them, and putting them back in the index.
     """
-    def __init__(self, *args, **kwargs):
-        super(ColdHotIndexer, self).__init__(*args, **kwargs)
-        self.hot_target_name = None
-        self.cold_target_name = None
-        self.cold_build_doc = None
-        self.hot_build_doc = None
-        self.cold_cfg = None
-        self.hot_cfg = None
+
+    def __init__(self, build_doc, indexer_env, target_name, index_name):
+        cold_target = build_doc["build_config"]["cold_collection"]
+        cold_build_doc = get_src_build().find_one({'_id': cold_target})
+
+        self.cold = Indexer(cold_build_doc, indexer_env, cold_target, index_name)
+        self.hot = Indexer(build_doc, indexer_env, target_name, index_name)
 
     @asyncio.coroutine
     def index(self,
-              hot_name,
-              index_name,
               job_manager,
               steps=["index", "post"],
               batch_size=10000,
@@ -609,222 +410,72 @@ class ColdHotIndexer(Indexer):
         complete the index with hot collection (adding docs or merging them in existing docs within the index)
         """
         assert job_manager
-        # check what to do
-        if type(steps) == str:
+        if isinstance(steps, str):
             steps = [steps]
-        self.hot_target_name = hot_name
-        self.setup_log()
-        self.load_build()
-        if type(index_name) == list:
-            # values are coming from target names, use the cold
-            self.index_name = self.hot_target_name
-        else:
-            self.index_name = index_name
-        got_error = False
+
         cnt = 0
         if "index" in steps:
+            # ---------------- Sebastian's Note ---------------
             # selectively index cold then hot collections, using default index method
             # but specifically 'index' step to prevent any post-process before end of
             # index creation
             # Note: copy backend values as there are some references values between cold/hot and build_doc
-            hot_backend_url = self.hot_build_doc["backend_url"]
-            cold_backend_url = self.cold_build_doc["backend_url"]
-            # target collection is taken from backend_url field, temporarily override.
-            self.build_doc["backend_url"] = cold_backend_url
-            cold_task = super(ColdHotIndexer,
-                              self).index(self.cold_target_name,
-                                          self.index_name,
-                                          steps="index",
-                                          job_manager=job_manager,
-                                          batch_size=batch_size,
-                                          ids=ids,
-                                          mode=mode)
-            # wait until cold is fully indexed
-            yield from cold_task
-            # use updating indexer worker for hot to merge in index
-            # back to hot collection
-            self.build_doc["backend_url"] = hot_backend_url
-            hot_task = super(ColdHotIndexer,
-                             self).index(self.hot_target_name,
-                                         self.index_name,
-                                         steps="index",
-                                         job_manager=job_manager,
-                                         batch_size=batch_size,
-                                         ids=ids,
-                                         mode="merge")
-            task = asyncio.ensure_future(hot_task)
-
-            def done(f):
-                nonlocal got_error
-                nonlocal cnt
-                try:
-                    res = f.result()
-                    # compute overall inserted/updated records
-                    cnt = sum(res.values())
-                    self.register_status("success",
-                                         job={"step": "index"},
-                                         index={"count": cnt})
-                    self.logger.info("index '%s' successfully created",
-                                     index_name,
-                                     extra={"notify": True})
-                except Exception as e:
-                    logging.exception("failed indexing cold/hot collections:")
-                    got_error = e
-                    raise
-
-            task.add_done_callback(done)
-            yield from task
-            if got_error:
-                raise got_error
+            cold_task = self.cold.index(job_manager, "index", batch_size, ids, mode)
+            cnt = yield from cold_task
+            hot_task = self.hot.index(job_manager, "index", batch_size, ids, "merge")
+            cnt = yield from hot_task
         if "post" in steps:
             # use super index but this time only on hot collection (this is the entry point, cold collection
             # remains hidden from outside)
-            hot_task = super(ColdHotIndexer,
-                             self).index(self.hot_target_name,
-                                         self.index_name,
-                                         steps="post",
-                                         job_manager=job_manager,
-                                         batch_size=batch_size,
-                                         ids=ids,
-                                         mode=mode)
-            task = asyncio.ensure_future(hot_task)
-
-            def posted(f):
-                nonlocal got_error
-                try:
-                    _ = f.result()
-                    # no need to process the return value more, it's been done in super
-                except Exception as e:
-                    self.logger.exception(
-                        "Post-index process failed for index '%s':",
-                        self.index_name,
-                        extra={"notify": True})
-                    got_error = e
-                    raise
-
-            task.add_done_callback(posted)
-            yield from task
-            if got_error:
-                raise got_error
+            self.hot.post_index()
 
         return {self.index_name: cnt}
-
-    # by default, build_doc is considered to be the hot one
-    # (mainly used so we can call super methods as parent)
-    @property
-    def build_doc(self):
-        return self.hot_build_doc
-
-    @build_doc.setter
-    def build_doc(self, val):
-        self.hot_build_doc = val
-
-    def get_mapping(self):
-        final_mapping = super(ColdHotIndexer, self).get_mapping()
-        cold_mapping = self.cold_build_doc.get("mapping", {})
-        final_mapping["properties"].update(cold_mapping)  # mix cold&hot
-        return final_mapping
-
-    def get_metadata(self):
-        meta = merge_src_build_metadata(
-            [self.cold_build_doc, self.hot_build_doc])
-        return meta
-
-    def get_src_versions(self):
-        _meta = self.get_metadata()
-        return _meta["src_version"]
-
-    def get_stats(self):
-        _meta = self.get_metadata()
-        return _meta["stats"]
-
-    def get_timestamp(self):
-        _meta = self.get_metadata()
-        return _meta["build_date"]
-
-    def get_build_version(self):
-        _meta = self.get_metadata()
-        return _meta["build_version"]
-
-    def load_build(self):
-        """
-        Load cold and hot build documents.
-        Index settings are the one declared in the hot build doc.
-        """
-        src_build = get_src_build()
-        # we don't want to reload build docs if they are already loaded
-        # so we can temporarily override values when dealing with cold/hot collection
-        # (kind of a hack, not really clean, but...)
-        if self.hot_build_doc and self.cold_build_doc and self.build_doc:
-            self.logger.debug("Build documents already loaded")
-            return
-        self.hot_build_doc = src_build.find_one({'_id': self.hot_target_name})
-        # search the cold collection definition
-        assert "build_config" in self.hot_build_doc and "cold_collection" in self.hot_build_doc["build_config"], \
-            "Can't find cold_collection field in build_config"
-        self.cold_target_name = self.hot_build_doc["build_config"][
-            "cold_collection"]
-        self.cold_build_doc = src_build.find_one(
-            {'_id': self.cold_target_name})
-        # we'll register everything (status) on the hot one
-        self.build_doc = self.hot_build_doc
-        assert self.cold_build_doc, "Can't find build document associated to '%s'" % self.cold_target_name
-        assert self.hot_build_doc, "Can't find build document associated to '%s'" % self.hot_target_name
-        self.cold_cfg = self.cold_build_doc.get("build_config")
-        self.hot_cfg = self.hot_build_doc.get("build_config")
-        if self.hot_cfg or not self.cold_cfg:
-            self.build_config = self.hot_cfg
-            if "doc_type" not in self.hot_cfg:
-                raise ValueError("Missing 'doc_type' in build config")
-            self.doc_type = self.hot_cfg["doc_type"]
-            self.num_shards = self.hot_cfg.get("num_shards", 10)  # optional
-            self.num_shards = self.num_shards and int(
-                self.num_shards) or self.num_shards
-            self.num_replicas = self.hot_cfg.get("num_replicas", 0)  # optional
-            self.num_replicas = self.num_replicas and int(
-                self.num_replicas) or self.num_replicas
-            self.conf_name = self.hot_cfg["name"]
-        else:
-            raise ValueError(
-                "Cannot find build config associated to '%s' or '%s'" %
-                (self.hot_target_name, self.cold_target_name))
-        return (self.cold_cfg, self.hot_cfg)
 
 
 class IndexManager(BaseManager):
 
+    # An index config is considered a "source" for the manager
+    # Each call returns a different instance from a factory call
+
     DEFAULT_INDEXER = Indexer
 
     def __init__(self, *args, **kwargs):
-        super(IndexManager, self).__init__(*args, **kwargs)
-        self.src_build = get_src_build()
-        self.indexers = {}
-        self.es_config = {}
-        self.t0 = time.time()
-        self.prepared = False
-        self.log_folder = LOG_FOLDER
-        self.timestamp = datetime.now()
-        self.setup()
+        """
+        An example of config dict for this module.
+        {
+            "indexer_select": { 
+                None: "hub.dataindex.indexer.DrugIndexer", # default
+                "build_config.cold_collection" : "mv.ColdHotVariantIndexer",
+            }, 
+            "env": {
+                "prod": {
+                    "host": "localhost:9200",
+                    "indexer": {
+                        "args": {
+                            "timeout": 300,
+                            "retry_on_timeout": True,
+                            "max_retries": 10,
+                        },
+                    },
+                    "index": [ 
+                        # for information only, only used in index_info
+                        {"index": "mydrugs_current", "doc_type": "drug"},
+                        {"index": "mygene_current", "doc_type": "gene"}
+                    ], 
+                },
+                "dev": { ... }
+            }
+        }
+        """
+        super().__init__(*args, **kwargs)
+        self._build = get_src_build()
+        self._config = {}  # config.INDEX_CONFIG if it's a dict
+        # self.register = {} # env value in config.py (inherited)
 
-    def clean_stale_status(self):
-        src_build = get_src_build()
-        for build in src_build.find():
-            dirty = False
-            for job in build.get("jobs", []):
-                if job.get("status") == "indexing":
-                    logging.warning(
-                        "Found stale build '%s', marking index status as 'canceled'",
-                        build["_id"])
-                    job["status"] = "canceled"
-                    dirty = True
-            if dirty:
-                src_build.replace_one({"_id": build["_id"]}, build)
+        self.logger, self.logfile = get_logger('indexmanager', LOG_FOLDER)
 
-    def setup(self):
-        self.setup_log()
-
-    def setup_log(self):
-        self.logger, self.logfile = get_logger('indexmanager', self.log_folder)
+    def clean_stale_status(self):  # LIFECYCLE CALL
+        registrar.IndexJobStatusRegistrar.prune(get_src_build())
 
     def get_predicates(self):
         def no_other_indexmanager_step_running(job_manager):
@@ -853,101 +504,53 @@ class IndexManager(BaseManager):
             pinfo["__predicates__"] = preds
         return pinfo
 
-    def __getitem__(self, conf_name):
-        """
-        Return an instance of an indexer for the build configuration named 'conf_name'
-        Note: each call returns a different instance (factory call behind the scene...)
-        """
-        kwargs = BaseManager.__getitem__(self, conf_name)
-        return kwargs
-
-    def configure_from_list(self, indexers_kwargs):
-        for dindex in indexers_kwargs:
-            assert len(
-                dindex) == 1, "Invalid indexer registration data: %s" % dindex
-            env, idxkwargs = list(dindex.items())[0]
-            self.register[env] = idxkwargs
-
-    def configure_from_dict(self, confdict):
-        self.es_config = copy.deepcopy(confdict)
-        self.indexers.update(confdict.get("indexer_select", {}))
-        indexers_kwargs = []
-        for env, conf in confdict["env"].items():
-            idxkwargs = dict(**conf["indexer"]["args"])
-            # propagate ES host to indexer's kwargs
-            idxkwargs["es_host"] = self.es_config["env"][env]["host"]
-            indexers_kwargs.append({env: idxkwargs})
-        self.configure_from_list(indexers_kwargs)
-
-    def configure(self, indexer_defs):
-        """
-        Register indexers with:
-        - a list of dict as:
-            [{"indexer_type_name": partial},{....}]
-        - a dict containing all indexer definitions:
-            {"env" : {
-                "env1" : {
-                    "host": "localhost:9200",
-                    "timeout": ..., "retry":...,
-                    "indexer" : "path.to.ClassIndexer",
-                },
-                ...
-            }
-        Partial is used to instantiate an indexer, without args
-        """
-        if type(indexer_defs) == list:
-            self.configure_from_list(indexer_defs)
-        elif type(indexer_defs) == dict:
-            self.configure_from_dict(indexer_defs)
-        else:
-            raise ValueError(
-                "Unknown indexer definitions type (expecting a list or a dict")
-        self.logger.info(self.indexers)
+    def configure(self, conf):  # LIFECYCLE CALL
+        if not isinstance(conf, dict):
+            raise TypeError((
+                "Unknown indexer definitions type "
+                "(expecting a list or a dict)"
+            ))
+        self._config = copy.deepcopy(conf)
+        for name, envconf in conf["env"].items():
+            idxkwargs = dict(envconf["indexer"])
+            idxkwargs["host"] = envconf["host"]
+            self.register[name] = idxkwargs
         self.logger.info(self.register)
 
-    def find_indexer(self, target_name):
+    def _find_indexer(self, target_name=None):
         """
         Return indexer class required to index target_name.
         Rules depend on what's inside the corresponding src_build doc
         and the indexers definitions
         """
-        doc = self.src_build.find_one({"_id": target_name})
-        if not self.indexers or not doc:
-            return self.__class__.DEFAULT_INDEXER
-        klass = None
-        for path_in_doc in self.indexers:
-            if klass is None and (
-                    path_in_doc is None
-                    or path_in_doc == "default"
-                    or path_in_doc == ""):
-                # couldn't find a klass yet and we found a default declated, keep it
-                strklass = self.indexers[path_in_doc]
-                klass = get_class_from_classpath(strklass)
-            else:
-                try:
-                    strklass = self.indexers[path_in_doc]
-                    klass = get_class_from_classpath(strklass)
-                    self.logger.info(
-                        "Found special indexer '%s' required to index '%s'",
-                        klass, target_name)
-                    # the first to match wins
-                    break
-                except KeyError:
-                    pass
-        if klass is None:
-            self.logger.debug("Using default indexer")
-            return self.__class__.DEFAULT_INDEXER
-        else:
-            # either we return a default declared in config or
-            # a specific one found according to the doc
-            self.logger.debug("Using custom indexer %s", klass)
-            return klass
+
+        name = None
+        doc = self._build.find_one({
+            "_id": target_name
+        }) or {}
+
+        for path_in_doc, _ in traverse(doc, True):
+            if path_in_doc in self._config.get("indexer_select", {}):
+                if not name:
+                    name = path_in_doc
+                else:
+                    _ERR = "Multiple indexers matched."
+                    raise RuntimeError(_ERR)
+
+        try:
+            strklass = self.indexers[name]
+            klass = get_class_from_classpath(strklass)
+        except Exception:
+            self.logger.debug("Using default indexer.")
+            klass = self.DEFAULT_INDEXER
+
+        return klass
 
     def index(self,
-              indexer_env,
-              target_name=None,
-              index_name=None,
-              ids=None,
+              indexer_env,  # elasticsearch env
+              target_name,  # source mongodb collection
+              index_name=None,  # elasticsearch index name
+              ids=None,  # document ids
               **kwargs):
         """
         Trigger an index creation to index the collection target_name and create an
@@ -955,29 +558,19 @@ class IndexManager(BaseManager):
         passed to index specific documents.
         """
 
-        def indexed(f):
-            try:
-                res = f.result()
-                self.logger.info(
-                    "Done indexing target '%s' to index '%s': %s",
-                    target_name, index_name, res)
-            except Exception:
-                self.logger.exception("Error while running index job:")
-                raise
+        indexer_env_ = dict(self[indexer_env])  # describes destination
+        indexer_env_['name'] = indexer_env
+        build_doc = self._build.find_one({'_id': target_name})  # describes source
 
-        idxklass = self.find_indexer(target_name)
-        idxkwargs = self[indexer_env]
-        idx = idxklass(**idxkwargs)
-        idx.env = indexer_env
-        idx.target_name = target_name
-        index_name = index_name or target_name
-        job = idx.index(target_name,
-                        index_name,
-                        ids=ids,
-                        job_manager=self.job_manager,
-                        **kwargs)
+        if not build_doc:
+            raise ValueError("Cannot find %s" % target_name)
+        if "build_config" not in build_doc:
+            raise ValueError("Cannot find build config associated with '%s'" % target_name)
+
+        idx = self._find_indexer(target_name)
+        idx = idx(build_doc, indexer_env_, target_name, index_name)
+        job = idx.index(self.job_manager, ids=ids, **kwargs)
         job = asyncio.ensure_future(job)
-        job.add_done_callback(indexed)
 
         return job
 
@@ -992,15 +585,13 @@ class IndexManager(BaseManager):
         """
         idxkwargs = self[indexer_env]
         # 1st pass we get the doc_type (don't want to ask that on the signature...)
-        indexer = create_backend(
-            (idxkwargs["es_host"], index_name, None)).target_esidxer
+        indexer = create_backend((idxkwargs["es_host"], index_name, None)).target_esidxer
         m = indexer._es.indices.get_mapping(index_name)
         assert len(m[index_name]["mappings"]) == 1, "Found more than one doc_type: " + \
             "%s" % m[index_name]["mappings"].keys()
         doc_type = list(m[index_name]["mappings"].keys())[0]
         # 2nd pass to re-create correct indexer
-        indexer = create_backend(
-            (idxkwargs["es_host"], index_name, doc_type)).target_esidxer
+        indexer = create_backend((idxkwargs["es_host"], index_name, doc_type)).target_esidxer
         if build_name:
             build = get_src_build().find_one({"_id": build_name})
             assert build, "No such build named '%s'" % build_name
@@ -1009,60 +600,79 @@ class IndexManager(BaseManager):
         return indexer.update_mapping_meta({"_meta": _meta})
 
     def index_info(self, env=None, remote=False):
-        res = copy.deepcopy(self.es_config)
-        for kenv in self.es_config["env"]:
-            if env and env != kenv:
-                continue
-            if remote:
-                # lost all indices, remotely
-                try:
-                    cl = Elasticsearch(res["env"][kenv]["host"],
-                                       timeout=1,
-                                       max_retries=0)
-                    indices = [{
-                        "index": k,
-                        "doc_type": list(v["mappings"].keys())[0],
-                        "aliases": list(v["aliases"].keys())
-                    } for k, v in cl.indices.get("*").items()]
-                    # init index key if not done in config var
-                    # (a default index name can be specified in config...)
-                    if "index" not in res["env"][kenv]:
-                        res["env"][kenv]["index"] = []
-                    # for now, we just consider
-                    if type(res["env"][kenv]["index"]) == dict:
-                        # we don't where to put those indices because we don't
-                        # have that information, so we just put those in a default category
-                        # TODO: put that info in metadata ?
-                        res["env"][kenv]["index"].setdefault(
-                            None, []).extend(indices)
-                    else:
-                        assert type(res["env"][kenv]["index"]) == list
-                        res["env"][kenv]["index"].extend(indices)
-                except Exception:
-                    self.logger.exception("Can't load remote indices:")
-                    continue
-        return res
+
+        # remarks
+        # where is this used externally?
+
+        # return self.config with optionally enhanced index information
+        conf = copy.deepcopy(self._config)
+
+        # these two parameters are processed as they are intended in
+        # the previous version of this module for compatibility.
+        if env and remote:
+            try:
+                host = conf["env"][env]["host"]
+                client = Elasticsearch(host, timeout=1, max_retries=0)
+
+                # add these index info to env.index
+                indices = [{
+                    "index": k,
+                    "doc_type": None,  # no longer supported
+                    "aliases": list(v["aliases"].keys())
+                } for k, v in client.indices.get("*").items()]
+
+                # set the "index" key under "env"
+                if "index" not in conf["env"][env]:
+                    conf["env"][env]["index"] = []
+
+                elif isinstance(conf["env"][env]["index"], dict):
+                    # ------------------------------------------------
+                    # no idea what "index" should look like.
+                    # no idea what these comments mean.
+                    # -------------- sebastian's note  ---------------
+                    # we don't where to put those indices because we don't
+                    # have that information, so we just put those in a default category
+                    # TODO: put that info in metadata ?
+                    # ------------------------------------------------
+                    conf["env"][env]["index"].setdefault(None, indices)
+
+                elif isinstance(conf["env"][env]["index"], list):
+                    conf["env"][env]["index"].extend(indices)
+                else:
+                    raise TypeError("Unsupported env.index")
+
+            except KeyError:
+                self.logger.error("Env doesn't exist.")
+
+            except ElasticsearchException:
+                self.logger.exception("Can't load remote indices:")
+
+        return conf
 
     def validate_mapping(self, mapping, env):
         idxkwargs = self[env]
-        # just get the default indexer (target_name doesn't exist, return default one)
-        idxklass = self.find_indexer(target_name="__placeholder_name__%s" %
-                                     get_random_string())
-        idxr_obj = idxklass(**idxkwargs)
-        settings = idxr_obj.get_index_creation_settings()
+        idxklass = self._find_indexer()  # get default
+        indexer = idxklass(**idxkwargs)
+
+        settings = indexer.index_settings
+        host = indexer.host
+
         # generate a random index, it'll be deleted at the end
         index_name = ("hub_tmp_%s" % get_random_string()).lower()
-        idxr = ESIndexer(index=index_name,
-                         es_host=idxr_obj.host,
-                         doc_type=None)
-        self.logger.info("Testing mapping by creating index '%s' on host '%s' (settings: %s)",
-                         index_name, idxr_obj.host, settings)
+        idxr = ESIndexer(index=index_name, es_host=host)
+
+        self.logger.info(
+            ("Testing mapping by creating index "
+             "'%s' on host '%s' (settings: %s)"),
+            index_name, host, settings)
+
         try:
             res = idxr.create_index(mapping, settings)
-            return res
         except Exception as e:
             self.logger.exception("create_index failed")
             raise e
+        else:
+            return res
         finally:
             try:
                 idxr.delete_index()
@@ -1070,7 +680,7 @@ class IndexManager(BaseManager):
                 pass
 
 
-class DynamicIndexerFactory(object):
+class DynamicIndexerFactory():
     """
     In the context of autohub/standalone instances, create indexer
     with parameters taken from versions.json URL.

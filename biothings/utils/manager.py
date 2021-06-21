@@ -597,7 +597,7 @@ class JobManager(object):
 
                         fut.add_done_callback(recycled)
                 logger.info(
-                    "Hub is using too much memory to launch job {cat:%s,source:%s,step:%s}"\
+                    "Hub is using too much memory to launch job {cat:%s,source:%s,step:%s}"
                     " (%s used, more than max allowed %s), wait a little (job's already been postponed for %s)",
                     pinfo.get("category"), pinfo.get("source"), pinfo.get("step"),
                     sizeof_fmt(hub_mem), sizeof_fmt(self.max_memory_usage), timesofar(t0)
@@ -662,7 +662,7 @@ class JobManager(object):
                 self.auto_recycle = self.auto_recycle_setting
 
     @asyncio.coroutine
-    def defer_to_process(self, pinfo=None, func=None, *args):
+    def defer_to_process(self, pinfo=None, func=None, *args, **kwargs):
 
         @asyncio.coroutine
         def run(future, job_id):
@@ -676,7 +676,7 @@ class JobManager(object):
             self.jobs[job_id] = copy_pinfo
             res = self.loop.run_in_executor(
                 self.process_queue,
-                partial(do_work, job_id, "process", copy_pinfo, func, *args)
+                partial(do_work, job_id, "process", copy_pinfo, func, *args, **kwargs)
             )
 
             def ran(f):
@@ -771,7 +771,7 @@ class JobManager(object):
         # we need to dynamically create a wrapper coroutine with a name
         # that makes sense, taken from func, otherwise all scheduled jobs would
         # have the same wrapping coroutine name
-        if isinstance(func,partial):
+        if isinstance(func, partial):
             func_name = func.func.__name__
         else:
             func_name = func.__name__
@@ -790,7 +790,7 @@ def %s():
         }
         eval(code, command_locals, command_globals)
         run_func = command_globals[func_name]
-        job = self.submit(run_func,schedule=crontab)
+        job = self.submit(run_func, schedule=crontab)
 
         return job
 
