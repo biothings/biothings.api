@@ -1,26 +1,26 @@
-import re
-import time
+import asyncio
+import cgi
+import inspect
 import os
 import pprint
-import cgi
-from datetime import datetime
-import asyncio
-from functools import partial
-import inspect
+import re
 import subprocess
+import time
+from datetime import datetime
+from functools import partial
+from typing import Optional, Union, List
 
-from biothings.utils.hub_db import get_src_dump
-from biothings.utils.common import timesofar, rmdashfr
-from biothings.utils.loggers import get_logger
-from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
 from biothings import config as btconfig
-from biothings.utils.manager import BaseSourceManager, ResourceError
+from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
 from biothings.hub.dataload.uploader import set_pending_to_upload
+from biothings.utils.common import timesofar, rmdashfr
+from biothings.utils.hub_db import get_src_dump
+from biothings.utils.loggers import get_logger
+from biothings.utils.manager import BaseSourceManager, ResourceError
 
 logging = btconfig.logger
 
 
-from typing import Optional, Union, List
 
 
 class DumperException(Exception):
