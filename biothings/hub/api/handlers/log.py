@@ -55,6 +55,7 @@ class HubLogDirHandler(RequestHandler):
             if 'filter' in self.request.arguments:
                 _f = self.get_argument('filter')
                 logs = filter(lambda f: _f in f, logs)
+
             self.finish(catalog.generate(logs=logs))
             return
 
@@ -63,9 +64,15 @@ class HubLogDirHandler(RequestHandler):
             return
 
         with open(join(self.path, filename), 'r') as file:
+
+            lines = file.read().split('\n')
+            if 'lines' in self.request.arguments:
+                _l = self.get_argument('lines')
+                lines = lines[-int(_l):]
+
             self.finish(logfile.generate(
                 name=filename,
-                lines=file.read().split('\n')
+                lines=lines
             ))
 
 class HubLogFileHandler(StaticFileHandler):
