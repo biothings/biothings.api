@@ -13,10 +13,6 @@ def read(fname):
 
 REPO_URL = "https://github.com/biothings/biothings.api"
 
-
-# get version
-version = __import__('biothings').get_version()
-
 # should fail if installed from source or from pypi,
 # version gets set to MAJOR.MINOR.# commits on master branch if installed from pip repo
 # otherwise to MAJOR.MINOR.MICRO as defined in biothings.version
@@ -42,10 +38,10 @@ install_requires = [
     'requests>=2.21.0',
     'tornado==6.1.0',
     'gitpython>=3.1.0',
-    'elasticsearch>=6, <8',
+    'elasticsearch[async]>=6, <8',
     'elasticsearch-dsl>=6, <8',
-    'elasticsearch-async>=6.2.0',
     'singledispatchmethod; python_version < "3.8.0"',
+    'dataclasses; python_version < "3.7.0"',
     'aiohttp==3.6.2',    # for compatibility with elasticsearch-async==6.x
     'PyYAML>=5.1',
 ]
@@ -96,7 +92,7 @@ test_requires = [
 
 setup(
     name="biothings",
-    version=version,
+    version='0.10.0',
     author="Cyrus Afrasiabi, Sebastien Lelong, Xinghua Zhou, Chunlei Wu",
     author_email="cwu@scripps.edu",
     description="a toolkit for building high-performance data APIs in biology",

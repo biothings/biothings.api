@@ -26,7 +26,7 @@ Here we show you serveral customization examples:
 
  1. Add a new query parameter
 
-    * Create your own pipeline module with subclass of ESQueryBuilder/ESQueryBackend/RSResultTransform
+    * Create your own pipeline module with subclass of ESQueryBuilder/ESQueryBackend/RSResultFormatter
     * Set it in config.py with ``ES_QUERY_BUILDER`` parameter.
 
  2. Example 2

@@ -16,15 +16,15 @@ Biothings Web API Handlers
 
 import datetime
 import json
-from collections import OrderedDict
+from collections import OrderedDict, UserDict
 from pprint import pformat
 from urllib.parse import (parse_qs, unquote_plus, urlencode, urlparse,
                           urlunparse)
 
 import yaml
 from biothings.utils.common import DateTimeJSONEncoder
-from biothings.utils.web.analytics import GAMixIn
-from biothings.utils.web.tracking import StandaloneTrackingMixin
+# from biothings.utils.web.analytics import GAMixIn
+# from biothings.utils.web.tracking import StandaloneTrackingMixin
 from biothings.web.options import OptionError, ReqArgs
 from tornado.escape import json_decode
 from tornado.web import HTTPError
@@ -38,7 +38,7 @@ try:
     def msgpack_encode_datetime(obj):
         if isinstance(obj, datetime.datetime):
             return {'__datetime__': True,
-                    'as_str': obj.strftime("%Y%m%dT%H:%M:%S.%f")}
+                    'as_str': obj.strftime("%Y%m%dT%H:%M:%S.%f")}  # TODO why not use DateTimeJSONEncoder?
         return obj
 except ImportError:
     SUPPORT_MSGPACK = False
@@ -58,13 +58,13 @@ __all__ = [
     'APISpecificationHandler'
 ]
 
-class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
+# class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
+class BaseAPIHandler(BaseHandler):
 
     name = ''
     kwargs = None  # dict
-    kwarg_groups = ()
-    kwarg_methods = ()
     format = 'json'
+    cache = 604800  # 7 days
 
     def initialize(self):
 
@@ -74,7 +74,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         self.args_json = {}  # applicatoin/json type body
         self.args_yaml = {}  # applicatoin/yaml type body
         self.event = {
-            'category': '{}_api'.format(self.web_settings.API_VERSION),
+            'category': '{}_api'.format(self.biothings.config.API_VERSION),
             'action': self.request.method,  # 'query_get', 'fetch_all', etc.
             # 'label': 'total', 'qsize', etc.
             # 'value': 0, corresponds to label ...
@@ -133,7 +133,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         self.logger.debug("%s %s\n%s", self.request.method, self.request.uri, regargs)
 
         if self.name:
-            optionset = self.web_settings.optionsets.get(self.name)
+            optionset = self.biothings.optionsets.get(self.name)
             try:
                 # pylint: disable=attribute-defined-outside-init
                 self.args = optionset.parse(
@@ -141,7 +141,8 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
             except OptionError as err:
                 raise BadRequest(**err.info)
 
-            self.logger.debug("↓ (%s)\n%s", self.name, pformat(self.args, width=150))
+            # self.logger.debug("↓ (%s)\n%s", self.name, pformat(self.args, width=150))
+            self.logger.debug("↓ (%s)\n%s", self.name, self.args)
 
     def write(self, chunk):
         """
@@ -167,6 +168,10 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         elif isinstance(chunk, (dict, list)):
             self.set_header("Content-Type", "application/json; charset=UTF-8")
             chunk = json.dumps(chunk, cls=DateTimeJSONEncoder)
+
+        elif isinstance(chunk, UserDict):
+            self.set_header("Content-Type", "application/json; charset=UTF-8")
+            chunk = json.dumps(dict(chunk), cls=DateTimeJSONEncoder)
 
         super().write(chunk)
 
@@ -203,11 +208,11 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         return self.render_string(
             template_name="api.html",
             data=json.dumps(data),
-            img_src=self.web_settings.HTML_OUT_HEADER_IMG,
+            img_src=self.biothings.config.HTML_OUT_HEADER_IMG,
             link=_link,  # url to get regular format
             link_decode=unquote_plus(_link),
-            title_html=self.web_settings.HTML_OUT_TITLE,
-            docs_link=getattr(self.web_settings, self.name.upper()+'_DOCS_URL', '')
+            title_html=self.biothings.config.HTML_OUT_TITLE,
+            docs_link=getattr(self.web_settings, self.name.upper()+'_DOCS_URL', '')  # TODO Evaluate if this belongs in the base handler
         )
 
     def on_finish(self):
@@ -216,8 +221,8 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         Override to provide tracking features.
         """
         self.logger.debug("Event: %s", self.event)
-        self.ga_track(self.event)
-        self.self_track(self.event)
+        # self.ga_track(self.event)
+        # self.self_track(self.event)
 
     def write_error(self, status_code, **kwargs):
 
@@ -235,7 +240,11 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         # add exception info
         if 'exc_info' in kwargs:
             exception = kwargs['exc_info'][1]
-            message.update(self.parse_exception(exception))
+            exc_info = self.parse_exception(exception)
+            if isinstance(exc_info, dict):
+                message.update(exc_info)
+            else:  # cannot merge it with the template
+                message = exc_info
 
         self.finish(message)
 
@@ -246,6 +255,11 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
         if isinstance(exception, EndRequest):
             if exception.kwargs:
                 return exception.kwargs
+
+        # override like this
+        # if isinstance(exception, OtherExceptions):
+        #     return exception.data
+
         return {}
 
     def options(self, *args, **kwargs):
@@ -256,18 +270,20 @@ class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
     def set_default_headers(self):
 
         self.set_header("Access-Control-Allow-Origin", "*")
-        self.set_header("Access-Control-Allow-Methods",
-                        self.web_settings.ACCESS_CONTROL_ALLOW_METHODS)
-        self.set_header("Access-Control-Allow-Headers",
-                        self.web_settings.ACCESS_CONTROL_ALLOW_HEADERS)
+        self.set_header("Access-Control-Allow-Methods", "*")
+        self.set_header("Access-Control-Allow-Headers", "*")
         self.set_header("Access-Control-Allow-Credentials", "false")
         self.set_header("Access-Control-Max-Age", "60")
 
-        if not self.web_settings.DISABLE_CACHING:
-            seconds = self.web_settings.CACHE_MAX_AGE
-            self.set_header("Cache-Control", f"max-age={seconds}, public")
+        if self.cache and isinstance(self.cache, int):
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+            self.set_header("Cache-Control", f"max-age={self.cache}, public")
+
+        # to disable caching for a handler, set cls.cache to 0 or
+        # run self.clear_header('Cache-Control') in an HTTP method
+
 
 class APISpecificationHandler(BaseAPIHandler):
 
     def get(self):
-        self.finish(self.web_settings.optionsets.log())
+        self.finish(self.biothings.optionsets.log())

@@ -17,7 +17,7 @@ from datetime import datetime
 import bson
 
 from biothings.utils.common import timesofar, is_scalar, is_str, splitstr, nan, inf
-from biothings.utils.web.es import flatten_doc
+from biothings.utils.docs import flatten_doc
 from biothings.utils.dataload import dict_walk
 
 

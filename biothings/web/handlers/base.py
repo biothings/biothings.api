@@ -25,7 +25,6 @@ biothings.web.handlers.ESRequestHandler
 
 import logging
 
-from elasticsearch.exceptions import ElasticsearchException
 from tornado.web import RequestHandler
 
 try:
@@ -39,7 +38,13 @@ class BaseHandler(SentryMixin, RequestHandler):
         Parent class of all handlers, only direct descendant of `tornado.web.RequestHandler
         <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler>`_,
     """
+    @property
+    def biothings(self):
+        return self.application.biothings
 
+    # ------------
+    #  legacy API TODO REVISIT IF IT'S POSSIBLE TO PROVIDE THIS ACCESS
+    # ------------
     @property
     def web_settings(self):
         try:
@@ -77,60 +82,42 @@ class BaseHandler(SentryMixin, RequestHandler):
         import biothings.web.templates
         return next(iter(biothings.web.templates.__path__))
 
-    def data_received(self, chunk):
-        """
-        Implement this method to handle streamed request data.
-        """
-        # this dummy implementation silences the pylint abstract-class error
 
 class StatusHandler(BaseHandler):
     '''
     Handles requests to check the status of the server.
     Use set_status instead of raising exception so that
-    no error will be propogated to sentry monitoring.
+    no error will be propogated to sentry monitoring. # TODO IS IT A GOOD DESIGN?
     '''
 
     def head(self):
         return self._check()
 
     async def get(self):
+
         dev = self.get_argument('dev', None)
         res = await self._check(dev is not None)
         self.finish(res)
 
     async def _check(self, dev=False):
 
-        client = self.web_settings.connections.async_client
-        payload = self.web_settings.STATUS_CHECK
+        try:  # some db connections support async operations
+            response = await self.biothings.health.async_check(info=dev)
+        except (AttributeError, NotImplementedError):
+            response = self.biothings.health.check()
 
-        status = None  # green, red, yellow
-        res = None  # additional doc check
+        if not dev:
+            return {
+                # this endpoint might be accessed frequently,
+                # keep the default response minimal. This is
+                # especially useful when the document payload
+                # is very large. Also useful when the automated
+                # healch check only support GET requests.
+                "success": True,
+                "status": response.get("status")
+            }
 
-        try:
-            health = await client.cluster.health()
-            status = health['status']
-            if payload:
-                res = await client.get(**payload)
-
-        except ElasticsearchException:
-            self.set_status(503)
-
-        else:
-            if status == 'red':
-                self.set_status(503)
-            if payload and not res:
-                self.set_status(503)
-
-        ret = {
-            "code": self.get_status(),
-            "status": status,
-        }
-        if dev:
-            ret.update({
-                "payload": payload,
-                "response": res
-            })
-        return ret
+        return dict(response)
 
 class FrontPageHandler(BaseHandler):
 
@@ -140,7 +127,7 @@ class FrontPageHandler(BaseHandler):
             template_name="home.html",
             alert='Front Page Not Configured.',
             title='Biothings API',
-            contents=self.web_settings.handlers.keys(),
-            support=self.web_settings.BIOTHING_TYPES,
+            contents=self.application.biothings.handlers.keys(),
+            support=self.biothings.metadata.types,
             url='http://biothings.io/'
         )
