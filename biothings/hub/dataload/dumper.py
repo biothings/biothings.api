@@ -1,25 +1,24 @@
-import time
+import asyncio
+import cgi
+import inspect
 import os
 import pprint
-import cgi
-from datetime import datetime
-import asyncio
-from functools import partial
-import inspect
+import re
 import subprocess
+import time
+from datetime import datetime
+from functools import partial
+from typing import Optional, Union, List
 
-from biothings.utils.hub_db import get_src_dump
-from biothings.utils.common import timesofar, rmdashfr
-from biothings.utils.loggers import get_logger
-from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
 from biothings import config as btconfig
-from biothings.utils.manager import BaseSourceManager, ResourceError
+from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
 from biothings.hub.dataload.uploader import set_pending_to_upload
+from biothings.utils.common import timesofar, rmdashfr
+from biothings.utils.hub_db import get_src_dump
+from biothings.utils.loggers import get_logger
+from biothings.utils.manager import BaseSourceManager, ResourceError
 
 logging = btconfig.logger
-
-
-from typing import Optional
 
 
 class DumperException(Exception):
@@ -1069,7 +1068,66 @@ class GitDumper(BaseDumper):
     """
 
     GIT_REPO_URL = None
-    DEFAULT_BRANCH = "master"
+    DEFAULT_BRANCH = None
+
+    def _get_remote_default_branch(self) -> Optional[bytes]:
+        # expect bytes to work when invoking commands via subprocess
+        # git doesn't really care about the encoding of refnames, it only
+        # seems to be limited by the underlying filesystem
+        # (don't count on the above statement, it's just an educated guess)
+        cmd = ['git', 'ls-remote', '--symref', self.GIT_REPO_URL, 'HEAD']
+        try:
+            # set locale to C so the output may have more reliable format
+            result = subprocess.run(cmd, stdout=subprocess.PIPE,  # nosec
+                                    timeout=5, check=True, env={'LC_ALL': 'C'})
+            r = re.compile(rb'^ref:\s+refs\/heads\/(.*)\s+HEAD$',
+                           flags=re.MULTILINE)
+            m = r.match(result.stdout)
+            if m is not None:
+                return m[1]
+        except (TimeoutError, subprocess.CalledProcessError):
+            pass
+        return None
+
+    def _get_remote_branches(self) -> List[bytes]:
+        cmd = ['git', 'ls-remote', '--heads', self.GIT_REPO_URL]
+        ret = []
+        try:
+            # set locale to C so the output may have more reliable format
+            result = subprocess.run(cmd, stdout=subprocess.PIPE,  # nosec
+                                    timeout=5, check=True, env={'LC_ALL': 'C'})
+            # user controls the URL anyways, and we don't use a shell
+            # so it is safe
+            r = re.compile(rb'^[0-9a-f]{40}\s+refs\/heads\/(.*)$',
+                           flags=re.MULTILINE)
+            for m in re.findall(r, result.stdout):
+                ret.append(m)
+        except (TimeoutError, subprocess.CalledProcessError):
+            pass
+        return ret
+
+    def _get_default_branch(self) -> Union[bytes, str]:
+        # pylint: disable=bare-except
+        # TODO: check TODO in _pull regarding original exclusive use of
+        #  class variable
+        # Case 1, default is explicitly set
+        if self.DEFAULT_BRANCH is not None:
+            return self.DEFAULT_BRANCH
+        try:
+            # Case 2, remote HEAD exists
+            branch = self._get_remote_default_branch()
+            if branch is not None:
+                return branch
+            # Case 3, 'main' exists but not 'master'
+            branches = self._get_remote_branches()
+            if b'main' in branches and b'master' not in branches:
+                return 'main'
+        except:  # nosec  # noqa
+            # fallback anything goes wrong
+            pass
+        # Case 4, use 'master' for compatibility reasons
+        return 'master'
+
 
     def _clone(self, repourl, localdir):
         self.logger.info("git clone '%s' into '%s'" % (repourl, localdir))
@@ -1096,7 +1154,10 @@ class GitDumper(BaseDumper):
             else:
                 # if we were on a detached branch (due to specific commit checkout)
                 # we need to make sure to go back to master (re-attach)
-                cmd = ["git", "checkout", self.__class__.DEFAULT_BRANCH]
+                # TODO: figure out why it was originally using the class
+                #  variable exclusively. Changed to prefer instance varaibles.
+                branch = self._get_default_branch()
+                cmd = ["git", "checkout", branch]
                 subprocess.check_call(cmd)
                 # then merge
                 cmd = ["git", "merge"]
