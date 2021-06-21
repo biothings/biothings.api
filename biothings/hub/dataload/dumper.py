@@ -1094,8 +1094,8 @@ class GitDumper(BaseDumper):
         ret = []
         try:
             # set locale to C so the output may have more reliable format
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, timeout=5,
-                                    check=True, env={'LC_ALL': 'C'})  # nosec
+            result = subprocess.run(cmd, stdout=subprocess.PIPE,  # nosec
+                                    timeout=5, check=True, env={'LC_ALL': 'C'})
             # user controls the URL anyways, and we don't use a shell
             # so it is safe
             r = re.compile(rb'^[0-9a-f]{40}\s+refs\/heads\/(.*)$',
