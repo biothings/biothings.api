@@ -21,8 +21,6 @@ from biothings.utils.manager import BaseSourceManager, ResourceError
 logging = btconfig.logger
 
 
-
-
 class DumperException(Exception):
     pass
 
@@ -1081,14 +1079,13 @@ class GitDumper(BaseDumper):
         try:
             # set locale to C so the output may have more reliable format
             result = subprocess.run(cmd, stdout=subprocess.PIPE, timeout=5,
-                                    env={'LC_ALL': 'C'})
-            if result.returncode == 0:
-                r = re.compile(rb'^ref:\s+refs\/heads\/(.*)\s+HEAD$',
-                               flags=re.MULTILINE)
-                m = r.match(result.stdout)
-                if m is not None:
-                    return m[1]
-        except TimeoutError:
+                                    check=True, env={'LC_ALL': 'C'})
+            r = re.compile(rb'^ref:\s+refs\/heads\/(.*)\s+HEAD$',
+                           flags=re.MULTILINE)
+            m = r.match(result.stdout)
+            if m is not None:
+                return m[1]
+        except (TimeoutError, subprocess.CalledProcessError):
             pass
         return None
 
@@ -1098,15 +1095,14 @@ class GitDumper(BaseDumper):
         try:
             # set locale to C so the output may have more reliable format
             result = subprocess.run(cmd, stdout=subprocess.PIPE, timeout=5,
-                                    env={'LC_ALL': 'C'})  # noseq
+                                    check=True, env={'LC_ALL': 'C'})  # noseq
             # user controls the URL anyways, and we don't use a shell
             # so it is safe
-            if result.returncode == 0:
-                r = re.compile(rb'^[0-9a-f]{40}\s+refs\/heads\/(.*)$',
-                               flags=re.MULTILINE)
-                for m in re.findall(r, result.stdout):
-                    ret.append(m)
-        except TimeoutError:
+            r = re.compile(rb'^[0-9a-f]{40}\s+refs\/heads\/(.*)$',
+                           flags=re.MULTILINE)
+            for m in re.findall(r, result.stdout):
+                ret.append(m)
+        except (TimeoutError, subprocess.CalledProcessError):
             pass
         return ret
 
@@ -1125,7 +1121,7 @@ class GitDumper(BaseDumper):
             branches = self._get_remote_branches()
             if b'main' in branches and b'master' not in branches:
                 return 'main'
-        except:  # noseq
+        except:
             # fallback anything goes wrong
             pass
         # Case 4, use 'master' for compatibility reasons
