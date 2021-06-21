@@ -126,9 +126,6 @@ def _clean_ids(ids, logger):  # TODO should this be in the task level?
         cleaned.append(_id)
     return cleaned
 
-# def _get_mongo_client(backend_url):
-#     return create_backend(backend_url).target_collection
-
 
 class Indexer():
     """
