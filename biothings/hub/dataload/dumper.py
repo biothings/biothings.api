@@ -1078,8 +1078,8 @@ class GitDumper(BaseDumper):
         cmd = ['git', 'ls-remote', '--symref', self.GIT_REPO_URL, 'HEAD']
         try:
             # set locale to C so the output may have more reliable format
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, timeout=5,
-                                    check=True, env={'LC_ALL': 'C'})
+            result = subprocess.run(cmd, stdout=subprocess.PIPE,  # noseq
+                                    timeout=5, check=True, env={'LC_ALL': 'C'})
             r = re.compile(rb'^ref:\s+refs\/heads\/(.*)\s+HEAD$',
                            flags=re.MULTILINE)
             m = r.match(result.stdout)
@@ -1107,6 +1107,7 @@ class GitDumper(BaseDumper):
         return ret
 
     def _get_default_branch(self) -> Union[bytes, str]:
+        # pylint: disable=bare-except
         # TODO: check TODO in _pull regarding original exclusive use of
         #  class variable
         # Case 1, default is explicitly set
@@ -1121,7 +1122,7 @@ class GitDumper(BaseDumper):
             branches = self._get_remote_branches()
             if b'main' in branches and b'master' not in branches:
                 return 'main'
-        except:
+        except:  # noseq
             # fallback anything goes wrong
             pass
         # Case 4, use 'master' for compatibility reasons
