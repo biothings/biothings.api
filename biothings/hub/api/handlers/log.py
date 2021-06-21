@@ -52,6 +52,9 @@ class HubLogDirHandler(RequestHandler):
                 f for f in listdir(self.path)
                 if isfile(join(self.path, f))
             ])
+            if 'filter' in self.request.arguments:
+                _f = self.get_argument('filter')
+                logs = filter(lambda f: _f in f, logs)
             self.finish(catalog.generate(logs=logs))
             return
 
