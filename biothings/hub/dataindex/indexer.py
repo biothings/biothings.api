@@ -137,7 +137,7 @@ class Indexer():
 
         # ----------from----------
 
-        self.backend_url = build_doc["backend_url"]  # for example, mongo connection URI
+        self.backend_url = build_doc.get("backend_url")  # for example, mongo connection URI
         self.target_name = target_name  # for example, mongo collection name
 
         # -----------to-----------
@@ -647,12 +647,12 @@ class IndexManager(BaseManager):
         return conf
 
     def validate_mapping(self, mapping, env):
-        idxkwargs = self[env]
-        idxklass = self._find_indexer()  # get default
-        indexer = idxklass(**idxkwargs)
 
-        settings = indexer.index_settings
+        indexer = self._find_indexer()  # get default
+        indexer = indexer({}, self[env], None, None)  # instantiate
+
         host = indexer.host
+        settings = indexer.index_settings
 
         # generate a random index, it'll be deleted at the end
         index_name = ("hub_tmp_%s" % get_random_string()).lower()
