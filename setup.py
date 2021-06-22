@@ -8,10 +8,6 @@ from setuptools import setup, find_packages
 
 setup_path = os.path.dirname(__file__)
 
-# FIXME: this is a temporary hack
-sys.path.insert(0, 'biothings')
-from _version import version_str as biothings_version
-
 
 def read(fname):
     return open(os.path.join(setup_path, fname), encoding="utf8").read()
@@ -98,7 +94,7 @@ test_requires = [
 
 setup(
     name="biothings",
-    version=biothings_version,
+    version=__import__("biothings").__version__,
     author="Cyrus Afrasiabi, Sebastien Lelong, Xinghua Zhou, Chunlei Wu",
     author_email="cwu@scripps.edu",
     description="a toolkit for building high-performance data APIs in biology",
