@@ -92,7 +92,7 @@ test_requires = [
 
 setup(
     name="biothings",
-    version=__import__('biothings').__version__,
+    version='0.10.0',
     author="Cyrus Afrasiabi, Sebastien Lelong, Xinghua Zhou, Chunlei Wu",
     author_email="cwu@scripps.edu",
     description="a toolkit for building high-performance data APIs in biology",
