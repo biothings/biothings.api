@@ -1,27 +1,96 @@
 import asyncio
+import concurrent.futures
+import copy
 import crypt
+import glob
+import logging
 import os
 import sys
-import types
 import time
-import copy
-import logging
-import glob
+import types
 from collections import OrderedDict
 from functools import partial
 from pprint import pformat
 
-import asyncssh
 import aiocron
+import asyncssh
 
-from biothings import config
-from biothings.utils.loggers import get_logger, WSLogHandler, WSShellHandler, ShellLogger
-from biothings.utils.hub import (HubShell, get_hub_reloader, CommandDefinition, pending,
-                                 AlreadyRunningException, CommandError)
-from biothings.utils.jsondiff import make as jsondiff
-from biothings.utils.version import check_new_version, get_version
-from biothings.utils.common import get_class_from_classpath
+from biothings.utils.configuration import *
+from biothings.utils.common import run_once
+
+def _config_for_app(config_mod=None):
+
+    if not config_mod:
+        config_mod = import_module("config")
+
+    for attr in dir(config_mod):
+        value = getattr(config_mod, attr)
+        if isinstance(value, ConfigurationError):
+            raise ConfigurationError("%s: %s" % (attr, str(value)))
+
+    app_path = os.path.split(config_mod.__file__)[0]
+    sys.path.insert(0, app_path)
+
+    wrapper = ConfigurationManager(config_mod)
+    wrapper.APP_PATH = app_path
+
+    if not hasattr(config_mod, "HUB_DB_BACKEND"):
+        raise AttributeError("HUB_DB_BACKEND Not Found.")
+
+    # this will create a "biothings.config" module
+    # so "from biothings from config" will get app config at lib level
+    biothings = import_module("biothings")
+    biothings.config = wrapper
+    globals()["config"] = wrapper
+
+    import biothings.utils.hub_db  # the order of the following commands matter
+    wrapper.hub_db = import_module(config_mod.HUB_DB_BACKEND["module"])
+    biothings.utils.hub_db.setup(wrapper)
+    wrapper.hub_config = biothings.utils.hub_db.get_hub_config()
+
+    # setup logging
+    from biothings.utils.loggers import EventRecorder
+    logger = logging.getLogger()
+    fmt = logging.Formatter(
+        '%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s',
+        datefmt="%H:%M:%S")
+    erh = EventRecorder()
+    erh.name = "event_recorder"
+    erh.setFormatter(fmt)
+    if erh.name not in [h.name for h in logger.handlers]:
+        logger.addHandler(erh)
+
+
+_not_configured = run_once()
+if _not_configured():
+    _config_for_app()
+
+
 from biothings.hub.api.handlers.log import HubLogDirHandler, HubLogFileHandler
+from biothings.utils.common import get_class_from_classpath
+from biothings.utils.hub import (AlreadyRunningException, CommandDefinition,
+                                 CommandError, HubShell, get_hub_reloader,
+                                 pending)
+from biothings.utils.jsondiff import make as jsondiff
+from biothings.utils.loggers import (ShellLogger, WSLogHandler, WSShellHandler,
+                                     get_logger)
+from biothings.utils.version import check_new_version, get_version
+
+# adjust some loggers...
+if os.environ.get("HUB_VERBOSE", "0") != "1":
+    logging.getLogger("elasticsearch").setLevel(logging.ERROR)
+    logging.getLogger("urllib3").setLevel(logging.ERROR)
+    logging.getLogger("requests").setLevel(logging.ERROR)
+    logging.getLogger("botocore").setLevel(logging.ERROR)
+    logging.getLogger("boto").setLevel(logging.ERROR)
+    logging.getLogger("git").setLevel(logging.ERROR)
+
+def get_loop(max_workers=None):
+    loop = asyncio.get_event_loop()
+    executor = concurrent.futures.ProcessPoolExecutor(max_workers=max_workers)
+    loop.set_default_executor(executor)
+    return loop
+
 
 # Keys used as category in pinfo (description of jobs submitted to JobManager)
 # Those are used in different places
@@ -412,6 +481,7 @@ class HubServer(object):
             self.logger.info("Starting Hub API server on port %s" % config.HUB_API_PORT)
             #self.logger.info(self.routes)
             import tornado.web
+
             # register app into current event loop
             api = tornado.web.Application(self.routes)
             self.extra_commands["api"] = api
@@ -508,7 +578,8 @@ class HubServer(object):
         build_manager.poll()
 
     def configure_diff_manager(self):
-        from biothings.hub.databuild.differ import DifferManager, SelfContainedJsonDiffer
+        from biothings.hub.databuild.differ import (DifferManager,
+                                                    SelfContainedJsonDiffer)
         args = self.mixargs("diff")
         diff_manager = DifferManager(job_manager=self.managers["job_manager"],
                                      poll_schedule="* * * * * */10",
@@ -635,6 +706,7 @@ class HubServer(object):
         # definition, we use composition pointing to an instance of that feature which
         # encapsulates that complexity
         from biothings.hub.standalone import AutoHubFeature
+
         # only pass required manage rs
         autohub_managers = {
             "dump_manager": self.managers["dump_manager"],
@@ -733,7 +805,8 @@ class HubServer(object):
                                 + "app folder and/or biothings folder not defined")
             return
 
-        from biothings.hub.upgrade import BioThingsSystemUpgrade, ApplicationSystemUpgrade
+        from biothings.hub.upgrade import (ApplicationSystemUpgrade,
+                                           BioThingsSystemUpgrade)
 
         def get_upgrader(klass, folder):
             version = get_version(folder)
@@ -803,9 +876,10 @@ class HubServer(object):
         if self.ws_urls:
             return self.ws_urls
 
-        import sockjs.tornado
         import biothings.hub.api.handlers.ws as ws
+        import sockjs.tornado
         from biothings.utils.hub_db import ChangeWatcher
+
         # monitor change in database to report activity in webapp
         self.db_listener = ws.HubDBListener()
         ChangeWatcher.add(self.db_listener)
@@ -852,6 +926,7 @@ class HubServer(object):
         assert "ws" in self.remaining_features, "'dataupload' feature should configured before 'ws'"
         # this one is not bound to a specific command
         from biothings.hub.api.handlers.upload import UploadHandler
+
         # tuple type = interpreted as a route handler
         self.routes.append(
             (r"/dataupload/([\w\.-]+)?", UploadHandler, self.dataupload_config))

@@ -1,6 +1,9 @@
+from functools import partial
 import logging
 from enum import Enum
 from types import SimpleNamespace
+from biothings.hub.databuild.backend import create_backend
+from biothings.utils.es import ESIndexer
 
 try:
     from biothings.utils.mongo import doc_feeder
@@ -11,9 +14,25 @@ except ImportError:
     biothings.config.DATA_TARGET_DATABASE = 'biothings_build'
     from biothings.utils.mongo import doc_feeder
 
+def _get_es_client(*args, **kwargs):
+    return ESIndexer(*args, **kwargs)
+
+def _get_mongo_client(backend_url):
+    return create_backend(backend_url).target_collection
+
+def dispatch_task(backend_url, ids, mode, name, *esargs, **eskwargs):
+    task = IndexingTask(
+        partial(_get_es_client, *esargs, **eskwargs),
+        partial(_get_mongo_client, backend_url),
+        ids, mode
+    )
+    task.name = str(name)
+    return task.dispatch()
+
 
 class Mode(Enum):
     INDEX = 'index'
+    PURGE = 'purge'  # same as 'index' in this module
     MERGE = 'merge'
     RESUME = 'resume'
 
@@ -25,12 +44,19 @@ class IndexingTask():
         assert callable(mongo)
 
         self.ids = ids
-        self.backend = SimpleNamespace()
-        self.backend.es = es
-        self.backend.mongo = mongo
         self.mode = Mode(mode)
 
+        # these are functions to create clients,
+        # each also associated with an organizational
+        # structure in the corresponding database,
+        # functioning as the source or destination
+        # of batch document manipulation.
+        self.backend = SimpleNamespace()
+        self.backend.es = es  # wrt an index
+        self.backend.mongo = mongo  # wrt a collection
+
         self.logger = logging.getLogger(__name__)
+        self.name = ""  # for logging only
 
     def _get_clients(self):
         clients = SimpleNamespace()
@@ -39,12 +65,16 @@ class IndexingTask():
         return clients
 
     def dispatch(self):
-        if self.mode == Mode.INDEX:
-            self.index()
-        elif self.mode == Mode.MERGE:
-            self.merge()
-        elif self.mode == Mode.RESUME:
-            self.resume()
+        try:
+            if self.mode in (Mode.INDEX, Mode.PURGE):
+                return self.index()
+            elif self.mode == Mode.MERGE:
+                return self.merge()
+            elif self.mode == Mode.RESUME:
+                return self.resume()
+        except Exception:
+            self.logger.error("Batch %s indexing failed.", self.name)
+            raise
 
     def index(self):
         clients = self._get_clients()
