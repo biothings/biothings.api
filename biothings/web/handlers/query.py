@@ -75,6 +75,9 @@ class BaseESRequestHandler(BaseAPIHandler):
 
         super().prepare()
 
+        # provide convenient access to next stages
+        self.args.biothing_type = self.biothing_type
+
         # supported across es requests
         self.format = self.args.out_format or 'json'
 
@@ -286,7 +289,10 @@ class QueryHandler(BaseESRequestHandler):
     async def get(self, *args, **kwargs):
         if self.args.get('fetch_all'):
             self.event['action'] = 'fetch_all'
-        if self.args.get('fetch_all') or self.args.get('scroll_id'):
+
+        if self.args.get('fetch_all') or \
+                self.args.get('scroll_id') or \
+                self.args.get('q') == '__any__':
             self.clear_header('Cache-Control')
 
         response = await ensure_awaitable(

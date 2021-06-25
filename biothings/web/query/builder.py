@@ -32,11 +32,14 @@ import json
 import logging
 import os
 import re
+from collections import UserString, namedtuple
 from copy import deepcopy
+from random import randrange
+
 from biothings.utils.common import dotdict
 from elasticsearch_dsl import MultiSearch, Q, Search
 from elasticsearch_dsl.exceptions import IllegalOperation
-from collections import UserString, namedtuple
+
 
 class RawQueryInterrupt(Exception):
     def __init__(self, data):
@@ -114,7 +117,8 @@ class ESQueryBuilder():
         scopes_regexs=(),  # inference used when encountering empty scopes
         scopes_default=('_id',),  # fallback used when scope inference fails
         allow_random_query=True,  # used for data exploration, can be expensive
-        allow_nested_query=False  # nested aggregation can be expensive
+        allow_nested_query=False,  # nested aggregation can be expensive
+        metadata=None  # access to data like total number of documents
     ):
         # for autoscope feature, to infer scope from q when enabled
         self.parser = QStringParser(scopes_default, scopes_regexs)
@@ -123,6 +127,9 @@ class ESQueryBuilder():
         self.user_query = user_query or ESUserQuery('userquery')
         self.allow_random_query = allow_random_query
         self.allow_nested_query = allow_nested_query  # for aggregations
+
+        # currently metadata is only used for __any__ query
+        self.metadata = metadata
 
     def build(self, q=None, **options):
         """
@@ -207,8 +214,17 @@ class ESQueryBuilder():
         elif q == '__all__' or q is None:
             search = search.query()
 
-        elif q == '__any__' and self.allow_random_query:
-            search = search.query('function_score', random_score={})
+        elif q == '__any__':
+            if self.allow_random_query:
+                search = search.query('function_score', random_score={})
+            else:  # pseudo random by overriding 'from' value
+                try:
+                    metadata = self.metadata[options.biothing_type]
+                    total = metadata['stats']['total']
+                    from_ = randrange(total - options.get('size', 0))
+                    options['from'] = from_ if from_ >= 0 else 0
+                except Exception:
+                    raise ValueError("random query not available.")
 
         elif self.user_query.has_query(userquery):
             userquery_ = self.user_query.get_query(userquery, q=q)
