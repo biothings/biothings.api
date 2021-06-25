@@ -4,8 +4,8 @@
 [![biothings_version](https://img.shields.io/pypi/format/biothings.svg)](https://pypi.python.org/pypi/biothings)
 [![biothings_version](https://img.shields.io/pypi/status/biothings.svg)](https://pypi.python.org/pypi/biothings)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.0%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
-![Build Status](https://github.com/biothings/biothings.api/actions/workflows/test-build.yml/badge.svg)
-![Tests Status](https://github.com/biothings/biothings.api/actions/workflows/run-tests.yml/badge.svg)
+[![Build Status](https://github.com/biothings/biothings.api/actions/workflows/test-build.yml/badge.svg)](https://github.com/biothings/biothings.api/actions/workflows/test-build.yml)
+[![Tests Status](https://github.com/biothings/biothings.api/actions/workflows/run-tests.yml/badge.svg)](https://github.com/biothings/biothings.api/actions/workflows/run-tests.yml)
 [![Documentation Status](https://readthedocs.org/projects/biothingsapi/badge/?version=latest)](https://docs.biothings.io/en/latest/?badge=latest)
 
 # BioThings SDK
