@@ -9,6 +9,11 @@ from dateutil.parser import parse as dtparse
 
 logger = logging.getLogger(__name__)
 
+# TODO
+# auto refresh upon start
+# not sure if it happens in this module
+# but this affects some query pipeline behaviors
+
 class BiothingsMetadata:
 
     def __init__(self):
