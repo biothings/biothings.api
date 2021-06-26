@@ -61,9 +61,7 @@ def _config_for_app(config_mod=None):
         logger.addHandler(erh)
 
 
-_not_configured = run_once()
-if _not_configured():
-    _config_for_app()
+_config_for_app()
 
 
 from biothings.hub.api.handlers.log import HubLogDirHandler, HubLogFileHandler

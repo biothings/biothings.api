@@ -28,6 +28,13 @@ from elasticsearch.exceptions import ElasticsearchException
 from . import indexer_registrar as registrar
 from .indexer_task import dispatch_task
 
+# this module has been refactored and simplified
+# but it still has a variety of design decisions
+# that deserve a second thought.
+
+# TODO
+# correct count in hot cold indexer
+
 # TODO
 # except Exception as exc:
 
@@ -391,9 +398,10 @@ class ColdHotIndexer(Indexer):
     def __init__(self, build_doc, indexer_env, target_name, index_name):
         cold_target = build_doc["build_config"]["cold_collection"]
         cold_build_doc = get_src_build().find_one({'_id': cold_target})
+        self.index_name = index_name or target_name
 
-        self.cold = Indexer(cold_build_doc, indexer_env, cold_target, index_name)
-        self.hot = Indexer(build_doc, indexer_env, target_name, index_name)
+        self.cold = Indexer(cold_build_doc, indexer_env, cold_target, self.index_name)
+        self.hot = Indexer(build_doc, indexer_env, target_name, self.index_name)
 
     @asyncio.coroutine
     def index(self,
@@ -417,7 +425,7 @@ class ColdHotIndexer(Indexer):
             # but specifically 'index' step to prevent any post-process before end of
             # index creation
             # Note: copy backend values as there are some references values between cold/hot and build_doc
-            cold_task = self.cold.index(job_manager, "index", batch_size, ids, mode)
+            cold_task = self.cold.index(job_manager, ("pre", "index"), batch_size, ids, mode)
             cnt = yield from cold_task
             hot_task = self.hot.index(job_manager, "index", batch_size, ids, "merge")
             cnt = yield from hot_task
@@ -522,12 +530,13 @@ class IndexManager(BaseManager):
         """
 
         name = None
+        indexers = self._config.get("indexer_select", {})
         doc = self._build.find_one({
             "_id": target_name
         }) or {}
 
         for path_in_doc, _ in traverse(doc, True):
-            if path_in_doc in self._config.get("indexer_select", {}):
+            if path_in_doc in indexers:
                 if not name:
                     name = path_in_doc
                 else:
@@ -535,7 +544,7 @@ class IndexManager(BaseManager):
                     raise RuntimeError(_ERR)
 
         try:
-            strklass = self.indexers[name]
+            strklass = indexers[name]
             klass = get_class_from_classpath(strklass)
         except Exception:
             self.logger.debug("Using default indexer.")
@@ -564,10 +573,21 @@ class IndexManager(BaseManager):
         if "build_config" not in build_doc:
             raise ValueError("Cannot find build config associated with '%s'" % target_name)
 
+        def indexed(f):
+            try:
+                res = f.result()
+                self.logger.info(
+                    "Done indexing target '%s' to index '%s': %s",
+                    target_name, index_name, res)
+            except Exception:
+                self.logger.exception("Error while running index job:")
+                raise
+
         idx = self._find_indexer(target_name)
         idx = idx(build_doc, indexer_env_, target_name, index_name)
         job = idx.index(self.job_manager, ids=ids, **kwargs)
         job = asyncio.ensure_future(job)
+        job.add_done_callback(indexed)
 
         return job
 
