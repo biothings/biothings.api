@@ -109,7 +109,7 @@ class IndexingTask():
                 query={'_id': {
                     '$in': self.ids
                 }}):
-            docs_new['_id'] = doc
+            docs_new[doc['_id']] = doc
             doc.pop("_timestamp", None)
 
         # merge existing ids

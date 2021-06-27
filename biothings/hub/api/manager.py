@@ -5,7 +5,7 @@ import socket
 from biothings.utils.hub_db import get_api
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
-import biothings.web
+from biothings.web.launcher import BiothingsAPILauncher
 
 from biothings import config as btconfig
 
@@ -58,37 +58,20 @@ class APIManager(BaseManager):
     def start_api(self, api_id):
         apidoc = self.api.find_one({"_id": api_id})
         if not apidoc:
-            raise ApiManagerException("No such API with ID '%s'" % api_id)
+            raise APIManagerException("No such API with ID '%s'" % api_id)
         if "entry_point" in apidoc:
             raise NotImplementedError("Custom entry point not implemented yet, "
                                       + "only basic generated APIs are currently supported")
+
         config_mod = types.ModuleType("config_mod")
-        config_str = """
-from biothings.web.handlers import BiothingHandler
-from biothings.web.handlers import MetadataSourceHandler
-from biothings.web.handlers import MetadataFieldHandler
-from biothings.web.handlers import QueryHandler
+        config_mod.ES_HOST = apidoc["config"]["es_host"]
+        config_mod.ES_INDEX = apidoc["config"]["index"]
+        config_mod.ES_DOC_TYPE = apidoc["config"]["doc_type"]
 
-ES_HOST = "%(es_host)s"
-ES_INDEX = "%(index)s"
-ES_DOC_TYPE = "%(doc_type)s"
-
-# doc_type involved there:
-APP_LIST = [
-    (r"/metadata/?", MetadataSourceHandler),
-    (r"/metadata/fields/?", MetadataFieldHandler),
-    (r"/%(doc_type)s/(.+)/?", BiothingHandler),
-    (r"/%(doc_type)s/?$", BiothingHandler),
-    (r"/query/?", QueryHandler),
-]
-""" % apidoc["config"]
-        code = compile(config_str, "<string>", "exec")
-        # propagate config on module
-        eval(code, {}, config_mod.__dict__)
-        app = biothings.web.BiothingsAPIApp(config_module=config_mod)
+        launcher = BiothingsAPILauncher(config_mod)
         port = int(apidoc["config"]["port"])
         try:
-            server = app.get_server()
+            server = launcher.get_server()
             server.listen(port)
             self.register[api_id] = server
             self.logger.info("Running API '%s' on port %s" % (api_id, port))
