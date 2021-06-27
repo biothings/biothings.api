@@ -5,7 +5,6 @@ import socket
 from biothings.utils.hub_db import get_api
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
-from biothings.web import launcher
 from biothings.web.launcher import BiothingsAPILauncher
 
 from biothings import config as btconfig
