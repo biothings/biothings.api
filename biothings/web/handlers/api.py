@@ -26,6 +26,7 @@ from biothings.utils.common import DateTimeJSONEncoder
 # from biothings.utils.web.analytics import GAMixIn
 # from biothings.utils.web.tracking import StandaloneTrackingMixin
 from biothings.web.options import OptionError, ReqArgs
+from biothings.web.options.openapi import OpenAPIDocumentBuilder
 from tornado.escape import json_decode
 from tornado.web import HTTPError
 
@@ -286,4 +287,7 @@ class BaseAPIHandler(BaseHandler):
 class APISpecificationHandler(BaseAPIHandler):
 
     def get(self):
-        self.finish(self.biothings.optionsets.log())
+        openapi = OpenAPIDocumentBuilder()
+        openapi.info(title='Biothings API', version='v1')
+        self.finish(openapi.document)
+        # self.finish(self.biothings.optionsets.log())

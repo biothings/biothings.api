@@ -150,7 +150,6 @@ class ESQueryBuilder():
         * additional keywords are passed through as es keywords
             for example: 'explain', 'version' ...
 
-
         """
         options = dotdict(options)
 
