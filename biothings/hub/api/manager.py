@@ -58,7 +58,7 @@ class APIManager(BaseManager):
     def start_api(self, api_id):
         apidoc = self.api.find_one({"_id": api_id})
         if not apidoc:
-            raise ApiManagerException("No such API with ID '%s'" % api_id)
+            raise APIManagerException("No such API with ID '%s'" % api_id)
         if "entry_point" in apidoc:
             raise NotImplementedError("Custom entry point not implemented yet, "
                                       + "only basic generated APIs are currently supported")
