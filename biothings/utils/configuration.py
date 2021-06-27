@@ -115,8 +115,8 @@ class ConfigurationManager():
                     origvalue = getattr(info["confmod"], attrname)
 
                     # TODO
-                    # this is in a way is a repeatation of what's in
-                    # get_value_from_file, maybe possible to extract it?
+                    # this is in a way repeating what's in get_value_from_file, 
+                    # maybe possible to extract it?
 
                     def eval_default_value(k, v):
                         if isinstance(v, ConfigurationDefault):
@@ -559,9 +559,9 @@ class ConfigLines(UserList):
 class ConfigLine(UserString):
 
     PATTERNS = (
-        ("hidden", re.compile(r"^#-\s*hide\s*-#\s*$"), lambda m: True),
-        ("invisible", re.compile(r"^#-\s*invisible\s*-#\s*$"), lambda m: True),
-        ("readonly", re.compile(r"^#-\s*readonly\s*-#\s*$"), lambda m: True),
+        ("hidden", re.compile(r"^#-\s*hide\s*-#\s*$"), lambda m: bool(m)),
+        ("invisible", re.compile(r"^#-\s*invisible\s*-#\s*$"), lambda m: bool(m)),
+        ("readonly", re.compile(r"^#-\s*readonly\s*-#\s*$"), lambda m: bool(m)),
         ("section", re.compile(r"^#\*\s*(.*)\s*\*#\s*$"), lambda m: m.groups()[0]),
         ("description", re.compile(r".*\s*#\s+(.*)$"), lambda m: m.groups()[0]),
     )
