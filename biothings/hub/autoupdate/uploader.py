@@ -229,11 +229,11 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 # somethng went wrong, report as failure
                 return {"status": "FAILED %s" % e}
 
-        def restore_launched(f):
+        def done_callback(f, step: str):
             try:
-                self.logger.info("Restore launched: %s" % f.result())
+                self.logger.info("%s launched: %s" % (step, f.result()))
             except Exception as e:
-                self.logger.error("Error while launching restore: %s" % e)
+                self.logger.error("Error while launching %s: %s" % (step, e))
                 raise e
 
         self.logger.info("Restoring snapshot '%s' to index '%s' on host '%s'" %
@@ -247,7 +247,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                     snapshot_name,
                     index_name,
                     purge=self.__class__.AUTO_PURGE_INDEX))
-        job.add_done_callback(restore_launched)
+        job.add_done_callback(partial(done_callback, step='restore'))
         await job
 
         def update_alias_and_delete_old_indices():
@@ -283,9 +283,11 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 if status == "DONE":
                     self.logger.info("Snapshot '%s' successfully restored to index '%s' (host: '%s')" %
                                      (snapshot_name, index_name, idxr.es_host), extra={"notify": True})
-                    await job_manager.defer_to_thread(
+                    job = await job_manager.defer_to_thread(
                         pinfo={}, func=update_alias_and_delete_old_indices
                     )
+                    job.add_done_callback(partial(done_callback, step='alias'))
+                    await job
                 else:
                     e = uploader.ResourceError("Failed to restore snapshot '%s' on index '%s', status: %s" %
                                                (snapshot_name, idxr._index, status))
