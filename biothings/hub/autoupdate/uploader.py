@@ -212,11 +212,16 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         snapshot_name = build_meta["metadata"]["snapshot_name"]
         alias_name = idxr.canonical_index_name
         d = datetime.datetime.now().strftime('%Y%m%d')
-        index_name = f'{alias_name}_{snapshot_name}_{d}_'
-        index_name += ''.join(random.choices(  # nosec
-            string.digits + string.ascii_lowercase, k=20
-        ))
-        index_name = index_name[:255]  # elasticsearch restriction
+        base_index_name = f'{alias_name}_{snapshot_name}_{d}_'
+        if len(base_index_name) >= 255:
+            raise RuntimeError("Deterministic part of index name already too long")
+        while True:
+            index_name = base_index_name + ''.join(random.choices(  # nosec
+                string.digits + string.ascii_lowercase, k=20
+            ))
+            index_name = index_name[:255]  # elasticsearch restriction
+            if not idxr.exists_index(index=index_name):
+                break
         pinfo = self.get_pinfo()
         pinfo["step"] = "restore"
         pinfo["description"] = snapshot_name

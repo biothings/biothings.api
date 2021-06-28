@@ -1,4 +1,5 @@
 import copy
+import datetime
 import itertools
 import json
 import re
@@ -58,6 +59,8 @@ def get_es(es_host, timeout=120, max_retries=3, retry_on_timeout=False):
     return es
 
 
+# WARNING: this wrapper changes the _index and _doc_type
+#  usually this is unwanted but we will leave it this way here
 def wrapper(func):
     '''this wrapper allows passing index and doc_type from wrapped method.'''
     def outter_fn(*args, **kwargs):
@@ -239,9 +242,10 @@ class ESIndexer():
         if not hasattr(self, "_es_version"):
             self._es_version = int(self._es.info()['version']['number'].split('.')[0])
 
-    @wrapper
-    def exists_index(self):
-        return self._es.indices.exists(index=self._index)
+    def exists_index(self, index: Optional[str] = None):
+        if not index:
+            index = self._index
+        return self._es.indices.exists(index)
 
     def index(self, doc, id=None, action="index"):       # pylint: disable=redefined-builtin
         '''add a doc to the index. If id is not None, the existing doc will be
