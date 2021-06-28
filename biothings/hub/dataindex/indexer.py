@@ -150,7 +150,7 @@ class Indexer():
         # -----------to-----------
 
         self.host = indexer_env["host"]  # like localhost:9200
-        self.kwargs = indexer_env["args"]  # es client kws like use_ssl=True
+        self.kwargs = indexer_env.get("args", {})  # es client kws like use_ssl=True
 
         self.index_name = index_name or target_name  # elasticsearch index name (destination)
         self.index_settings = deepcopy(DEFAULT_INDEX_SETTINGS)
@@ -517,7 +517,7 @@ class IndexManager(BaseManager):
             ))
         self._config = copy.deepcopy(conf)
         for name, envconf in conf["env"].items():
-            idxkwargs = dict(envconf["indexer"])
+            idxkwargs = dict(envconf.get("indexer", {}))
             idxkwargs["host"] = envconf["host"]
             self.register[name] = idxkwargs
         self.logger.info(self.register)
