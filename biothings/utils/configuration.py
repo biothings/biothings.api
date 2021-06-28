@@ -173,7 +173,7 @@ class ConfigurationManager():
         return self.__getattr__(name)
 
     def show(self):
-        origparams = copy.deepcopy(self.original_params)
+        origparams = copy.deepcopy(self._original_params)
         byscopes = {"scope": {}}
         # some of these could have been superseded by values from DB
         for key, info in origparams.items():
