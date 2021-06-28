@@ -1011,7 +1011,17 @@ def %s():
         for child in self.pchildren:
             try:
                 mem = child.memory_info().rss
-                pio = child.io_counters()
+                try:
+                    pio = child.io_counters()
+                except AttributeError:
+                    # workaround for OS w/o this feature
+                    # namely macOS
+                    pio = type('', (), {
+                        'read_count': -1,
+                        'write_count': -1,
+                        'read_bytes': -1,
+                        'write_bytes': -1,
+                    })()
                 # TODO: cpu as reported here isn't reliable, the only to get something
                 # consistent to call cpu_percent() with a waiting time argument to integrate
                 # CPU activity over this time, but this is a blocking call and freeze the hub
