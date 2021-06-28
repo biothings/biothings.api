@@ -349,7 +349,7 @@ class Indexer():
                 pinfo, dispatch_task,
                 self.backend_url, ids, mode, batch_num,
                 self.index_name, self.doc_type,
-                self.host, batch_size, self.num_shards,
+                self.host, None, self.num_shards,
                 self.num_replicas, **self.kwargs)
             jobs.append(job)
 

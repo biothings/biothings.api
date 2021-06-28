@@ -81,7 +81,7 @@ class ESIndexer():
     # pattern of a mongodb collection.
 
     def __init__(self, index, doc_type='_doc',
-                 es_host='localhost:9200', step=10000,
+                 es_host='localhost:9200', step=500,
                  number_of_shards=1, number_of_replicas=0,
                  check_index=True, **kwargs):
         self.es_host = es_host
@@ -111,7 +111,7 @@ class ESIndexer():
                     logging.info("Failed to guess doc_type: %s", e)
         self.number_of_shards = number_of_shards            # set number_of_shards when create_index
         self.number_of_replicas = int(number_of_replicas)   # set number_of_replicas when create_index
-        self.step = step   # the bulk size when doing bulk operation.
+        self.step = step or 500   # the bulk size when doing bulk operation.
         self.s = None      # number of records to skip, useful to continue indexing after an error.
 
     @wrapper
