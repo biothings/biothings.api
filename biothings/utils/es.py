@@ -743,11 +743,8 @@ class ESIndexer():
 
         When the alias name already exists, an exception will be raised,
         UNLESS the alias name is the same as index name that the ESIndexer is
-        initialized with, and the underlying _index does not equal to alias
-        name, and the index parameter is equal to _index. For example,
-        if alias_name == self.canonical_index_name == data,
-        and self._index = data_20210614. In this case, the existing index
-        with the name collision will be deleted, and the alias will be created
+        initialized with. In this case, the existing index with the name
+        collision will be deleted, and the alias will be created
         in its place. This feature is intended for seamless migration from
         an index to an alias associated with an index for zero-downtime
         installs.
@@ -786,9 +783,7 @@ class ESIndexer():
             else:  # it is an index
                 # if not _index and is the canonical index name
                 #  then delete the index and create alias
-                if alias_name == self.canonical_index_name and \
-                        not alias_name == self._index and \
-                        index == self._index:
+                if alias_name == self.canonical_index_name:
                     self._es.indices.delete(alias_name)
                     self._es.indices.put_alias(index=index, name=alias_name)
                 else:
