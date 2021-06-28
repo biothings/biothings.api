@@ -1,6 +1,9 @@
+import datetime
 import os
 import asyncio
 import json
+import random
+import string
 from functools import partial
 from typing import Optional, Tuple
 
@@ -207,13 +210,20 @@ class BiothingsUploader(uploader.BaseSourceUploader):
 
         # repository is now ready, let's trigger the restore
         snapshot_name = build_meta["metadata"]["snapshot_name"]
+        alias_name = idxr.canonical_index_name
+        d = datetime.datetime.now().strftime('%Y%m%d')
+        index_name = f'{alias_name}_{snapshot_name}_{d}_'
+        index_name += ''.join(random.choices(  # nosec
+            string.digits + string.ascii_lowercase, k=20
+        ))
+        index_name = index_name[:255]  # elasticsearch restriction
         pinfo = self.get_pinfo()
         pinfo["step"] = "restore"
         pinfo["description"] = snapshot_name
 
         def get_status_info():
             try:
-                res = idxr.get_restore_status(idxr._index)
+                res = idxr.get_restore_status(index_name)
                 return res
             except Exception as e:
                 # somethng went wrong, report as failure
@@ -223,32 +233,59 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             try:
                 self.logger.info("Restore launched: %s" % f.result())
             except Exception as e:
-                self.logger.error("Error while lauching restore: %s" % e)
+                self.logger.error("Error while launching restore: %s" % e)
                 raise e
 
         self.logger.info("Restoring snapshot '%s' to index '%s' on host '%s'" %
-                         (snapshot_name, idxr._index, idxr.es_host))
+                         (snapshot_name, index_name, idxr.es_host))
+        # ESIndexer.restore is synchronous but should return relatively
+        # quickly
         job = await job_manager.defer_to_thread(
             pinfo,
             partial(idxr.restore,
                     repo_name,
                     snapshot_name,
-                    idxr._index,
+                    index_name,
                     purge=self.__class__.AUTO_PURGE_INDEX))
         job.add_done_callback(restore_launched)
         await job
+
+        def update_alias_and_delete_old_indices():
+            old_indices = []
+            try:
+                old_indices.extend(idxr.get_alias(alias_name))
+            except Exception:
+                pass
+            self.logger.debug("Alias '%s' points to '%s'" % (alias_name, old_indices))
+            if index_name in old_indices:
+                self.logger.warning("new index name in old alias, something is not right")
+                old_indices.remove(index_name)
+            try:
+                idxr.update_alias(alias_name, index_name)
+                self.logger.info(f"Alias '{alias_name}' updated to "
+                                 f"associate with index '{index_name}'")
+                for rm_idx_name in old_indices:
+                    idxr.delete_index(rm_idx_name)
+                    self.logger.info("Deleted old index '%s'" % rm_idx_name)
+            except IndexerException as e:
+                self.logger.warning(f"Alias index swap ran into a problem {e}")
+                raise
+
         while True:
             status_info = get_status_info()
             status = status_info["status"]
             self.logger.info("Recovery status for index '%s': %s" %
-                             (idxr._index, status_info))
+                             (index_name, status_info))
             if status in ["INIT", "IN_PROGRESS"]:
                 await asyncio.sleep(
                     getattr(btconfig, "MONITOR_SNAPSHOT_DELAY", 60))
             else:
                 if status == "DONE":
                     self.logger.info("Snapshot '%s' successfully restored to index '%s' (host: '%s')" %
-                                     (snapshot_name, idxr._index, idxr.es_host), extra={"notify": True})
+                                     (snapshot_name, index_name, idxr.es_host), extra={"notify": True})
+                    await job_manager.defer_to_thread(
+                        pinfo={}, func=update_alias_and_delete_old_indices
+                    )
                 else:
                     e = uploader.ResourceError("Failed to restore snapshot '%s' on index '%s', status: %s" %
                                                (snapshot_name, idxr._index, status))
