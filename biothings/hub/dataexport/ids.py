@@ -1,7 +1,7 @@
 import os
 import subprocess
 import shutil
-from boto import connect_s3
+import boto3
 from biothings.utils.aws import send_s3_file
 
 from biothings.utils.hub_db import get_src_build
@@ -127,13 +127,13 @@ def upload_ids(ids_file, redirect_from, s3_bucket, aws_key, aws_secret):
                  aws_key=aws_key,
                  aws_secret=aws_secret)
     # make the file public
-    s3 = connect_s3(aws_key, aws_secret)
-    bucket = s3.get_bucket(s3_bucket)
-    s3key = bucket.get_key(s3path)
-    s3key.set_acl("public-read")
+    s3_resource = boto3.resource('s3', aws_access_key_id=aws_key,
+                                 aws_secret_access_key=aws_secret)
+    actual_object = s3_resource.Object(bucket_name=s3_bucket, key=s3path)
+    actual_object.Acl().put(ACL='public-read')
     # update permissions and redirect metadata
-    k = bucket.get_key(redirect_from)
-    assert k, "Can't find s3 key '%s' to set redirection" % redirect_from
-    k.set_redirect("/%s" % s3path)
-    k.set_acl("public-read")
+    redir_object = s3_resource.Object(bucket_name=s3_bucket, key=redirect_from)
+    redir_object.load()  # check if object exists, will raise if not
+    redir_object.put(WebsiteRedirectLocation='/%s' % s3path)
+    redir_object.Acl().put(ACL='public-read')
     logging.info("IDs file '%s' uploaded to s3, redirection set from '%s'" % (ids_file, redirect_from), extra={"notify": True})

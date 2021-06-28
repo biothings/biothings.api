@@ -1,9 +1,10 @@
 import logging
 import mimetypes
 import os
-from urllib.parse import urlparse
+import tempfile
+import warnings
+from urllib.parse import quote
 
-from boto import connect_s3
 import boto3
 import botocore.exceptions
 
@@ -28,10 +29,15 @@ def key_exists(bucket, s3key, aws_key=None, aws_secret=None):
 
 
 def send_s3_file(localfile, s3key, overwrite=False, permissions=None, metadata=None,
-                 content=None, content_type=None, aws_key=None, aws_secret=None, s3_bucket=None):
+                 content=None, content_type=None, aws_key=None, aws_secret=None, s3_bucket=None,
+                 redirect=None):
     '''save a localfile to s3 bucket with the given key.
        bucket is set via S3_BUCKET
        it also save localfile's lastmodified time in s3 file's metadata
+
+       Args:
+           redirect (str): if not None, set the redirect property
+               of the object so it produces a 301 when accessed
     '''
     metadata = metadata or {}
     try:
@@ -41,25 +47,34 @@ def send_s3_file(localfile, s3key, overwrite=False, permissions=None, metadata=N
     except AttributeError:
         logging.info("Skip sending file to S3, missing information in config file: AWS_KEY, AWS_SECRET or S3_BUCKET")
         return
-    s3 = connect_s3(aws_key, aws_secret)
-    bucket = s3.get_bucket(s3_bucket)
-    # bucket_location = bucket.get_location()  # TODO: delete this unused variable
-    k = bucket.new_key(s3key)
+    s3 = boto3.resource('s3', aws_access_key_id=aws_key,
+                        aws_secret_access_key=aws_secret)
+    target_object = s3.Object(s3_bucket, s3key)
     if not overwrite:
-        assert not k.exists(), 's3key "{}" already exists.'.format(s3key)
-    for header in metadata:
-        k.set_metadata(header, metadata[header])
+        if key_exists(
+            bucket=s3_bucket, s3key=s3key,
+            aws_key=aws_key, aws_secret=aws_secret
+        ):
+            # NOTE: change to assert/AssertionError if something relies on
+            #  the assert statement
+            raise FileExistsError('s3key "{}" already exists.'.format(s3key))
+    # assuming metadata is a Mapping type
+    put_request = {'Metadata': metadata}
+    if redirect:
+        put_request['WebsiteRedirectLocation'] = redirect
     if content_type:
-        k.content_type = content_type
-    if content:
-        k.set_contents_from_string(content)
+        put_request['ContentType'] = content_type
+    if content is not None:
+        put_request['Body'] = content
     else:
         assert os.path.exists(localfile), 'localfile "{}" does not exist.'.format(localfile)
         lastmodified = os.stat(localfile)[-2]
-        k.set_metadata('lastmodified', lastmodified)
-        k.set_contents_from_filename(localfile)
+        put_request['Body'] = open(localfile, 'rb')
+        put_request['Metadata']['lastmodified'] = str(lastmodified)
+    target_object.put(**put_request)
+
     if permissions:
-        k.set_acl(permissions)
+        target_object.Acl().put(ACL=permissions)
 
 
 def send_s3_big_file(localfile, s3key, overwrite=False, acl=None,
@@ -95,37 +110,96 @@ def send_s3_big_file(localfile, s3key, overwrite=False, acl=None,
 
 def get_s3_file(s3key, localfile=None, return_what=False,
                 aws_key=None, aws_secret=None, s3_bucket=None):
-    aws_key = aws_key or getattr(config, "AWS_SECRET")
-    aws_secret = aws_secret or getattr(config, "AWS_SECRET")
-    s3_bucket = s3_bucket or getattr(config, "S3_BUCKET")
-    localfile = localfile or os.path.basename(s3key)
-    s3 = connect_s3(aws_key, aws_secret)
-    bucket = s3.get_bucket(s3_bucket)
-    k = bucket.get_key(s3key)
-    if not k:
-        raise FileNotFoundError(s3key)
+    # get_s3_file is planned to be deprecated in 0.11 and removed in 0.13
+    warnings.warn(DeprecationWarning("get_s3_file is deprecated, use "
+                                     "download_s3_file or "
+                                     "get_s3_file_contents instead"))
+
     if return_what == "content":
-        return k.get_contents_as_string()
+        return get_s3_file_contents(s3key, aws_key, aws_secret, s3_bucket)
     elif return_what == "key":
-        return k
+        warnings.warn(DeprecationWarning("get_s3_file: return_what=key is "
+                                         "deprecated, use other ways "
+                                         "instead"))
+        try:
+            # pylint:disable=import-outside-toplevel
+            # this is so that only those who need return_what="key"
+            # will depend on boto
+            from boto import connect_s3
+            # pylint:enable=import-outside-toplevel
+            s3 = connect_s3(aws_key, aws_secret)
+            bucket = s3.get_bucket(s3_bucket)
+            k = bucket.get_key(s3key)
+            return k
+        except ImportError:
+            raise RuntimeError("get_s3_file: return_what=key needs "
+                               "package boto to be installed")
     else:
-        k.get_contents_to_filename(localfile)
+        download_s3_file(s3key, localfile, aws_key, aws_secret, s3_bucket,
+                         overwrite=True)
+
+
+def _populate_s3_info(aws_key, aws_secret, s3_bucket):
+    aws_key = aws_key or getattr(config, "AWS_SECRET", None)
+    aws_secret = aws_secret or getattr(config, "AWS_SECRET", None)
+    s3_bucket = s3_bucket or getattr(config, "S3_BUCKET", None)
+    return aws_key, aws_secret, s3_bucket
+
+
+def _get_s3_object(aws_key, aws_secret, s3_bucket, s3key):
+    aws_key, aws_secret, s3_bucket = _populate_s3_info(
+        aws_key, aws_secret, s3_bucket)
+    if not key_exists(s3_bucket, s3key, aws_key, aws_secret):
+        raise FileNotFoundError(s3key)
+    s3 = boto3.resource('s3', aws_access_key_id=aws_key,
+                        aws_secret_access_key=aws_secret)
+    target_object = s3.Object(s3_bucket, s3key)
+    return target_object
+
+
+# pylint:disable=too-many-arguments
+# at the moment we do not intend to merge parameters (to sth. like S3Config)
+def download_s3_file(s3key, localfile=None, aws_key=None, aws_secret=None,
+                     s3_bucket=None, overwrite=False):
+    localfile = localfile or os.path.basename(s3key)
+    if not overwrite and os.path.exists(localfile):
+        raise FileExistsError(f"download_s3_file: {localfile} already exists"
+                              f" and not overwriting")
+    target_object = _get_s3_object(aws_key, aws_secret, s3_bucket, s3key)
+    with tempfile.NamedTemporaryFile('xb', delete=False) as tmp:
+        body = target_object.get()['Body']
+        for chunk in body.iter_chunks():
+            tmp.write(chunk)
+        if overwrite:
+            os.replace(tmp.name, localfile)
+        else:
+            os.rename(tmp.name, localfile)
+
+
+# pylint:enable=too-many-arguments
+def get_s3_file_contents(s3key, aws_key=None, aws_secret=None, s3_bucket=None)\
+        -> bytes:
+    target_object = _get_s3_object(aws_key, aws_secret, s3_bucket, s3key)
+    return target_object.get()['Body'].read()
 
 
 def get_s3_folder(s3folder, basedir=None, aws_key=None, aws_secret=None, s3_bucket=None):
     aws_key = aws_key or getattr(config, "AWS_SECRET")
     aws_secret = aws_secret or getattr(config, "AWS_SECRET")
     s3_bucket = s3_bucket or getattr(config, "S3_BUCKET")
-    s3 = connect_s3(aws_key, aws_secret)
-    bucket = s3.get_bucket(s3_bucket)
+    s3 = boto3.resource('s3', aws_access_key_id=aws_key,
+                        aws_secret_access_key=aws_secret)
+    bucket = s3.Bucket(s3_bucket)
     cwd = os.getcwd()
     try:
         if basedir:
             os.chdir(basedir)
         if not os.path.exists(s3folder):
             os.makedirs(s3folder)
-        for k in bucket.list(s3folder):
-            get_s3_file(k.key, localfile=k.key, aws_key=aws_key, aws_secret=aws_secret, s3_bucket=s3_bucket)
+        for k in bucket.objects.filter(Prefix=s3folder):
+            download_s3_file(k.key, localfile=k.key,
+                             aws_key=aws_key, aws_secret=aws_secret,
+                             s3_bucket=s3_bucket, overwrite=True)
     finally:
         os.chdir(cwd)
 
@@ -135,8 +209,9 @@ def send_s3_folder(folder, s3basedir=None, acl=None, overwrite=False,
     aws_key = aws_key or getattr(config, "AWS_SECRET")
     aws_secret = aws_secret or getattr(config, "AWS_SECRET")
     s3_bucket = s3_bucket or getattr(config, "S3_BUCKET")
-    s3 = connect_s3(aws_key, aws_secret)
-    s3.get_bucket(s3_bucket)    # check if s3_bucket exists
+    s3 = boto3.client("s3", aws_access_key_id=aws_key,
+                      aws_secret_access_key=aws_secret)
+    s3.head_bucket(Bucket=s3_bucket)  # will raise when not 200
     cwd = os.getcwd()
     if not s3basedir:
         s3basedir = os.path.basename(cwd)
@@ -153,15 +228,20 @@ def send_s3_folder(folder, s3basedir=None, acl=None, overwrite=False,
 
 
 def get_s3_url(s3key, aws_key=None, aws_secret=None, s3_bucket=None):
-    try:
-        k = get_s3_file(s3key, return_what="key",
-                        aws_key=aws_key, aws_secret=aws_secret, s3_bucket=s3_bucket)
-    except FileNotFoundError:
-        return None
-    # generate_url will include some acdesskey, signature, etc... we want to remove this
-    # as the bucket is public anyway and want "clean" url
-    url = k.generate_url(expires_in=0)  # never (and whatever, we
-    return urlparse(url)._replace(query="").geturl()
+    if key_exists(s3_bucket, s3key, aws_key, aws_secret):
+        return f"https://{s3_bucket}.s3.amazonaws.com/{quote(s3key)}"
+    return None
+
+
+def get_s3_static_website_url(s3key, aws_key=None, aws_secret=None, s3_bucket=None):
+    aws_key, aws_secret, s3_bucket = _populate_s3_info(
+        aws_key, aws_secret, s3_bucket
+    )
+    s3 = boto3.client('s3', aws_access_key_id=aws_key,
+                      aws_secret_access_key=aws_secret)
+    location_resp = s3.get_bucket_location(Bucket=s3_bucket)
+    region = location_resp.get('LocationConstraint', 'us-east-1')
+    return f"http://{s3_bucket}.s3-website.{region}.amazonaws.com/{quote(s3key)}"
 
 
 def create_bucket(name, region=None, aws_key=None, aws_secret=None, acl=None,
