@@ -80,8 +80,8 @@ class ESIndexer():
     # necessarily a good idea to mirror the access
     # pattern of a mongodb collection.
 
-    def __init__(self, index, doc_type='_doc',
-                 es_host='localhost:9200', step=500,
+    def __init__(self, index, doc_type='_doc', es_host='localhost:9200',
+                 step=500, step_size=10,  # elasticsearch.helpers.bulk
                  number_of_shards=1, number_of_replicas=0,
                  check_index=True, **kwargs):
         self.es_host = es_host
@@ -112,6 +112,7 @@ class ESIndexer():
         self.number_of_shards = number_of_shards            # set number_of_shards when create_index
         self.number_of_replicas = int(number_of_replicas)   # set number_of_replicas when create_index
         self.step = step or 500   # the bulk size when doing bulk operation.
+        self.step_size = (step_size or 10) * 1048576  # MB -> bytes
         self.s = None      # number of records to skip, useful to continue indexing after an error.
 
     @wrapper
@@ -231,7 +232,7 @@ class ESIndexer():
                 ndoc.pop("_type")
             return ndoc
         actions = (_get_bulk(doc) for doc in docs)
-        num_ok, errors = helpers.bulk(self._es, actions, chunk_size=step)
+        num_ok, errors = helpers.bulk(self._es, actions, chunk_size=step, max_chunk_bytes=self.step_size)
         if errors:
             raise ElasticsearchException("%d errors while bulk-indexing: %s" % (len(errors), [str(e) for e in errors]))
         return num_ok, errors

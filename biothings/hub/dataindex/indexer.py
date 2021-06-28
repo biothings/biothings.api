@@ -348,9 +348,9 @@ class Indexer():
             job = yield from job_manager.defer_to_process(
                 pinfo, dispatch_task,
                 self.backend_url, ids, mode, batch_num,
-                self.index_name, self.doc_type,
-                self.host, None, self.num_shards,
-                self.num_replicas, **self.kwargs)
+                self.index_name, self.doc_type, self.host,
+                None, None,  # support passing these parameters in the future
+                self.num_shards, self.num_replicas, **self.kwargs)
             jobs.append(job)
 
             # TODO
