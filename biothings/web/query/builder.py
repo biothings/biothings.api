@@ -65,7 +65,8 @@ class QStringParser:
             fields = [fields] if isinstance(fields, str) else fields
             assert all(isinstance(field, str) for field in fields)
             pattern = re.compile(pattern) if isinstance(pattern, str) else pattern
-            assert isinstance(pattern, re.Pattern)  # TODO python cross-version compatibility
+            if hasattr(re, 'Pattern'):  # TODO remove for python>3.7
+                assert isinstance(pattern, re.Pattern)
             self.patterns.append((pattern, fields))
 
     def parse(self, q):
