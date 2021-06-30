@@ -9,6 +9,7 @@ from functools import partial
 
 import elasticsearch
 import elasticsearch_dsl
+from requests import PreparedRequest
 from tornado.ioloop import IOLoop
 
 logger = logging.getLogger(__name__)
@@ -56,28 +57,65 @@ def _log_es(client, hosts):
 
             if es_local.is_compatible(version):
                 level = logging.INFO
-                suffix = "Compatible"
+                suffix = ""
             else:
                 level = logging.WARNING
-                suffix = "Incompatible"
+                suffix = "(Incompatible)"
 
-            logger.log(level, 'ES [%s] %s: %s [%s]', hosts, cluster_name, version, suffix)
+            logger.log(level, 'Elasticsearch [%s] %s: %s %s', hosts, cluster_name, version, suffix)
         IOLoop.current().add_callback(log_cluster, client)
 
 
 # ------------------------
 #   Low Level Functions
 # ------------------------
+import boto3
+from elasticsearch import AIOHttpConnection
+from elasticsearch import RequestsHttpConnection as _Conn
+from requests_aws4auth import AWS4Auth
+
+
+class _AsyncConn(AIOHttpConnection):
+    def __init__(self, *args, **kwargs):
+        self.aws_auth = None
+        if isinstance(kwargs.get('http_auth'), AWS4Auth):
+            self.aws_auth = kwargs['http_auth']
+            kwargs['http_auth'] = None
+        super().__init__(*args, **kwargs)
+
+    async def perform_request(
+        self, method, url, params=None, body=None,
+        timeout=None, ignore=(), headers=None
+    ):
+        req = PreparedRequest()
+        req.prepare(method, self.host + url, headers, None, body, params)
+        self.aws_auth(req)  # sign the request
+        headers.update(req.headers)
+        return await super().perform_request(
+            method, url, params, body,
+            timeout, ignore, headers
+        )
 
 
 def get_es_client(hosts=None, async_=False, **settings):
 
-    if settings.pop('sniff', None):
-        settings.update({
-            "sniff_on_start": True,
-            "sniff_on_connection_fail": True,
-            "sniffer_timeout": 60
-        })
+    if settings.pop('aws', False):
+        session = boto3.Session()
+        region = session.region_name
+        credentials = session.get_credentials()
+        awsauth = AWS4Auth(
+            credentials.access_key, credentials.secret_key,
+            region, "es", session_token=credentials.token)
+        settings.update(
+            http_auth=awsauth, use_ssl=True, verify_certs=True,
+            connection_class=_AsyncConn if async_ else _Conn
+        )
+    elif settings.pop('sniff', None):
+        settings.update(
+            sniff_on_start=True,
+            sniff_on_connection_fail=True,
+            sniffer_timeout=60
+        )
     if async_:
         from elasticsearch import AsyncElasticsearch
         client = AsyncElasticsearch
