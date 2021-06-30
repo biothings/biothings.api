@@ -37,6 +37,7 @@ if commit_hash or num_commits:
 
 # very minimal requirement for running biothings.web
 install_requires = [
+    'boto3',
     'requests>=2.21.0',
     'tornado==6.1.0',
     'gitpython>=3.1.0',
@@ -64,7 +65,6 @@ hub_requires = [
     'jsonpointer',      # for utils.jsonpatch
     'IPython',          # for interactive hub console
     'boto',
-    'boto3',
     'multiprocessing_on_dill',  # can replace pickler in concurrent.futures
     'dill',             # a pickle alternative with extra object type support
     'pyinotify; sys_platform == "linux"',        # Linux-only; used in utils.hub.PyInotifyHubReloader
