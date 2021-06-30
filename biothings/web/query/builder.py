@@ -294,7 +294,9 @@ class ESQueryBuilder():
         """
         assert isinstance(q, str) and q
         assert not options.scopes
-        return Search().query("query_string", query=q)
+        return Search().query(
+            "query_string", query=q, default_operator="AND"
+        )
 
     def default_match_query(self, q, scopes, options):
         """
@@ -305,7 +307,8 @@ class ESQueryBuilder():
         assert isinstance(scopes, (list, tuple, str)) and scopes
         return Search().query(
             'multi_match', query=q, fields=scopes,
-            operator="and", lenient=True)
+            operator="and", lenient=True
+        )
 
     def apply_extras(self, search, options):
         """
