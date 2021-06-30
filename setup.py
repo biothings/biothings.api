@@ -39,6 +39,7 @@ if commit_hash or num_commits:
 install_requires = [
     'boto3',
     'requests>=2.21.0',
+    'requests-aws4auth',
     'tornado==6.1.0',
     'gitpython>=3.1.0',
     'elasticsearch[async]>=7, <8',
