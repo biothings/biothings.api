@@ -119,8 +119,9 @@ def get_es_client(hosts=None, async_=False, **settings):
         # find credentials
         credentials = session.get_credentials()
         awsauth = AWS4Auth(
-            credentials.access_key, credentials.secret_key,
-            region, "es", session_token=credentials.token)
+            refreshable_credentials=credentials,
+            region=region, service='es'
+        )
 
         settings.update(
             http_auth=awsauth, use_ssl=True, verify_certs=True,
