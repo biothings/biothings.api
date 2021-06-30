@@ -7,9 +7,13 @@ import logging
 import pickle
 from functools import partial
 
+import boto3
 import elasticsearch
 import elasticsearch_dsl
-from requests import PreparedRequest
+import requests
+from elasticsearch import AIOHttpConnection
+from elasticsearch import RequestsHttpConnection as _Conn
+from requests_aws4auth import AWS4Auth
 from tornado.ioloop import IOLoop
 
 logger = logging.getLogger(__name__)
@@ -39,8 +43,10 @@ class ESPackageInfo():
 
 es_local = ESPackageInfo()
 
+
 def _log_db(client, uri):
     logger.info(client)
+
 
 def _log_es(client, hosts):
     _log_db(client, hosts)
@@ -58,21 +64,20 @@ def _log_es(client, hosts):
             if es_local.is_compatible(version):
                 level = logging.INFO
                 suffix = ""
-            else:
+            else:  # package version mismatch
                 level = logging.WARNING
                 suffix = "(Incompatible)"
 
-            logger.log(level, 'Elasticsearch [%s] %s: %s %s', hosts, cluster_name, version, suffix)
+            logger.log(
+                level, 'Elasticsearch [%s] %s: %s %s',
+                hosts, cluster_name, version, suffix
+            )
         IOLoop.current().add_callback(log_cluster, client)
 
 
 # ------------------------
 #   Low Level Functions
 # ------------------------
-import boto3
-from elasticsearch import AIOHttpConnection
-from elasticsearch import RequestsHttpConnection as _Conn
-from requests_aws4auth import AWS4Auth
 
 
 class _AsyncConn(AIOHttpConnection):
@@ -87,7 +92,7 @@ class _AsyncConn(AIOHttpConnection):
         self, method, url, params=None, body=None,
         timeout=None, ignore=(), headers=None
     ):
-        req = PreparedRequest()
+        req = requests.PreparedRequest()
         req.prepare(method, self.host + url, headers, None, body, params)
         self.aws_auth(req)  # sign the request
         headers.update(req.headers)
@@ -97,15 +102,26 @@ class _AsyncConn(AIOHttpConnection):
         )
 
 
+# https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-identity-documents.html
+AWS_META_URL = "http://169.254.169.254/latest/dynamic/instance-identity/document"
+
+
 def get_es_client(hosts=None, async_=False, **settings):
 
     if settings.pop('aws', False):
+        # find region
         session = boto3.Session()
         region = session.region_name
+        if not region:  # not in ~/.aws/config
+            res = requests.get(AWS_META_URL)
+            region = res.json()["region"]
+
+        # find credentials
         credentials = session.get_credentials()
         awsauth = AWS4Auth(
             credentials.access_key, credentials.secret_key,
             region, "es", session_token=credentials.token)
+
         settings.update(
             http_auth=awsauth, use_ssl=True, verify_certs=True,
             connection_class=_AsyncConn if async_ else _Conn
@@ -125,13 +141,16 @@ def get_es_client(hosts=None, async_=False, **settings):
 
     return client(hosts, **settings)
 
+
 def get_sql_client(uri, **settings):
     from sqlalchemy import create_engine
     return create_engine(uri, **settings).connect()
 
+
 def get_mongo_client(uri, **settings):
     from pymongo import MongoClient
     return MongoClient(uri, **settings).get_default_database()
+
 
 def _not_implemented_client():
     raise NotImplementedError()
@@ -139,6 +158,7 @@ def _not_implemented_client():
 # ------------------------
 #   High Level Utilities
 # ------------------------
+
 
 class _ClientPool:
 
