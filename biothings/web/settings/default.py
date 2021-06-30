@@ -193,15 +193,6 @@ GA_ACTION_QUERY_POST = 'query_post'
 GA_ACTION_ANNOTATION_GET = 'biothing_get'
 GA_ACTION_ANNOTATION_POST = 'biothing_post'
 
-# TODO
-# for standalone instance tracking
-STANDALONE_TRACKING_URL = ''
-# dictionary with AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY k,v for standalone user AWS IAM
-STANDALONE_AWS_CREDENTIALS = {}
-# batch size for standalone tracking (sending requests to AWS lambda)
-STANDALONE_TRACKING_BATCH_SIZE = 1000
-
-
 # *****************************************************************************
 # Endpoints Specifics & Others
 # *****************************************************************************
