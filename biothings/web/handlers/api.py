@@ -23,8 +23,7 @@ from urllib.parse import (parse_qs, unquote_plus, urlencode, urlparse,
 
 import yaml
 from biothings.utils.common import DateTimeJSONEncoder
-# from biothings.utils.web.analytics import GAMixIn
-# from biothings.utils.web.tracking import StandaloneTrackingMixin
+from biothings.web.analytics.channels import GAMixIn
 from biothings.web.options import OptionError, ReqArgs
 from biothings.web.options.openapi import OpenAPIDocumentBuilder
 from tornado.escape import json_decode
@@ -59,8 +58,7 @@ __all__ = [
     'APISpecificationHandler'
 ]
 
-# class BaseAPIHandler(BaseHandler, GAMixIn, StandaloneTrackingMixin):
-class BaseAPIHandler(BaseHandler):
+class BaseAPIHandler(BaseHandler, GAMixIn):
 
     name = ''
     kwargs = None  # dict
@@ -222,8 +220,7 @@ class BaseAPIHandler(BaseHandler):
         Override to provide tracking features.
         """
         self.logger.debug("Event: %s", self.event)
-        # self.ga_track(self.event)
-        # self.self_track(self.event)
+        self.ga_track(self.event)
 
     def write_error(self, status_code, **kwargs):
 
@@ -287,7 +284,7 @@ class BaseAPIHandler(BaseHandler):
 class APISpecificationHandler(BaseAPIHandler):
 
     def get(self):
-        openapi = OpenAPIDocumentBuilder()
-        openapi.info(title='Biothings API', version='v1')
-        self.finish(openapi.document)
-        # self.finish(self.biothings.optionsets.log())
+        # openapi = OpenAPIDocumentBuilder()
+        # openapi.info(title='Biothings API', version='v1')
+        # self.finish(openapi.document)
+        self.finish(self.biothings.optionsets.log())
