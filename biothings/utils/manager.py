@@ -414,7 +414,10 @@ class BaseSourceManager(BaseManager):
                     try:
                         m = importlib.import_module(modpath)
                         klasses.extend(self.find_classes(m, fail_on_notfound))
-                    except (SyntaxError, ImportError) as e:
+                    except Exception as e:
+                        # (SyntaxError, ImportError) is not sufficient to catch
+                        # all possible failures, for example a ValueError
+                        # in module definition..
                         logger.debug("Couldn't import %s: %s", modpath, e)
                         continue
             except TypeError as e:
