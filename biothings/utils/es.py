@@ -124,17 +124,11 @@ class ESIndexer():
         self._host_major_ver = int(self._es.info()['version']['number'].split('.')[0])
         # the name of the index when ESIndexer is initialized
         self.canonical_index_name = index
+        self._index = index  # placeholder, will be updated later
         if check_index:
             # if index is actually an alias, resolve the alias to
             # the real underlying index
-            try:
-                res = self._es.indices.get_alias(index=index)
-                # this was an alias
-                assert len(res) == 1, "Expecing '%s' to be an alias, but got nothing..." % index
-                self._index = list(res.keys())[0]
-            except NotFoundError:
-                # this was a real index name
-                self._index = index
+            self.check_index()
 
         self._doc_type = None
         if doc_type:
@@ -153,6 +147,27 @@ class ESIndexer():
         self.step = step or 500   # the bulk size when doing bulk operation.
         self.step_size = (step_size or 10) * 1048576  # MB -> bytes
         self.s = None      # number of records to skip, useful to continue indexing after an error.
+
+    def check_index(self):
+        """
+        Check if index is an alias, and update self._index to point to
+        actual index
+
+        TODO: the overall design of ESIndexer is not great. If we are exposing ES
+         implementation details (such as the abilities to create and delete indices,
+         create and update aliases, etc.) to the user of this Class, then this method
+         doesn't seem that out of place.
+        """
+        try:
+            res = self._es.indices.get_alias(name=self.canonical_index_name)
+            # this is an alias
+            if len(res) != 1:
+                raise RuntimeError(f"Alias '{self.canonical_index_name}' does not "
+                                   "associate with exactly 1 index")
+            self._index = list(res.keys())[0]
+        except NotFoundError:
+            # probably intended to be an index name
+            self._index = self.canonical_index_name
 
     @wrapper
     def get_biothing(self, bid, only_source=False, **kwargs):
