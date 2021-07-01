@@ -188,10 +188,10 @@ class ESQueryBuilder():
         # later but it itself is a single query unit.
 
         if options.scopes:
-            search = self._build_match_query(q, options)
+            search = self._build_match_query(q, options.scopes, options)
         elif not isinstance(q, (list, tuple)) and options.autoscope:
-            q, options.scopes = self.parser.parse(str(q))
-            search = self._build_match_query(q, options)
+            q, scopes = self.parser.parse(str(q))
+            search = self._build_match_query(q, scopes, options)
         else:  # no scope provided and cannot derive from q
             search = self._build_string_query(q, options)
 
@@ -239,7 +239,7 @@ class ESQueryBuilder():
 
         return search
 
-    def _build_match_query(self, q, options):
+    def _build_match_query(self, q, scopes, options):
         """ q + scopes + options -> query object
 
             case 1: 
@@ -252,8 +252,6 @@ class ESQueryBuilder():
                 q = ["1017", "CDK2"]
                 scopes = [["_id", "entrezgene"], "symbol"]
         """
-        assert options.scopes
-        scopes = options.scopes
 
         if not isinstance(q, (list, tuple)):
             q, scopes = [q], [scopes]
