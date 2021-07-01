@@ -264,17 +264,31 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             self.logger.debug("Alias '%s' points to '%s'" % (alias_name, old_indices))
             if index_name in old_indices:
                 self.logger.warning("new index name in old alias, something is not right")
+                self.logger.warning("continuing alias swap despite potential problem")
                 old_indices.remove(index_name)
             try:
                 idxr.update_alias(alias_name, index_name)
                 self.logger.info(f"Alias '{alias_name}' updated to "
                                  f"associate with index '{index_name}'")
+            except IndexerException as e:
+                self.logger.warning(f"Alias index swap ran into a problem {e}")
+                self.logger.warning(f"Deleting new index '{index_name}'")
+                idxr.delete_index(index_name)
+                raise
+
+            # have ESIndexer look at the correct index after snapshot restore
+            idxr.check_index()
+
+            # after successful swap, delete old indices
+            # only issue messages on errors
+            try:
                 for rm_idx_name in old_indices:
                     idxr.delete_index(rm_idx_name)
                     self.logger.info("Deleted old index '%s'" % rm_idx_name)
-            except IndexerException as e:
-                self.logger.warning(f"Alias index swap ran into a problem {e}")
-                raise
+            except Exception:  # nosec
+                # just inform the user that deletion failed, not that harmful
+                self.logger.error("Failed to delete old indices, try deleting "
+                                  f"{old_indices} manually")
 
         while True:
             status_info = get_status_info()
