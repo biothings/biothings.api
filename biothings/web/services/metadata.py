@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime
@@ -8,11 +9,6 @@ import elasticsearch
 from dateutil.parser import parse as dtparse
 
 logger = logging.getLogger(__name__)
-
-# TODO
-# auto refresh upon start
-# not sure if it happens in this module
-# but this affects some query pipeline behaviors
 
 class BiothingsMetadata:
 
@@ -74,6 +70,14 @@ class BiothingsESMetadata(BiothingsMetadata):
 
         self.indices = indices
         self.client = client
+
+        # initial refresh
+        loop = asyncio.get_event_loop()
+        for btype in self.indices:
+            obj = self.refresh(btype)
+            if asyncio.iscoroutine(obj):
+                task = loop.create_task(obj, name=btype)
+                task.add_done_callback(logger.debug)
 
     @property
     def types(self):  # biothing_type(s)
