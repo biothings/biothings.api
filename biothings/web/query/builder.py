@@ -218,10 +218,12 @@ class ESQueryBuilder():
             if self.allow_random_query:
                 search = search.query('function_score', random_score={})
             else:  # pseudo random by overriding 'from' value
-                try:
+                search = search.query()
+                try:  # limit 'from' parameter to a valid result window
                     metadata = self.metadata[options.biothing_type]
                     total = metadata['stats']['total']
-                    from_ = randrange(total - options.get('size', 0))
+                    fmax = total - options.get('size', 0)
+                    from_ = randrange(fmax if fmax < 10000 else 10000)
                     options['from'] = from_ if from_ >= 0 else 0
                 except Exception:
                     raise ValueError("random query not available.")
