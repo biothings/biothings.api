@@ -76,7 +76,8 @@ class BiothingsESMetadata(BiothingsMetadata):
         for btype in self.indices:
             obj = self.refresh(btype)
             if asyncio.iscoroutine(obj):
-                task = loop.create_task(obj, name=btype)
+                # task = loop.create_task(obj, name=btype) # py3.8+
+                task = loop.create_task(obj)
                 task.add_done_callback(logger.debug)
 
     @property
