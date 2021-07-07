@@ -76,8 +76,10 @@ class BiothingsESMetadata(BiothingsMetadata):
         for btype in self.indices:
             obj = self.refresh(btype)
             if asyncio.iscoroutine(obj):
-                # task = loop.create_task(obj, name=btype) # py3.8+
-                task = loop.create_task(obj)
+                try:  # py3.8+
+                    task = loop.create_task(obj, name=str(btype))
+                except TypeError:
+                    task = loop.create_task(obj)
                 task.add_done_callback(logger.debug)
 
     @property
@@ -92,7 +94,7 @@ class BiothingsESMetadata(BiothingsMetadata):
         _type = biothing_type
 
         # try to resolve default to an equivalent
-        # and concrete biothing_type to display
+        # and concrete biothing_type (in meta) to display
         if _type is None:
             for type_, pattern in self.indices.items():
                 if self.indices[None] == pattern:
