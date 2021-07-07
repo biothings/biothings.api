@@ -56,7 +56,10 @@ def _log_es(client, hosts):
     if isinstance(client, elasticsearch.AsyncElasticsearch):
         async def log_cluster(async_client):
             logger = logging.getLogger(__name__ + '.healthcheck')
-            cluster = await async_client.info(request_timeout=3)
+            cluster = await async_client.info()
+            # not specifying timeout in the function above because
+            # there could be a number of es tasks scheduled before
+            # this call and would take the cluster a while to respond
 
             cluster_name = cluster['cluster_name']
             version = cluster['version']['number']
