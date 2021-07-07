@@ -357,7 +357,7 @@ class MongoQueryBuilder():
         assert q is None and not fields or q and isinstance(q, str)
         assert all((isinstance(field, str) for field in fields))
 
-        filter = {
+        filter_ = {
             field: 1  # project fields to return
             for field in options.get('_source', ())
         } or None
@@ -370,9 +370,9 @@ class MongoQueryBuilder():
         } if fields else {}
 
         if options.get('rawquery'):
-            raise RawQueryInterrupt((query, filter))
+            raise RawQueryInterrupt((query, filter_))
 
-        return (query, filter)
+        return (query, filter_)
 
 class SQLQueryBuilder():
 
