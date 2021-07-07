@@ -29,3 +29,4 @@ node_modules
 config.py
 /config
 !/tests/web/handlers/config.py
+.hubdb

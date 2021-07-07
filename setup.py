@@ -46,8 +46,8 @@ install_requires = [
     'elasticsearch-dsl>=7, <8',
     'singledispatchmethod; python_version < "3.8.0"',
     'dataclasses; python_version < "3.7.0"',
-    'aiohttp==3.6.2',    # for compatibility with elasticsearch-async==6.x
     'PyYAML>=5.1',
+    'pytest'
 ]
 
 # extra requirements for biothings.web
@@ -87,12 +87,6 @@ docs_requires = [
     'sphinx_rtd_theme>=0.4.3'
 ]
 
-# extra requirements for nosetests
-test_requires = [
-    "nose>=1.3.7",
-    "pytest"
-]
-
 setup(
     name="biothings",
     version=__import__("biothings").__version__,
@@ -129,7 +123,7 @@ setup(
     install_requires=install_requires,
     extras_require={
         'web_extra': web_extra_requires,
-        'hub': hub_requires + test_requires,
-        'dev': web_extra_requires + hub_requires + docs_requires + test_requires
+        'hub': hub_requires,
+        'dev': web_extra_requires + hub_requires + docs_requires
     },
 )

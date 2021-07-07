@@ -4,10 +4,10 @@ from conf_base import *
 
 D_D = "d"
 
-# redefine description
+# additional description
 E = "heu"
 
-# redefine desc of read-only
+# additional desc of read-only
 READ_ONLY = "written in titanium"
 
 #- readonly -#

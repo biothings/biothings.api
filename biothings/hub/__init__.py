@@ -1,7 +1,6 @@
 import asyncio
 import concurrent.futures
 import copy
-import crypt
 import glob
 import logging
 import os
@@ -16,12 +15,15 @@ import aiocron
 import asyncssh
 
 from biothings.utils.configuration import *
-from biothings.utils.common import run_once
 
 def _config_for_app(config_mod=None):
 
     if not config_mod:
-        config_mod = import_module("config")
+        config_name = os.environ.get("HUB_CONFIG", "config")
+        config_mod = import_module(config_name)
+
+    if not isinstance(config_mod, types.ModuleType):
+        raise TypeError(type(config_mod))
 
     for attr in dir(config_mod):
         value = getattr(config_mod, attr)
@@ -31,7 +33,7 @@ def _config_for_app(config_mod=None):
     app_path = os.path.split(config_mod.__file__)[0]
     sys.path.insert(0, app_path)
 
-    wrapper = ConfigurationManager(config_mod)
+    wrapper = ConfigurationWrapper(config_mod)
     wrapper.APP_PATH = app_path
 
     if not hasattr(config_mod, "HUB_DB_BACKEND"):
@@ -46,7 +48,7 @@ def _config_for_app(config_mod=None):
     import biothings.utils.hub_db  # the order of the following commands matter
     wrapper.hub_db = import_module(config_mod.HUB_DB_BACKEND["module"])
     biothings.utils.hub_db.setup(wrapper)
-    wrapper.hub_config = biothings.utils.hub_db.get_hub_config()
+    wrapper._db = biothings.utils.hub_db.get_hub_config()
 
     # setup logging
     from biothings.utils.loggers import EventRecorder
@@ -63,8 +65,6 @@ def _config_for_app(config_mod=None):
 
 _config_for_app()
 
-
-from biothings.hub.api.handlers.log import HubLogDirHandler, HubLogFileHandler
 from biothings.utils.common import get_class_from_classpath
 from biothings.utils.hub import (AlreadyRunningException, CommandDefinition,
                                  CommandError, HubShell, get_hub_reloader,
@@ -451,6 +451,7 @@ class HubServer(object):
             # Then deal with read-write API
             self.routes.extend(
                 generate_api_routes(self.shell, self.api_endpoints))
+            from biothings.hub.api.handlers.log import HubLogDirHandler, HubLogFileHandler
             self.routes.append(("/logs/(.*)", HubLogDirHandler, {"path": config.LOG_FOLDER}))
             self.routes.append(("/log/(.+)", HubLogFileHandler, {"path": config.LOG_FOLDER}))
             self.routes.append(("/", RootHandler, {
@@ -1513,6 +1514,7 @@ class HubSSHServer(asyncssh.SSHServer):
         return True
 
     def validate_password(self, username, password):
+        import crypt  # not available on windows
         if self.password_auth_supported():
             pw = self.__class__.PASSWORDS.get(username, '*')
             return crypt.crypt(password, pw) == pw

@@ -1,11 +1,5 @@
 
-import re
-from copy import deepcopy
-from collections import UserList, UserString
-from dataclasses import asdict, dataclass, field
 
-
-import copy
 import inspect
 import json
 import re
@@ -15,7 +9,6 @@ from dataclasses import asdict, dataclass, field
 from importlib import import_module
 
 from biothings.utils.dataload import dict_traverse
-from biothings.utils.dotfield import make_object, merge_object
 from biothings.utils.jsondiff import make as jsondiff
 
 
@@ -59,310 +52,221 @@ class ConfigurationDefault:
         self.default = default
         self.desc = desc
 
+# the above dynamic value types must be evaluated at runtime
+# and not cached, because they may contain reference to the
+# current time, which is commonly used in hub operations.
 
-class ConfigurationManager():
+def is_jsonable(x):
+    try:
+        json.dumps(x)
+        return True
+    except (TypeError, OverflowError):
+        return False
+
+class ConfigurationWrapper():
     """
-    Wraps and manages configuration access and edit. A singleton
-    instance is available throughout all hub apps using biothings.config
-    after biothings.config_for_app(conf_mod) as been called.
-    In addition to providing config value access, either from config files
-    or database, config manager can supersede attributes of a class with values
-    coming from the database, allowing dynamic configuration of hub's elements.
+        Wraps and manages configuration access and edit. A singleton
+        instance is available throughout all hub apps using biothings.config
+        or biothings.hub.config after calling import biothings.hub.
+        In addition to providing config value access, either from config files
+        or database, config manager can supersede attributes of a class with values
+        coming from the database, allowing dynamic configuration of hub's elements.
     """
 
-    # This class contains mostly Sebastien's original design
+    # This class contains some of Sebastien's original design
     # It has been moved from biothings.__init__ module to here.
 
     def __init__(self, conf):
-        self.conf = conf
-        self.hub_config = None  # collection containing config value, set when wrapped, see config_for_app()
-        self.bykeys = {}  # caching values from hub db
-        self.byroots = {}  # for dotfield notation, all config names starting with first elem
-        self.dirty = False  # gets dirty (needs reload) when config is changed in db
-        self._original_params = {}  # cache config params as defined in config files
+        self._module = conf  # python module, typically config.py
+        self._annotations = _parse_comments(conf)  # section, visibility..
+        self._db = None  # typically set by _config_for_app()
 
-        self.allow_edits = False
-        if hasattr(self.conf, "CONFIG_READONLY"):
-            self.allow_edits = not self.conf.CONFIG_READONLY
-            delattr(self.conf, "CONFIG_READONLY")
+        self._modified = False
+        self._readonly = True
+
+        if hasattr(self._module, "CONFIG_READONLY"):
+            self._readonly = self._module.CONFIG_READONLY
 
     @property
-    def original_params(self):
-        if not self._original_params:
+    def modified(self):
+        return self._modified
 
-            params = {}
-            conf_markups = _parse_conf_comments(self.conf)
-            for attrname in _list_hub_attributes(self.conf):
-                value = getattr(self, attrname)
-                info = conf_markups.get(attrname)
-                if info is None:
-                    # if no information could be found, not even the field,
-                    # (if field was found in a config file but without any information,
-                    # we would have had a {"found" : True}), it means the parameter (field)
-                    # as been set dynamically somewhere in the code. It's not coming from
-                    # config files, we need to tag it as-is, and make it readonly
-                    # (we don't want to allow config changes other than those specified in
-                    # config files)
-                    params[attrname] = {
-                        "value": value,
-                        "dynamic": True,
-                        "readonly": True,
-                        "default": value  # for compatibilty
-                    }
-                else:
-                    if info["invisible"]:
-                        continue
-                    origvalue = getattr(info["confmod"], attrname)
-
-                    # TODO
-                    # this is in a way repeating what's in get_value_from_file, 
-                    # maybe possible to extract it?
-
-                    def eval_default_value(k, v):
-                        if isinstance(v, ConfigurationDefault):
-                            if isinstance(v.default, ConfigurationValue):
-                                return (k, v.default.get_value(attrname, self.conf))
-                            else:
-                                return (k, v.default)
-                        elif isinstance(v, ConfigurationValue):
-                            return (k, v.get_value(k, self.conf))
-                        elif isinstance(v, ConfigurationError):
-                            return k, repr(v)
-                        else:
-                            return k, v
-
-                    if isinstance(origvalue, dict):
-                        # walk the dict and instantiate values when special
-                        dict_traverse(origvalue, eval_default_value, traverse_list=True)
-                    else:
-                        # just use the same func but ignore "k" key, not a dict
-                        # pass unhashable "k" to make sure we'd raise an error
-                        # while dict traversing  if we're not supposed to be here
-                        _, origvalue = eval_default_value({}, origvalue)
-
-                    params[attrname] = {
-                        "value": info["hidden"] and "********" or value,
-                        "section": info["section"],
-                        "desc": info["description"],
-                        "default": info["hidden"] and "********" or origvalue
-                    }
-                    if info["hidden"]:
-                        params[attrname]["hidden"] = True
-                    if info["readonly"]:
-                        params[attrname]["readonly"] = True
-
-            self._original_params = params
-        return self._original_params
+    @property
+    def readonly(self):
+        return self._readonly
 
     def __getattr__(self, name):
-        # first try value from Hub DB, they have precedence
-        # if nothing, then take it from file
-
         try:
             val = self.get_value_from_db(name)
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, AttributeError):
             val = self.get_value_from_file(name)
-
         return val
 
     def __delattr__(self, name):
-        delattr(self.conf, name)
+        # TODO I don't think this is a good idea
+        delattr(self._module, name)
 
     def __getitem__(self, name):
-        # for dotfield notation
+        # for dotfield notation,
+        # like MyClass.CLS_ATTR
         return self.__getattr__(name)
 
     def show(self):
-        origparams = copy.deepcopy(self.original_params)
-        byscopes = {"scope": {}}
-        # some of these could have been superseded by values from DB
-        for key, info in origparams.items():
-            # search whether param named "key" has been superseded
-            if info["default"] != info["value"]:
-                diff = jsondiff(info["default"], info["value"])
-                origparams[key]["diff"] = diff
-        byscopes["scope"]["config"] = origparams
-        byscopes["scope"]["class"] = self.bykeys.get("class", {})
+        # correspond to /config endpoint
+        # the result strcture is designed to
+        # maintain compatibility with the frontend
 
-        # set a flag to indicate if config is dirty and the hub needs to reload
-        # (something's changed but not taken yet into account)
-        byscopes["_dirty"] = self.dirty
-        byscopes["allow_edits"] = self.allow_edits
-        return byscopes
+        _config = {}
+        _class = {}
 
-    def clear_cache(self):
-        self.bykeys = {}
-        self.byroots = {}
-        self._original_params = {}
+        # basic information
+        for key in self._annotations:
+            x = self._annotations[key]
+            # y = serializable(x)
 
-    def get_path_from_db(self, name):
-        return self.byroots.get(name, [])
+            # "invisible" describes the visibility of keys
+            # "hidden" describes the visibility of values
 
-    def merge_with_path_from_db(self, name, val):
-        roots = self.get_path_from_db(name)
-        for root in roots:
-            dotfieldname, value = root["_id"], root["value"]
-            val = merge_object(
-                val,
-                make_object(dotfieldname, value)[dotfieldname.split(".")[0]])
-        return val
+            if x["invisible"]:
+                continue
 
-    def check_editable(self, name, scope):
-        assert self.allow_edits, "Configuration is read-only"
-        assert self.hub_config, "No hub_config collection set"
-        assert not name == "CONFIG_READONLY", "I won't allow to store/supersede that parameter. Nice try though..."
-        # check if param is invisble
-        # (and even if using dotfield notation, if a dict is "invisible"
-        # then any of its keys are also invisible)
-        if scope == "config":
-            name = name.split(".")[0]
-            assert name in self.original_params, "Unknown configuration parameter"
-            assert not self.original_params[name].get(
-                "readonly"), "This parameter is not editable"
+            y = dict(x)
+            y["confmod"] = str(y.pop("confmod", ""))
+            y["desc"] = y.pop("description")
 
-    def reset(self, name, scope="config"):
-        self.check_editable(name, scope)
-        res = self.hub_config.remove({"_id": name})
-        self.dirty = True  # may need a reload
-        self.clear_cache()  # will force reload everything to get up-to-date values
-        return res["ok"]
+            default = getattr(self._module, key)
+            if is_jsonable(default):
+                y["default"] = default
 
-    def store_value_to_db(self, name, value, scope="config"):
-        """
-        Stores a configuration "value" named "name" in hub_config.
-        "scope" defines what the configuration value applies on:
-        - 'config': a config value which could be find in config*.py files
-        - 'class': applied to a class (supersedes class attributes)
-        """
-        self.check_editable(name, scope)
-        res = self.hub_config.update_one(
+            value = getattr(self, key)
+            if is_jsonable(value):
+                y["value"] = value
+
+            if self._db.find({"_id": key}):
+                y["dynamic"] = True
+
+            if x["hidden"]:
+                y["value"] = "********"
+                y["default"] = "********"
+
+            if y.get("default") and y.get("value"):
+                y["diff"] = jsondiff(  # TODO what for?
+                    y["default"], y["value"])
+
+            _config[key] = y
+
+        # process-level transient parameters
+        for key in _list_attrs(self):
+            _config[key] = {
+                "value": getattr(self, key),
+                "readonly": True,  # wrt to outside
+            }
+
+        # class attr superseding
+        for doc in self._db.find():
+            key = doc["_id"]
+            if len(key.split(".")) == 2:
+                _class[key] = json.loads(doc["json"])
+
+        return {
+            "scope": {
+                "config": _config,
+                "class": _class
+            },
+            "_dirty": self._modified,
+            "allow_edits": not self._readonly
+        }
+
+    def reset(self, name=None):
+
+        if not name:  # global reset
+            self._modified = False
+            return self._db.remove({})
+
+        res = self._db.remove({"_id": name})
+        return res["ok"]  # TODO what's the return??
+
+    def store_value_to_db(self, name, value):
+        if not self._db:
+            raise RuntimeError("Transient parameter requires DB setup.")
+        if self._readonly:
+            raise RuntimeError("Configuration is globally read-only.")
+        if self._annotations.get(name, {}).get("readonly"):
+            raise RuntimeError("Parameter read-only.")
+        if self._annotations.get(name, {}).get("invisible"):
+            raise RuntimeError("Parameter reserved.")
+        if name == "CONFIG_READONLY":  # False -> True also not allowed.
+            raise RuntimeError("Runtime modification not allowed.")
+
+        res = self._db.update_one(
             {"_id": name},
-            {"$set": {
-                "scope": scope,
-                "value": json.loads(value),
-            }},
+            {"$set": {"json": json.dumps(value)}},
             upsert=True)
-        self.dirty = True  # may need a reload
-        self.clear_cache()
+
+        self._modified = True
         return res
 
-    def get_value_from_db(self, name, scope="config"):
-        if not self.hub_config:
-            raise ValueError("hub_config not set yet")
+    def get_value_from_db(self, name):
+        if not self._db:  # without db, only support module params.
+            raise AttributeError("Transient parameter requires DB setup.")
 
-        # cache on first call
-        if not self.bykeys:
-            for d in self.hub_config.find():
-                # tricky: get it from file to cast to correct type
-                val = d["value"]
-                try:
-                    tval = self.get_value_from_file(d["_id"])
-                    typ = type(tval)
-                    val = typ(val)  # recast
-                except AttributeError:
-                    # only exists in db
-                    pass
-                # fill in cache, by scope then by config key
-                scope = d.get("scope", "config")
-                self.bykeys.setdefault(scope, {})
-                self.bykeys[scope][d["_id"]] = val
-                elems = d["_id"].split(".")
-                if len(elems) > 1:  # we have a dotfield notation there
-                    # tricky; read the comments below, extracting the root has a different meaning depending on the scope
-                    if scope == "config":
-                        # first elem in the path a config variable, the rest is a path inside that variable (which
-                        # is a dict)
-                        self.byroots.setdefault(elems[0], []).append({
-                            "_id": d["_id"],
-                            "value": val
-                        })
-                    else:
-                        # the root is everything up to the last element in the path, that is, the full path
-                        # of the class, etc... The last element is the attribute to set.
-                        self.byroots.setdefault(".".join(elems[:-1]), []).append({
-                            "_id": d["_id"],
-                            "value": val
-                        })
+        doc = self._db.find_one({"_id": name})
+        if not doc:
+            raise AttributeError(name)
 
-        return self.bykeys.get(scope, {})[name]
+        val = json.loads(doc["json"])
+        return val
 
     def get_value_from_file(self, name):
-        # if "name" corresponds to a dict, we may have
-        # dotfield paths in DB overridiing some of the content
-        # we'd need to merge that path with
-        val = getattr(self.conf, name)
-        try:
-            copiedval = copy.deepcopy(val)  # we want to keep original value (if it's a dict)
-            # as this will be merged with value from db
-        except TypeError:
-            # it can't be copied, it probably means it can't even be stored in db
-            # so no risk of overriding original value
-            copiedval = val
-            pass
-        copiedval = self.merge_with_path_from_db(name, copiedval)
+        if name not in self._annotations:
+            # _annotation contains all valid keys
+            raise AttributeError(name)
+
+        # raw value that might require eval
+        val = getattr(self._module, name)
 
         def eval_default_value(k, v):
             if isinstance(v, ConfigurationDefault):
                 if isinstance(v.default, ConfigurationValue):
-                    return (k, v.default.get_value(name, self.conf))
+                    return (k, v.default.get_value(name, self._module))
                 else:
                     return (k, v.default)
             elif isinstance(v, ConfigurationValue):
-                return (k, v.get_value(k, self.conf))
+                return (k, v.get_value(k, self._module))
             else:
                 return (k, v)
 
-        if isinstance(copiedval, dict):
+        if isinstance(val, dict):
             # walk the dict and instantiate values when special
-            dict_traverse(copiedval, eval_default_value, traverse_list=True)
+            dict_traverse(val, eval_default_value, traverse_list=True)
         else:
             # just use the same func but ignore "k" key, not a dict
             # pass unhashable "k" to make sure we'd raise an error
             # while dict traversing  if we're not supposed to be here
-            _, copiedval = eval_default_value({}, copiedval)
+            _, val = eval_default_value({}, val)
 
-        return copiedval
+        return val
 
-    def patch(self, something, confvals, scope):
-        for confval in confvals:
-            key = confval["_id"]
-            value = confval["value"]
-            # key looks like dotfield notation, last elem is the attribute, and what's before
-            # is path to the "something" object (eg. hub.dataload.sources.mysrc.dump.Dumper)
-            attr = key.split(".")[-1]
-            setattr(something, attr, value)
+    def supersede(self, klass):
+        """ supersede class variable with db values """
 
-    def supersede(self, something):
-        # find config values with scope corresponding to something's type
-        # Note: any conf key will look like a dotfield notation, eg. MyClass.myattr
-        # so we search 1st by root (MyClass) to see if we have a config key in DB,
-        # then we fetch all
-        scope = None
-        if isinstance(something, type):
-            fullname = "%s.%s" % (something.__module__, something.__name__)
-            scope = "class"
-        else:
-            raise TypeError("Don't know how to supersede type '%s'" %
-                            type(something))
+        if not isinstance(klass, type):
+            raise TypeError("Don't know how to supersede type '%s'" % type(klass))
 
-        assert scope
-        # it's a class, get by roots using string repr
-        confvals = self.byroots.get(fullname, [])
-        # check/filter by scope
-        valids = []
-        for conf in confvals:
-            match = self.get_value_from_db(conf["_id"], scope=scope)
-            if match:
-                # we actually have a conf key/value matching that scope, keep it
-                valids.append(conf)
-            self.patch(something, valids, scope)
+        for doc in self._db.find():
+            attr = doc["_id"]  # MyClass.EXAMPLE_CLASS_VAR
+            if attr.startswith(klass.__name__):
+                splits = attr.split(".")
+                if len(splits) == 2:
+                    value = json.loads(doc["json"])
+                    setattr(klass, splits[1], value)
 
     def __repr__(self):
-        return "<%s over %s>" % (self.__class__.__name__, str(self.conf))
+        return "<%s over %s>" % (self.__class__.__name__, str(self._module))
 
 
-def _list_hub_attributes(conf_mod):
-    attrs = set()
+def _list_attrs(conf_mod):
+    attrs = set()  # hub-supported attributes
     for attrname in dir(conf_mod):
         # re pattern to find config param
         # (by convention, all upper caps, _ allowed, that's all)
@@ -371,8 +275,10 @@ def _list_hub_attributes(conf_mod):
     return attrs
 
 
-def _parse_conf_comments(conf_mod):
+def _parse_comments(conf_mod):
     """
+    TODO NEED REVIEW
+
     Parse configuration module and extract documentation from it.
     Documentation can be found in different place (in order):
     1. the configuration value is a ConfigurationDefault instance (specify a default value)
@@ -414,7 +320,7 @@ def _parse_conf_comments(conf_mod):
             #- hidden -#
       will make the parameter read-only, and its value won't be displayed
     """
-    attrs = _list_hub_attributes(conf_mod)
+    attrs = _list_attrs(conf_mod)
 
     configs = []
     _configs = deque([conf_mod])
@@ -435,7 +341,7 @@ def _parse_conf_comments(conf_mod):
         configs.append((config, result))
 
     _info = {}  # merged
-    for config, result in configs:
+    for config, result in reversed(configs):
         for attr, meta in result.items():
             meta.confmod.feed(config)
             if attr in _info:
@@ -465,10 +371,14 @@ class Text(MetaField):
 
     def feed(self, value):
         assert isinstance(value, str)
-        self._value = value.strip()
+        self._value = value.strip() or None
 
 class Flag(MetaField):
     default = bool
+
+    def feed(self, value):
+        if value:  # cannot unset a flag
+            self._value = value
 
 class Paragraph(MetaField):
     default = list
@@ -514,7 +424,7 @@ class ConfigAttrMeta():
     ## ------------------------------------
 
     def feed(self, field, value):
-        if field and value:
+        if field and value is not None:
             getattr(self, field).feed(value)
 
     def reset(self):
