@@ -10,11 +10,12 @@ import types
 from collections import OrderedDict
 from functools import partial
 from pprint import pformat
+from types import SimpleNamespace
 
 import aiocron
 import asyncssh
-
 from biothings.utils.configuration import *
+
 
 def _config_for_app(config_mod=None):
 
@@ -22,7 +23,7 @@ def _config_for_app(config_mod=None):
         config_name = os.environ.get("HUB_CONFIG", "config")
         config_mod = import_module(config_name)
 
-    if not isinstance(config_mod, types.ModuleType):
+    if not isinstance(config_mod, (types.ModuleType, SimpleNamespace)):
         raise TypeError(type(config_mod))
 
     for attr in dir(config_mod):
@@ -30,8 +31,12 @@ def _config_for_app(config_mod=None):
         if isinstance(value, ConfigurationError):
             raise ConfigurationError("%s: %s" % (attr, str(value)))
 
-    app_path = os.path.split(config_mod.__file__)[0]
-    sys.path.insert(0, app_path)
+    try:
+        app_path = os.path.split(config_mod.__file__)[0]
+        sys.path.insert(0, app_path)
+    except Exception:
+        logging.exception(config_mod)
+        app_path = ""  # TODO
 
     wrapper = ConfigurationWrapper(config_mod)
     wrapper.APP_PATH = app_path
@@ -64,6 +69,20 @@ def _config_for_app(config_mod=None):
 
 
 _config_for_app()
+
+# FOR DEVELOPMENT USAGE
+# --------------------------
+# try:
+#     _config_for_app()
+# except Exception:
+#     logging.exception("Fallback to local DB.")
+#     _config = SimpleNamespace()
+#     _config.HUB_DB_BACKEND = {
+#         "module": "biothings.utils.sqlite3",
+#         "sqlite_db_folder": "."}
+#     _config.DATA_HUB_DB_DATABASE = ".hubdb"
+#     _config_for_app(_config)
+
 
 from biothings.utils.common import get_class_from_classpath
 from biothings.utils.hub import (AlreadyRunningException, CommandDefinition,
@@ -451,7 +470,8 @@ class HubServer(object):
             # Then deal with read-write API
             self.routes.extend(
                 generate_api_routes(self.shell, self.api_endpoints))
-            from biothings.hub.api.handlers.log import HubLogDirHandler, HubLogFileHandler
+            from biothings.hub.api.handlers.log import (HubLogDirHandler,
+                                                        HubLogFileHandler)
             self.routes.append(("/logs/(.*)", HubLogDirHandler, {"path": config.LOG_FOLDER}))
             self.routes.append(("/log/(.+)", HubLogFileHandler, {"path": config.LOG_FOLDER}))
             self.routes.append(("/", RootHandler, {

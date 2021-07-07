@@ -1,10 +1,8 @@
-import config, biothings
-biothings.config_for_app(config)
 
 from biothings.hub.datatransform import DataTransform
 from biothings.hub.datatransform import DataTransformMDB as KeyLookup
 from biothings.hub.datatransform import CIIDStruct
-from biothings.tests.keylookup_graphs import graph_simple, \
+from keylookup_graphs import graph_simple, \
     graph_weights, graph_one2many, graph_invalid, graph_mix, \
     graph_mychem, graph_regex, graph_pubchem, graph_ci
 import unittest
@@ -158,6 +156,7 @@ class TestDataTransform(unittest.TestCase):
             {'a': 'a:1234'},
             {'b': 'b:1234'}
         ]
+
         @KeyLookup(graph_simple, [('a', 'a'), ('b', 'b')], ['d', 'e'])
         def load_document(doc_lst):
             for d in doc_lst:
@@ -558,4 +557,3 @@ class TestDataTransform(unittest.TestCase):
         self.assertEqual(keylookup.output_types[1], '1')
         self.assertEqual(keylookup.output_types[2], '5')
         self.assertEqual(keylookup.output_types[3], '15')
-

@@ -321,35 +321,37 @@ def _parse_comments(conf_mod):
       will make the parameter read-only, and its value won't be displayed
     """
     attrs = _list_attrs(conf_mod)
+    try:
+        configs = []
+        _configs = deque([conf_mod])
+        while _configs:
+            config = _configs.popleft()
+            lines = inspect.getsourcelines(config)[0]
+            lines = ConfigLines(ConfigLine(line) for line in lines)
 
-    configs = []
-    _configs = deque([conf_mod])
-    while _configs:
-        config = _configs.popleft()
-        lines = inspect.getsourcelines(config)[0]
-        lines = ConfigLines(ConfigLine(line) for line in lines)
+            pat = re.compile(r"^from\s+(.*?)\s+import\s+\*")
+            for line in lines:
+                match = pat.match(line.data)
+                if match:
+                    base = match.groups()[0]
+                    base_mod = import_module(base)
+                    _configs.append(base_mod)
 
-        pat = re.compile(r"^from\s+(.*?)\s+import\s+\*")
-        for line in lines:
-            match = pat.match(line.data)
-            if match:
-                base = match.groups()[0]
-                base_mod = import_module(base)
-                _configs.append(base_mod)
+            result = lines.parse(attrs)
+            configs.append((config, result))
 
-        result = lines.parse(attrs)
-        configs.append((config, result))
+        _info = {}  # merged
+        for config, result in reversed(configs):
+            for attr, meta in result.items():
+                meta.confmod.feed(config)
+                if attr in _info:
+                    _info[attr].update(meta)
+                else:
+                    _info[attr] = meta
 
-    _info = {}  # merged
-    for config, result in reversed(configs):
-        for attr, meta in result.items():
-            meta.confmod.feed(config)
-            if attr in _info:
-                _info[attr].update(meta)
-            else:
-                _info[attr] = meta
-
-    return {k: v.asdict() for k, v in _info.items()}
+        return {k: v.asdict() for k, v in _info.items()}
+    except Exception:
+        return dict.fromkeys(attrs, {})
 
 class MetaField():
     default = type(None)

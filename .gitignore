@@ -28,5 +28,6 @@ node_modules
 .pytest_cache/
 config.py
 /config
+/config_
 !/tests/web/handlers/config.py
 .hubdb

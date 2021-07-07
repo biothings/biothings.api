@@ -10,17 +10,17 @@ class TestDataTransform(unittest.TestCase):
         Setup test documents.
         """
         self.doc1 = {
-                '_id': 'ALELTFCQZDXAMQ-UHFFFAOYSA-N',
-                'unii': {
-                    'preferred_term': 'drugnameA'
-                    }
-                }
+            '_id': 'ALELTFCQZDXAMQ-UHFFFAOYSA-N',
+            'unii': {
+                'preferred_term': 'drugnameA'
+            }
+        }
         self.doc2 = {
-                '_id': 'ALELTFCQZDXAMQ-UHFFFAOYSA-N',
-                'unii': {
-                    'preferred_term': 'drugnameB'
-                    }
-                }
+            '_id': 'ALELTFCQZDXAMQ-UHFFFAOYSA-N',
+            'unii': {
+                'preferred_term': 'drugnameB'
+            }
+        }
 
     def test_merge_struct(self):
         """
@@ -43,4 +43,3 @@ class TestDataTransform(unittest.TestCase):
         self.assertTrue(isinstance(res['unii'], list))
         self.assertEquals(res['unii'][0]['preferred_term'], 'drugnameA')
         self.assertEquals(res['unii'][1]['preferred_term'], 'drugnameB')
-
