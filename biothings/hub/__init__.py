@@ -868,15 +868,15 @@ class HubServer(object):
                     self.logger.warning("Can't check for new version: %s" % e)
                     return
             # enrich existing version information with an "upgrade" field.
-            # note: we do that on config.conf, the actual config.py module,
-            # *not* directly on config as it's a wrapper over config.conf
+            # note: we do that on config._module, the actual config.py module,
+            # *not* directly on config as it's a wrapper over config._module
             for (name, new, param) in (("app", app_new, "APP_VERSION"), ("biothings", bt_new, "BIOTHINGS_VERSION")):
                 if new:
                     self.logger.info("Found updates for %s:\n%s" % (name, pformat(new)))
-                    getattr(config.conf, param)["upgrade"] = new
+                    getattr(config._module, param)["upgrade"] = new
                 else:
                     # just in case, we pop out the key
-                    val = getattr(config.conf, param)
+                    val = getattr(config._module, param)
                     if val:
                         val.pop("upgrade", None)
 

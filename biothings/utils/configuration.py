@@ -162,6 +162,9 @@ class ConfigurationWrapper():
                 "readonly": True,  # wrt to outside
             }
 
+        # transient parameters on self._module are
+        # not shown here, like self._module.logger
+
         # class attr superseding
         for doc in self._db.find():
             key = doc["_id"]
@@ -218,11 +221,8 @@ class ConfigurationWrapper():
         return val
 
     def get_value_from_file(self, name):
-        if name not in self._annotations:
-            # _annotation contains all valid keys
-            raise AttributeError(name)
 
-        # raw value that might require eval
+        # raw value might require eval
         val = getattr(self._module, name)
 
         def eval_default_value(k, v):
