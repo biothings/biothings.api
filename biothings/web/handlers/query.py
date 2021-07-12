@@ -34,6 +34,7 @@ from collections import UserDict
 from types import CoroutineType
 
 import elasticsearch
+from biothings.web.analytics.events import GAEvent
 from biothings.web.query.builder import RawQueryInterrupt
 from biothings.web.query.engine import EndScrollInterrupt, RawResultInterrupt
 from biothings.web.query.pipeline import QueryPipelineException
@@ -81,11 +82,12 @@ class BaseESRequestHandler(BaseAPIHandler):
         # supported across es requests
         self.format = self.args.out_format or 'json'
 
-        # look up GA action tab in web settings
-        # defined by request method and endpoint name
-        action_key = f'GA_ACTION_{self.name.upper()}_{self.request.method}'
-        if hasattr(self.biothings.config, action_key):
-            self.event['action'] = getattr(self.biothings.config, action_key)
+        self.event = GAEvent({
+            'category': '{}_api'.format(self.biothings.config.API_VERSION),
+            'action': '_'.join((self.name, self.request.method)),  # 'query_get', etc.
+            # 'label': 'fetch_all', etc.
+            # 'value': 100, # number of queries
+        })
 
     def parse_exception(self, exception):  # TODO merge this into  ESQueryPipelineHandler
 
@@ -252,13 +254,15 @@ class BiothingHandler(BaseESRequestHandler):
     name = 'annotation'
 
     async def post(self, *args, **kwargs):
-        self.event['qsize'] = len(self.args['id'])
+        self.event['value'] = len(self.args['id'])
 
         result = await ensure_awaitable(
             self.pipeline.fetch(**self.args))
         self.finish(result)
 
     async def get(self, *args, **kwargs):
+        self.event['value'] = 1
+
         result = await ensure_awaitable(
             self.pipeline.fetch(**self.args))
         self.finish(result)
@@ -280,15 +284,16 @@ class QueryHandler(BaseESRequestHandler):
     name = 'query'
 
     async def post(self, *args, **kwargs):
-        self.event['qsize'] = len(self.args['q'])
+        self.event['value'] = len(self.args['q'])
 
         result = await ensure_awaitable(
             self.pipeline.search(**self.args))
         self.finish(result)
 
     async def get(self, *args, **kwargs):
+        self.event['value'] = 1
         if self.args.get('fetch_all'):
-            self.event['action'] = 'fetch_all'
+            self.event['label'] = 'fetch_all'
 
         if self.args.get('fetch_all') or \
                 self.args.get('scroll_id') or \
@@ -298,5 +303,3 @@ class QueryHandler(BaseESRequestHandler):
         response = await ensure_awaitable(
             self.pipeline.search(**self.args))
         self.finish(response)
-
-        self.event['total'] = response.get('total', 0)

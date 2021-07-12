@@ -3,16 +3,16 @@ import logging
 from pydoc import locate
 from types import SimpleNamespace
 
-import tornado.web
 from biothings.utils.info import DevInfo, FieldNote
 from biothings.web import connections
+from biothings.web.analytics.notifiers import Notifier
 from biothings.web.options import OptionsManager as OptionSets
 from biothings.web.query.builder import *
 from biothings.web.query.engine import *
 from biothings.web.query.formatter import *
 from biothings.web.query.pipeline import *
-from biothings.web.services.metadata import *
 from biothings.web.services.health import *
+from biothings.web.services.metadata import *
 
 try:
     from raven.contrib.tornado import AsyncSentryClient
@@ -68,15 +68,18 @@ class BiothingsNamespace():
         self.fieldnote = FieldNote(config.AVAILABLE_FIELDS_NOTES_PATH)
         self.devinfo = DevInfo(config.APP_GIT_REPOSITORY)
 
+        # web application
+        self.notifier = Notifier(config)
         self.optionsets = OptionSets()
         self.handlers = {}
 
+        # database access
         self.db = BiothingsDBProxy()
         self._configure_elasticsearch()
         self._configure_mongodb()
         self._configure_sql()
 
-        # shortcuts
+        # db uitility shortcuts
         self.pipeline = self.db.pipeline
         self.metadata = self.db.metadata
         self.health = self.db.health

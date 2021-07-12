@@ -100,7 +100,7 @@ ANNOTATION_DOCS_URL = "javascript:;"
 APP_GIT_REPOSITORY = '.'
 
 # default static path, relative to current working dir
-# (from where app is launched)
+# (where app is launched)
 STATIC_PATH = "static"
 
 
@@ -165,13 +165,11 @@ ES_QUERY_PIPELINE = 'biothings.web.query.AsyncESQueryPipeline'
 ES_QUERY_BUILDER = 'biothings.web.query.ESQueryBuilder'
 # For the userquery folder for this app
 USERQUERY_DIR = 'userquery'
-# Allow the __any__ random doc retrieval
+# Allow "truly" random order for q= __any__
 ALLOW_RANDOM_QUERY = False
 # Allow facets to be nested with ( )
 ALLOW_NESTED_AGGS = False
 
-# TODO
-#
 # Amount of time a scroll request is kept open
 ES_SCROLL_TIME = '1m'
 # Size of each scroll request return
@@ -181,6 +179,7 @@ ES_SCROLL_SIZE = 1000
 ES_QUERY_BACKEND = 'biothings.web.query.AsyncESQueryBackend'
 ES_RESULT_TRANSFORM = 'biothings.web.query.ESResultFormatter'
 
+# TODO
 # A list of fields to exclude from metadata/fields endpoint
 AVAILABLE_FIELDS_EXCLUDED = ['all']
 # A path to the available fields notes
@@ -200,11 +199,6 @@ SENTRY_CLIENT_KEY = ''
 
 # Google Analytics Account ID
 GA_ACCOUNT = ''
-GA_TRACKER_URL = 'mybiothing.info'  # TODO
-GA_ACTION_QUERY_GET = 'query_get'
-GA_ACTION_QUERY_POST = 'query_post'
-GA_ACTION_ANNOTATION_GET = 'biothing_get'
-GA_ACTION_ANNOTATION_POST = 'biothing_post'
 
 # *****************************************************************************
 # Endpoints Specifics & Others
