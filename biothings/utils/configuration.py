@@ -2,6 +2,7 @@
 
 import inspect
 import json
+from json.decoder import JSONDecodeError
 import re
 from collections import UserList, UserString, deque
 from copy import deepcopy
@@ -201,13 +202,18 @@ class ConfigurationWrapper():
         if name == "CONFIG_READONLY":  # False -> True also not allowed.
             raise RuntimeError("Runtime modification not allowed.")
 
+        try:
+            json.loads(value)
+        except JSONDecodeError:
+            value = json.dumps(value)
+
         res = self._db.update_one(
             {"_id": name},
-            {"$set": {"json": json.dumps(value)}},
+            {"$set": {"json": value}},
             upsert=True)
 
         self._modified = True
-        return res
+        return res.raw_result
 
     def get_value_from_db(self, name):
         if not self._db:  # without db, only support module params.
