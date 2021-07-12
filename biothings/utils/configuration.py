@@ -142,7 +142,7 @@ class ConfigurationWrapper():
             if is_jsonable(value):
                 y["value"] = value
 
-            if self._db.find({"_id": key}):
+            if self._db.find_one({"_id": key}):
                 y["dynamic"] = True
 
             if x["hidden"]:
