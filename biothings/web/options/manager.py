@@ -34,6 +34,8 @@ class OptionError(ValueError):
     def simplify(self):
         self.info = {k: v for k, v in self.info.items() if v}
 
+    def __str__(self):
+        return f"OptionError({pformat(self.info)})"
 
 class Converter():
     """

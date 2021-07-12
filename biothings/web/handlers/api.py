@@ -23,7 +23,8 @@ from urllib.parse import (parse_qs, unquote_plus, urlencode, urlparse,
 
 import yaml
 from biothings.utils.common import DateTimeJSONEncoder
-from biothings.web.analytics.channels import GAMixIn
+from biothings.web.analytics.notifiers import AnalyticsMixin
+from biothings.web.analytics.events import Event
 from biothings.web.options import OptionError, ReqArgs
 from biothings.web.options.openapi import OpenAPIDocumentBuilder
 from tornado.escape import json_decode
@@ -37,8 +38,10 @@ try:
 
     def msgpack_encode_datetime(obj):
         if isinstance(obj, datetime.datetime):
-            return {'__datetime__': True,
-                    'as_str': obj.strftime("%Y%m%dT%H:%M:%S.%f")}  # TODO why not use DateTimeJSONEncoder?
+            return {
+                '__datetime__': True,
+                'as_str': obj.strftime("%Y%m%dT%H:%M:%S.%f")
+            }
         return obj
 except ImportError:
     SUPPORT_MSGPACK = False
@@ -58,7 +61,7 @@ __all__ = [
     'APISpecificationHandler'
 ]
 
-class BaseAPIHandler(BaseHandler, GAMixIn):
+class BaseAPIHandler(BaseHandler, AnalyticsMixin):
 
     name = ''
     kwargs = None  # dict
@@ -72,53 +75,24 @@ class BaseAPIHandler(BaseHandler, GAMixIn):
         self.args_form = {}  # form-data and x-www-form-urlencoded
         self.args_json = {}  # applicatoin/json type body
         self.args_yaml = {}  # applicatoin/yaml type body
-        self.event = {
-            'category': '{}_api'.format(self.biothings.config.API_VERSION),
-            'action': self.request.method,  # 'query_get', 'fetch_all', etc.
-            # 'label': 'total', 'qsize', etc.
-            # 'value': 0, corresponds to label ...
-        }
+        self.event = Event()
 
     def prepare(self):
-        """
-        Extract body and url query parameters into functional groups.
-        Typify predefined user inputs patterns here. Rules:
 
-            * Inputs are combined and then separated into functional catagories.
-            * Duplicated query or body arguments will overwrite the previous value.
-
-        Extend to add more customizations.
-        """
         content_type = self.request.headers.get('Content-Type', '')
-
         if content_type.startswith('application/json'):
-            if not self.request.body:
-                raise HTTPError(400, reason=(
-                    'Empty body is not a valid JSON. '
-                    'Remove the content-type header, or '
-                    'provide an empty object in the body.'))
-            try:
-                # pylint: disable=attribute-defined-outside-init
-                self.args_json = json_decode(self.request.body)
-            except json.JSONDecodeError:
-                raise HTTPError(400, reason='Invalid JSON body.')
-
+            self.args_json = self._parse_json()
         elif content_type.startswith('application/yaml'):
-            try:
-                self.args_yaml = yaml.load(self.request.body, Loader=yaml.SafeLoader)
-            except (yaml.scanner.ScannerError, yaml.parser.ParserError) as err:
-                raise HTTPError(400, reason='Invalid YAML body.')
+            self.args_yaml = self._parse_yaml()
 
-        # pylint: disable=attribute-defined-outside-init
         self.args_query = {
             key: self.get_query_argument(key)
             for key in self.request.query_arguments}
-        # pylint: disable=attribute-defined-outside-init
         self.args_form = {
             key: self.get_body_argument(key)
             for key in self.request.body_arguments}
 
-        regargs = ReqArgs(
+        reqargs = ReqArgs(
             ReqArgs.Path(
                 args=self.path_args,
                 kwargs=self.path_kwargs),
@@ -126,22 +100,50 @@ class BaseAPIHandler(BaseHandler, GAMixIn):
             form=self.args_form,
             json_=self.args_json
         )
+        # standardized request arguments
+        self.args = self._parse_args(reqargs)
 
-        # per request logging should not be combined in one message
-        # it's possible to encounter OptionError during parsing
-        self.logger.debug("%s %s\n%s", self.request.method, self.request.uri, regargs)
+    def _parse_json(self):
+        if not self.request.body:
+            raise HTTPError(400, reason=(
+                'Empty body is not a valid JSON. '
+                'Remove the content-type header, or '
+                'provide an empty object in the body.'))
+        try:
+            return json_decode(self.request.body)
+        except json.JSONDecodeError:
+            raise HTTPError(400, reason='Invalid JSON body.')
 
-        if self.name:
-            optionset = self.biothings.optionsets.get(self.name)
-            try:
-                # pylint: disable=attribute-defined-outside-init
-                self.args = optionset.parse(
-                    self.request.method, regargs)
-            except OptionError as err:
-                raise BadRequest(**err.info)
+    def _parse_yaml(self):
+        try:
+            return yaml.load(self.request.body, Loader=yaml.SafeLoader)
+        except (yaml.scanner.ScannerError, yaml.parser.ParserError):
+            raise HTTPError(400, reason='Invalid YAML body.')
 
-            # self.logger.debug("↓ (%s)\n%s", self.name, pformat(self.args, width=150))
-            self.logger.debug("↓ (%s)\n%s", self.name, self.args)
+    def _parse_args(self, reqargs):
+
+        if not self.name:  # feature disabled
+            return {}  # default value
+
+        optionsets = self.biothings.optionsets
+        optionset = optionsets.get(self.name)
+
+        try:  # uses biothings.web.options to standardize args
+            args = optionset.parse(self.request.method, reqargs)
+
+        except OptionError as err:
+            args = err  # for logging
+            raise BadRequest(**err.info)
+
+        else:  # set on self.args
+            return args
+
+        finally:  # one log message regardless of success
+            self.logger.debug(
+                "%s %s\n%s\n%s",
+                self.request.method,
+                self.request.uri,
+                reqargs, args)
 
     def write(self, chunk):
         """
@@ -219,8 +221,7 @@ class BaseAPIHandler(BaseHandler, GAMixIn):
         This is a tornado lifecycle hook.
         Override to provide tracking features.
         """
-        self.logger.debug("Event: %s", self.event)
-        self.ga_track(self.event)
+        self.logger.debug(self.event)
 
     def write_error(self, status_code, **kwargs):
 
