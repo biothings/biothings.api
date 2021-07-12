@@ -90,6 +90,8 @@ class ConfigurationWrapper():
 
     @property
     def modified(self):
+        if self._db:
+            self._modified = bool(self._db.count())
         return self._modified
 
     @property
@@ -151,8 +153,9 @@ class ConfigurationWrapper():
                 y["default"] = "********"
 
             if y.get("default") and y.get("value"):
-                y["diff"] = jsondiff(  # TODO what for?
-                    y["default"], y["value"])
+                _diff = jsondiff(y["default"], y["value"])
+                if _diff:  # frontend shows "reset" button
+                    y["diff"] = _diff
 
             _config[key] = y
 
@@ -177,8 +180,8 @@ class ConfigurationWrapper():
                 "config": _config,
                 "class": _class
             },
-            "_dirty": self._modified,
-            "allow_edits": not self._readonly
+            "_dirty": self.modified,
+            "allow_edits": not self.readonly
         }
 
     def reset(self, name=None):
@@ -188,7 +191,8 @@ class ConfigurationWrapper():
             return self._db.remove({})
 
         res = self._db.remove({"_id": name})
-        return res["ok"]  # TODO what's the return??
+        # res = {'n': 1, 'ok': 1.0}
+        return res["ok"]
 
     def store_value_to_db(self, name, value):
         if not self._db:
