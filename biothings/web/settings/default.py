@@ -112,23 +112,23 @@ COMMON_KWARGS = {
     'raw': {'type': bool, 'default': False},
     'rawquery': {'type': bool, 'default': False},
     # query builder stage
-    '_source': {'type': list, 'max': 1000, 'alias': ('fields', 'field', 'filter'), 'strict': False},
+    '_source': {'type': list, 'max': 1000, 'alias': ('fields', 'field', 'filter')},
     'size': {'type': int, 'max': 1000, 'alias': 'limit'},
     # formatter stage
     'dotfield': {'type': bool, 'default': False},
     '_sorted': {'type': bool, 'default': True},  # alaphabetically
-    'always_list': {'type': list, 'max': 1000, 'strict': False},
-    'allow_null': {'type': list, 'max': 1000, 'strict': False}
+    'always_list': {'type': list, 'max': 1000},
+    'allow_null': {'type': list, 'max': 1000}
 }
 ANNOTATION_KWARGS = {
     '*': COMMON_KWARGS.copy(),
     'GET': {'id': {'type': str, 'path': 0, 'required': True}},
-    'POST': {'id': {'type': list, 'max': 1000, 'required': True, 'strict': False, 'alias': 'ids'}}
+    'POST': {'id': {'type': list, 'max': 1000, 'required': True, 'alias': 'ids'}}
 }
 QUERY_KWARGS = {
     '*': COMMON_KWARGS.copy(),
     'GET': {
-        'q': {'type': str, 'default': None, 'strict': False},
+        'q': {'type': str, 'default': None},
         'aggs': {'type': list, 'max': 1000, 'alias': 'facets'},
         'facet_size': {'type': int, 'default': 10, 'max': 1000},
         'from': {'type': int, 'max': 10000, 'alias': 'skip'},
@@ -138,12 +138,25 @@ QUERY_KWARGS = {
         'fetch_all': {'type': bool},
         'scroll_id': {'type': str}},
     'POST': {
-        'q': {'type': list, 'required': True, 'strict': False},
-        'scopes': {'type': list, 'default': ['_id'], 'max': 1000, 'strict': False},
+        'q': {'type': list, 'required': True},
+        'scopes': {'type': list, 'default': ['_id'], 'max': 1000},
         'from': {'type': int, 'max': 10000, 'alias': 'skip'},
         'sort': {'type': list, 'max': 10},
     }
 }
+
+# REMOVE THESE COMPATIBILITY SETTINGS
+# ONCE BIOTHINGS.CLIENT OLDER VERSIONS ARE NO LONGER USED
+# TODO FINALIZE WHAT TO PUT HERE & REMOVE FROM ABOVE
+# TODO VALIDATE COMMON PARAM STRICTNESS IS PROPAGATED
+COMMON_KWARGS['_source']['strict'] = False
+COMMON_KWARGS['always_list']['strict'] = False
+COMMON_KWARGS['allow_null']['strict'] = False
+ANNOTATION_KWARGS['POST']['id']['strict'] = False
+QUERY_KWARGS['GET']['q']['strict'] = False
+QUERY_KWARGS['POST']['q']['strict'] = False
+QUERY_KWARGS['POST']['scopes']['strict'] = False
+
 
 # *****************************************************************************
 # Elasticsearch Query Pipeline
