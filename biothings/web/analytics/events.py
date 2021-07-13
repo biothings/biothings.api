@@ -17,7 +17,7 @@ class Event(UserDict):
     # user_agent, user_ip, host, path, referer
 
     def __getattr__(self, name):
-        return self["__request__"][name]
+        return self["__request__"][name] or ""
 
     def _cid_v1(self):
         # Author: Cyrus Afrasiabi
@@ -126,13 +126,13 @@ class GAEvent(Event):
     def to_GA_payload(self, tracking_id, cid_version=1):
 
         payloads = super().to_GA_payload(tracking_id, cid_version)
-        if self.get("catagory") and self.get("action"):
+        if self.get("category") and self.get("action"):
             payloads.append(urlencode({
                 "v": 1,  # protocol version
                 "t": "event",
                 "tid": tracking_id,
                 "cid": self._cid(cid_version),
-                "ec": self["catagory"],
+                "ec": self["category"],
                 "ea": self["action"],
                 "el": self.get("label", ""),
                 "ev": self.get("value", "")
