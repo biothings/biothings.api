@@ -59,14 +59,14 @@ def get_repository_information(app_dir=None):
             args = shlex.split("git rev-parse HEAD")
             output = check_output(args, cwd=app_dir, shell=True, stderr=DEVNULL)
             commit_hash = output.decode('utf-8').strip('\n')
-        except BaseException:
+        except Exception:
             pass
 
         try:
             args = shlex.split("git config --get remote.origin.url")
             output = check_output(args, cwd=app_dir, shell=True, stderr=DEVNULL)
             repository_url = output.decode('utf-8').strip('\n')
-        except BaseException:
+        except Exception:
             pass
 
     codebase = {

@@ -66,7 +66,7 @@ class BiothingsNamespace():
         self.config = config
 
         self.fieldnote = FieldNote(config.AVAILABLE_FIELDS_NOTES_PATH)
-        self.devinfo = DevInfo(config.APP_GIT_REPOSITORY)
+        self.devinfo = DevInfo()
 
         # web application
         self.notifier = Notifier(config)

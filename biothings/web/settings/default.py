@@ -19,7 +19,7 @@ ES_INDICES = {
 }
 ES_ARGS = {
     # https://elasticsearch-py.readthedocs.io/en/v7.12.1/connection.html
-    'sniff': False,  # this is a shortcut to configure multiple configs
+    'sniff': False,  # this is a shortcut to configure multiple values
     'timeout': 60  # increase from default (10s) to support heavy query
 }
 
@@ -95,9 +95,6 @@ HTML_OUT_TITLE = "<p>Biothings API</p>"
 METADATA_DOCS_URL = "javascript:;"
 QUERY_DOCS_URL = "javascript:;"
 ANNOTATION_DOCS_URL = "javascript:;"
-
-# path to the git repository for the app-specific code, override
-APP_GIT_REPOSITORY = '.'
 
 # default static path, relative to current working dir
 # (where app is launched)
