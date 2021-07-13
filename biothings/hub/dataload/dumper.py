@@ -1,12 +1,13 @@
 import asyncio
 import cgi
+import email.utils
 import inspect
 import os
 import pprint
 import re
 import subprocess
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import partial
 from typing import Optional, Union, List
 
@@ -770,10 +771,18 @@ class LastModifiedHTTPDumper(HTTPDumper, LastModifiedBaseDumper):
         if self.__class__.LAST_MODIFIED not in res.headers:
             self.logger.warning("Header '%s' doesn't exist, can determine if remote is better, assuming it is..." % self.__class__.LAST_MODIFIED)
             return True
-        remote_dt = datetime.strptime(
-            res.headers[self.__class__.LAST_MODIFIED],
-            '%a, %d %b %Y %H:%M:%S GMT')
-        remote_lastmodified = time.mktime(remote_dt.timetuple())
+        # In accordance with RFC 7231
+        # The reason we are not using strptime is that it's locale sensitive
+        # and changing locale and then changing it back is not thread safe.
+        dt_tuple = email.utils.parsedate(res.headers[self.LAST_MODIFIED])
+        # this utility function supports more malformed data so using this one
+        if dt_tuple[5] == 60:
+            _ = list(dt_tuple)
+            _[5] = 59
+            dt_tuple = tuple(_)
+        # deal with potential leap second as defined in the RFC, good enough solution
+        dt = datetime(*dt_tuple[:6], tzinfo=timezone.utc)  # HTTP-date is always in UTC
+        remote_lastmodified = dt.timestamp()
         try:
             res = os.stat(localfile)
             local_lastmodified = int(res.st_mtime)
