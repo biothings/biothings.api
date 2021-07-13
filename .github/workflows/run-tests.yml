@@ -23,10 +23,8 @@ jobs:
         run: |
           pip install -e ".[dev]"
           pip install nose
-      - name: Run PyTest
+      - name: Run Tests
         run: pytest tests
-      - name: Run Hub Tests
-        run: cd tests/hub && make test
     services:
       Elasticsearch:
         image: docker.elastic.co/elasticsearch/elasticsearch:7.13.3
