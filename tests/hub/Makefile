@@ -1,7 +1,5 @@
 all: unittest
 
-test_config:
-	nosetests config
 test_jsondiff:
 	cd jsondiff && nosetests
 test_jsonschema:
@@ -11,6 +9,6 @@ test_utils:
 test_inspector:
 	nosetests inspector
 
-test: test_config test_jsondiff test_jsonschema test_utils test_inspector
+test: test_jsondiff test_jsonschema test_utils test_inspector
 
 
