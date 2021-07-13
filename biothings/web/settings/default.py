@@ -6,7 +6,7 @@
 # biothings.web.launcher
 # *****************************************************************************
 # color support is provided by tornado.log
-LOGGING_FORMAT = "%(color)s[%(levelname)s %(name)s %(module)s:%(lineno)d]%(end_color)s %(message)s"
+LOGGING_FORMAT = "%(color)s[%(levelname)s %(name)s:%(lineno)d]%(end_color)s %(message)s"
 
 # *****************************************************************************
 # Elasticsearch Settings

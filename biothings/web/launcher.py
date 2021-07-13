@@ -78,23 +78,21 @@ class BiothingsAPILauncher():
     def _configure_logging(self):
         root_logger = logging.getLogger()
 
-        # self.config.configure_logger(root_logger)
+        if isinstance(self.config, configs.ConfigPackage):
+            config = self.config.root
+        else:  # configs.ConfigModule
+            config = self.config
 
-        #     try:
-        #         if self.LOGGING_FORMAT and logger.hasHandlers():
-        #             for handler in logger.handlers:
-        #                 if isinstance(handler.formatter, tornado.log.LogFormatter):
-        #                     handler.formatter._fmt = self.LOGGING_FORMAT
-        #     except Exception:
-        #         self.logger.exception('Error configuring logger %s.', logger)
+        if hasattr(config, "LOGGING_FORMAT"):
+            for handler in root_logger.handlers:
+                if isinstance(handler.formatter, tornado.log.LogFormatter):
+                    handler.formatter._fmt = config.LOGGING_FORMAT
 
         logging.getLogger('urllib3').setLevel(logging.ERROR)
         logging.getLogger('elasticsearch').setLevel(logging.WARNING)
+
         if self.settings['debug']:
             root_logger.setLevel(logging.DEBUG)
-            es_tracer = logging.getLogger('elasticsearch.trace')
-            es_tracer.setLevel(logging.DEBUG)
-            es_tracer.addHandler(logging.NullHandler())
         else:
             root_logger.setLevel(logging.INFO)
 
@@ -166,31 +164,3 @@ def main(app_handlers=None, app_settings=None, use_curl=False):
 
 if __name__ == '__main__':
     main()
-
-    # def configure_logger(self, logger):
-    #     '''
-    #     Configure a logger's formatter to use the format defined in this web setting.
-    #     '''
-    #     try:
-    #         if self.LOGGING_FORMAT and logger.hasHandlers():
-    #             for handler in logger.handlers:
-    #                 if isinstance(handler.formatter, tornado.log.LogFormatter):
-    #                     handler.formatter._fmt = self.LOGGING_FORMAT
-    #     except Exception:
-    #         self.logger.exception('Error configuring logger %s.', logger)
-
-    # async def _initialize(self):
-
-    #     # failures will be logged concisely
-    #     logging.getLogger('elasticsearch.trace').propagate = False
-
-    #     await self.connections.log_versions()
-
-    #     # populate source mappings
-    #     for biothing_type in self.ES_INDICES:
-    #         await self.metadata.refresh(biothing_type)
-
-    #     # resume normal log flow
-    #     logging.getLogger('elasticsearch.trace').propagate = True
-
-# TODO logging config, add reference to es trace.
