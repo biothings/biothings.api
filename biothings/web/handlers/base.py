@@ -42,11 +42,8 @@ class BaseHandler(SentryMixin, RequestHandler):
     def biothings(self):
         return self.application.biothings
 
-    # ------------
-    #  legacy API TODO REVISIT IF IT'S POSSIBLE TO PROVIDE THIS ACCESS
-    # ------------
     @property
-    def web_settings(self):
+    def web_settings(self):  # legacy API
         try:
             setting = self.settings['biothings']
         except KeyError:
