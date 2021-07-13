@@ -222,6 +222,7 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         Override to provide tracking features.
         """
         self.logger.debug(self.event)
+        super().on_finish()
 
     def write_error(self, status_code, **kwargs):
 
