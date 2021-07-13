@@ -6,7 +6,7 @@ import pprint
 import re
 import subprocess
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import partial
 from typing import Optional, Union, List
 
@@ -770,10 +770,37 @@ class LastModifiedHTTPDumper(HTTPDumper, LastModifiedBaseDumper):
         if self.__class__.LAST_MODIFIED not in res.headers:
             self.logger.warning("Header '%s' doesn't exist, can determine if remote is better, assuming it is..." % self.__class__.LAST_MODIFIED)
             return True
-        remote_dt = datetime.strptime(
-            res.headers[self.__class__.LAST_MODIFIED],
-            '%a, %d %b %Y %H:%M:%S GMT')
-        remote_lastmodified = time.mktime(remote_dt.timetuple())
+        # In accordance with RFC 7231
+        # The reason we are not using strptime is that it's locale sensitive
+        # and changing locale and then changing it bace is not thread safe.
+        # Although at the moment we are using Tornado which uses coroutines,
+        # we still have threads (for reasons) and down the line we may move
+        # to a different framework. The Dumper should be agnostic of what
+        # it is running on. Hence parsing the dates manually
+        last_modified_str = res.headers[self.LAST_MODIFIED]
+        http_date_regex = re.compile(
+            r'(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), '
+            r'(?P<day>\d{2}) '
+            r'(?P<month>Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) '
+            r'(?P<year>\d{4}) '
+            r'(?P<hour>\d{2}):(?P<minute>\d{2}):(?P<second>\d{2}) '
+            r'GMT'
+        )
+        match = http_date_regex.match(last_modified_str)
+        if not match:
+            self.logger.warning("Last-Modified is in an obsolete format")
+            return True
+        month_map = {'Jan': 1, 'Feb': 2, 'Mar':3, 'Apr': 4, 'May': 5, 'Jun':6,
+                     'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12}
+        dt_kwargs = {'tzinfo': timezone.utc}
+        for k in ('year', 'day', 'hour', 'minute', 'second'):
+            dt_kwargs[k] = int(match.group(k))
+        dt_kwargs['month'] = month_map[match.group('month')]
+        # RFC 7231 defines leap seconds
+        if dt_kwargs['second'] == 60:
+            dt_kwargs['second'] = 59
+        dt = datetime(**dt_kwargs)
+        remote_lastmodified = dt.timestamp()
         try:
             res = os.stat(localfile)
             local_lastmodified = int(res.st_mtime)
