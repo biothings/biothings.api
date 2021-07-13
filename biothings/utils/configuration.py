@@ -217,7 +217,10 @@ class ConfigurationWrapper():
             upsert=True)
 
         self._modified = True
-        return res.raw_result
+        try:  # serializable result for mongo
+            return res.raw_result
+        except AttributeError:  # for sqlite, etc..
+            return res
 
     def get_value_from_db(self, name):
         if not self._db:  # without db, only support module params.
