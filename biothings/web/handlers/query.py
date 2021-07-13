@@ -89,9 +89,14 @@ class BaseESRequestHandler(BaseAPIHandler):
             # 'value': 100, # number of queries
         })
 
-    def parse_exception(self, exception):  # TODO merge this into  ESQueryPipelineHandler
+    def parse_exception(self, exception):
 
         message = super().parse_exception(exception)
+
+        # TODO merge this into ESQueryPipelineHandler
+        # or not? consider implications when we support
+        # additional discovery-like applications and
+        # eventually other than tornado web frameworks
 
         if '_es_error' in message:
             _es_error = message.pop('_es_error')

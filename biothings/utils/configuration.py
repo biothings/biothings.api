@@ -206,7 +206,7 @@ class ConfigurationWrapper():
         if name == "CONFIG_READONLY":  # False -> True also not allowed.
             raise RuntimeError("Runtime modification not allowed.")
 
-        try:
+        try:  # already json?
             json.loads(value)
         except JSONDecodeError:
             value = json.dumps(value)
