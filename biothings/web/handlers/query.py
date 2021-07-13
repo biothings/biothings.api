@@ -83,8 +83,8 @@ class BaseESRequestHandler(BaseAPIHandler):
         self.format = self.args.out_format or 'json'
 
         self.event = GAEvent({
-            'category': '{}_api'.format(self.biothings.config.API_VERSION),
-            'action': '_'.join((self.name, self.request.method)),  # 'query_get', etc.
+            'category': '{}_api'.format(self.biothings.config.API_VERSION),  # eg.'v1_api'
+            'action': '_'.join((self.name, self.request.method.lower())),  # eg.'query_get'
             # 'label': 'fetch_all', etc.
             # 'value': 100, # number of queries
         })
