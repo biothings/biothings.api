@@ -29,8 +29,6 @@ class ESPackageInfo():
         logger.info("Python Elasticsearch DSL Version: %s",
                     '.'.join(map(str, self.es_dsl_ver)))
 
-        # TODO: log not shown
-
         if self.es_ver[0] != self.es_dsl_ver[0]:
             logger.error("ES Pacakge Version Mismatch with ES-DSL.")
 
@@ -41,7 +39,7 @@ class ESPackageInfo():
         return int(major_version) == self.es_ver[0]
 
 
-es_local = ESPackageInfo()
+es_local = None
 
 
 def _log_db(client, uri):
@@ -55,7 +53,6 @@ def _log_es(client, hosts):
     # so that it doesn't slow down program start time
     if isinstance(client, elasticsearch.AsyncElasticsearch):
         async def log_cluster(async_client):
-            logger = logging.getLogger(__name__ + '.healthcheck')
             cluster = await async_client.info()
             # not specifying timeout in the function above because
             # there could be a number of es tasks scheduled before
@@ -63,6 +60,10 @@ def _log_es(client, hosts):
 
             cluster_name = cluster['cluster_name']
             version = cluster['version']['number']
+
+            global es_local
+            if not es_local:
+                es_local = ESPackageInfo()
 
             if es_local.is_compatible(version):
                 level = logging.INFO
