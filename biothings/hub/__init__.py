@@ -99,7 +99,7 @@ if os.environ.get("HUB_VERBOSE", "0") != "1":
     logging.getLogger("urllib3").setLevel(logging.ERROR)
     logging.getLogger("requests").setLevel(logging.ERROR)
     logging.getLogger("botocore").setLevel(logging.ERROR)
-    logging.getLogger("boto").setLevel(logging.ERROR)
+    logging.getLogger("boto3").setLevel(logging.ERROR)
     logging.getLogger("git").setLevel(logging.ERROR)
 
 def get_loop(max_workers=None):
