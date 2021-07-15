@@ -14,7 +14,7 @@ class Notifier:
             self.channels.append(SlackChannel(
                 getattr(settings, 'SLACK_WEBHOOKS')
             ))
-        if getattr(settings, 'GA_ACCOUNT'):
+        if getattr(settings, 'GA_ACCOUNT', None):
             self.channels.append(GAChannel(
                 getattr(settings, 'GA_ACCOUNT'),
                 getattr(settings, 'GA_UID_GENERATOR_VERSION', 1)
