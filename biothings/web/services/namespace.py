@@ -27,8 +27,10 @@ def load_class(kls):
     if inspect.isclass(kls):
         return kls
     if isinstance(kls, str):
-        return locate(kls)
-    raise ValueError()
+        _kls = locate(kls)
+        if _kls:  # could be None
+            return _kls
+    raise ValueError(kls)
 
 
 def _requires(config_key):
