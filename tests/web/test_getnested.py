@@ -1,8 +1,8 @@
 import pytest
-from biothings.tests.web import BiothingsDataTest
+from biothings.tests.web import BiothingsWebTest
 
 
-class TestBiothingsWebAppTestGetNested(BiothingsDataTest):
+class TestGetNested(BiothingsWebTest):
     def test_non_list(self):
         d = {
             'k1': {
