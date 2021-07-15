@@ -82,6 +82,19 @@ class ESResultFormatter(ResultFormatter):
             self, licenses=None, license_transform=None,
             field_notes=None, excluded_keys=()):
 
+        # do not directly use the "or" syntax
+        # to turn a None object to a {}, that
+        # would also replace external empty {}
+        # that will later get populated with
+        # contents when data is available.
+
+        if licenses is None:
+            licenses = {}
+        if license_transform is None:
+            license_transform = {}
+        if field_notes is None:
+            field_notes = {}
+
         # license settings
         # ---------------------
         # this feature is turned on by default,
@@ -89,13 +102,13 @@ class ESResultFormatter(ResultFormatter):
         # by looking at its first level field names
         # or the transformed field name equivalences.
 
-        self.licenses = licenses or {}
+        self.licenses = licenses
         # example:
         # {
         #     "exac": "http://example.com/licenseA",
         #     "snpeff": "http://example.com/licenseB"
         # }
-        self.license_transform = license_transform or {}
+        self.license_transform = license_transform
         # example:
         # {
         #     "exac_nontcga": "exac",
@@ -104,7 +117,7 @@ class ESResultFormatter(ResultFormatter):
 
         # mapping dispaly settings
         # -------------------------
-        self.field_notes = field_notes or {}
+        self.field_notes = field_notes
         self.excluded_keys = excluded_keys
 
     # for compatibility
