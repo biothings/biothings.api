@@ -65,7 +65,6 @@ hub_requires = [
     'psutil',
     'jsonpointer',      # for utils.jsonpatch
     'IPython',          # for interactive hub console
-    'boto',
     'multiprocessing_on_dill',  # can replace pickler in concurrent.futures
     'dill',             # a pickle alternative with extra object type support
     'pyinotify; sys_platform == "linux"',        # Linux-only; used in utils.hub.PyInotifyHubReloader
