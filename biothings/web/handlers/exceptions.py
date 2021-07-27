@@ -1,5 +1,7 @@
 from tornado.web import HTTPError
 
+# TODO USE DESCRIPTORS TO MAKE SURE KWARGS IS DICT
+
 class EndRequest(HTTPError):
     """
         Similar to tornado.web.Finish() but write_error handles it.
