@@ -1,5 +1,4 @@
 import os
-import sys
 
 import glob
 from subprocess import check_output
@@ -53,6 +52,7 @@ install_requires = [
 # extra requirements for biothings.web
 web_extra_requires = [
     'msgpack>=0.6.1',   # support format=msgpack
+    'raven'
 ]
 
 # extra requirements to run biothings.hub
