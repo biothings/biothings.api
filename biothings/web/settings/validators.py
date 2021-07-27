@@ -3,7 +3,16 @@ class WebAPIValidator():
 
     def validate(self, config):
 
-        assert config.API_VERSION or config.API_PREFIX  # TODO explain why
+        if getattr(config, "API_PREFIX", None) and not getattr(config, "APP_PREFIX", None):
+            config.APP_PREFIX = getattr(config, "API_PREFIX")
+        if getattr(config, "API_VERSION", None) and not getattr(config, "APP_VERSION", None):
+            config.APP_VERSION = getattr(config, "API_VERSION")
+
+        assert config.APP_VERSION or config.APP_PREFIX, (
+            "Require at least one of the follwing settings:"
+            "(APP_VERSION, APP_PREFIX) to create a layer of"
+            "separation for the default biothings routes."
+        )
 
 
 class DBParamValidator():

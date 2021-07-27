@@ -8,7 +8,7 @@ import tornado.httpserver
 import tornado.ioloop
 import tornado.log
 import tornado.web
-from biothings.web.handlers import BaseAPIHandler, BaseESRequestHandler
+from biothings.web.handlers import BaseAPIHandler, BaseQueryHandler
 from biothings.web.settings import configs
 from biothings.web.services.namespace import BiothingsNamespace
 
@@ -29,7 +29,7 @@ def load_class(kls):
         return locate(kls)
     raise ValueError()
 
-class AsyncTornadoBiothingsAPI(tornado.web.Application):
+class TornadoBiothingsAPI(tornado.web.Application):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -83,20 +83,20 @@ class AsyncTornadoBiothingsAPI(tornado.web.Application):
             assert handler, rule[1]
 
             if '{typ}' in pattern:
-                if not issubclass(handler, BaseESRequestHandler):
+                if not issubclass(handler, BaseQueryHandler):
                     raise TypeError()
                 for biothing_type in biothings.metadata.types:
                     _pattern = pattern.format(
-                        pre=biothings.config.API_PREFIX,
-                        ver=biothings.config.API_VERSION,
+                        pre=biothings.config.APP_PREFIX,
+                        ver=biothings.config.APP_VERSION,
                         typ=biothing_type).replace('//', '/')
                     _setting = dict(setting)
                     _setting['biothing_type'] = biothing_type
                     handlers[_pattern] = (_pattern, handler, _setting)
             elif '{pre}' in pattern or '{ver}' in pattern:
                 pattern = pattern.format(
-                    pre=biothings.config.API_PREFIX,
-                    ver=biothings.config.API_VERSION).replace('//', '/')
+                    pre=biothings.config.APP_PREFIX,
+                    ver=biothings.config.APP_VERSION).replace('//', '/')
                 if '()' not in pattern:
                     handlers[pattern] = (pattern, handler, setting)
             else:  # no pattern translation
@@ -123,7 +123,7 @@ class AsyncTornadoBiothingsAPI(tornado.web.Application):
             return app
         if isinstance(config, configs.ConfigPackage):
             biothings = BiothingsNamespace(config.root)
-            _handlers = [(f'/{c.API_PREFIX}/.*', cls.get_app(c, settings)) for c in config.modules]
+            _handlers = [(f'/{c.APP_PREFIX}/.*', cls.get_app(c, settings)) for c in config.modules]
             _settings = BiothingsAPI._get_settings(biothings, settings)
             app = cls(_handlers + handlers or [], **_settings)
             app.biothings = biothings
@@ -147,9 +147,6 @@ class AsyncTornadoBiothingsAPI(tornado.web.Application):
         for handler in handlers:
             self.biothings.handlers[handler[0]] = handler[1]
 
-class WSGITornadoBiothingsAPI():
-    pass
-
 class FlaskBiothingsAPI():
     pass
 
@@ -157,4 +154,4 @@ class FastAPIBiothingsAPI():
     pass
 
 
-BiothingsAPI = AsyncTornadoBiothingsAPI
+BiothingsAPI = TornadoBiothingsAPI

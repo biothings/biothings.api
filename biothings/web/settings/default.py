@@ -66,8 +66,9 @@ SQL_ARGS = {
 # *****************************************************************************
 
 # Routing
-API_PREFIX = ''  # TODO change these to APP_SOMETHING
-API_VERSION = 'v1'
+APP_PREFIX = ''
+APP_VERSION = 'v1'
+APP_FRAMEWORK = 'tornado'  # TODO
 APP_LIST = [
     (r"/", 'biothings.web.handlers.FrontPageHandler'),
     (r"/({pre})/", 'tornado.web.RedirectHandler', {"url": "/{0}"}),
@@ -89,16 +90,11 @@ APP_LIST = [
 # Base API Handler
 # *****************************************************************************
 
-# For format=html
-HTML_OUT_HEADER_IMG = "https://biothings.io/static/favicon.ico"
-HTML_OUT_TITLE = "<p>Biothings API</p>"
-METADATA_DOCS_URL = "javascript:;"
-QUERY_DOCS_URL = "javascript:;"
-ANNOTATION_DOCS_URL = "javascript:;"
-
-# default static path, relative to current working dir
-# (where app is launched)
-STATIC_PATH = "static"
+HTML_OUT_TITLE = ""  # HTML
+HTML_OUT_HEADER_IMG = ""  # URL
+HTML_OUT_ANNOTATION_DOCS = ""  # URL
+HTML_OUT_METADATA_DOCS = ""  # URL
+HTML_OUT_QUERY_DOCS = ""  # URL
 
 
 # *****************************************************************************
