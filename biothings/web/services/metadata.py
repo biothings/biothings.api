@@ -218,7 +218,7 @@ class _BiothingsESMetadataReader:
             ...
         }
         """
-        mappings = (info.get_mappings() for info in self.indices_info.values())
+        mappings = list(info.get_mappings() for info in self.indices_info.values())
         mappings = reduce(add, mappings).to_dict() if mappings else {}
         return mappings
 
@@ -233,7 +233,7 @@ class _BiothingsESMetadataReader:
             ...
         }
         """
-        licenses = (info.get_licenses() for info in self.indices_info.values())
+        licenses = list(info.get_licenses() for info in self.indices_info.values())
         licenses = reduce(add, licenses).to_dict() if licenses else {}
         return licenses
 
@@ -248,7 +248,7 @@ class _BiothingsESMetadataReader:
             "stats": {"total": 928585791 }
         }
         """
-        metadata = (info.get_metadata() for info in self.indices_info.values())
+        metadata = list(info.get_metadata() for info in self.indices_info.values())
         metadata = reduce(add, metadata).to_dict() if metadata else {}
         if metadata:
             if metadata.get('biothing_type') == "__multiple__":
