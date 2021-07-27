@@ -1,7 +1,8 @@
 <html>
 
 <head>
-    <link href="https://cdn.rawgit.com/josdejong/jsoneditor/v5.11.0/dist/jsoneditor.min.css" rel="stylesheet" type="text/css">
+    <link type="text/css" rel="stylesheet"
+        href="https://cdn.rawgit.com/josdejong/jsoneditor/v5.11.0/dist/jsoneditor.min.css">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
     <script src="https://cdn.rawgit.com/josdejong/jsoneditor/v5.11.0/dist/jsoneditor.min.js"></script>
     <script type="text/javascript">
@@ -20,16 +21,26 @@
 <body>
     <table style="width:100%; height:100%">
         <tbody>
+            {% if "title" in globals() and title %}
             <tr style="height:35px;">
-                <td style="width: 35px"><img src="{{ img_src }}" alt="logo" height="35" width="35"></img></td>
-                <td style="vertical-align:center; padding-left:5px;">{% raw title_html %}</td>
+                <td style="width: 35px"><img src="{{ header_img }}" alt="logo" height="35" width="35"></img></td>
+                <td style="vertical-align:center; padding-left:5px;">{% raw title %}</td>
             </tr>
+            {% end %}
+            {% if "learn_more" in globals() and learn_more %}
             <tr style="height:15px;">
                 <td colspan="2">
-                    <p><a href="{{ link }}" target="_blank">{{ link_decode }}</a>&nbsp;&nbsp;[<a href="{{ docs_link }}"
-                            target="_blank">Learn more about this API endpoint</a>]</p>
+                    <p>
+                        <a href="{{ link }}" target="_blank">{% raw link %}</a> &nbsp;&nbsp;
+                        [
+                        <a href="{{ learn_more }}" target="_blank">
+                            Learn more about this API endpoint
+                        </a>
+                        ]
+                    </p>
                 </td>
             </tr>
+            {% end %}
             <tr>
                 <td colspan="2">
                     <div id="jsonview" style="overflow:auto; height: 100%"></div>

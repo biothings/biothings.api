@@ -1,5 +1,13 @@
 
 import asyncio
+import logging
+from collections import UserDict
+from dataclasses import dataclass
+from datetime import date
+
+import elasticsearch
+from biothings.web.query.builder import RawQueryInterrupt
+from biothings.web.query.engine import EndScrollInterrupt, RawResultInterrupt
 
 # here this module defines two types of operations supported in
 # each query pipeline class, one called "search" which corresponds to
@@ -16,19 +24,23 @@ import asyncio
 # b) during async operations, it functions like the CPU pipeline,
 #    more than 1 stage can be busy at a single point in time.
 
-# TODO make sure assertions are for internal error checking
-# and use ValueError or TypeError for external errors.
+logger = logging.getLogger(__name__)
 
-class QueryPipelineException(Exception):  # TODO
+@dataclass
+class QueryPipelineException(Exception):
+    code: str = 500
+    summary: str = ""
+    details: object = None
     # use code here to indicate error types instead of
     # exception types, this reduces the number of potential
     # exception types this module needs to create.
     # furthermore, consider using a superset of HTTP codes,
     # so that error translation from the upper layers
     # is also convenient and straightforward.
-    def __init__(self, code=500, data=None):
-        self.code = code
-        self.data = data
+
+class QueryPipelineInterrupt(QueryPipelineException):
+    def __init__(self, data):
+        super().__init__(200, None, data)
 
 class QueryPipeline():
     def __init__(self, builder, backend, formatter):
@@ -47,8 +59,69 @@ class QueryPipeline():
         return result
 
 
+def _simplify_ES_exception(exc, debug=False):
+    result = {}
+    try:
+        root_cause = exc.info.get('error', exc.info)
+        root_cause = root_cause['root_cause'][0]['reason']
+        root_cause = root_cause.replace('\"', '\'').split('\n')
+        for index, cause in enumerate(root_cause):
+            result['root_cuase_line_'+f'{index:02}'] = cause
+    except IndexError:
+        pass  # no root cause
+    except Exception:
+        logger.exception('Error parsing es exception.')  # TODO
+
+    if debug:  # raw ES error response
+        result["debug"] = exc.info
+
+    return exc.error, result
+
+def capturesESExceptions(func):
+    async def _(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except(
+            RawQueryInterrupt,  # correspond to 'rawquery' option
+            RawResultInterrupt,  # correspond to 'raw' option
+            EndScrollInterrupt
+        ) as exc:
+            raise QueryPipelineInterrupt(exc.data)
+
+        except AssertionError as exc:
+            # in our application, AssertionError should be internal
+            # the individual components raising the error should instead
+            # rasie exceptions like ValueError and TypeError for bad input
+            logging.error("FIXME: Unexpected Assertion Error.")
+            raise QueryPipelineException(data=str(exc))
+
+        except (ValueError, TypeError) as exc:
+            raise QueryPipelineException(400, type(exc).__name__, str(exc))
+
+        except elasticsearch.ConnectionError:  # like timeouts..
+            raise QueryPipelineException(503)
+
+        except elasticsearch.RequestError as exc:  # 400s
+            raise QueryPipelineException(400, *_simplify_ES_exception(exc))
+
+        except elasticsearch.TransportError as exc:  # >400
+            if exc.error == 'search_phase_execution_exception':
+                reason = exc.info.get("caused_by", {}).get("reason", "")
+                if "rejected execution" in reason:
+                    raise QueryPipelineException(503)
+                else:  # unexpected, provide additional information
+                    raise QueryPipelineException(500, *_simplify_ES_exception(exc, True))
+            elif exc.error == 'index_not_found_exception':
+                raise QueryPipelineException(500, exc.error)
+            elif exc.status_code == 'N/A':
+                raise QueryPipelineException(503)
+            else:  # unexpected
+                raise
+    return _
+
 class AsyncESQueryPipeline(QueryPipeline):
 
+    @capturesESExceptions
     async def search(self, q, **options):
 
         if isinstance(q, list):  # multisearch
@@ -61,6 +134,7 @@ class AsyncESQueryPipeline(QueryPipeline):
         result = self.formatter.transform(response, **options)
         return result
 
+    @capturesESExceptions
     async def fetch(self, id, **options):
         if options.get('scopes'):
             raise ValueError("Scopes Not Allowed.")
@@ -92,8 +166,8 @@ class ESQueryPipeline(QueryPipeline):  # over async client
             builder = ESQueryBuilder()
 
         if not backend:
-            from biothings.web.query.engine import ESQueryBackend
             from biothings.web.connections import get_es_client
+            from biothings.web.query.engine import ESQueryBackend
             client = get_es_client(async_=True)
             backend = ESQueryBackend(client)
 

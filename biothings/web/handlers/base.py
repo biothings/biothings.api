@@ -4,127 +4,228 @@ Biothings Web Handlers
 biothings.web.handlers.BaseHandler
 
     Supports:
-    - access to biothings.web.settings instance
-    - access to biothings.web.handlers logging stream
-    - access to default web templates
-    - Sentry error monitoring
-
-    Subclasses:
-    - biothings.web.handlers.StatusHandler
-    - biothings.web.handlers.FrontPageHandler
-    - discovery.web.handlers.BaseHandler
-    ...
-
-Also available:
+    - access to biothings namespace
+    - monitor exceptions with Sentry
 
 biothings.web.handlers.BaseAPIHandler
-biothings.web.handlers.BaseESRequestHandler
-biothings.web.handlers.ESRequestHandler
+
+    Additionally supports:
+    - JSON and YAML payload in the request body
+    - request arguments standardization
+    - multi-type output (json, yaml, html, msgpack)
+    - standardized error response (exception -> error template)
+    - analytics and usage tracking (Google Analytics and AWS)
+    - default common http headers (CORS and Cache Control)
 
 """
-
+import json
 import logging
 
-from tornado.web import RequestHandler
+import yaml
+from biothings.utils import serializer
+from biothings.web.analytics.events import Event
+from biothings.web.analytics.notifiers import AnalyticsMixin
+from biothings.web.options import OptionError, ReqArgs
+from tornado.escape import json_decode
+from tornado.web import HTTPError, RequestHandler
+
+from .exceptions import BadRequest, EndRequest
 
 try:
     from raven.contrib.tornado import SentryMixin
 except ImportError:
-    class SentryMixin(object):
-        """dummy class mixin"""
+    class SentryMixin():
+        """dummy mixin"""
 
-class BaseHandler(SentryMixin, RequestHandler):
-    """
-        Parent class of all handlers, only direct descendant of `tornado.web.RequestHandler
-        <http://www.tornadoweb.org/en/stable/web.html#tornado.web.RequestHandler>`_,
-    """
+logger = logging.getLogger(__name__)
+
+class BaseHandler(RequestHandler, SentryMixin):
+
     @property
     def biothings(self):
         return self.application.biothings
 
-    @property
-    def web_settings(self):  # legacy API
-        try:
-            setting = self.settings['biothings']
-        except KeyError:
-            self.require_setting('biothings')
-        else:
-            return setting
-
     def get_sentry_client(self):
-        """
-        Override default and retrieve from tornado setting instead.
-        """
-        client = self.settings.get('sentry_client')
-        if not client:
-            self.require_setting('sentry_client')
-        return client
-
-    @property
-    def logger(self):
-        return logging.getLogger("biothings.web.handlers")
+        # Override and retrieve from tornado settings instead.
+        return self.settings.get('sentry_client')
 
     def log_exception(self, *args, **kwargs):
-        """
-        Only attempt to report to Sentry when the client is setup.
-        Discard when API key is not set or raven is not installed.
-        """
+        # Only attempt to report to Sentry when the client is setup.
+        #Discard when API key is not set or raven is not installed.
         if 'sentry_client' in self.settings:
             return SentryMixin.log_exception(self, *args, **kwargs)
         return RequestHandler.log_exception(self, *args, **kwargs)
 
+
+class BaseAPIHandler(BaseHandler, AnalyticsMixin):
+
+    name = '__base__'
+    kwargs = {
+        '*': {
+            'format': {
+                'type': str,
+                'default': 'json',
+                'enum': ('json', 'yaml', 'html', 'msgpack'),
+            }
+        }
+    }
+    format = 'json'
+    cache = 604800  # 7 days
+
+    def initialize(self):
+
+        self.args = {}  # processed args will be available here
+        self.args_query = {}  # query parameters in the URL
+        self.args_form = {}  # form-data and x-www-form-urlencoded
+        self.args_json = {}  # applicatoin/json type body
+        self.args_yaml = {}  # applicatoin/yaml type body
+        self.event = Event()
+
+    def prepare(self):
+
+        content_type = self.request.headers.get('Content-Type', '')
+        if content_type.startswith('application/json'):
+            self.args_json = self._parse_json()
+        elif content_type.startswith('application/yaml'):
+            self.args_yaml = self._parse_yaml()
+
+        self.args_query = {
+            key: self.get_query_argument(key)
+            for key in self.request.query_arguments}
+        self.args_form = {
+            key: self.get_body_argument(key)
+            for key in self.request.body_arguments}
+
+        reqargs = ReqArgs(
+            ReqArgs.Path(
+                args=self.path_args,
+                kwargs=self.path_kwargs),
+            query=self.args_query,
+            form=self.args_form,
+            json_=self.args_json
+        )
+        # standardized request arguments
+        self.args = self._parse_args(reqargs)
+        self.format = self.args.format
+
+    def _parse_json(self):
+        if not self.request.body:
+            raise HTTPError(400, reason=(
+                'Empty body is not a valid JSON. '
+                'Remove the content-type header, or '
+                'provide an empty object in the body.'))
+        try:
+            return json_decode(self.request.body)
+        except json.JSONDecodeError:
+            raise HTTPError(400, reason='Invalid JSON body.')
+
+    def _parse_yaml(self):
+        try:
+            return yaml.load(self.request.body, Loader=yaml.SafeLoader)
+        except (yaml.scanner.ScannerError, yaml.parser.ParserError):
+            raise HTTPError(400, reason='Invalid YAML body.')
+
+    def _parse_args(self, reqargs):
+
+        if not self.name:  # feature disabled
+            return {}  # default value
+
+        optionsets = self.biothings.optionsets
+        optionset = optionsets.get(self.name)
+
+        try:  # uses biothings.web.options to standardize args
+            args = optionset.parse(self.request.method, reqargs)
+
+        except OptionError as err:
+            args = err  # for logging
+            raise BadRequest(**err.info)
+
+        else:  # set on self.args
+            return args
+
+        finally:  # one log message regardless of success
+            logger.debug(
+                "%s %s\n%s\n%s",
+                self.request.method,
+                self.request.uri,
+                reqargs, args)
+
+    def write(self, chunk):
+        try:
+
+            if self.format == "json":
+                chunk = serializer.to_json(chunk)
+                self.set_header("Content-Type", "application/json; charset=UTF-8")
+
+            elif self.format == "yaml":
+                chunk = serializer.to_yaml(chunk)
+                self.set_header("Content-Type", "text/x-yaml; charset=UTF-8")
+
+            elif self.format == "msgpack":
+                chunk = serializer.to_msgpack(chunk)
+                self.set_header("Content-Type", "application/x-msgpack")
+
+            elif self.format == "html":
+                chunk = self.render_string("api.html", data=json.dumps(chunk))
+                self.set_header("Content-Type", "text/html; charset=utf-8")
+
+        except Exception as exc:
+            # this is a low-level method, used in many places,
+            # error handling should happen in the upper layers,
+            logger.warning(exc)
+
+        super().write(chunk)
+
     def get_template_path(self):
-        if "template_path" in self.settings:
-            return super().get_template_path()
+        # APIs should not normally need to use templating
+        # set the path to where we can find the api.html
         import biothings.web.templates
         return next(iter(biothings.web.templates.__path__))
 
+    def on_finish(self):
+        """
+        This is a tornado lifecycle hook.
+        Override to provide tracking features.
+        """
+        logger.debug(self.event)
+        super().on_finish()
 
-class StatusHandler(BaseHandler):
-    '''
-    Handles requests to check the status of the server.
-    Use set_status instead of raising exception so that
-    no error will be propogated to sentry monitoring. # TODO IS IT A GOOD DESIGN?
-    '''
+    def write_error(self, status_code, **kwargs):
 
-    def head(self):
-        return self._check()
+        reason = kwargs.pop('reason', self._reason)
+        # "reason" is a reserved tornado keyword
+        # see RequestHandler.send_error
+        assert isinstance(reason, str)
+        assert '\n' not in reason
 
-    async def get(self):
+        message = {
+            "code": status_code,
+            "success": False,
+            "error": reason
+        }
+        # merge exception info
+        if 'exc_info' in kwargs:
+            exception = kwargs['exc_info'][1]
+            if isinstance(exception, EndRequest):
+                message.update(exception.kwargs)
+        self.finish(message)
 
-        dev = self.get_argument('dev', None)
-        res = await self._check(dev is not None)
-        self.finish(res)
+    def options(self, *args, **kwargs):
 
-    async def _check(self, dev=False):
+        self.set_status(204)
+        self.finish()
 
-        try:  # some db connections support async operations
-            response = await self.biothings.health.async_check(info=dev)
-        except (AttributeError, NotImplementedError):
-            response = self.biothings.health.check()
+    def set_default_headers(self):
 
-        if not dev:
-            return {
-                # this endpoint might be accessed frequently,
-                # keep the default response minimal. This is
-                # especially useful when the document payload
-                # is very large. Also useful when the automated
-                # healch check only support GET requests.
-                "success": True,
-                "status": response.get("status")
-            }
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Access-Control-Allow-Methods", "*")
+        self.set_header("Access-Control-Allow-Headers", "*")
+        self.set_header("Access-Control-Allow-Credentials", "false")
+        self.set_header("Access-Control-Max-Age", "60")
 
-        return dict(response)
+        if self.cache and isinstance(self.cache, int):
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+            self.set_header("Cache-Control", f"max-age={self.cache}, public")
 
-class FrontPageHandler(BaseHandler):
-
-    def get(self):
-
-        self.render(
-            template_name="home.html",
-            alert='Front Page Not Configured.',
-            title='Biothings API',
-            contents=self.application.biothings.handlers.keys(),
-            support=self.biothings.metadata.types,
-            url='http://biothings.io/'
-        )
+        # to disable caching for a handler, set cls.cache to 0 or
+        # run self.clear_header('Cache-Control') in an HTTP method

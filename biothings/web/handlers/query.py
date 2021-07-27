@@ -29,45 +29,35 @@ biothings.web.handlers.ESRequestHandler
 
 """
 
+import json
 import logging
-from collections import UserDict
 from types import CoroutineType
 
-import elasticsearch
+from biothings.utils import serializer
 from biothings.web.analytics.events import GAEvent
-from biothings.web.query.builder import RawQueryInterrupt
-from biothings.web.query.engine import EndScrollInterrupt, RawResultInterrupt
-from biothings.web.query.pipeline import QueryPipelineException
+from biothings.web.handlers.base import BaseAPIHandler
+
+from biothings.web.query.pipeline import QueryPipelineException, QueryPipelineInterrupt
 from tornado.web import Finish, HTTPError
 
-from .api import BaseAPIHandler
 from .exceptions import BadRequest, EndRequest
 
 __all__ = [
-    'BaseESRequestHandler',
+    'BaseQueryHandler',
     'MetadataSourceHandler',
     'MetadataFieldHandler',
     'BiothingHandler',
     'QueryHandler'
 ]
 
+logger = logging.getLogger(__name__)
 
-class BaseESRequestHandler(BaseAPIHandler):
 
-    kwargs = {
-        '*': {
-            'out_format': {
-                'type': str,
-                'default': 'json',
-                'enum': ('json', 'yaml', 'html', 'msgpack'),
-                'alias': ['format']
-            }
-        }
-    }
+class BaseQueryHandler(BaseAPIHandler):
 
     def initialize(self, biothing_type=None):
 
-        super(BaseESRequestHandler, self).initialize()
+        super().initialize()
         self.biothing_type = biothing_type
         self.pipeline = self.biothings.pipeline
         self.metadata = self.biothings.metadata
@@ -79,48 +69,39 @@ class BaseESRequestHandler(BaseAPIHandler):
         # provide convenient access to next stages
         self.args.biothing_type = self.biothing_type
 
-        # supported across es requests
-        self.format = self.args.out_format or 'json'
-
         self.event = GAEvent({
-            'category': '{}_api'.format(self.biothings.config.API_VERSION),  # eg.'v1_api'
+            'category': '{}_api'.format(self.biothings.config.APP_VERSION),  # eg.'v1_api'
             'action': '_'.join((self.name, self.request.method.lower())),  # eg.'query_get'
             # 'label': 'fetch_all', etc.
             # 'value': 100, # number of queries
         })
 
-    def parse_exception(self, exception):
+    def write(self, chunk):
+        try:
+            if self.format == "html":
+                title = self.biothings.config.HTML_OUT_TITLE or "<p>Biothings API</p>"
+                docs_url = getattr(self.biothings.config, f"HTML_OUT_{self.name.upper()}_DOCS", "")
+                header_img = self.biothings.config.HTML_OUT_HEADER_IMG
+                header_img = header_img or "https://biothings.io/static/favicon.ico"
+                chunk = self.render_string(
+                    template_name="api.html", data=json.dumps(chunk),
+                    link=serializer.URL(self.request.full_url()).remove('format'),
+                    learn_more=docs_url, title=title, header_img=header_img
+                )
+                self.set_header("Content-Type", "text/html; charset=utf-8")
+                return super(BaseAPIHandler, self).write(chunk)
 
-        message = super().parse_exception(exception)
+        except Exception as exc:
+            logger.warning(exc)
 
-        # TODO merge this into ESQueryPipelineHandler
-        # or not? consider implications when we support
-        # additional discovery-like applications and
-        # eventually other than tornado web frameworks
+        super().write(chunk)
 
-        if '_es_error' in message:
-            _es_error = message.pop('_es_error')
-            message['error'] = _es_error.error
-            try:
-                root_cause = _es_error.info.get('error', _es_error.info)
-                root_cause = root_cause['root_cause'][0]['reason']
-                root_cause = root_cause.replace('\"', '\'').split('\n')
-                for index, cause in enumerate(root_cause):
-                    message['root_cuase_line_'+f'{index:02}'] = cause
-            except IndexError:
-                pass  # no root cause
-            except Exception:
-                self.logger.exception('Error parsing es exception.')
-
-        return message
-
-
-class MetadataSourceHandler(BaseESRequestHandler):
+class MetadataSourceHandler(BaseQueryHandler):
     """
     GET /metadata
     """
     name = 'metadata'
-    kwargs = dict(BaseESRequestHandler.kwargs)
+    kwargs = dict(BaseQueryHandler.kwargs)
     kwargs['GET'] = {
         'dev': {'type': bool, 'default': False},
         'raw': {'type': bool, 'default': False}
@@ -146,17 +127,17 @@ class MetadataSourceHandler(BaseESRequestHandler):
 
     def extras(self, _meta):
         """
-        Override to add app specific metadata
+        Override to add app specific metadata.
         """
         return _meta
 
 
-class MetadataFieldHandler(BaseESRequestHandler):
+class MetadataFieldHandler(BaseQueryHandler):
     """
     GET /metadata/fields
     """
     name = 'fields'
-    kwargs = dict(BaseESRequestHandler.kwargs)
+    kwargs = dict(BaseQueryHandler.kwargs)
     kwargs['GET'] = {
         'raw': {'type': bool, 'default': False},
         'search': {'type': str, 'default': None},
@@ -176,72 +157,23 @@ class MetadataFieldHandler(BaseESRequestHandler):
         self.finish(result)
 
 
-class InterruptResult(UserDict):
-    pass
-
-def ESQueryPipelineHandler(handler_class):
-    def handle_exceptions(method):
-        async def _method(*args, **kwargs):
-            try:
-                return await method(*args, **kwargs)
-            except (
-                RawQueryInterrupt,  # correspond to 'rawquery' option
-                RawResultInterrupt,  # correspond to 'raw' option
-                EndScrollInterrupt
-            ) as exc:
-                _exc = EndRequest()
-                _exc.kwargs = InterruptResult(exc.data) \
-                    if isinstance(exc.data, dict) else exc.data
-                # use a non-dict wrapper so that the data
-                # is not merged with the error template.
-                raise _exc
-
-            except AssertionError as exc:
-                # in our application, AssertionError should be internal
-                # the individual components raising the error should instead
-                # rasie exceptions like ValueError and TypeError for bad input
-                logging.error("FIXME: Unexpected Assertion Error.")
-                raise HTTPError(reason=str(exc))
-
-            except (ValueError, TypeError) as exc:
-                raise BadRequest(reason=type(exc).__name__, details=str(exc))
-
-            except QueryPipelineException as exc:
-                raise HTTPError(exc.code, reason=exc.data)
-
-            except elasticsearch.ConnectionError:  # like timeouts..
-                raise HTTPError(503)
-
-            except elasticsearch.RequestError as exc:  # 400s
-                raise BadRequest(_es_error=exc)
-
-            except elasticsearch.TransportError as exc:  # >400
-                if exc.error == 'search_phase_execution_exception':
-                    reason = exc.info.get("caused_by", {}).get("reason", "")
-                    if "rejected execution" in reason:
-                        raise EndRequest(503, reason="server busy")
-                    else:  # unexpected, provide additional information
-                        raise EndRequest(500, _es_error=exc, **exc.info)
-                elif exc.error == 'index_not_found_exception':
-                    raise HTTPError(500, reason=exc.error)
-                elif exc.status_code == 'N/A':
-                    raise HTTPError(503)
-                else:  # unexpected
-                    raise
-
-        return _method
-    handler_class.get = handle_exceptions(handler_class.get)
-    handler_class.post = handle_exceptions(handler_class.post)
-    return handler_class
-
-
 async def ensure_awaitable(obj):
     if isinstance(obj, CoroutineType):
         return await obj
     return obj
 
-@ESQueryPipelineHandler
-class BiothingHandler(BaseESRequestHandler):
+def capture_exceptions(coro):
+    async def _method(*args, **kwargs):
+        try:
+            return await coro(*args, **kwargs)
+        except QueryPipelineInterrupt as itr:
+            raise EndRequest(**itr.details)
+        except QueryPipelineException as exc:
+            kwargs = exc.details if isinstance(exc.details, dict) else {}
+            raise EndRequest(exc.code, reason=exc.summary, **kwargs)
+    return _method
+
+class BiothingHandler(BaseQueryHandler):
     """
     Biothings Annotation Endpoint
 
@@ -258,6 +190,7 @@ class BiothingHandler(BaseESRequestHandler):
     """
     name = 'annotation'
 
+    @capture_exceptions
     async def post(self, *args, **kwargs):
         self.event['value'] = len(self.args['id'])
 
@@ -265,6 +198,7 @@ class BiothingHandler(BaseESRequestHandler):
             self.pipeline.fetch(**self.args))
         self.finish(result)
 
+    @capture_exceptions
     async def get(self, *args, **kwargs):
         self.event['value'] = 1
 
@@ -273,8 +207,7 @@ class BiothingHandler(BaseESRequestHandler):
         self.finish(result)
 
 
-@ESQueryPipelineHandler
-class QueryHandler(BaseESRequestHandler):
+class QueryHandler(BaseQueryHandler):
     '''
     Biothings Query Endpoint
 
@@ -288,6 +221,7 @@ class QueryHandler(BaseESRequestHandler):
     '''
     name = 'query'
 
+    @capture_exceptions
     async def post(self, *args, **kwargs):
         self.event['value'] = len(self.args['q'])
 
@@ -295,6 +229,7 @@ class QueryHandler(BaseESRequestHandler):
             self.pipeline.search(**self.args))
         self.finish(result)
 
+    @capture_exceptions
     async def get(self, *args, **kwargs):
         self.event['value'] = 1
         if self.args.get('fetch_all'):
