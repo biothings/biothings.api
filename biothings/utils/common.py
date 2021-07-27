@@ -20,7 +20,7 @@ import string
 import sys
 import time
 import types
-from collections import UserDict
+from collections import UserDict, UserList
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from functools import partial
@@ -569,7 +569,7 @@ def newer(t0, t1, fmt='%Y%m%d'):
     return datetime.strptime(t0, fmt) < datetime.strptime(t1, fmt)
 
 
-class DateTimeJSONEncoder(json.JSONEncoder):
+class BiothingsJSONEncoder(json.JSONEncoder):
     '''A class to dump Python Datetime object.
         json.dumps(data, cls=DateTimeJSONEncoder, indent=indent)
     '''
@@ -577,8 +577,12 @@ class DateTimeJSONEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, (datetime, date)):
             return o.isoformat()
+        elif isinstance(o, UserDict):
+            return dict(o)
+        elif isinstance(o, UserList):
+            return list(o)
         else:
-            return super(DateTimeJSONEncoder, self).default(o)
+            return super().default(o)
 
 
 # https://stackoverflow.com/questions/11875770/how-to-overcome-datetime-datetime-not-json-serializable
