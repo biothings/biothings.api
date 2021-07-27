@@ -63,7 +63,6 @@ class BaseQueryHandler(BaseAPIHandler):
         self.metadata = self.biothings.metadata
 
     def prepare(self):
-
         super().prepare()
 
         # provide convenient access to next stages
@@ -77,12 +76,24 @@ class BaseQueryHandler(BaseAPIHandler):
         })
 
     def write(self, chunk):
+        # add an additional header to the JSON formatter
+        # with a header image and a title-like section
+        # further more, show a link to documentation
+
+        # relevant settings in config:
+        # HTML_OUT_TITLE
+        # HTML_OUT_HEADER_IMG
+        # HTML_OUT_<ENDPOINT>_DOCS
+
+        DEFAULT_TITLE = "<p>Biothings API</p>"
+        DEFAULT_IMG = "https://biothings.io/static/favicon.ico"
+
         try:
             if self.format == "html":
-                title = self.biothings.config.HTML_OUT_TITLE or "<p>Biothings API</p>"
-                docs_url = getattr(self.biothings.config, f"HTML_OUT_{self.name.upper()}_DOCS", "")
-                header_img = self.biothings.config.HTML_OUT_HEADER_IMG
-                header_img = header_img or "https://biothings.io/static/favicon.ico"
+                config = self.biothings.config
+                title = getattr(config, "HTML_OUT_TITLE", DEFAULT_TITLE)
+                docs_url = getattr(config, f"HTML_OUT_{self.name.upper()}_DOCS", "")
+                header_img = getattr(config, "HTML_OUT_HEADER_IMG", DEFAULT_IMG)
                 chunk = self.render_string(
                     template_name="api.html", data=json.dumps(chunk),
                     link=serializer.URL(self.request.full_url()).remove('format'),
