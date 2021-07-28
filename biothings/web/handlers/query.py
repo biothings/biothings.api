@@ -36,11 +36,12 @@ from types import CoroutineType
 from biothings.utils import serializer
 from biothings.web.analytics.events import GAEvent
 from biothings.web.handlers.base import BaseAPIHandler
+from biothings.web.query.pipeline import (
+    QueryPipelineException,
+    QueryPipelineInterrupt)
+from tornado.web import Finish
 
-from biothings.web.query.pipeline import QueryPipelineException, QueryPipelineInterrupt
-from tornado.web import Finish, HTTPError
-
-from .exceptions import BadRequest, EndRequest
+from .exceptions import EndRequest
 
 __all__ = [
     'BaseQueryHandler',
@@ -105,13 +106,12 @@ class BaseQueryHandler(BaseAPIHandler):
         try:
             if self.format == "html":
                 config = self.biothings.config
-                title = getattr(config, "HTML_OUT_TITLE", DEFAULT_TITLE)
-                docs_url = getattr(config, f"HTML_OUT_{self.name.upper()}_DOCS", "")
-                header_img = getattr(config, "HTML_OUT_HEADER_IMG", DEFAULT_IMG)
                 chunk = self.render_string(
                     template_name="api.html", data=json.dumps(chunk),
                     link=serializer.URL(self.request.full_url()).remove('format'),
-                    learn_more=docs_url, title=title, header_img=header_img
+                    title_div=getattr(config, "HTML_OUT_TITLE", "") or DEFAULT_TITLE,
+                    header_img=getattr(config, "HTML_OUT_HEADER_IMG", "") or DEFAULT_IMG,
+                    learn_more=getattr(config, f"HTML_OUT_{self.name.upper()}_DOCS", "")
                 )
                 self.set_header("Content-Type", "text/html; charset=utf-8")
                 return super(BaseAPIHandler, self).write(chunk)
