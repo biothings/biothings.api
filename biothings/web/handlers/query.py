@@ -69,11 +69,25 @@ class BaseQueryHandler(BaseAPIHandler):
         self.args.biothing_type = self.biothing_type
 
         self.event = GAEvent({
+            '__secondary__': [],  # secondary analytical objective: field tracking
             'category': '{}_api'.format(self.biothings.config.APP_VERSION),  # eg.'v1_api'
             'action': '_'.join((self.name, self.request.method.lower())),  # eg.'query_get'
             # 'label': 'fetch_all', etc.
             # 'value': 100, # number of queries
         })
+
+        if self.args._source:
+            for _source in self.args._source:
+                self.event['__secondary__'].append(GAEvent({
+                    'category': 'field_filter',
+                    'action': 'enabled',
+                    'label': _source.split('.', 1)[0]  # root key
+                }))
+        else:
+            self.event['__secondary__'].append(GAEvent({
+                'category': 'field_filter',
+                'action': 'disabled'
+            }))
 
     def write(self, chunk):
         # add an additional header to the JSON formatter

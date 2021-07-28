@@ -45,7 +45,11 @@ class GAChannel(Channel):
         return isinstance(event, Event)
 
     def send(self, payload):
-        yield HTTPRequest(
-            'http://www.google-analytics.com/batch', method='POST',
-            body='\n'.join(payload.to_GA_payload(self.tracking_id, self.uid_version))
-        )
+        events = payload.to_GA_payload(self.tracking_id, self.uid_version)
+        # #batch-limitations section of the URL above
+        # A maximum of 20 hits can be specified per request.
+        for i in range(0, len(events), 20):
+            yield HTTPRequest(
+                'http://www.google-analytics.com/batch', method='POST',
+                body='\n'.join(events[i: i+20])
+            )

@@ -113,6 +113,9 @@ class Event(UserDict):
     def __str__(self):  # to facilitate logging
         return f"{type(self).__name__}({pformat(self)})"
 
+def _clean(dict):
+    return {k: v for k, v in dict.items() if v}
+
 class GAEvent(Event):
 
     # GA Event
@@ -127,7 +130,7 @@ class GAEvent(Event):
 
         payloads = super().to_GA_payload(tracking_id, cid_version)
         if self.get("category") and self.get("action"):
-            payloads.append(urlencode({
+            payloads.append(urlencode(_clean({
                 "v": 1,  # protocol version
                 "t": "event",
                 "tid": tracking_id,
@@ -136,7 +139,14 @@ class GAEvent(Event):
                 "ea": self["action"],
                 "el": self.get("label", ""),
                 "ev": self.get("value", "")
-            }))
+            })))
+        for event in self.get("__secondary__", []):
+            event["__request__"] = self["__request__"]
+            payloads.extend(
+                event.to_GA_payload(
+                    tracking_id, cid_version)[1:])
+            # ignore the first event (pageview)
+            # which is already generated once
         return payloads
 
 
