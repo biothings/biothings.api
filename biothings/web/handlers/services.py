@@ -3,11 +3,12 @@ from biothings.web.options.openapi import OpenAPIDocumentBuilder
 
 
 class StatusHandler(BaseHandler):
-    '''
-    Handles requests to check the status of the server.
-    Use set_status instead of raising exception so that
-    no error will be propogated to sentry monitoring. # TODO IS IT A GOOD IDEA?
-    '''
+    """ Web service health check """
+
+    # if calling set_status instead of raising exceptions
+    # when failure happens, no error will be propogated
+    # to sentry monitoring. choose the desired one basing
+    # on overall health check architecture.
 
     def head(self):
         return self._check()
@@ -56,8 +57,81 @@ class FrontPageHandler(BaseHandler):
 
 class APISpecificationHandler(BaseAPIHandler):
 
+    # Proof of concept
+    # Not documented for public access
+
+    @staticmethod
+    def _type_to_schema(_type):  # for query strings
+        _mapping = {
+            "list": "array",
+            "bool": "boolean",
+            "int": "integer",
+            "str": "string",
+            "float": "number"
+        }
+        _type = _mapping.get(_type, "object")
+        if _type == "array":
+            return {
+                "type": "array",
+                "items": {"type": "string"}
+            }
+        else:
+            return {
+                "type": _type
+            }
+
+    @staticmethod
+    def _binds(context, param, option):
+        # https://swagger.io/specification/#parameter-object
+        location = option.get("location", ("query", ))
+        _type = option.get("type", str).__name__
+
+        if "query" in location:
+            _param = context.parameter(
+                param, "query",
+                option.get("required", False)
+            )
+            _param.schema(
+                APISpecificationHandler
+                ._type_to_schema(_type))
+
     def get(self):
-        # openapi = OpenAPIDocumentBuilder()
-        # openapi.info(title='Biothings API', version='v1')
-        # self.finish(openapi.document)
-        self.finish(self.biothings.optionsets.log())
+        openapi = OpenAPIDocumentBuilder()
+        openapi.info(title='Biothings API', version='0.0.0')
+        for path, handler in self.biothings.handlers.items():
+            if not issubclass(handler, BaseAPIHandler):
+                continue
+            _path = openapi.path(path.rstrip("?"))
+            # if handler.__doc__:
+            #     _description = handler.__doc__.strip()
+            #     _description = _description.replace("\n", "")
+            #     _path.description(_description)
+            if getattr(handler, "name", None) in self.biothings.optionsets:
+                optionset = self.biothings.optionsets[handler.name]
+                for param, option in optionset.get("*", {}).items():
+                    self._binds(_path, param, option)
+            for method in ("get", "post", "put", "delete"):
+                if getattr(handler, method) is not type(self)._unimplemented_method:
+                    _method = getattr(_path, method)()
+                    if "optionset" in dir():
+                        for param, option in optionset.get(method.upper(), {}).items():
+                            self._binds(_method, param, option)
+                        if method == "post":
+                            # might be simplified by
+                            # using "$ref" syntax
+                            _method.document["requestBody"] = {
+                                "content": {
+                                    "application/json": {"schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            key: self._type_to_schema(val.get("type", str).__name__)
+                                            for key, val in optionset.get(method.upper(), {}).items()
+                                        }
+                                    }},
+                                    "application/yaml": {},
+                                    "application/x-www-form-urlencoded": {},
+                                    "multipart/form-data": {}
+                                }
+                            }
+        self.finish(openapi.document)
+        # self.finish(self.biothings.optionsets.log())
