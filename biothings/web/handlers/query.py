@@ -31,14 +31,14 @@ biothings.web.handlers.ESRequestHandler
 
 import json
 import logging
+from collections import Counter
 from types import CoroutineType
 
 from biothings.utils import serializer
 from biothings.web.analytics.events import GAEvent
 from biothings.web.handlers.base import BaseAPIHandler
-from biothings.web.query.pipeline import (
-    QueryPipelineException,
-    QueryPipelineInterrupt)
+from biothings.web.query.pipeline import (QueryPipelineException,
+                                          QueryPipelineInterrupt)
 from tornado.web import Finish
 
 from .exceptions import EndRequest
@@ -78,16 +78,20 @@ class BaseQueryHandler(BaseAPIHandler):
         })
 
         if self.args._source:
-            for _source in self.args._source:
+            fields = [str(field) for field in self.args._source]  # in case input is not str
+            fields = [field.split('.', 1)[0] for field in fields]  # only consider root keys
+            for field, cnt in Counter(fields).items():
                 self.event['__secondary__'].append(GAEvent({
-                    'category': 'field_filter',
-                    'action': 'enabled',
-                    'label': _source.split('.', 1)[0]  # root key
+                    'category': 'parameter_tracking',
+                    'action': 'field_filter',
+                    'label': field,
+                    'value': cnt
                 }))
         else:
             self.event['__secondary__'].append(GAEvent({
-                'category': 'field_filter',
-                'action': 'disabled'
+                'category': 'parameter_tracking',
+                'action': 'field_filter',
+                'label': 'all'
             }))
 
     def write(self, chunk):
