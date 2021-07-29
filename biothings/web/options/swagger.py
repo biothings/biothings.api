@@ -1,3 +1,7 @@
+# NOTE
+# THIS MODULE IS FOR REFERENCE ONLY
+# AND IS NO LONGER COMPATIBLE WITH THE LATEST CODEBASE
+
 '''
     Utils for creating swagger spec from a config_web module.
 
@@ -7,8 +11,9 @@ import yaml
 
 def setup_yaml():
     """ https://stackoverflow.com/a/8661021 """
-    represent_dict_order = lambda self, data:  self.represent_mapping('tag:yaml.org,2002:map', data.items())
+    represent_dict_order = lambda self, data: self.represent_mapping('tag:yaml.org,2002:map', data.items())
     yaml.add_representer(OrderedDict, represent_dict_order)
+
 
 all_params = {}
 
@@ -16,7 +21,8 @@ def _get_common_parameters(settings, biothing_object, url):
     _all = _get_all_params(settings)
     _ret = OrderedDict([])
     # get all params except for q, scopes, ids -> these are added to the request body, and not the query string
-    _common_params_list = [(k,v) for (k,v) in _all.items() if (k != 'q') and (k != 'scopes') and (k != 'ids') and (k in getattr(settings, 'KWARG_DESCRIPTIONS', {}))]
+    _common_params_list = [(k, v) for (k, v) in _all.items() if (k != 'q') and (k != 'scopes')
+                           and (k != 'ids') and (k in getattr(settings, 'KWARG_DESCRIPTIONS', {}))]
     # add 'special' parameters not controlled by main biothings web pipeline
     _common_params_list.extend([('callback', {'type': str, 'default': None}),
                                 ('email', {'type': str, 'default': None})])
@@ -29,15 +35,15 @@ def _get_common_parameters(settings, biothing_object, url):
                 ('name', _param_display),
                 ('in', 'query'),
                 ('description', _description_template_object.get('text_template', '').format(
-                    biothing_object=biothing_object, 
+                    biothing_object=biothing_object,
                     param_type=_string_types(_all.get(param, {}).get('type', '')),
-                    param_default_value=_param_default_values(_all.get(param, {}).get('default', '')), 
+                    param_default_value=_param_default_values(_all.get(param, {}).get('default', '')),
                     param_max=_param_max(_all.get(param, {}).get('max', '')))),
                 ('schema', {'type': _schema_types(_all.get(param, {}).get('type', ''))})
-                ]))
             ]))
+        ]))
     return _ret
-              
+
 def _get_schemas(settings, biothing_object, url):
     return OrderedDict([
         ("string_or_array", {
@@ -68,9 +74,9 @@ def _get_schemas(settings, biothing_object, url):
                 {"type": "object", "properties": {"_score": {"type": "number", "format": "float"}, "query": {"type": "string"}}}
             ]}}),
         ("ErrorResult", {"type": "object",
-            "properties": {"success": {"type": "boolean"}, "message": {"type": "string"}}}),
-        ("{}".format(biothing_object.title()), {"type": "object", "required": ["_id"], "properties": {"_id":{"type": "string"}}})
-        ])
+                         "properties": {"success": {"type": "boolean"}, "message": {"type": "string"}}}),
+        ("{}".format(biothing_object.title()), {"type": "object", "required": ["_id"], "properties": {"_id": {"type": "string"}}})
+    ])
 
 def _schema_types(t):
     if t == type(bool()):
@@ -109,7 +115,7 @@ def _param_max(m):
 def _query_get_params(settings):
     _ret = {}
     for d in [settings.QUERY_GET_CONTROL_KWARGS, settings.QUERY_GET_ES_KWARGS,
-        settings.QUERY_GET_ESQB_KWARGS, settings.QUERY_GET_TRANSFORM_KWARGS]:
+              settings.QUERY_GET_ESQB_KWARGS, settings.QUERY_GET_TRANSFORM_KWARGS]:
         for k, v in d.items():
             if k != 'q' and k in getattr(settings, 'KWARG_DESCRIPTIONS', {}):
                 _ret.setdefault(k, v)
@@ -122,7 +128,7 @@ def _query_get_params(settings):
 def _metadata_params(settings):
     _ret = {}
     for d in [settings.METADATA_GET_CONTROL_KWARGS, settings.METADATA_GET_ES_KWARGS,
-        settings.METADATA_GET_ESQB_KWARGS, settings.METADATA_GET_TRANSFORM_KWARGS]:
+              settings.METADATA_GET_ESQB_KWARGS, settings.METADATA_GET_TRANSFORM_KWARGS]:
         for k, v in d.items():
             if k in getattr(settings, 'KWARG_DESCRIPTIONS', {}):
                 _ret.setdefault(k, v)
@@ -134,7 +140,7 @@ def _metadata_params(settings):
 def _annotation_get_params(settings):
     _ret = {}
     for d in [settings.ANNOTATION_GET_CONTROL_KWARGS, settings.ANNOTATION_GET_ES_KWARGS,
-        settings.ANNOTATION_GET_ESQB_KWARGS, settings.ANNOTATION_GET_TRANSFORM_KWARGS]:
+              settings.ANNOTATION_GET_ESQB_KWARGS, settings.ANNOTATION_GET_TRANSFORM_KWARGS]:
         for k, v in d.items():
             if k != 'q' and k in getattr(settings, 'KWARG_DESCRIPTIONS', {}):
                 _ret.setdefault(k, v)
@@ -147,7 +153,7 @@ def _annotation_get_params(settings):
 def _query_post_params(settings):
     _ret = {}
     for d in [settings.QUERY_POST_CONTROL_KWARGS, settings.QUERY_POST_ES_KWARGS,
-        settings.QUERY_POST_ESQB_KWARGS, settings.QUERY_POST_TRANSFORM_KWARGS]:
+              settings.QUERY_POST_ESQB_KWARGS, settings.QUERY_POST_TRANSFORM_KWARGS]:
         for k, v in d.items():
             if k != 'q' and k != 'scopes' and k in getattr(settings, 'KWARG_DESCRIPTIONS', {}):
                 _ret.setdefault(k, v)
@@ -159,7 +165,7 @@ def _query_post_params(settings):
 def _annotation_post_params(settings):
     _ret = {}
     for d in [settings.ANNOTATION_POST_CONTROL_KWARGS, settings.ANNOTATION_POST_ES_KWARGS,
-        settings.ANNOTATION_POST_ESQB_KWARGS, settings.ANNOTATION_POST_TRANSFORM_KWARGS]:
+              settings.ANNOTATION_POST_ESQB_KWARGS, settings.ANNOTATION_POST_TRANSFORM_KWARGS]:
         for k, v in d.items():
             if k != 'ids' and k in getattr(settings, 'KWARG_DESCRIPTIONS', {}):
                 _ret.setdefault(k, v)
@@ -174,15 +180,15 @@ def _get_all_params(settings):
         return all_params
 
     for d in [settings.ANNOTATION_GET_CONTROL_KWARGS, settings.ANNOTATION_GET_ES_KWARGS,
-        settings.ANNOTATION_GET_ESQB_KWARGS, settings.ANNOTATION_GET_TRANSFORM_KWARGS,
-        settings.ANNOTATION_POST_CONTROL_KWARGS, settings.ANNOTATION_POST_ES_KWARGS,
-        settings.ANNOTATION_POST_ESQB_KWARGS, settings.ANNOTATION_POST_TRANSFORM_KWARGS,
-        settings.QUERY_GET_CONTROL_KWARGS, settings.QUERY_GET_ES_KWARGS,
-        settings.QUERY_GET_ESQB_KWARGS, settings.QUERY_GET_TRANSFORM_KWARGS,
-        settings.QUERY_POST_CONTROL_KWARGS, settings.QUERY_POST_ES_KWARGS,
-        settings.QUERY_POST_ESQB_KWARGS, settings.QUERY_POST_TRANSFORM_KWARGS,
-        settings.METADATA_GET_CONTROL_KWARGS, settings.METADATA_GET_ES_KWARGS,
-        settings.METADATA_GET_ESQB_KWARGS, settings.METADATA_GET_TRANSFORM_KWARGS]:
+              settings.ANNOTATION_GET_ESQB_KWARGS, settings.ANNOTATION_GET_TRANSFORM_KWARGS,
+              settings.ANNOTATION_POST_CONTROL_KWARGS, settings.ANNOTATION_POST_ES_KWARGS,
+              settings.ANNOTATION_POST_ESQB_KWARGS, settings.ANNOTATION_POST_TRANSFORM_KWARGS,
+              settings.QUERY_GET_CONTROL_KWARGS, settings.QUERY_GET_ES_KWARGS,
+              settings.QUERY_GET_ESQB_KWARGS, settings.QUERY_GET_TRANSFORM_KWARGS,
+              settings.QUERY_POST_CONTROL_KWARGS, settings.QUERY_POST_ES_KWARGS,
+              settings.QUERY_POST_ESQB_KWARGS, settings.QUERY_POST_TRANSFORM_KWARGS,
+              settings.METADATA_GET_CONTROL_KWARGS, settings.METADATA_GET_ES_KWARGS,
+              settings.METADATA_GET_ESQB_KWARGS, settings.METADATA_GET_TRANSFORM_KWARGS]:
         for k, v in d.items():
             all_params.setdefault(k, v)
 
@@ -193,7 +199,7 @@ def _query_get_description(settings, biothing_object, url):
     _parameters = [OrderedDict([
         ('name', 'q'),
         ('in', 'query'),
-        ('description', _descriptions.get('q',{}).get('text_template').format(doc_query_syntax_url='')),
+        ('description', _descriptions.get('q', {}).get('text_template').format(doc_query_syntax_url='')),
         ('required', True),
         ('example', getattr(settings, 'STATUS_CHECK', {}).get('id', 'EXAMPLE')),
         ('schema', {'type': 'string'})
@@ -206,7 +212,8 @@ def _query_get_description(settings, biothing_object, url):
             ]))
     return OrderedDict([
         ('tags', ["query"]),
-        ('summary', 'Make {biothing_object} queries and return matching {biothing_object} hits. Supports JSONP and CORS as well.'.format(biothing_object=biothing_object)),
+        ('summary', 'Make {biothing_object} queries and return matching {biothing_object} hits. Supports JSONP and CORS as well.'.format(
+            biothing_object=biothing_object)),
         ('parameters', _parameters),
         ('responses', OrderedDict([
             ('200', OrderedDict([
@@ -216,7 +223,7 @@ def _query_get_description(settings, biothing_object, url):
             ('400', OrderedDict([
                 ('description', 'A response indicating an improperly formatted query'),
                 ('content', {'application/json': {'schema': {'$ref': '#/components/schemas/ErrorResult'}}})
-            ]))    
+            ]))
         ]))])
 
 def _query_post_description(settings, biothing_object, url):
@@ -251,7 +258,7 @@ def _query_post_description(settings, biothing_object, url):
             ('400', OrderedDict([
                 ('description', 'A response indicating an improperly formatted query'),
                 ('content', {'application/json': {'schema': {'$ref': '#/components/schemas/ErrorResult'}}})
-            ]))]))    
+            ]))]))
     ])
 
 def _annotation_get_description(settings, biothing_object, url):
@@ -274,7 +281,8 @@ def _annotation_get_description(settings, biothing_object, url):
             ]))
     return OrderedDict([
         ('tags', ["{}".format(biothing_object)]),
-        ('summary', 'Retrieve {biothing_object} objects based on {biothing_object} id.  Supports JSONP and CORS as well.'.format(biothing_object=biothing_object)),
+        ('summary', 'Retrieve {biothing_object} objects based on {biothing_object} id.  Supports JSONP and CORS as well.'.format(
+            biothing_object=biothing_object)),
         ('parameters', _parameters),
         ('responses', OrderedDict([
             ('200', OrderedDict([
@@ -283,7 +291,7 @@ def _annotation_get_description(settings, biothing_object, url):
             ])),
             ('404', OrderedDict([
                 ('description', 'A response indicating an unknown {biothing_object} id'.format(biothing_object=biothing_object))
-            ]))]))    
+            ]))]))
     ])
 
 def _annotation_post_description(settings, biothing_object, url):
@@ -302,7 +310,7 @@ def _annotation_post_description(settings, biothing_object, url):
             ('properties', {'ids': OrderedDict([
                 ('description', _descriptions.get('ids', {}).get('text_template', '').format(
                     biothing_object=biothing_object, param_type=' Type: string (list).', param_default_value='',
-                    param_max = _param_max(getattr(settings, 'ANNOTATION_POST_CONTROL_KWARGS', {}).get('max', 1000)))),
+                    param_max=_param_max(getattr(settings, 'ANNOTATION_POST_CONTROL_KWARGS', {}).get('max', 1000)))),
                 ('type', 'string')
             ])}),
             ('required', ['ids'])])}}}),
@@ -315,7 +323,7 @@ def _annotation_post_description(settings, biothing_object, url):
             ('400', OrderedDict([
                 ('description', 'A response indicating an improperly formatted query'),
                 ('content', {'application/json': {'schema': {'$ref': '#/components/schemas/ErrorResult'}}})
-            ]))]))    
+            ]))]))
     ])
 
 def _metadata_description(settings, biothing_object, url):
@@ -349,8 +357,9 @@ def create_openapi_json(_settings, **kwargs):
         ("openapi", kwargs.get('openapi', '3.0.0')),
         ("info", OrderedDict([
             ("version", kwargs.get('info__version', '{:.1f}'.format(float(getattr(_settings, 'API_VERSION', 'v1').lstrip('v'))))),
-            ("title", kwargs.get('info__title', '{} API'.format(getattr(_settings,'GA_TRACKER_URL', 'MyBiothing.info')))),
-            ("description", kwargs.get('info__description', getattr(_settings, 'KWARG_DESCRIPTION', {}).get('_root', 'Documentation of the {url} {biothing_object} query web services.  Learn more about [{url}](http://{url}/)'.format(url=_url, biothing_object=_biothing_object)))),
+            ("title", kwargs.get('info__title', '{} API'.format(getattr(_settings, 'GA_TRACKER_URL', 'MyBiothing.info')))),
+            ("description", kwargs.get('info__description', getattr(_settings, 'KWARG_DESCRIPTION', {}).get(
+                '_root', 'Documentation of the {url} {biothing_object} query web services.  Learn more about [{url}](http://{url}/)'.format(url=_url, biothing_object=_biothing_object)))),
             ("termsOfService", kwargs.get('info__termsOfService', 'http://{url}/terms'.format(url=_url))),
             ("contact", OrderedDict([
                 ("name", kwargs.get('info__contact__name', 'Chunlei Wu')),
@@ -363,19 +372,19 @@ def create_openapi_json(_settings, **kwargs):
             ("url", "http://{url}/{version}".format(url=_url, version=getattr(_settings, 'API_VERSION', 'v1'))),
             ("description", "Production server")
         ]),
-        OrderedDict([
-            ("url", "https://{url}/{version}".format(url=_url, version=getattr(_settings, 'API_VERSION', 'v1'))),
-            ("description", "Encrypted Production server")
-        ])]),
+            OrderedDict([
+                ("url", "https://{url}/{version}".format(url=_url, version=getattr(_settings, 'API_VERSION', 'v1'))),
+                ("description", "Encrypted Production server")
+            ])]),
         ("tags", [{"name": "{biothing_object}".format(biothing_object=_biothing_object)},
                   {"name": "query"},
                   {"name": "metadata"}]),
         ("paths", OrderedDict([
-            ("/{biothing_object}/{{{biothing_object}id}}".format(biothing_object=_biothing_object), 
-            # annotation GET
-            OrderedDict([
-                ("get", _annotation_get_description(settings=_settings, biothing_object=_biothing_object, url=_url))
-            ])),
+            ("/{biothing_object}/{{{biothing_object}id}}".format(biothing_object=_biothing_object),
+             # annotation GET
+             OrderedDict([
+                 ("get", _annotation_get_description(settings=_settings, biothing_object=_biothing_object, url=_url))
+             ])),
             # annotation POST
             ("/{biothing_object}".format(biothing_object=_biothing_object), OrderedDict([
                 ("post", _annotation_post_description(settings=_settings, biothing_object=_biothing_object, url=_url))

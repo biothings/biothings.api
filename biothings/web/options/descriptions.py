@@ -17,7 +17,7 @@ KWARG_DESCRIPTIONS = {
     'email': {
         'name': 'email',
         'text_template': 'If you are regular users of our services, we encourage you to provide us with an email, so that we can better track the usage or follow up with you.'},
-    'out_format': {
+    'format': {
         'name': 'format',
         'text_template': 'controls output format of server response, currently supports: "json", "jsonld", "html".{param_type}{param_default_value}{param_max}'},
     'aggs': {
