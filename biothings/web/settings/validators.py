@@ -47,9 +47,9 @@ class SubmoduleValidator():
         self._prefixes = set()
 
     def validate(self, config):
-        assert config.API_PREFIX, "API_PREFIX must be defined for a submodule."
-        assert config.API_PREFIX not in self._prefixes, "API_PREFIX conflicts."
-        self._prefixes.add(config.API_PREFIX)
+        assert config.APP_PREFIX, "APP_PREFIX must be defined for a submodule."
+        assert config.APP_PREFIX not in self._prefixes, "APP_PREFIX conflicts."
+        self._prefixes.add(config.APP_PREFIX)
 
 class MongoParamValidaor():
 
