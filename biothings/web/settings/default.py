@@ -68,7 +68,6 @@ SQL_ARGS = {
 # Routing
 APP_PREFIX = ''
 APP_VERSION = 'v1'
-APP_FRAMEWORK = 'tornado'  # TODO
 APP_LIST = [
     (r"/", 'biothings.web.handlers.FrontPageHandler'),
     (r"/({pre})/", 'tornado.web.RedirectHandler', {"url": "/{0}"}),

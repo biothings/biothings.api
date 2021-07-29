@@ -28,8 +28,41 @@ from tornado.options import define, options
 
 logger = logging.getLogger(__name__)
 
+class BiothingsAPIBaseLauncher():
+    def __init__(self, config=None):
+        logging.info("Biothings API %s", __version__)
+        self.config = configs.load(config)
+        self.settings = dict(debug=False)
 
-class BiothingsAPILauncher():
+    def _configure_logging(self):
+        root_logger = logging.getLogger()
+
+        if isinstance(self.config, configs.ConfigPackage):
+            config = self.config.root
+        else:  # configs.ConfigModule
+            config = self.config
+
+        if hasattr(config, "LOGGING_FORMAT"):
+            for handler in root_logger.handlers:
+                if isinstance(handler.formatter, tornado.log.LogFormatter):
+                    handler.formatter._fmt = config.LOGGING_FORMAT
+
+        logging.getLogger('urllib3').setLevel(logging.ERROR)
+        logging.getLogger('elasticsearch').setLevel(logging.WARNING)
+
+        if self.settings['debug']:
+            root_logger.setLevel(logging.DEBUG)
+        else:
+            root_logger.setLevel(logging.INFO)
+
+    def get_server(self):
+        raise NotImplementedError()
+
+    def start(self, port=8000):
+        raise NotImplementedError()
+
+
+class TornadoAPILauncher(BiothingsAPIBaseLauncher):
     """
     Configure a Biothings Web API Server.
 
@@ -52,10 +85,8 @@ class BiothingsAPILauncher():
         # About debug mode in tornado:
         # https://www.tornadoweb.org/en/stable/guide/running.html \
         # #debug-mode-and-automatic-reloading
-        logging.info("Biothings API %s", __version__)
-        self.config = configs.load(config)
+        super().__init__(config)
         self.handlers = []  # additional handlers
-        self.settings = dict(debug=False)
         self.host = None
 
     @staticmethod
@@ -74,27 +105,6 @@ class BiothingsAPILauncher():
         #tornado.web.Application.settings
         """
         self.settings.update(settings)
-
-    def _configure_logging(self):
-        root_logger = logging.getLogger()
-
-        if isinstance(self.config, configs.ConfigPackage):
-            config = self.config.root
-        else:  # configs.ConfigModule
-            config = self.config
-
-        if hasattr(config, "LOGGING_FORMAT"):
-            for handler in root_logger.handlers:
-                if isinstance(handler.formatter, tornado.log.LogFormatter):
-                    handler.formatter._fmt = config.LOGGING_FORMAT
-
-        logging.getLogger('urllib3').setLevel(logging.ERROR)
-        logging.getLogger('elasticsearch').setLevel(logging.WARNING)
-
-        if self.settings['debug']:
-            root_logger.setLevel(logging.DEBUG)
-        else:
-            root_logger.setLevel(logging.INFO)
 
     def get_server(self):
         """
@@ -120,11 +130,27 @@ class BiothingsAPILauncher():
         loop = tornado.ioloop.IOLoop.instance()
         loop.start()
 
+class FlaskAPILauncher(BiothingsAPIBaseLauncher):
+
+    def get_server(self):
+        from biothings.web.applications import FlaskBiothingsAPI
+        return FlaskBiothingsAPI.get_app(self.config)
+
+    def start(self, port=8000):
+        app = self.get_server()
+        app.run(port=port)
+
+class FastAPILauncher(BiothingsAPIBaseLauncher):
+    pass
+
+
+BiothingsAPILauncher = TornadoAPILauncher
 
 define("port", default=8000, help="run on the given port")
 define("debug", default=False, help="debug settings like logging preferences")
 define("address", default=None, help="host address to listen to, default to all interfaces")
 define("autoreload", default=False, help="auto reload the web server when file change detected")
+define("framework", default="tornado", help="the web freamework to start a web server")
 define("conf", default='config', help="specify a config module name to import")
 define("dir", default=os.getcwd(), help="path to app directory that includes config.py")
 
@@ -147,18 +173,30 @@ def main(app_handlers=None, app_settings=None, use_curl=False):
 
     app_handlers = app_handlers or []
     app_settings = app_settings or {}
-    launcher = BiothingsAPILauncher(options.conf)
 
-    if app_settings:
-        launcher.settings.update(app_settings)
-    if app_handlers:
-        launcher.handlers = app_handlers
-    if use_curl:
-        launcher.use_curl()
+    if options.framework == "tornado":
+        launcher = TornadoAPILauncher(options.conf)
+    elif options.framework == "flask":
+        launcher = FlaskAPILauncher(options.conf)
+    elif options.framework == "fastapi":
+        launcher = FlaskAPILauncher(options.conf)
+    else:  # there are only three supported framework for now
+        raise ValueError("Unsupported framework.")
 
-    launcher.host = options.address
-    launcher.update(debug=options.debug)
-    launcher.update(autoreload=options.autoreload)
+    try:
+        if app_settings:
+            launcher.settings.update(app_settings)
+        if app_handlers:
+            launcher.handlers = app_handlers
+        if use_curl:
+            launcher.use_curl()
+
+        launcher.host = options.address
+        launcher.update(debug=options.debug)
+        launcher.update(autoreload=options.autoreload)
+    except:
+        pass
+
     launcher.start(options.port)
 
 

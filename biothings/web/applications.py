@@ -147,8 +147,32 @@ class TornadoBiothingsAPI(tornado.web.Application):
         for handler in handlers:
             self.biothings.handlers[handler[0]] = handler[1]
 
-class FlaskBiothingsAPI():
-    pass
+
+try:
+    from flask import Flask
+
+    class FlaskBiothingsAPI(Flask):
+        @classmethod
+        def get_app(cls, config):
+            app = cls(__name__)
+            app.biothings = BiothingsNamespace(config)
+            from biothings.web.handlers.flasks import routes
+            for route in routes:
+                setting_attr = '_'.join((route.name, 'kwargs')).upper()
+                setting_options = getattr(config, setting_attr, {})
+                app.biothings.optionsets.add(route.name, setting_options)
+                if isinstance(route.pattern, str):
+                    route.pattern = [route.pattern]
+                for pattern in route.pattern:
+                    app.add_url_rule(pattern, route.name,
+                                     route, methods=route.methods)
+            return app
+
+except Exception as exc:
+    class FlaskBiothingsAPI(Flask):
+        @classmethod
+        def get_app(cls, config):
+            raise exc
 
 class FastAPIBiothingsAPI():
     pass
