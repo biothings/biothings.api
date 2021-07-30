@@ -678,9 +678,8 @@ class OptionsManager(UserDict):
                 self.data[name].setup()  # required
 
     def log(self):
-        # TODO OpenAPI Serialization here.
-        res = self._serialize(self)
-        return res
+        # serializable API-ready format
+        return self._serialize(self)
 
     def _serialize(self, obj):
         if isinstance(obj, abc.Mapping):
