@@ -137,6 +137,9 @@ class FlaskAPILauncher(BiothingsAPIBaseLauncher):
         if dev:
             app = self.get_server()
             app.run(port=port)
+
+        # example implementation
+        # for gevent WSGI server
         else:
             server = self.get_server()
             server.serve_forever()
