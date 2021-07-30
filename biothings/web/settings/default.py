@@ -13,7 +13,8 @@ LOGGING_FORMAT = "%(color)s[%(levelname)s %(name)s:%(lineno)d]%(end_color)s %(me
 # *****************************************************************************
 ES_HOST = 'localhost:9200'
 ES_INDICES = {
-    None: '_all'
+    None: '_all',
+    'doc': '_all',
     # "biothing_type_1": "index1",
     # "biothing_type_2": "index1,alias1,pattern_*"
 }
