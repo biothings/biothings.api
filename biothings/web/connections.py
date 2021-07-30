@@ -120,16 +120,12 @@ def get_es_client(hosts=None, async_=False, **settings):
 
         if not region:  # not in ~/.aws/config
             region = os.environ.get("AWS_REGION")
-
         if not region:  # not in environment variable
-            try:
+            try:  # assume same-region service access
                 res = requests.get(AWS_META_URL)
                 region = res.json()["region"]
-            except:
-                pass
-
-        if not region:  # not running in VPC (classic EC2)
-            region = "us-west-2"  # default
+            except:  # not running in VPC
+                region = "us-west-2"  # default
 
         # find credentials
         credentials = session.get_credentials()
