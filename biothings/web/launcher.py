@@ -135,7 +135,7 @@ class FlaskAPILauncher(BiothingsAPIBaseLauncher):
 
     def start(self, port=8000, dev=True):
         if dev:
-            app = self.get_server()
+            app = self.get_app()
             app.run(port=port)
 
         # example implementation
