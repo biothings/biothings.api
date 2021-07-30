@@ -159,7 +159,7 @@ try:
         def get_app(cls, config):
             app = cls(__name__)
             app.biothings = BiothingsNamespace(config)
-            from biothings.web.handlers.flasks import routes
+            from biothings.web.handlers._flask import routes
             for route in routes:
                 setting_attr = '_'.join((route.name, 'kwargs')).upper()
                 setting_options = getattr(config, setting_attr, {})
