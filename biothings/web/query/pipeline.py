@@ -164,7 +164,7 @@ class ESQueryPipeline(QueryPipeline):  # over async client
     # >>> pipeline.fetch("1017", _source=["symbol"])
     # {'_id': '1017', '_version': 1, 'symbol': 'CDK2'}
     #
-    # >>> pipeline.search(q="1017", _source=["symbol"])
+    # >>> pipeline.search("1017", _source=["symbol"])
     # {
     #   'took': 11,
     #   'total': 1,
