@@ -60,6 +60,9 @@ class APISpecificationHandler(BaseAPIHandler):
     # Proof of concept
     # Not documented for public access
 
+    # There are multiple **correctness** issues
+    # For internal use only. Use with caution.
+
     @staticmethod
     def _type_to_schema(_type):  # for query strings
         _mapping = {
@@ -91,9 +94,10 @@ class APISpecificationHandler(BaseAPIHandler):
                 param, "query",
                 option.get("required", False)
             )
-            _param.schema(
-                APISpecificationHandler
-                ._type_to_schema(_type))
+            _schema = APISpecificationHandler._type_to_schema(_type)
+            if option.get("default"):
+                _schema["default"] = option["default"]
+            _param.schema(_schema)
 
     def get(self):
         openapi = OpenAPIDocumentBuilder()
@@ -101,37 +105,46 @@ class APISpecificationHandler(BaseAPIHandler):
         for path, handler in self.biothings.handlers.items():
             if not issubclass(handler, BaseAPIHandler):
                 continue
-            _path = openapi.path(path.rstrip("?"))
-            # if handler.__doc__:
-            #     _description = handler.__doc__.strip()
-            #     _description = _description.replace("\n", "")
-            #     _path.description(_description)
-            if getattr(handler, "name", None) in self.biothings.optionsets:
-                optionset = self.biothings.optionsets[handler.name]
-                for param, option in optionset.get("*", {}).items():
-                    self._binds(_path, param, option)
+            if path != "/":
+                path = path.rstrip("/?")
+            PATH_PARAM = r"(?:/([^/]+))"
+            PATH_TOKEN = r"/{id}"
+            if PATH_PARAM in path:
+                # this is pretty much hard-coded.
+                # the corresponding path param is
+                # also likely not handled correctly.
+                path = path.replace(PATH_PARAM, PATH_TOKEN)
+            _path = openapi.path(path)
+            optionset = self.biothings.optionsets[handler.name]
+            for param, option in optionset.get("*", {}).items():
+                self._binds(_path, param, option)
             for method in ("get", "post", "put", "delete"):
-                if getattr(handler, method) is not type(self)._unimplemented_method:
-                    _method = getattr(_path, method)()
-                    if "optionset" in dir():
-                        for param, option in optionset.get(method.upper(), {}).items():
-                            self._binds(_method, param, option)
-                        if method == "post":
-                            # might be simplified by
-                            # using "$ref" syntax
-                            _method.document["requestBody"] = {
-                                "content": {
-                                    "application/json": {"schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            key: self._type_to_schema(val.get("type", str).__name__)
-                                            for key, val in optionset.get(method.upper(), {}).items()
-                                        }
-                                    }},
-                                    "application/yaml": {},
-                                    "application/x-www-form-urlencoded": {},
-                                    "multipart/form-data": {}
+                if getattr(handler, method) is type(self)._unimplemented_method:
+                    continue
+                _method = getattr(_path, method)()
+                for param, option in optionset.get(method.upper(), {}).items():
+                    self._binds(_method, param, option)
+                if PATH_TOKEN in path:
+                    for param in _method.document["parameters"]:
+                        if param["name"] == "id":  # hard-coded...
+                            param["in"] = "path"
+                if method == "post":
+                    # might be simplified by using "$ref" syntax
+                    _method.document["requestBody"] = {
+                        "content": {
+                            "application/json": {"schema": {
+                                "type": "object",
+                                "properties": {
+                                    key: self._type_to_schema(val.get("type", str).__name__)
+                                    for key, val in optionset.get(method.upper(), {}).items()
                                 }
-                            }
+                            }},
+                            "application/yaml": {},
+                            "application/x-www-form-urlencoded": {},
+                            "multipart/form-data": {}
+                        }
+                    }
         self.finish(openapi.document)
+
+        # internal parameter parsing data structure
         # self.finish(self.biothings.optionsets.log())
