@@ -172,7 +172,7 @@ try:
             return app
 
 except Exception as exc:
-    class FlaskBiothingsAPI(Flask):
+    class FlaskBiothingsAPI():
         @classmethod
         def get_app(cls, config):
             raise exc
