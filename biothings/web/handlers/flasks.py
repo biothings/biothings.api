@@ -70,8 +70,8 @@ async def query(biothings, args):
     return await biothings.db.pipeline.search(**args)
 
 @route([
-    "/v1/annotation/",
-    "/v1/annotation/<id>"
+    "/v1/doc/",
+    "/v1/doc/<id>"
 ], "annotation")
 @handle_es_conn
 async def annotation(biothings, args):
