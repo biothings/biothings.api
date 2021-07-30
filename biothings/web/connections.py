@@ -4,6 +4,7 @@ Improve logging output for Elasticsearch Connections
 
 import hashlib
 import logging
+import os
 import pickle
 from functools import partial
 
@@ -116,9 +117,19 @@ def get_es_client(hosts=None, async_=False, **settings):
         # find region
         session = boto3.Session()
         region = session.region_name
+
         if not region:  # not in ~/.aws/config
-            res = requests.get(AWS_META_URL)
-            region = res.json()["region"]
+            region = os.environ.get("AWS_REGION")
+
+        if not region:  # not in environment variable
+            try:
+                res = requests.get(AWS_META_URL)
+                region = res.json()["region"]
+            except:
+                pass
+
+        if not region:  # not running in VPC (classic EC2)
+            region = "us-west-2"  # default
 
         # find credentials
         credentials = session.get_credentials()
