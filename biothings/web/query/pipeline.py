@@ -158,6 +158,26 @@ class ESQueryPipeline(QueryPipeline):  # over async client
     # of upper layer constructs, it also simplifies testing
     # by providing ioloop management, enabling sync access.
 
+    # >>> from biothings.web.query.pipeline import ESQueryPipeline
+    # >>> pipeline = ESQueryPipeline()
+    #
+    # >>> pipeline.fetch("1017", _source=["symbol"])
+    # {'_id': '1017', '_version': 1, 'symbol': 'CDK2'}
+    #
+    # >>> pipeline.search(q="1017", _source=["symbol"])
+    # {
+    #   'took': 11,
+    #   'total': 1,
+    #   'max_score': 4.0133753,
+    #   'hits': [
+    #       {
+    #           '_id': '1017',
+    #           '_score': 4.0133753,
+    #           'symbol': 'CDK2'
+    #       }
+    #   ]
+    # }
+
     def __init__(
         self, builder=None, backend=None, formatter=None, *args, **kwargs
     ):
