@@ -82,14 +82,17 @@ class TornadoBiothingsAPI(tornado.web.Application):
             setting = rule[2] if len(rule) == 3 else {}
             assert handler, rule[1]
 
-            if '{typ}' in pattern:
+            if '{typ}' in pattern or '{tps}' in pattern:
                 if not issubclass(handler, BaseQueryHandler):
-                    raise TypeError()
+                    raise TypeError("Not a biothing_type-aware handler.")
+                if '{tps}' in pattern and len(biothings.metadata.types) <= 1:
+                    continue  # '{tps}' routes only valid for multi-type apps
                 for biothing_type in biothings.metadata.types:
                     _pattern = pattern.format(
                         pre=biothings.config.APP_PREFIX,
                         ver=biothings.config.APP_VERSION,
-                        typ=biothing_type).replace('//', '/')
+                        typ=biothing_type, tps=biothing_type
+                    ).replace('//', '/')
                     _setting = dict(setting)
                     _setting['biothing_type'] = biothing_type
                     handlers[_pattern] = (_pattern, handler, _setting)
