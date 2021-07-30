@@ -177,8 +177,27 @@ except Exception as exc:
         def get_app(cls, config):
             raise exc
 
-class FastAPIBiothingsAPI():
-    pass
+try:
+    from fastapi import FastAPI
+
+    class FastAPIBiothingsAPI(FastAPI):
+        @classmethod
+        def get_app(cls, config):
+            from biothings.web.handlers import _fastapi
+            _fastapi.biothings = BiothingsNamespace(config)
+            app = cls()
+            for route in _fastapi.routes:
+                setting_attr = '_'.join((route.name, 'kwargs')).upper()
+                setting_options = getattr(config, setting_attr, {})
+                _fastapi.biothings.optionsets.add(route.name, setting_options)
+                app.get(*route.args, **route.kwargs)(route)
+            return app
+
+except Exception as exc:
+    class FastAPIBiothingsAPI():
+        @classmethod
+        def get_app(cls, config):
+            raise exc
 
 
 BiothingsAPI = TornadoBiothingsAPI

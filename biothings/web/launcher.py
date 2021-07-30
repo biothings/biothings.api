@@ -147,7 +147,19 @@ class FlaskAPILauncher(BiothingsAPIBaseLauncher):
 
 # ASGI
 class FastAPILauncher(BiothingsAPIBaseLauncher):
-    pass
+
+    # Proof of concept
+    # Not fully implemented
+
+    # from biothings.web.launcher import FastAPILauncher
+    # app = FastAPILauncher("config").get_app()
+
+    # >>> uvicorn main:app --host 0.0.0.0 --port 80
+    # INFO: Uvicorn running on http://0.0.0.0:80 (Press CTRL+C to quit)
+
+    def get_app(self):
+        from biothings.web.applications import FastAPIBiothingsAPI
+        return FastAPIBiothingsAPI.get_app(self.config)
 
 
 BiothingsAPILauncher = TornadoAPILauncher
