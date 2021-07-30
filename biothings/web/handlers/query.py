@@ -39,9 +39,7 @@ from biothings.web.analytics.events import GAEvent
 from biothings.web.handlers.base import BaseAPIHandler
 from biothings.web.query.pipeline import (QueryPipelineException,
                                           QueryPipelineInterrupt)
-from tornado.web import Finish
-
-from .exceptions import EndRequest
+from tornado.web import Finish, HTTPError
 
 __all__ = [
     'BaseQueryHandler',
@@ -196,10 +194,9 @@ def capture_exceptions(coro):
         try:
             return await coro(*args, **kwargs)
         except QueryPipelineInterrupt as itr:
-            raise EndRequest(**itr.details)
+            raise Finish(itr.details)
         except QueryPipelineException as exc:
-            kwargs = exc.details if isinstance(exc.details, dict) else {}
-            raise EndRequest(exc.code, reason=exc.summary, **kwargs)
+            raise HTTPError(exc.code, None, exc.details, reason=exc.summary)
     return _method
 
 class BiothingHandler(BaseQueryHandler):

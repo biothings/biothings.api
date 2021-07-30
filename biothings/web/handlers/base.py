@@ -29,8 +29,6 @@ from biothings.web.options import OptionError, ReqArgs
 from tornado.escape import json_decode
 from tornado.web import HTTPError, RequestHandler
 
-from .exceptions import BadRequest, EndRequest
-
 try:
     from raven.contrib.tornado import SentryMixin
 except ImportError:
@@ -137,8 +135,8 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
             args = optionset.parse(self.request.method, reqargs)
 
         except OptionError as err:
-            args = err  # for logging
-            raise BadRequest(**err.info)
+            args = err  # for logging in "finally" clause
+            raise HTTPError(400, None, err.info)
 
         else:  # set on self.args
             return args
@@ -203,11 +201,12 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
             "success": False,
             "error": reason
         }
-        # merge exception info
-        if 'exc_info' in kwargs:
+        try:  # merge exception info
             exception = kwargs['exc_info'][1]
-            if isinstance(exception, EndRequest):
-                message.update(exception.kwargs)
+            message.update(exception.args[0])
+        except:
+            pass
+
         self.finish(message)
 
     def options(self, *args, **kwargs):
