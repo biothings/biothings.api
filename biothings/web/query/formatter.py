@@ -207,10 +207,14 @@ class ESResultFormatter(ResultFormatter):
                 response['hits'] = response.pop('hits')  # order
 
             elif options.get('one'):
+                # prefer one-level presentation
+                # or structures as simple as possible
                 if len(response['hits']) == 1:
                     response = response['hits'][0]
                 elif len(response['hits']) == 0:
                     response = None
+                else:  # show a list of docs
+                    response = response['hits']
 
             return response
 
