@@ -1,3 +1,6 @@
+# Proof of concept
+# Not production ready.
+
 from types import CoroutineType
 
 import flask
@@ -43,6 +46,9 @@ def handle_es_conn(f):
     async def _(*args, **kwargs):
         biothings = flask.current_app.biothings
         del biothings.elasticsearch.async_client.transport.connection_pool
+        # this is inefficient, currently implemented for proof of concept only
+        # should just infer the event loop for the current thread and keep
+        # the other connection state instead of resetting everything.
         await biothings.elasticsearch.async_client.transport._async_init()
         try:
             response = await f(*args, **kwargs)
@@ -84,7 +90,3 @@ async def metadata(biothings, args):
     await biothings.metadata.refresh(None)
     mappings = biothings.metadata.get_mappings(None)
     return biothings.db.pipeline.formatter.transform_mapping(mappings)
-
-# TODO
-# IMPORTANT
-# Annotation Multimatch MUST return lists.
