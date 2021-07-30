@@ -25,14 +25,36 @@ from biothings.web.applications import BiothingsAPI
 from biothings.web.settings import configs
 from tornado.options import define, options
 
-
 logger = logging.getLogger(__name__)
 
 class BiothingsAPIBaseLauncher():
     def __init__(self, config=None):
         logging.info("Biothings API %s", __version__)
-        self.config = configs.load(config)
-        self.settings = dict(debug=False)
+        self.config = configs.load(config)  # for biothings APIs
+        self.settings = dict(debug=False)  # for web frameworks
+
+    def get_app(self):
+        raise NotImplementedError()
+
+    def get_server(self):
+        raise NotImplementedError()
+
+    def start(self, port=8000):
+        raise NotImplementedError()
+
+
+class TornadoAPILauncher(BiothingsAPIBaseLauncher):
+
+    # tornado uses its own event loop which is
+    # a wrapper around the asyncio event loop
+
+    def __init__(self, config=None):
+        # About debug mode in tornado:
+        # https://www.tornadoweb.org/en/stable/guide/running.html \
+        # #debug-mode-and-automatic-reloading
+        super().__init__(config)
+        self.handlers = []  # additional handlers
+        self.host = None
 
     def _configure_logging(self):
         root_logger = logging.getLogger()
@@ -55,40 +77,6 @@ class BiothingsAPIBaseLauncher():
         else:
             root_logger.setLevel(logging.INFO)
 
-    def get_server(self):
-        raise NotImplementedError()
-
-    def start(self, port=8000):
-        raise NotImplementedError()
-
-
-class TornadoAPILauncher(BiothingsAPIBaseLauncher):
-    """
-    Configure a Biothings Web API Server.
-
-    There are three parts to it:
-    * A biothings config module that defines the API handlers.
-    * Additional Tornado handlers and application settings.
-    * An asyncio event loop to run the tornado application.
-
-    The API can be started with:
-    * An external event loop by calling get_server()
-    * A default tornado event loop by calling start()
-
-    Unless started externally, debug mode:
-    * Sets proper logging levels for root logger and es,
-    * Enables debug mode on tornado except for autoreload,
-    * Disables integrated tracking and error monitoring.
-    """
-
-    def __init__(self, config=None):
-        # About debug mode in tornado:
-        # https://www.tornadoweb.org/en/stable/guide/running.html \
-        # #debug-mode-and-automatic-reloading
-        super().__init__(config)
-        self.handlers = []  # additional handlers
-        self.host = None
-
     @staticmethod
     def use_curl():
         """
@@ -98,26 +86,15 @@ class TornadoAPILauncher(BiothingsAPIBaseLauncher):
         tornado.httpclient.AsyncHTTPClient.configure(
             "tornado.curl_httpclient.CurlAsyncHTTPClient")
 
-    def update(self, **settings):
-        """
-        Update Tornado application settings. More on:
-        https://www.tornadoweb.org/en/stable/web.html \
-        #tornado.web.Application.settings
-        """
-        self.settings.update(settings)
+    def get_app(self):
+        return BiothingsAPI.get_app(self.config, self.settings, self.handlers)
 
     def get_server(self):
-        """
-        Run API in an external event loop.
-        """
-        webapp = BiothingsAPI.get_app(self.config, self.settings, self.handlers)
-        server = tornado.httpserver.HTTPServer(webapp, xheaders=True)
-        return server
+        # Use case example:
+        # Run API in an external event loop.
+        return tornado.httpserver.HTTPServer(self.get_app(), xheaders=True)
 
     def start(self, port=8000):
-        """
-        Run API in the default event loop.
-        """
         self._configure_logging()
 
         http_server = self.get_server()
@@ -130,21 +107,51 @@ class TornadoAPILauncher(BiothingsAPIBaseLauncher):
         loop = tornado.ioloop.IOLoop.instance()
         loop.start()
 
+# WSGI
 class FlaskAPILauncher(BiothingsAPIBaseLauncher):
 
-    def get_server(self):
+    # Proof of concept
+    # Not fully implemented
+
+    # Create the following file under an application folder
+    # to serve the application with a WSGI HTTP Server
+    # like Gunicorn or use with AWS Elastic Beanstalk *
+
+    # - application.py
+    # from biothings.web.launcher import FlaskAPILauncher
+    # application = FlaskAPILauncher("config").get_app()
+
+    #* https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/create-deploy-python-apps.html
+
+    def get_app(self):
         from biothings.web.applications import FlaskBiothingsAPI
         return FlaskBiothingsAPI.get_app(self.config)
 
-    def start(self, port=8000):
-        app = self.get_server()
-        app.run(port=port)
+    def get_server(self):
+        raise NotImplementedError()
+        # https://flask.palletsprojects.com/en/2.0.x/deploying/wsgi-standalone/
+        # from gevent.pywsgi import WSGIServer
+        # return WSGIServer(('', 5000), self.get_app())
 
+    def start(self, port=8000, dev=True):
+        if dev:
+            app = self.get_server()
+            app.run(port=port)
+        else:
+            server = self.get_server()
+            server.serve_forever()
+
+
+# ASGI
 class FastAPILauncher(BiothingsAPIBaseLauncher):
     pass
 
 
 BiothingsAPILauncher = TornadoAPILauncher
+
+
+# Command Line Utilities
+# --------------------------
 
 define("port", default=8000, help="run on the given port")
 define("debug", default=False, help="debug settings like logging preferences")
@@ -180,7 +187,7 @@ def main(app_handlers=None, app_settings=None, use_curl=False):
         launcher = FlaskAPILauncher(options.conf)
     elif options.framework == "fastapi":
         launcher = FlaskAPILauncher(options.conf)
-    else:  # there are only three supported framework for now
+    else:  # there are only three supported frameworks for now
         raise ValueError("Unsupported framework.")
 
     try:
