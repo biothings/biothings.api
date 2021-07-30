@@ -202,8 +202,8 @@ def main(app_handlers=None, app_settings=None, use_curl=False):
             launcher.use_curl()
 
         launcher.host = options.address
-        launcher.update(debug=options.debug)
-        launcher.update(autoreload=options.autoreload)
+        launcher.settings.update(debug=options.debug)
+        launcher.settings.update(autoreload=options.autoreload)
     except:
         pass
 
