@@ -174,7 +174,8 @@ def main(app_handlers=None, app_settings=None, use_curl=False):
         :param use_curl: Overide the default simple_httpclient with curl_httpclient
         <https://www.tornadoweb.org/en/stable/httpclient.html>
     """
-    # TODO this section might very likely have problems
+    # TODO REFINEMENT
+
     options.parse_command_line()
     _path = os.path.abspath(options.dir)
     if _path not in sys.path:
