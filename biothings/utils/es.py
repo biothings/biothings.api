@@ -294,7 +294,7 @@ class ESIndexer():
 
     def get_mapping(self):
         """return the current index mapping"""
-        m = self._es.indices.get_mapping(index=self._index, doc_type=self._doc_type)
+        m = self._es.indices.get_mapping(index=self._index, doc_type=self._doc_type, include_type_name=True)
         return m[self._index]["mappings"]
 
     def update_mapping(self, m):

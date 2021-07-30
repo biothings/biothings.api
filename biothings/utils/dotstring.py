@@ -111,7 +111,7 @@ def list_length(d, field):
 
     try:
         lst = next(key_value(d, field))
-    except StopIterator:
+    except StopIteration:
         return default_value
 
     if isinstance(lst, list):
