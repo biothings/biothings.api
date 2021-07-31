@@ -213,6 +213,8 @@ class ESQueryBuilder():
 
         elif q == '__all__' or q is None:
             search = search.query()
+            if options.aggs and not options.size:
+                options.size = 0
 
         elif q == '__any__':
             if self.allow_random_query:

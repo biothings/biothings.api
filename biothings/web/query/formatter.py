@@ -204,7 +204,9 @@ class ESResultFormatter(ResultFormatter):
             if 'aggregations' in response:
                 self.transform_aggs(response['aggregations'])
                 response['facets'] = response.pop('aggregations')
-                response['hits'] = response.pop('hits')  # order
+                hits = response.pop('hits')  # move key order
+                if hits:  # hide "hits" field when size=0
+                    response['hits'] = hits
 
             elif options.get('one'):
                 # prefer one-level presentation
