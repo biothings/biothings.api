@@ -79,6 +79,11 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         self.args_yaml = {}  # applicatoin/yaml type body
         self.event = Event()
 
+        # do not assume the data types of some the variables
+        # defined above. self.args can be a dotdict after
+        # processing. json/yaml can be any serializable objs.
+        # self.event may be replaced with its sub-classes.
+
     def prepare(self):
 
         content_type = self.request.headers.get('Content-Type', '')
