@@ -282,6 +282,11 @@ class JsonArgCvter(Converter):
 
 class ReqResult(dotdict):
 
+    # besides multi-level attribute(dot)
+    # read and write access, this class
+    # also returns None value for missing
+    # keys instead of raising an error
+
     def __str__(self):
         return f"ReqResult({pformat(self)})"
 
@@ -667,7 +672,6 @@ class OptionSet(UserDict):
                 raise err  # with helpful info
 
             if val is not None:
-                # TODO: build a new ds for returned result
                 if 'group' in option:
                     group = option['group']
                     if isinstance(group, str):
