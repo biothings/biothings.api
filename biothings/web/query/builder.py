@@ -344,6 +344,13 @@ class ESQueryBuilder():
             if key in options:
                 search = search.extra(**{key: options[key]})
 
+        # the valid values for from and size depend on the
+        # index.max_result_window elasticsearch setting.
+        
+        # more about this constraint on:
+        # https://www.elastic.co/guide/en/elasticsearch/
+        # reference/current/index-modules.html
+
         return search
 
 class MongoQueryBuilder():
