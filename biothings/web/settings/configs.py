@@ -74,11 +74,7 @@ class ConfigModule():
     '''
 
     def __init__(self, config=None, parent=None, validators=(), **kwargs):
-        '''
-        :param config: a module that configures this biothing
-            or its fully qualified name,
-            or its module file path.
-        '''
+
         self._fallback = parent  # config package
         self._primary = config
         self._override = types.SimpleNamespace()
