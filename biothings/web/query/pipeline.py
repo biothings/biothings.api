@@ -146,9 +146,24 @@ class AsyncESQueryPipeline(QueryPipeline):
         options['score'] = False
         options['one'] = True
 
+        # annotation endpoint should work on fields with reasonable
+        # uniqueness of values, like id and symbol fields. because 
+        # we do not provide pagination for this endpoint, as it is 
+        # largely unncessary, in the case of matching too many docs
+        # for one request, raise an exception instead of providing
+        # the user incomplete matches. usually, when this happends, 
+        # it indicates bad choices of values as the default fields.
+
+        MAX_MATCH = 1000
+        options['size'] = MAX_MATCH + 1
+
         result = await self.search(id, **options)
         if result is None:
             raise QueryPipelineException(404, "Not Found.")
+
+        if isinstance(result, list) and len(result) > MAX_MATCH:
+            raise QueryPipelineException(500, "Too Many Matches.")
+
         return result
 
 class ESQueryPipeline(QueryPipeline):  # over async client
