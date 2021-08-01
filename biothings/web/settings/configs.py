@@ -58,7 +58,11 @@ def load_module(config, default=None):
     raise ValueError(str(config))
 
 
-# TODO DICT LIKE ACCESS?
+# Opinion on item access []
+# The ConfigModule is intended to present a interface similar to
+# types.ModuleType or types.SimpleNamespace, and hold primarily
+# known attributes that persisit throughout the application. For
+# those reasons, item-access interface is not supported.
 
 class ConfigPackage(NamedTuple):
     root: object
