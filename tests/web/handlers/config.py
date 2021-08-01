@@ -20,11 +20,16 @@ QUERY_KWARGS['GET']['facet_size']['default'] = 3
 QUERY_KWARGS['GET']['facet_size']['max'] = 5
 
 # *****************************************************************************
-# Elasticsearch Query Builder
+# Elasticsearch Query Pipeline
 # *****************************************************************************
 ALLOW_RANDOM_QUERY = True
 ALLOW_NESTED_AGGS = True
 USERQUERY_DIR = os.path.join(os.path.dirname(__file__), 'userquery')
+
+LICENSE_TRANSFORM = {
+    "interpro": "pantherdb",  # For testing only.
+    "pantherdb.ortholog": "pantherdb"
+}
 
 # *****************************************************************************
 # Endpoints Specifics

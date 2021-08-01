@@ -197,6 +197,64 @@ class TestAnnotationGET(BiothingsWebAppTest):
         assert res['_uid'] is None
         assert res['_index'] is None
 
+    ### Additional Features ###
+
+    def test_40_license(self):
+        """ GET /v1/gene/12566?fields=pantherdb.uniprot_kb
+        {
+            "_id": "12566",
+            "_version": 1,
+            "pantherdb": {
+                "_license": "http://pantherdb.org/tou.jsp",
+                "uniprot_kb": "P97377"
+                ...
+            }
+            ...
+        }
+        """
+        res = self.request('/v1/gene/12566?fields=pantherdb.uniprot_kb').json()
+        assert res['pantherdb']['_license'] == "http://pantherdb.org/tou.jsp"
+
+    def test_41_license_transform(self):
+        """ GET /v1/gene/12566?fields=interpro
+        {
+            "_id": "12566",
+            "_version": 1,
+            "interpro": [
+                {
+                    "_license": "http://pantherdb.org/tou.jsp",
+                    "desc": "Protein kinase domain",
+                    "id": "IPR000719",
+                    "short_desc": "Prot_kinase_dom"
+                },
+                ...
+            ]
+        }
+        """
+        res = self.request('/v1/gene/12566?fields=interpro').json()
+        for dic in res['interpro']:
+            assert dic['_license'] == "http://pantherdb.org/tou.jsp"
+
+    def test_42_license_transform(self):
+        """ GET /v1/gene/12566?fields=pantherdb.ortholog
+        {
+            "_id": "12566",
+            "_version": 1,
+            "pantherdb": {
+                "_license": "http://pantherdb.org/tou.jsp",
+                "ortholog": [
+                    {
+                        "RGD": "70486",
+                        "_license": "http://pantherdb.org/tou.jsp",
+                        ...
+                    },
+                    ...
+                ],
+            }
+        """
+        res = self.request('/v1/gene/12566?fields=pantherdb.ortholog').json()
+        for dic in res['pantherdb']['ortholog']:
+            assert dic['_license'] == "http://pantherdb.org/tou.jsp"
 
 class TestAnnotationPOST(BiothingsWebAppTest):
 
