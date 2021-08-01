@@ -37,9 +37,12 @@ def load(config="config"):
 
 def load_module(config, default=None):
     """
-    Ensure config is a module.
-    If config does not evaluate,
-    Return default if it's provided.
+    Load a config module.
+
+    config:
+        1. a module object
+        2. a fully qualified module name
+        3. a file path to a module
     """
     if isinstance(config, types.ModuleType):
         return config
@@ -52,7 +55,7 @@ def load_module(config, default=None):
         return import_module(config)
     elif not config and default:
         return default
-    raise ValueError()
+    raise ValueError(str(config))
 
 
 # TODO DICT LIKE ACCESS?

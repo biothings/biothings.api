@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-from typing import KeysView
 from elasticsearch import Elasticsearch, AsyncElasticsearch
 from collections import UserDict
 

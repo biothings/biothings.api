@@ -14,12 +14,6 @@ from biothings.web.query.pipeline import *
 from biothings.web.services.health import *
 from biothings.web.services.metadata import *
 
-try:
-    from raven.contrib.tornado import AsyncSentryClient
-except ImportError:
-    __SENTRY_INSTALLED__ = False
-else:
-    __SENTRY_INSTALLED__ = True
 
 logger = logging.getLogger(__name__)
 

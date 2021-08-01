@@ -1,15 +1,9 @@
 """
-    A simple Biothings API implementation.
+    Biothings API Launcher
 
-    * Process command line arguments to setup the API.
-    * Add additional applicaion settings like handlers.
-
-    * ``port``: the port to start the API on, **default** 8000
-    * ``debug``: start the API in debug mode, **default** False
-    * ``address``: the address to start the API on, **default** 0.0.0.0
-    * ``autoreload``: restart the server when file changes, **default** False
-    * ``conf``: choose an alternative setting, **default** config
-    * ``dir``: path to app directory. **default**: current working directory
+    In this module, we have three framework-specific launchers
+    and a command-line utility to provide both programmatic and 
+    command-line access to start Biothings APIs.
 
 """
 import logging
@@ -29,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 class BiothingsAPIBaseLauncher():
     def __init__(self, config=None):
+        # see biothings.web.settings.configs.load_module
+        # for all supported ways to specify a config module
         logging.info("Biothings API %s", __version__)
         self.config = configs.load(config)  # for biothings APIs
         self.settings = dict(debug=False)  # for web frameworks
@@ -178,15 +174,7 @@ define("dir", default=os.getcwd(), help="path to app directory that includes con
 
 
 def main(app_handlers=None, app_settings=None, use_curl=False):
-    """ Start a Biothings API Server
-
-        :param app_handlers: additional web handlers to add to the app
-        :param app_settings: `Tornado application settings dictionary
-        <http://www.tornadoweb.org/en/stable/web.html#tornado.web.Application.settings>`_
-        :param use_curl: Overide the default simple_httpclient with curl_httpclient
-        <https://www.tornadoweb.org/en/stable/httpclient.html>
-    """
-    # TODO REFINEMENT
+    """ Start a Biothings API Server """
 
     options.parse_command_line()
     _path = os.path.abspath(options.dir)
