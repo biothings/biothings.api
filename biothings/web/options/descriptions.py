@@ -1,3 +1,8 @@
+# NOTE
+# This module is referenced by .swagger.py.
+# Currently none of the two files are in use.
+
+
 KWARG_DESCRIPTIONS = {
     '_source': {
         'name': 'fields',
