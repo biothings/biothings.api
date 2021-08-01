@@ -146,6 +146,9 @@ class Converter():
     # Consider implementing a very safe splitting algorithm that only works
     # for basic cases like a,b,c and use other methods like JSON input to
     # pass in complex queries.
+    #
+    # For example, for field reagent.GNF_mm+hs-MGC in Mygene:
+    # the current algorithm will split it into ['reagent.GNF_mm', 'hs-MGC'
 
     @staticmethod
     def str_to_list(val):
