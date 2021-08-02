@@ -30,7 +30,7 @@
                     <p class="lead">
                         {% for line in contents %}
                         {% block line %}
-                        {{ escape(line) }}<br />
+                        {{ line }} <br />
                         {% end %}
                         {% end %}
                     </p>

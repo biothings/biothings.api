@@ -158,6 +158,8 @@ try:
         @classmethod
         def get_app(cls, config):
             app = cls(__name__)
+            app.config['JSON_SORT_KEYS'] = False
+            app.url_map.strict_slashes = False
             app.biothings = BiothingsNamespace(config)
             from biothings.web.handlers._flask import routes
             for route in routes:
@@ -167,8 +169,15 @@ try:
                 if isinstance(route.pattern, str):
                     route.pattern = [route.pattern]
                 for pattern in route.pattern:
-                    app.add_url_rule(pattern, route.name,
-                                     route, methods=route.methods)
+                    if '{typ}' in pattern:
+                        assert len(app.biothings.metadata.types) == 1, (
+                            "Currently Biothings API on Flask only "
+                            "supports single biothings_type configuration."
+                        )
+                    pattern = pattern.replace('{typ}', app.biothings.metadata.types[0])
+                    pattern = pattern.replace('{ver}', app.biothings.config.APP_VERSION)
+                    app.add_url_rule(pattern, route.name, route, methods=route.methods)
+                    app.biothings.handlers[pattern] = route
             return app
 
 except Exception as exc:

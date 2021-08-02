@@ -1,20 +1,21 @@
-# Proof of concept
-# Not production ready.
-
+from functools import wraps
 from types import CoroutineType
 
 import flask
+from biothings.web import templates
 from biothings.web.options import OptionError
 from biothings.web.query.pipeline import (QueryPipelineException,
                                           QueryPipelineInterrupt)
+from tornado.template import Loader
+
 routes = []
 
-def route(pattern, name, methods=("GET", "POST")):
+def route(pattern, methods=("GET", "POST")):
     def A(f):
         async def B(*args, **kwargs):
             biothings = flask.current_app.biothings
             optionsets = biothings.optionsets
-            optionset = optionsets.get(name)
+            optionset = optionsets.get(f.__name__)
             if optionset:
                 try:
                     _args = optionset.parse(flask.request.method, (
@@ -33,60 +34,70 @@ def route(pattern, name, methods=("GET", "POST")):
             return result
         B.pattern = pattern
         B.methods = methods
-        B.name = name
+        B.name = f.__name__
         routes.append(B)
         return B
     return A
 
-@route("/", "homepage")
+@route("/")
 def homepage(biothings, args):
-    return "HELLO"
+    loader = Loader(templates.__path__[0])
+    template = loader.load("home.html")
+    return template.generate(
+        alert='Front Page Not Configured.',
+        title='Biothings API',
+        contents=biothings.handlers.keys(),
+        support=biothings.metadata.types,
+        url='http://biothings.io/'
+    )
 
 def handle_es_conn(f):
-    async def _(*args, **kwargs):
-        biothings = flask.current_app.biothings
-        del biothings.elasticsearch.async_client.transport.connection_pool
-        # this is inefficient, currently implemented for proof of concept only
-        # should just infer the event loop for the current thread and keep
-        # the other connection state instead of resetting everything.
-        await biothings.elasticsearch.async_client.transport._async_init()
+    @wraps(f)
+    async def _(biothings, *args, **kwargs):
+        client = biothings.elasticsearch.async_client
+        # because of the flask execution model
+        # each time the async function is executed
+        # it is executed on a different event loop
+        # reset the connections to use the active loop
+        del client.transport.connection_pool
+        await client.transport._async_init()
         try:
-            response = await f(*args, **kwargs)
+            response = await f(biothings, *args, **kwargs)
         except QueryPipelineInterrupt as itr:
             return itr.details
         except QueryPipelineException as exc:
             kwargs = exc.details if isinstance(exc.details, dict) else {}
+            kwargs["success"] = False
             kwargs["status"] = exc.code
             kwargs["reason"] = exc.summary
             return kwargs, exc.code
         finally:
-            await biothings.elasticsearch.async_client.close()
+            await client.close()
         return response
     return _
 
-@route("/v1/query", "query")
+@route("/{ver}/query")
 @handle_es_conn
 async def query(biothings, args):
-    return await biothings.db.pipeline.search(**args)
+    return await biothings.pipeline.search(**args)
 
 @route([
-    "/v1/doc/",
-    "/v1/doc/<id>"
-], "annotation")
+    "/{ver}/{typ}/",
+    "/{ver}/{typ}/<id>"])
 @handle_es_conn
 async def annotation(biothings, args):
     # could be a list, in which case we need jsonify.
-    return flask.jsonify(await biothings.db.pipeline.fetch(**args))
+    return flask.jsonify(await biothings.pipeline.fetch(**args))
 
-@route("/v1/metadata", "metadata")
+@route("/{ver}/metadata")
 @handle_es_conn
 async def metadata(biothings, args):
     await biothings.metadata.refresh(None)
     return biothings.metadata.get_metadata(None)
 
-@route("/v1/metadata/fields", "fields")
+@route("/{ver}/metadata/fields")
 @handle_es_conn
-async def metadata(biothings, args):
+async def fields(biothings, args):
     await biothings.metadata.refresh(None)
     mappings = biothings.metadata.get_mappings(None)
-    return biothings.db.pipeline.formatter.transform_mapping(mappings)
+    return biothings.pipeline.formatter.transform_mapping(mappings)
