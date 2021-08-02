@@ -1,6 +1,14 @@
 # Proof of concept
 # Not production ready.
 
+# These routes represent a native implementaton
+# of the biothings apis with limited functionality
+
+# A comprehensive translation of all biothings
+# default parameters may require building the
+# handler functions with FunctionType and AST
+# https://docs.python.org/3.8/library/ast.html
+
 from types import SimpleNamespace
 
 from biothings.web.query.pipeline import (QueryPipelineException,
