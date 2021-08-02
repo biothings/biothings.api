@@ -190,7 +190,7 @@ def main(app_handlers=None, app_settings=None, use_curl=False):
     elif options.framework == "flask":
         launcher = FlaskAPILauncher(options.conf)
     elif options.framework == "fastapi":
-        launcher = FlaskAPILauncher(options.conf)
+        launcher = FastAPILauncher(options.conf)
     else:  # there are only three supported frameworks for now
         raise ValueError("Unsupported framework.")
 
