@@ -1,8 +1,22 @@
 from elasticsearch import Elasticsearch, AsyncElasticsearch
 from collections import UserDict
 
-class HCResult(UserDict):
-    pass  # Health Check Result
+class _HCResult():
+
+    MIN_RES_FLD = 'status'
+
+    def __init__(self, verbose=False):
+        self._verbose = verbose
+        self._content = dict(success=True)
+
+    def update(self, dic):
+        if self._verbose:
+            self._content.update(dic)
+        elif self.MIN_RES_FLD in dic:
+            self._content[self.MIN_RES_FLD] = dic[self.MIN_RES_FLD]
+
+    def to_dict(self):
+        return dict(self._content)
 
 class DBHealth():
 
@@ -57,34 +71,38 @@ class ESHealth(DBHealth):
         #   "id": "1017"
         # }
 
-    async def async_check(self, **kwargs):
+    async def async_check(self, verbose=False):
         assert isinstance(self.client, AsyncElasticsearch)
-        response = HCResult()
+
+        # this endpoint might be accessed frequently,
+        # keep the default response minimal by default.
+
+        response = _HCResult(verbose)
         response.update(await self.client.cluster.health())
 
-        if kwargs.get('info'):
+        if verbose:  # request additional information
             response.update(await self.client.info())
 
         if self.payload:
             document = await self.client.get(**self.payload)
-            response['payload'] = self.payload
-            response['document'] = document
+            response.update({'payload': self.payload})
+            response.update({'document': document})
 
-        return response
+        return response.to_dict()
 
     def check(self):
         assert isinstance(self.client, Elasticsearch)
-        return HCResult(self.client.cluster.health())
+        return self.client.cluster.health()
 
 class MongoHealth(DBHealth):
 
     def check(self, **kwargs):
         # typical response: {'ok': 1.0}
-        return HCResult(self.client.command('ping'))
+        return self.client.command('ping')
 
 class SQLHealth(DBHealth):
 
     def check(self, **kwargs):
         # https://docs.sqlalchemy.org/en/13/core/connections.html
         # #sqlalchemy.engine.Connection.closed
-        return HCResult(closed=self.client.closed)
+        return dict(closed=self.client.closed)

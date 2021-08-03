@@ -101,3 +101,8 @@ async def fields(biothings, args):
     await biothings.metadata.refresh(None)
     mappings = biothings.metadata.get_mappings(None)
     return biothings.pipeline.formatter.transform_mapping(mappings)
+
+@route("/status")
+@handle_es_conn
+async def status(biothings, args):
+    return await biothings.health.async_check()

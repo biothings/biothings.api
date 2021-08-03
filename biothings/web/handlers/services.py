@@ -22,22 +22,10 @@ class StatusHandler(BaseHandler):
     async def _check(self, dev=False):
 
         try:  # some db connections support async operations
-            response = await self.biothings.health.async_check(info=dev)
+            response = await self.biothings.health.async_check(dev)
         except (AttributeError, NotImplementedError):
             response = self.biothings.health.check()
-
-        if not dev:
-            return {
-                # this endpoint might be accessed frequently,
-                # keep the default response minimal. This is
-                # especially useful when the document payload
-                # is very large. Also useful when the automated
-                # healch check only support GET requests.
-                "success": True,
-                "status": response.get("status")
-            }
-
-        return dict(response)
+        return response
 
 class FrontPageHandler(BaseHandler):
 
