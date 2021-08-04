@@ -91,3 +91,67 @@ class TestMetadata(BiothingsWebAppTest):
         assert res
         for key in res:
             assert key.startswith('accession')
+
+    # any access to the metadata endpoint would trigger an internal
+    # refresh on the metadata service, which feeds the values for
+    # other components like license injection in the formatter.
+
+    def test_20_license(self):
+        """ GET /v1/gene/12566?fields=pantherdb.uniprot_kb
+        {
+            "_id": "12566",
+            "_version": 1,
+            "pantherdb": {
+                "_license": "http://pantherdb.org/tou.jsp",
+                "uniprot_kb": "P97377"
+                ...
+            }
+            ...
+        }
+        """
+        self.request('/v1/metadata/')  # refresh internal metadata
+        res = self.request('/v1/gene/12566?fields=pantherdb.uniprot_kb').json()
+        assert res['pantherdb']['_license'] == "http://pantherdb.org/tou.jsp"
+
+    def test_21_license_transform(self):
+        """ GET /v1/gene/12566?fields=interpro
+        {
+            "_id": "12566",
+            "_version": 1,
+            "interpro": [
+                {
+                    "_license": "http://pantherdb.org/tou.jsp",
+                    "desc": "Protein kinase domain",
+                    "id": "IPR000719",
+                    "short_desc": "Prot_kinase_dom"
+                },
+                ...
+            ]
+        }
+        """
+        self.request('/v1/metadata/')  # refresh internal metadata
+        res = self.request('/v1/gene/12566?fields=interpro').json()
+        for dic in res['interpro']:
+            assert dic['_license'] == "http://pantherdb.org/tou.jsp"
+
+    def test_22_license_transform(self):
+        """ GET /v1/gene/12566?fields=pantherdb.ortholog
+        {
+            "_id": "12566",
+            "_version": 1,
+            "pantherdb": {
+                "_license": "http://pantherdb.org/tou.jsp",
+                "ortholog": [
+                    {
+                        "RGD": "70486",
+                        "_license": "http://pantherdb.org/tou.jsp",
+                        ...
+                    },
+                    ...
+                ],
+            }
+        """
+        self.request('/v1/metadata/')  # refresh internal metadata
+        res = self.request('/v1/gene/12566?fields=pantherdb.ortholog').json()
+        for dic in res['pantherdb']['ortholog']:
+            assert dic['_license'] == "http://pantherdb.org/tou.jsp"
