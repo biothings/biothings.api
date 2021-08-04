@@ -41,7 +41,7 @@ install_requires = [
     'requests-aws4auth',
     'tornado==6.1.0',
     'gitpython>=3.1.0',
-    'elasticsearch[async]>=7, <8',
+    'elasticsearch[async]>=7, <7.14.0',
     'elasticsearch-dsl>=7, <8',
     'singledispatchmethod; python_version < "3.8.0"',
     'dataclasses; python_version < "3.7.0"',
