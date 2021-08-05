@@ -97,6 +97,12 @@ class TestMetadata(BiothingsWebAppTest):
 
 class TestMetadataLicense(BiothingsWebAppTest):
 
+    def _wait(self):
+        try:
+            self.wait(timeout=3)
+        except:
+            pass
+
     def test_20_license(self):
         """ GET /v1/gene/12566?fields=pantherdb.uniprot_kb
         {
@@ -110,7 +116,7 @@ class TestMetadataLicense(BiothingsWebAppTest):
             ...
         }
         """
-        sleep(3)  # wait for metadata service internal refresh
+        self._wait()  # for internal metadata refresh
         res = self.request('/v1/gene/12566?fields=pantherdb.uniprot_kb').json()
         assert res['pantherdb']['_license'] == "http://pantherdb.org/tou.jsp"
 
@@ -130,7 +136,7 @@ class TestMetadataLicense(BiothingsWebAppTest):
             ]
         }
         """
-        sleep(3)  # wait for metadata service internal refresh
+        self._wait()  # for internal metadata refresh
         res = self.request('/v1/gene/12566?fields=interpro').json()
         for dic in res['interpro']:
             assert dic['_license'] == "http://pantherdb.org/tou.jsp"
@@ -152,7 +158,7 @@ class TestMetadataLicense(BiothingsWebAppTest):
                 ],
             }
         """
-        sleep(3)  # wait for metadata service internal refresh
+        self._wait()  # for internal metadata refresh
         res = self.request('/v1/gene/12566?fields=pantherdb.ortholog').json()
         for dic in res['pantherdb']['ortholog']:
             assert dic['_license'] == "http://pantherdb.org/tou.jsp"
