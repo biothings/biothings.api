@@ -6,7 +6,10 @@
 
 '''
 
+from time import sleep
+
 from biothings.tests.web import BiothingsWebAppTest
+
 from setup import setup_es  # pylint: disable=unused-import
 
 
@@ -92,9 +95,7 @@ class TestMetadata(BiothingsWebAppTest):
         for key in res:
             assert key.startswith('accession')
 
-    # any access to the metadata endpoint would trigger an internal
-    # refresh on the metadata service, which feeds the values for
-    # other components like license injection in the formatter.
+class TestMetadataLicense(BiothingsWebAppTest):
 
     def test_20_license(self):
         """ GET /v1/gene/12566?fields=pantherdb.uniprot_kb
@@ -109,7 +110,7 @@ class TestMetadata(BiothingsWebAppTest):
             ...
         }
         """
-        self.request('/v1/metadata/')  # refresh internal metadata
+        sleep(3)  # wait for metadata service internal refresh
         res = self.request('/v1/gene/12566?fields=pantherdb.uniprot_kb').json()
         assert res['pantherdb']['_license'] == "http://pantherdb.org/tou.jsp"
 
@@ -129,7 +130,7 @@ class TestMetadata(BiothingsWebAppTest):
             ]
         }
         """
-        self.request('/v1/metadata/')  # refresh internal metadata
+        sleep(3)  # wait for metadata service internal refresh
         res = self.request('/v1/gene/12566?fields=interpro').json()
         for dic in res['interpro']:
             assert dic['_license'] == "http://pantherdb.org/tou.jsp"
@@ -151,7 +152,45 @@ class TestMetadata(BiothingsWebAppTest):
                 ],
             }
         """
-        self.request('/v1/metadata/')  # refresh internal metadata
+        sleep(3)  # wait for metadata service internal refresh
         res = self.request('/v1/gene/12566?fields=pantherdb.ortholog').json()
         for dic in res['pantherdb']['ortholog']:
             assert dic['_license'] == "http://pantherdb.org/tou.jsp"
+
+
+class TestStatus(BiothingsWebAppTest):
+
+    def test_01_get(self):
+        """
+        GET /status
+        {
+            "success": true,
+            "status": "yellow"
+        }
+        GET /status?dev
+        {
+            ...
+            "status": "yellow",
+            "payload": {
+                "id": "1017",
+                "index": "bts_test",
+                "doc_type": "_all"
+            },
+            "document": {
+                "_index": "bts_test",
+                "_type": "gene",
+                "_id": "1017",
+                "_version": 1,
+                "found": true,
+                "_source": { ... }
+            }
+        }
+        """
+        res = self.request('/status').json()
+        assert res['success']
+        res = self.request('/status?dev').json()
+        assert res['document']['found']
+
+    def test_02_head(self):
+
+        self.request('/status', method='HEAD')
