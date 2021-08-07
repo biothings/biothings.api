@@ -131,7 +131,7 @@ class IndexJobStatusRegistrar():
             "pid": os.getpid()
         }
         self.collection.update(
-            {"_id": self.indexer.target_name},
+            {"_id": self.indexer.mongo_collection_name},
             {"$push": {
                 "jobs": job
             }}
@@ -154,8 +154,8 @@ class IndexJobStatusRegistrar():
         assert self.stage == Stage.STARTED
         self.stage = Stage.DONE
 
-        build = self.collection.find_one({'_id': self.indexer.target_name})
-        assert build, "Can't find build document '%s'" % self.indexer.target_name
+        build = self.collection.find_one({'_id': self.indexer.mongo_collection_name})
+        assert build, "Can't find build document '%s'" % self.indexer.mongo_collection_name
 
         job = build["jobs"][-1]
         job["time"] = timesofar(self.t0)
@@ -184,16 +184,13 @@ class MainIndexJSR(IndexJobStatusRegistrar):
 
         delta_build = {
             "index": {
-                self.indexer.index_name: {
+                self.indexer.es_index_name: {
                     '__REPLACE__': True,
-                    'host': self.indexer.host,
-                    'environment': self.indexer.env,
+                    'host': self.indexer.es_client_args.get('hosts'),
+                    'environment': self.indexer.env_name,
                     'conf_name': self.indexer.conf_name,
-                    'target_name': self.indexer.target_name,
-                    'index_name': self.indexer.index_name,
-                    'doc_type': self.indexer.doc_type,
-                    'num_shards': self.indexer.num_shards,
-                    'num_replicas': self.indexer.num_replicas,
+                    'target_name': self.indexer.mongo_collection_name,
+                    'index_name': self.indexer.es_index_name,
                     'created_at': datetime.now().astimezone()
                 }
             }
@@ -210,15 +207,12 @@ class PostIndexJSR(IndexJobStatusRegistrar):
 def test_registrar():
     from pymongo import MongoClient
     indexer = SimpleNamespace(
-        host='localhost:9200',
-        target_name="mynews_202012280220_vsdevjdk",  # must exists in DB
-        index_name="__index_name__",
-        doc_type='news',
-        num_shards=1,
-        num_replicas=0,
+        mongo_collection_name="mynews_202012280220_vsdevjdk",  # must exists in DB
+        es_client_args=dict(hosts='localhost:9200'),
+        es_index_name="__index_name__",
         logfile='/log/file',
         conf_name='bc_news',
-        env='dev'
+        env_name='dev'
     )
     collection = MongoClient().biothings.src_build
     IndexJobStatusRegistrar.prune(collection)

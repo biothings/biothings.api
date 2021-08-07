@@ -76,9 +76,7 @@ class ESIndexer():
     # --
     # Since we don't always directly work on
     # existing actual indices, the index referred here
-    # can be not yet created or an alias, it is not
-    # necessarily a good idea to mirror the access
-    # pattern of a mongodb collection.
+    # can be an alias or does not exist.
 
     def __init__(self, index, doc_type='_doc', es_host='localhost:9200',
                  step=500, step_size=10,  # elasticsearch.helpers.bulk

@@ -1,9 +1,11 @@
-from functools import partial
+import functools
 import logging
 from enum import Enum
+from functools import partial
 from types import SimpleNamespace
-from biothings.hub.databuild.backend import create_backend
-from biothings.utils.es import ESIndexer
+
+from elasticsearch import Elasticsearch, helpers
+from pymongo import MongoClient
 
 try:
     from biothings.utils.mongo import doc_feeder
@@ -14,21 +16,108 @@ except ImportError:
     biothings.config.DATA_TARGET_DATABASE = 'biothings_build'
     from biothings.utils.mongo import doc_feeder
 
-def _get_es_client(*args, **kwargs):
-    return ESIndexer(*args, **kwargs)
+class ESIndex():
+    """ An Elasticsearch Index Wrapping A Client.
+    Counterpart for pymongo.collection.Collection """
 
-def _get_mongo_client(backend_url):
-    return create_backend(backend_url).target_collection
+    # previously using biothings.utils.es.ESIndexer
+    # recently reimplemented here for better clarity.
 
-def dispatch_task(backend_url, ids, mode, name, *esargs, **eskwargs):
-    task = IndexingTask(
-        partial(_get_es_client, *esargs, **eskwargs),
-        partial(_get_mongo_client, backend_url),
-        ids, mode
-    )
-    task.name = str(name)
-    return task.dispatch()
+    def __init__(self, client, index_name):
+        self.client = client
+        self.index_name = index_name  # the index must already exist
 
+    @property
+    @functools.lru_cache()
+    def doc_type(self):
+        if int(self.client.info()['version']['number'].split('.')[0]) < 7:
+            return next(iter(self.client.indices.get_mapping(self.index_name).keys()))
+        return None
+
+    # --------------------
+    # bulk operations (m*)
+    # --------------------
+
+    def mget(self, ids):
+        """ Return a list of documents like
+        [
+            { "_id": "0", "a": "b" },
+            { "_id": "1", "c": "d" },
+            None         # not found
+        ]
+        """
+        response = self.client.mget(
+            body={"ids": ids},
+            index=self.index_name,
+            doc_type=self.doc_type
+        )
+        for doc in response['docs']:
+            if doc.get('found'):
+                doc['_source']['_id'] = doc['_id']
+                yield doc['_source']
+            else:
+                yield None
+
+    def mexists(self, ids):
+        """ Return a list of tuples like
+        [
+            (_id_0, True),
+            (_id_1, False),
+            (_id_2, True),
+            ....
+        ]
+        """
+        res = self.client.search(
+            index=self.index_name, doc_type=self.doc_type,
+            body={
+                "query": {
+                    "ids": {
+                        "values": ids
+                    }
+                }
+            }, stored_fields=None, _source=None)
+        id_set = {doc['_id'] for doc in res['hits']['hits']}
+        return [(_id, _id in id_set) for _id in ids]
+
+    def mindex(self, docs, *args, **kwargs):
+        """ Index and return the number of docs indexed. (num, [errors]) """
+
+        def _action(doc):
+            _doc = {
+                "_index": self.index_name,
+                "_type": self.doc_type,
+                "_op_type": "index"
+            }
+            _doc.update(doc)  # with _id
+            return _doc
+
+        return helpers.bulk(self.client, map(_action, docs), *args, **kwargs)
+
+# Data Collection Client
+
+def _get_es_client(index_name, **es_client_args):
+    return ESIndex(Elasticsearch(**es_client_args), index_name)
+
+def _get_mg_client(collection_name, **mongo_client_args):
+    return MongoClient(**mongo_client_args).get_default_database()[collection_name]
+
+# --------------
+#  Entry Point
+# --------------
+
+def dispatch_task(
+    mg_client_args, mg_col_name,
+    es_client_args, es_idx_name,
+    ids, mode, name
+):
+    return IndexingTask(
+        partial(_get_es_client, es_idx_name, **es_client_args),
+        partial(_get_mg_client, mg_col_name, **mg_client_args),
+        ids, mode, str(name)
+    ).dispatch()
+
+
+# TODO configure elasticsearch logging
 
 class Mode(Enum):
     INDEX = 'index'
@@ -37,8 +126,12 @@ class Mode(Enum):
     RESUME = 'resume'
 
 class IndexingTask():
+    """
+    Index one batch of documents from MongoDB to Elasticsearch.
+    The documents to index are specified by their ids.
+    """
 
-    def __init__(self, es, mongo, ids, mode='index'):
+    def __init__(self, es, mongo, ids, mode='index', name=''):
 
         assert callable(es)
         assert callable(mongo)
@@ -56,7 +149,7 @@ class IndexingTask():
         self.backend.mongo = mongo  # wrt a collection
 
         self.logger = logging.getLogger(__name__)
-        self.name = ""  # for logging only
+        self.name = name  # for logging only
 
     def _get_clients(self):
         clients = SimpleNamespace()
@@ -85,8 +178,7 @@ class IndexingTask():
             query={'_id': {
                 '$in': self.ids
             }})
-        cnt = clients.es.index_bulk(docs)
-        return cnt
+        return clients.es.mindex(docs)
 
     def merge(self):
         clients = self._get_clients()
@@ -98,8 +190,8 @@ class IndexingTask():
         docs_new = {}
 
         # populate docs_old
-        for doc in clients.es.get_docs(self.ids):
-            docs_old['_id'] = doc
+        for doc in clients.es.mget(self.ids):
+            docs_old[doc['_id']] = doc
 
         # populate docs_new
         for doc in doc_feeder(
@@ -113,20 +205,20 @@ class IndexingTask():
             doc.pop("_timestamp", None)
 
         # merge existing ids
-        for key in docs_new:
+        for key in list(docs_new):
             if key in docs_old:
-                docs_old.update(docs_new[key])
+                docs_old[key].update(docs_new[key])
                 del docs_new[key]
 
         # updated docs (those existing in col *and* index)
-        upd_cnt = clients.es.index_bulk(docs_old.values(), len(docs_old))
+        upd_cnt = clients.es.mindex(docs_old.values())
         self.logger.debug("%s documents updated in index", str(upd_cnt))
 
         # new docs (only in col, *not* in index)
-        new_cnt = clients.es.index_bulk(docs_new.values(), len(docs_new))
+        new_cnt = clients.es.mindex(docs_new.values())
         self.logger.debug("%s new documents in index", str(new_cnt))
 
-        # need to return one: tuple(cnt,list)
+        # need to return one: tuple(cnt, list)
         return (upd_cnt[0] + new_cnt[0], upd_cnt[1] + new_cnt[1])
 
     def resume(self):
@@ -137,20 +229,34 @@ class IndexingTask():
             return self.index()
         return (0, None)
 
-def test_clients():
-    from functools import partial
-    from biothings.utils.es import ESIndexer
-    from pymongo import MongoClient
 
-    def _pymongo():
+def test_00():  # ES
+    from pprint import pprint as print
+    index = ESIndex(Elasticsearch(), "mynews_202105261855_5ffxvchx")
+    print(index.doc_type)
+    print(list(index.mget([
+        "0999b13cb8026aba",
+        "1111647aaf9c70b4",
+        "________________"
+    ])))
+    # print(list(index.mexists([
+    #     "0999b13cb8026aba",
+    #     "1111647aaf9c70b4",
+    #     "________________"
+    # ])))
+
+def test_clients():
+
+    def _mongo():
         client = MongoClient()
         database = client["biothings_build"]
         return database["mynews_202012280220_vsdevjdk"]
 
-    return (
-        partial(ESIndexer, "indexer-test"),
-        _pymongo
-    )
+    def _es():
+        client = Elasticsearch()
+        return ESIndex(client, "indexer-test")
+
+    return (_es, _mongo)
 
 def test0():
     task = IndexingTask(*test_clients(), (
@@ -171,5 +277,6 @@ def test1():
 
 if __name__ == '__main__':
     logging.basicConfig(level='DEBUG')
+    test_00()
     # test0()
     # test1()
