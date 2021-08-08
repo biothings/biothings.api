@@ -1,9 +1,11 @@
+from collections import namedtuple
 import functools
 import logging
 from enum import Enum
 from functools import partial
 from types import SimpleNamespace
 
+from biothings.utils.loggers import get_logger
 from elasticsearch import Elasticsearch, helpers
 from pymongo import MongoClient
 
@@ -15,6 +17,8 @@ except ImportError:
     biothings.config.DATA_SRC_DATABASE = 'biothings_src'
     biothings.config.DATA_TARGET_DATABASE = 'biothings_build'
     from biothings.utils.mongo import doc_feeder
+
+_IDExists = namedtuple("IDExists", ("id", "exists"))
 
 class ESIndex():
     """ An Elasticsearch Index Wrapping A Client.
@@ -75,12 +79,12 @@ class ESIndex():
                         "values": ids
                     }
                 }
-            }, stored_fields=None, _source=None)
+            }, stored_fields=None, _source=None, size=len(ids))
         id_set = {doc['_id'] for doc in res['hits']['hits']}
-        return [(_id, _id in id_set) for _id in ids]
+        return [_IDExists(_id, _id in id_set) for _id in ids]
 
     def mindex(self, docs, *args, **kwargs):
-        """ Index and return the number of docs indexed. (num, [errors]) """
+        """ Index and return the number of docs indexed. """
 
         def _action(doc):
             _doc = {
@@ -91,7 +95,7 @@ class ESIndex():
             _doc.update(doc)  # with _id
             return _doc
 
-        return helpers.bulk(self.client, map(_action, docs), *args, **kwargs)
+        return helpers.bulk(self.client, map(_action, docs), *args, **kwargs)[0]
 
 # Data Collection Client
 
@@ -108,16 +112,30 @@ def _get_mg_client(collection_name, **mongo_client_args):
 def dispatch_task(
     mg_client_args, mg_col_name,
     es_client_args, es_idx_name,
-    ids, mode, name
+    ids, mode, logger, name
 ):
     return IndexingTask(
         partial(_get_es_client, es_idx_name, **es_client_args),
         partial(_get_mg_client, mg_col_name, **mg_client_args),
-        ids, mode, str(name)
+        ids, mode, logger, name
     ).dispatch()
 
 
-# TODO configure elasticsearch logging
+def _ensure_logger(logger):
+    if not logger:
+        return logging.getLogger(__name__)
+    if isinstance(logger, str):
+        return get_logger(logger)[0]
+    return logger
+
+def _validate_ids(ids):
+    for _id in ids:
+        if not isinstance(_id, str):
+            raise TypeError("_id '%s' has invalid type (!str)." % repr(_id))
+        if len(_id) > 512:  # this is an ES limitation
+            raise ValueError("_id is too long: '%s'" % _id)
+    return ids
+
 
 class Mode(Enum):
     INDEX = 'index'
@@ -131,12 +149,12 @@ class IndexingTask():
     The documents to index are specified by their ids.
     """
 
-    def __init__(self, es, mongo, ids, mode='index', name=''):
+    def __init__(self, es, mongo, ids, mode='index', logger=None, name="task"):
 
         assert callable(es)
         assert callable(mongo)
 
-        self.ids = ids
+        self.ids = _validate_ids(ids)
         self.mode = Mode(mode)
 
         # these are functions to create clients,
@@ -148,8 +166,8 @@ class IndexingTask():
         self.backend.es = es  # wrt an index
         self.backend.mongo = mongo  # wrt a collection
 
-        self.logger = logging.getLogger(__name__)
-        self.name = name  # for logging only
+        self.logger = _ensure_logger(logger)
+        self.name = f"#{name}" if isinstance(name, int) else name
 
     def _get_clients(self):
         clients = SimpleNamespace()
@@ -158,16 +176,12 @@ class IndexingTask():
         return clients
 
     def dispatch(self):
-        try:
-            if self.mode in (Mode.INDEX, Mode.PURGE):
-                return self.index()
-            elif self.mode == Mode.MERGE:
-                return self.merge()
-            elif self.mode == Mode.RESUME:
-                return self.resume()
-        except Exception:
-            self.logger.error("Batch %s indexing failed.", self.name)
-            raise
+        if self.mode in (Mode.INDEX, Mode.PURGE):
+            return self.index()
+        elif self.mode == Mode.MERGE:
+            return self.merge()
+        elif self.mode == Mode.RESUME:
+            return self.resume()
 
     def index(self):
         clients = self._get_clients()
@@ -212,22 +226,21 @@ class IndexingTask():
 
         # updated docs (those existing in col *and* index)
         upd_cnt = clients.es.mindex(docs_old.values())
-        self.logger.debug("%s documents updated in index", str(upd_cnt))
+        self.logger.debug("[%s] %s documents updated.", self.name, str(upd_cnt))
 
         # new docs (only in col, *not* in index)
         new_cnt = clients.es.mindex(docs_new.values())
-        self.logger.debug("%s new documents in index", str(new_cnt))
+        self.logger.debug("[%s] %s new documents.", self.name, str(new_cnt))
 
-        # need to return one: tuple(cnt, list)
-        return (upd_cnt[0] + new_cnt[0], upd_cnt[1] + new_cnt[1])
+        return upd_cnt + new_cnt
 
     def resume(self):
         clients = self._get_clients()
-        missing_ids = [x[0] for x in clients.es.mexists(self.ids) if not x[1]]
+        missing_ids = [x.id for x in clients.es.mexists(self.ids) if not x.exists]
         if missing_ids:
             self.ids = missing_ids
             return self.index()
-        return (0, None)
+        return 0
 
 
 def test_00():  # ES

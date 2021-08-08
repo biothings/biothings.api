@@ -84,6 +84,7 @@ def test_merge_4():
     merge(x, y)
     print(x)
 
+
 class Stage(Enum):
     READY = 0
     STARTED = 1
@@ -188,9 +189,6 @@ class MainIndexJSR(IndexJobStatusRegistrar):
                     '__REPLACE__': True,
                     'host': self.indexer.es_client_args.get('hosts'),
                     'environment': self.indexer.env_name,
-                    'conf_name': self.indexer.conf_name,
-                    'target_name': self.indexer.mongo_collection_name,
-                    'index_name': self.indexer.es_index_name,
                     'created_at': datetime.now().astimezone()
                 }
             }

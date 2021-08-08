@@ -70,8 +70,7 @@ class IndexerException(Exception):
     pass
 
 class ESIndexer():
-    # CONSIDER RETIRING THIS CLASS
-    # AND USE MODULE LEVEL FUNCTIONS
+    # RETIRING THIS CLASS
 
     # --
     # Since we don't always directly work on

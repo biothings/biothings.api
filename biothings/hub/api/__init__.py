@@ -128,7 +128,11 @@ def %(method)s(self%(mandatargs)s):
         # asyncio tasks unserializable
         # but keep original one
         cmdres = CommandInformation([(k,v) for k,v in cmdres.items() if k != 'jobs'])
-    self.write(cmdres)
+    from inspect import isawaitable
+    if isawaitable(cmdres):
+        self.write((yield from cmdres))
+    else:
+        self.write(cmdres)
 """ % {
         "method": method,
         "args": args,
