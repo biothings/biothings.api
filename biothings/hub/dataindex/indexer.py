@@ -714,7 +714,7 @@ class IndexManager(BaseManager):
         assert _meta is not None, "No _meta found"
         return indexer.update_mapping_meta({"_meta": _meta})
 
-    def index_info(self, remote=None):
+    def index_info(self, remote=False):
         """ Show index manager config with enhanced index information. """
         # http://localhost:7080/index_manager
 
