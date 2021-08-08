@@ -446,7 +446,7 @@ class Indexer():
                 batch_num, batches, self.mongo_collection_name,
                 docs_scheduled, docs_total, _percentage)
 
-            pinfo = self.pinfo.get_pinfo(self.mongo_collection_name, description)
+            pinfo = self.pinfo.get_pinfo(" ".join(self.mongo_collection_name, description))
             job = yield from job_manager.defer_to_process(
                 pinfo, dispatch_task,
                 self.mongo_client_args, self.mongo_collection_name,
