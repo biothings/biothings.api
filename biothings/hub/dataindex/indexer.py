@@ -47,11 +47,22 @@ class IndexerException(Exception):
 
 class ProcessInfo():
 
-    def __init__(self, indexer):
+    def __init__(self, indexer, concurrency):
         self.indexer = indexer
+        self.concurrency = concurrency
 
     def get_predicates(self):
-        return []
+        def limit_indexer_concurrency(job_manager):
+            def by_indexer_environment(job):
+                return all((
+                    job["category"] == INDEXER_CATEGORY,
+                    job["source"] == self.indexer.env_name
+                ))
+            return len(list(filter(
+                by_indexer_environment,
+                job_manager.jobs.values()
+            ))) < self.concurrency
+        return [limit_indexer_concurrency]
 
     def get_pinfo(self, step="", description=""):
         """
@@ -59,14 +70,12 @@ class ProcessInfo():
         (used to report in the hub)
         """
         pinfo = {
+            "__predicates__": self.get_predicates(),
             "category": INDEXER_CATEGORY,
-            "source": "%s:%s" % (self.indexer.conf_name, self.indexer.es_index_name),
+            "source": self.indexer.env_name,
             "description": description,
             "step": step
         }
-        preds = self.get_predicates()
-        if preds:
-            pinfo["__predicates__"] = preds
         return pinfo
 
 
@@ -244,7 +253,12 @@ class Indexer():
         self.env_name = indexer_env.get("name")
         self.conf_name = _build_doc.build_config.get("name")
         self.logger, self.logfile = get_logger('index_%s' % self.es_index_name, LOG_FOLDER)
-        self.pinfo = ProcessInfo(self)
+
+        self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 3))
+
+    # --------------
+    #  Entry Point
+    # --------------
 
     @asyncio.coroutine
     def index(self,
@@ -270,9 +284,9 @@ class Indexer():
             steps = [steps]
 
         assert job_manager
-        assert isinstance(steps, (list, tuple))
-        assert isinstance(mode, str)
-        assert 50 <= batch_size <= 10000
+        assert isinstance(steps, (list, tuple)), 'bad argument "steps"'
+        assert isinstance(mode, str), 'bad argument "mode"'
+        assert 50 <= batch_size <= 10000, '"batch_size" out-of-range'
 
         # the batch size here controls only the task partitioning
         # it does not affect how the elasticsearch python client
@@ -317,17 +331,8 @@ class Indexer():
             self.logger.info("Running post-index process for index '%s'", self.es_index_name)
             status = registrar.PostIndexJSR(self, get_src_build())
             status.started()
-
-            # -------------------- Sebastien's Note --------------------
-            # for some reason (like maintaining object's state between pickling).
-            # we can't use process there. Need to use thread to maintain that state
-            # without building an unmaintainable monster.
-            # ----------------------------------------------------------
-            pinfo = self.pinfo.get_pinfo("post_index")
-            job = yield from job_manager.defer_to_thread(pinfo, self.post_index)
-
             try:
-                res = yield from job
+                res = yield from self.post_index()
 
             except Exception as exc:
                 self.logger.exception(
@@ -344,9 +349,9 @@ class Indexer():
 
         return {self.es_index_name: cnt}
 
-    # -------
-    #  steps
-    # -------
+    # ---------
+    #   Steps
+    # ---------
 
     @asyncio.coroutine
     def pre_index(self, mode):
@@ -452,8 +457,6 @@ class Indexer():
 
         self.logger.info("%d jobs created for the indexing step.", len(jobs))
         results = yield from asyncio.gather(*jobs)
-
-        # compute overall inserted/updated records
         docs_finished = sum(results)
 
         if docs_total != docs_finished:
@@ -471,12 +474,12 @@ class Indexer():
             self.es_index_name, self.mongo_collection_name, extra={"notify": True})
         return docs_total
 
+    @asyncio.coroutine
     def post_index(self):
         """
         Override in sub-class to add a post-index process.
         This method will run in a thread (using job_manager.defer_to_thread())
         """
-        pass
 
 
 # TODO Mapping merge should be handled in indexer
@@ -552,15 +555,12 @@ class IndexManager(BaseManager):
                 "prod": {
                     "host": "localhost:9200",
                     "indexer": {
-                        "default": {
-                            "batch_size": 1000 # TODO
-                        },
                         "args": {
-                            "hosts": "localhost:9200",
                             "timeout": 300,
                             "retry_on_timeout": True,
                             "max_retries": 10,
                         },
+                        "concurrency": 3
                     },
                     "index": [ 
                         # for information only, only used in index_info
