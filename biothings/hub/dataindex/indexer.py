@@ -1,39 +1,27 @@
 import asyncio
 import copy
-import math
 import os
-import pickle
 from collections import UserDict
 from copy import deepcopy
 from functools import partial
 
-from biothings import config as btconfig
 from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
 from biothings.hub.databuild.backend import (create_backend,
                                              merge_src_build_metadata)
-from biothings.utils import es
 from biothings.utils.common import (get_class_from_classpath,
-                                    get_random_string, iter_n, timesofar,
-                                    traverse)
+                                    get_random_string, iter_n, traverse)
 from biothings.utils.es import ESIndexer
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
-from biothings.utils.mongo import doc_feeder, id_feeder
-from config import LOG_FOLDER
-from config import logger as logging
+from biothings.utils.mongo import id_feeder
 from elasticsearch import AsyncElasticsearch
 from pymongo.mongo_client import MongoClient
 
-from . import indexer_registrar as registrar
-from .indexer_task import dispatch_task
-
-# this module has been refactored and simplified
-# but it still has a variety of design decisions
-# that deserve second thoughts.
-
-# TODO
-# correct count in hot cold indexer
+from .indexer_payload import *
+from .indexer_registrar import *
+from .indexer_schedule import Schedule
+from .indexer_task import dispatch
 
 # Summary
 # -------
@@ -43,7 +31,7 @@ from .indexer_task import dispatch_task
 
 
 class IndexerException(Exception):
-    pass
+    ...
 
 class ProcessInfo():
 
@@ -79,41 +67,6 @@ class ProcessInfo():
         return pinfo
 
 
-DEFAULT_INDEX_SETTINGS = {
-    # as of ES6, include_in_all was removed, we need to create our own "all" field
-    "query": {
-        "default_field": "_id,all"
-    },
-    "codec": "best_compression",
-    # as of ES6, analysers/tokenizers must be defined in index settings, during creation
-    "analysis": {
-        "analyzer": {
-            # soon deprecated in favor of keyword_lowercase_normalizer
-            "string_lowercase": {
-                "tokenizer": "keyword",
-                "filter": "lowercase"
-            },
-            "whitespace_lowercase": {
-                "tokenizer": "whitespace",
-                "filter": "lowercase"
-            },
-        },
-        "normalizer": {
-            "keyword_lowercase_normalizer": {
-                "filter": ["lowercase"],
-                "type": "custom",
-                "char_filter": []
-            },
-        }
-    },
-}
-
-DEFAULT_INDEX_MAPPINGS = {
-    "dynamic": "false",
-    "properties": {"all": {'type': 'text'}}
-}
-
-
 class _BuildDoc(UserDict):
     """ Represent A Build Under "src_build" Collection.
 
@@ -138,20 +91,9 @@ class _BuildDoc(UserDict):
         },
         "_meta": {
             "biothing_type": "news",
-            "src": {
-                "mynews": {
-                    "testkey": "testvalue",
-                    "version": "2021-05-22T00:35:00Z",
-                    "stats": {
-                        "mynews": 20
-                    }
-                }
-            },
-            "stats": {
-                "total": 20
-            },
             "build_version": "202105261855",
-            "build_date": "2021-05-26T18:55:00.054622+00:00"
+            "build_date": "2021-05-26T18:55:00.054622+00:00",
+            ...
         },
         ...
     }
@@ -166,36 +108,9 @@ class _BuildDoc(UserDict):
         mappings["_meta"] = self.get("_meta", {})
 
     def enrich_settings(self, settings):
-        # consider having the default auto-inferred from data size
         settings["number_of_shards"] = self.build_config.get("num_shards", 1)
-        # this field is almost always 0 for a staging server
         settings["number_of_replicas"] = self.build_config.get("num_replicas", 0)
 
-class _IndexPayload(UserDict):
-
-    @asyncio.coroutine
-    def finalize(self, client):
-        """ Generate the ES payload format of the corresponding entities 
-        originally in Hub representation. May require querying the ES client
-        for certain metadata to determine the compatible data format. """
-
-class _IndexMappings(_IndexPayload):
-
-    @asyncio.coroutine
-    def finalize(self, client):
-        version = int((yield from client.info())['version']['number'].split('.')[0])
-        if version < 7:  # inprecise
-            doc_type = self.pop("__hub_doc_type", "doc")
-            return {doc_type: dict(self)}
-        else:
-            self.pop("__hub_doc_type")
-        return dict(self)
-
-class _IndexSettings(_IndexPayload):
-
-    @asyncio.coroutine
-    def finalize(self, client):
-        return {"index": dict(self)}
 
 def _db(backend_url):
     """ Standardize mongo connection string. """
@@ -221,6 +136,7 @@ def _db(backend_url):
 
     raise ValueError(backend_url)
 
+
 class Indexer():
     """
     MongoDB -> Elasticsearch Indexer.
@@ -241,8 +157,8 @@ class Indexer():
 
         self.es_client_args = indexer_env.get("args", {})
         self.es_index_name = index_name or col_name
-        self.es_index_settings = _IndexSettings(deepcopy(DEFAULT_INDEX_SETTINGS))
-        self.es_index_mappings = _IndexMappings(deepcopy(DEFAULT_INDEX_MAPPINGS))
+        self.es_index_settings = IndexSettings(deepcopy(DEFAULT_INDEX_SETTINGS))
+        self.es_index_mappings = IndexMappings(deepcopy(DEFAULT_INDEX_MAPPINGS))
 
         _build_doc = _BuildDoc(build_doc)
         _build_doc.enrich_settings(self.es_index_settings)
@@ -252,7 +168,7 @@ class Indexer():
 
         self.env_name = indexer_env.get("name")
         self.conf_name = _build_doc.build_config.get("name")
-        self.logger, self.logfile = get_logger('index_%s' % self.es_index_name, LOG_FOLDER)
+        self.logger, self.logfile = get_logger('index_%s' % self.es_index_name)
 
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 3))
 
@@ -268,14 +184,14 @@ class Indexer():
               ids=None,
               mode="index"):
         """
-        Build an Elasticsearch index (self.es_index_name) 
+        Build an Elasticsearch index (self.es_index_name)
         with data from MongoDB collection (self.mongo_collection_name).
 
         "ids" can be passed to selectively index documents.
 
         "mode" can have the following values:
             - 'purge': will delete an index if it exists.
-            - 'resume': will use an existing index and add missing documents. 
+            - 'resume': will use an existing index and add missing documents.
             - 'merge': will merge data to an existing index.
             - 'index'/None (default): will create a new index.
         """
@@ -284,9 +200,9 @@ class Indexer():
             steps = [steps]
 
         assert job_manager
+        assert 50 <= batch_size <= 10000, '"batch_size" out-of-range'
         assert isinstance(steps, (list, tuple)), 'bad argument "steps"'
         assert isinstance(mode, str), 'bad argument "mode"'
-        assert 50 <= batch_size <= 10000, '"batch_size" out-of-range'
 
         # the batch size here controls only the task partitioning
         # it does not affect how the elasticsearch python client
@@ -300,7 +216,7 @@ class Indexer():
 
         if "pre" in steps:
             self.logger.info("Running pre-index process for index '%s'", self.es_index_name)
-            status = registrar.PreIndexJSR(self, get_src_build())
+            status = PreIndexJSR(self, get_src_build())
             status.started()
             try:
                 yield from self.pre_index(mode)
@@ -313,7 +229,7 @@ class Indexer():
 
         if "index" in steps:
             self.logger.info("Running indexing process for index '%s'", self.es_index_name)
-            status = registrar.MainIndexJSR(self, get_src_build())
+            status = MainIndexJSR(self, get_src_build())
             status.started()
             try:
                 # the indexing stage does its own scheduling,
@@ -329,7 +245,7 @@ class Indexer():
 
         if "post" in steps:
             self.logger.info("Running post-index process for index '%s'", self.es_index_name)
-            status = registrar.PostIndexJSR(self, get_src_build())
+            status = PostIndexJSR(self, get_src_build())
             status.started()
             try:
                 res = yield from self.post_index()
@@ -388,48 +304,50 @@ class Indexer():
     @asyncio.coroutine
     def do_index(self, job_manager, batch_size, ids, mode):
 
-        assert batch_size
         client = MongoClient(**self.mongo_client_args)
         database = client.get_default_database()
         collection = database[self.mongo_collection_name]
 
-        jobs = []
-        docs_scheduled = 0
-        docs_finished = 0
-        docs_total = len(ids) if ids else collection.count()
-
-        if not docs_total:
-            self.logger.warning("No documents to index.")
-            return
-
         if ids:
             self.logger.info(
-                ("Indexing from '%s' with specific list of _ids, "
-                 "create indexer job with batch_size=%d"),
-                self.mongo_collection_name, batch_size)
+                (
+                    "Indexing from '%s' with specific list of _ids, "
+                    "create indexer job with batch_size=%d."
+                ),
+                self.mongo_collection_name, batch_size
+            )
             # use user provided ids in batch
             id_provider = iter_n(ids, batch_size)
         else:
             self.logger.info(
-                "Fetch _ids from '%s', and create indexer job with batch_size=%d",
-                self.mongo_collection_name, batch_size)
+                (
+                    "Fetch _ids from '%s', and create "
+                    "indexer job with batch_size=%d."
+                ),
+                self.mongo_collection_name, batch_size
+            )
             # use ids from the target mongodb collection in batch
             id_provider = id_feeder(collection, batch_size, logger=self.logger)
 
-        # when one batch failed, and job scheduling has not completed,
-        # stop scheduling and cancel all on-going jobs, to fail quickly.
-        error = None
+        jobs = []  # asyncio.Future(s)
+        error = None  # the first Exception
+
+        total = len(ids) if ids else collection.count()
+        schedule = Schedule(total, batch_size)
 
         def batch_finished(future):
             nonlocal error
-            if not error:
-                error = future.exception()
-                if error:
-                    self.logger.warning(error)
+            try:
+                schedule.finished += future.result()
+            except Exception as exc:
+                self.logger.warning(exc)
+                error = exc
 
-        batches = math.ceil(docs_total / batch_size)
-        for batch_num, ids in enumerate(id_provider):
+        for batch_num, ids in zip(schedule, id_provider):
             yield from asyncio.sleep(0.0)
+
+            # when one batch failed, and job scheduling has not completed,
+            # stop scheduling and cancel all on-going jobs, to fail quickly.
 
             if error:
                 for job in jobs:
@@ -437,44 +355,34 @@ class Indexer():
                         job.cancel()
                 raise error
 
-            docs_scheduled += len(ids)
-            _percentage = docs_scheduled / docs_total * 100
-            description = "#%d/%d (%.1f%%)" % (batch_num, batches, _percentage)
+            self.logger.info(schedule)
 
-            self.logger.info(
-                "Creating indexer job #%d/%d, to index '%s' %d/%d (%.1f%%)",
-                batch_num, batches, self.mongo_collection_name,
-                docs_scheduled, docs_total, _percentage)
+            pinfo = self.pinfo.get_pinfo(
+                schedule.suffix(self.mongo_collection_name))
 
-            pinfo = self.pinfo.get_pinfo(" ".join((self.mongo_collection_name, description)))
             job = yield from job_manager.defer_to_process(
-                pinfo, dispatch_task,
-                self.mongo_client_args, self.mongo_collection_name,
-                self.es_client_args, self.es_index_name,
-                ids, mode, f'index_{self.es_index_name}', batch_num)
+                pinfo, dispatch,
+                self.mongo_client_args,
+                self.mongo_collection_name,
+                self.es_client_args,
+                self.es_index_name,
+                ids, mode, batch_num
+            )
             job.add_done_callback(batch_finished)
             jobs.append(job)
 
-        self.logger.info("%d jobs created for the indexing step.", len(jobs))
-        results = yield from asyncio.gather(*jobs)
-        docs_finished = sum(results)
+        self.logger.info("Scheduled ALL %d indexing job(s).", len(jobs))
+        yield from asyncio.gather(*jobs)
 
-        if docs_total != docs_finished:
-            msg = (
-                f"The collection has {docs_total} documents. "
-                f"{docs_finished} have been indexed."
-            )
-            if mode == 'resume':
-                self.logger.info(msg)
-            else:
-                raise IndexerException(msg)
-
+        schedule.completed(ignore_mismatch=(mode == 'resume'))
         self.logger.info(
-            "Index '%s' successfully created using the collection %s",
-            self.es_index_name, self.mongo_collection_name, extra={"notify": True})
-        return docs_total
+            "Successfully created Index '%s' using the collection %s",
+            self.es_index_name, self.mongo_collection_name,
+            extra={"notify": True}
+        )
+        return total
 
-    @asyncio.coroutine
+    @ asyncio.coroutine
     def post_index(self):
         """
         Override in sub-class to add a post-index process.
@@ -484,6 +392,7 @@ class Indexer():
 
 # TODO Mapping merge should be handled in indexer
 # meta merging merge_src_build_metadata not used yet..
+# TODO # correct count in hot cold indexer
 
 class ColdHotIndexer():
     """
@@ -502,7 +411,7 @@ class ColdHotIndexer():
         self.cold = Indexer(cold_build_doc, indexer_env, cold_target, self.index_name)
         self.hot = Indexer(build_doc, indexer_env, target_name, self.index_name)
 
-    @asyncio.coroutine
+    @ asyncio.coroutine
     def index(self,
               job_manager,
               steps=["index", "post"],
@@ -547,10 +456,10 @@ class IndexManager(BaseManager):
         """
         An example of config dict for this module.
         {
-            "indexer_select": { 
+            "indexer_select": {
                 None: "hub.dataindex.indexer.DrugIndexer", # default
                 "build_config.cold_collection" : "mv.ColdHotVariantIndexer",
-            }, 
+            },
             "env": {
                 "prod": {
                     "host": "localhost:9200",
@@ -562,11 +471,11 @@ class IndexManager(BaseManager):
                         },
                         "concurrency": 3
                     },
-                    "index": [ 
+                    "index": [
                         # for information only, only used in index_info
                         {"index": "mydrugs_current", "doc_type": "drug"},
                         {"index": "mygene_current", "doc_type": "gene"}
-                    ], 
+                    ],
                 },
                 "dev": { ... }
             }
@@ -576,7 +485,7 @@ class IndexManager(BaseManager):
         self._srcbuild = get_src_build()
         self._config = {}
 
-        self.logger, self.logfile = get_logger('indexmanager', LOG_FOLDER)
+        self.logger, self.logfile = get_logger('indexmanager')
 
     # Object Lifecycle Calls
     # --------------------------
@@ -585,7 +494,7 @@ class IndexManager(BaseManager):
     # manager.configure(config)
 
     def clean_stale_status(self):
-        registrar.IndexJobStatusRegistrar.prune(get_src_build())
+        IndexJobStatusRegistrar.prune(get_src_build())
 
     def configure(self, conf):
         if not isinstance(conf, dict):
@@ -684,7 +593,6 @@ class IndexManager(BaseManager):
         idx = idx(build_doc, indexer_env_, target_name, index_name)
         job = idx.index(self.job_manager, ids=ids, **kwargs)
         job = asyncio.ensure_future(job)
-        job.add_done_callback(self.logger.info)
 
         return job
 

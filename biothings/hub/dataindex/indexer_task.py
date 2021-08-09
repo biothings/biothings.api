@@ -109,15 +109,15 @@ def _get_mg_client(collection_name, **mongo_client_args):
 #  Entry Point
 # --------------
 
-def dispatch_task(
+def dispatch(
     mg_client_args, mg_col_name,
     es_client_args, es_idx_name,
-    ids, mode, logger, name
+    ids, mode, name
 ):
     return IndexingTask(
         partial(_get_es_client, es_idx_name, **es_client_args),
         partial(_get_mg_client, mg_col_name, **mg_client_args),
-        ids, mode, logger, name
+        ids, mode, f"index_{es_idx_name}", name
     ).dispatch()
 
 
