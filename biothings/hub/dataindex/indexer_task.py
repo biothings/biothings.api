@@ -198,12 +198,9 @@ class IndexingTask():
     def merge(self):
         clients = self._get_clients()
 
-        upd_cnt = 0
-        new_cnt = 0
-
-        docs_old = {}
-        docs_new = {}
-
+        upd_cnt, docs_old = 0, {}
+        new_cnt, docs_new = 0, {}
+        
         # populate docs_old
         for doc in clients.es.mget(self.ids):
             docs_old[doc['_id']] = doc
