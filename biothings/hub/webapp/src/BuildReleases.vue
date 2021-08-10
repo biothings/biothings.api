@@ -147,6 +147,8 @@ export default {
             // sort index and diff releases by dates
             var _releases = [];
             if(this.build.index) {
+                for (var [key, value] of Object.entries(this.build.index))
+                    value.index_name = key
                 _releases = _releases.concat(Object.values(this.build.index));
             }
             if(this.build.diff)
