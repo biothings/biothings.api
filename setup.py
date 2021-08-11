@@ -61,7 +61,7 @@ hub_requires = [
     'aiocron',          # setup scheduled jobs
     'aiohttp==3.6.2',   # for compatibility with elasticsearch-async==6.x
     'asyncssh==2.5.0',  # needs libffi-dev installed (apt-get)
-    'pymongo',
+    'pymongo>=3.12.0',  # support MongoDB 5.0 since v3.12.0
     'psutil',
     'jsonpointer',      # for utils.jsonpatch
     'IPython',          # for interactive hub console
