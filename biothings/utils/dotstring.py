@@ -5,7 +5,7 @@ def last_element(d, key_list):
     """Return the last element and key for a document d given a docstring.
 
     A document d is passed with a list of keys key_list.  A generator is then
-    returned for all elements that match all keys.  Not that there may be 
+    returned for all elements that match all keys.  Not that there may be
     a 1-to-many relationship between keys and elements due to lists in the document.
 
     :param d: document d to return elements from
@@ -24,10 +24,10 @@ def last_element(d, key_list):
         try:
             t = d[k]
         except KeyError:
-            return # key does not exist
+            return    # key does not exist
         except TypeError:
-            return # not sub-scriptable
-        if isinstance(t, dict):                
+            return    # not sub-scriptable
+        if isinstance(t, dict):
             yield from last_element(t, key_list)
         elif isinstance(t, list):
             for l in t:
@@ -35,10 +35,11 @@ def last_element(d, key_list):
         elif isinstance(t, tuple):
             # unsupported type
             raise ValueError("unsupported type in key {}".format(k))
-    
+
 
 def key_value(dictionary, key):
     """Return a generator for all values in a dictionary specific by a dotstirng (key)
+       if key is not found from the dictionary, None is returned.
 
     :param dictionary: a dictionary to return values from
     :param key: key that specifies a value in the dictionary
@@ -60,6 +61,7 @@ def key_value(dictionary, key):
 
 def set_key_value(dictionary, key, value):
     """Set values all values in dictionary matching a dotstring key to a specified value.
+       if key is not found in dictionary, it just skip quietly.
 
     :param dictionary: a dictionary to set values in
     :param key: key that specifies an element in the dictionary

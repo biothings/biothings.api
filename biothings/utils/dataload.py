@@ -609,6 +609,8 @@ def traverse_keys(d, include_keys=None, exclude_keys=None):
     If include_keys is specified, only traverse the list from include_kes a.b, a.b.c
     If exclude_keys is specified, only exclude the list from exclude_keys
 
+    if a key in include_keys/exclude_keys is not found in d, it's skipped quietly.
+
     :param d: a dictionary to traverse keys on
     :param include_keys: only traverse these keys (optional)
     :param exclude_keys: exclude all other keys except these keys (optional)
@@ -630,7 +632,13 @@ def traverse_keys(d, include_keys=None, exclude_keys=None):
     if include_keys:
         for k in include_keys:
             for val in key_value(d, k):
-                yield k, val
+                if val:
+                    # only yield non-empty value
+                    # when val is None, it could be either:
+                    #   1. k is not found in d
+                    #   2. the value of k in d is indeed None
+                    # For now, we cannot tell which case, just skip it
+                    yield k, val
     else:
         for kl, val in traverse_helper(d, []):
             key = '.'.join(kl)
