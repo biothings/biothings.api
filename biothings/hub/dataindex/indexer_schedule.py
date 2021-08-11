@@ -51,15 +51,11 @@ class Schedule():
         return self._batch
 
     def __str__(self):
-        return (" ".join(f"""
-            Schedule(
+        return " ".join(f"""
+            <Schedule
                 total={self.total}, scheduled={self.scheduled}, finished={self.finished},
                 batch="{self._batch}/{self._batches}", percentage="{self._percentage}"
-            )
-        """.split())
-            .replace("( ", "(")
-            .replace(" )", ")")
-        )
+            >""".split())
 
 def test_01():
     schedule = Schedule(100, 10)
