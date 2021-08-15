@@ -359,7 +359,7 @@ def merge_src_build_metadata(build_docs):
         "More than one build document must be passed in order metadata"
     first = build_docs[0]
     others = build_docs[1:]
-    meta = first.get("_meta", {})
+    meta = first.setdefault("_meta", {})
     for new_doc in others:
         new_meta = new_doc.get("_meta", {})
         for k, v in new_meta.items():

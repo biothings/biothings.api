@@ -4,6 +4,7 @@ import os
 from collections import UserDict
 from copy import deepcopy
 from functools import partial
+from typing import NamedTuple, Optional
 
 from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
 from biothings.hub.databuild.backend import (create_backend,
@@ -28,6 +29,10 @@ from .indexer_task import dispatch
 # IndexManager: a hub feature, providing top level commands and config environments(env).
 # Indexer/ColdHotIndexer: the "index" command, handles jobs, db state and errors.
 # .indexer_task.IndexingTask: index a set of ids, running independent of the hub.
+
+# TODO
+# Clarify returned result
+# Distinguish creates/updates/deletes
 
 
 class IndexerException(Exception):
@@ -66,6 +71,10 @@ class ProcessInfo():
         }
         return pinfo
 
+class _BuildBackend(NamedTuple):  # mongo
+    args: dict = {}
+    dbs: Optional[str] = None
+    col: Optional[str] = None
 
 class _BuildDoc(UserDict):
     """ Represent A Build Under "src_build" Collection.
@@ -111,30 +120,51 @@ class _BuildDoc(UserDict):
         settings["number_of_shards"] = self.build_config.get("num_shards", 1)
         settings["number_of_replicas"] = self.build_config.get("num_replicas", 0)
 
-
-def _db(backend_url):
-    """ Standardize mongo connection string. """
-
-    if isinstance(backend_url, str):
-        # Case 1: already a mongo connection URI
-        # https://docs.mongodb.com/manual/reference/connection-string/
-        if backend_url.startswith("mongodb://"):
-            return dict(host=backend_url)
-
-        # Case 2: Sebastian's hub style backend URI
+    def parse_backend(self):
+        # Support Sebastian's hub style backend URI
         # #biothings.hub.databuild.backend.create_backend
-        from biothings.hub.databuild import backend
-        db = backend.mongo.get_target_db()
-        if backend_url in db.list_collection_names():
-            return dict(host="mongodb://{}:{}/{}".format(
-                *db.client.address, db.name))
+        backend = self.get("target_backend")
+        backend_url = self.get("backend_url")
 
-    # Case 3: Use connection default
-    # mongodb://localhost:27017
-    elif backend_url is None:
-        return dict()
+        if backend is None:
+            return _BuildBackend()
 
-    raise ValueError(backend_url)
+        elif backend == "mongo":
+            from biothings.hub.databuild import backend
+
+            db = backend.mongo.get_target_db()
+            if backend_url in db.list_collection_names():
+                return _BuildBackend(
+                    dict(zip(
+                        ("host", "port"),
+                        db.client.address
+                    )), db.name, backend_url)
+
+        elif backend == "link":
+            from biothings.hub.databuild import backend
+
+            if backend_url[0] == "src":
+                db = backend.mongo.get_src_db()
+            else:  # backend_url[0] == "target"
+                db = backend.mongo.get_target_db()
+
+            if backend_url[1] in db.list_collection_names():
+                return _BuildBackend(
+                    dict(zip(
+                        ("host", "port"),
+                        db.client.address
+                    )), db.name, backend_url[1])
+
+        raise ValueError(backend, backend_url)
+
+    def extract_coldbuild(self):
+        cold_target = self.build_config["cold_collection"]
+        cold_build_doc = get_src_build().find_one({'_id': cold_target})
+
+        cold_build_doc["mapping"].update(self["mapping"])  # combine mapping
+        merge_src_build_metadata([cold_build_doc, self])  # combine _meta
+
+        return _BuildDoc(cold_build_doc)
 
 
 class Indexer():
@@ -142,25 +172,26 @@ class Indexer():
     MongoDB -> Elasticsearch Indexer.
     """
 
-    def __init__(self, build_doc, indexer_env, col_name, index_name):
+    def __init__(self, build_doc, indexer_env, index_name):
 
         # build_doc primarily describes the source collection.
         # indexer_env primarily describes the destination index.
+        _build_doc = _BuildDoc(build_doc)
+        _build_backend = _build_doc.parse_backend()
 
         # ----------source----------
 
-        assert build_doc.get("target_backend") in ('mongo', None)
-        self.mongo_client_args = _db(build_doc.get("backend_url"))
-        self.mongo_collection_name = col_name
+        self.mongo_client_args = _build_backend.args
+        self.mongo_database_name = _build_backend.dbs
+        self.mongo_collection_name = _build_backend.col
 
         # -----------dest-----------
 
         self.es_client_args = indexer_env.get("args", {})
-        self.es_index_name = index_name or col_name
+        self.es_index_name = index_name or self.mongo_collection_name
         self.es_index_settings = IndexSettings(deepcopy(DEFAULT_INDEX_SETTINGS))
         self.es_index_mappings = IndexMappings(deepcopy(DEFAULT_INDEX_MAPPINGS))
 
-        _build_doc = _BuildDoc(build_doc)
         _build_doc.enrich_settings(self.es_index_settings)
         _build_doc.enrich_mappings(self.es_index_mappings)
 
@@ -221,7 +252,7 @@ class Indexer():
             try:
                 yield from self.pre_index(mode)
             except Exception as exc:
-                self.logger.error(str(exc))
+                self.logger.exception(str(exc))
                 status.failed(str(exc))
                 raise
             else:
@@ -236,7 +267,7 @@ class Indexer():
                 # creating multiple batched jobs for indexing.
                 cnt = yield from self.do_index(job_manager, batch_size, ids, mode)
             except Exception as exc:
-                self.logger.error(str(exc))
+                self.logger.exception(str(exc))
                 status.failed(str(exc))
                 raise
             else:
@@ -305,7 +336,7 @@ class Indexer():
     def do_index(self, job_manager, batch_size, ids, mode):
 
         client = MongoClient(**self.mongo_client_args)
-        database = client.get_default_database()
+        database = client[self.mongo_database_name]
         collection = database[self.mongo_collection_name]
 
         if ids:
@@ -363,7 +394,8 @@ class Indexer():
             job = yield from job_manager.defer_to_process(
                 pinfo, dispatch,
                 self.mongo_client_args,
-                self.mongo_collection_name,
+                (self.mongo_database_name,
+                 self.mongo_collection_name),
                 self.es_client_args,
                 self.es_index_name,
                 ids, mode, batch_num
@@ -382,17 +414,17 @@ class Indexer():
         )
         return total
 
-    @ asyncio.coroutine
+    @asyncio.coroutine
     def post_index(self):
-        """
-        Override in sub-class to add a post-index process.
-        This method will run in a thread (using job_manager.defer_to_thread())
-        """
+        ...
 
 
-# TODO Mapping merge should be handled in indexer
-# meta merging merge_src_build_metadata not used yet..
-# TODO # correct count in hot cold indexer
+class ColdHotResult(UserDict):
+
+    def merge(self, result):
+        for index, count in result.items():
+            self.setdefault(index, 0)
+            self[index] += count
 
 class ColdHotIndexer():
     """
@@ -403,13 +435,12 @@ class ColdHotIndexer():
     are merged by fetching docs from the index, updating them, and putting them back in the index.
     """
 
-    def __init__(self, build_doc, indexer_env, target_name, index_name):
-        cold_target = build_doc["build_config"]["cold_collection"]
-        cold_build_doc = get_src_build().find_one({'_id': cold_target})
-        self.index_name = index_name or target_name
+    def __init__(self, build_doc, indexer_env, index_name):
+        hot_build_doc = _BuildDoc(build_doc)
+        cold_build_doc = hot_build_doc.extract_coldbuild()
 
-        self.cold = Indexer(cold_build_doc, indexer_env, cold_target, self.index_name)
-        self.hot = Indexer(build_doc, indexer_env, target_name, self.index_name)
+        self.hot = Indexer(hot_build_doc, indexer_env, index_name)
+        self.cold = Indexer(cold_build_doc, indexer_env, self.hot.es_index_name)
 
     @ asyncio.coroutine
     def index(self,
@@ -426,7 +457,7 @@ class ColdHotIndexer():
         if isinstance(steps, str):
             steps = [steps]
 
-        cnt = 0
+        result = ColdHotResult()
         if "index" in steps:
             # ---------------- Sebastian's Note ---------------
             # selectively index cold then hot collections, using default index method
@@ -434,15 +465,15 @@ class ColdHotIndexer():
             # index creation
             # Note: copy backend values as there are some references values between cold/hot and build_doc
             cold_task = self.cold.index(job_manager, ("pre", "index"), batch_size, ids, mode)
-            cnt = yield from cold_task
+            result.merge((yield from cold_task))
             hot_task = self.hot.index(job_manager, "index", batch_size, ids, "merge")
-            cnt = yield from hot_task
+            result.merge((yield from hot_task))
         if "post" in steps:
             # use super index but this time only on hot collection (this is the entry point, cold collection
             # remains hidden from outside)
-            self.hot.post_index()
+            yield from self.hot.post_index()
 
-        return {self.index_name: cnt}
+        return result
 
 
 class IndexManager(BaseManager):
@@ -590,9 +621,10 @@ class IndexManager(BaseManager):
             raise ValueError("Cannot find build config for '%s'." % target_name)
 
         idx = self._select_indexer(target_name)
-        idx = idx(build_doc, indexer_env_, target_name, index_name)
+        idx = idx(build_doc, indexer_env_, index_name)
         job = idx.index(self.job_manager, ids=ids, **kwargs)
         job = asyncio.ensure_future(job)
+        job.add_done_callback(self.logger.debug)
 
         return job
 
