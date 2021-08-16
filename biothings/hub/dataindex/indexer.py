@@ -251,7 +251,7 @@ class Indexer():
         # -----------dest-----------
 
         self.es_client_args = indexer_env.get("args", {})
-        self.es_index_name = index_name or self.mongo_collection_name
+        self.es_index_name = index_name or build_doc.get("target_name")
         self.es_index_settings = IndexSettings(deepcopy(DEFAULT_INDEX_SETTINGS))
         self.es_index_mappings = IndexMappings(deepcopy(DEFAULT_INDEX_MAPPINGS))
 
