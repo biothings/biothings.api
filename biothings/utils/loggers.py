@@ -11,7 +11,7 @@ from functools import partial
 from itertools import chain
 from threading import Thread
 from typing import NamedTuple, Union
-
+from types import MethodType
 import requests
 
 
@@ -67,6 +67,11 @@ def get_logger(logger_name, log_folder=None, handlers=("console", "file", "slack
         nh.name = "slack"
         if nh.name not in [h.name for h in logger.handlers]:
             logger.addHandler(nh)
+
+    def notify(self, *args, **kwargs):
+        return self.info(*args, **kwargs, extra={"notify": True})
+
+    logger.notify = MethodType(notify, logger)
 
     return (logger, logfile)
 
