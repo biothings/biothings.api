@@ -648,7 +648,7 @@ class IndexManager(BaseManager):
             return conf
 
         job = asyncio.ensure_future(_enhance(self._config))
-        job.add_done_callback(self.logger.info)
+        job.add_done_callback(self.logger.debug)
         return job
 
     def validate_mapping(self, mapping, env):
