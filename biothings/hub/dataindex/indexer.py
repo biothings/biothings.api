@@ -271,7 +271,8 @@ class Indexer():
         lines = [
             f"<{type(self).__name__}",
             f" source='{self.mongo_collection_name}'" if showx else "",
-            f" dest='{self.es_index_name}'>"
+            f" dest='{self.es_index_name}'"
+            f">"
         ]
         return "".join(lines)
 
@@ -325,8 +326,9 @@ class Indexer():
                 dx = yield from step.execute(job_manager, **kwargs)
                 dx = IndexerStepResult(dx)
             except Exception as exc:
-                self.logger.exception(str(exc))
-                step.state.failed(str(exc))
+                _exc = str(exc)[:500]
+                self.logger.exception(_exc)
+                step.state.failed(_exc)
                 raise exc
             else:
                 merge(x.data, dx.data)

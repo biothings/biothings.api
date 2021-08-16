@@ -35,7 +35,9 @@ class ESIndex():
     @functools.lru_cache()
     def doc_type(self):
         if int(self.client.info()['version']['number'].split('.')[0]) < 7:
-            return next(iter(self.client.indices.get_mapping(self.index_name).keys()))
+            mappings = self.client.indices.get_mapping(self.index_name)
+            mappings = mappings[self.index_name]["mappings"]
+            return next(iter(mappings.keys()))
         return None
 
     # --------------------
