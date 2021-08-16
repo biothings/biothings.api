@@ -271,7 +271,8 @@ class Indexer():
         lines = [
             f"<{type(self).__name__}",
             f" source='{self.mongo_collection_name}'" if showx else "",
-            f" dest='{self.es_index_name}'>"
+            f" dest='{self.es_index_name}'"
+            f">"
         ]
         return "".join(lines)
 
