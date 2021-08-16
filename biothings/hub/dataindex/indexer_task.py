@@ -190,7 +190,7 @@ class IndexingTask():
             query={'_id': {
                 '$in': self.ids
             }})
-        self.logger.info("[%s] Indexing %d documents.", self.name, len(self.ids))
+        self.logger.info("%s: Indexing %d documents.", self.name, len(self.ids))
         return clients.es.mindex(docs)
 
     def merge(self):
@@ -222,21 +222,22 @@ class IndexingTask():
 
         # updated docs (those existing in col *and* index)
         upd_cnt = clients.es.mindex(docs_old.values())
-        self.logger.info("[%s] %d documents updated.", self.name, upd_cnt)
+        self.logger.info("%s: %d documents updated.", self.name, upd_cnt)
 
         # new docs (only in col, *not* in index)
         new_cnt = clients.es.mindex(docs_new.values())
-        self.logger.info("[%s] %d new documents.", self.name, new_cnt)
+        self.logger.info("%s: %d new documents.", self.name, new_cnt)
 
         return upd_cnt + new_cnt
 
     def resume(self):
         clients = self._get_clients()
         missing_ids = [x.id for x in clients.es.mexists(self.ids) if not x.exists]
-        self.logger.info("[%s] %d missing documents.", self.name, len(missing_ids))
+        self.logger.info("%s: %d missing documents.", self.name, len(missing_ids))
         if missing_ids:
             self.ids = missing_ids
-            return self.index()
+            self.index()
+            return len(self.ids)
         return 0
 
 
