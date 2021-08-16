@@ -462,7 +462,7 @@ class Indexer():
         yield from asyncio.gather(*jobs)
 
         schedule.completed()
-        self.logger.info(schedule)
+        self.logger.notify(schedule)
         return {"count": total}
 
     @asyncio.coroutine
