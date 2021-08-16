@@ -112,6 +112,10 @@ class _BuildDoc(UserDict):
     }
     """
     @property
+    def target_name(self):
+        return self.get("target_name", self.get("_id"))
+
+    @property
     def build_config(self):
         return self.get("build_config", {})
 
@@ -251,7 +255,7 @@ class Indexer():
         # -----------dest-----------
 
         self.es_client_args = indexer_env.get("args", {})
-        self.es_index_name = index_name or build_doc.get("target_name")
+        self.es_index_name = index_name or _build_doc.target_name
         self.es_index_settings = IndexSettings(deepcopy(DEFAULT_INDEX_SETTINGS))
         self.es_index_mappings = IndexMappings(deepcopy(DEFAULT_INDEX_MAPPINGS))
 
@@ -262,6 +266,7 @@ class Indexer():
 
         self.env_name = indexer_env.get("name")
         self.conf_name = _build_doc.build_config.get("name")
+        self.target_name = _build_doc.target_name # name of the build
         self.logger, self.logfile = get_logger('index_%s' % self.es_index_name)
 
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 3))
