@@ -93,7 +93,7 @@ class Stage(Enum):
 # an implementation like this should be further
 # generalized to replace utils.manager.BaseStatusRegisterer
 
-class IndexJobStatusRegistrar():
+class IndexJobStateRegistrar():
 
     def __init__(self, indexer, collection):
         self.indexer = indexer
@@ -144,10 +144,10 @@ class IndexJobStatusRegistrar():
             job["err"] = str(error)
         self._done(func)
 
-    def succeed(self, **result):
+    def succeed(self, result):
         def func(job, delta_build):
             job["status"] = "success"
-            merge(delta_build, result)
+            merge(delta_build, dict(index=result))
         self._done(func)
 
     def _done(self, func):
@@ -168,35 +168,33 @@ class IndexJobStatusRegistrar():
         merge(build, delta_build)
         self.collection.replace_one({"_id": build["_id"]}, build)
 
-class PreIndexJSR(IndexJobStatusRegistrar):
+class PreIndexJSR(IndexJobStateRegistrar):
 
     def started(self):
         super().started('pre-index')
 
-class MainIndexJSR(IndexJobStatusRegistrar):
+class MainIndexJSR(IndexJobStateRegistrar):
 
     def started(self):
         super().started('index')
 
-    def succeed(self, **result):
+    def succeed(self, result):
 
         # after finishing the inital indexing
         # save the index metadata to field "index"
 
-        delta_build = {
-            "index": {
-                self.indexer.es_index_name: {
-                    '__REPLACE__': True,
-                    'host': self.indexer.es_client_args.get('hosts'),
-                    'environment': self.indexer.env_name,
-                    'created_at': datetime.now().astimezone()
-                }
+        _result = {
+            self.indexer.es_index_name: {
+                '__REPLACE__': True,
+                'host': self.indexer.es_client_args.get('hosts'),
+                'environment': self.indexer.env_name,
+                'created_at': datetime.now().astimezone()
             }
         }
-        merge(delta_build, result)
-        super().succeed(**delta_build)
+        merge(_result, result)
+        super().succeed(_result)
 
-class PostIndexJSR(IndexJobStatusRegistrar):
+class PostIndexJSR(IndexJobStateRegistrar):
 
     def started(self):
         super().started('post-index')
@@ -213,7 +211,7 @@ def test_registrar():
         env_name='dev'
     )
     collection = MongoClient().biothings.src_build
-    IndexJobStatusRegistrar.prune(collection)
+    IndexJobStateRegistrar.prune(collection)
 
     # ----------
     #  round 1
@@ -258,7 +256,7 @@ def test_registrar():
     job.started()
 
     input()
-    job.succeed(index={"__index_name__": {"additionally": "done"}})
+    job.succeed({"__index_name__": {"additionally": "done"}})
 
 
 if __name__ == '__main__':

@@ -5,6 +5,7 @@ class Schedule():
 
     def __init__(self, total, batch_size):
         self._batch_size = batch_size
+        self._state = ""
 
         self.total = total
         self.scheduled = 0
@@ -34,28 +35,28 @@ class Schedule():
             )
         ))
 
-    def completed(self, ignore_mismatch=False):
-        if not ignore_mismatch:
-            if self.finished != self.total:
-                raise ValueError(self.finished, self.total)
+    def completed(self):
+        if self.finished != self.total:
+            raise ValueError(self.finished, self.total)
 
     def __iter__(self):
         return self
 
     def __next__(self):
         if self.scheduled >= self.total:
+            self._state = "pending, waiting for completion,"
             raise StopIteration()
         self.scheduled += self._batch_size
         if self.scheduled > self.total:
             self.scheduled = self.total
+        self._state = self.suffix("running, on batch") + ","
         return self._batch
 
     def __str__(self):
         return " ".join(f"""
-            <Schedule
-                total={self.total}, scheduled={self.scheduled}, finished={self.finished},
-                batch="{self._batch}/{self._batches}", percentage="{self._percentage}"
-            >""".split())
+            <Schedule {"done" if self.finished >= self.total else self._state}
+                total={self.total} scheduled={self.scheduled} finished={self.finished}>
+            """.split())
 
 def test_01():
     schedule = Schedule(100, 10)

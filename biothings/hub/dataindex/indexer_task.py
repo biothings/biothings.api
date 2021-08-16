@@ -47,7 +47,7 @@ class ESIndex():
         [
             { "_id": "0", "a": "b" },
             { "_id": "1", "c": "d" },
-            None         # not found
+            # 404s are skipped
         ]
         """
         response = self.client.mget(
@@ -59,8 +59,6 @@ class ESIndex():
             if doc.get('found'):
                 doc['_source']['_id'] = doc['_id']
                 yield doc['_source']
-            else:
-                yield None
 
     def mexists(self, ids):
         """ Return a list of tuples like
@@ -102,8 +100,8 @@ class ESIndex():
 def _get_es_client(index_name, **es_client_args):
     return ESIndex(Elasticsearch(**es_client_args), index_name)
 
-def _get_mg_client(collection_name, **mongo_client_args):
-    return MongoClient(**mongo_client_args).get_default_database()[collection_name]
+def _get_mg_client(*dbcol_name, **mongo_client_args):
+    return MongoClient(**mongo_client_args)[dbcol_name[0]][dbcol_name[1]]
 
 # --------------
 #  Entry Point
@@ -116,7 +114,7 @@ def dispatch(
 ):
     return IndexingTask(
         partial(_get_es_client, es_idx_name, **es_client_args),
-        partial(_get_mg_client, mg_col_name, **mg_client_args),
+        partial(_get_mg_client, *mg_col_name, **mg_client_args),
         ids, mode, f"index_{es_idx_name}", name
     ).dispatch()
 
@@ -192,7 +190,7 @@ class IndexingTask():
             query={'_id': {
                 '$in': self.ids
             }})
-        self.logger.info("[%s] Indexing %d documents.", self.name, len(self.ids))
+        self.logger.info("%s: Indexing %d documents.", self.name, len(self.ids))
         return clients.es.mindex(docs)
 
     def merge(self):
@@ -200,7 +198,7 @@ class IndexingTask():
 
         upd_cnt, docs_old = 0, {}
         new_cnt, docs_new = 0, {}
-        
+
         # populate docs_old
         for doc in clients.es.mget(self.ids):
             docs_old[doc['_id']] = doc
@@ -224,21 +222,22 @@ class IndexingTask():
 
         # updated docs (those existing in col *and* index)
         upd_cnt = clients.es.mindex(docs_old.values())
-        self.logger.info("[%s] %d documents updated.", self.name, upd_cnt)
+        self.logger.info("%s: %d documents updated.", self.name, upd_cnt)
 
         # new docs (only in col, *not* in index)
         new_cnt = clients.es.mindex(docs_new.values())
-        self.logger.info("[%s] %d new documents.", self.name, new_cnt)
+        self.logger.info("%s: %d new documents.", self.name, new_cnt)
 
         return upd_cnt + new_cnt
 
     def resume(self):
         clients = self._get_clients()
         missing_ids = [x.id for x in clients.es.mexists(self.ids) if not x.exists]
-        self.logger.info("[%s] %d missing documents.", self.name, len(missing_ids))
+        self.logger.info("%s: %d missing documents.", self.name, len(missing_ids))
         if missing_ids:
             self.ids = missing_ids
-            return self.index()
+            self.index()
+            return len(self.ids)
         return 0
 
 
