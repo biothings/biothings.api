@@ -736,8 +736,8 @@ class IndexManager(BaseManager):
 
     def validate_mapping(self, mapping, env):
 
-        indexer = self._select_indexer()  # get the default indexer
-        indexer = indexer(dict(mapping=mapping), self[env], None, None)
+        indexer = self._select_indexer()  # default indexer
+        indexer = indexer(dict(mapping=mapping), self[env], None)
 
         self.logger.debug(indexer.es_client_args)
         self.logger.debug(indexer.es_index_settings)
