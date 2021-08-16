@@ -132,7 +132,7 @@ class IndexJobStateRegistrar():
             "pid": os.getpid()
         }
         self.collection.update(
-            {"_id": self.indexer.mongo_collection_name},
+            {"_id": self.indexer.target_name},
             {"$push": {
                 "jobs": job
             }}
@@ -155,8 +155,8 @@ class IndexJobStateRegistrar():
         assert self.stage == Stage.STARTED
         self.stage = Stage.DONE
 
-        build = self.collection.find_one({'_id': self.indexer.mongo_collection_name})
-        assert build, "Can't find build document '%s'" % self.indexer.mongo_collection_name
+        build = self.collection.find_one({'_id': self.indexer.target_name})
+        assert build, "Can't find build document '%s'" % self.indexer.target_name
 
         job = build["jobs"][-1]
         job["time"] = timesofar(self.t0)
