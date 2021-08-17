@@ -266,6 +266,8 @@ class Indexer():
 
         # -----------dest-----------
 
+        # https://elasticsearch-py.readthedocs.io/en/v7.12.0/api.html#elasticsearch.Elasticsearch
+        # https://elasticsearch-py.readthedocs.io/en/v7.12.0/helpers.html#elasticsearch.helpers.bulk
         self.es_client_args = indexer_env.get("args", {})
         self.es_blkidx_args = indexer_env.get("bulk", {})
         self.es_index_name = index_name or _build_doc.target_name
@@ -323,7 +325,7 @@ class Indexer():
 
         assert job_manager
         assert all(isinstance(_id, str) for _id in ids) if ids else True
-        assert 50 <= batch_size <= 10000, '"batch_size" out-of-range'
+        assert 500 <= batch_size <= 10000, '"batch_size" out-of-range'
         assert isinstance(steps, (list, tuple)), 'bad argument "steps"'
         assert isinstance(mode, str), 'bad argument "mode"'
 
@@ -331,7 +333,7 @@ class Indexer():
         # it does not affect how the elasticsearch python client
         # makes batch requests. a number larger than 10000 may exceed
         # es result window size and doc_feeder maximum fetch size.
-        # a number smaller than 50 is too small that the documents
+        # a number smaller than chunk_size is too small that the docs
         # can be sent to elasticsearch within one request, making it
         # inefficient, amplifying the scheduling overhead.
 
@@ -572,6 +574,10 @@ class IndexManager(BaseManager):
                             "retry_on_timeout": True,
                             "max_retries": 10,
                         },
+                        "bulk": {
+                            "chunk_size": 50
+                            "raise_on_exception": False
+                        },
                         "concurrency": 3
                     },
                     "index": [
@@ -610,7 +616,7 @@ class IndexManager(BaseManager):
         for name, env in conf["env"].items():
             self.register[name] = env.get("indexer", {})
             self.register[name].setdefault("args", {})
-            self.register[name]["args"].setdefault("hosts", env.get("host"))
+            self.register[name]["args"]["hosts"] = env.get("host")
             self.register[name]["name"] = name
         self.logger.info(self.register)
 
@@ -700,7 +706,6 @@ class IndexManager(BaseManager):
 
         return job
 
-    # TODO PENDING VERIFICATION
     def update_metadata(self,
                         indexer_env,
                         index_name,
@@ -710,21 +715,29 @@ class IndexManager(BaseManager):
         Update _meta for index_name, based on build_name (_meta directly
         taken from the src_build document) or _meta
         """
-        idxkwargs = self[indexer_env]
-        # 1st pass we get the doc_type (don't want to ask that on the signature...)
-        indexer = create_backend((idxkwargs["es_host"], index_name, None)).target_esidxer
-        m = indexer._es.indices.get_mapping(index_name)
-        assert len(m[index_name]["mappings"]) == 1, "Found more than one doc_type: " + \
-            "%s" % m[index_name]["mappings"].keys()
-        doc_type = list(m[index_name]["mappings"].keys())[0]
-        # 2nd pass to re-create correct indexer
-        indexer = create_backend((idxkwargs["es_host"], index_name, doc_type)).target_esidxer
-        if build_name:
-            build = get_src_build().find_one({"_id": build_name})
-            assert build, "No such build named '%s'" % build_name
-            _meta = build.get("_meta")
-        assert _meta is not None, "No _meta found"
-        return indexer.update_mapping_meta({"_meta": _meta})
+        async def _update_meta(_meta):
+            env = self.register[indexer_env]
+            client = AsyncElasticsearch(**env["args"])
+
+            doc_type = None
+            if int((await client.info())['version']['number'].split('.')[0]) < 7:
+                mappings = client.indices.get_mapping(index_name)
+                mappings = mappings[index_name]["mappings"]
+                doc_type = next(iter(mappings.keys()))
+
+            if not _meta and build_name:
+                build = get_src_build().find_one({"_id": build_name})
+                _meta = (build or {}).get("_meta")
+
+            return await client.indices.put_mapping(
+                body=dict(_meta=_meta),
+                index=index_name,
+                doc_type=doc_type
+            )
+
+        job = asyncio.ensure_future(_update_meta(_meta))
+        job.add_done_callback(self.logger.debug)
+        return job
 
     def index_info(self, remote=False):
         """ Show index manager config with enhanced index information. """

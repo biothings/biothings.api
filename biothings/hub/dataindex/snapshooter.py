@@ -241,7 +241,6 @@ class SnapshotTaskEnv():
         )
         self.indexer = ESIndexer(
             index=index,
-            doc_type=env.build_doc['index'][index]['doc_type'],
             es_host=env.build_doc['index'][index]['host'],
             check_index=index is not None
         )
@@ -367,7 +366,7 @@ class SnapshotFSEnv(SnapshotEnv):
     def __init__(self, job_manager, env_config, build_doc):
         super().__init__(job_manager, env_config, build_doc)
         assert env_config['repository']['type'] == 'fs'
-        raise NotImplementedError
+        raise NotImplementedError()
 
 class SnapshotS3Env(SnapshotEnv):
     """

@@ -1191,6 +1191,8 @@ class HubServer(object):
                 tracked=False)
             self.extra_commands["validate_mapping"] = CommandDefinition(
                 command=self.managers["index_manager"].validate_mapping)
+            self.extra_commands["update_metadata"] = CommandDefinition(
+                command=self.managers["index_manager"].update_metadata)
         if self.managers.get("snapshot_manager"):
             self.extra_commands["ssm"] = CommandDefinition(
                 command=self.managers["snapshot_manager"], tracked=False)
