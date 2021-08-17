@@ -134,8 +134,16 @@ class _BuildDoc(UserDict):
         backend = self.get("target_backend")
         backend_url = self.get("backend_url")
 
+        # Case 1: 
+        # As a dummy indexer
+        # Used in validate_mapping, ...
+
         if backend is None:
             return _BuildBackend()
+
+        # Case 2: 
+        # Most common setup
+        # Index a merged collection
 
         elif backend == "mongo":
             from biothings.hub.databuild import backend
@@ -147,6 +155,10 @@ class _BuildDoc(UserDict):
                         ("host", "port"),
                         db.client.address
                     )), db.name, backend_url)
+
+        # Case 3: 
+        # For single source build_config(s)
+        # Index the source collection directly
 
         elif backend == "link":
             from biothings.hub.databuild import backend
@@ -662,7 +674,7 @@ class IndexManager(BaseManager):
 
     def index(self,
               indexer_env,  # elasticsearch env
-              target_name,  # source mongodb collection
+              target_name,  # build name
               index_name=None,  # elasticsearch index name
               ids=None,  # document ids
               **kwargs):
