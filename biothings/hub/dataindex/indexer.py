@@ -254,6 +254,8 @@ class Indexer():
 
         # -----------dest-----------
 
+        # https://elasticsearch-py.readthedocs.io/en/v7.12.0/api.html#elasticsearch.Elasticsearch
+        # https://elasticsearch-py.readthedocs.io/en/v7.12.0/helpers.html#elasticsearch.helpers.bulk
         self.es_client_args = indexer_env.get("args", {})
         self.es_blkidx_args = indexer_env.get("bulk", {})
         self.es_index_name = index_name or _build_doc.target_name
@@ -560,6 +562,10 @@ class IndexManager(BaseManager):
                             "retry_on_timeout": True,
                             "max_retries": 10,
                         },
+                        "bulk": {
+                            "chunk_size": 50
+                            "raise_on_exception": False
+                        },
                         "concurrency": 3
                     },
                     "index": [
@@ -598,7 +604,7 @@ class IndexManager(BaseManager):
         for name, env in conf["env"].items():
             self.register[name] = env.get("indexer", {})
             self.register[name].setdefault("args", {})
-            self.register[name]["args"].setdefault("hosts", env.get("host"))
+            self.register[name]["args"]["hosts"] = env.get("host")
             self.register[name]["name"] = name
         self.logger.info(self.register)
 
