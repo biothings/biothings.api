@@ -134,14 +134,14 @@ class _BuildDoc(UserDict):
         backend = self.get("target_backend")
         backend_url = self.get("backend_url")
 
-        # Case 1: 
+        # Case 1:
         # As a dummy indexer
         # Used in validate_mapping, ...
 
         if backend is None:
             return _BuildBackend()
 
-        # Case 2: 
+        # Case 2:
         # Most common setup
         # Index a merged collection
 
@@ -156,7 +156,7 @@ class _BuildDoc(UserDict):
                         db.client.address
                     )), db.name, backend_url)
 
-        # Case 3: 
+        # Case 3:
         # For single source build_config(s)
         # Index the source collection directly
 
@@ -266,10 +266,10 @@ class Indexer():
 
         # -----------dest-----------
 
-        # https://elasticsearch-py.readthedocs.io/en/v7.12.0/api.html#elasticsearch.Elasticsearch
-        # https://elasticsearch-py.readthedocs.io/en/v7.12.0/helpers.html#elasticsearch.helpers.bulk
-        self.es_client_args = indexer_env.get("args", {})
-        self.es_blkidx_args = indexer_env.get("bulk", {})
+        # [1] https://elasticsearch-py.readthedocs.io/en/v7.12.0/api.html#elasticsearch.Elasticsearch
+        # [2] https://elasticsearch-py.readthedocs.io/en/v7.12.0/helpers.html#elasticsearch.helpers.bulk
+        self.es_client_args = indexer_env.get("args", {})  # See [1] for available args
+        self.es_blkidx_args = indexer_env.get("bulk", {})  # See [2] for available args
         self.es_index_name = index_name or _build_doc.target_name
         self.es_index_settings = IndexSettings(deepcopy(DEFAULT_INDEX_SETTINGS))
         self.es_index_mappings = IndexMappings(deepcopy(DEFAULT_INDEX_MAPPINGS))
