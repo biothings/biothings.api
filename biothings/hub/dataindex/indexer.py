@@ -694,7 +694,6 @@ class IndexManager(BaseManager):
 
         return job
 
-    # TODO PENDING VERIFICATION
     def update_metadata(self,
                         indexer_env,
                         index_name,
@@ -704,21 +703,29 @@ class IndexManager(BaseManager):
         Update _meta for index_name, based on build_name (_meta directly
         taken from the src_build document) or _meta
         """
-        idxkwargs = self[indexer_env]
-        # 1st pass we get the doc_type (don't want to ask that on the signature...)
-        indexer = create_backend((idxkwargs["es_host"], index_name, None)).target_esidxer
-        m = indexer._es.indices.get_mapping(index_name)
-        assert len(m[index_name]["mappings"]) == 1, "Found more than one doc_type: " + \
-            "%s" % m[index_name]["mappings"].keys()
-        doc_type = list(m[index_name]["mappings"].keys())[0]
-        # 2nd pass to re-create correct indexer
-        indexer = create_backend((idxkwargs["es_host"], index_name, doc_type)).target_esidxer
-        if build_name:
-            build = get_src_build().find_one({"_id": build_name})
-            assert build, "No such build named '%s'" % build_name
-            _meta = build.get("_meta")
-        assert _meta is not None, "No _meta found"
-        return indexer.update_mapping_meta({"_meta": _meta})
+        async def _update_meta(_meta):
+            env = self.register[indexer_env]
+            client = AsyncElasticsearch(**env["args"])
+
+            doc_type = None
+            if int((await client.info())['version']['number'].split('.')[0]) < 7:
+                mappings = client.indices.get_mapping(index_name)
+                mappings = mappings[index_name]["mappings"]
+                doc_type = next(iter(mappings.keys()))
+
+            if not _meta and build_name:
+                build = get_src_build().find_one({"_id": build_name})
+                _meta = (build or {}).get("_meta")
+
+            return await client.indices.put_mapping(
+                body=dict(_meta=_meta),
+                index=index_name,
+                doc_type=doc_type
+            )
+
+        job = asyncio.ensure_future(_update_meta(_meta))
+        job.add_done_callback(self.logger.debug)
+        return job
 
     def index_info(self, remote=False):
         """ Show index manager config with enhanced index information. """
