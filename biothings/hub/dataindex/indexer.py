@@ -311,7 +311,7 @@ class Indexer():
 
         assert job_manager
         assert all(isinstance(_id, str) for _id in ids) if ids else True
-        assert 50 <= batch_size <= 10000, '"batch_size" out-of-range'
+        assert 500 <= batch_size <= 10000, '"batch_size" out-of-range'
         assert isinstance(steps, (list, tuple)), 'bad argument "steps"'
         assert isinstance(mode, str), 'bad argument "mode"'
 
@@ -319,7 +319,7 @@ class Indexer():
         # it does not affect how the elasticsearch python client
         # makes batch requests. a number larger than 10000 may exceed
         # es result window size and doc_feeder maximum fetch size.
-        # a number smaller than 50 is too small that the documents
+        # a number smaller than chunk_size is too small that the docs
         # can be sent to elasticsearch within one request, making it
         # inefficient, amplifying the scheduling overhead.
 
