@@ -255,6 +255,7 @@ class Indexer():
         # -----------dest-----------
 
         self.es_client_args = indexer_env.get("args", {})
+        self.es_blkidx_args = indexer_env.get("bulk", {})
         self.es_index_name = index_name or _build_doc.target_name
         self.es_index_settings = IndexSettings(deepcopy(DEFAULT_INDEX_SETTINGS))
         self.es_index_mappings = IndexMappings(deepcopy(DEFAULT_INDEX_MAPPINGS))
@@ -266,7 +267,7 @@ class Indexer():
 
         self.env_name = indexer_env.get("name")
         self.conf_name = _build_doc.build_config.get("name")
-        self.target_name = _build_doc.target_name # name of the build
+        self.target_name = _build_doc.target_name  # name of the build
         self.logger, self.logfile = get_logger('index_%s' % self.es_index_name)
 
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 3))
@@ -456,9 +457,10 @@ class Indexer():
             job = yield from job_manager.defer_to_process(
                 pinfo, dispatch,
                 self.mongo_client_args,
-                (self.mongo_database_name,
-                 self.mongo_collection_name),
+                self.mongo_database_name,
+                self.mongo_collection_name,
                 self.es_client_args,
+                self.es_blkidx_args,
                 self.es_index_name,
                 ids, mode, batch_num
             )

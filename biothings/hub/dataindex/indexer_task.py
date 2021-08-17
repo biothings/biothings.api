@@ -27,9 +27,10 @@ class ESIndex():
     # previously using biothings.utils.es.ESIndexer
     # recently reimplemented here for better clarity.
 
-    def __init__(self, client, index_name):
+    def __init__(self, client, index_name, **bulk_index_args):
         self.client = client
-        self.index_name = index_name  # the index must already exist
+        self.index_name = index_name  # MUST exist
+        self.bulk_index_args = bulk_index_args
 
     @property
     @functools.lru_cache()
@@ -83,7 +84,7 @@ class ESIndex():
         id_set = {doc['_id'] for doc in res['hits']['hits']}
         return [_IDExists(_id, _id in id_set) for _id in ids]
 
-    def mindex(self, docs, *args, **kwargs):
+    def mindex(self, docs):
         """ Index and return the number of docs indexed. """
 
         def _action(doc):
@@ -95,28 +96,30 @@ class ESIndex():
             _doc.update(doc)  # with _id
             return _doc
 
-        return helpers.bulk(self.client, map(_action, docs), *args, **kwargs)[0]
+        return helpers.bulk(
+            self.client, map(_action, docs),
+            **self.bulk_index_args)[0]
 
 # Data Collection Client
 
-def _get_es_client(index_name, **es_client_args):
-    return ESIndex(Elasticsearch(**es_client_args), index_name)
+def _get_es_client(es_client_args, es_blk_args, es_idx_name):
+    return ESIndex(Elasticsearch(**es_client_args), es_idx_name, **es_blk_args)
 
-def _get_mg_client(*dbcol_name, **mongo_client_args):
-    return MongoClient(**mongo_client_args)[dbcol_name[0]][dbcol_name[1]]
+def _get_mg_client(mg_client_args, mg_dbs_name, mg_col_name):
+    return MongoClient(**mg_client_args)[mg_dbs_name][mg_col_name]
 
 # --------------
 #  Entry Point
 # --------------
 
 def dispatch(
-    mg_client_args, mg_col_name,
-    es_client_args, es_idx_name,
+    mg_client_args, mg_dbs_name, mg_col_name,
+    es_client_args, es_blk_args, es_idx_name,
     ids, mode, name
 ):
     return IndexingTask(
-        partial(_get_es_client, es_idx_name, **es_client_args),
-        partial(_get_mg_client, *mg_col_name, **mg_client_args),
+        partial(_get_es_client, es_client_args, es_blk_args, es_idx_name),
+        partial(_get_mg_client, mg_client_args, mg_dbs_name, mg_col_name),
         ids, mode, f"index_{es_idx_name}", name
     ).dispatch()
 
