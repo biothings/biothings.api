@@ -7,9 +7,9 @@ from copy import deepcopy
 from functools import partial
 from typing import NamedTuple, Optional
 
+import elasticsearch
 from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
-from biothings.hub.databuild.backend import (create_backend,
-                                             merge_src_build_metadata)
+from biothings.hub.databuild.backend import merge_src_build_metadata
 from biothings.utils.common import (get_class_from_classpath,
                                     get_random_string, iter_n, traverse)
 from biothings.utils.es import ESIndexer
@@ -134,14 +134,14 @@ class _BuildDoc(UserDict):
         backend = self.get("target_backend")
         backend_url = self.get("backend_url")
 
-        # Case 1: 
+        # Case 1:
         # As a dummy indexer
         # Used in validate_mapping, ...
 
         if backend is None:
             return _BuildBackend()
 
-        # Case 2: 
+        # Case 2:
         # Most common setup
         # Index a merged collection
 
@@ -156,7 +156,7 @@ class _BuildDoc(UserDict):
                         db.client.address
                     )), db.name, backend_url)
 
-        # Case 3: 
+        # Case 3:
         # For single source build_config(s)
         # Index the source collection directly
 
@@ -194,7 +194,7 @@ class Step(abc.ABC):
     catelog = dict()
 
     def __init__(self, indexer):
-        self.indexer = indexer
+        self.indexer = indexer  # Indexer object
         self.state = self.state(indexer, get_src_build())
 
     @classmethod
@@ -234,7 +234,7 @@ class PostIndexStep(Step):
     state = PostIndexJSR
     method = "post_index"
 
-class _IndexerResult(UserDict):  # TODO Make this common
+class _IndexerResult(UserDict):
 
     def __str__(self):
         return f"{type(self).__name__}({str(self.data)})"
@@ -284,7 +284,7 @@ class Indexer():
         self.target_name = _build_doc.target_name  # name of the build
         self.logger, self.logfile = get_logger('index_%s' % self.es_index_name)
 
-        self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 3))
+        self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
 
     def __str__(self):
         showx = self.mongo_collection_name != self.es_index_name
@@ -608,16 +608,24 @@ class IndexManager(BaseManager):
     def configure(self, conf):
         if not isinstance(conf, dict):
             raise TypeError(type(conf))
+        self._config = conf
 
-        # keep an original config copy
-        self._config = copy.deepcopy(conf)
+        # ES client argument defaults.
+        # During heavy indexing, the following settings
+        # significantly increase the one-pass success rate.
+        esargs = {
+            "timeout": 300,
+            "retry_on_timeout": True,
+            "max_retries": 10
+        }
 
         # register each indexing environment
         for name, env in conf["env"].items():
-            self.register[name] = env.get("indexer", {})
-            self.register[name].setdefault("args", {})
+            self.register[name] = env.setdefault("indexer", {})
+            self.register[name].setdefault("args", dict(esargs))
             self.register[name]["args"]["hosts"] = env.get("host")
             self.register[name]["name"] = name
+
         self.logger.info(self.register)
 
     # Job Manager Hooks
@@ -712,28 +720,37 @@ class IndexManager(BaseManager):
                         build_name=None,
                         _meta=None):
         """
-        Update _meta for index_name, based on build_name (_meta directly
-        taken from the src_build document) or _meta
+        Update _meta field of the index mappings, basing on
+            1. the _meta value provided, including {}.
+            2. the _meta value of the build_name in src_build.
+            3. the _meta value of the build with the same name as the index.
+
+        Examples:
+            update_metadata("local", "mynews_201228_vsdevjd")
+            update_metadata("local", "mynews_201228_vsdevjd", _meta={})
+            update_metadata("local", "mynews_201228_vsdevjd", _meta={"author":"b"})
+            update_metadata("local", "mynews_201228_current", "mynews_201228_vsdevjd")
         """
         async def _update_meta(_meta):
             env = self.register[indexer_env]
-            client = AsyncElasticsearch(**env["args"])
+            async with AsyncElasticsearch(**env["args"]) as client:
 
-            doc_type = None
-            if int((await client.info())['version']['number'].split('.')[0]) < 7:
-                mappings = client.indices.get_mapping(index_name)
-                mappings = mappings[index_name]["mappings"]
-                doc_type = next(iter(mappings.keys()))
+                doc_type = None
+                if int((await client.info())['version']['number'].split('.')[0]) < 7:
+                    mappings = client.indices.get_mapping(index_name)
+                    mappings = mappings[index_name]["mappings"]
+                    doc_type = next(iter(mappings.keys()))
 
-            if not _meta and build_name:
-                build = get_src_build().find_one({"_id": build_name})
-                _meta = (build or {}).get("_meta")
+                if _meta is None:
+                    _id = build_name or index_name  # best guess
+                    build = get_src_build().find_one({"_id": _id})
+                    _meta = (build or {}).get("_meta")
 
-            return await client.indices.put_mapping(
-                body=dict(_meta=_meta),
-                index=index_name,
-                doc_type=doc_type
-            )
+                return await client.indices.put_mapping(
+                    body=dict(_meta=_meta),
+                    index=index_name,
+                    doc_type=doc_type
+                )
 
         job = asyncio.ensure_future(_update_meta(_meta))
         job.add_done_callback(self.logger.debug)
@@ -745,28 +762,26 @@ class IndexManager(BaseManager):
 
         async def _enhance(conf):
             conf = copy.deepcopy(conf)
-            if remote:
-                for env in self.register:
+
+            for name, env in self.register.items():
+                async with AsyncElasticsearch(**env["args"]) as client:
                     try:
-                        client = AsyncElasticsearch(**self.register[env]["args"])
-                        conf["env"][env]["index"] = [{
+                        indices = await client.indices.get("*")
+                    except elasticsearch.exceptions.ConnectionError:
+                        ...  # keep the hard-coded place-holders info
+                    else:  # replace the index key with remote info
+                        conf["env"][name]["index"] = [{
                             "index": k,
                             "aliases": list(v["aliases"].keys()),
-                        } for k, v in (await client.indices.get("*")).items()]
-
-                    except Exception as exc:
-                        self.logger.warning(str(exc))
-                    finally:
-                        try:
-                            await client.close()
-                        except:
-                            ...
-
+                        } for k, v in indices.items()]
             return conf
 
-        job = asyncio.ensure_future(_enhance(self._config))
-        job.add_done_callback(self.logger.debug)
-        return job
+        if remote:
+            job = asyncio.ensure_future(_enhance(self._config))
+            job.add_done_callback(self.logger.debug)
+            return job
+
+        return self._config
 
     def validate_mapping(self, mapping, env):
 
