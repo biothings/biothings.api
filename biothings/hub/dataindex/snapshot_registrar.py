@@ -7,7 +7,11 @@ from biothings.utils.common import merge, timesofar
 # NO CONCURRENT
 # TASK SUPPORT YET
 
-_map = {}
+_map = {
+    # "pre": PreSnapshotState,
+    # "snapshot": MainSnapshotState,
+    # "post": PostSnapshotState
+}
 
 def dispatch(step):
     return _map[step]
@@ -15,12 +19,16 @@ def dispatch(step):
 def audit(src_build, logger=None):
     if not logger:
         logger = logging.getLogger(__name__)
+
     for build in src_build.find():
         for num, job in enumerate(build.get("jobs", [])):
+
             if job.get("status") == "in progress":
                 job["status"] = "canceled"
-                msg = "<Job #%d in %s cancelled>"
+
+                msg = "<Job #%d in <Build '%s'> cancelled>"
                 logger.warning(msg, num, build["_id"])
+
         src_build.replace_one({"_id": build["_id"]}, build)
 
 
@@ -56,8 +64,8 @@ class _TaskState():
         job = doc["jobs"][-1]
 
         t0 = job["step_started_at"].timestamp()
-        job["time"] = timesofar(t0)
         job["time_in_s"] = round(time() - t0, 0)
+        job["time"] = timesofar(t0)
 
         merge(doc, _doc)
         merge(job, _job)
