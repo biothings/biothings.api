@@ -846,3 +846,29 @@ def run_once():
         return True
 
     return should_run
+
+def merge(x, dx):
+    """
+    Merge dictionary dx (Δx) into dictionary x.
+    If __REPLACE__ key is present in any level z in dx,
+    z in x is replaced, instead of merged, with z in dx.
+    """
+    assert isinstance(x, dict)
+    assert isinstance(dx, dict)
+
+    if dx.pop("__REPLACE__", None):
+        # merge dx with "nothing" just to
+        # make sure to remove any "__REPLACE__"
+        _y = {}
+        merge(_y, dx)
+        x.clear()
+        x.update(_y)
+        return
+
+    for k, v in dx.items():
+        if isinstance(v, dict):
+            if not isinstance(x.get(k), dict):
+                x[k] = {}
+            merge(x[k], v)
+        else:
+            x[k] = v
