@@ -239,7 +239,7 @@ class _IndexerResult(UserDict):
     def __str__(self):
         return f"{type(self).__name__}({str(self.data)})"
 
-class IndexerIndexResult(_IndexerResult):
+class IndexerCumulativeResult(_IndexerResult):
     ...
 
 class IndexerStepResult(_IndexerResult):
@@ -337,7 +337,7 @@ class Indexer():
         # can be sent to elasticsearch within one request, making it
         # inefficient, amplifying the scheduling overhead.
 
-        x = IndexerIndexResult()
+        x = IndexerCumulativeResult()
         for step in steps:
             step = Step.dispatch(step)(self)
             self.logger.info(step)
