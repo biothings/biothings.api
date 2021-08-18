@@ -621,9 +621,10 @@ class IndexManager(BaseManager):
 
         # register each indexing environment
         for name, env in conf["env"].items():
-            self.register[name] = env.setdefault("indexer", {})
-            self.register[name].setdefault("args", dict(esargs))
-            self.register[name]["args"]["hosts"] = env.get("host")
+            indexer = env.setdefault("indexer", {})
+            indexer.setdefault("args", dict(esargs))
+            indexer["args"]["hosts"] = env.get("host")
+            self.register[name] = deepcopy(indexer)
             self.register[name]["name"] = name
 
         self.logger.info(self.register)
