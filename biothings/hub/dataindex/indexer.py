@@ -549,6 +549,8 @@ class ColdHotIndexer():
 
         return result
 
+# TODO
+# EMPTY DB VAL ON PARTIAL FAILURE
 
 class IndexManager(BaseManager):
 
