@@ -676,8 +676,8 @@ class IndexManager(BaseManager):
         # can determine the indexer class to use.
 
         path = None
-        doc = self._srcbuild.find_one({"_id": target_name}) or {}
-        for path_in_doc, _ in traverse(doc, True):
+        doc = self._srcbuild.find_one({"_id": target_name})
+        for path_in_doc, _ in traverse(doc or dict(), True):
             if path_in_doc in rules:
                 if not path:
                     path = path_in_doc
@@ -774,8 +774,7 @@ class IndexManager(BaseManager):
                         ...  # keep the hard-coded place-holders info
                     else:  # replace the index key with remote info
                         conf["env"][name]["index"] = [{
-                            "index": k,
-                            "aliases": list(v["aliases"].keys()),
+                            "index": k, "aliases": list(v["aliases"].keys()),
                         } for k, v in indices.items()]
             return conf
 
