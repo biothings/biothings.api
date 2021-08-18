@@ -1,6 +1,7 @@
 
 import elasticsearch
 
+
 class Repository():
 
     def __init__(self, client, repository):
@@ -18,7 +19,8 @@ class Repository():
         return True
 
     def create(self, **body):
-        self.client.snapshot.create_repository(self.repository, **body)
+        # https://www.elastic.co/guide/en/elasticsearch/plugins/current/repository-s3-client.html
+        return self.client.snapshot.create_repository(self.repository, **body)
 
     def delete(self):
         self.client.snapshot.delete_repository(self.repository)

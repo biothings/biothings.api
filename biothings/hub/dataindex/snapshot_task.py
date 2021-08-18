@@ -42,9 +42,9 @@ class Snapshot():
     def __str__(self):
         return (
             f"<Snapshot {self.state()}"
-            f" client={self.client}"
             f" repository='{self.repository}'"
             f" snapshot='{self.snapshot}'"
+            f" client={self.client}"
             f">"
         )
 
