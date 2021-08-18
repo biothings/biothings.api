@@ -5,84 +5,7 @@ from datetime import datetime
 from enum import Enum
 from types import SimpleNamespace
 
-from biothings.utils.common import timesofar
-
-
-def merge(x, dx):
-    """
-    Merge dictionary dx (Δx) into dictionary x.
-    If __REPLACE__ key is present in any level z in dx,
-    z in x is replaced, instead of merged, with z in dx.
-    """
-    assert isinstance(x, dict)
-    assert isinstance(dx, dict)
-
-    if dx.pop("__REPLACE__", None):
-        # merge dx with "nothing" just to
-        # make sure to remove any "__REPLACE__"
-        _y = {}
-        merge(_y, dx)
-        x.clear()
-        x.update(_y)
-        return
-
-    for k, v in dx.items():
-        if isinstance(v, dict):
-            if not isinstance(x.get(k), dict):
-                x[k] = {}
-            merge(x[k], v)
-        else:
-            x[k] = v
-
-def test_merge_0():
-    x = {}
-    y = {}
-    merge(x, y)
-    print(x)
-
-def test_merge_1():
-    x = {
-        "index": {
-            "name1": {
-                "doc_type": "news",
-                "happy": False
-            }
-        }
-    }
-    y = {
-        "index": {
-            "name1": {
-                "happy": True,
-                "count": 100
-            }
-        }
-    }
-    merge(x, y)
-    print(x)
-
-def test_merge_2():
-    x = {"a": {"b": "c"}}
-    y = {"a": {
-        "__REPLACE__": True,
-        "b'": {
-            "__REPLACE__": False,
-            "c": "d"
-        }
-    }}
-    merge(x, y)
-    print(x)
-
-def test_merge_3():
-    x = {"a": "b"}
-    y = {"a": {"b": "c"}}
-    merge(x, y)
-    print(x)
-
-def test_merge_4():
-    x = {"a": {"__REPLACE__": True, "b": "c"}, "__REPLACE__": True}
-    y = {"a": {"b": "d"}}
-    merge(x, y)
-    print(x)
+from biothings.utils.common import timesofar, merge
 
 
 class Stage(Enum):
@@ -186,8 +109,8 @@ class MainIndexJSR(IndexJobStateRegistrar):
         _result = {
             self.indexer.es_index_name: {
                 '__REPLACE__': True,
-                'host': self.indexer.es_client_args.get('hosts'),
-                'environment': self.indexer.env_name,
+                'host': self.indexer.es_client_args.get('hosts'),  # only for display
+                'environment': self.indexer.env_name,  # used in snapshot f.
                 'created_at': datetime.now().astimezone()
             }
         }
