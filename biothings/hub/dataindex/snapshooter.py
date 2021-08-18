@@ -8,33 +8,16 @@ from datetime import datetime
 from functools import partial
 
 import boto3
-from elasticsearch import Elasticsearch
-
-try:  # TODO create snapshot_test.py
-    # DON'T MESS UP THINGS HERE
-    from biothings import config as btconfig
-    from config import logger as logging
-except ImportError:
-    # For testing in mychem studio
-    # docker development distribution
-    import sys
-    sys.path.insert(1, '/home/biothings/mychem.info/src')
-    import config
-    from biothings import config_for_app
-    config_for_app(config)
-    from biothings import config as btconfig
-    from config import logger as logging
-
 from biothings.hub import SNAPSHOOTER_CATEGORY, SNAPSHOTMANAGER_CATEGORY
 from biothings.hub.databuild.buildconfig import AutoBuildConfig
 from biothings.hub.datarelease import set_pending_to_release_note
 from biothings.utils.common import merge
-from biothings.utils.es import ESIndexer
-from biothings.utils.es import IndexerException as ESIndexerException
 from biothings.utils.hub import template_out
 from biothings.utils.hub_db import get_src_build
-from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseManager, BaseStatusRegisterer
+from biothings.utils.manager import BaseManager
+from elasticsearch import Elasticsearch
+
+from config import logger as logging
 
 from . import snapshot_registrar as registrar
 from .snapshot_repo import Repository
@@ -255,11 +238,10 @@ class SnapshotEnv():
 
             if state == "FAILED":
                 raise ValueError(state)
-
             elif state == "SUCCESS":
                 break
 
-            # Wait for "IN_PROGRESS"
+            # Wait "IN_PROGRESS"
             time.sleep(self.wtime)
 
         return {
@@ -396,29 +378,3 @@ class SnapshotManager(BaseManager):
 
     def snapshot_info(self, env=None, remote=False):
         return self.snapshot_config
-
-
-def test():
-    from biothings.hub.dataindex.indexer import IndexManager
-    from biothings.utils.manager import JobManager
-    loop = asyncio.get_event_loop()
-    job_manager = JobManager(loop)
-    index_manager = IndexManager(job_manager=job_manager)
-    index_manager.configure(config.INDEX_CONFIG)
-    snapshot_manager = SnapshotManager(
-        index_manager=index_manager,
-        job_manager=job_manager,
-        poll_schedule="* * * * * */10"
-    )
-    snapshot_manager.configure(config.SNAPSHOT_CONFIG)
-    # snapshot_manager.poll("snapshot",snapshot_manager.snapshot_build)
-
-    async def test_code():
-        snapshot_manager.snapshot('prod', 'mynews_202009170234_fjvg7skx')
-
-    asyncio.ensure_future(test_code())
-    loop.run_forever()
-
-
-if __name__ == '__main__':
-    test()
