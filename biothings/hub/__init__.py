@@ -1043,9 +1043,9 @@ class HubServer(object):
         # indexing commands
         if self.managers.get("index_manager"):
             self.commands["index"] = self.managers["index_manager"].index
+            self.commands["index_cleanup"] = self.managers["index_manager"].cleanup
         if self.managers.get("snapshot_manager"):
-            self.commands["snapshot"] = self.managers[
-                "snapshot_manager"].snapshot
+            self.commands["snapshot"] = self.managers[ "snapshot_manager"].snapshot
         # data release commands
         if self.managers.get("release_manager"):
             self.commands["create_release_note"] = self.managers[

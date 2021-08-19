@@ -22,6 +22,7 @@ from pymongo.mongo_client import MongoClient
 
 from .indexer_payload import *
 from .indexer_registrar import *
+from .indexer_cleanup import Cleaner
 from .indexer_schedule import Schedule
 from .indexer_task import dispatch
 
@@ -808,6 +809,17 @@ class IndexManager(BaseManager):
                 yield from client.close()
 
         job = asyncio.ensure_future(_validate_mapping())
+        job.add_done_callback(self.logger.info)
+        return job
+
+    def cleanup(self, env, keep=3, dryrun=True):
+        cleaner = Cleaner(get_src_build(), self, self.logger)
+        cleanups = cleaner.find(env, keep)
+
+        if dryrun:
+            return str(cleanups)
+
+        job = asyncio.ensure_future(cleaner.execute(cleanups))
         job.add_done_callback(self.logger.info)
         return job
 
