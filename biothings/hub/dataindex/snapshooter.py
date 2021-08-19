@@ -133,13 +133,16 @@ class RepositoryConfig(UserDict):
         """
         template = TemplateStr(json.dumps(self.data))
         string = RenderedStr(template_out(template.data, doc or {}))
+
         if "%" in string:
             logging.error(template)
             logging.error(string)
             raise ValueError("Failed to template.")
+
         if template != string:
             logging.debug(template)
             logging.debug(string)
+
         return RepositoryConfig(json.loads(string.data))
 
 
@@ -230,6 +233,7 @@ class SnapshotEnv():
             logging.info(repo)
 
         return {
+            "conf": {"repository": cfg.data},
             "indexer_env": self.idxenv,
             "environment": self.name
         }
