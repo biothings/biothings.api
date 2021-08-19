@@ -224,7 +224,7 @@ class SnapshotEnv():
 
         if not repo.exists():
             if not bucket.exists():
-                bucket.create(cfg.get("acl", "private"))
+                bucket.create(cfg.get("acl"))
                 logging.info(bucket)
             repo.create(**cfg)
             logging.info(repo)
