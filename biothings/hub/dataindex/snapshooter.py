@@ -2,7 +2,7 @@ import asyncio
 import copy
 import json
 import time
-from collections import UserDict
+from collections import UserDict, UserString
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
@@ -90,6 +90,17 @@ class Bucket():
             f">"
         )
 
+class _UserString(UserString):
+
+    def __str__(self):
+        return f"{type(self).__name__}({self.data})"
+
+class TemplateStr(_UserString):
+    ...
+
+class RenderedStr(_UserString):
+    ...
+
 class RepositoryConfig(UserDict):
     """
     {
@@ -120,11 +131,16 @@ class RepositoryConfig(UserDict):
         where "_meta.build_version" value is taken from doc in
         dot field notation, and the current year replaces "$(Y)".
         """
-        template = json.dumps(self.data)
-        string = template_out(template, doc or {})
+        template = TemplateStr(json.dumps(self.data))
+        string = RenderedStr(template_out(template.data, doc or {}))
         if "%" in string:
+            logging.error(template)
+            logging.error(string)
             raise ValueError("Failed to template.")
-        return RepositoryConfig(json.loads(string))
+        if template != string:
+            logging.debug(template)
+            logging.debug(string)
+        return RepositoryConfig(json.loads(string.data))
 
 
 class _SnapshotResult(UserDict):
@@ -165,6 +181,7 @@ class SnapshotEnv():
         def _snapshot(snapshot):
             x = CumulativeResult()
             build_doc = self._doc(index)
+            cfg = self.repcfg.format(build_doc)
             for step in ("pre", "snapshot", "post"):
                 state = registrar.dispatch(step)  # _TaskState Class
                 state = state(get_src_build(), build_doc.get("_id"))
@@ -175,8 +192,7 @@ class SnapshotEnv():
                     self.pinfo.get_pinfo(step, snapshot),
                     partial(
                         getattr(self, state.func),
-                        self.repcfg.format(build_doc),
-                        index, snapshot
+                        cfg, index, snapshot
                     ))
                 try:
                     dx = yield from job
@@ -210,7 +226,7 @@ class SnapshotEnv():
             if not bucket.exists():
                 bucket.create(cfg.get("acl", "private"))
                 logging.info(bucket)
-            repo.create(**cfg["settings"])
+            repo.create(**cfg)
             logging.info(repo)
 
         return {
@@ -242,11 +258,12 @@ class SnapshotEnv():
 
             if state == "FAILED":
                 raise ValueError(state)
+            elif state == "IN_PROGRESS":
+                time.sleep(self.wtime)
             elif state == "SUCCESS":
                 break
-
-            # Wait "IN_PROGRESS"
-            time.sleep(self.wtime)
+            else:  # PARTIAL/MISSING/N/A
+                raise ValueError(state)
 
         return {
             "replaced": _replace,
@@ -322,7 +339,7 @@ class SnapshotManager(BaseManager):
             dx = envdict["indexer"]
 
             if isinstance(dx, str):  # {"indexer": "prod"}
-                return dict(name=dx)  # .        ↓
+                dx = dict(name=dx)  # .          ↓
             if not isinstance(dx, dict):  # {"indexer": {"name": "prod"}}
                 raise TypeError(dx)
 
@@ -345,13 +362,13 @@ class SnapshotManager(BaseManager):
     # Features
     # -----------
 
-    def snapshot(self, snapshot_env, index, snapshot=None, **kwargs):
+    def snapshot(self, snapshot_env, index, snapshot=None):
         """
         Create a snapshot named "snapshot" (or, by default, same name as the index)
         from "index" according to environment definition (repository, etc...) "env".
         """
         env = self.register[snapshot_env]
-        return env.snapshot(index, snapshot, **kwargs)
+        return env.snapshot(index, snapshot)
 
     def snapshot_build(self, build_doc):
         """

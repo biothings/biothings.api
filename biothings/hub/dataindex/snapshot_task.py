@@ -1,3 +1,4 @@
+from biothings.hub.dataindex.snapshot_repo import Repository
 
 class Snapshot():
 
@@ -6,18 +7,20 @@ class Snapshot():
         # /_snapshot/<repository>/<snapshot>
 
         self.client = client
-        self.repository = repository
-        self.snapshot = snapshot
+        self.repository = Repository(client, repository)
+        self.name = snapshot
 
     def exists(self):
-        return bool(self.client.snapshot.get(
-            self.repository, self.snapshot,
-            ignore_unavailable=True
-        )["snapshots"])
+        if self.repository.exists():
+            return bool(self.client.snapshot.get(
+                self.repository.name, self.name,
+                ignore_unavailable=True
+            )["snapshots"])
+        return False
 
     def create(self, indices):
         self.client.snapshot.create(
-            self.repository, self.snapshot,
+            self.repository.name, self.name,
             {
                 "indices": indices,
                 "include_global_state": False
@@ -25,26 +28,27 @@ class Snapshot():
         )
 
     def state(self):
-        snapshots = self.client.snapshot.get(
-            self.repository, self.snapshot,
-            ignore_unavailable=True
-        )["snapshots"]
+        if self.repository.exists():
+            snapshots = self.client.snapshot.get(
+                self.repository.name, self.name,
+                ignore_unavailable=True
+            )["snapshots"]
 
-        if snapshots:  # [{...}]
-            return snapshots[0]["state"]
+            if snapshots:  # [{...}]
+                return snapshots[0]["state"]
+            return "MISSING"
 
         return "N/A"
 
     def delete(self):
         self.client.snapshot.delete(
-            self.repository, self.snapshot)
+            self.repository.name, self.name)
 
     def __str__(self):
         return (
             f"<Snapshot {self.state()}"
-            f" repository='{self.repository}'"
-            f" snapshot='{self.snapshot}'"
-            f" client={self.client}"
+            f" name='{self.name}'"
+            f" repository={self.repository}"
             f">"
         )
 

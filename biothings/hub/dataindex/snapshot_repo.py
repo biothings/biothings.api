@@ -9,26 +9,26 @@ class Repository():
         # /_snapshot/<repository>
 
         self.client = client
-        self.repository = repository
+        self.name = repository
 
     def exists(self):
         try:
-            self.client.snapshot.get_repository(self.repository)
+            self.client.snapshot.get_repository(self.name)
         except elasticsearch.exceptions.NotFoundError:
             return False
         return True
 
     def create(self, **body):
         # https://www.elastic.co/guide/en/elasticsearch/plugins/current/repository-s3-client.html
-        return self.client.snapshot.create_repository(self.repository, **body)
+        return self.client.snapshot.create_repository(self.name, body=body)
 
     def delete(self):
-        self.client.snapshot.delete_repository(self.repository)
+        self.client.snapshot.delete_repository(self.name)
 
     def __str__(self):
         return (
             f"<Repository {'READY' if self.exists() else 'MISSING'}"
-            f" name='{self.repository}'"
+            f" name='{self.name}'"
             f" client={self.client}"
             f">"
         )
