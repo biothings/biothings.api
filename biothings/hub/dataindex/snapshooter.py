@@ -60,21 +60,25 @@ class CloudStorage():
                 aws_access_key_id=self.access_key,
                 aws_secret_access_key=self.secret_key,
                 region_name=self.region)
-            return session.resource("s3")
+            return session.resource("s3") # [X]
         raise ValueError(self.type)
 
 class Bucket():
-    # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.create_bucket
-
+    
     def __init__(self, client, bucket):
-        self.client = client
-        self.bucket = bucket
+        self.client = client  # boto3.S3.Client [X]
+        self.bucket = bucket  # bucket name
 
     def exists(self):
         bucket = self.client.Bucket(self.bucket)
         return bool(bucket.creation_date)
 
     def create(self, acl="private"):
+
+        # https://boto3.amazonaws.com/v1/documentation/api
+        # /latest/reference/services/s3.html
+        # #S3.Client.create_bucket
+
         return self.client.create_bucket(
             ACL=acl, Bucket=self.bucket,
             CreateBucketConfiguration={
@@ -90,6 +94,7 @@ class Bucket():
             f">"
         )
 
+
 class _UserString(UserString):
 
     def __str__(self):
@@ -100,6 +105,7 @@ class TemplateStr(_UserString):
 
 class RenderedStr(_UserString):
     ...
+
 
 class RepositoryConfig(UserDict):
     """
@@ -156,6 +162,7 @@ class CumulativeResult(_SnapshotResult):
 
 class StepResult(_SnapshotResult):
     ...
+
 
 class SnapshotEnv():
 
@@ -275,8 +282,8 @@ class SnapshotEnv():
         }
 
     def post_snapshot(self, cfg, index, snapshot):
-        # TODO
-        # set_pending_to_release_note(self.build_doc['_id'])
+        build_id = self._doc(index)['_id']
+        set_pending_to_release_note(build_id)
         return {}
 
 
@@ -289,7 +296,7 @@ class SnapshotManager(BaseManager):
     # env.<name>:
     {
         "cloud": {
-            "type": "aws",  # default, only one supported for now
+            "type": "aws",  # default, only one supported.
             "access_key": <------------------>,
             "secret_key": <------------------>,
             "region": "us-west-2"
@@ -299,13 +306,12 @@ class SnapshotManager(BaseManager):
             "type": "s3",
             "settings": {
                 "bucket": "<SNAPSHOT_BUCKET_NAME>",
-                "base_path": "mynews.info/$(Y)",  # per year
-                "region": "us-west-2",
+                "base_path": "mygene.info/$(Y)",  # year
             },
             "acl": "private",
         },
         "indexer": {
-            "env": "local",
+            "name": "local",
             "args": {
                 "timeout": 100,
                 "max_retries": 5
@@ -323,7 +329,10 @@ class SnapshotManager(BaseManager):
     @staticmethod
     def pending_snapshot(build_name):
         src_build = get_src_build()
-        src_build.update({"_id": build_name}, {"$addToSet": {"pending": "snapshot"}})
+        src_build.update(
+            {"_id": build_name},
+            {"$addToSet": {"pending": "snapshot"}}
+        )
 
     # Object Lifecycle Calls
     # --------------------------
@@ -339,7 +348,7 @@ class SnapshotManager(BaseManager):
         for name, envdict in conf.get("env", {}).items():
 
             # Merge Indexer Config
-            # -------------------------------
+            # ----------------------------------------
             dx = envdict["indexer"]
 
             if isinstance(dx, str):  # {"indexer": "prod"}
@@ -351,11 +360,11 @@ class SnapshotManager(BaseManager):
             dx.setdefault("name", dx.pop("env", None))
 
             x = self.index_manager[dx["name"]]
-            x = dict(x)
+            x = dict(x)  # merge into a copy
             merge(x, dx)  # <-
 
             envdict["indexer"] = x
-            # -------------------------------
+            # ------------------------------------------
             envdict["name"] = name
 
             self.register[name] = SnapshotEnv(self.job_manager, **envdict)
@@ -392,12 +401,14 @@ class SnapshotManager(BaseManager):
             autoconf = AutoBuildConfig(build_doc['build_config'])
             env = autoconf.auto_build.get('env')
             assert env, "Unknown autobuild env."
-            try:
+
+            try:  # find the index (latest) to snapshot
                 latest_index = list(build_doc['index'].keys())[-1]
-            except Exception:
-                logging.info("No index already created, now create one.")
+
+            except Exception:  # no existing indices, need to create one
                 yield from self.index_manager.index(env, build_doc['_id'])
-                latest_index = build_doc['_id']
+                latest_index = build_doc['_id']  # index_name is build name
+
             return self.snapshot(env, latest_index)
         return asyncio.ensure_future(_())
 
