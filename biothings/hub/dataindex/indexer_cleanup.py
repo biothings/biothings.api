@@ -1,4 +1,4 @@
-import collections
+
 import datetime
 import itertools
 import logging
@@ -7,6 +7,19 @@ from dataclasses import dataclass
 
 from elasticsearch import AsyncElasticsearch
 
+
+# NOTE
+# Throughout this module, an XML-like serialization
+# format is utilized, just like the python default:
+#
+# >>> object()
+# <object object at 0x7f7b4882a110>
+#
+# This format helps preserve hierarchical structure
+# in the object it represents, is intuitive to read,
+# and closely represent the underlying programming
+# concepts, each tagname corresponds to one class.
+#
 _TAB = " " * 2
 
 class _Index(UserDict):
@@ -68,71 +81,103 @@ class _CleanUpList(UserList):
             "<CleanUp/>"
         ))
 
+# OUTPUT EXAMPLE
+# ---------------------
+# >>> _CleanUpList(...)
+# <CleanUp>
+#   <BuildConfig 'mygene_allspecies'>
+#     <Remove len=6>
+#       <Index env='prod' name='mygene_xbuo6d' ts=datetime(2019, 8, 27, ...)/>
+#       <Index env='prod' name='mygene_vxia0r' ts=datetime(2020, 1, 8, ...)/>
+#       <Index env='prod' name='mygene_25wlt4' ts=datetime(2020, 1, 20, ...)/>
+#       <Index env='local' name='mygene_ufkw79' ts=datetime(2020, 8, 28, ...)/>
+#       <Index env='local' name='mygene_uq3chc' ts=datetime(2021, 4, 6, ...)/>
+#       <Index env='local' name='mygene_mnkct5' ts=datetime(2021, 4, 15, ...)/>
+#     <Remove/>
+#     <Keep len=3>
+#       <Index env='su10' name='mygene_ibjpha' ts=datetime(2021, 6, 30, ...)/>
+#       <Index env='su10' name='mygene_osyzmt' ts=datetime(2021, 8, 9, ...)/>
+#       <Index env='su10' name='mygene_test' ts=datetime(2021, 8, 9, ...)/>
+#     <Keep/>
+#   <BuildConfig/>
+#   <BuildConfig 'demo_allspecies'>
+#     <Remove len=3>
+#       <Index env='test' name='demo_mygene_ngupjv' ts=datetime(2018, 3, 12, ...)/>
+#       <Index env='test' name='demo_mygene_rpguqe' ts=datetime(2018, 8, 6, ...)/>
+#       <Index env='test' name='demo_mygene_vqpur6' ts=datetime(2019, 1, 29, ...)/>
+#     <Remove/>
+#     <Keep len=3>
+#       <Index env='test' name='demo_mygene_irvwa0' ts=datetime(2019, 3, 25, ...)/>
+#       <Index env='test' name='demo_mygene_cpoldl' ts=datetime(2020, 1, 8, ...)/>
+#       <Index env='local' name='demo_mygene_qekeic' ts=datetime(2020, 4, 22, ...)/>
+#     <Keep/>
+#   <BuildConfig/>
+# <CleanUp/>
+#
 
-def find(collection, env, keep=3, logger=None):
-    logger = logger or logging.getLogger(__name__)
-    results = list(collection.aggregate([
-        {'$project': {
-            'build_config': '$build_config._id',
-            'index': {'$objectToArray': '$index'}}},
-        {'$unwind': {'path': '$index'}},
-        {'$addFields': {
-            'index.v.build_config': '$build_config',
-            'index.v._id': '$index.k'}},
-        {'$replaceRoot': {'newRoot': '$index.v'}},
-        {'$match': {
-            'environment': env or {'$exists': True},
-            'archive': {'$not': {'$eq': True}}}},  # TODO
-        {'$project': {
-            'build_config': 1,
-            'environment': 1,
-            'created_at': 1}},
-        {'$sort': {'created_at': 1}},
-        {'$group': {
-            '_id': "$build_config",
-            'indices': {"$push": "$$ROOT"}
-        }}
-    ]))
-    return _CleanUpList([
-        _BuildConfig(
-            doc["_id"],  # ↓ -0 slicing does not yield the desired result
-            _IndicesToRemove(doc["indices"][:len(doc["indices"])-keep]),
-            _IndicesToKeep(doc["indices"][len(doc["indices"])-keep:])
-        ) for doc in results
-    ])
-
-async def delete(collection, cleanups, indexers, logger=None):
-    logger = logger or logging.getLogger(__name__)
-    logging.info(cleanups)
-
-    for index in itertools.chain.from_iterable(cleanups):
-        args = indexers[index["environment"]]["args"]
-
-        async with AsyncElasticsearch(**args) as client:
-            resposne = await client.indices.delete(index["_id"], ignore_unavailable=True)
-            logging.info(("DELETE", str(index), resposne))
-
-            collection.update_many(
-                {f"index.{index['_id']}.environment": index["environment"]},
-                {"$unset": {f"index.{index['_id']}": 1}}
-            )
 
 class Cleaner():
 
-    def __init__(self, collection, indexers, logger):
-        self.collection = collection
-        self.indexers = indexers
-        self.logger = logger
+    def __init__(self, collection, indexers, logger=None):
+
+        self.collection = collection  # pymongo.collection.Collection
+        self.indexers = indexers  # hub.dataindex.IndexManager
+        self.logger = logger or logging.getLogger(__name__)
 
     def find(self, env, keep=3):
-        return find(self.collection, env, keep, self.logger)
+        results = list(self.collection.aggregate([
+            {'$project': {
+                'build_config': '$build_config._id',
+                'index': {'$objectToArray': '$index'}}},
+            {'$unwind': {'path': '$index'}},
+            {'$addFields': {
+                'index.v.build_config': '$build_config',
+                'index.v._id': '$index.k'}},
+            {'$replaceRoot': {'newRoot': '$index.v'}},
+            {'$match': {'environment': env or {'$exists': True}}},
+            {'$project':  # ...............: {X
+                dict.fromkeys((  # ........:    '_id': 'mynews_202012280220_vsdevjdk',
+                    'build_config',  # ....:    'build_config': 'mynews',  ──────────┐
+                    'environment',  # .....:    'environment': 'local',              │
+                    'created_at'), 1)},  # :    'created_at': datetime(...)          │
+            {'$sort': {'created_at': 1}},  # }Y                                      │
+            {'$group': {  # ...............: {                              GROUP BY │
+                '_id': "$build_config",  # :    '_id': 'mynews',  <──────────────────┘
+                'indices': {  # ...........:    'indices': [
+                    "$push": "$$ROOT"  # ..:        {X ... }Y, ...
+                }}}  # ....................:    ]
+        ]))  # ............................: }
+        return _CleanUpList([
+            _BuildConfig(
+                doc["_id"],  # ↓ -0 slicing does not yield the desired result
+                _IndicesToRemove(doc["indices"][:len(doc["indices"])-keep]),
+                _IndicesToKeep(doc["indices"][len(doc["indices"])-keep:])
+            ) for doc in results
+        ])
 
-    def execute(self, cleanups):
-        return delete(self.collection, cleanups, self.indexers, self.logger)
+    async def clean(self, cleanups):
+        self.logger.debug(cleanups)
 
+        actions = []
+        for index in itertools.chain.from_iterable(cleanups):
+            args = self.indexers[index["environment"]]["args"]
 
-def test_():
-    return _CleanUpList([_BuildConfig(
+            async with AsyncElasticsearch(**args) as client:
+                resposne = await client.indices.delete(
+                    index=index["_id"], ignore_unavailable=True)
+                action = ("DELETE", str(index), resposne)
+
+                actions.append(action)
+                logging.info(action)
+
+                self.collection.update_many(
+                    {f"index.{index['_id']}.environment": index["environment"]},
+                    {"$unset": {f"index.{index['_id']}": 1}}
+                )
+        return actions
+
+def test_str():
+    print(_CleanUpList([_BuildConfig(
         "mynews",
         _IndicesToRemove([
             {'_id': 'mynews_20210811_test',
@@ -162,33 +207,26 @@ def test_():
              'created_at': datetime.datetime(2020, 10, 6, 1, 0, 11, 237000),
              'environment': 'local'}
         ])
-    )])
+    )]))
 
-def test_00():
-    print(test_())
-
-def test_01():
+def test_find():
     from pymongo import MongoClient
     logging.basicConfig(level="DEBUG")
 
     client = MongoClient()
     collection = client["biothings"]["src_build"]
-    obj = find(collection, None)
+    cleaner = Cleaner(collection, {"local": {"args": {}}})
+    obj = cleaner.find(None)
     print(type(obj))
     print(obj)
+    return cleaner, obj
 
-def test_02():
+def test_clean():
     import asyncio
-    from pymongo import MongoClient
-    logging.basicConfig(level="INFO")
-
-    client = MongoClient()
-    collection = client["biothings"]["src_build"]
-    cleanups = find(collection, None, 1)
-
+    cleaner, cleanups = test_find()
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(delete(collection, cleanups, {"local": {"args": {}}}))
+    print(loop.run_until_complete(cleaner.clean(cleanups)))
 
 
 if __name__ == '__main__':
-    test_01()
+    test_clean()
