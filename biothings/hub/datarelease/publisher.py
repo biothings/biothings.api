@@ -349,7 +349,7 @@ class SnapshotPublisher(BasePublisher):
 
     def get_pre_post_previous_result(self, build_doc, key_value):
         assert build_doc["snapshot"][key_value], "previous step not successful"
-        assert build_doc["snapshot"][key_value]["snapshot"]
+        assert build_doc["snapshot"][key_value]["created_at"]
         previous_result = build_doc["snapshot"][key_value]["conf"]["repository"]
         return previous_result
 
@@ -765,7 +765,6 @@ class SnapshotPublisher(BasePublisher):
                 task = asyncio.gather(*jobs)
                 task.add_done_callback(published)
                 yield from task
-
 
         def done(f):
             try:
@@ -1457,9 +1456,9 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                 "snapshot", {}):
             # doc was returend with snapshot_or_build_name matching _id, not snapshot name, invalidate
             snapshot_doc = None
-        # TODO 
+        # TODO
         # diff is wrt another diff, maybe should be this way?
-        #-------------------------------------- 
+        #--------------------------------------
         # if diff_doc and snapshot_or_build_name not in diff_doc.get("diff", {}):
         if diff_doc and not diff_doc.get("diff", {}):
             diff_doc = None
