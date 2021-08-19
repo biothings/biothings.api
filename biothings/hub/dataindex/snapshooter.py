@@ -153,26 +153,31 @@ class SnapshotEnv():
         self.pinfo = ProcessInfo(self.name)
         self.wtime = kwargs.get("monitor_delay", 15)
 
-    def _doc(self, index):  # TODO UNIQUENESS
+    def _doc(self, index):
         doc = get_src_build().find_one({
             f"index.{index}.environment": self.idxenv})
         if not doc:  # not asso. with a build
             raise ValueError("Not a hub-managed index.")
-        return doc
+        return doc  # TODO UNIQUENESS
 
     def snapshot(self, index, snapshot=None):
         @asyncio.coroutine
         def _snapshot(snapshot):
             x = CumulativeResult()
+            build_doc = self._doc(index)
             for step in ("pre", "snapshot", "post"):
                 state = registrar.dispatch(step)  # _TaskState Class
-                state = state(get_src_build(), self._doc(index).get("_id"))
+                state = state(get_src_build(), build_doc.get("_id"))
                 logging.info(state)
                 state.started()
 
-                pinfo = self.pinfo.get_pinfo(step, snapshot)
                 job = yield from self.job_manager.defer_to_thread(
-                    pinfo, partial(getattr(self, state.func), index, snapshot))
+                    self.pinfo.get_pinfo(step, snapshot),
+                    partial(
+                        getattr(self, state.func),
+                        self.repcfg.format(build_doc),
+                        index, snapshot
+                    ))
                 try:
                     dx = yield from job
                     dx = StepResult(dx)
@@ -193,9 +198,8 @@ class SnapshotEnv():
         future.add_done_callback(logging.debug)
         return future
 
-    def pre_snapshot(self, index, snapshot):
+    def pre_snapshot(self, cfg, index, snapshot):
 
-        cfg = self.repcfg.format(self._doc(index))
         bucket = Bucket(self.cloud, cfg.bucket)
         repo = Repository(self.client, cfg.repo)
 
@@ -214,11 +218,11 @@ class SnapshotEnv():
             "environment": self.name
         }
 
-    def _snapshot(self, index, snapshot):
+    def _snapshot(self, cfg, index, snapshot):
 
         snapshot = Snapshot(
             self.client,
-            self.repcfg.repo,
+            cfg.repo,
             snapshot)
         logging.info(snapshot)
 
@@ -249,7 +253,7 @@ class SnapshotEnv():
             "created_at": datetime.now().astimezone()
         }
 
-    def post_snapshot(self, index, snapshot):
+    def post_snapshot(self, cfg, index, snapshot):
         # TODO
         # set_pending_to_release_note(self.build_doc['_id'])
         return {}
