@@ -265,8 +265,8 @@ class Indexer():
 
     def __init__(self, build_doc, indexer_env, index_name):
 
-        # build_doc primarily describes the source collection.
-        # indexer_env primarily describes the destination index.
+        # build_doc primarily describes the source.
+        # indexer_env primarily describes the destination.
 
         _build_doc = _BuildDoc(build_doc)
         _build_backend = _build_doc.parse_backend()
