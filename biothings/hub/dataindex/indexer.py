@@ -39,6 +39,12 @@ from .indexer_task import dispatch
 # TODO
 # Multi-layer logging
 
+# TODO
+# EMPTY DB VAL ON PARTIAL FAILURE
+
+# TODO
+# hot/cold indexer doc count
+
 
 class IndexerException(Exception):
     ...
@@ -182,8 +188,14 @@ class _BuildDoc(UserDict):
         cold_target = self.build_config["cold_collection"]
         cold_build_doc = get_src_build().find_one({'_id': cold_target})
 
+        cold_build_doc["target_name"] = self.target_name  # *
         cold_build_doc["mapping"].update(self["mapping"])  # combine mapping
         merge_src_build_metadata([cold_build_doc, self])  # combine _meta
+
+        # * About "target_name"
+        # The cold collection's target name is replaced
+        # with the one of the hot collection so that
+        # task updates are pushed to only one build.
 
         return _BuildDoc(cold_build_doc)
 
@@ -494,13 +506,6 @@ class Indexer():
         ...
 
 
-class ColdHotResult(UserDict):
-
-    def merge(self, result):
-        for index, count in result.items():
-            self.setdefault(index, 0)
-            self[index] += count
-
 class ColdHotIndexer():
     """
     This indexer works with 2 mongo collections to create a single index.
@@ -517,41 +522,27 @@ class ColdHotIndexer():
         self.hot = Indexer(hot_build_doc, indexer_env, index_name)
         self.cold = Indexer(cold_build_doc, indexer_env, self.hot.es_index_name)
 
-    @ asyncio.coroutine
+    @asyncio.coroutine
     def index(self,
               job_manager,
-              steps=["index", "post"],
               batch_size=10000,
               ids=None,
               mode="index"):
-        """
-        Same as Indexer.index method but works with a cold/hot collections strategy: first index the cold collection then
-        complete the index with hot collection (adding docs or merging them in existing docs within the index)
-        """
-        assert job_manager
-        if isinstance(steps, str):
-            steps = [steps]
 
-        result = ColdHotResult()
-        if "index" in steps:
-            # ---------------- Sebastian's Note ---------------
-            # selectively index cold then hot collections, using default index method
-            # but specifically 'index' step to prevent any post-process before end of
-            # index creation
-            # Note: copy backend values as there are some references values between cold/hot and build_doc
-            cold_task = self.cold.index(job_manager, steps=("pre", "index"), batch_size=batch_size, ids=ids, mode=mode)
-            result.merge((yield from cold_task))
-            hot_task = self.hot.index(job_manager, steps=("index",), batch_size=batch_size, ids=ids, mode="merge")
-            result.merge((yield from hot_task))
-        if "post" in steps:
-            # use super index but this time only on hot collection (this is the entry point, cold collection
-            # remains hidden from outside)
-            yield from self.hot.post_index()
+        result = []
+
+        cold_task = self.cold.index(
+            job_manager, steps=("pre", "index"),
+            batch_size=batch_size, ids=ids, mode=mode)
+        result.append((yield from cold_task))
+
+        hot_task = self.hot.index(
+            job_manager, steps=("index", "post"),
+            batch_size=batch_size, ids=ids, mode="merge")
+        result.append((yield from hot_task))
 
         return result
 
-# TODO
-# EMPTY DB VAL ON PARTIAL FAILURE
 
 class IndexManager(BaseManager):
 
