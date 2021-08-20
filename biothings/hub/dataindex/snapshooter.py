@@ -60,11 +60,11 @@ class CloudStorage():
                 aws_access_key_id=self.access_key,
                 aws_secret_access_key=self.secret_key,
                 region_name=self.region)
-            return session.resource("s3") # [X]
+            return session.resource("s3")  # [X]
         raise ValueError(self.type)
 
 class Bucket():
-    
+
     def __init__(self, client, bucket):
         self.client = client  # boto3.S3.Client [X]
         self.bucket = bucket  # bucket name
@@ -277,6 +277,7 @@ class SnapshotEnv():
                 raise ValueError(state)
 
         return {
+            "index_name": index,
             "replaced": _replace,
             "created_at": datetime.now().astimezone()
         }
