@@ -70,15 +70,15 @@ class _BuildConfig():
     def __iter__(self):
         return iter(self.remove)
 
-class _CleanUpList(UserList):
+class _CleanUps(UserList):
 
     def __str__(self):
         lines = map(lambda x: str(x).split('\n'), self)
         lines = itertools.chain.from_iterable(lines)
         return "\n".join((
-            "<CleanUp>",
+            "<CleanUps>",
             *(_TAB + line for line in lines),
-            "<CleanUp/>"
+            "<CleanUps/>"
         ))
 
 # OUTPUT EXAMPLE
@@ -156,7 +156,7 @@ class Cleaner():
                     "$push": "$$ROOT"  # ..:        {X ... }Y, ...
                 }}}  # ....................:    ]
         ]))  # ............................: }
-        return _CleanUpList([
+        return _CleanUps([
             _BuildConfig(
                 doc["_id"],  # ↓ -0 in slicing does not yield the desired result
                 _IndicesToRemove(doc["indices"][:-keep or len(doc["indices"])]),
@@ -185,7 +185,7 @@ class Cleaner():
         return actions
 
 def test_str():
-    print(_CleanUpList([_BuildConfig(
+    print(_CleanUps([_BuildConfig(
         "mynews",
         _IndicesToRemove([
             {'_id': 'mynews_20210811_test',
