@@ -83,6 +83,10 @@ from typing import Optional, Union
 
 import pytest
 import requests
+import urllib3
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+
 from biothings.utils.common import traverse
 from biothings.web.launcher import BiothingsAPI
 from biothings.web.settings import configs
@@ -242,6 +246,10 @@ class BiothingsWebAppTest(BiothingsWebTest, AsyncHTTPTestCase):
             return
 
         s = requests.Session()
+        s.mount('http://',
+                adapter=requests.adapters.HTTPAdapter(
+                    max_retries=urllib3.Retry(total=5, backoff_factor=3.0)
+                ))  # values seem reasonable
         es_host = 'http://' + self.config.ES_HOST
 
         server_info = s.get(es_host).json()
