@@ -213,10 +213,15 @@ def test_find():
     from pymongo import MongoClient
     logging.basicConfig(level="DEBUG")
 
-    client = MongoClient("su04")
-    collection = client["mychem_hubdb"]["src_build"]
+    # mychem
+    # -------
+    # "su04"
+    # "mychem_hubdb", "src_build"
+
+    client = MongoClient()
+    collection = client["biothings"]["src_build"]
     cleaner = Cleaner(collection, {"local": {"args": {}}})
-    obj = cleaner.find("local")
+    obj = cleaner.find()
     print(type(obj))
     print(obj)
     return cleaner, obj
