@@ -812,16 +812,29 @@ class IndexManager(BaseManager):
         job.add_done_callback(self.logger.info)
         return job
 
-    def cleanup(self, env, keep=3, dryrun=True):
+    def cleanup(self, env=None, keep=3, dryrun=True, **filters):
+        """ Delete old indices except for the most recent ones.
+
+        Examples:
+            >>> index_cleanup()
+            >>> index_cleanup("production")
+            >>> index_cleanup("local", build_config="demo")
+            >>> index_cleanup("local", keep=0)
+            >>> index_cleanup(_id="<elasticsearch_index>")
+        """
+
         cleaner = Cleaner(get_src_build(), self, self.logger)
-        cleanups = cleaner.find(env, keep)
+        cleanups = cleaner.find(env, keep, **filters)
 
         if dryrun:
-            return str(cleanups)
+            return '\n'.join((
+                "-" * 75, str(cleanups), "-" * 75,
+                "DRYRUN ONLY - APPLY THE ACTIONS WITH:",
+                "   > index_cleanup(..., dryrun=False)"
+            ))
 
-        job = asyncio.ensure_future(cleaner.clean(cleanups))
-        job.add_done_callback(self.logger.info)
-        return job
+        if not dryrun and not env:  # for safety
+            raise ValueError('Missing argument "env".')
 
 
 class DynamicIndexerFactory():
