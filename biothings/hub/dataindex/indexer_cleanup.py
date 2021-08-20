@@ -149,9 +149,9 @@ class Cleaner():
         ]))  # ............................: }
         return _CleanUpList([
             _BuildConfig(
-                doc["_id"],  # ↓ -0 slicing does not yield the desired result
-                _IndicesToRemove(doc["indices"][:len(doc["indices"])-keep]),
-                _IndicesToKeep(doc["indices"][len(doc["indices"])-keep:])
+                doc["_id"],  # ↓ -0 in slicing does not yield the desired result
+                _IndicesToRemove(doc["indices"][:-keep or len(doc["indices"])]),
+                _IndicesToKeep(doc["indices"][-keep or len(doc["indices"]):])
             ) for doc in results
         ])
 
@@ -213,10 +213,10 @@ def test_find():
     from pymongo import MongoClient
     logging.basicConfig(level="DEBUG")
 
-    client = MongoClient()
-    collection = client["biothings"]["src_build"]
+    client = MongoClient("su04")
+    collection = client["mychem_hubdb"]["src_build"]
     cleaner = Cleaner(collection, {"local": {"args": {}}})
-    obj = cleaner.find(None)
+    obj = cleaner.find("local")
     print(type(obj))
     print(obj)
     return cleaner, obj
@@ -229,4 +229,4 @@ def test_clean():
 
 
 if __name__ == '__main__':
-    test_clean()
+    test_find()
