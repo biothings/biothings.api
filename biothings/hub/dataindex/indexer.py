@@ -836,6 +836,9 @@ class IndexManager(BaseManager):
         if not dryrun and not env:  # for safety
             raise ValueError('Missing argument "env".')
 
+        job = asyncio.ensure_future(cleaner.clean(cleanups))
+        job.add_done_callback(self.logger.info)
+        return job
 
 class DynamicIndexerFactory():
     """

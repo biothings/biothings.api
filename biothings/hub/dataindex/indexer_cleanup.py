@@ -4,9 +4,9 @@ import itertools
 import logging
 from collections import UserDict, UserList
 from dataclasses import dataclass
+from pprint import pformat
 
 from elasticsearch import AsyncElasticsearch
-
 
 # NOTE
 # Throughout this module, an XML-like serialization
@@ -115,6 +115,15 @@ class _CleanUpList(UserList):
 # <CleanUp/>
 #
 
+class CleanUpResult(list):
+
+    def __repr__(self):
+        return ''.join((
+            type(self).__name__,
+            "(", "\n" if self else "",
+            pformat(list(self), width=150), ")"
+        ))
+
 
 class Cleaner():
 
@@ -158,15 +167,14 @@ class Cleaner():
     async def clean(self, cleanups):
         self.logger.debug(cleanups)
 
-        actions = []
+        actions = CleanUpResult()
         for index in itertools.chain.from_iterable(cleanups):
             args = self.indexers[index["environment"]]["args"]
 
             async with AsyncElasticsearch(**args) as client:
-                resposne = await client.indices.delete(
-                    index=index["_id"], ignore_unavailable=True)
-                action = ("DELETE", str(index), resposne)
+                await client.indices.delete(index["_id"], ignore_unavailable=True)
 
+                action = ("DELETE", str(index))
                 actions.append(action)
                 logging.info(action)
 
