@@ -94,7 +94,7 @@ class _BuildDoc(UserDict):
     {
         "_id":"mynews_202105261855_5ffxvchx",
         "target_backend": "mongo",
-        "target_name": "mynews_202105261855_5ffxvchx",
+        "target_name": "mynews_202105261855_5ffxvchx", # UNUSED
         "backend_url": "mynews_202105261855_5ffxvchx",
         "build_config": {
             "_id": "mynews",
@@ -119,8 +119,8 @@ class _BuildDoc(UserDict):
     }
     """
     @property
-    def target_name(self):
-        return self.get("target_name", self.get("_id"))
+    def build_name(self):
+        return self.get("_id")
 
     @property
     def build_config(self):
@@ -188,14 +188,13 @@ class _BuildDoc(UserDict):
         cold_target = self.build_config["cold_collection"]
         cold_build_doc = get_src_build().find_one({'_id': cold_target})
 
-        cold_build_doc["target_name"] = self.target_name  # *
+        cold_build_doc["_id"] = self.build_name  # *
         cold_build_doc["mapping"].update(self["mapping"])  # combine mapping
         merge_src_build_metadata([cold_build_doc, self])  # combine _meta
 
-        # * About "target_name"
-        # The cold collection's target name is replaced
-        # with the one of the hot collection so that
-        # task updates are pushed to only one build.
+        # * About State Updates
+        # All updates are diverted to the hot collection.
+        # Indices & snapshots are only registered there.
 
         return _BuildDoc(cold_build_doc)
 
@@ -283,7 +282,7 @@ class Indexer():
         # [2] https://elasticsearch-py.readthedocs.io/en/v7.12.0/helpers.html#elasticsearch.helpers.bulk
         self.es_client_args = indexer_env.get("args", {})  # See [1] for available args
         self.es_blkidx_args = indexer_env.get("bulk", {})  # See [2] for available args
-        self.es_index_name = index_name or _build_doc.target_name
+        self.es_index_name = index_name or _build_doc.build_name
         self.es_index_settings = IndexSettings(deepcopy(DEFAULT_INDEX_SETTINGS))
         self.es_index_mappings = IndexMappings(deepcopy(DEFAULT_INDEX_MAPPINGS))
 
@@ -294,7 +293,7 @@ class Indexer():
 
         self.env_name = indexer_env.get("name")
         self.conf_name = _build_doc.build_config.get("name")
-        self.target_name = _build_doc.target_name  # name of the build
+        self.build_name = _build_doc.build_name
         self.logger, self.logfile = get_logger('index_%s' % self.es_index_name)
 
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
@@ -527,7 +526,8 @@ class ColdHotIndexer():
               job_manager,
               batch_size=10000,
               ids=None,
-              mode="index"):
+              mode="index",
+              **kwargs):
 
         result = []
 
@@ -656,11 +656,11 @@ class IndexManager(BaseManager):
     # Hub Features
     # --------------
 
-    def _select_indexer(self, target_name=None):
-        """ Find the indexer class required to index target_name. """
+    def _select_indexer(self, build_name=None):
+        """ Find the indexer class required to index build_name. """
 
         rules = self._config.get("indexer_select")
-        if not rules or not target_name:
+        if not rules or not build_name:
             self.logger.debug(self.DEFAULT_INDEXER)
             return self.DEFAULT_INDEXER
 
@@ -668,7 +668,7 @@ class IndexManager(BaseManager):
         # can determine the indexer class to use.
 
         path = None
-        doc = self._srcbuild.find_one({"_id": target_name})
+        doc = self._srcbuild.find_one({"_id": build_name})
         for path_in_doc, _ in traverse(doc or dict(), True):
             if path_in_doc in rules:
                 if not path:
@@ -678,30 +678,25 @@ class IndexManager(BaseManager):
                     raise RuntimeError(_ERR)
 
         kls = get_class_from_classpath(rules[path])
-        self.logger.debug(kls)
+        self.logger.info(kls)
         return kls
 
-    def index(self,
-              indexer_env,  # elasticsearch env
-              target_name,  # build name
-              index_name=None,  # elasticsearch index name
-              ids=None,  # document ids
-              **kwargs):
+    def index(self, indexer_env, build_name, index_name=None, ids=None, **kwargs):
         """
-        Trigger an index creation to index the collection target_name and create an
-        index named index_name (or target_name if None). Optional list of IDs can be
+        Trigger an index creation to index the collection build_name and create an
+        index named index_name (or build_name if None). Optional list of IDs can be
         passed to index specific documents.
         """
 
-        indexer_env_ = dict(self[indexer_env])  # describes destination
-        build_doc = self._srcbuild.find_one({'_id': target_name})  # describes source
+        indexer_env_ = dict(self[indexer_env])  # describes a destination
+        build_doc = self._srcbuild.find_one({'_id': build_name})  # describes a source
 
         if not build_doc:
-            raise ValueError("Cannot find build %s." % target_name)
+            raise ValueError("Cannot find build %s." % build_name)
         if not build_doc.get("build_config"):
-            raise ValueError("Cannot find build config for '%s'." % target_name)
+            raise ValueError("Cannot find build config for '%s'." % build_name)
 
-        idx = self._select_indexer(target_name)
+        idx = self._select_indexer(build_name)
         idx = idx(build_doc, indexer_env_, index_name)
         job = idx.index(self.job_manager, ids=ids, **kwargs)
         job = asyncio.ensure_future(job)
