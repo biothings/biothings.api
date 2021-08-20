@@ -813,6 +813,8 @@ class IndexManager(BaseManager):
             >>> index_cleanup("local", keep=0)
             >>> index_cleanup(_id="<elasticsearch_index>")
         """
+        if not env and not dryrun:  # low specificity, unsafe.
+            raise ValueError('Missing argument "env".')
 
         cleaner = Cleaner(get_src_build(), self, self.logger)
         cleanups = cleaner.find(env, keep, **filters)
@@ -823,9 +825,6 @@ class IndexManager(BaseManager):
                 "DRYRUN ONLY - APPLY THE ACTIONS WITH:",
                 "   > index_cleanup(..., dryrun=False)"
             ))
-
-        if not dryrun and not env:  # for safety
-            raise ValueError('Missing argument "env".')
 
         job = asyncio.ensure_future(cleaner.clean(cleanups))
         job.add_done_callback(self.logger.info)
