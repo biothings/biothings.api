@@ -124,7 +124,7 @@ class Cleaner():
         self.indexers = indexers  # hub.dataindex.IndexManager
         self.logger = logger or logging.getLogger(__name__)
 
-    def find(self, env, keep=3):
+    def find(self, env=None, keep=3, **filters):
         results = list(self.collection.aggregate([
             {'$project': {
                 'build_config': '$build_config._id',
@@ -134,7 +134,7 @@ class Cleaner():
                 'index.v.build_config': '$build_config',
                 'index.v._id': '$index.k'}},
             {'$replaceRoot': {'newRoot': '$index.v'}},
-            {'$match': {'environment': env or {'$exists': True}}},
+            {'$match': {'environment': env or {'$exists': True}, **filters}},
             {'$project':  # ...............: {X
                 dict.fromkeys((  # ........:    '_id': 'mynews_202012280220_vsdevjdk',
                     'build_config',  # ....:    'build_config': 'mynews',  ──────────┐
