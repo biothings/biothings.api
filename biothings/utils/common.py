@@ -867,6 +867,9 @@ def merge(x, dx):
 
     for k, v in dx.items():
         if isinstance(v, dict):
+            if v.get("__REMOVE__"):
+                x.pop(k, None)
+                continue
             if not isinstance(x.get(k), dict):
                 x[k] = {}
             merge(x[k], v)
