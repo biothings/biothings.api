@@ -366,9 +366,7 @@ class Indexer():
                 merge(x.data, dx.data)
                 self.logger.info(dx)
                 self.logger.info(x)
-                step.state.succeed({
-                    self.es_index_name: x.data
-                })
+                step.state.succeed(x.data)
 
         return x
 
@@ -422,7 +420,7 @@ class Indexer():
             yield from client.close()
 
     @asyncio.coroutine
-    def do_index(self, job_manager, batch_size, ids, mode):
+    def do_index(self, job_manager, batch_size, ids, mode, **kwargs):
 
         client = MongoClient(**self.mongo_client_args)
         database = client[self.mongo_database_name]
@@ -502,7 +500,9 @@ class Indexer():
 
     @asyncio.coroutine
     def post_index(self, *args, **kwargs):
-        ...
+        # this value is consumed by IndexJobStateRegistrar,
+        # allowing delayed write until all steps are done.
+        return {"__READY__": True}
 
 
 class ColdHotIndexer():

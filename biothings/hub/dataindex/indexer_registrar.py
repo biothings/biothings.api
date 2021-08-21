@@ -70,7 +70,10 @@ class IndexJobStateRegistrar():
     def succeed(self, result):
         def func(job, delta_build):
             job["status"] = "success"
-            merge(delta_build, dict(index=result))
+            if result.pop("__READY__", False):
+                delta_build["index"] = {
+                    self.indexer.es_index_name: result
+                }
         self._done(func)
 
     def _done(self, func):
