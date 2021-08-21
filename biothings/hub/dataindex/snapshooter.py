@@ -210,15 +210,18 @@ class SnapshotEnv():
 
                 except Exception as exc:
                     logging.exception(exc)
-                    state.failed(exc)
+                    state.failed(
+                        {snapshot: {"__REMOVE__": True}},
+                        err=str(exc))
                     raise exc
                 else:
                     merge(x.data, dx.data)
                     logging.info(dx)
                     logging.info(x)
-                    state.succeed({
-                        snapshot: x.data
-                    })
+                    state.succeed(
+                        {snapshot: x.data},
+                        res=dx.data
+                    )
             return x
         future = asyncio.ensure_future(_snapshot(snapshot or index))
         future.add_done_callback(logging.debug)

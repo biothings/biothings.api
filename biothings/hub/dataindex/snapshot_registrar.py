@@ -72,19 +72,16 @@ class _TaskState():
 
         self._col.replace_one({"_id": self._id}, doc)
 
-    def failed(self, error):
+    def failed(self, dBuild, **dJob):
         self._finished(
-            {},  # NOOP
-            {
-                "status": "failed",
-                "err": str(error)
-            }
+            {"snapshot": dBuild},
+            {"status": "failed", **dJob}
         )
 
-    def succeed(self, result):
+    def succeed(self, dBuild, **dJob):
         self._finished(
-            {"snapshot": result},
-            {"status": "success"}
+            {"snapshot": dBuild},
+            {"status": "success", **dJob}
         )
 
     def __str__(self):
