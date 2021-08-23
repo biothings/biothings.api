@@ -1513,8 +1513,15 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
     def create_release_note_from_build(self, build_doc):
         @asyncio.coroutine
         def _():
-            yield from self.create_release_note(old=None, new=build_doc["_id"])
-            # release note created, now we consider what's next
+            try:
+                old = get_previous_collection(build_doc["_id"])
+            except AssertionError:
+                self.logger.warning(
+                    "Cannot find the previous build "
+                    "while creating a release note.")
+                old = "none"
+            yield from self.create_release_note(old=old, new=build_doc["_id"])
+
             build_conf = AutoBuildConfig(build_doc['build_config'])
             if build_conf.should_publish_new_diff() or build_conf.should_publish_new_snapshot():
                 # TODO differentiate at some level
