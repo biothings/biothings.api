@@ -210,9 +210,7 @@ class SnapshotEnv():
 
                 except Exception as exc:
                     logging.exception(exc)
-                    state.failed(
-                        {snapshot: {"__REMOVE__": True}},
-                        err=str(exc))
+                    state.failed({}, exc)
                     raise exc
                 else:
                     merge(x.data, dx.data)
@@ -243,6 +241,7 @@ class SnapshotEnv():
             logging.info(repo)
 
         return {
+            "__REPLACE__": True,
             "conf": {"repository": cfg.data},
             "indexer_env": self.idxenv,
             "environment": self.name

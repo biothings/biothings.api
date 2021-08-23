@@ -33,9 +33,10 @@ def audit(src_build, logger=None):
 
 
 class _TaskState():
-    name = NotImplemented
-    step = NotImplemented
-    func = NotImplemented
+    name = NotImplemented  # string representation of the step
+    step = NotImplemented  # job registration display notation
+    func = NotImplemented  # method name of the step to run
+    regx = False  # ready to update the build doc
 
     def __init__(self, col, _id):
         self._col = col
@@ -67,7 +68,8 @@ class _TaskState():
         job["time_in_s"] = round(time() - t0, 0)
         job["time"] = timesofar(t0)
 
-        merge(doc, _doc)
+        if self.regx:
+            merge(doc, _doc)
         merge(job, _job)
 
         self._col.replace_one({"_id": self._id}, doc)
@@ -96,11 +98,13 @@ class MainSnapshotState(_TaskState):
     name = "snapshot"
     step = "snapshot"
     func = "_snapshot"
+    regx = True
 
 class PostSnapshotState(_TaskState):
     name = "post"
     step = "post-snapshot"
     func = "post_snapshot"
+    regx = True
 
 
 def test():
