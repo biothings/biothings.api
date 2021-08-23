@@ -56,7 +56,7 @@ class AutoBuildConfig:
                                      // not required when type above is diff.
                                      // Setting the env also implies auto snapshot.
                                      // It could be in addition to auto diff.
-            # in the future, maybe support separating index env and snapshot env
+                                     // Also accept (indexer_env, snapshot_env).
         },
         "autopublish": {
             "type": "snapshot",      // Auto publish new snapshots for new builds.
@@ -179,7 +179,7 @@ class AutoBuildConfig:
     def should_snapshot_new_build(self):
 
         if 'snapshot' in self.auto_build['type'] \
-                or self.auto_build.get('env'): 
+                or self.auto_build.get('env'):
             # env indicates snapshot, diff doesn't need it
             if not self.auto_build.get('env'):
                 logger.error("Auto snapshot env not set.")
