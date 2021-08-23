@@ -18,25 +18,32 @@ class Stage(Enum):
 
 class IndexJobStateRegistrar():
 
-    def __init__(self, indexer, collection):
-        self.indexer = indexer
+    def __init__(self, collection, build_name, **context):
+
         self.collection = collection
+        self.build_id = build_name
+        self.context = context
+
         self.stage = Stage.READY
         self.t0 = 0
 
     @staticmethod
     def prune(collection):
         for build in collection.find():
+
             dirty = False
             for job in build.get("jobs", []):
+
                 if job.get("status") == "in progress":
                     logging.warning((
                         "Found stale build '%s', "
                         "marking index status as 'cancelled'"),
                         build["_id"])
+
                     job["status"] = "cancelled"
                     job.pop("pid", None)
                     dirty = True
+
             if dirty:
                 collection.replace_one({"_id": build["_id"]}, build)
 
@@ -51,11 +58,11 @@ class IndexJobStateRegistrar():
             "step": step,
             "status": "in progress",
             "step_started_at": datetime.now().astimezone(),
-            "logfile": self.indexer.logfile,
-            "pid": os.getpid()
+            "pid": os.getpid(),
+            **self.context
         }
         self.collection.update(
-            {"_id": self.indexer.build_name},
+            {"_id": self.build_id},
             {"$push": {
                 "jobs": job
             }}
@@ -70,10 +77,7 @@ class IndexJobStateRegistrar():
     def succeed(self, result):
         def func(job, delta_build):
             job["status"] = "success"
-            if result.pop("__READY__", False):
-                delta_build["index"] = {
-                    self.indexer.es_index_name: result
-                }
+            delta_build["index"] = result
         self._done(func)
 
     def _done(self, func):
@@ -81,8 +85,8 @@ class IndexJobStateRegistrar():
         assert self.stage == Stage.STARTED
         self.stage = Stage.DONE
 
-        build = self.collection.find_one({'_id': self.indexer.build_name})
-        assert build, "Can't find build document '%s'" % self.indexer.build_name
+        build = self.collection.find_one({'_id': self.build_id})
+        assert build, "Can't find build document '%s'" % self.build_id
 
         job = build["jobs"][-1]
         job["time"] = timesofar(self.t0)
@@ -99,32 +103,29 @@ class PreIndexJSR(IndexJobStateRegistrar):
     def started(self):
         super().started('pre-index')
 
+    def succeed(self, result):
+        # no result registration on pre-indexing step.
+        # --------------------------------------------
+        # registration indicates the existance of
+        # the index on the elasticsearch server.
+        # thus failure at the post-index stage means
+        # registration of the index state up until the
+        # indexing step, but success at the pre-index
+        # stage only means no registration at all.
+        super().succeed({})
+
 class MainIndexJSR(IndexJobStateRegistrar):
 
     def started(self):
         super().started('index')
-
-    def succeed(self, result):
-
-        # after finishing the inital indexing
-        # save the index metadata to field "index"
-
-        _result = {
-            self.indexer.es_index_name: {
-                '__REPLACE__': True,
-                'host': self.indexer.es_client_args.get('hosts'),  # only for display
-                'environment': self.indexer.env_name,  # used in snapshot f.
-                'created_at': datetime.now().astimezone()
-            }
-        }
-        merge(_result, result)
-        super().succeed(_result)
 
 class PostIndexJSR(IndexJobStateRegistrar):
 
     def started(self):
         super().started('post-index')
 
+
+# TESTS OUTDATED
 
 def test_registrar():
     from pymongo import MongoClient

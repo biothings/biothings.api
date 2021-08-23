@@ -4,6 +4,7 @@ import copy
 import os
 from collections import UserDict
 from copy import deepcopy
+from datetime import datetime
 from functools import partial
 from typing import NamedTuple, Optional
 
@@ -35,15 +36,10 @@ from .indexer_task import dispatch
 # TODO
 # Clarify returned result
 # Distinguish creates/updates/deletes
+# So that hot/cold indexer doc count can be accurate
 
 # TODO
 # Multi-layer logging
-
-# TODO
-# EMPTY DB VAL ON PARTIAL FAILURE
-
-# TODO
-# hot/cold indexer doc count
 
 
 class IndexerException(Exception):
@@ -206,8 +202,11 @@ class Step(abc.ABC):
     catelog = dict()
 
     def __init__(self, indexer):
-        self.indexer = indexer  # Indexer object
-        self.state = self.state(indexer, get_src_build())
+        self.indexer = indexer
+        self.state = self.state(
+            get_src_build(),
+            indexer.build_name,
+            logfile=indexer.logfile)
 
     @classmethod
     def __init_subclass__(cls):
@@ -366,7 +365,9 @@ class Indexer():
                 merge(x.data, dx.data)
                 self.logger.info(dx)
                 self.logger.info(x)
-                step.state.succeed(x.data)
+                step.state.succeed({
+                    self.es_index_name: x.data
+                })
 
         return x
 
@@ -415,6 +416,11 @@ class Indexer():
                 "mappings": (yield from self.es_index_mappings.finalize(client))
             })
             self.logger.info(("Created", self.es_index_name, response))
+            return {
+                '__REPLACE__': True,
+                'host': self.es_client_args.get('hosts'),  # for frontend display
+                'environment': self.env_name,  # used in snapshot module.
+            }
 
         finally:
             yield from client.close()
@@ -496,13 +502,14 @@ class Indexer():
 
         schedule.completed()
         self.logger.notify(schedule)
-        return {"count": total}
+        return {
+            "count": total,
+            "created_at": datetime.now().astimezone()
+        }
 
     @asyncio.coroutine
     def post_index(self, *args, **kwargs):
-        # this value is consumed by IndexJobStateRegistrar,
-        # allowing delayed write until all steps are done.
-        return {"__READY__": True}
+        ...
 
 
 class ColdHotIndexer():
