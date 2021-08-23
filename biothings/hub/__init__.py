@@ -627,7 +627,7 @@ class HubServer(object):
             job_manager=self.managers["job_manager"],
             poll_schedule="* * * * * */10", **args)
         snapshot_manager.configure(config.SNAPSHOT_CONFIG)
-        snapshot_manager.poll("snapshot", snapshot_manager.snapshot_build)
+        snapshot_manager.poll("snapshot", snapshot_manager.snapshot_a_build)
         self.managers["snapshot_manager"] = snapshot_manager
 
     def configure_release_manager(self):

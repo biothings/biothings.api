@@ -387,7 +387,7 @@ class SnapshotManager(BaseManager):
         env = self.register[snapshot_env]
         return env.snapshot(index, snapshot)
 
-    def snapshot_build(self, build_doc):
+    def snapshot_a_build(self, build_doc):
         """
         Create a snapshot basing on the autobuild settings in the build config.
         If the build config associated with this build has:
@@ -406,14 +406,20 @@ class SnapshotManager(BaseManager):
             env = autoconf.auto_build.get('env')
             assert env, "Unknown autobuild env."
 
+            if isinstance(env, str):
+                indexer_env = env
+                snapshot_env = env
+            else:  # assume env is an (x,y) pair
+                indexer_env, snapshot_env = env
+
             try:  # find the index (latest) to snapshot
                 latest_index = list(build_doc['index'].keys())[-1]
 
             except Exception:  # no existing indices, need to create one
-                yield from self.index_manager.index(env, build_doc['_id'])
+                yield from self.index_manager.index(indexer_env, build_doc['_id'])
                 latest_index = build_doc['_id']  # index_name is build name
 
-            return self.snapshot(env, latest_index)
+            return self.snapshot(snapshot_env, latest_index)
         return asyncio.ensure_future(_())
 
     def snapshot_info(self, env=None, remote=False):
