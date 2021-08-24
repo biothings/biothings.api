@@ -967,8 +967,6 @@ class DataBuilder(object):
         pass
 
 
-
-
 class LinkDataBuilder(DataBuilder):
     """
     LinkDataBuilder creates a link to the original datasource to be merged, without
@@ -1517,32 +1515,38 @@ class BuilderManager(BaseManager):
         have a different polling schedule.
         """
         # don't use $exists in find(), not all hub backend implements that
-        confs = get_src_build_config().find()
-        autobuild_confs = [conf for conf in confs if "autobuild" in conf]
+
+        logger, _ = get_logger('autobuild')
+        schedules = {
+            conf["_id"]: conf["autobuild"]["schedule"]
+            for conf in get_src_build_config().find()
+            if conf.get("autobuild", {}).get("schedule")
+        }
 
         @asyncio.coroutine
-        def check_new(conf_name):
-            new = self.whatsnew(conf_name)
-            if new[conf_name]["sources"]:
-                new_sources = [(name, info["new"].get("version")) for (name, info) in new[conf_name]["sources"].items()]
-                logging.info("Build configuration '%s' can be launched (autobuid) because" % conf_name
-                             + "some datasources are new: %s" % new_sources)
-                self.merge(conf_name)
-            else:
-                logging.debug("Nothing new for build configuration '%s'" % conf_name)
+        def _autobuild(conf_name):
 
-        for conf in autobuild_confs:
+            new = self.whatsnew(conf_name)
+            logger.info(f"{conf_name}:{schedules[conf_name]}")
+            logger.info(f"{conf_name}:{new}")
+
+            if new[conf_name]["sources"]:
+                self.merge(conf_name)
+                logger.info(f"{conf_name}:merge(*)")
+            else:
+                logger.info(f"{conf_name}:pass")
+
+        logger.info(datetime.now().astimezone())
+        logger.info(schedules)  # all schedules
+
+        for _id, _schedule in schedules.items():
             try:
-                sch = conf["autobuild"].get("schedule")
-                if not sch:
-                    logging.error("Build configuration needs autobuild but 'schedule' isn't defined" % conf_name)
-                    continue
                 aiocron.crontab(
-                    sch, func=partial(check_new, conf["_id"]),
+                    _schedule, func=partial(_autobuild, _id),
                     start=True, loop=self.job_manager.loop
                 )
-            except Exception as e:
-                logging.exception("Invalid autobuild information for build config '%s': %s" % (conf["_id"], e))
+            except Exception:
+                logger.exception((_id, _schedule))
 
     def trigger_merge(self, doc):
         return self.merge(doc["_id"])
