@@ -242,8 +242,7 @@ class IndexingTask():
         if missing_ids:
             self.ids = missing_ids
             self.index()
-            return len(self.ids)
-        return 0
+        return len(self.ids)
 
 
 def test_00():  # ES
