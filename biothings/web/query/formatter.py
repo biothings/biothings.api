@@ -160,29 +160,30 @@ class ESResultFormatter(ResultFormatter):
         options = dotdict(options)
         if isinstance(response, list):
             responses_ = []
-            # assert not options.get('one', False) TODO
+            options.pop('one', None)  # ignore
             template = options.pop('template', {})
             templates = options.pop('templates', [template]*len(response))
             template_hit = options.pop('template_hit', dict(found=True))
             template_miss = options.pop('template_miss', dict(found=False))
             responses = [self.transform(res, **options) for res in response]
-            for res_, res in zip(templates, responses):
-                # TODO rewrite with types
-                if res and 'hits' not in res:
-                    hit_ = dict(res_)
-                    hit_.update(template_hit)
-                    hit_.update(res)
-                    responses_.append(hit_)
-                    continue
-                if not res or not res['hits']:
-                    res_.update(template_miss)
-                    responses_.append(res_)
-                    continue
-                for hit in res['hits']:
-                    hit_ = dict(res_)
-                    hit_.update(template_hit)
-                    hit_.update(hit)
-                    responses_.append(hit_)
+            for tpl, res in zip(templates, responses):
+                for _res in res if isinstance(res, list) else [res]:
+                    assert isinstance(_res, dict)
+                    if _res and 'hits' not in _res:
+                        hit_ = dict(tpl)
+                        hit_.update(template_hit)
+                        hit_.update(_res)
+                        responses_.append(hit_)
+                        continue
+                    if not _res or not _res['hits']:
+                        tpl.update(template_miss)
+                        responses_.append(tpl)
+                        continue
+                    for hit in _res['hits']:
+                        hit_ = dict(tpl)
+                        hit_.update(template_hit)
+                        hit_.update(hit)
+                        responses_.append(hit_)
             return list(filter(None, responses_))
 
         if isinstance(response, dict):
