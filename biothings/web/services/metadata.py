@@ -346,8 +346,8 @@ class _ESIndexMappings:
     """
 
     def __init__(self, mapping):
-        # assume package version corresponds to that of es
-        if mapping and elasticsearch.__version__[0] < 7:
+        # for elasticsearch version 6.x
+        if len(mapping) == 1 and next(iter(mapping)) != "properties":
             # remove doc_type, support 1 type per index
             mapping = next(iter(mapping.values()))
         self.enabled = mapping.pop('enabled', True)

@@ -12,6 +12,7 @@ import boto3
 import elasticsearch
 import elasticsearch_dsl
 import requests
+from biothings.utils.common import run_once
 from elasticsearch import AIOHttpConnection
 from elasticsearch import RequestsHttpConnection as _Conn
 from requests_aws4auth import AWS4Auth
@@ -19,33 +20,19 @@ from tornado.ioloop import IOLoop
 
 logger = logging.getLogger(__name__)
 
-
-class ESPackageInfo():
-
-    def __init__(self):
-        self.es_ver = elasticsearch.__version__
-        self.es_dsl_ver = elasticsearch_dsl.__version__
-        logger.info("Python Elasticsearch Version: %s",
-                    '.'.join(map(str, self.es_dsl_ver)))
-        logger.info("Python Elasticsearch DSL Version: %s",
-                    '.'.join(map(str, self.es_dsl_ver)))
-
-        if self.es_ver[0] != self.es_dsl_ver[0]:
-            logger.error("ES Pacakge Version Mismatch with ES-DSL.")
-
-    def is_compatible(self, version):
-        assert isinstance(version, str)
-        major_version = version.split('.')[0]
-        assert major_version.isdigit()
-        return int(major_version) == self.es_ver[0]
+_should_log = run_once()
 
 
-es_local = None
-
+def _log_pkg():
+    es_ver = elasticsearch.__version__
+    es_dsl_ver = elasticsearch_dsl.__version__
+    logger.info("Elasticsearch Package Version: %s",
+                '.'.join(map(str, es_ver)))
+    logger.info("Elasticsearch DSL Package Version: %s",
+                '.'.join(map(str, es_dsl_ver)))
 
 def _log_db(client, uri):
     logger.info(client)
-
 
 def _log_es(client, hosts):
     _log_db(client, hosts)
@@ -59,24 +46,13 @@ def _log_es(client, hosts):
             # there could be a number of es tasks scheduled before
             # this call and would take the cluster a while to respond
 
+            if _should_log():
+                _log_pkg()
+
             cluster_name = cluster['cluster_name']
             version = cluster['version']['number']
 
-            global es_local
-            if not es_local:
-                es_local = ESPackageInfo()
-
-            if es_local.is_compatible(version):
-                level = logging.INFO
-                suffix = ""
-            else:  # package version mismatch
-                level = logging.WARNING
-                suffix = "(Incompatible)"
-
-            logger.log(
-                level, 'Elasticsearch [%s] %s: %s %s',
-                hosts, cluster_name, version, suffix
-            )
+            logger.info('%s: %s %s', hosts, cluster_name, version)
         IOLoop.current().add_callback(log_cluster, client)
 
 
