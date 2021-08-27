@@ -120,7 +120,7 @@ class _BuildDoc(UserDict):
 
     @property
     def build_config(self):
-        return self.get("build_config", {})
+        return self.setdefault("build_config", {})
 
     def enrich_mappings(self, mappings):
         mappings["__hub_doc_type"] = self.build_config.get("doc_type")
@@ -183,6 +183,7 @@ class _BuildDoc(UserDict):
     def extract_coldbuild(self):
         cold_target = self.build_config["cold_collection"]
         cold_build_doc = get_src_build().find_one({'_id': cold_target})
+        cold_build_doc = _BuildDoc(cold_build_doc)
 
         cold_build_doc["_id"] = self.build_name  # *
         cold_build_doc["mapping"].update(self["mapping"])  # combine mapping
@@ -192,7 +193,13 @@ class _BuildDoc(UserDict):
         # All updates are diverted to the hot collection.
         # Indices & snapshots are only registered there.
 
-        return _BuildDoc(cold_build_doc)
+        if self.build_config.get("num_shards"):
+            cold_build_doc.build_config["num_shards"] = \
+                self.build_config["num_shards"]
+        if self.build_config.get("num_replicas"):
+            cold_build_doc.build_config["num_replicas"] =  \
+                self.build_config["num_replicas"]
+        return cold_build_doc
 
 
 class Step(abc.ABC):
