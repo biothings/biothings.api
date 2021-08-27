@@ -521,12 +521,18 @@ class ColdHotIndexer():
     are merged by fetching docs from the index, updating them, and putting them back in the index.
     """
 
+    # "ColdHotIndexer" is not a subclass of the "Indexer".
+    # Step-level customization requires a subclass of "Indexer"
+    # and assigning it to the "INDEXER" class attribute below.
+
+    INDEXER = Indexer
+
     def __init__(self, build_doc, indexer_env, index_name):
         hot_build_doc = _BuildDoc(build_doc)
         cold_build_doc = hot_build_doc.extract_coldbuild()
 
-        self.hot = Indexer(hot_build_doc, indexer_env, index_name)
-        self.cold = Indexer(cold_build_doc, indexer_env, self.hot.es_index_name)
+        self.hot = self.INDEXER(hot_build_doc, indexer_env, index_name)
+        self.cold = self.INDEXER(cold_build_doc, indexer_env, self.hot.es_index_name)
 
     @asyncio.coroutine
     def index(self,
