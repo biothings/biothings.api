@@ -295,13 +295,13 @@ class Indexer():
         _build_doc.enrich_settings(self.es_index_settings)
         _build_doc.enrich_mappings(self.es_index_mappings)
 
-        # ----------logging----------
+        # -----------info-----------
 
         self.env_name = indexer_env.get("name")
         self.conf_name = _build_doc.build_config.get("name")
         self.build_name = _build_doc.build_name
-        self.logger, self.logfile = get_logger('index_%s' % self.es_index_name)
 
+        self.logger, self.logfile = get_logger('index_%s' % self.es_index_name)
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
 
     def __str__(self):
