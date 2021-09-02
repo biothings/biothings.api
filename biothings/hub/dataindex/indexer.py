@@ -520,12 +520,12 @@ class Indexer():
 
 
 class ColdHotIndexer():
-    """
-    This indexer works with 2 mongo collections to create a single index.
-    - one premerge collection contains "cold" data, which never changes (not updated)
-    - another collection contains "hot" data, regularly updated
-    Index is created fetching the premerge documents. Then, documents from the hot collection
-    are merged by fetching docs from the index, updating them, and putting them back in the index.
+    """ MongoDB to Elasticsearch 2-pass Indexer.
+    (
+        1st pass: <MongoDB Cold Collection>, # static data
+        2nd pass: <MongoDB Hot Collection> # changing data
+    ) =>
+        <Elasticsearch Index>
     """
 
     # "ColdHotIndexer" is not a subclass of the "Indexer".
