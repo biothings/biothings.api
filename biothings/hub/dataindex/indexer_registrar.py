@@ -13,15 +13,20 @@ class Stage(Enum):
     STARTED = 1
     DONE = 2
 
-# an implementation like this should be further
-# generalized to replace utils.manager.BaseStatusRegisterer
+    def at(self, stage):
+        assert self == stage
+
+# IndexJobStateRegistrar CAN be further generalized
+# to replace utils.manager.BaseStatusRegisterer
 
 class IndexJobStateRegistrar():
 
-    def __init__(self, collection, build_name, **context):
+    def __init__(self, collection, build_name, index_name, **context):
 
         self.collection = collection
         self.build_id = build_name
+
+        self.index_name = index_name
         self.context = context
 
         self.stage = Stage.READY
@@ -49,7 +54,7 @@ class IndexJobStateRegistrar():
 
     def started(self, step="index"):
 
-        assert self.stage == Stage.READY
+        self.stage.at(Stage.READY)
         self.stage = Stage.STARTED
 
         self.t0 = time.time()
@@ -77,12 +82,14 @@ class IndexJobStateRegistrar():
     def succeed(self, result):
         def func(job, delta_build):
             job["status"] = "success"
-            delta_build["index"] = result
+            if result:
+                delta_build["index"] = {
+                    self.index_name: result}
         self._done(func)
 
     def _done(self, func):
 
-        assert self.stage == Stage.STARTED
+        self.stage.at(Stage.STARTED)
         self.stage = Stage.DONE
 
         build = self.collection.find_one({'_id': self.build_id})
@@ -106,12 +113,13 @@ class PreIndexJSR(IndexJobStateRegistrar):
     def succeed(self, result):
         # no result registration on pre-indexing step.
         # --------------------------------------------
-        # registration indicates the existance of
+        # registration indicates the creation of
         # the index on the elasticsearch server.
         # thus failure at the post-index stage means
         # registration of the index state up until the
         # indexing step, but success at the pre-index
-        # stage only means no registration at all.
+        # stage suggests no index created and thus
+        # no registration at all.
         super().succeed({})
 
 class MainIndexJSR(IndexJobStateRegistrar):

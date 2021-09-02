@@ -208,11 +208,20 @@ class Step(abc.ABC):
     method: property(abc.abstractmethod(lambda _: ...))
     catelog = dict()
 
+    @staticmethod
+    def order(steps):
+        if isinstance(steps, str):
+            return (yield from Step.order([steps]))
+        for _step in ("pre", "index", "post"):
+            if _step in steps:
+                yield _step
+
     def __init__(self, indexer):
         self.indexer = indexer
         self.state = self.state(
             get_src_build(),
             indexer.build_name,
+            indexer.es_index_name,
             logfile=indexer.logfile)
 
     @classmethod
@@ -338,9 +347,6 @@ class Indexer():
         mode = kwargs.setdefault("mode", "index")
         ids = kwargs.setdefault("ids", None)
 
-        if isinstance(steps, str):
-            steps = [steps]
-
         assert job_manager
         assert all(isinstance(_id, str) for _id in ids) if ids else True
         assert 500 <= batch_size <= 10000, '"batch_size" out-of-range'
@@ -354,7 +360,7 @@ class Indexer():
         # inefficient, amplifying the scheduling overhead.
 
         x = IndexerCumulativeResult()
-        for step in steps:
+        for step in Step.order(steps):
             step = Step.dispatch(step)(self)
             self.logger.info(step)
             step.state.started()
@@ -370,9 +376,7 @@ class Indexer():
                 merge(x.data, dx.data)
                 self.logger.info(dx)
                 self.logger.info(x)
-                step.state.succeed({
-                    self.es_index_name: x.data
-                })
+                step.state.succeed(x.data)
 
         return x
 
@@ -543,19 +547,19 @@ class ColdHotIndexer():
     def index(self,
               job_manager,
               batch_size=10000,
-              steps={"pre", "index", "post"},
+              steps=("pre", "index", "post"),
               ids=None, mode=None,
               **kwargs):
 
         result = []
 
         cold_task = self.cold.index(
-            job_manager, steps=steps & {"pre", "index"},
+            job_manager, steps=set(Step.order(steps)) & {"pre", "index"},
             batch_size=batch_size, ids=ids, mode=mode)
         result.append((yield from cold_task))
 
         hot_task = self.hot.index(
-            job_manager, steps=steps & {"index", "post"},
+            job_manager, steps=set(Step.order(steps)) & {"index", "post"},
             batch_size=batch_size, ids=ids, mode=mode or "merge")
         result.append((yield from hot_task))
 
