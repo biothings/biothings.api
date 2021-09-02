@@ -344,8 +344,6 @@ class Indexer():
         assert job_manager
         assert all(isinstance(_id, str) for _id in ids) if ids else True
         assert 500 <= batch_size <= 10000, '"batch_size" out-of-range'
-        assert isinstance(steps, (list, tuple)), 'bad argument "steps"'
-        assert isinstance(mode, str), 'bad argument "mode"'
 
         # the batch size here controls only the task partitioning
         # it does not affect how the elasticsearch python client
@@ -545,20 +543,20 @@ class ColdHotIndexer():
     def index(self,
               job_manager,
               batch_size=10000,
-              ids=None,
-              mode="index",
+              steps={"pre", "index", "post"},
+              ids=None, mode=None,
               **kwargs):
 
         result = []
 
         cold_task = self.cold.index(
-            job_manager, steps=("pre", "index"),
+            job_manager, steps=steps & {"pre", "index"},
             batch_size=batch_size, ids=ids, mode=mode)
         result.append((yield from cold_task))
 
         hot_task = self.hot.index(
-            job_manager, steps=("index", "post"),
-            batch_size=batch_size, ids=ids, mode="merge")
+            job_manager, steps=steps & {"index", "post"},
+            batch_size=batch_size, ids=ids, mode=mode or "merge")
         result.append((yield from hot_task))
 
         return result
