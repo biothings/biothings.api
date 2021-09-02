@@ -208,11 +208,20 @@ class Step(abc.ABC):
     method: property(abc.abstractmethod(lambda _: ...))
     catelog = dict()
 
+    @staticmethod
+    def order(steps):
+        if isinstance(steps, str):
+            return (yield from Step.order([steps]))
+        for _step in ("pre", "index", "post"):
+            if _step in steps:
+                yield _step
+
     def __init__(self, indexer):
         self.indexer = indexer
         self.state = self.state(
             get_src_build(),
             indexer.build_name,
+            indexer.es_index_name,
             logfile=indexer.logfile)
 
     @classmethod
@@ -338,14 +347,9 @@ class Indexer():
         mode = kwargs.setdefault("mode", "index")
         ids = kwargs.setdefault("ids", None)
 
-        if isinstance(steps, str):
-            steps = [steps]
-
         assert job_manager
         assert all(isinstance(_id, str) for _id in ids) if ids else True
         assert 500 <= batch_size <= 10000, '"batch_size" out-of-range'
-        assert isinstance(steps, (list, tuple)), 'bad argument "steps"'
-        assert isinstance(mode, str), 'bad argument "mode"'
 
         # the batch size here controls only the task partitioning
         # it does not affect how the elasticsearch python client
@@ -356,7 +360,7 @@ class Indexer():
         # inefficient, amplifying the scheduling overhead.
 
         x = IndexerCumulativeResult()
-        for step in steps:
+        for step in Step.order(steps):
             step = Step.dispatch(step)(self)
             self.logger.info(step)
             step.state.started()
@@ -372,9 +376,7 @@ class Indexer():
                 merge(x.data, dx.data)
                 self.logger.info(dx)
                 self.logger.info(x)
-                step.state.succeed({
-                    self.es_index_name: x.data
-                })
+                step.state.succeed(x.data)
 
         return x
 
@@ -520,12 +522,12 @@ class Indexer():
 
 
 class ColdHotIndexer():
-    """
-    This indexer works with 2 mongo collections to create a single index.
-    - one premerge collection contains "cold" data, which never changes (not updated)
-    - another collection contains "hot" data, regularly updated
-    Index is created fetching the premerge documents. Then, documents from the hot collection
-    are merged by fetching docs from the index, updating them, and putting them back in the index.
+    """ MongoDB to Elasticsearch 2-pass Indexer.
+    (
+        1st pass: <MongoDB Cold Collection>, # static data
+        2nd pass: <MongoDB Hot Collection> # changing data
+    ) =>
+        <Elasticsearch Index>
     """
 
     # "ColdHotIndexer" is not a subclass of the "Indexer".
@@ -545,20 +547,20 @@ class ColdHotIndexer():
     def index(self,
               job_manager,
               batch_size=10000,
-              ids=None,
-              mode="index",
+              steps=("pre", "index", "post"),
+              ids=None, mode=None,
               **kwargs):
 
         result = []
 
         cold_task = self.cold.index(
-            job_manager, steps=("pre", "index"),
+            job_manager, steps=set(Step.order(steps)) & {"pre", "index"},
             batch_size=batch_size, ids=ids, mode=mode)
         result.append((yield from cold_task))
 
         hot_task = self.hot.index(
-            job_manager, steps=("index", "post"),
-            batch_size=batch_size, ids=ids, mode="merge")
+            job_manager, steps=set(Step.order(steps)) & {"index", "post"},
+            batch_size=batch_size, ids=ids, mode=mode or "merge")
         result.append((yield from hot_task))
 
         return result

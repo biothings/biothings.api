@@ -152,13 +152,13 @@ class IndexingTask():
     The documents to index are specified by their ids.
     """
 
-    def __init__(self, es, mongo, ids, mode='index', logger=None, name="task"):
+    def __init__(self, es, mongo, ids, mode=None, logger=None, name="task"):
 
         assert callable(es)
         assert callable(mongo)
 
         self.ids = _validate_ids(ids)
-        self.mode = Mode(mode)
+        self.mode = Mode(mode or 'index')
 
         # these are functions to create clients,
         # each also associated with an organizational
@@ -195,7 +195,7 @@ class IndexingTask():
             query={'_id': {
                 '$in': self.ids
             }})
-        self.logger.info("%s: Indexing %d documents.", self.name, len(self.ids))
+        self.logger.info("%s: %d documents.", self.name, len(self.ids))
         return clients.es.mindex(docs)
 
     def merge(self):

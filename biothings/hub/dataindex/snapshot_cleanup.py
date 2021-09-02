@@ -1,9 +1,5 @@
 import logging
-from datetime import datetime
-from typing import Type
 from xml.etree import ElementTree
-
-from biothings.utils.dataload import file_merge
 
 
 class Cleaner():
