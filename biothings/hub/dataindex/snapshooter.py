@@ -19,6 +19,7 @@ from elasticsearch import Elasticsearch
 
 from config import logger as logging
 
+from . import snapshot_cleanup as cleaner
 from . import snapshot_registrar as registrar
 from .snapshot_repo import Repository
 from .snapshot_task import Snapshot
@@ -423,3 +424,31 @@ class SnapshotManager(BaseManager):
 
     def snapshot_info(self, env=None, remote=False):
         return self.snapshot_config
+
+    def cleanup(
+        self, env=None,  # a snapshot environment describing a repository
+        keep=3,  # the number of most recent snapshots to keep in one group
+        group_by="build_config",  # the attr of which its values form groups
+        dryrun=True,  # display the snapshots to be deleted without deleting them
+        **filters  # a set of criterions to limit which snapshots are to be cleaned
+    ):
+        """ Delete past snapshots and keep only the most recent ones.
+
+        Examples:
+            >>> snapshot_cleanup()
+            >>> snapshot_cleanup("s3_outbreak")
+            >>> snapshot_cleanup("s3_outbreak", keep=0)
+        """
+
+        snapshots = cleaner.find(  # filters support dotfield.
+            get_src_build(), env, keep, group_by, **filters)
+
+        if dryrun:
+            return '\n'.join((
+                "-" * 75, str(snapshots), "-" * 75,
+                "DRYRUN ONLY - APPLY THE ACTIONS WITH:",
+                "   > snapshot_cleanup(..., dryrun=False)"
+            ))
+
+        # return the number of snapshots successfully deleted
+        return cleaner.delete(get_src_build(), snapshots, self)
