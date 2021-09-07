@@ -37,7 +37,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-class BaseHandler(RequestHandler, SentryMixin):
+class BaseHandler(SentryMixin, RequestHandler):
 
     @property
     def biothings(self):
@@ -45,14 +45,10 @@ class BaseHandler(RequestHandler, SentryMixin):
 
     def get_sentry_client(self):
         # Override and retrieve from tornado settings instead.
-        return self.settings.get('sentry_client')
-
-    def log_exception(self, *args, **kwargs):
-        # Only attempt to report to Sentry when the client is setup.
-        #Discard when API key is not set or raven is not installed.
-        if 'sentry_client' in self.settings:
-            return SentryMixin.log_exception(self, *args, **kwargs)
-        return RequestHandler.log_exception(self, *args, **kwargs)
+        client = self.settings.get('sentry_client')
+        if not client:  # need to set config.SENTRY_CLIENT_KEY
+            raise ValueError("Sentry Not Configured.")
+        return client
 
 
 class BaseAPIHandler(BaseHandler, AnalyticsMixin):
