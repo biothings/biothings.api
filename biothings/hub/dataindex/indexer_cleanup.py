@@ -184,6 +184,40 @@ class Cleaner():
                 )
         return actions
 
+    @staticmethod
+    def plain_text(cleanups):
+        plain_texts = []
+        for build_config in cleanups:
+            plain_texts.append(f"> BuildConfig {repr(build_config.name)}")
+            plain_texts.append(f"     Found {len(build_config.remove)} indices to remove:")
+            for index in build_config.remove:
+                _id = index.get("_id")
+                env = repr(index.get("environment"))
+                ts = str(index.get("created_at"))
+                plain_texts.append(f"        {_id} (env={env}, created={ts})")
+            plain_texts.append(f"     Found {len(build_config.keep)} indices to keep:")
+            for index in build_config.keep:
+                _id = index.get("_id")
+                env = repr(index.get("environment"))
+                ts = str(index.get("created_at"))
+                plain_texts.append(f"        {_id} (env={env}, created={ts})")
+        return '\n'.join(plain_texts)
+
+# Feature Specification ↑
+# https://suwulab.slack.com/archives/CC19LHAF2/p1631119811009900?thread_ts=1631063230.003400&cid=CC19LHAF2
+
+# >BuildConfig "mygene_allspecies":
+#     Found 8 indices to remove:
+#        mygene_allspecies_20180501_rpds7zzn (indexer_env='prod', created=2018-05-01T04:45:25.132000)
+#        ...
+
+#     Found 3 indices to keep:
+#        mygene_allspecies_20180501_rpds7zzn (indexer_env='prod', created=2021-04-06T22:34:09.863000)
+
+# NOTE
+# Using "env" instead of "indexer_env" as desribed in the feature spec
+# to match the signature of the Cleaner.find method (first argument).
+
 def test_str():
     print(_CleanUps([_BuildConfig(
         "mynews",
@@ -226,12 +260,23 @@ def test_find():
     # "su04"
     # "mychem_hubdb", "src_build"
 
-    client = MongoClient()
-    collection = client["biothings"]["src_build"]
+    # mygene
+    # -------
+    # "su05"
+    # "genedoc_src", "src_build"
+
+    # docker
+    # ------
+    #
+    # "biothings", "src_build"
+
+    client = MongoClient("su05")
+    collection = client["genedoc_src"]["src_build"]
     cleaner = Cleaner(collection, {"local": {"args": {}}})
     obj = cleaner.find()
-    print(type(obj))
-    print(obj)
+    # print(type(obj))
+    # print(obj)
+    print(cleaner.plain_text(obj))
     return cleaner, obj
 
 def test_clean():

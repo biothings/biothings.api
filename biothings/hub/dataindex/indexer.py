@@ -838,7 +838,7 @@ class IndexManager(BaseManager):
 
         if dryrun:
             return '\n'.join((
-                "-" * 75, str(cleanups), "-" * 75,
+                "-" * 75, cleaner.plain_text(cleanups), "-" * 75,
                 "DRYRUN ONLY - APPLY THE ACTIONS WITH:",
                 "   > index_cleanup(..., dryrun=False)"
             ))
