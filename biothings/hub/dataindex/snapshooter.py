@@ -445,7 +445,7 @@ class SnapshotManager(BaseManager):
 
         if dryrun:
             return '\n'.join((
-                "-" * 75, str(snapshots), "-" * 75,
+                "-" * 75, cleaner.plain_text(snapshots), "-" * 75,
                 "DRYRUN ONLY - APPLY THE ACTIONS WITH:",
                 "   > snapshot_cleanup(..., dryrun=False)"
             ))

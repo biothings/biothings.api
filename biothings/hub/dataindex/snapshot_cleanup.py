@@ -122,6 +122,53 @@ def _delete(collection, snapshot, envs):
         {"$unset": {f"snapshot.{snapshot.attrs['_id']}": 1}}
     )
 
+def plain_text(element):
+    plain_texts = []
+    assert element.tag == "CleanUps"
+    for group in element.elems:
+        assert group.tag == "Group"
+
+        plain_texts.append("Snapshots filtered by:")
+        for k, v in group.attrs.items():
+            plain_texts.append(f"      {k}={repr(v)}")
+        plain_texts.append("")
+
+        removes = group.elems[0].elems
+        plain_texts.append(f"    Found {len(removes)} snapshots to remove:")
+        for snapshot in removes:
+            plain_texts.append(" " * 8 + _plain_text(snapshot))
+
+        keeps = group.elems[1].elems
+        plain_texts.append(f"    Found {len(keeps)} snapshots to keep:")
+        for snapshot in keeps:
+            plain_texts.append(" " * 8 + _plain_text(snapshot))
+        plain_texts.append("")
+
+    return '\n'.join(plain_texts)
+
+def _plain_text(snapshot):
+    assert snapshot.tag == "Snapshot"
+    return "".join((
+        snapshot.attrs["_id"], " (",
+        f'env={snapshot.attrs.get("environment") or "N/A"}', ", "
+        f'build_name={repr(snapshot.attrs["build_name"])}', ", ",
+        f'created_at={str(snapshot.attrs["created_at"])}', ")"
+    ))
+
+
+# Feature Specification ↑
+# https://suwulab.slack.com/archives/CC19LHAF2/p1631126588023700?thread_ts=1631063247.003700&cid=CC19LHAF2
+
+# Snapshots filtered by:
+#       build_config="demo_allspecies"
+#        ...
+
+#    Found 8 snapshots to remove:
+#        ...
+#    Found 3 snapshots to keep:
+#        ...
+
+
 def test_find():
     from pymongo import MongoClient
     logging.basicConfig(level="DEBUG")
@@ -134,7 +181,7 @@ def test_find():
     client = MongoClient("su06")
     collection = client["outbreak_hubdb"]["src_build"]
 
-    print(find(collection))
+    print(plain_text(find(collection)))
 
 
 def test_print():
