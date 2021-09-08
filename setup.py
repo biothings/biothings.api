@@ -89,7 +89,7 @@ docs_requires = [
 setup(
     name="biothings",
     version=__import__("biothings").__version__,
-    author="Cyrus Afrasiabi, Sebastien Lelong, Xinghua Zhou, Chunlei Wu",
+    author="Sebastien Lelong, Zhongchao Qian, Xinghua Zhou, Chunlei Wu",
     author_email="cwu@scripps.edu",
     description="a toolkit for building high-performance data APIs in biology",
     license="Apache License, Version 2.0",
