@@ -3,6 +3,7 @@ import cgi
 import email.utils
 import inspect
 import os
+import os.path
 import pprint
 import re
 import subprocess
@@ -59,6 +60,8 @@ class BaseDumper(object):
         self.log_folder = log_folder or btconfig.LOG_FOLDER
         self.archive = archive or self.ARCHIVE
         self.to_dump = []
+        self.to_delete: List[Union[str, bytes,os.PathLike]] = []
+        """Populate with list of relative path of files to delete"""
         self.release = None
         self.t0 = time.time()
         self.logfile = None
@@ -163,6 +166,29 @@ class BaseDumper(object):
         """Placeholder to add a custom process once a file is downloaded.
         This is a good place to check file's integrity. Optional"""
         pass
+
+    def post_dump_delete_files(self):
+        """
+        Delete files after dump
+
+        Invoke this method in post_dump to synchronously delete
+        the list of paths stored in `self.to_delete`, in order.
+
+        Non-recursive. If directories need to be removed, build the list such that
+        files residing in the directory are removed first and then the directory.
+        """
+        base_dir: str = os.path.realpath(self.new_data_folder)
+        # assume this path is good
+        for rel_file_name in self.to_delete:
+            delete_path = os.path.realpath(
+                os.path.join(base_dir, rel_file_name)
+            )  # figure out the full path
+            if os.path.commonpath((base_dir, delete_path)) != base_dir \
+                    or delete_path == base_dir:
+                raise RuntimeError("Attempting to delete something outside the download "
+                                   "directory")
+            self.logger.info("Deleting file %s: %s", rel_file_name, delete_path)
+            os.unlink(delete_path)
 
     def post_dump(self, *args, **kwargs):
         """
@@ -487,6 +513,7 @@ class FTPDumper(BaseDumper):
     FTP_PASSWD = ''
     FTP_TIMEOUT = 10 * 60.0  # we want dumper to timout if necessary
     BLOCK_SIZE: Optional[int] = None  # default is still kept at 8KB
+
 
     # TODO: should we add a __del__ to make sure to close ftp connection ?
     # ftplib has a context __enter__, but we don't use it that way ("with ...")
