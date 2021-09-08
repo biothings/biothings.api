@@ -104,16 +104,27 @@ def capturesESExceptions(func):
         except elasticsearch.RequestError as exc:  # 400s
             raise QueryPipelineException(400, *_simplify_ES_exception(exc))
 
+        # it seems like the managed Elasticsearch service by AWS
+        # may provide slightly different exceptions when the server
+        # is overloaded comparing to that of self-managed ES.
+
+        # this case and most of the handling below can be further studied.
+        # most of the exception handlings from this point on are based on
+        # experience. further documentation in details will be helpful.
+
         except elasticsearch.TransportError as exc:  # >400
             if exc.error == 'search_phase_execution_exception':
                 reason = exc.info.get("caused_by", {}).get("reason", "")
+
                 if "rejected execution" in reason:
                     raise QueryPipelineException(503)
-                else:  # unexpected, provide additional information
+                else:  # unexpected, provide additional information for debug
                     raise QueryPipelineException(500, *_simplify_ES_exception(exc, True))
+
             elif exc.error == 'index_not_found_exception':
                 raise QueryPipelineException(500, exc.error)
-            elif exc.status_code == 'N/A':
+
+            elif exc.status_code in (429, 'N/A'):
                 raise QueryPipelineException(503)
             else:  # unexpected
                 raise
@@ -147,11 +158,11 @@ class AsyncESQueryPipeline(QueryPipeline):
         options['one'] = True
 
         # annotation endpoint should work on fields with reasonable
-        # uniqueness of values, like id and symbol fields. because 
-        # we do not provide pagination for this endpoint, as it is 
+        # uniqueness of values, like id and symbol fields. because
+        # we do not provide pagination for this endpoint, as it is
         # largely unncessary, in the case of matching too many docs
         # for one request, raise an exception instead of providing
-        # the user incomplete matches. usually, when this happends, 
+        # the user incomplete matches. usually, when this happends,
         # it indicates bad choices of values as the default fields.
 
         MAX_MATCH = 1000
