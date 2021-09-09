@@ -219,6 +219,7 @@ class BaseDumper(object):
             else:
                 raise RuntimeError(f"{rel_file_name} ({delete_path}) is not "
                                    "a regular file or directory, cannot delete")
+        self.to_delete = []  # reset the list in case
 
     def post_dump(self, *args, **kwargs):
         """
