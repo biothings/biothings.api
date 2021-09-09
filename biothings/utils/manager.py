@@ -17,6 +17,7 @@ import aiocron
 import dill as pickle
 import psutil
 
+import biothings.hub  # noqa
 from biothings import config
 logger = config.logger
 
