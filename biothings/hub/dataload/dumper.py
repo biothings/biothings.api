@@ -4,6 +4,7 @@ import email.utils
 import inspect
 import os
 import os.path
+import stat
 import pprint
 import re
 import subprocess
@@ -176,19 +177,48 @@ class BaseDumper(object):
 
         Non-recursive. If directories need to be removed, build the list such that
         files residing in the directory are removed first and then the directory.
+        (Hint: see `os.walk(dir, topdown=False)`)
         """
         base_dir: str = os.path.realpath(self.new_data_folder)
+        self.logger.debug("Only delete files under %s", base_dir)
         # assume this path is good
         for rel_file_name in self.to_delete:
             delete_path = os.path.realpath(
                 os.path.join(base_dir, rel_file_name)
             )  # figure out the full path
-            if os.path.commonpath((base_dir, delete_path)) != base_dir \
-                    or delete_path == base_dir:
+            self.logger.debug("%s is %s", rel_file_name, delete_path)
+            common_path = os.path.commonpath((base_dir, delete_path))
+            self.logger.debug("Calculated common prefix path: %s", common_path)
+            if common_path != base_dir or delete_path == base_dir:
                 raise RuntimeError("Attempting to delete something outside the download "
                                    "directory")
-            self.logger.info("Deleting file %s: %s", rel_file_name, delete_path)
-            os.unlink(delete_path)
+            try:
+                s = os.stat(delete_path)
+                self.logger.debug("stat(%s): %s", delete_path, s)
+            except FileNotFoundError:
+                self.logger.warning("Cannot delete %s (%s), does not exist",
+                                    rel_file_name, delete_path)
+                continue
+            # there is a race condition but the effects are limited
+            if stat.S_ISREG(s.st_mode):
+                self.logger.info("Deleting regular file %s (%s)",
+                                 rel_file_name, delete_path)
+                try:
+                    os.unlink(delete_path)
+                except Exception as e:
+                    self.logger.exception("Failed to delete regular file")
+                    raise e
+            elif stat.S_ISDIR(s.st_mode):
+                self.logger.info("Deleting directory %s (%s)",
+                                 rel_file_name, delete_path)
+                try:
+                    os.rmdir(delete_path)
+                except Exception as e:
+                    self.logger.exception("Failed to delete directory")
+                    raise e
+            else:
+                raise RuntimeError(f"{rel_file_name} ({delete_path}) is not "
+                                   "a regular file or directory, cannot delete")
 
     def post_dump(self, *args, **kwargs):
         """
