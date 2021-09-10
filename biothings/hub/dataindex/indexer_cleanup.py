@@ -201,6 +201,7 @@ class Cleaner():
                 env = repr(index.get("environment"))
                 ts = str(index.get("created_at"))
                 plain_texts.append(f"        {_id} (env={env}, created={ts})")
+            plain_texts.append("")
         return '\n'.join(plain_texts)
 
 # Feature Specification ↑
