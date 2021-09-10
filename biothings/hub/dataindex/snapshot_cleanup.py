@@ -151,7 +151,17 @@ def _plain_text(snapshot):
     return "".join((
         snapshot.attrs["_id"], " (",
         f'env={snapshot.attrs.get("environment") or "N/A"}', ", "
-        f'build_name={repr(snapshot.attrs["build_name"])}', ", ",
+        #
+        # "build_name" generally agrees with the snapshot _id,
+        # although technically snapshots can be named anything.
+        # since in most use cases, the snapshot name at least
+        # indicates which build it is created from, even when
+        # it is not named exactly the same as the build, for
+        # presentation concision, build_name is not shown here.
+        # uncomment the following line if this assumption is
+        # no longer true in the future.
+        #
+        # f'build_name={repr(snapshot.attrs["build_name"])}', ", ",
         f'created_at={str(snapshot.attrs["created_at"])}', ")"
     ))
 
