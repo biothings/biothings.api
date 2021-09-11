@@ -30,4 +30,5 @@ config.py
 /config
 /config_
 !/tests/web/handlers/config.py
+!/tests/hub/hubdb/config.py
 .hubdb
