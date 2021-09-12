@@ -8,8 +8,9 @@ from elasticsearch import (Elasticsearch, NotFoundError, RequestError,
                            TransportError, ElasticsearchException)
 from elasticsearch import helpers
 
-from biothings.utils.common import iter_n, splitstr, nan, inf
+from biothings.utils.common import iter_n, splitstr, nan, inf, merge, traverse
 from biothings.utils.dataload import dict_walk
+from biothings.utils.serializer import to_json
 
 # setup ES logging
 import logging
@@ -803,28 +804,11 @@ def get_hub_config():
     return db[getattr(db.CONFIG, "HUB_CONFIG_COLLECTION", "hub_config")]
 
 def get_source_fullname(col_name):
-    pass
+    return col_name
 
 def get_last_command():
-    conn = get_hub_db_conn().get_conn()
-    cmd = get_cmd()
-    res = conn.search(cmd.dbname, cmd.colname, {
-        "query": {
-            "match_all": {}
-        },
-        "size": 1,
-        "sort": [
-            {
-                "_id": {
-                    "order": "desc"
-                }
-            }
-        ]
-    })
-    if res["hits"]["hits"]:
-        return res["hits"]["hits"][0]
-    else:
-        return None
+    cmds = list(sorted(get_cmd()._read().values(), key=lambda cmd: cmd["_id"]))
+    return cmds[-1] if cmds else None
 
 
 # ES7+ FOR HUB_DB
@@ -857,6 +841,7 @@ class Database(IDatabase):
         return self.host
 
     # ES API OPS
+    # ON "COLLECTION"
 
     def _exists(self, _id):
         return self.client.exists(self.name, _id)
@@ -867,13 +852,15 @@ class Database(IDatabase):
 
     def _write(self, _id, doc):
         assert doc.pop("_id", None) in (_id, None)
-        return self.client.index(self.name, doc, id=_id)
+        self.client.index(self.name, doc, id=_id)
+        self.client.indices.refresh(self.name)
 
     def _modify(self, _id, func):
         doc = self._read(_id)
         doc = func(doc) or doc
-        return self._write(_id, doc)
+        self._write(_id, doc)
 
+    # HIGH LEVEL
     # HUB_DB ABSTRACTION
 
     def create_collection(self, colname):
@@ -883,7 +870,7 @@ class Database(IDatabase):
         return Collection(colname, self)
 
 
-class Collection(object):
+class Collection():
 
     def __init__(self, colname, db):
         self.name = colname
@@ -898,117 +885,165 @@ class Collection(object):
         return self.db._read(self.name)
 
     def _write(self, col):
-        return self.db._write(self.name, col)
+        self.db._write(self.name, col)
 
     # COLLECTION DOC OPS
 
-    def _modify(self, doc):
+    def _exists_one(self, _id):
+        return _id in self._read()
+
+    def _write_one(self, doc):
         def func(collection):
-            collection[doc["_id"]] = doc
-        return self.db._modify(self.name, func)
+            collection[str(doc["_id"])] = doc
+        self.db._modify(self.name, func)
 
     # HUB_DB ABSTRACTION
 
+    def __getitem__(self, _id):
+        return self.find_one({"_id": _id})
+
     def find_one(self, *args, **kwargs):
         results = self.find(*args, **kwargs)
-        if results:
-            return results[0]
-        return None
+        return results[0] if results else None
 
-    def find(self, filter=None, *args, **kwargs):
+    def find(self, filter=None, projection=None, *args, **kwargs):
 
         if args or kwargs:
-            raise NotImplementedError()
-
-        if filter and any("." in k for k in filter):
             raise NotImplementedError()
 
         results = []
         for doc in self._read().values():
+            _doc = dict(traverse(doc))  # dotdict
+            _doc.update(dict(traverse(doc, True)))
             for k, v in (filter or {}).items():
-                if doc.get(k) != v:
+                if isinstance(v, dict) and "$exists" in v:
+                    logging.error("Ingored filter: %s:%s", k, v)
+                    continue
+                if _doc.get(k) != v:
                     break
             else:  # no break
                 results.append(doc)
 
+        if projection:  # used by BuildManager.build_info
+            logging.error("Ignored projection: %s", projection)
+
         return results
 
     def insert_one(self, document, *args, **kwargs):
+
         if args or kwargs:
             raise NotImplementedError()
 
-        assert "_id" in document
-        collection = self._read()
-        if document["_id"] in collection:
-            raise ValueError("Already exists.")
+        if self._exists_one(document["_id"]):
+            raise ValueError("Document already exists.")
 
-        collection[document["_id"]] = document
-        self._write(collection)
+        self._write_one(document)
+
+    def replace_one(self, filter, replacement, upsert=False, *args, **kwargs):
+
+        if args or kwargs:
+            raise NotImplementedError()
+
+        doc = self.find_one(filter) or {}
+        if not (doc or upsert):
+            raise ValueError("No Match.")
+
+        _id = doc.get("_id") or filter["_id"]
+        replacement["_id"] = _id
+        self._write_one(replacement)
+
+    # update operations support
+    # a subset of mongo operators
+    # for partial document editing
 
     def _update_one(self, doc, update, *args, **kwargs):
+
         if args or kwargs:
             raise NotImplementedError()
 
-        if not ((len(update) == 1 and next(iter(update)) in ("$set", "$unset", "$push"))):
-            raise NotImplementedError()
+        if not len(update) == 1:
+            raise ValueError("Invalid operator.")
+
+        if next(iter(update)) not in ("$set", "$unset", "$push", "$addToSet", "$pull"):
+            raise NotImplementedError(next(iter(update)))
+
+        # https://docs.mongodb.com/manual/reference/operator/update/set/
+        # https://docs.mongodb.com/manual/reference/operator/update/unset/
+        # https://docs.mongodb.com/manual/reference/operator/update/push/
+        # https://docs.mongodb.com/manual/reference/operator/update/addToSet/
+        # https://docs.mongodb.com/manual/reference/operator/update/pull/
 
         if "$set" in update:
-            _update = parse_dot_fields(update["$set"])
+            _update = json.loads(to_json(update["$set"]))
+            _update = parse_dot_fields(_update)
             doc = update_dict_recur(doc, _update)
+
         elif "$unset" in update:
-            for key in update["$unset"].keys():
-                doc.pop(key, None)
+            for dotk, v in traverse(doc):
+                if dotk in update["$unset"]:
+                    v["__REMOVE__"] = True
+            doc = merge({}, doc)
+
         elif "$push" in update:
-            for listkey, elem in update["$push"].items():
-                assert "." not in listkey, "$push not supported for nested keys: %s" % listkey
-                doc.setdefault(listkey, []).append(elem)
-        self._modify(doc)
+            for key, val in update["$push"].items():
+                if "." in key:  # not all mongo operators are fully implemented
+                    raise NotImplementedError("nested key in $push: %s" % key)
+                doc.setdefault(key, []).append(val)
+
+        elif "$addToSet" in update:
+            for key, val in update["$addToSet"].items():
+                if "." in key:  # not all mongo operators are fully implemented
+                    raise NotImplementedError("nested key in $addToSet: %s" % key)
+                field = doc.setdefault(key, [])
+                if val not in field:
+                    field.append(val)
+
+        else:  # "$pull" in update:
+            for key, val in update["$pull"].items():
+                if "." in key:  # not all mongo operators are fully implemented
+                    raise NotImplementedError("nested key in $pull: %s" % key)
+                if not isinstance(val, (str, int)):
+                    raise NotImplementedError("value or condition in $pull: %s" % val)
+                if isinstance(doc.get(key), list):
+                    doc[key][:] = [x for x in doc[key] if x != val]
+
+        self._write_one(doc)
 
     def update_one(self, filter, update, upsert=False, *args, **kwargs):
 
-        doc = self.find_one(filter)
-        if doc:
-            self._update_one(doc, update, *args, **kwargs)
-        elif upsert:
-            assert "_id" in filter, "Can't upsert without _id"
-            assert "$set" in update, "Upsert needs $set operator"
-            doc = update["$set"]
-            doc["_id"] = filter["_id"]
-            self._modify(doc)
-        else:
+        doc = self.find_one(filter) or {}
+        if not (doc or upsert):
             raise ValueError("No Match.")
 
-    def update_many(self, filter, update, *args, **kwargs):
-        for doc in self.find(filter):
+        self._update_one(doc, update, *args, **kwargs)
+
+    def update_many(self, filter, update, upsert=False, *args, **kwargs):
+
+        docs = self.find(filter)
+        if not docs and upsert:
+            if any("." in k for k in filter):
+                raise ValueError("dotfield in upsert.")
+            docs = [filter]
+
+        for doc in docs:
             self._update_one(doc, update, *args, **kwargs)
-
-    def replace_one(self, filter, replacement, *args, **kwargs):
-        if args or kwargs:
-            raise NotImplementedError()
-
-        doc = self.find_one(filter)
-        if doc:
-            replacement["_id"] = doc["_id"]
-            self._modify(replacement)
-        else:
-            raise ValueError("No Match.")
-
-    def __getitem__(self, _id):
-        return self.find_one({"_id": _id})
 
     # DEPRECATED
     # -----------------
 
     def update(self, *args, **kwargs):
+        # In the future,
+        # Use replace_one(), update_one(), or update_many() instead.
         self.update_many(*args, **kwargs)
 
-    def save(self, *args, **kwargs):
-        raise NotImplementedError("Use insert_one() or replace_one() instead.")
+    def save(self, doc, *args, **kwargs):
+        # In the future,
+        # Use insert_one() or replace_one() instead.
+        self._write_one(doc)
 
     def remove(self, query):
         # In the future,
         # Use delete_one() or delete_many() instead.
-
         docs = self.find(query)
         collection = self._read()
         for doc in docs:

@@ -863,7 +863,7 @@ def merge(x, dx):
         merge(_y, dx)
         x.clear()
         x.update(_y)
-        return
+        return x
 
     for k, v in dx.items():
         if isinstance(v, dict):
@@ -875,3 +875,4 @@ def merge(x, dx):
             merge(x[k], v)
         else:
             x[k] = v
+    return x
