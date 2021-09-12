@@ -210,7 +210,7 @@ class BaseSourceUploader(object):
             Dumpers could change the files uploader is currently using
             """
             return len([j for j in job_manager.jobs.values() if
-                       j["source"] == self.fullname.split(".")[0] and j["category"] == DUMPER_CATEGORY]) == 0
+                        j["source"] == self.fullname.split(".")[0] and j["category"] == DUMPER_CATEGORY]) == 0
 
         def no_builder_running(job_manager):
             """
@@ -511,7 +511,7 @@ class BaseSourceUploader(object):
             cnt = cnt or self.db[self.collection_name].count()
             if clean_archives:
                 self.clean_archived_collections()
-            self.register_status("success", count=cnt)
+            self.register_status("success", count=cnt, err=None, tb=None)
             self.logger.info("success %s" % strargs, extra={"notify": True})
         except Exception as e:
             self.logger.exception("failed %s: %s" % (strargs, e),
@@ -577,6 +577,7 @@ class DummySourceUploader(BaseSourceUploader):
     but make sure every other bit of information is there for the overall process
     (usefull when online data isn't available anymore)
     """
+
     def prepare_src_dump(self):
         src_dump = get_src_dump()
         # just populate/initiate an src_dump record (b/c no dump before) if needed
@@ -714,8 +715,8 @@ class UploaderManager(BaseSourceManager):
         # and considered internal (note: while there could be more than 1 uploader per source, when it's
         # an autoupdate one, there's only one, so [0])
         from biothings.hub.autoupdate.uploader import BiothingsUploader  # prevent circular imports
-        registered = sorted([src for src,klasses in self.register.items() if not src.startswith("__") and
-                             not issubclass(klasses[0],BiothingsUploader)])
+        registered = sorted([src for src, klasses in self.register.items() if not src.startswith("__")
+                             and not issubclass(klasses[0], BiothingsUploader)])
         return registered
 
     def __repr__(self):
