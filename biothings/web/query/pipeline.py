@@ -93,7 +93,7 @@ def capturesESExceptions(func):
             # the individual components raising the error should instead
             # rasie exceptions like ValueError and TypeError for bad input
             logging.error("FIXME: Unexpected Assertion Error.")
-            raise QueryPipelineException(data=str(exc))
+            raise QueryPipelineException(500, str(exc))
 
         except (ValueError, TypeError) as exc:
             raise QueryPipelineException(400, type(exc).__name__, str(exc))
