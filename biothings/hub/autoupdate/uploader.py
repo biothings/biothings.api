@@ -2,11 +2,14 @@ import os
 import asyncio
 import json
 from functools import partial
+from typing import Optional, Tuple
 
 from biothings import config as btconfig
 import biothings.hub.dataload.uploader as uploader
 from biothings.utils.backend import DocESBackend
 from biothings.utils.es import IndexerException
+from elasticsearch import Elasticsearch, NotFoundError, RequestsHttpConnection
+from requests_aws4auth import AWS4Auth
 
 
 class BiothingsUploader(uploader.BaseSourceUploader):
@@ -83,58 +86,120 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         repo_settings = build_meta["metadata"]["repository"]
         return (repo_name, repo_settings)
 
+    def _get_es_client(self, es_host: str, auth: Optional[Tuple[str, str, str, str]]):
+        """
+        Get Elasticsearch Client
+
+        Used by self._get_repository, self._create_repository
+        """
+        es_conf = {
+            'timeout': 120,
+            'max_retries': 3,
+            'retry_on_timeout': False,
+        }
+        if auth:
+            # **auth -> ('access_id', 'secret_key', 'region', 'service')
+            es_conf['http_auth'] = AWS4Auth(*auth)
+            es_conf['connection_class'] = RequestsHttpConnection
+        es = Elasticsearch(es_host, **es_conf)
+        return es
+
+    def _get_repository(self, es_host: str, repo_name: str,
+                        auth: Optional[tuple]):
+        es = self._get_es_client(es_host, auth)
+        try:
+            repo = es.snapshot.get_repository(repository=repo_name)
+        except NotFoundError:
+            repo = None
+        return repo
+
+    def _create_repository(self, es_host: str, repo_name: str, repo_settings: dict,
+                           auth: Optional[tuple]):
+        """
+        Create Elasticsearch Snapshot repository
+        """
+        es = self._get_es_client(es_host, auth)
+        es.snapshot.create_repository(repository=repo_name, body=repo_settings)
+
     @asyncio.coroutine
     def restore_snapshot(self, build_meta, job_manager, **kwargs):
+        self.logger.debug("Restoring snapshot...")
         idxr = self.target_backend.target_esidxer
+        es_host = idxr.es_host
+        self.logger.debug("Got ES Host: %s", es_host)
         repo_name, repo_settings = self.get_snapshot_repository_config(
             build_meta)
+        self.logger.debug("Got repo name: %s", repo_name)
+        self.logger.debug("With settings: %s", repo_settings)
+        # pull AWS auth settings from config
+        # in the future consider using boto3 to get these if running on EC2
+        config_auth = btconfig.STANDALONE_CONFIG.get(self.name, {}).get(
+            'aws_auth', btconfig.STANDALONE_CONFIG['_default'].get('aws_auth')
+        )
+        if config_auth:
+            self.logger.debug("Obtained AWS Auth settings, using them.")
+            auth = (
+                config_auth['access_id'],
+                config_auth['secret_key'],
+                config_auth['region'],
+                'es'
+            )
+        else:
+            self.logger.debug("No AWS Auth settings found")
+            auth = None
+
+        # all restore repos should be r/o
+        repo_settings["settings"]["readonly"] = True
+
+        # populate additional settings
+        additional_settings = btconfig.STANDALONE_CONFIG.get(self.name, {}).get(
+            'repo_settings', btconfig.STANDALONE_CONFIG['_default'].get('repo_settings')
+        )
+        if additional_settings:
+            self.logger.debug("Adding additional settings: %s", additional_settings)
+            repo_settings['settings'].update(additional_settings)
+
+        if 'client' not in repo_settings['settings']:
+            self.logger.warning(
+                "\"client\" not set in repository settings. The 'default' "
+                "client will be used."
+            )
+            self.logger.warning(
+                "Make sure keys are in the Elasticsearch keystore. "
+                "If you are trying to work with EOL versions of "
+                "Elasticsearch, or if you intentionally enabled "
+                "allow_insecure_settings, set \"access_key\", \"secret_key\","
+                " and potentially \"region\" in additional 'repo_settings'."
+            )
+
         # first check if snapshot repo exists
-        # do we need to enrich with some credentials ? (there are part of repo creation JSON settings)
-        if repo_settings.get(
-                "type") == "s3" and btconfig.STANDALONE_AWS_CREDENTIALS.get(
-                    "AWS_ACCESS_KEY_ID"):
-            repo_settings["settings"][
-                "access_key"] = btconfig.STANDALONE_AWS_CREDENTIALS[
-                    "AWS_ACCESS_KEY_ID"]
-            repo_settings["settings"][
-                "secret_key"] = btconfig.STANDALONE_AWS_CREDENTIALS[
-                    "AWS_SECRET_ACCESS_KEY"]
-            repo_settings["settings"]["readonly"] = True
-        try:
-            repo = idxr.get_repository(repo_name)
-            # ok it exists, check if settings are the same
-            if repo[repo_name] != repo_settings:
-                # different, raise exception so it's handles in the except
+        self.logger.info("Getting current repository settings")
+        existing_repo_settings = self._get_repository(es_host, repo_name, auth)
+        if existing_repo_settings:
+            if existing_repo_settings[repo_name] != repo_settings:
+                # TODO update comparison logic
                 self.logger.info(
                     "Repository '%s' was found but settings are different, it needs to be created again"
                     % repo_name)
-                self.logger.debug("Existing setting: %s" % repo[repo_name])
+                self.logger.debug("Existing setting: %s", existing_repo_settings[repo_name])
                 self.logger.debug("Required (new) setting: %s" % repo_settings)
-                # raise IndexerException # TODO update comparision logic
-        except IndexerException:
+            else:
+                self.logger.info("Repo exists with correct settings")
+        else:
             # ok, it doesn't exist let's try to create it
+            self.logger.info("Repo does not exist")
             try:
-                repo = idxr.create_repository(repo_name, repo_settings)
-            except IndexerException as e:
-                if repo_settings["settings"].get("url"):
+                self.logger.info("Creating repo...")
+                self._create_repository(es_host, repo_name, repo_settings, auth)
+            except Exception as e:
+                self.logger.info("Creation failed: %s", e)
+                if 'url' in repo_settings["settings"]:
                     raise uploader.ResourceError("Could not create snapshot repository. Check elasticsearch.yml configuration "
                                                  + "file, you should have a line like this: "
                                                  + 'repositories.url.allowed_urls: "%s*" ' % repo_settings["settings"]["url"]
                                                  + "allowing snapshot to be restored from this URL. Error was: %s" % e)
                 else:
-                    # try to create repo without key/secret, assuming it's already configured in ES keystore
-                    if repo_settings["settings"].get("access_key"):
-                        repo_settings["settings"].pop("access_key")
-                        repo_settings["settings"].pop("secret_key")
-                        try:
-                            repo = idxr.create_repository(
-                                repo_name, repo_settings)
-                        except IndexerException as e:
-                            raise uploader.ResourceError("Could not create snapshot repository, even assuming "
-                                                         + "credentials configured in keystore: %s" % e)
-                    else:
-                        raise uploader.ResourceError(
-                            "Could not create snapshot repository: %s" % e)
+                    raise uploader.ResourceError("Could not create snapshot repository: %s" % e)
 
         # repository is now ready, let's trigger the restore
         snapshot_name = build_meta["metadata"]["snapshot_name"]
