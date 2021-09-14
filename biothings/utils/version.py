@@ -249,7 +249,7 @@ def get_source_code_info(src_file):
         logging.exception("Can't find a github repository for file '%s'" % src_file)
         return None
     try:
-        gcmd = Git(repo)
+        gcmd = repo.git
         hash = gcmd.rev_list(-1, repo.active_branch, abs_src_file)
         rel_src_file = abs_src_file.replace(repo.working_dir, "").strip("/")
         if not hash:
