@@ -8,7 +8,7 @@ from biothings import config as btconfig
 import biothings.hub.dataload.uploader as uploader
 from biothings.utils.backend import DocESBackend
 from biothings.utils.es import IndexerException
-from elasticsearch import Elasticsearch, NotFoundError
+from elasticsearch import Elasticsearch, NotFoundError, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
 
 
@@ -100,6 +100,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         if auth:
             # **auth -> ('access_id', 'secret_key', 'region', 'service')
             es_conf['http_auth'] = AWS4Auth(*auth)
+            es_conf['connection_class'] = RequestsHttpConnection
         es = Elasticsearch(es_host, **es_conf)
         return es
 
