@@ -2,7 +2,7 @@ import os
 import asyncio
 import json
 from functools import partial
-from typing import Optional
+from typing import Optional, Tuple
 
 from biothings import config as btconfig
 import biothings.hub.dataload.uploader as uploader
@@ -86,7 +86,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         repo_settings = build_meta["metadata"]["repository"]
         return (repo_name, repo_settings)
 
-    def _get_es_client(self, es_host: str, auth: Optional[dict]):
+    def _get_es_client(self, es_host: str, auth: Optional[Tuple[str, str, str, str]]):
         """
         Get Elasticsearch Client
 
@@ -98,12 +98,13 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             'retry_on_timeout': False,
         }
         if auth:
-            # **auth -> {'access_id', 'secret_key', 'region', 'service'}
-            es_conf['http_auth'] = AWS4Auth(**auth)
+            # **auth -> ('access_id', 'secret_key', 'region', 'service')
+            es_conf['http_auth'] = AWS4Auth(*auth)
         es = Elasticsearch(es_host, **es_conf)
         return es
 
-    def _get_repository(self, es_host: str, repo_name: str, auth: Optional[dict]):
+    def _get_repository(self, es_host: str, repo_name: str,
+                        auth: Optional[tuple]):
         es = self._get_es_client(es_host, auth)
         try:
             repo = es.snapshot.get_repository(repository=repo_name)
@@ -112,7 +113,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         return repo
 
     def _create_repository(self, es_host: str, repo_name: str, repo_settings: dict,
-                           auth: Optional[dict]):
+                           auth: Optional[tuple]):
         """
         Create Elasticsearch Snapshot repository
         """
@@ -136,8 +137,12 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         )
         if config_auth:
             self.logger.debug("Obtained AWS Auth settings, using them.")
-            auth = {'service': 'es'}
-            auth.update(config_auth)
+            auth = (
+                config_auth['access_id'],
+                config_auth['secret_key'],
+                config_auth['region'],
+                'es'
+            )
         else:
             self.logger.debug("No AWS Auth settings found")
             auth = None
