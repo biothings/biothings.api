@@ -3,6 +3,7 @@ import xml.dom.minidom
 from typing import NamedTuple
 from xml.etree import ElementTree
 
+from pymongo.collection import Collection
 from elasticsearch import Elasticsearch
 
 
@@ -41,6 +42,9 @@ class _Ele(NamedTuple):  # Cleanup Element
 
 
 def find(collection, env=None, keep=3, group_by=None, **filters):
+    if not isinstance(collection, Collection):
+        raise NotImplementedError("Require MongoDB Hubdb.")
+
     if isinstance(group_by, (str, type(None))):
         group_by = "$" + (group_by or "build_config")
     elif isinstance(group_by, (list, tuple)):

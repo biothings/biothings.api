@@ -6,6 +6,7 @@ from collections import UserDict, UserList
 from dataclasses import dataclass
 from pprint import pformat
 
+from pymongo.collection import Collection
 from elasticsearch import AsyncElasticsearch
 
 # NOTE
@@ -134,6 +135,9 @@ class Cleaner():
         self.logger = logger or logging.getLogger(__name__)
 
     def find(self, env=None, keep=3, **filters):
+        if not isinstance(self.collection, Collection):
+            raise NotImplementedError("Require MongoDB Hubdb.")
+
         results = list(self.collection.aggregate([
             {'$project': {
                 'build_config': '$build_config._id',
