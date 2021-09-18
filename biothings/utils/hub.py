@@ -196,6 +196,7 @@ class HubShell(InteractiveShell):
                 )
                 logging.info("Stopping job manager...")
                 j = self.job_manager.stop(force=force)
+
                 def ok(f):
                     f.result()  # consume
                     logging.error("Job manager stopped")
@@ -308,8 +309,8 @@ class HubShell(InteractiveShell):
             logging.debug("Can't extract command from %s, can't register", cmd)
             return result
         # also, never register non-callable command
-        if not force and (not callable(self.extra_ns.get(cmdname)) or \
-                          self.tracked.get(cmdname, True) == False):
+        if not force and (not callable(self.extra_ns.get(cmdname))
+                          or self.tracked.get(cmdname, True) == False):
             return result
 
         cmdnum = self.__class__.cmd_cnt
@@ -439,8 +440,8 @@ class HubShell(InteractiveShell):
             # is_done = set([j.done() for j in info["jobs"]]) == set([True])   # TODO: remove this line
             is_done = {j.done() for j in info["jobs"]} == {True}
             has_err = is_done and [True for j in info["jobs"] if j.exception()] or None
-            localoutputs = is_done and ([str(j.exception()) for j in info["jobs"] if j.exception()] or \
-                        [j.result() for j in info["jobs"]]) or None
+            localoutputs = is_done and ([str(j.exception()) for j in info["jobs"] if j.exception()]
+                                        or [j.result() for j in info["jobs"]]) or None
             if is_done:
                 cls.launched_commands[num]["is_done"] = True
                 cls.launched_commands[num]["failed"] = has_err and has_err[0] or False
@@ -452,7 +453,7 @@ class HubShell(InteractiveShell):
                 if not has_err and localoutputs and set(map(type, localoutputs)) == {str}:
                     localoutputs = "\n" + "".join(localoutputs)
                 cls.pending_outputs[num] = "[%s] %s {%s} %s: finished %s " % \
-                        (num, has_err and "ERR" or "OK", timesofar(info["started_at"]), info["cmd"], localoutputs)
+                    (num, has_err and "ERR" or "OK", timesofar(info["started_at"]), info["cmd"], localoutputs)
             else:
                 cls.pending_outputs[num] = "[%s] RUN {%s} %s" % (num, timesofar(info["started_at"]), info["cmd"])
 
@@ -634,6 +635,7 @@ def _and(*funcs):
         raise CommandError("First command didn't return a future, can't chain commands")
     all_res.append(fut1)
     # err = None
+
     def do(f, cb):
         f.result()  # consume exception if any
         if cb:
@@ -654,6 +656,7 @@ class CompositeCommand(str):
     a new command made of other commands. Useful to define
     shortcuts when typing commands in hub console.
     """
+
     def __init__(self, cmd):
         self.cmd = cmd
 
@@ -667,8 +670,8 @@ class CompositeCommand(str):
 def exclude_from_reloader(path):
     # exlucde cached, git and hidden files
     return path.endswith("__pycache__") or \
-           ".git" in path or \
-           os.path.basename(path).startswith(".")
+        ".git" in path or \
+        os.path.basename(path).startswith(".")
 
 
 class BaseHubReloader(object):
@@ -723,12 +726,12 @@ try:
                 self.reload_func()
 
         def __init__(self, paths, reload_func, wait=5, mask=None):
-            pyinotify = sys.modules["pyinotify"] # get it from sys.modules or we'd need another "import"
-                                                 # just sure why...
+            pyinotify = sys.modules["pyinotify"]  # get it from sys.modules or we'd need another "import"
+            # just sure why...
             if isinstance(paths, str):
                 paths = [paths]
             paths = set(paths)  # get rid of duplicated, just in case
-            self.mask = mask or pyinotify.IN_CREATE|pyinotify.IN_DELETE|pyinotify.IN_CLOSE_WRITE
+            self.mask = mask or pyinotify.IN_CREATE | pyinotify.IN_DELETE | pyinotify.IN_CLOSE_WRITE
             self.reload_func = reload_func
             # only listen to these events. Note: directory detection is done via a flag so
             # no need to use IS_DIR
@@ -741,12 +744,12 @@ try:
                 self.watcher_manager.add_watch(path, self.mask, rec=True, exclude_filter=exclude_from_reloader)   # recursive
 
             self.listener = self.__class__.ReloadListener(
-                    watcher_manager=self.watcher_manager,
-                    reload_func=self.reload_func)
+                watcher_manager=self.watcher_manager,
+                reload_func=self.reload_func)
             self.notifier = pyinotify.Notifier(
-                    self.watcher_manager,
-                    default_proc_fun=self.listener
-                    )
+                self.watcher_manager,
+                default_proc_fun=self.listener
+            )
             # propagate notifier so notifer itself can be reloaded (when new directory/source)
             self.listener.notifier = self
             self.wait = wait
@@ -822,12 +825,11 @@ class TornadoAutoReloadHubReloader(BaseHubReloader):
             repr(self.paths),
             pformat(self.watched_files())
         )
-        self.mod.start(self.wait*1000) # millis
+        self.mod.start(self.wait*1000)  # millis
 
     def watched_files(self):
         return self.mod._watched_files
         #return [d for d in self.mod._watched_files if os.path.isdir(d)]
-
 
 
 def get_hub_reloader(*args, **kwargs):
@@ -839,11 +841,11 @@ def get_hub_reloader(*args, **kwargs):
         try:
             import pyinotify
             logging.info("Using Hub reloader based on pyinotify")
-            return PyInotifyHubReloader(*args,**kwargs)
+            return PyInotifyHubReloader(*args, **kwargs)
         except ImportError:
             import tornado.autoreload
             logging.info("Using Hub reloader based on tornado.autoreload")
-            return TornadoAutoReloadHubReloader(*args,**kwargs)
+            return TornadoAutoReloadHubReloader(*args, **kwargs)
     else:
         logging.info("USE_RELOADER not set (or False), won't monitor for changes")
         return None
