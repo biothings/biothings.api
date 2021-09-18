@@ -15,7 +15,7 @@ import io
 import time
 from functools import partial
 from pprint import pformat
-from collections import OrderedDict
+from collections import OrderedDict, UserDict
 
 from IPython import InteractiveShell
 
@@ -42,6 +42,23 @@ LATEST = HUB_ENV and "%s-latest" % HUB_ENV or "latest"
 def jsonreadify(cmd):
     newcmd = copy.copy(cmd)
     newcmd.pop("jobs")
+
+    # try to make the data structure of the returned
+    # results for each command is hubdb compatible.
+
+    if "results" in newcmd:
+        results = []
+        for result in newcmd.pop("results"):
+            if isinstance(result, UserDict):
+                results.append(result.data)
+            #
+            # elif isinstance(result, ...):
+            #     pass # add more here
+            #
+            else:  # already compliant
+                results.append(result)
+        newcmd["results"] = results
+
     return newcmd
 
 ##############
