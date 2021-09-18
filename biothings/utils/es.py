@@ -1058,6 +1058,27 @@ class Collection():
         # Use count_documents() or estimated_document_count() instead.
         return len(self._read())
 
+# JSON <-> BSON
+# -----------------
+# The original author of the biothings.hub decided to have the interface
+# of hubdb to model that of MongoDB, the prevailing choice of hub db.
+# However, MongoDB stores BSON, extended from JSON to add some optional
+# non-JSON-native data types, like dates and binary data, while ES only
+# supports JSON documents. Upper layers of biothings.hub has subsequently
+# been developed to take full advantage of BSON and specifically have
+# stored document values in datetime type in hubdb. Thus, the ES as hubdb
+# feature needs to provide the support of these additional data types.
+
+# To achieve generic support of additional data types, non-JSON-serializable
+# data by default are serialized to their string representations using "repr".
+# For example, datetime objects are stored like datetime.datetime(...).
+
+# Is using "eval" safe? For our internal-use purpose, and combining the fact
+# that this module is designed for small demonstrations, better genericity
+# currently outweighs the potential security risk, that we may easily support
+# serializing additional data types without manually handling each type.
+# when the circumstances change, it is advised to reconsider this implementation.
+
 
 def _pyobj(doc):  # ES doc -> Python object
 
@@ -1092,6 +1113,7 @@ class _HubDBEncoder(JSONSerializer):
         datetime.datetime,
         # ...
     )
+
     def default(self, obj):
         if isinstance(obj, self.TYPES):
             return repr(obj)
