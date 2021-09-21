@@ -1,11 +1,11 @@
 from collections import namedtuple
-import functools
 import logging
 from enum import Enum
 from functools import partial
 from types import SimpleNamespace
 
 from biothings.utils.loggers import get_logger
+from biothings.utils.es import ESIndex as BaseESIndex
 from elasticsearch import Elasticsearch, helpers
 from pymongo import MongoClient
 
@@ -20,26 +20,11 @@ except ImportError:
 
 _IDExists = namedtuple("IDExists", ("id", "exists"))
 
-class ESIndex():
-    """ An Elasticsearch Index Wrapping A Client.
-    Counterpart for pymongo.collection.Collection """
-
-    # previously using biothings.utils.es.ESIndexer
-    # recently reimplemented here for better clarity.
+class ESIndex(BaseESIndex):
 
     def __init__(self, client, index_name, **bulk_index_args):
-        self.client = client
-        self.index_name = index_name  # MUST exist
+        super().__init__(client, index_name)
         self.bulk_index_args = bulk_index_args
-
-    @property
-    @functools.lru_cache()
-    def doc_type(self):
-        if int(self.client.info()['version']['number'].split('.')[0]) < 7:
-            mappings = self.client.indices.get_mapping(self.index_name)
-            mappings = mappings[self.index_name]["mappings"]
-            return next(iter(mappings.keys()))
-        return None
 
     # --------------------
     # bulk operations (m*)
@@ -99,6 +84,14 @@ class ESIndex():
         return helpers.bulk(
             self.client, map(_action, docs),
             **self.bulk_index_args)[0]
+
+    # NOTE
+    # Why doesn't "mget", "mexists", "mindex" belong to the base class?
+    # At this moment, their interfaces are too opinionated/customized
+    # for usage in this module. Unless we find them directly useful in
+    # another module in the future, proving their genericity, they should
+    # stay close in this module only.
+
 
 # Data Collection Client
 

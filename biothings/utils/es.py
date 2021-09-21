@@ -4,6 +4,7 @@ import itertools
 import json
 import re
 import time
+import functools
 
 from elasticsearch import (Elasticsearch, NotFoundError, RequestError,
                            TransportError, ElasticsearchException)
@@ -72,6 +73,36 @@ def wrapper(func):
 
 class IndexerException(Exception):
     pass
+
+class ESIndex():
+    """ An Elasticsearch Index Wrapping A Client.
+    Counterpart for pymongo.collection.Collection """
+
+    # a new approach to biothings.utils.es.ESIndexer
+    # but not intended to be a replacement in features.
+
+    def __init__(self, client, index_name):
+        self.client = client  # synchronous
+        self.index_name = index_name  # MUST exist
+
+    @property
+    @functools.lru_cache()
+    def doc_type(self):
+        if int(self.client.info()['version']['number'].split('.')[0]) < 7:
+            mappings = self.client.indices.get_mapping(self.index_name)
+            mappings = mappings[self.index_name]["mappings"]
+            return next(iter(mappings.keys()))
+        return None
+
+    # SUBCLASS NOTE &&
+    # BEFORE YOU ADD A METHOD UNDER THIS CLASS:
+
+    # An object of this class refers to an existing ES index. All operations
+    # should target this index. Do not put uncommon methods here. They belong
+    # to the subclasses. This class is to provide a common framework to support
+    # Index-specific ES operations, an concept does not exist in the low-level
+    # ES library, thus only providing low-level common operations, like doc_type
+    # parsing across ES versions for biothings usecases. (single type per index)
 
 class ESIndexer():
     # RETIRING THIS CLASS
