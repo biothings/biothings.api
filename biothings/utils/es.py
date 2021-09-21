@@ -915,12 +915,13 @@ class Collection():
             raise NotImplementedError()
 
         results = []
+        logger = logging.getLogger(__name__)
         for doc in self._read().values():
             _doc = dict(traverse(doc))  # dotdict
             _doc.update(dict(traverse(doc, True)))
             for k, v in (filter or {}).items():
                 if isinstance(v, dict) and "$exists" in v:
-                    logging.error("Ingored filter: {'%s': %s}", k, v)
+                    logger.error("Ignored filter: {'%s': %s}", k, v)
                     continue
                 if _doc.get(k) != v:
                     break
@@ -928,7 +929,7 @@ class Collection():
                 results.append(_pyobj(doc))
 
         if projection:  # used by BuildManager.build_info
-            logging.error("Ignored projection: %s", projection)
+            logger.error("Ignored projection: %s", projection)
 
         return results
 
