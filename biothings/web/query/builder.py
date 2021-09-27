@@ -94,7 +94,7 @@ class ESScrollID(UserString):
 #                 (support multisearch)
 #--------------------------↓↓↓--------------------------
 #                        _build_one
-#               (dispatch basing on scopes)
+#  (dispatch basing on scopes, then apply_extras(..))
 #------------↓↓↓------------------------↓↓↓-------------
 #    _build_string_query    |  _build_match_query
 #  (__all__, userquery,..)  | (compound match query)
