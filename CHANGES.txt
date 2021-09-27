@@ -1,3 +1,9 @@
+v0.10.0
+    Separate "connections", "services", "applications" and "launcher" layers.
+    Support MongoDB, SQLAlchemy-compatible SQLs and AWS OpenSearch query backend.
+    Support Flask, and FastAPI web framework and WSGI and ASGI gateway interfaces.
+    Generalize analytics reporting from traditional GA-Universal Analytics support.
+
 v0.9.1
     Revise str -> list parsing for backward compatibility.
 
