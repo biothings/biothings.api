@@ -133,6 +133,17 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             self.invalidate_plugin("Missing plugin folder '%s'" % df)
 
     def get_code_for_mod_name(self, mod_name):
+        """
+        Returns string literal and name of function, given a path
+
+        Args:
+            mod_name: string with module name and function name, separated by colon
+
+        Returns:
+            Tuple[str, str]: containing
+                - indented string literal for the function specified
+                - name of the function
+        """
         try:
             mod, funcname = map(str.strip, mod_name.split(":"))
         except ValueError as e:
