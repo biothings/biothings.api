@@ -266,6 +266,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 mod, func = uploader_section.get("parser").split(":")
                 confdict["PARSER_MOD"] = mod
                 confdict["PARSER_FUNC"] = func
+                confdict["PARSER_FACTORY_CODE"] = ''
             except ValueError:
                 raise AssistantException("'parser' must be defined as 'module:parser_func' but got: '%s'" %
                                          uploader_section["parser"])

@@ -11,6 +11,8 @@ try:
 except ImportError:
     from .$PARSER_MOD import $PARSER_FUNC as parser_func
 
+$PARSER_FACTORY_CODE
+
 $IMPORT_IDCONVERTER_FUNC
 
 class $UPLOADER_NAME($BASE_CLASSES):
