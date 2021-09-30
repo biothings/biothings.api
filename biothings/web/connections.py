@@ -1,6 +1,3 @@
-"""
-Improve logging output for Elasticsearch Connections
-"""
 
 import hashlib
 import logging
