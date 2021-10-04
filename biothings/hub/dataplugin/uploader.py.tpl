@@ -5,11 +5,8 @@ biothings.config_for_app(config)
 
 import biothings.hub.dataload.uploader
 
-# when code is exported, import becomes relative
-try:
-    from $SRC_NAME.$PARSER_MOD import $PARSER_FUNC as parser_func
-except ImportError:
-    from .$PARSER_MOD import $PARSER_FUNC as parser_func
+
+$PARSER_FACTORY_CODE
 
 $IMPORT_IDCONVERTER_FUNC
 

@@ -14,6 +14,8 @@ import copy
 from string import Template
 from yapf.yapflib import yapf_api
 
+import orjson
+
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.utils.common import rmdashfr, get_class_from_classpath
 from biothings.utils.loggers import get_logger
@@ -133,6 +135,17 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             self.invalidate_plugin("Missing plugin folder '%s'" % df)
 
     def get_code_for_mod_name(self, mod_name):
+        """
+        Returns string literal and name of function, given a path
+
+        Args:
+            mod_name: string with module name and function name, separated by colon
+
+        Returns:
+            Tuple[str, str]: containing
+                - indented string literal for the function specified
+                - name of the function
+        """
         try:
             mod, funcname = map(str.strip, mod_name.split(":"))
         except ValueError as e:
@@ -255,6 +268,32 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 mod, func = uploader_section.get("parser").split(":")
                 confdict["PARSER_MOD"] = mod
                 confdict["PARSER_FUNC"] = func
+                if uploader_section.get('parser_kwargs'):
+                    parser_kwargs_serialized = orjson.dumps(
+                        uploader_section['parser_kwargs']
+                    ).decode('utf-8')
+                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(f'''
+                        # get json 
+                        import orjson
+                        
+                        # Setup parser to parser factory
+                        from {mod} import {func} as parser_factory
+                        
+                        parser_kwargs_serialized = r\'\'\'
+                            {parser_kwargs_serialized}
+                        \'\'\'  # I am not 100 percent certain this works
+                        
+                        parser_kwargs = orjson.loads(parser_kwargs_serialized)
+                        parser_func = parser_factory(**parser_kwargs)
+                    ''')
+                else:
+                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(f'''
+                    # when code is exported, import becomes relative
+                    try:
+                        from {self.plugin_name}.{mod} import {func} as parser_func
+                    except ImportError:
+                        from .{mod} import {func} as parser_func
+                    ''')
             except ValueError:
                 raise AssistantException("'parser' must be defined as 'module:parser_func' but got: '%s'" %
                                          uploader_section["parser"])
