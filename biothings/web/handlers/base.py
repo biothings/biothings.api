@@ -190,6 +190,19 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         super().on_finish()
 
     def write_error(self, status_code, **kwargs):
+        """
+        from tornado.web import Finish, HTTPError
+
+        raise HTTPError(404)
+        raise HTTPError(404, reason="document not found")
+        raise HTTPError(404, None, {"id": "-1"}, reason="document not found") ->
+        {
+          "code": 404,
+          "success": False,
+          "error": "document not found"
+          "id": "-1"
+        }
+        """
 
         reason = kwargs.pop('reason', self._reason)
         # "reason" is a reserved tornado keyword
@@ -204,7 +217,7 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         }
         try:  # merge exception info
             exception = kwargs['exc_info'][1]
-            message.update(exception.args[0])
+            message.update(exception.args[0]) # <-
         except:
             pass
 
