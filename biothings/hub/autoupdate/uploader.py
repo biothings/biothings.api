@@ -86,7 +86,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         repo_settings = build_meta["metadata"]["repository"]
         return (repo_name, repo_settings)
 
-    def _get_es_client(self, es_host: str, auth: Optional[Tuple[str, str, str, str]]):
+    def _get_es_client(self, es_host: str, auth: Optional[dict]):
         """
         Get Elasticsearch Client
 
@@ -98,14 +98,28 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             'retry_on_timeout': False,
         }
         if auth:
-            # **auth -> ('access_id', 'secret_key', 'region', 'service')
-            es_conf['http_auth'] = AWS4Auth(*auth)
-            es_conf['connection_class'] = RequestsHttpConnection
+            # see https://git.io/JoAE4 on BioThings.API Wiki 
+            if auth['type'] == 'aws':
+                auth_args = (
+                    auth['properties']['access_id'],
+                    auth['properties']['secret_key'],
+                    auth['properties']['region'],
+                    'es'
+                )
+                es_conf['http_auth'] = AWS4Auth(*auth_args)
+                es_conf['connection_class'] = RequestsHttpConnection
+            elif auth['type'] == 'http':
+                auth_args = (
+                    auth['properties']['username'],
+                    auth['properties']['password'],
+                )
+                es_conf['http_auth'] = auth_args
+            else:
+                raise RuntimeError("Auth settings not recognized")
         es = Elasticsearch(es_host, **es_conf)
         return es
 
-    def _get_repository(self, es_host: str, repo_name: str,
-                        auth: Optional[tuple]):
+    def _get_repository(self, es_host: str, repo_name: str, auth: Optional[dict]):
         es = self._get_es_client(es_host, auth)
         try:
             repo = es.snapshot.get_repository(repository=repo_name)
@@ -114,7 +128,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         return repo
 
     def _create_repository(self, es_host: str, repo_name: str, repo_settings: dict,
-                           auth: Optional[tuple]):
+                           auth: Optional[dict]):
         """
         Create Elasticsearch Snapshot repository
         """
@@ -131,22 +145,14 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             build_meta)
         self.logger.debug("Got repo name: %s", repo_name)
         self.logger.debug("With settings: %s", repo_settings)
-        # pull AWS auth settings from config
-        # in the future consider using boto3 to get these if running on EC2
-        config_auth = btconfig.STANDALONE_CONFIG.get(self.name, {}).get(
-            'aws_auth', btconfig.STANDALONE_CONFIG['_default'].get('aws_auth')
+        # pull authentication settings from config
+        auth = btconfig.STANDALONE_CONFIG.get(self.name, {}).get(
+            'auth', btconfig.STANDALONE_CONFIG['_default'].get('auth')
         )
-        if config_auth:
-            self.logger.debug("Obtained AWS Auth settings, using them.")
-            auth = (
-                config_auth['access_id'],
-                config_auth['secret_key'],
-                config_auth['region'],
-                'es'
-            )
+        if auth:
+            self.logger.debug("Obtained Auth settings, using them.")
         else:
-            self.logger.debug("No AWS Auth settings found")
-            auth = None
+            self.logger.debug("No Auth settings found")
 
         # all restore repos should be r/o
         repo_settings["settings"]["readonly"] = True
@@ -179,8 +185,9 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             if existing_repo_settings[repo_name] != repo_settings:
                 # TODO update comparison logic
                 self.logger.info(
-                    "Repository '%s' was found but settings are different, it needs to be created again"
-                    % repo_name)
+                    f"Repository '{repo_name}' was found but settings are different, "
+                    "it may need to be created again"
+                    )
                 self.logger.debug("Existing setting: %s", existing_repo_settings[repo_name])
                 self.logger.debug("Required (new) setting: %s" % repo_settings)
             else:
