@@ -564,7 +564,7 @@ class ColdHotIndexer():
 
         hot_task = self.hot.index(
             job_manager, steps=set(Step.order(steps)) & {"index", "post"},
-            batch_size=batch_size, ids=ids, mode=mode or "merge")
+            batch_size=batch_size, ids=ids, mode="merge")
         result.append((yield from hot_task))
 
         return result
