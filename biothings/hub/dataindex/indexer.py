@@ -130,6 +130,10 @@ class _BuildDoc(UserDict):
     def enrich_settings(self, settings):
         settings["number_of_shards"] = self.build_config.get("num_shards", 1)
         settings["number_of_replicas"] = self.build_config.get("num_replicas", 0)
+        # this feature may be removed at any time
+        settings.update(
+            self.build_config.get("extra_index_settings", {})
+        )
 
     def parse_backend(self):
         # Support Sebastian's hub style backend URI
