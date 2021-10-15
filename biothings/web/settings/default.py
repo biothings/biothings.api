@@ -86,17 +86,6 @@ APP_LIST = [
 ]
 
 # *****************************************************************************
-# Base API Handler
-# *****************************************************************************
-
-HTML_OUT_TITLE = ""  # HTML
-HTML_OUT_HEADER_IMG = ""  # URL
-HTML_OUT_ANNOTATION_DOCS = ""  # URL
-HTML_OUT_METADATA_DOCS = ""  # URL
-HTML_OUT_QUERY_DOCS = ""  # URL
-
-
-# *****************************************************************************
 # User Input Control
 # *****************************************************************************
 COMMON_KWARGS = {
@@ -195,6 +184,14 @@ GA_ACCOUNT = ''
 # *****************************************************************************
 # Endpoints Specifics & Others
 # *****************************************************************************
+#
+# Base Query Handler
+HTML_OUT_TITLE = ""  # HTML
+HTML_OUT_HEADER_IMG = ""  # URL
+HTML_OUT_ANNOTATION_DOCS = ""  # URL
+HTML_OUT_METADATA_DOCS = ""  # URL
+HTML_OUT_QUERY_DOCS = ""  # URL
+#
 # Annotation # TODO THESES SETTINGS WILL BECOME QUERY PIPELINE SETTINGS
 ANNOTATION_DEFAULT_SCOPES = ['_id']
 ANNOTATION_ID_REGEX_LIST = []  # [(re.compile(r'rs[0-9]+', re.I), 'dbsnp.rsid')]
