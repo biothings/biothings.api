@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class QueryPipelineException(Exception):
-    code: str = 500
+    code: int = 500
     summary: str = ""
     details: object = None
     # use code here to indicate error types instead of
