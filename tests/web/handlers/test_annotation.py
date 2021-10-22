@@ -359,5 +359,4 @@ class TestAnnotationPOST(BiothingsWebAppTest):
         assert not res['success']
         assert res['error'] == "Invalid JSON body."
 
-    # TODO
-    # Add multiple hit test case
+    # TODO Add multiple hit test case

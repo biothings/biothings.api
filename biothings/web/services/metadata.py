@@ -373,6 +373,11 @@ class BiothingMetaProp:
     def __add__(self, other):
         raise NotImplementedError
 
+        # NOTE
+        # The current implementations below
+        # may not be able to properly handle
+        # field (key/source) collisions.
+
     def to_dict(self):
         raise NotImplementedError
 
@@ -382,7 +387,6 @@ class BiothingLicenses(BiothingMetaProp):
         self.licenses = licenses
 
     def __add__(self, other):
-        # TODO log conflicts
         licenses = dict(self.licenses)
         licenses.update(other.licenses)
         return BiothingLicenses(licenses)
@@ -396,7 +400,6 @@ class BiothingMappings(BiothingMetaProp):
         self.properties = properties
 
     def __add__(self, other):
-        # TODO conflicting fields
         mappings = dict(self.properties)
         mappings.update(other.properties)
         return BiothingMappings(mappings)

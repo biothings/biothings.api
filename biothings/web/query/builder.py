@@ -137,9 +137,6 @@ class ESQueryBuilder():
         Build a query according to q and options.
         This is the public method called by API handlers.
 
-        Regarding multisearch:
-            TODO
-
         Regarding scopes:
             scopes: [str] nonempty, match query.
             scopes: NoneType, or [], no scope, so query string query.
@@ -150,6 +147,9 @@ class ESQueryBuilder():
 
         * additional keywords are passed through as es keywords
             for example: 'explain', 'version' ...
+
+        * multi-search is supported when q is a list. all queries
+            are built individually and then sent in one request.
 
         """
         options = dotdict(options)
@@ -346,7 +346,7 @@ class ESQueryBuilder():
 
         # the valid values for from and size depend on the
         # index.max_result_window elasticsearch setting.
-        
+
         # more about this constraint on:
         # https://www.elastic.co/guide/en/elasticsearch/
         # reference/current/index-modules.html

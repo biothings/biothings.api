@@ -137,10 +137,8 @@ QUERY_KWARGS = {
     }
 }
 
-# REMOVE THESE COMPATIBILITY SETTINGS
+# LONG TERM GOAL: REMOVE THESE COMPATIBILITY SETTINGS
 # ONCE BIOTHINGS.CLIENT OLDER VERSIONS ARE NO LONGER USED
-# TODO FINALIZE WHAT TO PUT HERE & REMOVE FROM ABOVE
-# TODO VALIDATE COMMON PARAM STRICTNESS IS PROPAGATED
 COMMON_KWARGS['_source']['strict'] = False
 COMMON_KWARGS['always_list']['strict'] = False
 COMMON_KWARGS['allow_null']['strict'] = False
@@ -171,7 +169,7 @@ ES_SCROLL_SIZE = 1000
 ES_QUERY_BACKEND = 'biothings.web.query.AsyncESQueryBackend'
 ES_RESULT_TRANSFORM = 'biothings.web.query.ESResultFormatter'
 
-# TODO
+
 # A list of fields to exclude from metadata/fields endpoint
 AVAILABLE_FIELDS_EXCLUDED = ['all']
 # A path to the available fields notes
@@ -195,10 +193,10 @@ GA_ACCOUNT = ''
 # *****************************************************************************
 # Endpoints Specifics & Others
 # *****************************************************************************
-# Annotation # TODO THESES SETTINGS WILL BECOME QUERY PIPELINE SETTINGS
+# Annotation
 ANNOTATION_DEFAULT_SCOPES = ['_id']
 ANNOTATION_ID_REGEX_LIST = []  # [(re.compile(r'rs[0-9]+', re.I), 'dbsnp.rsid')]
-#
+
 # Status #
 # https://www.elastic.co/guide/en/elasticsearch/reference/master/docs-get.html
 STATUS_CHECK = {

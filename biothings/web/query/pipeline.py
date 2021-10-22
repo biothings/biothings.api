@@ -70,7 +70,11 @@ def _simplify_ES_exception(exc, debug=False):
     except IndexError:
         pass  # no root cause
     except Exception:
-        logger.exception('Error parsing es exception.')  # TODO
+        logger.exception(' '.join((
+            "Unexpected error in _simplify_ES_exception.",
+            "Caused by incompatible version, build, etc.",
+            "Update ES exception parsing logic here."
+        )))
 
     if debug:  # raw ES error response
         result["debug"] = exc.info

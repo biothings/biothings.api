@@ -1,6 +1,13 @@
 """
-    TODO
+    Search Result Formatter
+
+    Transform the raw query result into consumption-friendly
+    structures by possibly removing from, adding to, and/or
+    flattening the raw response from the database engine for
+    one or more individual queries. 
+
 """
+
 from collections import defaultdict, UserDict
 
 from biothings.utils.common import dotdict, traverse
@@ -284,13 +291,13 @@ class ESResultFormatter(ResultFormatter):
                 obj.clear()
                 obj.update(sorted_items)
         except Exception:
-            pass  # TODO logging
+            pass
 
     @classmethod
     def _dotfield(cls, dic, options):
         """
         Flatten a dictionary.
-        #TODO examples
+        See biothings.utils.common.traverse for examples.
         """
         hit_ = defaultdict(list)
         for path, value in cls.traverse(dic, leaf_node=True):
@@ -405,18 +412,18 @@ class ESResultFormatter(ResultFormatter):
     def transform_mapping(self, mapping, prefix=None, search=None):
         """
         Transform Elasticsearch mapping definition to
-        user-friendly field definitions metadata result
+        user-friendly field definitions metadata results.
         """
         assert isinstance(mapping, dict)
         assert isinstance(prefix, str) or prefix is None
         assert isinstance(search, str) or search is None
 
         result = {}
-        todo = list(mapping.items())
-        todo.reverse()
+        items = list(mapping.items())
+        items.reverse()
 
-        while todo:
-            key, dic = todo.pop()
+        while items:
+            key, dic = items.pop()
             dic = dict(dic)
             dic.pop('dynamic', None)
             dic.pop('normalizer', None)
@@ -438,7 +445,7 @@ class ESResultFormatter(ResultFormatter):
             if 'properties' in dic:
                 dic['type'] = 'object'
                 subs = (('.'.join((key, k)), v) for k, v in dic['properties'].items())
-                todo.extend(reversed(list(subs)))
+                items.extend(reversed(list(subs)))
                 del dic['properties']
 
             if all((not self.excluded_keys or key not in self.excluded_keys,
