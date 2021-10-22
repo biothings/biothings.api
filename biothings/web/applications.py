@@ -107,7 +107,7 @@ class TornadoBiothingsAPI(tornado.web.Application):
 
         handlers = list(handlers.values())
         logger.info('API Handlers:\n%s', pformat(handlers, width=200))
-        return handlers  # TODO
+        return handlers
 
     @classmethod
     def get_app(cls, config, settings=None, handlers=None):

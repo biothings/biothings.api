@@ -112,7 +112,7 @@ class BiothingsNamespace():
             load_class(self.config.ES_RESULT_TRANSFORM)(
                 self.elasticsearch.metadata.biothing_licenses,
                 self.config.LICENSE_TRANSFORM,
-                self.fieldnote.get_field_notes(),  # TODO
+                self.fieldnote.get_field_notes(),
                 self.config.AVAILABLE_FIELDS_EXCLUDED
             ),
         )

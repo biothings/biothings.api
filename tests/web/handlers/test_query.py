@@ -248,41 +248,6 @@ class TestQueryKeywords(BiothingsWebAppTest):
         assert res['hits'][1]["taxid"] == 1868482
         assert res['hits'][2]["taxid"] == 1841481
 
-    def test_16_sorted_dotfield(self):
-        """ GET /v1/query?q=1017&dotfield
-        {
-            "took": 17,
-            "total": 1,
-            "max_score": 3.0910425,
-            "hits": [
-                {
-                    "_id": "1017",
-                    "_score": 3.0910425,
-                    "accession.translation.protein": [
-                        "AAA35667.1",
-                        "AAH03065.1",
-                        "AAP35467.1",
-                        "BAA32794.1",
-                        "BAF84630.1",
-                        "BAG56780.1",
-                        "CAA43807.1",
-                        "CAA43985.1",
-                        ...
-                    ],  // this field is flattened
-                    ...
-                },
-            ]
-        }
-        """
-        # res = self.request('/v1/query?q=1017&dotfield').json()
-        # protein = res['hits'][0]['accession.translation.protein']
-        # for index, value in enumerate(protein):
-        #     if index > 0:
-        #         assert value > protein[index-1]
-        #
-        # TODO list sorting feature is under revision
-        #
-
     def test_17_sorted_false_dotfield(self):
         """ GET /v1/query?q=1017&dotfield&_sorted=false
         {
@@ -630,7 +595,6 @@ class TestQueryKeywords(BiothingsWebAppTest):
         """
         res = self.request('/v1/query?scroll_id=<invalid>', expect=400).json()
         assert res['success'] is False
-
 
 
 class TestQueryString(BiothingsWebAppTest):

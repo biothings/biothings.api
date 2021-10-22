@@ -50,11 +50,11 @@ class ESHealth(DBHealth):
     #     "active_shards_percent_as_number": 83.33333333333334
     # }
 
-    # TODO
+    # Future Work A
     # Add transport level cluster information,
     # like connected nodes, etc
 
-    # TODO
+    # Future Work B
     # It is useful to provide two endpoints,
     # one indicating the service status, factoring in more
     # measurement dimensions like cluster health and data integrity,

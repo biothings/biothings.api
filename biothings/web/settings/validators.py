@@ -33,8 +33,6 @@ class DBParamValidator():
                 config.ES_INDICES = dict(config.ES_INDICES)
             config.ES_INDICES[config.ES_DOC_TYPE] = config.ES_INDEX
 
-        # assert '*' not in config.ES_DOC_TYPE TODO
-
         ERROR = "UNSUPPORTED SETTINGS."
         # encountering the following attributes indicate
         # the application is built for a previous version.
