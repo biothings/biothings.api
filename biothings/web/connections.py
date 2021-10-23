@@ -111,12 +111,20 @@ def get_es_client(hosts=None, async_=False, **settings):
             http_auth=awsauth, use_ssl=True, verify_certs=True,
             connection_class=_AsyncConn if async_ else _Conn
         )
-    elif settings.pop('sniff', None):
-        settings.update(
-            sniff_on_start=True,
-            sniff_on_connection_fail=True,
-            sniffer_timeout=60
-        )
+    # Sniff is only possible if not using the managed cluster
+    # TODO: maybe we won't ever use it
+    # by default we don't do sniffing
+    # if sniff is set, then populate with reasonable defaults unless
+    # explicitly set
+    elif settings.pop('sniff', False):
+        _sniff_defaults = {
+            'sniff_on_start': True,
+            'sniff_on_connection_fail': True,
+            'sniffer_timeout': 60,
+        }
+        for setting_name, setting_default in _sniff_defaults.items():
+            settings.setdefault(setting_name, setting_default)
+
     if async_:
         from elasticsearch import AsyncElasticsearch
         client = AsyncElasticsearch
