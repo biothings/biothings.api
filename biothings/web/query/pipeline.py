@@ -26,7 +26,8 @@ from biothings.web.query.engine import EndScrollInterrupt, RawResultInterrupt
 
 logger = logging.getLogger(__name__)
 
-@dataclass
+
+@dataclass(frozen=True)
 class QueryPipelineException(Exception):
     code: int = 500
     summary: str = ""
