@@ -1,9 +1,8 @@
 
 import asyncio
 import logging
-from collections import UserDict
+from collections import Counter
 from dataclasses import dataclass
-from datetime import date
 
 import elasticsearch
 from biothings.web.query.builder import RawQueryInterrupt
@@ -98,7 +97,7 @@ def capturesESExceptions(func):
             # the individual components raising the error should instead
             # rasie exceptions like ValueError and TypeError for bad input
             logging.error("FIXME: Unexpected Assertion Error.")
-            raise QueryPipelineException(500, str(exc))
+            raise QueryPipelineException(500, str(exc) or "N/A")
 
         except (ValueError, TypeError) as exc:
             raise QueryPipelineException(400, type(exc).__name__, str(exc))
@@ -173,12 +172,22 @@ class AsyncESQueryPipeline(QueryPipeline):
         MAX_MATCH = 1000
         options['size'] = MAX_MATCH + 1
 
+        # "fetch" is a wrapper over "search".
+        #----------------------------------------
         result = await self.search(id, **options)
-        if result is None:
-            raise QueryPipelineException(404, "Not Found.")
+        #----------------------------------------
 
-        if isinstance(result, list) and len(result) > MAX_MATCH:
-            raise QueryPipelineException(500, "Too Many Matches.")
+        if isinstance(id, list):  # batch
+            counter = Counter(x["query"] for x in result)
+            if counter.most_common(1)[0][1] > MAX_MATCH:
+                raise QueryPipelineException(500, "Too Many Matches.")
+
+        else:  # single
+            if result is None:
+                raise QueryPipelineException(404, "Not Found.")
+
+            if isinstance(result, list) and len(result) > MAX_MATCH:
+                raise QueryPipelineException(500, "Too Many Matches.")
 
         return result
 
