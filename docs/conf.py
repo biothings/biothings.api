@@ -10,8 +10,8 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-import os
-import sys
+# import os
+# import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
 
@@ -56,6 +56,7 @@ html_static_path = ['_static']
 
 
 # on_rtd is whether we are on readthedocs.org
+import os
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 
 if not on_rtd:
@@ -73,14 +74,22 @@ if not on_rtd:
 # Ref: http://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autoclass_content
 autoclass_content = 'both'
 
+# Reference Code
+# ---------------------
+# Previous attemps to configure biothings.hub
+# to support automatically generating documentation.
+# This would not directly work for 0.10.x.
+# Use the code below as a reference in the future
+# if we decide to want to generate hub docs.
+
 # create a dummy config object
-class DummyConfig(object):
-    def __getattr__(self, item):
-        setattr(self, item, None)
-        return getattr(self, item)
+# class DummyConfig(object):
+#     def __getattr__(self, item):
+#         setattr(self, item, None)
+#         return getattr(self, item)
 
 
 # this allows "import config" or "from biothings import config"
 #  to work without actually creating a config.py file
-sys.modules["config"] = DummyConfig()
-sys.modules["biothings.config"] = DummyConfig()
+# sys.modules["config"] = DummyConfig()
+# sys.modules["biothings.config"] = DummyConfig()

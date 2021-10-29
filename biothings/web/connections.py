@@ -1,4 +1,3 @@
-
 import hashlib
 import logging
 import os
@@ -85,6 +84,15 @@ AWS_META_URL = "http://169.254.169.254/latest/dynamic/instance-identity/document
 
 
 def get_es_client(hosts=None, async_=False, **settings):
+    """ Enhanced ES client initialization.
+
+    Additionally support these parameters:
+        async_: use AsyncElasticserach instead of Elasticsearch.
+        aws: setup request signing and provide reasonable ES settings
+            to access AWS OpenSearch, by default assuming it is on HTTPS.
+        sniff: provide resonable default settings to enable client-side
+            LB to an ES cluster. this param itself is not an ES param.
+    """
 
     if settings.pop('aws', False):
         # find region
@@ -107,23 +115,18 @@ def get_es_client(hosts=None, async_=False, **settings):
             region=region, service='es'
         )
 
-        settings.update(
-            http_auth=awsauth, use_ssl=True, verify_certs=True,
-            connection_class=_AsyncConn if async_ else _Conn
-        )
-    # Sniff is only possible if not using the managed cluster
-    # TODO: maybe we won't ever use it
-    # by default we don't do sniffing
-    # if sniff is set, then populate with reasonable defaults unless
-    # explicitly set
+        _cc = _AsyncConn if async_ else _Conn
+        settings.update(http_auth=awsauth, connection_class=_cc)
+        settings.setdefault('use_ssl', True)
+        settings.setdefault('verify_certs', True)
+
+    # not evaluated when 'aws' flag is set because
+    # AWS OpenSearch is internally load-balanced
+    # and does not support client-side sniffing.
     elif settings.pop('sniff', False):
-        _sniff_defaults = {
-            'sniff_on_start': True,
-            'sniff_on_connection_fail': True,
-            'sniffer_timeout': 60,
-        }
-        for setting_name, setting_default in _sniff_defaults.items():
-            settings.setdefault(setting_name, setting_default)
+        settings.setdefault('sniff_on_start', True)
+        settings.setdefault('sniff_on_connection_fail', True)
+        settings.setdefault('sniffer_timeout', 60)
 
     if async_:
         from elasticsearch import AsyncElasticsearch

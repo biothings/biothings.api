@@ -84,9 +84,9 @@ will look something like this:
   DATA_TARGET_SERVER_PASSWORD = None
 
   HUB_DB_BACKEND = {
-          "module" : "biothings.utils.mongo",
-          "uri" : "mongodb://myhost:27017",
-          }
+    "module" : "biothings.utils.mongo",
+    "uri" : "mongodb://myhost:27017",
+  }
 
   DATA_ARCHIVE_ROOT = "/tmp/tutorial"
   LOG_FOLDER = "/tmp/tutorial/logs"

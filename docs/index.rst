@@ -1,10 +1,3 @@
-.. biothings.api documentation master file, created by
-   sphinx-quickstart on Thu Jul  7 15:58:06 2016.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
-BioThings SDK
-=============
 
 Introduction
 ------------
@@ -31,8 +24,8 @@ BioThings Studio
 a backend service responsible for maintaining data up-to-date, producing data releases and update API frontends.
 
 
-Installing BioThings SDK
-------------------------
+Installation
+------------
 
 You can install the latest stable BioThings SDK release with pip from `PyPI <https://pypi.python.org/pypi>`_, like:
 
@@ -52,32 +45,25 @@ Alternatively, you can download the source code, or clone the `BioThings SDK rep
 
     python setup.py install
 
-Get started to build a BioThings API
-------------------------------------
+Quick Start
+-----------
 
-We recommend to follow `this tutorial <doc/studio.html>`_ to develop your first BioThings API in our pre-configured `BioThings Studio <doc/studio.html>`_ development environment.
+We recommend to follow `this tutorial <tutorial/studio.html>`_ to develop your first BioThings API in our pre-configured `BioThings Studio <doc/studio.html>`_ development environment.
 
 
 .. toctree::
-    :maxdepth: 3
+    :hidden:
     :caption: Products
 
-    doc/studio
-    doc/standalone
-    doc/hub_tutorial
-    doc/datatransform
+    tutorial/studio
+    tutorial/standalone
+    tutorial/hub_tutorial
+    tutorial/datatransform
 
 .. toctree::
-    :maxdepth: 3
-    :caption: Documentation
+   :hidden:
+   :caption: Documentation
 
-    doc/hub
-    doc/web
-    doc/utils
-
-Indices and tables
-==================
-
- * :ref:`genindex`
- * :ref:`modindex`
- * :ref:`search`
+   apidoc/biothings.web
+   apidoc/biothings.tests
+   apidoc/biothings.utils
