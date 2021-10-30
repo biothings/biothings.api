@@ -142,6 +142,15 @@ QUERY_KWARGS['POST']['scopes']['strict'] = False
 # *****************************************************************************
 ES_QUERY_PIPELINE = 'biothings.web.query.AsyncESQueryPipeline'
 ES_QUERY_BUILDER = 'biothings.web.query.ESQueryBuilder'
+ES_QUERY_BACKEND = 'biothings.web.query.AsyncESQueryBackend'
+ES_RESULT_TRANSFORM = 'biothings.web.query.ESResultFormatter'
+
+# Pipeline
+# --------
+ANNOTATION_MAX_MATCH = 1000
+
+# Builder Stage
+# -------------
 # For the userquery folder for this app
 USERQUERY_DIR = 'userquery'
 # Allow "truly" random order for q= __any__
@@ -149,21 +158,20 @@ ALLOW_RANDOM_QUERY = False
 # Allow facets to be nested with ( )
 ALLOW_NESTED_AGGS = False
 
+# Backend Stage
+# -------------
 # Amount of time a scroll request is kept open
 ES_SCROLL_TIME = '1m'
 # Size of each scroll request return
 ES_SCROLL_SIZE = 1000
 
-
-ES_QUERY_BACKEND = 'biothings.web.query.AsyncESQueryBackend'
-ES_RESULT_TRANSFORM = 'biothings.web.query.ESResultFormatter'
-
-
+# Transform Stage
+# ---------------
 # A list of fields to exclude from metadata/fields endpoint
 AVAILABLE_FIELDS_EXCLUDED = ['all']
 # A path to the available fields notes
 AVAILABLE_FIELDS_NOTES_PATH = ''
-
+# Add "_license" fields in results
 LICENSE_TRANSFORM = {
     # "alias" :  "datasource",
     # "dot.field" :  "datasource"

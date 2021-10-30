@@ -43,10 +43,11 @@ class QueryPipelineInterrupt(QueryPipelineException):
         super().__init__(200, None, data)
 
 class QueryPipeline():
-    def __init__(self, builder, backend, formatter):
+    def __init__(self, builder, backend, formatter, **settings):
         self.builder = builder
         self.backend = backend
         self.formatter = formatter
+        self.settings = settings
 
     def search(self, q, **options):
         query = self.builder.build(q, **options)
@@ -169,8 +170,8 @@ class AsyncESQueryPipeline(QueryPipeline):
         # the user incomplete matches. usually, when this happends,
         # it indicates bad choices of values as the default fields.
 
-        MAX_MATCH = 1000
-        options['size'] = MAX_MATCH + 1
+        MAX_MATCH = self.settings.get("fetch_max_match", 1000)
+        options['size'] = MAX_MATCH + 1  # err when len(res) > MAX
 
         # "fetch" is a wrapper over "search".
         #----------------------------------------

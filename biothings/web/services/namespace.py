@@ -115,6 +115,7 @@ class BiothingsNamespace():
                 self.fieldnote.get_field_notes(),
                 self.config.AVAILABLE_FIELDS_EXCLUDED
             ),
+            fetch_max_match=self.config.ANNOTATION_MAX_MATCH
         )
         self.elasticsearch.health = ESHealth(
             self.elasticsearch.async_client,
