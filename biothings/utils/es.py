@@ -118,6 +118,7 @@ class ESIndexer():
                  check_index=True, **kwargs):
         self.es_host = es_host
         self._es = get_es(es_host, **kwargs)
+        self._host_major_ver = int(self._es.info()['version']['number'].split('.')[0])
         if check_index:
             # if index is actually an alias, resolve the alias to
             # the real underlying index
@@ -332,7 +333,18 @@ class ESIndexer():
     def update_mapping(self, m):
         assert list(m) == [self._doc_type], "Bad mapping format, should have one doc_type, got: %s" % list(m)
         assert 'properties' in m[self._doc_type], "Bad mapping format, no 'properties' key"
-        return self._es.indices.put_mapping(index=self._index, doc_type=self._doc_type, body=m)
+        if self._host_major_ver <= 6:
+            return self._es.indices.put_mapping(
+                index=self._index, doc_type=self._doc_type, body=m
+            )
+        elif self._host_major_ver == 7:
+            return self._es.indices.put_mapping(
+                index=self._index, doc_type=self._doc_type, body=m,
+                include_type_name=True
+            )
+        else:
+            raise RuntimeError(f"Server Elasticsearch version is {self._host_major_ver} "
+                               "which is unsupported when using old ESIndexer class")
 
     def get_mapping_meta(self):
         """return the current _meta field."""
