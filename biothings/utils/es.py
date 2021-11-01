@@ -361,12 +361,18 @@ class ESIndexer():
         allowed_keys = {'_meta', '_timestamp'}
         # if isinstance(meta, dict) and len(set(meta) - allowed_keys) == 0:
         if isinstance(meta, dict) and not set(meta) - allowed_keys:
-            body = {self._doc_type: meta}
-            return self._es.indices.put_mapping(
-                doc_type=self._doc_type,
-                body=body,
-                index=self._index
-            )
+            if self._host_major_ver >= 7:
+                return self._es.indices.put_mapping(
+                    index=self._index,
+                    body=meta,
+                )
+            else:  # not sure if _type needs to be specified
+                body = {self._doc_type: meta}
+                return self._es.indices.put_mapping(
+                    doc_type=self._doc_type,
+                    body=body,
+                    index=self._index
+                )
         else:
             raise ValueError('Input "meta" should have and only have "_meta" field.')
 
