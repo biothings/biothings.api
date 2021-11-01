@@ -661,6 +661,7 @@ def sync_es_jsondiff_worker(diff_file,
 
     # delete: remove from "old"
     for ids in iter_n(diff["delete"], batch_size):
+        # FIXME: bulk delete can fail
         del_skip = indexer.delete_docs(ids)
         res["deleted"] += del_skip[0]
         res["skipped"] += del_skip[1]

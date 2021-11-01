@@ -281,12 +281,19 @@ class ESIndexer():
         step = step or self.step
 
         def _get_bulk(_id):
-            doc = {
-                '_op_type': 'delete',
-                "_index": index_name,
-                "_type": doc_type,
-                "_id": _id
-            }
+            if self._host_major_ver >= 7:
+                doc = {
+                    '_op_type': 'delete',
+                    "_index": index_name,
+                    "_id": _id
+                }
+            else:
+                doc = {
+                    '_op_type': 'delete',
+                    "_index": index_name,
+                    "_type": doc_type,
+                    "_id": _id
+                }
             return doc
         actions = (_get_bulk(_id) for _id in ids)
         return helpers.bulk(self._es, actions, chunk_size=step, stats_only=True, raise_on_error=False)
