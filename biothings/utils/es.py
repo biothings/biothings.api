@@ -224,7 +224,7 @@ class ESIndexer():
                 # if the remote server is of elasticsearch version 7 or later
                 # drop the doc_type first level key as it is no longer supported
                 self._populate_es_version()
-                if self._es_version > 6:
+                if self._host_major_ver > 6:
                     if len(mapping) == 1 and next(iter(mapping)) not in ('properties', 'dynamic', '_meta'):
                         mapping = next(iter(mapping.values()))
 
@@ -261,7 +261,7 @@ class ESIndexer():
                 "_type": doc_type,
                 "_op_type": action,
             })
-            if self._es_version > 6:
+            if self._host_major_ver > 6:
                 ndoc.pop("_type")
             return ndoc
         actions = (_get_bulk(doc) for doc in docs)
@@ -319,13 +319,21 @@ class ESIndexer():
         step = step or self.step
 
         def _get_bulk(doc):
-            doc = {
-                '_op_type': 'update',
-                "_index": index_name,
-                "_type": doc_type,
-                "_id": doc['_id'],
-                "doc": doc
-            }
+            if self._host_major_ver >= 7:
+                doc = {
+                    '_op_type': 'update',
+                    "_index": index_name,
+                    "_id": doc['_id'],
+                    "doc": doc
+                }
+            else:
+                doc = {
+                    '_op_type': 'update',
+                    "_index": index_name,
+                    "_type": doc_type,
+                    "_id": doc['_id'],
+                    "doc": doc
+                }
             if upsert:
                 doc['doc_as_upsert'] = True
             return doc
@@ -467,6 +475,8 @@ class ESIndexer():
            step is the size of bulk update on ES
            try first with dryrun turned on, and then perform the actual updates with dryrun off.
         '''
+        if self._host_major_ver >= 7:
+            raise RuntimeError("clean_field is no longer supported")
         q = {
             "query": {
                 "constant_score": {
