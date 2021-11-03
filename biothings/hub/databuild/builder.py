@@ -199,10 +199,28 @@ class DataBuilder(object):
         """
         def no_uploader_running(job_manager):
             """Uploaders could change the data to be merged..."""
-            return len([
-                j for j in job_manager.jobs.values()
-                if j["category"] == UPLOADER_CATEGORY
-            ]) == 0
+            num_offenders = 0
+            # FIXME: here is the issue: I do not know if self.sources is populated
+            #  the other places read from MongoDB directly
+            #  but reading from Mongo might not be an option
+            #  At the moment the behavior does not change, but a lot of checks
+            #  and logging has been added
+            self.logger.debug("no_uploader_running: builder sources %s", self.sources)
+            offending_sources = set()
+            for src in self.sources:
+                src_full_name = get_source_fullname(src)
+                offending_sources.add(src_full_name)
+            self.logger.debug("no_uploader_running: src full names %s", offending_sources)
+            for job in job_manager.jobs.values():
+                if job['category'] == UPLOADER_CATEGORY:
+                    num_offenders += 1
+                    self.logger.debug(
+                        "no_uploader_running: found offending job: %s", job
+                    )
+                    if 'source' in job and job['source'] in offending_sources:
+                        self.logger.debug("no_uploader_running: found offending uploader "
+                                          " for matching source")
+            return num_offenders == 0
 
         #def no_merger_running():
         #    """
