@@ -6,8 +6,6 @@ biothings.web.handlers
    :undoc-members:
    :show-inheritance:
 
-Submodules
-``````````
 
 biothings.web.handlers.base
 ----------------------------------

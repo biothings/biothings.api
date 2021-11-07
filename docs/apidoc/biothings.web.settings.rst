@@ -6,8 +6,6 @@ biothings.web.settings
    :undoc-members:
    :show-inheritance:
 
-Submodules
-``````````
 
 biothings.web.settings.configs
 -------------------------------------

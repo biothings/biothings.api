@@ -6,8 +6,6 @@ biothings.web.query
    :undoc-members:
    :show-inheritance:
 
-Submodules
-``````````
 
 biothings.web.query.builder
 ----------------------------------

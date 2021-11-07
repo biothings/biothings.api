@@ -10,6 +10,13 @@ class StatusHandler(BaseHandler):
     # to sentry monitoring. choose the desired one basing
     # on overall health check architecture.
 
+    # It is technically better to return text or HTML
+    # instead of JSON as this is NOT an API endpoint.
+    # Instead, it's for automated status check, in which
+    # case a simple text response of "OK" suffice, or for
+    # human consumption when "dev" parameter is provided,
+    # in which case an HTML page is more readible.
+
     def head(self):
         return self._check()
 

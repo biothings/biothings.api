@@ -6,8 +6,6 @@ biothings.web.analytics
    :undoc-members:
    :show-inheritance:
 
-Submodules
-``````````
 
 biothings.web.analytics.channels
 ---------------------------------------
