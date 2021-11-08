@@ -596,8 +596,12 @@ class ESIndexer():
         # chunkify
         step = step or self.step
         for chunk in iter_n(ids, step):
-            chunk_res = self._es.mget(body={"ids": chunk}, index=self._index,
-                                      doc_type=self._doc_type, **mget_args)
+            if self._host_major_ver > 6:
+                chunk_res = self._es.mget(body={"ids": chunk}, index=self._index,
+                                          **mget_args)
+            else:
+                chunk_res = self._es.mget(body={"ids": chunk}, index=self._index,
+                                          doc_type=self._doc_type, **mget_args)
             for rawdoc in chunk_res['docs']:
                 if (('found' not in rawdoc) or (('found' in rawdoc) and not rawdoc['found'])):
                     continue
