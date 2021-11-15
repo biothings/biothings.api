@@ -200,13 +200,8 @@ class DataBuilder(object):
         def no_uploader_running(job_manager):
             """Uploaders could change the data to be merged..."""
             num_offenders = 0
-            # FIXME: here is the issue: I do not know if self.sources is populated
-            #  the other places read from MongoDB directly
-            #  but reading from Mongo might not be an option
-            #  At the moment the behavior does not change, but a lot of checks
-            #  and logging has been added
-            sources = all_sources = self.build_config.get("sources", [])
-            self.logger.debug("no_uploader_running: builder sources %s", sources)
+            # self.sources is not populated. thanks.
+            sources = self.build_config.get("sources", [])
             offending_sources = set()
             for src in sources:
                 src_full_name = get_source_fullname(src)
@@ -214,13 +209,20 @@ class DataBuilder(object):
             self.logger.debug("no_uploader_running: src full names %s", offending_sources)
             for job in job_manager.jobs.values():
                 if job['category'] == UPLOADER_CATEGORY:
-                    num_offenders += 1
-                    self.logger.debug(
-                        "no_uploader_running: found offending job: %s", job
-                    )
-                    if 'source' in job and job['source'] in offending_sources:
-                        self.logger.debug("no_uploader_running: found offending uploader "
-                                          " for matching source")
+                    if 'source' in job:
+                        if job['source'] in offending_sources:
+                            num_offenders += 1
+                            self.logger.info(
+                                "%s uploader running cannot build for now" % job['source']
+                            )
+                    else:
+                        num_offenders += 1
+                        self.logger.warning(
+                            "uploader with pinfo: %s running, no source info. "
+                            "cannot build for now" % job
+                        )
+                else:
+                    pass  # job is not an uploader
             return num_offenders == 0
 
         #def no_merger_running():
