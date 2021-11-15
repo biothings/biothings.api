@@ -118,6 +118,7 @@ class ESIndexer():
                  check_index=True, **kwargs):
         self.es_host = es_host
         self._es = get_es(es_host, **kwargs)
+        self._host_major_ver = int(self._es.info()['version']['number'].split('.')[0])
         if check_index:
             # if index is actually an alias, resolve the alias to
             # the real underlying index
@@ -223,7 +224,7 @@ class ESIndexer():
                 # if the remote server is of elasticsearch version 7 or later
                 # drop the doc_type first level key as it is no longer supported
                 self._populate_es_version()
-                if self._es_version > 6:
+                if self._host_major_ver > 6:
                     if len(mapping) == 1 and next(iter(mapping)) not in ('properties', 'dynamic', '_meta'):
                         mapping = next(iter(mapping.values()))
 
@@ -260,7 +261,7 @@ class ESIndexer():
                 "_type": doc_type,
                 "_op_type": action,
             })
-            if self._es_version > 6:
+            if self._host_major_ver > 6:
                 ndoc.pop("_type")
             return ndoc
         actions = (_get_bulk(doc) for doc in docs)
@@ -280,12 +281,19 @@ class ESIndexer():
         step = step or self.step
 
         def _get_bulk(_id):
-            doc = {
-                '_op_type': 'delete',
-                "_index": index_name,
-                "_type": doc_type,
-                "_id": _id
-            }
+            if self._host_major_ver >= 7:
+                doc = {
+                    '_op_type': 'delete',
+                    "_index": index_name,
+                    "_id": _id
+                }
+            else:
+                doc = {
+                    '_op_type': 'delete',
+                    "_index": index_name,
+                    "_type": doc_type,
+                    "_id": _id
+                }
             return doc
         actions = (_get_bulk(_id) for _id in ids)
         return helpers.bulk(self._es, actions, chunk_size=step, stats_only=True, raise_on_error=False)
@@ -311,13 +319,21 @@ class ESIndexer():
         step = step or self.step
 
         def _get_bulk(doc):
-            doc = {
-                '_op_type': 'update',
-                "_index": index_name,
-                "_type": doc_type,
-                "_id": doc['_id'],
-                "doc": doc
-            }
+            if self._host_major_ver >= 7:
+                doc = {
+                    '_op_type': 'update',
+                    "_index": index_name,
+                    "_id": doc['_id'],
+                    "doc": doc
+                }
+            else:
+                doc = {
+                    '_op_type': 'update',
+                    "_index": index_name,
+                    "_type": doc_type,
+                    "_id": doc['_id'],
+                    "doc": doc
+                }
             if upsert:
                 doc['doc_as_upsert'] = True
             return doc
@@ -332,7 +348,18 @@ class ESIndexer():
     def update_mapping(self, m):
         assert list(m) == [self._doc_type], "Bad mapping format, should have one doc_type, got: %s" % list(m)
         assert 'properties' in m[self._doc_type], "Bad mapping format, no 'properties' key"
-        return self._es.indices.put_mapping(index=self._index, doc_type=self._doc_type, body=m)
+        if self._host_major_ver <= 6:
+            return self._es.indices.put_mapping(
+                index=self._index, doc_type=self._doc_type, body=m
+            )
+        elif self._host_major_ver == 7:
+            return self._es.indices.put_mapping(
+                index=self._index, doc_type=self._doc_type, body=m,
+                include_type_name=True
+            )
+        else:
+            raise RuntimeError(f"Server Elasticsearch version is {self._host_major_ver} "
+                               "which is unsupported when using old ESIndexer class")
 
     def get_mapping_meta(self):
         """return the current _meta field."""
@@ -349,12 +376,18 @@ class ESIndexer():
         allowed_keys = {'_meta', '_timestamp'}
         # if isinstance(meta, dict) and len(set(meta) - allowed_keys) == 0:
         if isinstance(meta, dict) and not set(meta) - allowed_keys:
-            body = {self._doc_type: meta}
-            return self._es.indices.put_mapping(
-                doc_type=self._doc_type,
-                body=body,
-                index=self._index
-            )
+            if self._host_major_ver >= 7:
+                return self._es.indices.put_mapping(
+                    index=self._index,
+                    body=meta,
+                )
+            else:  # not sure if _type needs to be specified
+                body = {self._doc_type: meta}
+                return self._es.indices.put_mapping(
+                    doc_type=self._doc_type,
+                    body=body,
+                    index=self._index
+                )
         else:
             raise ValueError('Input "meta" should have and only have "_meta" field.')
 
@@ -442,6 +475,8 @@ class ESIndexer():
            step is the size of bulk update on ES
            try first with dryrun turned on, and then perform the actual updates with dryrun off.
         '''
+        if self._host_major_ver >= 7:
+            raise RuntimeError("clean_field is no longer supported")
         q = {
             "query": {
                 "constant_score": {
@@ -561,8 +596,12 @@ class ESIndexer():
         # chunkify
         step = step or self.step
         for chunk in iter_n(ids, step):
-            chunk_res = self._es.mget(body={"ids": chunk}, index=self._index,
-                                      doc_type=self._doc_type, **mget_args)
+            if self._host_major_ver > 6:
+                chunk_res = self._es.mget(body={"ids": chunk}, index=self._index,
+                                          **mget_args)
+            else:
+                chunk_res = self._es.mget(body={"ids": chunk}, index=self._index,
+                                          doc_type=self._doc_type, **mget_args)
             for rawdoc in chunk_res['docs']:
                 if (('found' not in rawdoc) or (('found' in rawdoc) and not rawdoc['found'])):
                     continue

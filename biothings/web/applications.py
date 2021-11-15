@@ -1,3 +1,31 @@
+""" 
+    Biothings Web Applications -
+    
+    define the routes and handlers a supported web framework would consume
+    basing on a config file, typically named `config.py`, enhanced by
+    :py:mod:`biothings.web.settings.configs`. 
+    
+    The currently supported web frameworks are
+    `Tornado <https://www.tornadoweb.org/en/stable/index.html>`_,
+    `Flask <https://flask.palletsprojects.com/en/2.0.x/>`_, and
+    `FastAPI <https://fastapi.tiangolo.com/>`_.
+
+    The :py:mod:`biothings.web.launcher` can start the compatible HTTP servers
+    basing on their interface. And the web applications delegate routes defined
+    in the config file to handlers typically in :py:mod:`biothings.web.handlers`. 
+
+    +----------------+------------+--------------------------------+
+    | Web Framework  | Interface  | Handlers                       |
+    +================+============+================================+
+    | Tornado        | Tornado    | biothings.web.handlers.*       |
+    +----------------+------------+--------------------------------+
+    | Flask          | WSGI       | biothings.web.handlers._flask  |
+    +----------------+------------+--------------------------------+
+    | FastAPI        | ASGI       | biothings.web.handlers._fastapi|
+    +----------------+------------+--------------------------------+
+
+"""
+
 import inspect
 import logging
 from pprint import pformat
@@ -218,5 +246,4 @@ except Exception as exc:
         def get_app(cls, config):
             raise exc
 
-
-BiothingsAPI = TornadoBiothingsAPI
+BiothingsAPI = TornadoBiothingsAPI  # default

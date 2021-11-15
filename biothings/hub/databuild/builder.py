@@ -199,10 +199,31 @@ class DataBuilder(object):
         """
         def no_uploader_running(job_manager):
             """Uploaders could change the data to be merged..."""
-            return len([
-                j for j in job_manager.jobs.values()
-                if j["category"] == UPLOADER_CATEGORY
-            ]) == 0
+            num_offenders = 0
+            # self.sources is not populated. thanks.
+            sources = self.build_config.get("sources", [])
+            offending_sources = set()
+            for src in sources:
+                src_full_name = get_source_fullname(src)
+                offending_sources.add(src_full_name)
+            self.logger.debug("no_uploader_running: src full names %s", offending_sources)
+            for job in job_manager.jobs.values():
+                if job['category'] == UPLOADER_CATEGORY:
+                    if 'source' in job:
+                        if job['source'] in offending_sources:
+                            num_offenders += 1
+                            self.logger.info(
+                                "%s uploader running cannot build for now" % job['source']
+                            )
+                    else:
+                        num_offenders += 1
+                        self.logger.warning(
+                            "uploader with pinfo: %s running, no source info. "
+                            "cannot build for now" % job
+                        )
+                else:
+                    pass  # job is not an uploader
+            return num_offenders == 0
 
         #def no_merger_running():
         #    """

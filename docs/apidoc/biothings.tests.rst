@@ -6,9 +6,6 @@ biothings.tests
    :undoc-members:
    :show-inheritance:
 
-Submodules
-``````````
-
 biothings.tests.hub
 --------------------------
 

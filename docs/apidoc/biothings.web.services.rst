@@ -6,8 +6,13 @@ biothings.web.services
    :undoc-members:
    :show-inheritance:
 
-Submodules
-``````````
+biothings.web.services.query
+-----------------------------
+
+.. automodule:: biothings.web.services.query
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 biothings.web.services.health
 -----------------------------

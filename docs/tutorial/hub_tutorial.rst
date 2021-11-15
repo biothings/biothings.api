@@ -477,6 +477,32 @@ Code is available on github:
 `d3b3486f71e865235efd673d2f371b53eaa0bc5b <https://github.com/biothings/biothings.species/commit/d3b3486f71e865235efd673d2f371b53eaa0bc5b>`_
 for whole changes and `dataload/sources/geneinfo/dumper.py <https://github.com/biothings/biothings.species/blob/master/src/hub/dataload/sources/geneinfo/dumper.py>`_ for the dumper.
 
+Additional base dumper classes
+==============================
+The previous examples utilized the `FTPDumper` base dumper class. The list of available base dumper classes include:
+
+* ``FTPDumper`` - Downloads content from ftp source
+
+* ``LastModifiedFTPDumper`` - A wrapper over FTPDumper, one URL will give one FTPDumper instance. SRC_URLS containing a list of URLs pointing to files to download, use FTP's MDTM command to check whether files should be downloaded. The release is generated from the last file's MDTM in SRC_URLS, and formatted according to RELEASE_FORMAT.
+
+* ``HTTPDumper``-  Dumper using HTTP protocol and "requests" library
+
+* ``LastModifiedHTTPDumper`` - Similar to LastModifiedFTPDumper, but for http
+
+* ``WgetDumper``- Fill self.to_dump list with dict("remote":remote_path,"local":local_path) elements. This is the todo list for the dumper
+
+* ``FilesystemDumper``- works locally and copy (or move) files to datasource folder
+
+* ``DummyDumper`` - Does nothing
+
+* ``ManualDumper`` - Assists user to dump a resource. This will usually expect the files to be downloaded first (sometimes there's no easy way to automate this process). Once downloaded, a call to dump() will make sure everything is fine in terms of files and metadata
+
+* ``GoogleDriveDumper`` - Dumps files from google drive
+
+* ``GitDumper`` - Gets data from a git repo. Repo is stored in SRC_ROOT_FOLDER (without versioning) and then versions/releases are fetched in SRC_ROOT_FOLDER/<release>
+
+Additional details on the available base dumper classes can be found at: https://github.com/biothings/biothings.api/blob/master/biothings/hub/dataload/dumper.py
+
 Uploaders
 ^^^^^^^^^
 

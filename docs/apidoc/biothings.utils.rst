@@ -6,8 +6,6 @@ biothings.utils
    :undoc-members:
    :show-inheritance:
 
-Submodules
-``````````
 
 biothings.utils.aws
 --------------------------
