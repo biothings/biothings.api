@@ -205,9 +205,10 @@ class DataBuilder(object):
             #  but reading from Mongo might not be an option
             #  At the moment the behavior does not change, but a lot of checks
             #  and logging has been added
-            self.logger.debug("no_uploader_running: builder sources %s", self.sources)
+            sources = all_sources = self.build_config.get("sources", [])
+            self.logger.debug("no_uploader_running: builder sources %s", sources)
             offending_sources = set()
-            for src in self.sources:
+            for src in sources:
                 src_full_name = get_source_fullname(src)
                 offending_sources.add(src_full_name)
             self.logger.debug("no_uploader_running: src full names %s", offending_sources)
