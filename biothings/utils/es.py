@@ -342,21 +342,46 @@ class ESIndexer():
 
     def get_mapping(self):
         """return the current index mapping"""
-        m = self._es.indices.get_mapping(index=self._index, doc_type=self._doc_type, include_type_name=True)
-        return m[self._index]["mappings"]
+        if self._host_major_ver <= 6:
+            m = self._es.indices.get_mapping(
+                index=self._index,
+                doc_type=self._doc_type,
+            )
+            return m[self._index]["mappings"]
+        elif self._host_major_ver == 7:
+            m = self._es.indices.get_mapping(
+                index=self._index
+            )
+            # fake the mapping doc_type
+            m = {
+                self._doc_type: m[self._index]["mappings"]
+            }
+            return m
+        else:
+            raise RuntimeError(f"Server Elasticsearch version is {self._host_major_ver} "
+                               "which is unsupported when using old ESIndexer class")
 
     def update_mapping(self, m):
-        assert list(m) == [self._doc_type], "Bad mapping format, should have one doc_type, got: %s" % list(m)
-        assert 'properties' in m[self._doc_type], "Bad mapping format, no 'properties' key"
         if self._host_major_ver <= 6:
+            assert list(m) == [
+                self._doc_type], "Bad mapping format, should have one doc_type, got: %s" % list(
+                m)
+            assert 'properties' in m[
+                self._doc_type], "Bad mapping format, no 'properties' key"
             return self._es.indices.put_mapping(
                 index=self._index, doc_type=self._doc_type, body=m
             )
         elif self._host_major_ver == 7:
-            return self._es.indices.put_mapping(
-                index=self._index, doc_type=self._doc_type, body=m,
-                include_type_name=True
-            )
+            # this is basically guessing based on heuristics
+            if len(m) == 1:
+                if 'properties' not in m:  # basically {'_doc': mapping}
+                    m = next(iter(m.values()))  # take out the mapping
+                else:  # basically just the mapping or type: properties
+                    pass  # ignoring the possibility of doc_type='properties'
+            else:  # we don't expect {} as input, so len(m) > 1
+                if 'properties' not in m:
+                    raise RuntimeError(f"Possibly invalid mapping {m}")
+            return self._es.indices.put_mapping(index=self._index, body=m)
         else:
             raise RuntimeError(f"Server Elasticsearch version is {self._host_major_ver} "
                                "which is unsupported when using old ESIndexer class")
