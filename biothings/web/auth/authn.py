@@ -27,6 +27,18 @@ class BioThingsAuthenticationProviderInterface(abc.ABC):
         """
         raise NotImplementedError
 
+    def get_authenticate_header(self) -> Optional[str]:
+        """
+        Return a string used for the 'WWW-Authenticate' Header
+
+        If the handler returns a 401, this is used
+        """
+        # FIXME: need to figure out a way to support both Authorization header
+        #  and non-authorization header methods
+        #  the former should return a 401 and will need WWW-Authenticate
+        #  while the latter (say cookie based) gets more freedom.
+        return None
+
 
 class BioThingsAuthnMixin(BaseHandler):
     def get_current_user(self):
@@ -37,7 +49,11 @@ class BioThingsAuthnMixin(BaseHandler):
         # Compare to PAM in Linux. Sample logic below
         authenticators: \
             Iterable[Tuple[Type[BioThingsAuthenticationProviderInterface], dict], ...] = \
-            self.biothings.config.AUTHN_PROVIDERS
+            getattr(
+                self,
+                'AUTHN_PROVIDERS',
+                self.biothings.config.AUTHN_PROVIDERS
+            )
 
         # loop through the list in order and initialize the provider using
         # self & configured options (like how handlers are configured for routing)
