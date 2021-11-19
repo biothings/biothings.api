@@ -15,19 +15,28 @@ class GithubOAuth2Mixin(OAuth2Mixin):
     _OAUTH_AUTHORIZE_URL = 'https://github.com/login/oauth/authorize'
     _OAUTH_ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token'
 
+    _GITHUB_API_URL_BASE = 'https://api.github.com/'
+
+    _GITHUB_API_ENDPOINTS = {
+        'user': urllib.parse.urljoin(_GITHUB_API_URL_BASE, 'user')
+    }
+
     async def get_oauth2_token(
             self,
             redirect_uri: str,
             client_id: str,
             client_secret: str,
             code: str,
-    ) -> Optional[dict]:
+    ) -> dict:
         """
         Get Github OAuth2 Token
 
         Returns:
             Dictionary with keys access_token, scope, token_type. See https://git.io/J1ON4
-            None if the operation failed
+
+        Raises:
+            HTTPError: if request fails
+            JSONDecodeError: if parsing the response fails
         """
         http = self.get_auth_http_client()
         args = {
@@ -40,25 +49,25 @@ class GithubOAuth2Mixin(OAuth2Mixin):
         headers.add('Accept', 'application/json')
         response = await http.fetch(
             self._OAUTH_ACCESS_TOKEN_URL,
-            raise_error=False,
+            raise_error=True,
             method='POST',
             body=urllib.parse.urlencode(args),
             headers=headers,
         )
-        r = None
-        if response.code == 200:
-            try:
-                r = json_decode(response.body)
-            except ValueError:
-                pass
-        return r
+        ret = json_decode(response.body)
+        return ret
 
     async def get_authenticated_user(self, token: str) -> Optional[dict]:
         """
         Get Github User Info
 
-
+        Raises:
+            HTTPError: if request fails
+            JSONDecodeError: if parsing the response fails
         """
-        return
-
-
+        resp = await self.oauth2_request(
+            self._GITHUB_API_ENDPOINTS['user'],
+            access_token=token
+        )
+        ret = json_decode(resp.body)
+        return ret
