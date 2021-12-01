@@ -58,6 +58,7 @@ We recommend to follow `this tutorial <tutorial/studio.html>`_ to develop your f
     tutorial/studio
     tutorial/standalone
     tutorial/hub_tutorial
+    tutorial/web
     tutorial/datatransform
 
 .. toctree::
