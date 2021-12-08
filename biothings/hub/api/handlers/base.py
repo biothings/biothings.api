@@ -33,7 +33,7 @@ class DefaultHandler(RequestHandler):
             orjson.dumps({
                 "result": result,
                 "status": "ok"
-            }, option=orjson.OPT_NON_STR_KEYS).decode()
+            }, option=orjson.OPT_NON_STR_KEYS | orjson.OPT_NAIVE_UTC).decode()
         )
 
     def write_error(self, status_code, **kwargs):
