@@ -483,6 +483,6 @@ The End
 
 Finishing this tutorial, you have completed the most common steps to customize
 biothings.api. The customization starts from passing a different parameter at 
-launch time and evolve to modifying the app code from at different levels.
+launch time and evolve to modifying the app code at different levels.
 I hope you feel confident running biothings API now and please check out
 the documentation page for more details on customizing APIs.
