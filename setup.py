@@ -76,7 +76,7 @@ hub_requires = [
     'orjson>=3.5.2',    # this is a faster json lib support inf/nan and datetime
     'yapf',             # code reformatter, better results than autopep8
     'requests-aws4auth',    # aws s3 auth requests for autohub
-    'networkx>=2.1',            # datatransform
+    'networkx>=2.1,<2.6',            # datatransform
     'biothings_client>=0.2.6'   # datatransform (api client)
 ]
 
