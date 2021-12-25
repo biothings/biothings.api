@@ -21,7 +21,7 @@ class GithubOAuth2Mixin(OAuth2Mixin):
         'user': urllib.parse.urljoin(_GITHUB_API_URL_BASE, 'user')
     }
 
-    async def get_oauth2_token(
+    async def github_get_oauth2_token(
             self,
             client_id: str,
             client_secret: str,
@@ -55,7 +55,7 @@ class GithubOAuth2Mixin(OAuth2Mixin):
         ret = json_decode(response.body)
         return ret
 
-    async def get_authenticated_user(self, token: Union[dict, str]) -> dict:
+    async def github_get_authenticated_user(self, token: Union[dict, str]) -> dict:
         """
         Get Github User Info
 
@@ -87,11 +87,11 @@ class GithubOAuth2Mixin(OAuth2Mixin):
             RuntimeError: when using an invalid token or unsupported token type
 
         Example:
-            >>> token = await self.get_oauth2_token(
+            >>> token = await self.github_get_oauth2_token(
             >>>     'SOME_CLIENT_ID', 'SOME_CLIENT_SECRET',
             >>>     'THE_CODE_GITHUB_PROVIDED_IN_THE_REDIRECT'
             >>> )
-            >>> user = await self.get_authenticated_user(token)
+            >>> user = await self.github_get_authenticated_user(token)
             >>> print(user['login'], user['id'])
             zcqian 7196478
 
