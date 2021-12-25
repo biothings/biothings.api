@@ -109,7 +109,7 @@ class GithubOAuth2Mixin(OAuth2Mixin):
         else:
             raise RuntimeError("Token seems invalid")
         headers.add('Authorization', f'token {token_str}')
-        headers.add('Accept', 'Accept: application/vnd.github.v3+json')
+        headers.add('Accept', 'application/vnd.github.v3+json')
         resp = await http.fetch(self._GITHUB_API_ENDPOINTS['user'], method='GET',
                                 headers=headers)
         ret = json_decode(resp.body)
