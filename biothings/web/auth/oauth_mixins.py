@@ -1,5 +1,5 @@
 import urllib.parse
-from typing import Union
+from typing import Union, Optional, Dict, Any
 
 from tornado.auth import OAuth2Mixin
 from tornado.escape import json_decode
@@ -7,6 +7,7 @@ from tornado.httputil import HTTPHeaders
 
 __all__ = [
     'GithubOAuth2Mixin',
+    'OrcidOAuth2Mixin'
 ]
 
 
@@ -113,4 +114,146 @@ class GithubOAuth2Mixin(OAuth2Mixin):
         resp = await http.fetch(self._GITHUB_API_ENDPOINTS['user'], method='GET',
                                 headers=headers)
         ret = json_decode(resp.body)
+        return ret
+
+
+class OrcidOAuth2Mixin(OAuth2Mixin):
+    """
+    Mixin Class for using ORCID API with OAuth2
+
+    Note:
+        When redirecting the user to the authorization page, do NOT use
+        the '/read-public' scope. Either get it using OAuth2 client
+        credentials flow or just use '/authenticate' or 'openid' scopes,
+        the token returned with these two scopes can be used to read
+        public data.
+    """
+    _OAUTH_AUTHORIZE_URL = "https://orcid.org/oauth/authorize"
+    _OAUTH_ACCESS_TOKEN_URL = "https://orcid.org/oauth/token"
+    _ORCID_API_URL_BASE = 'https://pub.orcid.org/v2.0/'
+
+    async def orcid_get_oauth2_token(
+            self,
+            client_id: str,
+            client_secret: str,
+            code: str,
+    ) -> dict:
+        """
+        Get OAuth2 Token from ORCID
+
+        Returns:
+            Dictionary with access_token. If `openid` scope is used, key 'id_token'
+                will also be present.
+
+        Raises:
+            HTTPError: if request fails
+            JSONDecodeError: if parsing the response fails
+        """
+        http = self.get_auth_http_client()
+        args = {
+            "code": code,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "grant_type": "authorization_code",
+        }
+        headers = HTTPHeaders()
+        headers.add('Accept', 'application/json')
+        response = await http.fetch(
+            self._OAUTH_ACCESS_TOKEN_URL,
+            raise_error=True,
+            method='POST',
+            body=urllib.parse.urlencode(args),
+            headers=headers,
+        )
+        ret = json_decode(response.body)
+        return ret
+
+    async def orcid_oauth2_request(
+            self,
+            url: str,
+            access_token: Union[dict, str],
+            method: str = 'GET',
+            **kwargs: Any,
+    ):
+        """
+        Make Request to ORCID API With OAuth2 Token
+
+        Args:
+            url: The full request URL in string
+            access_token: the ORCID access token, either the entire object or the token
+                in string. It is NOT the OpenID Connect ID Token.
+            method: HTTP Method to use, string.
+            **kwargs: Any additional keyword arguments are directly passed to the
+                tornado.httpclient.AsyncHTTPClient.fetch method.
+        Raises:
+            ValueError: if the token looks obviously invalid
+            HTTPError: if the request fails. Note Tornado seems to use 599 for timeouts
+            JSONDecodeError: if JSON decoding fails. Check if you're making requests
+                to the correct ORCID endpoint.
+        """
+        http = self.get_auth_http_client()
+        headers = HTTPHeaders()
+        if isinstance(access_token, str):
+            token_str = access_token
+        elif isinstance(access_token, dict):
+            if 'token_type' not in access_token \
+                    or access_token['token_type'] != 'bearer' \
+                    or 'access_token' not in access_token:
+                raise ValueError("Token seems invalid")
+            else:
+                token_str = access_token['access_token']
+        else:
+            raise ValueError("Token seems invalid")
+        headers.add('Authorization', f'Bearer {token_str}')
+        headers.add('Accept', 'application/json')
+        resp = await http.fetch(url, method=method, headers=headers, **kwargs)
+        ret = json_decode(resp.body)
+        return ret
+
+    async def orcid_get_authenticated_user_oidc(self, access_token: Union[dict, str])\
+            -> dict:
+        """
+        Get ORCID User OpenID Connect information
+
+        See ORCID Documentation https://git.io/JyY23 or its latest version.
+
+        ORCID supports OpenID Connect and this provides the OpenID Connect user details
+        format. This method obtains such information.
+
+        Args:
+             access_token: the ORCID access token, either the entire object or the token
+                in string. It is NOT the OpenID Connect ID Token.
+
+        Returns:
+            Dictionary with OIDC User Details
+        """
+        ret = await self.orcid_oauth2_request(
+            urllib.parse.urljoin(self._OAUTH_ACCESS_TOKEN_URL, 'userinfo'),
+            access_token, 'GET'
+        )
+        return ret
+
+    async def orcid_get_authenticated_user_record(
+            self,
+            access_token: Union[dict, str],
+            orcid: str,
+    ) -> dict:
+        """
+        Get ORCID User Record
+
+        Get the full ORCID user record. Note, what you get depends on what the user
+        allows you to read.
+
+        Args:
+            access_token: the ORCID access token, either the entire object or the token
+                in string. It is NOT the OpenID Connect ID Token.
+            orcid: the ORCID of the authenticated user. Typically you can find this
+                in the token object under the 'orcid' field.
+        Returns:
+            Dictionary with ORCID Record
+        """
+        ret = await self.orcid_oauth2_request(
+            urllib.parse.urljoin(self._ORCID_API_URL_BASE, f'{orcid}/record'),
+            access_token, 'GET'
+        )
         return ret
