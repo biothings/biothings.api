@@ -12,14 +12,21 @@ __all__ = [
 
 
 class GithubOAuth2Mixin(OAuth2Mixin):
+    """
+    Mixin Class for using GitHub API with OAuth2
+
+    Currently only two methods are implemented:
+     - Getting OAuth2 Token using an authorization code for exchange
+       (Authorization Code Flow, aka 3-legged OAuth)
+     - Reading user information given token
+
+    TODO: if anyone adds any new features in the future, make a dedicated
+          OAuth2 request method, similar to the one for ORCID below.
+    """
     _OAUTH_AUTHORIZE_URL = 'https://github.com/login/oauth/authorize'
     _OAUTH_ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token'
 
     _GITHUB_API_URL_BASE = 'https://api.github.com/'
-
-    _GITHUB_API_ENDPOINTS = {
-        'user': urllib.parse.urljoin(_GITHUB_API_URL_BASE, 'user')
-    }
 
     async def github_get_oauth2_token(
             self,
@@ -111,8 +118,11 @@ class GithubOAuth2Mixin(OAuth2Mixin):
             raise RuntimeError("Token seems invalid")
         headers.add('Authorization', f'token {token_str}')
         headers.add('Accept', 'application/vnd.github.v3+json')
-        resp = await http.fetch(self._GITHUB_API_ENDPOINTS['user'], method='GET',
-                                headers=headers)
+        resp = await http.fetch(
+            urllib.parse.urljoin(self._GITHUB_API_URL_BASE, 'user'),
+            method='GET',
+            headers=headers
+        )
         ret = json_decode(resp.body)
         return ret
 
@@ -140,6 +150,8 @@ class OrcidOAuth2Mixin(OAuth2Mixin):
     ) -> dict:
         """
         Get OAuth2 Token from ORCID
+
+        See OAuth2 Authorization Code Flow.
 
         Returns:
             Dictionary with access_token. If `openid` scope is used, key 'id_token'
