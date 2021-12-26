@@ -51,6 +51,48 @@ class BioThingsAuthenticationProviderInterface(abc.ABC):
 
 
 class BioThingsAuthnMixin(BaseAPIHandler):
+    """
+    MixIn Class to for Pluggable User Authentication
+
+    Configuring `AUTHN_PROVIDERS` setting to a list of tuples, each tuple
+    containing an authentication provider and its additional initialization
+    arguments.
+
+    The authentication providers will be processed in the order they are
+    configured.
+
+    Mixing in this class enables getting the current authenticated user through
+    the `current_user` attribute of RequestHandler instances.
+
+    The `get_www_authenticate_header` will offer a value to populate the
+    WWW-Authenticate header, in the case that a 401 status code needs to be returned.
+
+    Example:
+        >>> from tornado.web import HTTPError
+        >>> class ExampleGetUserInfoHandler(BioThingsAuthnMixin, BaseAPIHandler):
+        >>>     def get(self):
+        >>>         # if the current user is set, send it to output
+        >>>         if self.current_user:
+        >>>             self.write(self.current_user)
+        >>>         else:
+        >>>             # not authenticated, return 401 or 403
+        >>>             header = self.get_www_authenticate_header()
+        >>>             if header:
+        >>>                 self.clear()
+        >>>                 self.set_header('WWW-Authenticate', header)
+        >>>                 self.set_status(401, "Unauthorized")
+        >>>                 # raising HTTPError will cause headers to be emptied
+        >>>                 self.finish()
+        >>>             else:
+        >>>                 raise HTTPError(403)
+
+    Attributes:
+        AUTHN_PROVIDERS: Overrides the global options for the specific handler.
+            Do not set this attribute if not intending to override the default.
+
+    Notes:
+        Beware of MRO issues, see example for proper order of multi-inheritance.
+    """
     def get_current_user(self):
         """
         Get the user from list of preconfigured authentication providers.
@@ -76,6 +118,16 @@ class BioThingsAuthnMixin(BaseAPIHandler):
         return None
 
     def get_www_authenticate_header(self) -> Optional[str]:
+        """
+        Get the most preferred header to populate WWW-Authenticate
+
+        If this method returns None, it is better to set a 403 error status code.
+        Otherwise, return a 401 error and use the value returned in the
+        WWW-Authenticate header.
+
+        According to RFC 7235 https://datatracker.ietf.org/doc/html/rfc7235#section-3.1
+        "the server generating a 401 response MUST send a WWW-Authenticate header field".
+        """
         authenticators: \
             Iterable[Tuple[Type[BioThingsAuthenticationProviderInterface], dict], ...] = \
             getattr(
