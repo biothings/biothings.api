@@ -58,7 +58,7 @@ class BioThingsAuthnMixin(BaseAPIHandler):
         # Support pluggable authentication.
         # Compare to PAM in Linux. Sample logic below
         authenticators: \
-            Iterable[Tuple[Type[BioThingsAuthenticationProviderInterface], dict], ...] = \
+            Iterable[Tuple[Type[BioThingsAuthenticationProviderInterface], dict]] = \
             getattr(
                 self,
                 'AUTHN_PROVIDERS',
