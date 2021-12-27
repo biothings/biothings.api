@@ -1,3 +1,7 @@
+v0.11.0
+    Added Authentication Mixin class for BioThings SDK Web.
+    Added GitHub and ORCID Mixin class for BioThings SDK Web.
+
 v0.10.0
     Separate "connections", "services", "applications" and "launcher" layers.
     Support MongoDB, SQLAlchemy-compatible SQLs and AWS OpenSearch query backend.
