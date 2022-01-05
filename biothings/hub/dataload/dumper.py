@@ -779,6 +779,11 @@ class HTTPDumper(BaseDumper):
         self.client = None
 
     def remote_is_better(self, remotefile, localfile):
+        """
+        Determine if remote is better
+
+        Override if necessary.
+        """
         return True
 
     def download(self, remoteurl, localfile, headers={}):
@@ -1568,6 +1573,7 @@ class APIDumper(BaseDumper):
         os.makedirs(wd, exist_ok=True)
         self.to_dump = []
         mp_context = multiprocessing.get_context('spawn')
+        # specifying mp_context is Python 3.7+ only
         executor = ProcessPoolExecutor(
             max_workers=1,
             mp_context=mp_context,
