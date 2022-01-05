@@ -93,6 +93,7 @@ class BioThingsAuthnMixin(BaseAPIHandler):
     Notes:
         Beware of MRO issues, see example for proper order of multi-inheritance.
     """
+
     def get_current_user(self):
         """
         Get the user from list of preconfigured authentication providers.
