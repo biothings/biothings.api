@@ -41,7 +41,8 @@ from biothings.web.settings import configs
 from biothings.web.services.namespace import BiothingsNamespace
 
 try:
-    from raven.contrib.tornado import AsyncSentryClient
+    import sentry_sdk
+    from sentry_sdk.integrations.tornado import TornadoIntegration
 except ImportError:
     __SENTRY_INSTALLED__ = False
 else:
@@ -90,9 +91,10 @@ class TornadoBiothingsAPI(tornado.web.Application):
                 settings[setting] = getattr(biothings.config, setting.upper())
 
         if __SENTRY_INSTALLED__ and biothings.config.SENTRY_CLIENT_KEY:
-            # Setup error monitoring with Sentry. More on:
-            # https://docs.sentry.io/clients/python/integrations/#tornado
-            settings['sentry_client'] = AsyncSentryClient(biothings.config.SENTRY_CLIENT_KEY)
+            sentry_sdk.init(
+                dsn=biothings.config.SENTRY_CLIENT_KEY,
+                integrations=[TornadoIntegration()]
+            )
 
         return settings
 

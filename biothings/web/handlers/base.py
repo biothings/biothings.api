@@ -29,26 +29,14 @@ from biothings.web.options import OptionError, ReqArgs
 from tornado.escape import json_decode
 from tornado.web import HTTPError, RequestHandler
 
-try:
-    from raven.contrib.tornado import SentryMixin
-except ImportError:
-    class SentryMixin():
-        """dummy mixin"""
 
 logger = logging.getLogger(__name__)
 
-class BaseHandler(SentryMixin, RequestHandler):
+class BaseHandler(RequestHandler):
 
     @property
     def biothings(self):
         return self.application.biothings
-
-    def get_sentry_client(self):
-        # Override and retrieve from tornado settings instead.
-        client = self.settings.get('sentry_client')
-        if not client:  # need to set config.SENTRY_CLIENT_KEY
-            raise ValueError("Sentry Not Configured.")
-        return client
 
 
 class BaseAPIHandler(BaseHandler, AnalyticsMixin):
