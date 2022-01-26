@@ -187,6 +187,7 @@ LICENSE_TRANSFORM = {
 # *****************************************************************************
 
 # Sentry project address
+SENTRY_DSN_URL = ''  # preferred
 SENTRY_CLIENT_KEY = ''
 
 # Google Analytics Account ID

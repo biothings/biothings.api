@@ -52,7 +52,8 @@ install_requires = [
 # extra requirements for biothings.web
 web_extra_requires = [
     'msgpack>=0.6.1',   # support format=msgpack
-    'raven'
+    'raven',  # old sentry package
+    'sentry-sdk>=1.5.3',  # new sentry package
 ]
 
 # extra requirements to run biothings.hub

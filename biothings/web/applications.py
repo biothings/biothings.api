@@ -32,6 +32,8 @@ from pprint import pformat
 from pydoc import locate
 from types import SimpleNamespace
 
+import sentry_sdk
+from sentry_sdk.integrations.tornado import TornadoIntegration
 import tornado.httpserver
 import tornado.ioloop
 import tornado.log
@@ -89,7 +91,12 @@ class TornadoBiothingsAPI(tornado.web.Application):
                     continue
                 settings[setting] = getattr(biothings.config, setting.upper())
 
-        if __SENTRY_INSTALLED__ and biothings.config.SENTRY_CLIENT_KEY:
+        if biothings.config.SENTRY_DSN_URL:
+            sentry_sdk.init(
+                dsn=biothings.config.SENTRY_DSN_URL,
+                integrations=[TornadoIntegration()]
+            )
+        elif __SENTRY_INSTALLED__ and biothings.config.SENTRY_CLIENT_KEY:
             # Setup error monitoring with Sentry. More on:
             # https://docs.sentry.io/clients/python/integrations/#tornado
             settings['sentry_client'] = AsyncSentryClient(biothings.config.SENTRY_CLIENT_KEY)
