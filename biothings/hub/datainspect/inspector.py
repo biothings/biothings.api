@@ -138,8 +138,7 @@ class InspectorManager(BaseManager):
 
         got_error = None
         try:
-            @asyncio.coroutine
-            def do():
+            async def do():
                 yield from asyncio.sleep(0.0)
                 nonlocal mode
 

@@ -236,8 +236,7 @@ class Step(abc.ABC):
     def dispatch(cls, name):
         return cls.catelog[name]
 
-    @asyncio.coroutine
-    def execute(self, *args, **kwargs):
+    async def execute(self, *args, **kwargs):
         coro = getattr(self.indexer, self.method)
         coro = coro(*args, **kwargs)
         return (yield from coro)
@@ -330,9 +329,7 @@ class Indexer():
     # --------------
     #  Entry Point
     # --------------
-
-    @asyncio.coroutine
-    def index(self, job_manager, **kwargs):
+    async def index(self, job_manager, **kwargs):
         """
         Build an Elasticsearch index (self.es_index_name)
         with data from MongoDB collection (self.mongo_collection_name).
@@ -387,9 +384,7 @@ class Indexer():
     # ---------
     #   Steps
     # ---------
-
-    @asyncio.coroutine
-    def pre_index(self, *args, mode, **kwargs):
+    async def pre_index(self, *args, mode, **kwargs):
 
         client = AsyncElasticsearch(**self.es_client_args)
         try:
@@ -438,8 +433,7 @@ class Indexer():
         finally:
             yield from client.close()
 
-    @asyncio.coroutine
-    def do_index(self, job_manager, batch_size, ids, mode, **kwargs):
+    async def do_index(self, job_manager, batch_size, ids, mode, **kwargs):
 
         client = MongoClient(**self.mongo_client_args)
         database = client[self.mongo_database_name]
@@ -520,8 +514,7 @@ class Indexer():
             "created_at": datetime.now().astimezone()
         }
 
-    @asyncio.coroutine
-    def post_index(self, *args, **kwargs):
+    async def post_index(self, *args, **kwargs):
         ...
 
 
@@ -547,8 +540,7 @@ class ColdHotIndexer():
         self.hot = self.INDEXER(hot_build_doc, indexer_env, index_name)
         self.cold = self.INDEXER(cold_build_doc, indexer_env, self.hot.es_index_name)
 
-    @asyncio.coroutine
-    def index(self,
+    async def index(self,
               job_manager,
               batch_size=10000,
               steps=("pre", "index", "post"),
@@ -807,8 +799,7 @@ class IndexManager(BaseManager):
         self.logger.debug(indexer.es_index_settings)
         self.logger.debug(indexer.es_index_mappings)
 
-        @asyncio.coroutine
-        def _validate_mapping():
+        async def _validate_mapping():
             client = AsyncElasticsearch(**indexer.es_client_args)
             index_name = ("hub_tmp_%s" % get_random_string()).lower()
             try:

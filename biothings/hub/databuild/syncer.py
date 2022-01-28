@@ -162,8 +162,7 @@ class BaseSyncer(object):
             self._meta["old"]["backend"]
         return old_db_col_names
 
-    @asyncio.coroutine
-    def sync_cols(self,
+    async def sync_cols(self,
                   diff_folder,
                   batch_size=10000,
                   mode=None,

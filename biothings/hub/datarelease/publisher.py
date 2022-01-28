@@ -421,8 +421,7 @@ class SnapshotPublisher(BasePublisher):
         # hold error/exception on each step
         got_error = None
 
-        @asyncio.coroutine
-        def do():
+        async def do():
             jobs = []
             pinfo = self.get_pinfo()
             pinfo["step"] = "publish"
@@ -895,8 +894,7 @@ class DiffPublisher(BasePublisher):
         # hold error/exception on each step
         got_error = None
 
-        @asyncio.coroutine
-        def do():
+        async def do():
             jobs = []
             pinfo = self.get_pinfo()
             pinfo["source"] = diff_folder
@@ -1511,8 +1509,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         return content
 
     def create_release_note_from_build(self, build_doc):
-        @asyncio.coroutine
-        def _():
+        async def _():
             if build_doc.get("release_note"):
                 self.logger.info(
                     "Not a brand-new build. "
@@ -1580,8 +1577,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
             json.dump(changes, open(filepath, "w"), indent=True)
             return {"txt": txt, "changes": changes}
 
-        @asyncio.coroutine
-        def main(release_folder):
+        async def main(release_folder):
             got_error = False
             pinfo = self.get_pinfo()
             pinfo["step"] = "release_note"

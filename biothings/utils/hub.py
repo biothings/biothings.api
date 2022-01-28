@@ -177,8 +177,7 @@ class HubShell(InteractiveShell):
 
     def restart(self, force=False, stop=False):
 
-        @asyncio.coroutine
-        def do():
+        async def do():
             try:
                 if stop:
                     event = "hub_stop"
@@ -757,8 +756,7 @@ try:
 
         def monitor(self):
 
-            @asyncio.coroutine
-            def do():
+            async def do():
                 logging.info(
                     "Monitoring source code in, %s:\n%s",
                     repr(self.paths),

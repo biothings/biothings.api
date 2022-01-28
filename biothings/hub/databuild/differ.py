@@ -139,8 +139,7 @@ class BaseDiffer(object):
             build = merge_info(build, diff_info)
             src_build.replace_one({"_id": build["_id"]}, build)
 
-    @asyncio.coroutine
-    def diff_cols(self,
+    async def diff_cols(self,
                   old_db_col_names,
                   new_db_col_names,
                   batch_size,
@@ -401,9 +400,7 @@ class BaseDiffer(object):
                     diff_stats["delete"], diff_stats["mapping_changed"]))
 
         if "reduce" in steps:
-
-            @asyncio.coroutine
-            def merge_diff():
+            async def merge_diff():
                 self.logger.info("Reduce/merge diff files")
                 max_diff_size = getattr(btconfig, "MAX_DIFF_SIZE",
                                         10 * 1024**2)
@@ -573,8 +570,7 @@ class BaseDiffer(object):
 
 
 class ColdHotDiffer(BaseDiffer):
-    @asyncio.coroutine
-    def diff_cols(self, old_db_col_names, new_db_col_names, *args, **kwargs):
+    async def diff_cols(self, old_db_col_names, new_db_col_names, *args, **kwargs):
         self.new = create_backend(new_db_col_names)
         new_doc = get_src_build().find_one(
             {"_id": self.new.target_collection.name})
@@ -1138,8 +1134,7 @@ class DifferManager(BaseManager):
                 self.logger.debug("Report already generated, now using it")
                 return open(reportfilepath).read()
 
-        @asyncio.coroutine
-        def main(diff_folder):
+        async def main(diff_folder):
             got_error = False
             pinfo = self.get_pinfo()
             pinfo["step"] = "report"

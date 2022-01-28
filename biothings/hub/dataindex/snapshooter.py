@@ -188,8 +188,7 @@ class SnapshotEnv():
         return doc  # TODO UNIQUENESS
 
     def snapshot(self, index, snapshot=None):
-        @asyncio.coroutine
-        def _snapshot(snapshot):
+        async def _snapshot(snapshot):
             x = CumulativeResult()
             build_doc = self._doc(index)
             cfg = self.repcfg.format(build_doc)
@@ -400,8 +399,7 @@ class SnapshotManager(BaseManager):
         }
         Attempt to make a snapshot for this build on the specified es env "local".
         """
-        @asyncio.coroutine
-        def _():
+        async def _():
             autoconf = AutoBuildConfig(build_doc['build_config'])
             env = autoconf.auto_build.get('env')
             assert env, "Unknown autobuild env."

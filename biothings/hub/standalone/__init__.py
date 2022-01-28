@@ -70,8 +70,7 @@ class AutoHubFeature(object):
         Update hub's data up to the given version (default is latest available),
         using full and incremental updates to get up to that given version (if possible).
         """
-        @asyncio.coroutine
-        def do(version):
+        async def do(version):
             try:
                 dklass = self.managers["dump_manager"][src_name][0]   # only one dumper allowed / source
                 dobj = self.managers["dump_manager"].create_instance(dklass)

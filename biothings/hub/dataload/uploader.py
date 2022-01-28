@@ -330,8 +330,7 @@ class BaseSourceUploader(object):
            data has been uploaded"""
         pass
 
-    @asyncio.coroutine
-    def update_data(self, batch_size, job_manager):
+    async def update_data(self, batch_size, job_manager):
         """
         Iterate over load_data() to pull data and store it
         """
@@ -446,8 +445,7 @@ class BaseSourceUploader(object):
             upd["%s.data_folder" % job_key] = data_folder
             self.src_dump.update_one({"_id": self.main_source}, {"$set": upd})
 
-    @asyncio.coroutine
-    def load(self,
+    async def load(self,
              steps=["data", "post", "master", "clean"],
              force=False,
              batch_size=10000,
@@ -591,8 +589,7 @@ class DummySourceUploader(BaseSourceUploader):
         # bypass checks about src_dump
         pass
 
-    @asyncio.coroutine
-    def update_data(self, batch_size, job_manager=None, release=None):
+    async def update_data(self, batch_size, job_manager=None, release=None):
         assert release is not None, "Dummy uploader requires 'release' argument to be specified"
         self.logger.info("Dummy uploader, nothing to upload")
         # dummy uploaders have no dumper associated b/c it's collection-only resource,
@@ -614,8 +611,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
         """
         raise NotImplementedError("implement me in subclass")
 
-    @asyncio.coroutine
-    def update_data(self, batch_size, job_manager=None):
+    async def update_data(self, batch_size, job_manager=None):
         jobs = []
         job_params = self.jobs()
         got_error = False
@@ -692,8 +688,7 @@ class NoDataSourceUploader(BaseSourceUploader):
     """
     storage_class = NoStorage
 
-    @asyncio.coroutine
-    def update_data(self, batch_size, job_manager=None):
+    async def update_data(self, batch_size, job_manager=None):
         self.logger.debug("No data to upload, skip")
 
 
@@ -810,8 +805,7 @@ class UploaderManager(BaseSourceManager):
                               extra={"notify": True})
             raise
 
-    @asyncio.coroutine
-    def create_and_load(self, klass, *args, **kwargs):
+    async def create_and_load(self, klass, *args, **kwargs):
         insts = self.create_instance(klass)
         if type(insts) != list:
             insts = [insts]

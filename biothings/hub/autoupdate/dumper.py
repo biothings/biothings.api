@@ -108,8 +108,7 @@ class BiothingsDumper(HTTPDumper):
                 self._target_backend = self.__class__.TARGET_BACKEND
         return self._target_backend
 
-    @asyncio.coroutine
-    def get_target_backend(self):
+    async def get_target_backend(self):
         """
         Example:
         [{
@@ -119,8 +118,7 @@ class BiothingsDumper(HTTPDumper):
             'count': 38729977
         }]
         """
-        @asyncio.coroutine
-        def do():
+        async def do():
             cnt = self.target_backend.count()
             return {
                 "host": self.target_backend.target_esidxer.es_host,
@@ -131,10 +129,8 @@ class BiothingsDumper(HTTPDumper):
 
         return do()
 
-    @asyncio.coroutine
-    def reset_target_backend(self):
-        @asyncio.coroutine
-        def do():
+    async def reset_target_backend(self):
+        async def do():
             if self.target_backend.target_esidxer.exists_index():
                 self.target_backend.target_esidxer.delete_index()
 
@@ -514,8 +510,7 @@ class BiothingsDumper(HTTPDumper):
             if build_meta["metadata"]["repository"]["type"] == "fs":
                 uncompressall(self.new_data_folder)
 
-    @asyncio.coroutine
-    def info(self, version='latest'):
+    async def info(self, version='latest'):
         """
         Display version information (release note, etc...) for given version
         {
@@ -545,8 +540,7 @@ class BiothingsDumper(HTTPDumper):
                         (version, res, res.text))
         return result
 
-    @asyncio.coroutine
-    def versions(self):
+    async def versions(self):
         """
         Display all available versions.
         Example:

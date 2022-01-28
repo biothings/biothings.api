@@ -54,8 +54,7 @@ def generate_endpoint_for_callable(name, command, method, force_bodyargs):
     #print({"method":method,"args":args,"defaultargs":defaultargs,"name":name,
     #       "mandatargs":mandatargs,"cmdargs":cmdargs})
     strcode = """
-@asyncio.coroutine
-def %(method)s(self%(mandatargs)s):
+async def %(method)s(self%(mandatargs)s):
     '''%(name)s => %(command)s'''
     cmdargs = %(cmdargs)s
     reqargs = {} # holds either body or query string args
@@ -150,8 +149,7 @@ def %(method)s(self%(mandatargs)s):
 
 def generate_endpoint_for_composite_command(name, command, method):
     strcode = """
-@asyncio.coroutine
-def %(method)s(self):
+async def %(method)s(self):
     # composite commands never take arguments
     cmdres = shell.eval('''%(name)s()''',return_cmdinfo=True)
     if type(cmdres) == CommandInformation:
@@ -168,8 +166,7 @@ def %(method)s(self):
 
 def generate_endpoint_for_display(name, command, method):
     strcode = """
-@asyncio.coroutine
-def %(method)s(self):
+async def %(method)s(self):
     self.write(command)
 """ % {
         "method": method

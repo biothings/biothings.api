@@ -48,16 +48,14 @@ DEFAULT_INDEX_MAPPINGS = {
 
 class _IndexPayload(UserDict):
 
-    @asyncio.coroutine
-    def finalize(self, client):
+    async def finalize(self, client):
         """ Generate the ES payload format of the corresponding entities
         originally in Hub representation. May require querying the ES client
         for certain metadata to determine the compatible data format. """
 
 class IndexMappings(_IndexPayload):
 
-    @asyncio.coroutine
-    def finalize(self, client):
+    async def finalize(self, client):
         version = int((yield from client.info())['version']['number'].split('.')[0])
         if version < 7:  # inprecise
             doc_type = self.pop("__hub_doc_type", "doc")
@@ -68,8 +66,7 @@ class IndexMappings(_IndexPayload):
 
 class IndexSettings(_IndexPayload):
 
-    @asyncio.coroutine
-    def finalize(self, client):
+    async def finalize(self, client):
         return {"index": dict(self)}
 
 

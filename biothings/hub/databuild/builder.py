@@ -595,9 +595,7 @@ class DataBuilder(object):
         strargs = "[sources=%s,target_name=%s]" % (sources, target_name)
 
         try:
-
-            @asyncio.coroutine
-            def do():
+            async def do():
                 res = None
                 if "merge" in steps or "post" in steps:
                     job = self.merge_sources(source_names=sources,
@@ -704,8 +702,7 @@ class DataBuilder(object):
                 "Found mapper named '%s' but no mapper associated" %
                 mapper_name)
 
-    @asyncio.coroutine
-    def merge_sources(self,
+    async def merge_sources(self,
                       source_names,
                       steps=["merge", "post"],
                       batch_size=100000,
@@ -747,8 +744,7 @@ class DataBuilder(object):
 
         got_error = False
 
-        @asyncio.coroutine
-        def merge(src_names):
+        async def merge(src_names):
             jobs = []
             for i, src_name in enumerate(src_names):
                 yield from asyncio.sleep(0.0)
@@ -864,8 +860,7 @@ class DataBuilder(object):
         """
         return None
 
-    @asyncio.coroutine
-    def merge_source(self,
+    async def merge_source(self,
                      src_name,
                      batch_size=100000,
                      ids=None,
@@ -1012,8 +1007,7 @@ class LinkDataBuilder(DataBuilder):
         self.target_backend.datasource_name = conf["sources"][0]
         self.target_backend.source_db = self.source_backend
 
-    @asyncio.coroutine
-    def merge_source(self, src_name, *args, **kwargs):
+    async def merge_source(self, src_name, *args, **kwargs):
         total = self.source_backend[src_name].count()
         return {"%s" % src_name: total}
 
@@ -1544,8 +1538,7 @@ class BuilderManager(BaseManager):
             if conf.get("autobuild", {}).get("schedule")
         }
 
-        @asyncio.coroutine
-        def _autobuild(conf_name):
+        async def _autobuild(conf_name):
 
             new = self.whatsnew(conf_name)
             logger.info(f"{conf_name}:{schedules[conf_name]}")

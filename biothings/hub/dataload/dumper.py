@@ -314,8 +314,7 @@ class BaseDumper(object):
             self.src_doc.update(extra)
         self.src_dump.save(self.src_doc)
 
-    @asyncio.coroutine
-    def dump(self,
+    async def dump(self,
              steps=None,
              force=False,
              job_manager=None,
@@ -478,8 +477,7 @@ class BaseDumper(object):
     def current_release(self):
         return self.src_doc.get("download", {}).get("release")
 
-    @asyncio.coroutine
-    def do_dump(self, job_manager=None):
+    async def do_dump(self, job_manager=None):
         self.logger.info("%d file(s) to download" % len(self.to_dump))
         # should downloads be throttled ?
         max_dump = self.__class__.MAX_PARALLEL_DUMP and asyncio.Semaphore(
@@ -974,8 +972,7 @@ class DummyDumper(BaseDumper):
         self.logger.info("Dummy dumper, will do nothing")
         pass
 
-    @asyncio.coroutine
-    def dump(self, force=False, job_manager=None, *args, **kwargs):
+    async def dump(self, force=False, job_manager=None, *args, **kwargs):
         self.logger.debug("Dummy dumper, nothing to download...")
         self.prepare_local_folders(
             os.path.join(self.new_data_folder, "dummy_file"))
@@ -1029,8 +1026,7 @@ class ManualDumper(BaseDumper):
         self.logger.info(
             "Manual dumper, assuming data will be downloaded manually")
 
-    @asyncio.coroutine
-    def dump(self,
+    async def dump(self,
              path,
              release=None,
              force=False,
@@ -1252,8 +1248,7 @@ class GitDumper(BaseDumper):
         # as it's a git repo
         return self.src_root_folder
 
-    @asyncio.coroutine
-    def dump(self, release="HEAD", force=False, job_manager=None, **kwargs):
+    async def dump(self, release="HEAD", force=False, job_manager=None, **kwargs):
         assert self.__class__.GIT_REPO_URL, "GIT_REPO_URL is not defined"
         #assert self.__class__.ARCHIVE == False, "Git dumper can't keep multiple versions (but can move to a specific commit hash)"
         got_error = None
@@ -1444,14 +1439,12 @@ class DumperManager(BaseSourceManager):
             logging.error("Error while dumping '%s': %s" % (src, e))
             raise
 
-    @asyncio.coroutine
-    def create_and_dump(self, klass, *args, **kwargs):
+    async def create_and_dump(self, klass, *args, **kwargs):
         inst = self.create_instance(klass)
         res = yield from inst.dump(*args, **kwargs)
         return res
 
-    @asyncio.coroutine
-    def create_and_call(self, klass, method_name, *args, **kwargs):
+    async def create_and_call(self, klass, method_name, *args, **kwargs):
         inst = self.create_instance(klass)
         res = yield from getattr(inst, method_name)(*args, **kwargs)
         return res

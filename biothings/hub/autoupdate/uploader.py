@@ -51,12 +51,10 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             self._syncer_func = self.__class__.SYNCER_FUNC
         return self._syncer_func
 
-    @asyncio.coroutine
-    def load(self, *args, **kwargs):
+    async def load(self, *args, **kwargs):
         return super().load(steps=["data"], *args, **kwargs)
 
-    @asyncio.coroutine
-    def update_data(self, batch_size, job_manager):
+    async def update_data(self, batch_size, job_manager):
         """
         Look in data_folder and either restore a snapshot to ES
         or apply diff to current ES index
@@ -135,8 +133,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         es = self._get_es_client(es_host, auth)
         es.snapshot.create_repository(repository=repo_name, body=repo_settings)
 
-    @asyncio.coroutine
-    def restore_snapshot(self, build_meta, job_manager, **kwargs):
+    async def restore_snapshot(self, build_meta, job_manager, **kwargs):
         self.logger.debug("Restoring snapshot...")
         idxr = self.target_backend.target_esidxer
         es_host = idxr.es_host
@@ -261,8 +258,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         # return current number of docs in index
         return self.target_backend.count()
 
-    @asyncio.coroutine
-    def apply_diff(self, build_meta, job_manager, **kwargs):
+    async def apply_diff(self, build_meta, job_manager, **kwargs):
         self.logger.info("Applying incremental update from diff folder: %s" %
                          self.data_folder)
         meta = json.load(open(os.path.join(self.data_folder, "metadata.json")))

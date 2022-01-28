@@ -84,8 +84,7 @@ class EventRecorder(logging.StreamHandler):
         self.eventcol = get_event()
 
     def emit(self, record):
-        @asyncio.coroutine
-        def aioemit(msg):
+        async def aioemit(msg):
             def recorded(f):
                 res = f.result()
             fut = loop.run_in_executor(

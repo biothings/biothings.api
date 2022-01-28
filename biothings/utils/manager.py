@@ -196,8 +196,7 @@ class BaseManager(object):
         if not self.poll_schedule:
             raise ManagerError("poll_schedule is not defined")
 
-        @asyncio.coroutine
-        def check_pending(state):
+        async def check_pending(state):
             sources = [src for src in col.find({'pending': state}) if isinstance(src['_id'], str)]
             if sources:
                 logger.info(
@@ -510,8 +509,7 @@ class JobManager(object):
         self.clean_staled()
 
     def stop(self, force=False, recycling=False, wait=1):
-        @asyncio.coroutine
-        def do():
+        async def do():
             try:
                 # shutting down the process queue can take a while
                 # if some processes are still running (it'll wait until they're done)
@@ -537,8 +535,7 @@ class JobManager(object):
                 logger.error("Error while recycling the process queue: %s", e)
                 raise
 
-        @asyncio.coroutine
-        def kill():
+        async def kill():
             nonlocal wait
             if wait < 1:
                 wait = 1  # wait a little bit so job manager has time to stop if nothing is running
@@ -598,8 +595,7 @@ class JobManager(object):
         """
         return self.stop(recycling=True)
 
-    @asyncio.coroutine
-    def check_constraints(self, pinfo=None):
+    async def check_constraints(self, pinfo=None):
         mem_req = pinfo and pinfo.get("__reqs__", {}).get("mem") or 0
         t0 = time.time()
         waited = False
@@ -697,11 +693,9 @@ class JobManager(object):
             if self.auto_recycle_setting:
                 self.auto_recycle = self.auto_recycle_setting
 
-    @asyncio.coroutine
-    def defer_to_process(self, pinfo=None, func=None, *args, **kwargs):
+    async def defer_to_process(self, pinfo=None, func=None, *args, **kwargs):
 
-        @asyncio.coroutine
-        def run(future, job_id):
+        async def run(future, job_id):
             nonlocal pinfo
             yield from self.check_constraints(pinfo)
             self.ok_to_run.release()
@@ -772,13 +766,11 @@ class JobManager(object):
         fut.add_done_callback(partial(runned, job_id=job_id))
         return f
 
-    @asyncio.coroutine
-    def defer_to_thread(self, pinfo=None, func=None, *args):
+    async def defer_to_thread(self, pinfo=None, func=None, *args):
 
         skip_check = pinfo.get("__skip_check__", False)
 
-        @asyncio.coroutine
-        def run(future, job_id):
+        async def run(future, job_id):
             if not skip_check:
                 yield from self.check_constraints(pinfo)
                 self.ok_to_run.release()
@@ -843,8 +835,7 @@ class JobManager(object):
         else:
             func_name = func.__name__
         strcode = """
-@asyncio.coroutine
-def %s():
+async def %s():
     func(*args, **kwargs)
 """ % func_name
         code = compile(strcode, "<string>", "exec")
