@@ -239,7 +239,7 @@ class Step(abc.ABC):
     async def execute(self, *args, **kwargs):
         coro = getattr(self.indexer, self.method)
         coro = coro(*args, **kwargs)
-        return (yield from coro)
+        return (await coro)
 
     def __str__(self):
         return (
@@ -366,7 +366,7 @@ class Indexer():
             self.logger.info(step)
             step.state.started()
             try:
-                dx = yield from step.execute(job_manager, **kwargs)
+                dx = await step.execute(job_manager, **kwargs)
                 dx = IndexerStepResult(dx)
             except Exception as exc:
                 _exc = str(exc)[:500]
@@ -393,7 +393,7 @@ class Indexer():
                 # index MUST NOT exist
                 # ----------------------
 
-                if (yield from client.indices.exists(self.es_index_name)):
+                if (await client.indices.exists(self.es_index_name)):
                     msg = ("Index '%s' already exists, (use mode='purge' to "
                            "auto-delete it or mode='resume' to add more documents)")
                     raise IndexerException(msg % self.es_index_name)
@@ -403,7 +403,7 @@ class Indexer():
                 # index MUST exist
                 # ------------------
 
-                if not (yield from client.indices.exists(self.es_index_name)):
+                if not (await client.indices.exists(self.es_index_name)):
                     raise IndexerException("'%s' does not exist." % self.es_index_name)
                 self.logger.info(("Exists", self.es_index_name))
                 return  # skip index creation
@@ -413,15 +413,15 @@ class Indexer():
                 # index MAY exist
                 # -----------------
 
-                response = yield from client.indices.delete(self.es_index_name, ignore_unavailable=True)
+                response = await client.indices.delete(self.es_index_name, ignore_unavailable=True)
                 self.logger.info(("Deleted", self.es_index_name, response))
 
             else:
                 raise ValueError("Invalid mode: %s" % mode)
 
-            response = yield from client.indices.create(self.es_index_name, body={
-                "settings": (yield from self.es_index_settings.finalize(client)),
-                "mappings": (yield from self.es_index_mappings.finalize(client))
+            response = await client.indices.create(self.es_index_name, body={
+                "settings": (await self.es_index_settings.finalize(client)),
+                "mappings": (await self.es_index_mappings.finalize(client))
             })
             self.logger.info(("Created", self.es_index_name, response))
             return {
@@ -431,7 +431,7 @@ class Indexer():
             }
 
         finally:
-            yield from client.close()
+            await client.close()
 
     async def do_index(self, job_manager, batch_size, ids, mode, **kwargs):
 
@@ -475,7 +475,7 @@ class Indexer():
                 error = exc
 
         for batch_num, ids in zip(schedule, id_provider):
-            yield from asyncio.sleep(0.0)
+            await asyncio.sleep(0.0)
 
             # when one batch failed, and job scheduling has not completed,
             # stop scheduling and cancel all on-going jobs, to fail quickly.
@@ -491,7 +491,7 @@ class Indexer():
             pinfo = self.pinfo.get_pinfo(
                 schedule.suffix(self.mongo_collection_name))
 
-            job = yield from job_manager.defer_to_process(
+            job = await job_manager.defer_to_process(
                 pinfo, dispatch,
                 self.mongo_client_args,
                 self.mongo_database_name,
@@ -505,7 +505,7 @@ class Indexer():
             jobs.append(job)
 
         self.logger.info(schedule)
-        yield from asyncio.gather(*jobs)
+        await asyncio.gather(*jobs)
 
         schedule.completed()
         self.logger.notify(schedule)
@@ -552,12 +552,12 @@ class ColdHotIndexer():
         cold_task = self.cold.index(
             job_manager, steps=set(Step.order(steps)) & {"pre", "index"},
             batch_size=batch_size, ids=ids, mode=mode)
-        result.append((yield from cold_task))
+        result.append((await cold_task))
 
         hot_task = self.hot.index(
             job_manager, steps=set(Step.order(steps)) & {"index", "post"},
             batch_size=batch_size, ids=ids, mode="merge")
-        result.append((yield from hot_task))
+        result.append((await hot_task))
 
         return result
 
@@ -803,13 +803,13 @@ class IndexManager(BaseManager):
             client = AsyncElasticsearch(**indexer.es_client_args)
             index_name = ("hub_tmp_%s" % get_random_string()).lower()
             try:
-                return (yield from client.indices.create(index_name, body={
-                    "settings": (yield from indexer.es_index_settings.finalize(client)),
-                    "mappings": (yield from indexer.es_index_mappings.finalize(client))
+                return (await client.indices.create(index_name, body={
+                    "settings": (await indexer.es_index_settings.finalize(client)),
+                    "mappings": (await indexer.es_index_mappings.finalize(client))
                 }))
             finally:
-                yield from client.indices.delete(index_name, ignore_unavailable=True)
-                yield from client.close()
+                await client.indices.delete(index_name, ignore_unavailable=True)
+                await client.close()
 
         job = asyncio.ensure_future(_validate_mapping())
         job.add_done_callback(self.logger.info)

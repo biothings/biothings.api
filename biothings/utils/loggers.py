@@ -92,7 +92,7 @@ class EventRecorder(logging.StreamHandler):
                 partial(self.eventcol.save, msg)
             )
             fut.add_done_callback(recorded)
-            yield from fut
+            await fut
             return fut
         if record.__dict__.get("notify") or record.__dict__.get("event"):
             try:

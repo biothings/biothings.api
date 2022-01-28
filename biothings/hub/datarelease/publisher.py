@@ -482,11 +482,11 @@ class SnapshotPublisher(BasePublisher):
                                      publish={"full": {
                                          snapshot: {}
                                      }})
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     pinfo,
                     partial(self.pre_publish, snapshot, self.envconf, bdoc))
                 job.add_done_callback(partial(done, step="pre"))
-                yield from job
+                await job
                 if got_error:
                     raise got_error
                 jobs.append(job)
@@ -740,11 +740,11 @@ class SnapshotPublisher(BasePublisher):
                                      publish={"fulle": {
                                          snapshot: {}
                                      }})
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     pinfo,
                     partial(self.post_publish, snapshot, self.envconf, bdoc))
                 job.add_done_callback(partial(done, step="post"))
-                yield from job
+                await job
                 jobs.append(job)
 
             def published(f):
@@ -760,10 +760,10 @@ class SnapshotPublisher(BasePublisher):
                         extra={"notify": True})
 
             if jobs:
-                yield from asyncio.wait(jobs)
+                await asyncio.wait(jobs)
                 task = asyncio.gather(*jobs)
                 task.add_done_callback(published)
-                yield from task
+                await task
 
         def done(f):
             try:
@@ -956,12 +956,12 @@ class DiffPublisher(BasePublisher):
                     publish={"incremental": {
                         previous_build: {}
                     }})
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     pinfo,
                     partial(self.pre_publish, previous_build, self.envconf,
                             bdoc))
                 job.add_done_callback(partial(done, step="pre"))
-                yield from job
+                await job
                 if got_error:
                     raise got_error
                 jobs.append(job)
@@ -982,10 +982,10 @@ class DiffPublisher(BasePublisher):
                     publish={"incremental": {
                         previous_build: {}
                     }})
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     pinfo, partial(self.reset_synced, diff_folder))
                 job.add_done_callback(partial(done, step="reset"))
-                yield from job
+                await job
                 if got_error:
                     raise got_error
                 jobs.append(job)
@@ -1005,7 +1005,7 @@ class DiffPublisher(BasePublisher):
                     publish={"incremental": {
                         previous_build: {}
                     }})
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     pinfo,
                     partial(aws.send_s3_folder,
                             diff_folder,
@@ -1017,7 +1017,7 @@ class DiffPublisher(BasePublisher):
                             s3_bucket=s3_diff_bucket,
                             overwrite=True))
                 job.add_done_callback(partial(done, step="upload"))
-                yield from job
+                await job
                 jobs.append(job)
 
             if "meta" in steps:
@@ -1190,12 +1190,12 @@ class DiffPublisher(BasePublisher):
                     publish={"incremental": {
                         previous_build: {}
                     }})
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     pinfo,
                     partial(self.post_publish, previous_build, self.envconf,
                             bdoc))
                 job.add_done_callback(partial(done, step="post"))
-                yield from job
+                await job
                 if got_error:
                     raise got_error
                 jobs.append(job)
@@ -1212,10 +1212,10 @@ class DiffPublisher(BasePublisher):
                         % (diff_folder, e),
                         extra={"notify": True})
 
-            yield from asyncio.wait(jobs)
+            await asyncio.wait(jobs)
             task = asyncio.gather(*jobs)
             task.add_done_callback(uploaded)
-            yield from task
+            await task
 
         def done(f):
             try:
@@ -1528,7 +1528,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                     "Error finding the previous build. "
                     "Skip release note automation. ")
                 return
-            yield from self.create_release_note(old=old, new=build_doc["_id"])
+            await self.create_release_note(old=old, new=build_doc["_id"])
 
             build_conf = AutoBuildConfig(build_doc['build_config'])
             if build_conf.should_publish_new_diff() or build_conf.should_publish_new_snapshot():
@@ -1590,7 +1590,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                                  init=True,
                                  job={"step": "release_note"},
                                  release_note={old: {}})
-            job = yield from self.job_manager.defer_to_thread(pinfo, do)
+            job = await self.job_manager.defer_to_thread(pinfo, do)
 
             def reported(f):
                 nonlocal got_error
@@ -1616,7 +1616,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                     got_error = e
 
             job.add_done_callback(reported)
-            yield from job
+            await job
             if got_error:
                 self.logger.exception("Failed to create release note: %s" %
                                       got_error,

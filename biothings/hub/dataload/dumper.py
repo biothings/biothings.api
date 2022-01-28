@@ -363,7 +363,7 @@ class BaseDumper(object):
                     self.register_status("downloading", transient=True)
                     # unsync to make it pickable
                     state = self.unprepare()
-                    yield from self.do_dump(job_manager=job_manager)
+                    await self.do_dump(job_manager=job_manager)
                     # then restore state
                     self.prepare(state)
                 else:
@@ -378,7 +378,7 @@ class BaseDumper(object):
                 # for some reason (like maintaining object's state between pickling).
                 # we can't use process there. Need to use thread to maintain that state without
                 # building an unmaintainable monster
-                job = yield from job_manager.defer_to_thread(
+                job = await job_manager.defer_to_thread(
                     pinfo, partial(self.post_dump, job_manager=job_manager))
 
                 def postdumped(f):
@@ -387,7 +387,7 @@ class BaseDumper(object):
                         got_error = f.exception()
 
                 job.add_done_callback(postdumped)
-                yield from job
+                await job
                 if got_error:
                     raise got_error
                 # set it to success at the very end
@@ -508,10 +508,10 @@ class BaseDumper(object):
             pinfo["step"] = "dump"
             pinfo["description"] = remote
             if max_dump:
-                yield from max_dump.acquire()
+                await max_dump.acquire()
             if courtesy_wait:
-                yield from asyncio.sleep(courtesy_wait)
-            job = yield from job_manager.defer_to_process(
+                await asyncio.sleep(courtesy_wait)
+            job = await job_manager.defer_to_process(
                 pinfo, partial(self.download, remote, local))
             job.add_done_callback(done)
             jobs.append(job)
@@ -521,7 +521,7 @@ class BaseDumper(object):
             #    have more errors than the queue size, we get stuck
             if got_error:
                 raise got_error
-        yield from asyncio.gather(*jobs)
+        await asyncio.gather(*jobs)
         if got_error:
             raise got_error
         self.logger.info("%s successfully downloaded" % self.SRC_NAME)
@@ -979,9 +979,9 @@ class DummyDumper(BaseDumper):
         # this is the only interesting thing happening here
         pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
-        job = yield from job_manager.defer_to_thread(
+        job = await job_manager.defer_to_thread(
             pinfo, partial(self.post_dump, job_manager=job_manager))
-        yield from asyncio.gather(job)  # consume future
+        await asyncio.gather(job)  # consume future
         self.logger.info("Registering success")
         self.register_status("success")
         if self.__class__.AUTO_UPLOAD:
@@ -1056,9 +1056,9 @@ class ManualDumper(BaseDumper):
         pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
         strargs = "[path=%s,release=%s]" % (self.new_data_folder, self.release)
-        job = yield from job_manager.defer_to_thread(
+        job = await job_manager.defer_to_thread(
             pinfo, partial(self.post_dump, job_manager=job_manager))
-        yield from asyncio.gather(job)  # consume future
+        await asyncio.gather(job)  # consume future
         # ok, good to go
         self.register_status("success")
         if self.__class__.AUTO_UPLOAD:
@@ -1269,7 +1269,7 @@ class GitDumper(BaseDumper):
             self._pull(self.src_root_folder, release)
 
         pinfo = self.get_pinfo()
-        job = yield from job_manager.defer_to_thread(pinfo, partial(do))
+        job = await job_manager.defer_to_thread(pinfo, partial(do))
 
         def done(f):
             nonlocal got_error
@@ -1283,7 +1283,7 @@ class GitDumper(BaseDumper):
                 raise
 
         job.add_done_callback(done)
-        yield from job
+        await job
 
     def prepare_client(self):
         """Check if 'git' executable exists"""
@@ -1441,12 +1441,12 @@ class DumperManager(BaseSourceManager):
 
     async def create_and_dump(self, klass, *args, **kwargs):
         inst = self.create_instance(klass)
-        res = yield from inst.dump(*args, **kwargs)
+        res = await inst.dump(*args, **kwargs)
         return res
 
     async def create_and_call(self, klass, method_name, *args, **kwargs):
         inst = self.create_instance(klass)
-        res = yield from getattr(inst, method_name)(*args, **kwargs)
+        res = await getattr(inst, method_name)(*args, **kwargs)
         return res
 
     def schedule_all(self, raise_on_error=False, **kwargs):

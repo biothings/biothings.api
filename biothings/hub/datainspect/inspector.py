@@ -139,7 +139,7 @@ class InspectorManager(BaseManager):
         got_error = None
         try:
             async def do():
-                yield from asyncio.sleep(0.0)
+                await asyncio.sleep(0.0)
                 nonlocal mode
 
                 pinfo = {"category": INSPECTOR_CATEGORY,
@@ -213,13 +213,13 @@ class InspectorManager(BaseManager):
                     pre_mapping = "mapping" in mode  # we want to generate intermediate mapping so we can merge
                     # all maps later and then generate the ES mapping from there
                     self.logger.info("Creating inspect worker for batch #%s" % cnt)
-                    job = yield from self.job_manager.defer_to_process(pinfo,
+                    job = await self.job_manager.defer_to_process(pinfo,
                                                                        partial(inspect_data, backend_provider,
                                                                                ids, mode=mode, pre_mapping=pre_mapping, **kwargs))
                     job.add_done_callback(partial(batch_inspected, cnt, ids))
                     jobs.append(job)
 
-                yield from asyncio.gather(*jobs)
+                await asyncio.gather(*jobs)
 
                 # compute metadata (they were skipped before)
                 for m in mode:

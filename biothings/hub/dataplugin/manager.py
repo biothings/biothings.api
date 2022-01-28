@@ -22,7 +22,7 @@ class ManualDataPlugin(dumper.ManualDumper):
         self.src_doc = self.src_dump.find_one({'_id': self.src_name}) or {}
 
     async def dump(self, *args, **kwargs):
-        yield from super(ManualDataPlugin, self).dump(
+        await super(ManualDataPlugin, self).dump(
             path="",  # it's the version is original method implemention
             # but no version here available
             release="", *args, **kwargs)

@@ -728,7 +728,7 @@ async def aiogunzipall(folder, pattern, job_manager, pinfo):
     for f in glob.glob(os.path.join(folder, pattern)):
         pinfo["description"] = os.path.basename(f)
         suffix = pattern.replace("*", "")
-        job = yield from job_manager.defer_to_process(pinfo, partial(gunzip, f, suffix=suffix))
+        job = await job_manager.defer_to_process(pinfo, partial(gunzip, f, suffix=suffix))
 
         def gunzipped(fut, infile):
             try:
@@ -743,7 +743,7 @@ async def aiogunzipall(folder, pattern, job_manager, pinfo):
         if got_error:
             raise got_error
     if jobs:
-        yield from asyncio.gather(*jobs)
+        await asyncio.gather(*jobs)
         if got_error:
             raise got_error
 

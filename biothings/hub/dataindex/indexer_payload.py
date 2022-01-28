@@ -56,7 +56,7 @@ class _IndexPayload(UserDict):
 class IndexMappings(_IndexPayload):
 
     async def finalize(self, client):
-        version = int((yield from client.info())['version']['number'].split('.')[0])
+        version = int((await client.info())['version']['number'].split('.')[0])
         if version < 7:  # inprecise
             doc_type = self.pop("__hub_doc_type", "doc")
             return {doc_type: dict(self)}

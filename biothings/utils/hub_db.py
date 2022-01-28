@@ -257,7 +257,7 @@ class ChangeWatcher(object):
         cls.do_publish = True
         async def do():
             while cls.do_publish:
-                evt = yield from cls.event_queue.get()
+                evt = await cls.event_queue.get()
                 for listener in cls.listeners:
                     try:
                         listener.read(evt)

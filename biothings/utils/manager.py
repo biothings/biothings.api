@@ -522,9 +522,9 @@ class JobManager(object):
                          "step": "",
                          "description": "Stopping process queue"}
                 # await on coroutine
-                j = yield from self.defer_to_thread(pinfo, self.process_queue.shutdown)
+                j = await self.defer_to_thread(pinfo, self.process_queue.shutdown)
                 # await on the future to be done
-                yield from j
+                await j
                 if recycling:
                     # now replace
                     logger.info("Replacing process queue with new one")
@@ -540,7 +540,7 @@ class JobManager(object):
             if wait < 1:
                 wait = 1  # wait a little bit so job manager has time to stop if nothing is running
             logger.warning("Wait %s seconds before killing queue processes", wait)
-            yield from asyncio.sleep(wait)
+            await asyncio.sleep(wait)
             logger.warning("Can't wait anymore, killing running processed in the queue !")
             for proc in self.pchildren:
                 logger.warning("Killing %s", proc)
@@ -634,7 +634,7 @@ class JobManager(object):
                     pinfo.get("category"), pinfo.get("source"), pinfo.get("step"),
                     sizeof_fmt(hub_mem), sizeof_fmt(self.max_memory_usage), timesofar(t0)
                 )
-                yield from asyncio.sleep(sleep_time)
+                await asyncio.sleep(sleep_time)
                 waited = True
                 hub_mem = self.hub_memory
         if mem_req:
@@ -650,7 +650,7 @@ class JobManager(object):
                     pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), sizeof_fmt(mem_req),
                     sizeof_fmt(hub_mem), sizeof_fmt(max_mem), timesofar(t0)
                 )
-                yield from asyncio.sleep(sleep_time)
+                await asyncio.sleep(sleep_time)
                 waited = True
                 # refresh limites and usage (manager can be modified from hub
                 # thus memory usage can be modified on-the-fly
@@ -663,7 +663,7 @@ class JobManager(object):
                     "Can't run job {cat:%s,source:%s,step:%s} right now, too much pending jobs in the queue (max: %s), will retry until possible",
                     pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), config.MAX_QUEUED_JOBS
                 )
-            yield from asyncio.sleep(sleep_time)
+            await asyncio.sleep(sleep_time)
             pendings = len(self.process_queue._pending_work_items.keys()) - config.HUB_MAX_WORKERS
             waited = True
         # finally check custom predicates
@@ -680,7 +680,7 @@ class JobManager(object):
             if failed_predicate:
                 logger.info("Can't run job {cat:%s,source:%s,step:%s} right now, predicate %s failed, will retry until possible",
                             pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), failed_predicate)
-                yield from asyncio.sleep(sleep_time)
+                await asyncio.sleep(sleep_time)
                 waited = True
             else:
                 break  # while loop
@@ -697,7 +697,7 @@ class JobManager(object):
 
         async def run(future, job_id):
             nonlocal pinfo
-            yield from self.check_constraints(pinfo)
+            await self.check_constraints(pinfo)
             self.ok_to_run.release()
             # pinfo can contain predicates hardly pickleable during run_in_executor
             # but we also need not to touch the original one
@@ -743,15 +743,15 @@ class JobManager(object):
                     self.jobs.pop(job_id)
                     self._process_job_ids.discard(job_id)
             res.add_done_callback(ran)
-            res = yield from res
+            res = await res
             # process could generate other parallelized jobs and return a Future/Task
             # If so, we want to make sure we get the results from that task
             if type(res) == asyncio.Task:
-                res = yield from res
+                res = await res
             future.set_result(res)
 
         # lock is released in run coroutine
-        yield from self.ok_to_run.acquire()
+        await self.ok_to_run.acquire()
         f = asyncio.Future()
 
         def runned(innerf, job_id):
@@ -772,7 +772,7 @@ class JobManager(object):
 
         async def run(future, job_id):
             if not skip_check:
-                yield from self.check_constraints(pinfo)
+                await self.check_constraints(pinfo)
                 self.ok_to_run.release()
             self.jobs[job_id] = pinfo
             res = self.loop.run_in_executor(
@@ -788,14 +788,14 @@ class JobManager(object):
                     # to keep it sync with actual running jobs
                     self.jobs.pop(job_id)
             res.add_done_callback(ran)
-            res = yield from res
+            res = await res
             # thread could generate other parallelized jobs and return a Future/Task
             # If so, we want to make sure we get the results from that task
             if type(res) == asyncio.Task:
-                res = yield from res
+                res = await res
             future.set_result(res)
         if not skip_check:
-            yield from self.ok_to_run.acquire()
+            await self.ok_to_run.acquire()
         f = asyncio.Future()
 
         def runned(innerf, job_id):

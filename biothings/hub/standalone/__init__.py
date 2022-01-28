@@ -90,14 +90,14 @@ class AutoHubFeature(object):
                     logging.info("Downloading data for version '%s'", step_version)
                     jobs = self.managers["dump_manager"].dump_src(src_name, version=step_version, force=force)
                     download = asyncio.gather(*jobs)
-                    res = yield from download
+                    res = await download
                     assert len(res) == 1
                     if res[0] is None:
                         # download ready, now install
                         logging.info("Updating backend to version '%s'", step_version)
                         jobs = self.managers["upload_manager"].upload_src(src_name)
                         upload = asyncio.gather(*jobs)
-                        res = yield from upload
+                        res = await upload
 
             except Exception:
                 self.logger.exception("data install failed")
