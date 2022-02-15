@@ -1,4 +1,5 @@
 import abc
+import json
 from typing import Iterable, Optional, Tuple, Type
 
 from biothings.web.handlers import BaseAPIHandler
@@ -141,3 +142,17 @@ class BioThingsAuthnMixin(BaseAPIHandler):
             if header is not None:
                 return header
         return None
+
+
+class DefaultCookieAuthnProvider(BioThingsAuthenticationProviderInterface):
+    WWW_AUTHENTICATE_HEADER = 'None'
+
+    def __init__(self, handler, cookie_name='user'):
+        super(DefaultCookieAuthnProvider, self).__init__(handler)
+        self.cookie_name = cookie_name
+
+    def get_current_user(self):
+        user = self.handler.get_secure_cookie(self.cookie_name)
+        if not user:
+            return None
+        return json.loads(user.decode())
