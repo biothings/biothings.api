@@ -882,7 +882,7 @@ class HubServer(object):
                     if val:
                         val.pop("upgrade", None)
 
-        asyncio.ensure_future(check_code_upgrade())
+        asyncio.ensure_future(check_code_upgrade.func())
 
     def get_websocket_urls(self):
 

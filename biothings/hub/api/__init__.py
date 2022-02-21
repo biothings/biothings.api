@@ -129,7 +129,7 @@ async def %(method)s(self%(mandatargs)s):
         cmdres = CommandInformation([(k,v) for k,v in cmdres.items() if k != 'jobs'])
     from inspect import isawaitable
     if isawaitable(cmdres):
-        self.write((yield from cmdres))
+        self.write((yield cmdres))
     else:
         self.write(cmdres)
 """ % {

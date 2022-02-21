@@ -623,6 +623,7 @@ class SnapshotPublisher(BasePublisher):
                                             "conf": self.envconf,
                                             "release-note": {
                                                 "err": str(e),
+                                                # TODO: set value to s3basedir in case it not defined before
                                                 "base_dir": s3basedir,
                                                 "bucket": s3_release_bucket
                                             },
