@@ -727,8 +727,9 @@ async def aiogunzipall(folder, pattern, job_manager, pinfo):
     logging.info("Unzipping files in '%s'", folder)
     for f in glob.glob(os.path.join(folder, pattern)):
         pinfo["description"] = os.path.basename(f)
-        suffix = pattern.replace("*", "")
-        job = await job_manager.defer_to_process(pinfo, partial(gunzip, f, suffix=suffix))
+        job = await job_manager.defer_to_process(
+            pinfo, partial(gunzip, f, pattern=pattern)
+        )
 
         def gunzipped(fut, infile):
             try:
