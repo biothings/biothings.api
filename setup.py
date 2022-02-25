@@ -58,7 +58,7 @@ web_extra_requires = [
 # extra requirements to run biothings.hub
 hub_requires = [
     'beautifulsoup4',   # used in dumper.GoogleDriveDumper
-    'aiocron==1.3',     # setup scheduled jobs
+    'aiocron==1.8',     # setup scheduled jobs
     'aiohttp==3.6.2',   # for compatibility with elasticsearch-async==6.x
     'asyncssh==2.5.0',  # needs libffi-dev installed (apt-get)
     'pymongo>=3.12.0,<4.0',  # support MongoDB 5.0 since v3.12.0
