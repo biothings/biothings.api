@@ -83,7 +83,8 @@ hub_requires = [
 # extra requirements for building docs
 docs_requires = [
     'sphinx>=2.4.3',
-    'sphinx_rtd_theme>=0.4.3'
+    'sphinx_rtd_theme>=1.0.0',
+    'sphinx_reredirects>=0.0.1'
 ]
 
 setup(

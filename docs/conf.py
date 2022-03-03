@@ -31,6 +31,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',   # support numpy and google style docstring
+    'sphinx_reredirects'     # handle old page redirection see "redirects" setting below
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -73,6 +74,10 @@ if not on_rtd:
 # Both the class’ and the __init__ method’s docstring are concatenated and inserted.
 # Ref: http://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autoclass_content
 autoclass_content = 'both'
+
+redirects = {
+    "doc/studio": "../tutorial/studio.html"
+}
 
 # Reference Code
 # ---------------------

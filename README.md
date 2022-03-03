@@ -81,7 +81,7 @@ SDK repository](https://github.com/biothings/biothings.api) and run:
 
 ## Get started to build a BioThings API
 
-We recommend to follow [this tutorial](https://docs.biothings.io/en/latest/doc/studio.html) to develop your first BioThings API in our pre-configured **BioThings Studio** development environment.
+We recommend to follow [this tutorial](https://docs.biothings.io/en/latest/tutorial/studio.html) to develop your first BioThings API in our pre-configured **BioThings Studio** development environment.
 
 ## Documentation
 
