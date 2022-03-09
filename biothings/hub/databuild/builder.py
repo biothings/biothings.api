@@ -1649,7 +1649,9 @@ class BuilderManager(BaseManager):
         builds = [b for b in get_src_build().find(q, fields)]
         res = [
             b for b in sorted(
-                builds, key=lambda e: str(e["started_at"]), reverse=True)
+                builds,
+                key=lambda e: str(e.get("started_at") or ""),
+                reverse=True)
         ]
         # set a global status (ie. latest job's status)
         # + get total #docs
