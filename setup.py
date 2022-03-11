@@ -46,7 +46,6 @@ install_requires = [
     'singledispatchmethod; python_version < "3.8.0"',
     'dataclasses; python_version < "3.7.0"',
     'PyYAML>=5.1',
-    'pytest'
 ]
 
 # extra requirements for biothings.web
@@ -78,6 +77,12 @@ hub_requires = [
     'requests-aws4auth',    # aws s3 auth requests for autohub
     'networkx>=2.1,<2.6',            # datatransform
     'biothings_client>=0.2.6'   # datatransform (api client)
+]
+
+# extra requirements to develop biothings
+dev_requires = [
+    'pytest',
+    'pytest-mock',
 ]
 
 # extra requirements for building docs
@@ -124,6 +129,6 @@ setup(
     extras_require={
         'web_extra': web_extra_requires,
         'hub': hub_requires,
-        'dev': web_extra_requires + hub_requires + docs_requires
+        'dev': web_extra_requires + hub_requires + dev_requires + docs_requires
     },
 )
