@@ -127,14 +127,15 @@ class BiothingsDumper(HTTPDumper):
                 "count": cnt
             }
 
-        return do()
+        result = await do()
+        return result
 
     async def reset_target_backend(self):
         async def do():
             if self.target_backend.target_esidxer.exists_index():
                 self.target_backend.target_esidxer.delete_index()
 
-        return do()
+        await do()
 
     def download(self, remoteurl, localfile, headers={}):
         self.prepare_local_folders(localfile)
