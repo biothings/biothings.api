@@ -32,3 +32,6 @@ config.py
 !/tests/web/handlers/config.py
 !/tests/hub/hubdb/config.py
 .hubdb
+.hubdb.*
+
+.env
