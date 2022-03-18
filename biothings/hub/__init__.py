@@ -104,7 +104,7 @@ if os.environ.get("HUB_VERBOSE", "0") != "1":
 
 def get_loop(max_workers=None):
     loop = asyncio.get_event_loop()
-    executor = concurrent.futures.ProcessPoolExecutor(max_workers=max_workers)
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
     loop.set_default_executor(executor)
     return loop
 

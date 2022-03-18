@@ -448,7 +448,7 @@ class JobManager(object):
     DATALINE = HEADERLINE.replace("^", "<")
 
     def __init__(self, loop, process_queue=None, thread_queue=None, max_memory_usage=None,
-                 num_workers=None, num_threads=None, default_executor="thread", auto_recycle=True):
+                 num_workers=None, num_threads=None, auto_recycle=True):
         if not os.path.exists(config.RUN_DIR):
             logger.info("Creating RUN_DIR directory '%s'", config.RUN_DIR)
             os.makedirs(config.RUN_DIR)
@@ -466,15 +466,12 @@ class JobManager(object):
         # TODO: limit the number of threads (as argument) ?
         self.thread_queue = thread_queue or concurrent.futures.ThreadPoolExecutor(max_workers=self.num_threads)
 
-        # FIXME: In Py38 using an executor that is not a ThreadPoolExecutor is
+        #  In Py38 using an executor that is not a ThreadPoolExecutor is
         #  deprecated. And it seems in Py39 , it must be a ThreadPoolExecutor,
         #  using a ProcessPoolExecutor will trigger an error.
         #  However, loop.run_in_executor still accepts ProcessPoolExecutor
         #  see https://bugs.python.org/issue34075
-        if default_executor == "thread":
-            self.loop.set_default_executor(self.thread_queue)
-        else:
-            self.loop.set_default_executor(self.process_queue)
+        self.loop.set_default_executor(self.thread_queue)
         # this lock is acquired when defer_to_process/thread is invoked
         # and released when the inner coroutine is run
         #  purpose being: "control job submission", as it only creates a new
