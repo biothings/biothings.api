@@ -188,8 +188,7 @@ class SnapshotEnv():
         return doc  # TODO UNIQUENESS
 
     def snapshot(self, index, snapshot=None):
-        @asyncio.coroutine
-        def _snapshot(snapshot):
+        async def _snapshot(snapshot):
             x = CumulativeResult()
             build_doc = self._doc(index)
             cfg = self.repcfg.format(build_doc)
@@ -199,14 +198,14 @@ class SnapshotEnv():
                 logging.info(state)
                 state.started()
 
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     self.pinfo.get_pinfo(step, snapshot),
                     partial(
                         getattr(self, state.func),
                         cfg, index, snapshot
                     ))
                 try:
-                    dx = yield from job
+                    dx = await job
                     dx = StepResult(dx)
 
                 except Exception as exc:
@@ -400,8 +399,7 @@ class SnapshotManager(BaseManager):
         }
         Attempt to make a snapshot for this build on the specified es env "local".
         """
-        @asyncio.coroutine
-        def _():
+        async def _():
             autoconf = AutoBuildConfig(build_doc['build_config'])
             env = autoconf.auto_build.get('env')
             assert env, "Unknown autobuild env."
@@ -416,7 +414,7 @@ class SnapshotManager(BaseManager):
                 latest_index = list(build_doc['index'].keys())[-1]
 
             except Exception:  # no existing indices, need to create one
-                yield from self.index_manager.index(indexer_env, build_doc['_id'])
+                await self.index_manager.index(indexer_env, build_doc['_id'])
                 latest_index = build_doc['_id']  # index_name is build name
 
             return self.snapshot(snapshot_env, latest_index)

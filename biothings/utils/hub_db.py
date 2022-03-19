@@ -255,10 +255,9 @@ class ChangeWatcher(object):
     @classmethod
     def publish(cls):
         cls.do_publish = True
-        @asyncio.coroutine
-        def do():
+        async def do():
             while cls.do_publish:
-                evt = yield from cls.event_queue.get()
+                evt = await cls.event_queue.get()
                 for listener in cls.listeners:
                     try:
                         listener.read(evt)

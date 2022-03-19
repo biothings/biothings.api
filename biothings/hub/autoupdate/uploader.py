@@ -51,12 +51,10 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             self._syncer_func = self.__class__.SYNCER_FUNC
         return self._syncer_func
 
-    @asyncio.coroutine
-    def load(self, *args, **kwargs):
+    async def load(self, *args, **kwargs):
         return super().load(steps=["data"], *args, **kwargs)
 
-    @asyncio.coroutine
-    def update_data(self, batch_size, job_manager):
+    async def update_data(self, batch_size, job_manager):
         """
         Look in data_folder and either restore a snapshot to ES
         or apply diff to current ES index
@@ -69,10 +67,10 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         build_meta = json.load(
             open(os.path.join(self.data_folder, "%s.json" % release)))
         if build_meta["type"] == "full":
-            res = yield from self.restore_snapshot(build_meta,
+            res = await self.restore_snapshot(build_meta,
                                                    job_manager=job_manager)
         elif build_meta["type"] == "incremental":
-            res = yield from self.apply_diff(build_meta,
+            res = await self.apply_diff(build_meta,
                                              job_manager=job_manager)
         return res
 
@@ -135,8 +133,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         es = self._get_es_client(es_host, auth)
         es.snapshot.create_repository(repository=repo_name, body=repo_settings)
 
-    @asyncio.coroutine
-    def restore_snapshot(self, build_meta, job_manager, **kwargs):
+    async def restore_snapshot(self, build_meta, job_manager, **kwargs):
         self.logger.debug("Restoring snapshot...")
         idxr = self.target_backend.target_esidxer
         es_host = idxr.es_host
@@ -231,7 +228,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
 
         self.logger.info("Restoring snapshot '%s' to index '%s' on host '%s'" %
                          (snapshot_name, idxr._index, idxr.es_host))
-        job = yield from job_manager.defer_to_thread(
+        job = await job_manager.defer_to_thread(
             pinfo,
             partial(idxr.restore,
                     repo_name,
@@ -239,14 +236,14 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                     idxr._index,
                     purge=self.__class__.AUTO_PURGE_INDEX))
         job.add_done_callback(restore_launched)
-        yield from job
+        await job
         while True:
             status_info = get_status_info()
             status = status_info["status"]
             self.logger.info("Recovery status for index '%s': %s" %
                              (idxr._index, status_info))
             if status in ["INIT", "IN_PROGRESS"]:
-                yield from asyncio.sleep(
+                await asyncio.sleep(
                     getattr(btconfig, "MONITOR_SNAPSHOT_DELAY", 60))
             else:
                 if status == "DONE":
@@ -261,8 +258,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         # return current number of docs in index
         return self.target_backend.count()
 
-    @asyncio.coroutine
-    def apply_diff(self, build_meta, job_manager, **kwargs):
+    async def apply_diff(self, build_meta, job_manager, **kwargs):
         self.logger.info("Applying incremental update from diff folder: %s" %
                          self.data_folder)
         meta = json.load(open(os.path.join(self.data_folder, "metadata.json")))
@@ -280,7 +276,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         new = (self.target_backend.target_esidxer.es_host,
                meta["new"]["backend"],
                self.target_backend.target_esidxer._doc_type)
-        yield from self.syncer_func(old_db_col_names=old,
+        await self.syncer_func(old_db_col_names=old,
                                     new_db_col_names=new,
                                     diff_folder=self.data_folder)
         # return current number of docs in index (even if diff update)

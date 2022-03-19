@@ -162,8 +162,7 @@ class BaseSyncer(object):
             self._meta["old"]["backend"]
         return old_db_col_names
 
-    @asyncio.coroutine
-    def sync_cols(self,
+    async def sync_cols(self,
                   diff_folder,
                   batch_size=10000,
                   mode=None,
@@ -220,7 +219,7 @@ class BaseSyncer(object):
                                      transient=True,
                                      init=True,
                                      job={"step": "sync-mapping"})
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     pinfo, partial(update_mapping))
 
                 def updated(f):
@@ -241,7 +240,7 @@ class BaseSyncer(object):
                         got_error = e
 
                 job.add_done_callback(updated)
-                yield from job
+                await job
 
             if got_error:
                 self.logger.error("Failed to update mapping on index '%s': %s" %
@@ -277,7 +276,7 @@ class BaseSyncer(object):
                     (worker.__name__, diff_file, cnt, total, strwargs))
                 # deepcopy to make we don't embed "self" with unpickleable stuff
                 meta = copy.deepcopy(self._meta)
-                job = yield from self.job_manager.defer_to_process(
+                job = await self.job_manager.defer_to_process(
                     pinfo,
                     partial(worker, diff_file, old_db_col_names,
                             new_db_col_names,
@@ -300,7 +299,7 @@ class BaseSyncer(object):
 
             tasks = asyncio.gather(*jobs)
             tasks.add_done_callback(synced)
-            yield from tasks
+            await tasks
             if got_error:
                 self.logger.error("Failed to sync collection from %s to %s using diff files in '%s': %s" %
                                   (old_db_col_names, new_db_col_names, diff_folder, got_error), extra={"notify": True})
@@ -321,7 +320,7 @@ class BaseSyncer(object):
                 res = indexer.update_mapping_meta({"_meta": new_meta})
                 return res
 
-            job = yield from self.job_manager.defer_to_thread(
+            job = await self.job_manager.defer_to_thread(
                 pinfo, partial(update_metadata))
 
             def updated(f):
@@ -346,7 +345,7 @@ class BaseSyncer(object):
                                  init=True,
                                  job={"step": "sync-meta"})
             job.add_done_callback(updated)
-            yield from job
+            await job
 
             if got_error:
                 self.logger.error("Failed to update metadata on index '%s': %s" %
@@ -355,7 +354,7 @@ class BaseSyncer(object):
 
         if "post" in steps:
             pinfo["step"] = "post"
-            job = yield from self.job_manager.defer_to_thread(
+            job = await self.job_manager.defer_to_thread(
                 pinfo,
                 partial(self.post_sync_cols,
                         diff_folder=diff_folder,
@@ -388,7 +387,7 @@ class BaseSyncer(object):
                                  init=True,
                                  job={"step": "sync-post"})
             job.add_done_callback(posted)
-            yield from job
+            await job
 
             if got_error:
                 self.logger.error("Failed to run post-sync process on index '%s': %s" %
