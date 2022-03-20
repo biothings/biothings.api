@@ -46,6 +46,7 @@ install_requires = [
     'singledispatchmethod; python_version < "3.8.0"',
     'dataclasses; python_version < "3.7.0"',
     'PyYAML>=5.1',
+    'orjson>=3.6.7',    # this is a faster json lib support inf/nan and datetime
     'pytest'
 ]
 
@@ -73,7 +74,7 @@ hub_requires = [
     'jsonschema>=2.6.0',
     'pip',              # auto-install requirements from plugins
     # 'pandas==1.0.1',    # json with inf/nan and more to come (replaced by orjson below now)
-    'orjson>=3.5.2',    # this is a faster json lib support inf/nan and datetime
+    # 'orjson>=3.5.2',    # this is a faster json lib support inf/nan and datetime
     'yapf',             # code reformatter, better results than autopep8
     'requests-aws4auth',    # aws s3 auth requests for autohub
     'networkx>=2.1,<2.6',            # datatransform

@@ -29,7 +29,7 @@ biothings.web.handlers.ESRequestHandler
 
 """
 
-import json
+import orjson
 import logging
 from collections import Counter
 from types import CoroutineType
@@ -109,7 +109,7 @@ class BaseQueryHandler(BaseAPIHandler):
             if self.format == "html":
                 config = self.biothings.config
                 chunk = self.render_string(
-                    template_name="api.html", data=json.dumps(chunk),
+                    template_name="api.html", data=serializer.to_json(chunk),
                     link=serializer.URL(self.request.full_url()).remove('format'),
                     title_div=getattr(config, "HTML_OUT_TITLE", "") or DEFAULT_TITLE,
                     header_img=getattr(config, "HTML_OUT_HEADER_IMG", "") or DEFAULT_IMG,

@@ -18,7 +18,7 @@ biothings.web.handlers.BaseAPIHandler
     - default common http headers (CORS and Cache Control)
 
 """
-import json
+import orjson
 import logging
 
 import yaml
@@ -26,7 +26,6 @@ from biothings.utils import serializer
 from biothings.web.analytics.events import Event
 from biothings.web.analytics.notifiers import AnalyticsMixin
 from biothings.web.options import OptionError, ReqArgs
-from tornado.escape import json_decode
 from tornado.web import HTTPError, RequestHandler
 
 try:
@@ -114,8 +113,8 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
                 'Remove the content-type header, or '
                 'provide an empty object in the body.'))
         try:
-            return json_decode(self.request.body)
-        except json.JSONDecodeError:
+            return orjson.loads(self.request.body)
+        except orjson.JSONDecodeError:
             raise HTTPError(400, reason='Invalid JSON body.')
 
     def _parse_yaml(self):
@@ -165,7 +164,7 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
                 self.set_header("Content-Type", "application/x-msgpack")
 
             elif self.format == "html":
-                chunk = self.render_string("api.html", data=json.dumps(chunk))
+                chunk = self.render_string("api.html", data=serializer.to_json(chunk))
                 self.set_header("Content-Type", "text/html; charset=utf-8")
 
         except Exception as exc:

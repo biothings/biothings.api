@@ -1,9 +1,8 @@
-import json
-
+import orjson
 import certifi
-from biothings.web.analytics.events import *
 from tornado.httpclient import HTTPRequest
 
+from biothings.web.analytics.events import *
 
 class Channel:
 
@@ -28,7 +27,7 @@ class SlackChannel(Channel):
                 url=url,
                 method='POST',
                 headers={'content-type': 'application/json'},
-                body=json.dumps(message.to_slack_payload()),
+                body=orjson.dumps(message.to_slack_payload()).decode(),
                 ca_certs=certifi.where()  # for Windows compatibility
             )
 

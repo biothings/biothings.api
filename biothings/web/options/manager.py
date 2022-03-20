@@ -3,7 +3,7 @@ Request Argument Standardization
 """
 
 import copy
-import json
+import orjson
 import logging
 import re
 from collections import UserDict, abc, defaultdict, namedtuple
@@ -235,9 +235,9 @@ class FormArgCvter(Converter):
     def convert_to(self, value, to_type):
         if self.jsoninput:
             try:  # attempt to load as json first
-                _value = json.loads(value)
-            except json.JSONDecodeError as exc:
-                logging.debug(str(exc))
+                _value = orjson.loads(value)
+            except orjson.JSONDecodeError as exc:
+                logging.debug(repr(exc))
             else:  # no more conversions
                 if isinstance(_value, to_type):
                     return _value
