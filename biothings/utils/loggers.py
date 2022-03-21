@@ -1,8 +1,9 @@
 import asyncio
 import datetime
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import os
-import time
+import gzip
 from collections import OrderedDict, UserList
 from copy import deepcopy
 from dataclasses import dataclass
@@ -15,14 +16,29 @@ from types import MethodType
 import requests
 
 
+LOG_FORMAT_STRING = '%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s'
+DATEFMT = "%H:%M:%S"
+
+class GZipRotator:
+    def __call__(self, source, dest):
+        os.rename(source, dest)
+        f_in = open(dest, 'rb')
+        f_out = gzip.open("%s.gz" % dest, 'wb')
+        f_out.writelines(f_in)
+        f_out.close()
+        f_in.close()
+        os.remove(dest)
+
+
 def setup_default_log(default_logger_name, log_folder, level=logging.DEBUG):
     # this will affect any logging calls
     logging.basicConfig(level=level)
     if not os.path.exists(log_folder):
         os.makedirs(log_folder)
-    logfile = os.path.join(log_folder, '%s_%s.log' % (default_logger_name, time.strftime("%Y%m%d", datetime.datetime.now().timetuple())))
-    fh = logging.FileHandler(logfile)
-    fh.setFormatter(logging.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S"))
+    logfile = os.path.join(log_folder, default_logger_name)
+    fh = TimedRotatingFileHandler(logfile, when="D")
+    fh.setFormatter(logging.Formatter(LOG_FORMAT_STRING, datefmt=DATEFMT))
+    fh.rotator = GZipRotator()
     fh.name = "logfile"
     logger = logging.getLogger(default_logger_name)
     logger.setLevel(level)
@@ -31,26 +47,28 @@ def setup_default_log(default_logger_name, log_folder, level=logging.DEBUG):
     return logger
 
 
-def get_logger(logger_name, log_folder=None, handlers=("console", "file", "slack"), timestamp="%Y%m%d"):
+def get_logger(logger_name, log_folder=None, handlers=("console", "file", "slack"), timestamp=None):
     """
     Configure a logger object from logger_name and return (logger, logfile)
     """
     from biothings import config as btconfig
+
+    if timestamp:
+        raise DeprecationWarning("Timestamp is deprecated")
+
     if not log_folder:
         log_folder = btconfig.LOG_FOLDER
     # this will affect any logging calls
     if not os.path.exists(log_folder):
         os.makedirs(log_folder)
-    if timestamp:
-        logfile = os.path.join(log_folder, '%s_%s.log' % (logger_name, time.strftime(timestamp, datetime.datetime.now().timetuple())))
-    else:
-        logfile = os.path.join(log_folder, '%s.log' % logger_name)
-    fmt = logging.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S")
+    logfile = os.path.join(log_folder, logger_name)
+    fmt = logging.Formatter(LOG_FORMAT_STRING, datefmt=DATEFMT)
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.DEBUG)
     if "file" in handlers:
-        fh = logging.FileHandler(logfile)
+        fh = TimedRotatingFileHandler(logfile, when="D")
         fh.setFormatter(fmt)
+        fh.rotator = GZipRotator()
         fh.name = "logfile"
         if fh.name not in [h.name for h in logger.handlers]:
             logger.addHandler(fh)

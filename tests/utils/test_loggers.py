@@ -5,16 +5,21 @@ from datetime import datetime
 import pytest
 
 from biothings import config
-from biothings.utils.loggers import get_logger, setup_default_log
+from biothings.utils.loggers import (
+    get_logger,
+    setup_default_log,
+    GZipRotator,
+    LOG_FORMAT_STRING,
+    DATEFMT,
+)
 
 
 LOGGER_NAME = "test_logger"
-TIMESTAMP = "%Y%m%d"
 
 
 def test_set_default_log():
     log_level = logging.WARN
-    expected_file_name = os.path.join(config.LOG_FOLDER, f"{LOGGER_NAME}_{datetime.now().strftime(TIMESTAMP)}.log")
+    expected_file_name = os.path.join(config.LOG_FOLDER, LOGGER_NAME)
 
     logger = setup_default_log(LOGGER_NAME, config.LOG_FOLDER, level=log_level)
 
@@ -25,6 +30,7 @@ def test_set_default_log():
     file_handler = logger.handlers[0]
     assert file_handler.name == "logfile"
     assert file_handler.baseFilename == expected_file_name
+    assert isinstance(file_handler.rotator, GZipRotator)
 
 
 class TestGetLogger:
@@ -43,31 +49,15 @@ class TestGetLogger:
         assert log_file.startswith(expected_log_folder)
 
     def test_logfile_name_without_timestamp(self):
-        expected_logfile_name = f"{LOGGER_NAME}.log"
-
         _, log_file = get_logger(LOGGER_NAME, timestamp=None)
 
-        assert log_file.endswith(expected_logfile_name)
-
-    def test_logfile_name_with_default_timestamp(self):
-        expected_logfile_name = (
-            f"{LOGGER_NAME}_{datetime.now().strftime(TIMESTAMP)}"
-            ".log"
-        )
-
-        _, log_file = get_logger(LOGGER_NAME)
-
-        assert log_file.endswith(expected_logfile_name)
+        assert log_file.endswith(LOGGER_NAME)
 
     def test_logfile_name_with_timestamp(self):
-        expected_logfile_name = (
-            f"{LOGGER_NAME}_{datetime.now().strftime(TIMESTAMP)}"
-            ".log"
-        )
+        with pytest.raises(DeprecationWarning) as exc_info:
+            get_logger(LOGGER_NAME, timestamp=DATEFMT)
 
-        _, log_file = get_logger(LOGGER_NAME, timestamp=TIMESTAMP)
-
-        assert log_file.endswith(expected_logfile_name)
+        assert "Timestamp is deprecated" in str(exc_info.value)
 
     def test_logger_with_hipchat_handler(self):
         with pytest.raises(DeprecationWarning) as exc_info:
@@ -85,8 +75,6 @@ class TestGetLogger:
         )
         mock_objects["SLACK_WEBHOOK"].return_value = "https://slack/webhook"
         mock_objects["SLACK_MENTIONS"].return_value = {logging.ERROR: ["admin@admin.com"]}
-        expected_log_format = '%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s'
-        expected_log_datefmt = "%H:%M:%S"
 
         logger, _ = get_logger("test_logger", handlers=("console", "file", "slack"))
 
@@ -96,9 +84,10 @@ class TestGetLogger:
         slack_handler = logger.handlers[1]
 
         assert file_handler.name == "logfile"
-        assert file_handler.formatter._fmt == expected_log_format
-        assert file_handler.formatter.datefmt == expected_log_datefmt
+        assert isinstance(file_handler.rotator, GZipRotator)
+        assert file_handler.formatter._fmt == LOG_FORMAT_STRING
+        assert file_handler.formatter.datefmt == DATEFMT
 
         assert slack_handler.name == "slack"
-        assert slack_handler.formatter._fmt == expected_log_format
-        assert slack_handler.formatter.datefmt == expected_log_datefmt
+        assert slack_handler.formatter._fmt == LOG_FORMAT_STRING
+        assert slack_handler.formatter.datefmt == DATEFMT
