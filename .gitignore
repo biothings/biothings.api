@@ -9,6 +9,7 @@
 .*.swp
 __pycache__
 .DS_Store
+.env
 
 # temp files
 docs/_build
@@ -17,6 +18,7 @@ tests/.noseids
 
 # IDEs
 .vscode
+.idea
 
 # runtime files
 biothings/.git-info
