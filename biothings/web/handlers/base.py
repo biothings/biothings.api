@@ -53,6 +53,7 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
     }
     format = 'json'
     cache = None
+    cache_control_template = "max-age={cache}, public"
 
     def initialize(self,  cache=None):
         cache_value = self.biothings.config.DEFAULT_CACHE_MAX_AGE
@@ -60,14 +61,9 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
             cache_value = self.cache
         if cache is not None:
             cache_value = cache
-
-        if isinstance(cache_value, int):
-            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
-            # to disable caching for a handler, set cls.cache to 0 or
-            # run self.clear_header('Cache-Control') in an HTTP method
-            # or set cache value on the config file:
-            # r"/api/query/?", "biothings.web.handlers.QueryHandler", {"biothing_type": "schema", "cache": 0}),
-            self.set_header("Cache-Control", f"max-age={cache_value}, public")
+        # self._header has already set when call set_default_headers func before
+        # so we need to overwrite it to make custom cache age works
+        self.set_cache_header(cache_value)
 
         self.args = {}  # processed args will be available here
         self.args_query = {}  # query parameters in the URL
@@ -237,3 +233,11 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         self.set_header("Access-Control-Allow-Credentials", "false")
         self.set_header("Access-Control-Max-Age", "60")
 
+    def set_cache_header(self, cache_value):
+        if isinstance(cache_value, int):
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+            # to disable caching for a handler, set cls.cache to 0 or
+            # run self.clear_header('Cache-Control') in an HTTP method
+            # or set cache value on the config file:
+            # r"/api/query/?", "biothings.web.handlers.QueryHandler", {"biothing_type": "schema", "cache": 0}),
+            self.set_header("Cache-Control", self.cache_control_template.format(cache=cache_value))
