@@ -54,9 +54,9 @@ logger = logging.getLogger(__name__)
 
 class BaseQueryHandler(BaseAPIHandler):
 
-    def initialize(self, biothing_type=None):
+    def initialize(self, biothing_type=None, *args, **kwargs):
 
-        super().initialize()
+        super().initialize(*args, **kwargs)
         self.biothing_type = biothing_type
         self.pipeline = self.biothings.pipeline
         self.metadata = self.biothings.metadata
