@@ -30,20 +30,34 @@ class GZipRotator:
         os.remove(dest)
 
 
+def create_logger(log_folder, logger_name, level=logging.DEBUG):
+    if not os.path.exists(log_folder):
+        os.makedirs(log_folder)
+    logfile = os.path.join(log_folder, logger_name)
+    if not logfile.endswith(".log"):
+        logfile += ".log"
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(level)
+    return logger, logfile
+
+
+def configurate_file_handler(logger, logfile, formater=None):
+    if not formater:
+        formater = logging.Formatter(LOG_FORMAT_STRING, datefmt=DATEFMT)
+
+    fh = TimedRotatingFileHandler(logfile, when="D")
+    fh.setFormatter(formater)
+    fh.rotator = GZipRotator()
+    fh.name = "logfile"
+    if fh.name not in [h.name for h in logger.handlers]:
+        logger.addHandler(fh)
+
+
 def setup_default_log(default_logger_name, log_folder, level=logging.DEBUG):
     # this will affect any logging calls
     logging.basicConfig(level=level)
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
-    logfile = os.path.join(log_folder, default_logger_name)
-    fh = TimedRotatingFileHandler(logfile, when="D")
-    fh.setFormatter(logging.Formatter(LOG_FORMAT_STRING, datefmt=DATEFMT))
-    fh.rotator = GZipRotator()
-    fh.name = "logfile"
-    logger = logging.getLogger(default_logger_name)
-    logger.setLevel(level)
-    if fh.name not in [h.name for h in logger.handlers]:
-        logger.addHandler(fh)
+    logger, logfile = create_logger(log_folder, default_logger_name, level=level)
+    configurate_file_handler(logger, logfile)
     return logger
 
 
@@ -59,19 +73,10 @@ def get_logger(logger_name, log_folder=None, handlers=("console", "file", "slack
     if not log_folder:
         log_folder = btconfig.LOG_FOLDER
     # this will affect any logging calls
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
-    logfile = os.path.join(log_folder, logger_name)
+    logger, logfile = create_logger(log_folder, logger_name)
     fmt = logging.Formatter(LOG_FORMAT_STRING, datefmt=DATEFMT)
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(logging.DEBUG)
     if "file" in handlers:
-        fh = TimedRotatingFileHandler(logfile, when="D")
-        fh.setFormatter(fmt)
-        fh.rotator = GZipRotator()
-        fh.name = "logfile"
-        if fh.name not in [h.name for h in logger.handlers]:
-            logger.addHandler(fh)
+        configurate_file_handler(logger, logfile, formater=fmt)
 
     if "hipchat" in handlers:
         raise DeprecationWarning("Hipchat is dead...")

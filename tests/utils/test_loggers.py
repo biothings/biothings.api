@@ -20,6 +20,7 @@ LOGGER_NAME = "test_logger"
 def test_set_default_log():
     log_level = logging.WARN
     expected_file_name = os.path.join(config.LOG_FOLDER, LOGGER_NAME)
+    expected_file_name += ".log"
 
     logger = setup_default_log(LOGGER_NAME, config.LOG_FOLDER, level=log_level)
 
@@ -51,7 +52,7 @@ class TestGetLogger:
     def test_logfile_name_without_timestamp(self):
         _, log_file = get_logger(LOGGER_NAME, timestamp=None)
 
-        assert log_file.endswith(LOGGER_NAME)
+        assert log_file.endswith(LOGGER_NAME + ".log")
 
     def test_logfile_name_with_timestamp(self):
         with pytest.raises(DeprecationWarning) as exc_info:
