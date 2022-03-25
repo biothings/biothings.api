@@ -43,8 +43,15 @@ logfile = Template("""
     </html>
 """)
 
-class HubLogDirHandler(RequestHandler):
 
+class DefaultCORSHeaderMixin:
+    def set_default_headers(self):
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Access-Control-Allow-Methods", "GET,OPTIONS")
+        self.set_header("Access-Control-Allow-Headers", "*")
+
+
+class HubLogDirHandler(DefaultCORSHeaderMixin, RequestHandler):
     def initialize(self, path):
         self.path = path
 
@@ -88,12 +95,7 @@ class HubLogDirHandler(RequestHandler):
         ))
 
 
-class HubLogFileHandler(StaticFileHandler):
-
-    def set_default_headers(self):
-        self.set_header("Access-Control-Allow-Origin", "*")
-        self.set_header("Access-Control-Allow-Methods", "GET,OPTIONS")
-        self.set_header("Access-Control-Allow-Headers", "*")
+class HubLogFileHandler(DefaultCORSHeaderMixin, StaticFileHandler):
 
     def options(self, *args, **kwargs):
         self.set_status(204)
@@ -103,7 +105,6 @@ class HubLogFileHandler(StaticFileHandler):
         """
 
         self.path = self.parse_url_path(path)
-        del path  # make sure we don't refer to path instead of self.path again
         absolute_path = self.get_absolute_path(self.root, self.path)
         self.absolute_path = self.validate_absolute_path(self.root, absolute_path)
         if self.absolute_path is None:
