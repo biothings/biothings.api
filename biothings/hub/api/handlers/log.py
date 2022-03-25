@@ -1,4 +1,4 @@
-import asyncio
+import json
 import gzip
 from os import listdir
 from os.path import isfile, join
@@ -58,8 +58,10 @@ class HubLogDirHandler(RequestHandler):
             if 'filter' in self.request.arguments:
                 _f = self.get_argument('filter')
                 logs = filter(lambda f: _f in f, logs)
-
-            self.finish(catalog.generate(logs=logs))
+            if 'json' in self.request.arguments:
+                self.finish(json.dumps(list(logs)))
+            else:
+                self.finish(catalog.generate(logs=logs))
             return
 
         if not isfile(join(self.path, filename)):
