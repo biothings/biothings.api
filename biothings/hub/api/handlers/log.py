@@ -1,4 +1,3 @@
-import json
 import gzip
 from os import listdir
 from os.path import isfile, join
@@ -6,6 +5,9 @@ from tempfile import TemporaryDirectory, mkstemp
 
 from tornado.web import RequestHandler, StaticFileHandler
 from tornado.template import Template
+
+from biothings.utils.serializer import to_json
+
 
 catalog = Template("""
     <html>
@@ -66,7 +68,7 @@ class HubLogDirHandler(DefaultCORSHeaderMixin, RequestHandler):
                 _f = self.get_argument('filter')
                 logs = filter(lambda f: _f in f, logs)
             if 'json' in self.request.arguments:
-                self.finish(json.dumps(list(logs)))
+                self.finish(to_json(list(logs)))
             else:
                 self.finish(catalog.generate(logs=logs))
             return
@@ -101,7 +103,7 @@ class HubLogFileHandler(DefaultCORSHeaderMixin, StaticFileHandler):
         self.set_status(204)
 
     async def get(self, path: str, include_body: bool = True) -> None:
-        """If request path is a gz file, we will uncompress it first, then return get with the uncompress file path 
+        """If request path is a gz file, we will uncompress it first, then return get with the uncompress file path
         """
 
         self.path = self.parse_url_path(path)
