@@ -88,8 +88,7 @@ class RootHandler(DefaultHandler):
         self.features = features
         self.hub_name = hub_name
 
-    @asyncio.coroutine
-    def get(self):
+    async def get(self):
         self.write({
             "name": self.hub_name or getattr(config, "HUB_NAME", None),
             "biothings_version": getattr(config, "BIOTHINGS_VERSION", None),

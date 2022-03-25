@@ -177,8 +177,7 @@ class HubShell(InteractiveShell):
 
     def restart(self, force=False, stop=False):
 
-        @asyncio.coroutine
-        def do():
+        async def do():
             try:
                 if stop:
                     event = "hub_stop"
@@ -201,7 +200,7 @@ class HubShell(InteractiveShell):
                     f.result()  # consume
                     logging.error("Job manager stopped")
                 j.add_done_callback(ok)
-                yield from j
+                await j
             except Exception as e:
                 logging.error("Error while recycling the process queue: %s", e)
                 raise
@@ -757,8 +756,7 @@ try:
 
         def monitor(self):
 
-            @asyncio.coroutine
-            def do():
+            async def do():
                 logging.info(
                     "Monitoring source code in, %s:\n%s",
                     repr(self.paths),
@@ -766,7 +764,7 @@ try:
                 )
                 while self.do_monitor:
                     try:
-                        yield from asyncio.sleep(self.wait)
+                        await asyncio.sleep(self.wait)
                         # this reads events from OS
                         if self.notifier.check_events(0.1):
                             self.notifier.read_events()

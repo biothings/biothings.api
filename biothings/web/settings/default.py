@@ -213,3 +213,6 @@ STATUS_CHECK = {
     # 'index': ''
     # 'id': '',
 }
+
+# the default max-age value in the "Cache-Control" header for all BaseAPIHandler subclasses
+DEFAULT_CACHE_MAX_AGE = 604800  # 7 days

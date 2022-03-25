@@ -47,19 +47,18 @@ install_requires = [
     'dataclasses; python_version < "3.7.0"',
     'PyYAML>=5.1',
     'orjson>=3.6.7',    # this is a faster json lib support inf/nan and datetime
-    'pytest'
 ]
 
 # extra requirements for biothings.web
 web_extra_requires = [
     'msgpack>=0.6.1',   # support format=msgpack
-    'raven'
+    'sentry-sdk>=1.5.3',  # new sentry package
 ]
 
 # extra requirements to run biothings.hub
 hub_requires = [
     'beautifulsoup4',   # used in dumper.GoogleDriveDumper
-    'aiocron==1.3',     # setup scheduled jobs
+    'aiocron==1.8',     # setup scheduled jobs
     'aiohttp==3.6.2',   # for compatibility with elasticsearch-async==6.x
     'asyncssh==2.5.0',  # needs libffi-dev installed (apt-get)
     'pymongo>=3.12.0,<4.0',  # support MongoDB 5.0 since v3.12.0
@@ -79,6 +78,12 @@ hub_requires = [
     'requests-aws4auth',    # aws s3 auth requests for autohub
     'networkx>=2.1,<2.6',            # datatransform
     'biothings_client>=0.2.6'   # datatransform (api client)
+]
+
+# extra requirements to develop biothings
+dev_requires = [
+    'pytest',
+    'pytest-mock',
 ]
 
 # extra requirements for building docs
@@ -125,6 +130,6 @@ setup(
     extras_require={
         'web_extra': web_extra_requires,
         'hub': hub_requires,
-        'dev': web_extra_requires + hub_requires + docs_requires
+        'dev': web_extra_requires + hub_requires + dev_requires + docs_requires
     },
 )

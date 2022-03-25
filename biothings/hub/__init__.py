@@ -104,7 +104,7 @@ if os.environ.get("HUB_VERBOSE", "0") != "1":
 
 def get_loop(max_workers=None):
     loop = asyncio.get_event_loop()
-    executor = concurrent.futures.ProcessPoolExecutor(max_workers=max_workers)
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
     loop.set_default_executor(executor)
     return loop
 
@@ -265,7 +265,6 @@ def get_schedule(loop):
     return "\n".join(out)
 
 
-# @asyncio.coroutine
 async def start_ssh_server(loop,
                            name,
                            passwords,
@@ -847,8 +846,11 @@ class HubServer(object):
             [cls for cls in [bt_upgrader_class, app_upgrader_class] if cls]
         )
 
-        @asyncio.coroutine
-        def check_code_upgrade():
+        loop = self.managers.get("job_manager") and self.managers[
+            "job_manager"].loop or asyncio.get_event_loop()
+
+        @aiocron.crontab(HUB_CHECK_UPGRADE, start=True, loop=loop)
+        async def check_code_upgrade():
             _skip_list = getattr(self, 'upgrader_skip_folders', [])
             if _skip_list and config.biothings_folder in _skip_list and config.app_folder in _skip_list:
                 # both folders cannot be checked for versions, exit now
@@ -880,15 +882,7 @@ class HubServer(object):
                     if val:
                         val.pop("upgrade", None)
 
-        loop = self.managers.get("job_manager") and self.managers[
-            "job_manager"].loop or asyncio.get_event_loop()
-
-        # check at startup, then regularly
-        asyncio.ensure_future(check_code_upgrade())
-        aiocron.crontab(HUB_CHECK_UPGRADE,
-                        func=check_code_upgrade,
-                        start=True,
-                        loop=loop)
+        asyncio.ensure_future(check_code_upgrade.func())
 
     def get_websocket_urls(self):
 

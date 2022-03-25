@@ -1,8 +1,9 @@
 import asyncio
 import datetime
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import os
-import time
+import gzip
 from collections import OrderedDict, UserList
 from copy import deepcopy
 from dataclasses import dataclass
@@ -15,45 +16,67 @@ from types import MethodType
 import requests
 
 
+LOG_FORMAT_STRING = '%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s'
+DATEFMT = "%H:%M:%S"
+
+class GZipRotator:
+    def __call__(self, source, dest):
+        os.rename(source, dest)
+        f_in = open(dest, 'rb')
+        f_out = gzip.open("%s.gz" % dest, 'wb')
+        f_out.writelines(f_in)
+        f_out.close()
+        f_in.close()
+        os.remove(dest)
+
+
+def create_logger(log_folder, logger_name, level=logging.DEBUG):
+    if not os.path.exists(log_folder):
+        os.makedirs(log_folder)
+    logfile = os.path.join(log_folder, logger_name)
+    if not logfile.endswith(".log"):
+        logfile += ".log"
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(level)
+    return logger, logfile
+
+
+def configurate_file_handler(logger, logfile, formater=None):
+    if not formater:
+        formater = logging.Formatter(LOG_FORMAT_STRING, datefmt=DATEFMT)
+
+    fh = TimedRotatingFileHandler(logfile, when="D")
+    fh.setFormatter(formater)
+    fh.rotator = GZipRotator()
+    fh.name = "logfile"
+    if fh.name not in [h.name for h in logger.handlers]:
+        logger.addHandler(fh)
+
+
 def setup_default_log(default_logger_name, log_folder, level=logging.DEBUG):
     # this will affect any logging calls
     logging.basicConfig(level=level)
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
-    logfile = os.path.join(log_folder, '%s_%s_hub.log' % (default_logger_name, time.strftime("%Y%m%d", datetime.datetime.now().timetuple())))
-    fh = logging.FileHandler(logfile)
-    fh.setFormatter(logging.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S"))
-    fh.name = "logfile"
-    logger = logging.getLogger(default_logger_name)
-    logger.setLevel(level)
-    if fh.name not in [h.name for h in logger.handlers]:
-        logger.addHandler(fh)
+    logger, logfile = create_logger(log_folder, default_logger_name, level=level)
+    configurate_file_handler(logger, logfile)
     return logger
 
 
-def get_logger(logger_name, log_folder=None, handlers=("console", "file", "slack"), timestamp="%Y%m%d"):
+def get_logger(logger_name, log_folder=None, handlers=("console", "file", "slack"), timestamp=None):
     """
     Configure a logger object from logger_name and return (logger, logfile)
     """
     from biothings import config as btconfig
+
+    if timestamp:
+        raise DeprecationWarning("Timestamp is deprecated")
+
     if not log_folder:
         log_folder = btconfig.LOG_FOLDER
     # this will affect any logging calls
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
-    if timestamp:
-        logfile = os.path.join(log_folder, '%s_%s.log' % (logger_name, time.strftime(timestamp, datetime.datetime.now().timetuple())))
-    else:
-        logfile = os.path.join(log_folder, '%s.log' % logger_name)
-    fmt = logging.Formatter('%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s', datefmt="%H:%M:%S")
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(logging.DEBUG)
+    logger, logfile = create_logger(log_folder, logger_name)
+    fmt = logging.Formatter(LOG_FORMAT_STRING, datefmt=DATEFMT)
     if "file" in handlers:
-        fh = logging.FileHandler(logfile)
-        fh.setFormatter(fmt)
-        fh.name = "logfile"
-        if fh.name not in [h.name for h in logger.handlers]:
-            logger.addHandler(fh)
+        configurate_file_handler(logger, logfile, formater=fmt)
 
     if "hipchat" in handlers:
         raise DeprecationWarning("Hipchat is dead...")
@@ -84,8 +107,7 @@ class EventRecorder(logging.StreamHandler):
         self.eventcol = get_event()
 
     def emit(self, record):
-        @asyncio.coroutine
-        def aioemit(msg):
+        async def aioemit(msg):
             def recorded(f):
                 res = f.result()
             fut = loop.run_in_executor(
@@ -93,7 +115,7 @@ class EventRecorder(logging.StreamHandler):
                 partial(self.eventcol.save, msg)
             )
             fut.add_done_callback(recorded)
-            yield from fut
+            await fut
             return fut
         if record.__dict__.get("notify") or record.__dict__.get("event"):
             try:
