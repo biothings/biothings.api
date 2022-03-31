@@ -1,5 +1,4 @@
 import asyncio
-import copy
 import json
 import time
 from collections import UserDict, UserString
@@ -8,12 +7,14 @@ from datetime import datetime
 from functools import partial
 
 import boto3
+from biothings import config as btconfig
 from biothings.hub import SNAPSHOOTER_CATEGORY, SNAPSHOTMANAGER_CATEGORY
 from biothings.hub.databuild.buildconfig import AutoBuildConfig
 from biothings.hub.datarelease import set_pending_to_release_note
 from biothings.utils.common import merge
 from biothings.utils.hub import template_out
 from biothings.utils.hub_db import get_src_build
+from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
 from elasticsearch import Elasticsearch
 
@@ -187,7 +188,14 @@ class SnapshotEnv():
             raise ValueError("Not a hub-managed index.")
         return doc  # TODO UNIQUENESS
 
+    def setup_log(self, index):
+        self.logger, self.logfile = get_logger(
+            f"snapshot_{index}", btconfig.LOG_FOLDER, force=True
+        )
+
     def snapshot(self, index, snapshot=None):
+        self.setup_log(index)
+
         async def _snapshot(snapshot):
             x = CumulativeResult()
             build_doc = self._doc(index)
@@ -195,7 +203,7 @@ class SnapshotEnv():
             for step in ("pre", "snapshot", "post"):
                 state = registrar.dispatch(step)  # _TaskState Class
                 state = state(get_src_build(), build_doc.get("_id"))
-                logging.info(state)
+                self.logger.info(state)
                 state.started()
 
                 job = await self.job_manager.defer_to_thread(
@@ -209,20 +217,20 @@ class SnapshotEnv():
                     dx = StepResult(dx)
 
                 except Exception as exc:
-                    logging.exception(exc)
+                    self.logger.exception(exc)
                     state.failed({}, exc)
                     raise exc
                 else:
                     merge(x.data, dx.data)
-                    logging.info(dx)
-                    logging.info(x)
+                    self.logger.info(dx)
+                    self.logger.info(x)
                     state.succeed(
                         {snapshot: x.data},
                         res=dx.data
                     )
             return x
         future = asyncio.ensure_future(_snapshot(snapshot or index))
-        future.add_done_callback(logging.debug)
+        future.add_done_callback(self.logger.debug)
         return future
 
     def pre_snapshot(self, cfg, index, snapshot):
@@ -230,15 +238,15 @@ class SnapshotEnv():
         bucket = Bucket(self.cloud, cfg.bucket)
         repo = Repository(self.client, cfg.repo)
 
-        logging.info(bucket)
-        logging.info(repo)
+        self.logger.info(bucket)
+        self.logger.info(repo)
 
         if not repo.exists():
             if not bucket.exists():
                 bucket.create(cfg.get("acl"))
-                logging.info(bucket)
+                self.logger.info(bucket)
             repo.create(**cfg)
-            logging.info(repo)
+            self.logger.info(repo)
 
         return {
             "__REPLACE__": True,
@@ -253,12 +261,12 @@ class SnapshotEnv():
             self.client,
             cfg.repo,
             snapshot)
-        logging.info(snapshot)
+        self.logger.info(snapshot)
 
         _replace = False
         if snapshot.exists():
             snapshot.delete()
-            logging.info(snapshot)
+            self.logger.info(snapshot)
             _replace = True
 
         # ------------------ #
@@ -266,7 +274,7 @@ class SnapshotEnv():
         # ------------------ #
 
         while True:
-            logging.info(snapshot)
+            self.logger.info(snapshot)
             state = snapshot.state()
 
             if state == "FAILED":

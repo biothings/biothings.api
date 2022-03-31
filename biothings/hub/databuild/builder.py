@@ -252,7 +252,8 @@ class DataBuilder(object):
 
     def setup_log(self):
         log_name = self.target_name or self.build_name
-        self.logger, _ = get_logger('build_%s' % log_name)
+        log_folder = os.path.join(btconfig.LOG_FOLDER, 'build', log_name)
+        self.logger, _ = get_logger('build', log_folder=log_folder, force=True)
 
     def check_ready(self, force=False):
         if force:

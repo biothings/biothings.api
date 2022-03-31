@@ -1,6 +1,7 @@
+import os
 import gzip
 from os import listdir
-from os.path import isfile, join
+from os.path import isfile, join, isdir
 from tempfile import TemporaryDirectory, mkstemp
 
 from tornado.web import RequestHandler, StaticFileHandler
@@ -58,22 +59,27 @@ class HubLogDirHandler(DefaultCORSHeaderMixin, RequestHandler):
         self.path = path
 
     def get(self, filename):
-
-        if not filename:
+        fullname = join(self.path, filename)
+        if isdir(fullname):           
             logs = sorted([
-                f for f in listdir(self.path)
-                if isfile(join(self.path, f))
+                f"{f}/"
+                if isdir(join(fullname, f))
+                else f
+                for f in listdir(fullname)
             ])
+
             if 'filter' in self.request.arguments:
-                _f = self.get_argument('filter')
-                logs = filter(lambda f: _f in f, logs)
+                filters = self.get_argument('filter') or ''
+                filters = filters.split(',')
+                logs = set([f for keyword in filters for f in logs if keyword in f])
+
             if 'json' in self.request.arguments:
                 self.finish(to_json(list(logs)))
             else:
                 self.finish(catalog.generate(logs=logs))
             return
 
-        if not isfile(join(self.path, filename)):
+        if not isfile(fullname):
             self.set_status(404)
             return
 
@@ -90,7 +96,7 @@ class HubLogDirHandler(DefaultCORSHeaderMixin, RequestHandler):
                 lines = lines[-int(_l):]
             return lines
 
-        lines = get_log_content(join(self.path, filename), **self.request.arguments)
+        lines = get_log_content(fullname, **self.request.arguments)
         self.finish(logfile.generate(
             name=filename,
             lines=lines

@@ -68,8 +68,11 @@ class BasePublisher(BaseManager, BaseStatusRegisterer):
     def setup(self):
         self.setup_log()
 
-    def setup_log(self):
-        self.logger, self.logfile = get_logger(self.category, self.log_folder)
+    def setup_log(self, build_name=None):
+        log_folder = self.log_folder
+        if build_name:
+            log_folder = os.path.join(btconfig.LOG_FOLDER, "build", build_name)
+        self.logger, self.logfile = get_logger(self.category, log_folder, force=True)
 
     def get_predicates(self):
         return []
@@ -382,6 +385,9 @@ class SnapshotPublisher(BasePublisher):
                 "Error loading build document using snapshot named '%s': %s" %
                 (snapshot, e))
             raise
+
+        self.setup_log(bdoc["_id"])
+
         if isinstance(bdoc, list):
             raise PublisherException(
                 "Snapshot '%s' found in more than one builds: %s." %
@@ -853,6 +859,9 @@ class DiffPublisher(BasePublisher):
           * meta: publish/register the version as available for auto-updating hubs
         """
         bdoc = self.load_build(build_name)
+
+        self.setup_log(bdoc["_id"])
+
         assert bdoc, "No such build named '%s'" % build_name
         assert "diff" in bdoc, "No diff release found in build document named '%s'" % build_name
         if previous_build is None:
@@ -1281,9 +1290,12 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
     def setup(self):
         self.setup_log()
 
-    def setup_log(self):
-        self.logger, self.logfile = get_logger(RELEASEMANAGER_CATEGORY,
-                                               self.log_folder)
+    def setup_log(self, build_name=None):
+        name = RELEASEMANAGER_CATEGORY
+        log_folder = self.log_folder
+        if build_name:
+            log_folder = os.path.join(btconfig.LOG_FOLDER, "build", build_name)
+        self.logger, self.logfile = get_logger(name, log_folder=log_folder, force=True)
 
     def poll(self, state, func):
         super().poll(state, func, col=get_src_build())
@@ -1557,6 +1569,9 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         txt 'format' is the only one supported for now.
         """
         bdoc = self.load_build(new)
+
+        self.setup_log(bdoc["_id"])
+
         old = old or get_previous_collection(new)
         release_folder = generate_folder(btconfig.RELEASE_PATH, old, new)
         if not os.path.exists(release_folder):
