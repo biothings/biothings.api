@@ -339,7 +339,16 @@ class ESQueryBuilder():
             search = search.sort(*options.sort)
         if isinstance(options._source, list):
             if 'all' not in options._source:
-                search = search.source(options._source)
+                fields_with_minus = [
+                    field.lstrip('-') for field in options._source if field.startswith('-')
+                ]
+                fields_without_minus = [
+                    field for field in options._source if not field.startswith('-')
+                ]
+                search = search.source(
+                    includes=fields_without_minus,
+                    excludes=fields_with_minus
+                )
         for key in ('from', 'size', 'explain', 'version'):
             if key in options:
                 search = search.extra(**{key: options[key]})
