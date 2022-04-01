@@ -46,6 +46,12 @@ def test_es():
     print(builder.build([['A']], scopes=[['scope1']]).to_dict())  # multisearch, one query, match
     print(builder.build(['A', 'B'], scopes=['scope1', 'scope2']).to_dict())  # multisearch, match
     print(builder.build([['A', 'B'], ['C', 'D']], scopes=['scope1', ['S2', 'S3']]).to_dict())  # multisearch, compound match
+    query = builder.build('A', scopes=['scope1'], _source=['_id', 'fieldA', '-fieldB', '-*.description']).to_dict()
+    print(query)
+    assert 'fieldB' in query['_source']['excludes']
+    assert '*.description' in query['_source']['excludes']
+    assert '_id' in query['_source']['includes']
+    assert 'fieldA' in query['_source']['includes']
 
 
 if __name__ == '__main__':
