@@ -2,7 +2,8 @@ import orjson
 import certifi
 from tornado.httpclient import HTTPRequest
 
-from biothings.web.analytics.events import *
+from biothings.web.analytics.events import Event, Message
+
 
 class Channel:
 
@@ -31,6 +32,7 @@ class SlackChannel(Channel):
                 ca_certs=certifi.where()  # for Windows compatibility
             )
 
+
 # Measurement Protocol (Universal Analytics)
 # https://developers.google.com/analytics/devguides/collection/protocol/v1/devguide
 
@@ -50,5 +52,5 @@ class GAChannel(Channel):
         for i in range(0, len(events), 20):
             yield HTTPRequest(
                 'http://www.google-analytics.com/batch', method='POST',
-                body='\n'.join(events[i: i+20])
+                body='\n'.join(events[i: i + 20])
             )

@@ -29,7 +29,6 @@ biothings.web.handlers.ESRequestHandler
 
 """
 
-import orjson
 import logging
 from collections import Counter
 from types import CoroutineType
@@ -123,6 +122,7 @@ class BaseQueryHandler(BaseAPIHandler):
 
         super().write(chunk)
 
+
 class MetadataSourceHandler(BaseQueryHandler):
     """
     GET /metadata
@@ -189,6 +189,7 @@ async def ensure_awaitable(obj):
         return await obj
     return obj
 
+
 def capture_exceptions(coro):
     async def _method(*args, **kwargs):
         try:
@@ -198,6 +199,7 @@ def capture_exceptions(coro):
         except QueryPipelineException as exc:
             raise HTTPError(exc.code, None, exc.details, reason=exc.summary)
     return _method
+
 
 class BiothingHandler(BaseQueryHandler):
     """

@@ -118,8 +118,7 @@ class HubLogFileHandler(DefaultCORSHeaderMixin, StaticFileHandler):
             self.set_header("Content-Disposition", f"attachment; filename={download_file_name}")
             with TemporaryDirectory(dir=self.root) as temp_dir:
                 _, temp_file = mkstemp(dir=temp_dir)
-                with gzip.open(self.absolute_path, "rb") as fread, \
-                    open(temp_file, mode="w") as fwrite:
+                with gzip.open(self.absolute_path, "rb") as fread, open(temp_file, mode="w") as fwrite:
                     content = fread.read().decode()
                     fwrite.write(content)
                 return await super().get(temp_file, include_body=True)
