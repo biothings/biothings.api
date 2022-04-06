@@ -61,3 +61,5 @@ INVISIBLE_READ_ONLY = "evaporated"
 # special param, by default config is read-only
 # but we want to test modification
 CONFIG_READONLY = False
+
+LOG_FOLDER = "/tmp/biothings.api_tests/"

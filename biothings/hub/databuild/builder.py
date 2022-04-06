@@ -251,7 +251,9 @@ class DataBuilder(object):
         return pinfo
 
     def setup_log(self):
-        self.logger, _ = get_logger('build_%s' % self.build_name)
+        log_name = self.target_name or self.build_name
+        log_folder = os.path.join(btconfig.LOG_FOLDER, 'build', log_name)
+        self.logger, _ = get_logger('build', log_folder=log_folder, force=True)
 
     def check_ready(self, force=False):
         if force:
@@ -587,6 +589,8 @@ class DataBuilder(object):
             target_name = self.get_target_name()
         self.target_name = target_name
         self.target_backend.set_target_name(self.target_name)
+
+        self.setup_log()  # Force logs will be stored in the target_name file
 
         self.custom_metadata = {}
         self.clean_old_collections()

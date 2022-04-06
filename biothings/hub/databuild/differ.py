@@ -49,9 +49,13 @@ class BaseDiffer(object):
         self.metadata = {}  # diff metadata
         self.metadata_filename = None
 
-    def setup_log(self):
-        self.logger, self.logfile = get_logger(
-            'diff_%s' % self.__class__.diff_type, self.log_folder)
+    def setup_log(self, old=None, new=None):
+        log_folder = self.log_folder
+        name = f"diff_{self.__class__.diff_type}"
+        if old and new:
+            log_folder = os.path.join(btconfig.LOG_FOLDER, 'build', new, 'diff')
+            name = f"diff_{old}_{new}"
+        self.logger, self.logfile = get_logger(name, log_folder, force=True)
 
     def get_predicates(self):
         return []
@@ -545,6 +549,7 @@ class BaseDiffer(object):
              mode=None,
              exclude=[]):
         """wrapper over diff_cols() coroutine, return a task"""
+        self.setup_log(old_db_col_names, new_db_col_names)
         job = asyncio.ensure_future(
             self.diff_cols(old_db_col_names, new_db_col_names, batch_size,
                            steps, mode, exclude))

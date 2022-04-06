@@ -41,7 +41,7 @@ def create_logger(log_folder, logger_name, level=logging.DEBUG):
     return logger, logfile
 
 
-def configurate_file_handler(logger, logfile, formater=None):
+def configurate_file_handler(logger, logfile, formater=None, force=False):
     if not formater:
         formater = logging.Formatter(LOG_FORMAT_STRING, datefmt=DATEFMT)
 
@@ -49,7 +49,7 @@ def configurate_file_handler(logger, logfile, formater=None):
     fh.setFormatter(formater)
     fh.rotator = GZipRotator()
     fh.name = "logfile"
-    if fh.name not in [h.name for h in logger.handlers]:
+    if force or fh.name not in [h.name for h in logger.handlers]:
         logger.addHandler(fh)
 
 
@@ -61,7 +61,9 @@ def setup_default_log(default_logger_name, log_folder, level=logging.DEBUG):
     return logger
 
 
-def get_logger(logger_name, log_folder=None, handlers=("console", "file", "slack"), timestamp=None):
+def get_logger(
+    logger_name, log_folder=None, handlers=("console", "file", "slack"), timestamp=None, force=False
+):
     """
     Configure a logger object from logger_name and return (logger, logfile)
     """
@@ -76,7 +78,7 @@ def get_logger(logger_name, log_folder=None, handlers=("console", "file", "slack
     logger, logfile = create_logger(log_folder, logger_name)
     fmt = logging.Formatter(LOG_FORMAT_STRING, datefmt=DATEFMT)
     if "file" in handlers:
-        configurate_file_handler(logger, logfile, formater=fmt)
+        configurate_file_handler(logger, logfile, formater=fmt, force=force)
 
     if "hipchat" in handlers:
         raise DeprecationWarning("Hipchat is dead...")
@@ -88,7 +90,7 @@ def get_logger(logger_name, log_folder=None, handlers=("console", "file", "slack
         )
         nh.setFormatter(fmt)
         nh.name = "slack"
-        if nh.name not in [h.name for h in logger.handlers]:
+        if force or nh.name not in [h.name for h in logger.handlers]:
             logger.addHandler(nh)
 
     def notify(self, *args, **kwargs):

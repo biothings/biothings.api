@@ -52,8 +52,11 @@ class BaseSyncer(object):
         self.target_backend = None
         self._meta = None
 
-    def setup_log(self):
-        self.logger, self.logfile = get_logger('sync')
+    def setup_log(self, build_name=None):
+        log_folder = None
+        if build_name:
+            log_folder = os.path.join(btconfig.LOG_FOLDER, "build", build_name)
+        self.logger, self.logfile = get_logger('sync', log_folder=log_folder, force=True)
 
     def get_predicates(self):
         #def no_same_syncer_running(job_manager):
@@ -190,6 +193,9 @@ class BaseSyncer(object):
         selfcontained = "selfcontained" in self._meta["diff"]["type"]
         old_db_col_names = self.get_target_backend()
         new_db_col_names = self._meta["new"]["backend"]
+
+        self.setup_log(new_db_col_names)
+
         diff_mapping_file = self._meta["diff"]["mapping_file"]
         pinfo = self.get_pinfo()
         self.synced_cols = "%s -> %s" % (old_db_col_names, new_db_col_names)

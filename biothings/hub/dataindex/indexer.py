@@ -9,6 +9,7 @@ from functools import partial
 from typing import NamedTuple, Optional
 
 import elasticsearch
+from biothings import config as btconfig
 from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
 from biothings.hub.databuild.backend import merge_src_build_metadata
 from biothings.utils.common import (get_class_from_classpath,
@@ -313,8 +314,15 @@ class Indexer():
         self.conf_name = _build_doc.build_config.get("name")
         self.build_name = _build_doc.build_name
 
-        self.logger, self.logfile = get_logger('index_%s' % self.es_index_name)
+        self.setup_log()
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
+
+    def setup_log(self):
+        log_folder = os.path.join(
+            btconfig.LOG_FOLDER, 'build', self.build_name or '', 'index'
+        )
+        log_name = f'index_{self.es_index_name}'
+        self.logger, self.logfile = get_logger(log_name, log_folder=log_folder, force=True)
 
     def __str__(self):
         showx = self.mongo_collection_name != self.es_index_name
