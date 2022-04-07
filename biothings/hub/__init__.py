@@ -16,6 +16,7 @@ import aiocron
 import asyncssh
 from biothings.utils.configuration import *
 from biothings.utils.document_generator import generate_command_documentations
+from . import default_config
 
 
 def _config_for_app(config_mod=None):
@@ -26,6 +27,12 @@ def _config_for_app(config_mod=None):
 
     if not isinstance(config_mod, (types.ModuleType, SimpleNamespace)):
         raise TypeError(type(config_mod))
+
+    # update config_mod with default value for missing configrations
+    for attr in dir(default_config):
+        default_value = getattr(default_config, attr)
+        if not hasattr(config_mod, attr):
+            setattr(config_mod, attr, default_value)
 
     for attr in dir(config_mod):
         value = getattr(config_mod, attr)
