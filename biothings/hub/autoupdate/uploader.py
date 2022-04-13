@@ -210,6 +210,10 @@ class BiothingsUploader(uploader.BaseSourceUploader):
 
         # repository is now ready, let's trigger the restore
         snapshot_name = build_meta["metadata"]["snapshot_name"]
+
+        # backup the original value of indexer's replica
+        original_number_of_replicas = idxr.get_internal_number_of_replicas() or 0
+
         alias_name = idxr.canonical_index_name
         d = datetime.datetime.now().strftime('%Y%m%d')
         base_index_name = f'{alias_name}_{snapshot_name}_{d}_'
@@ -289,6 +293,9 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 # just inform the user that deletion failed, not that harmful
                 self.logger.error("Failed to delete old indices, try deleting "
                                   f"{old_indices} manually")
+
+            # restore indexer's replica to original value
+            idxr.set_internal_number_of_replicas(original_number_of_replicas)
 
         while True:
             status_info = get_status_info()

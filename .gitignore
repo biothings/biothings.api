@@ -36,5 +36,7 @@ config.py
 .hubdb
 .hubdb.*
 
+# other local files
+.notes/
 .env
 .notes

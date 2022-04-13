@@ -830,6 +830,18 @@ class ESIndexer():
         else:
             return {"status": "IN_PROGRESS", "progress": "%.2f%%" % (done/len(shards_status)*100)}
 
+    def get_internal_number_of_replicas(self):
+        try:
+            index_settings = self._es.indices.get_settings(self._index)
+            return index_settings[self._index]["settings"]["index"]["number_of_replicas"]
+        except Exception:
+            return
+
+    def set_internal_number_of_replicas(self, number_of_replicas=None):
+        if not number_of_replicas:
+            number_of_replicas = self.number_of_replicas
+        settings = json.dumps({'index': {'number_of_replicas': number_of_replicas}})
+        self._es.indices.put_settings(settings, index=self._index)
 
 class MappingError(Exception):
     pass
