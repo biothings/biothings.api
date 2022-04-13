@@ -5,6 +5,11 @@ from inspect import signature
 
 method_directive = ".. py:method::"
 data_directive = ".. py:data::"
+hub_commands_title = "biothings.hub.commands\n==============="
+hub_commands_short_description = (
+    "This document will show you all available commands "
+    "that can be used when you access the Hub shell, and their usages."
+)
 template = """{directive} {name}{signature}
 
 {docstring}
@@ -16,7 +21,6 @@ def generate_command_documentations(filepath, commands):
 
     assert isinstance(commands, (dict, HubCommands)), "commands must be a HubCommands instance, or dict"
 
-    title = "biothings.hub.commands\n==============="
     command_docs = []
 
     for command_name, command_data in commands.items():
@@ -48,7 +52,7 @@ def generate_command_documentations(filepath, commands):
         ))
 
     command_docs = '\n\n'.join(command_docs)
-    doc = f"{title}\n\n{command_docs}"
+    doc = f"{hub_commands_title}\n\n{hub_commands_short_description}\n\n{command_docs}"
 
     with open(filepath, mode="w") as f:
         f.write(doc)
