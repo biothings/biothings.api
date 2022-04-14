@@ -28,12 +28,6 @@ def _config_for_app(config_mod=None):
     if not isinstance(config_mod, (types.ModuleType, SimpleNamespace)):
         raise TypeError(type(config_mod))
 
-    # update config_mod with default value for missing configrations
-    for attr in dir(default_config):
-        default_value = getattr(default_config, attr)
-        if not hasattr(config_mod, attr):
-            setattr(config_mod, attr, default_value)
-
     for attr in dir(config_mod):
         value = getattr(config_mod, attr)
         if isinstance(value, ConfigurationError):
@@ -46,7 +40,7 @@ def _config_for_app(config_mod=None):
         logging.exception(config_mod)
         app_path = ""  # TODO
 
-    wrapper = ConfigurationWrapper(config_mod)
+    wrapper = ConfigurationWrapper(default_config, config_mod)
     wrapper.APP_PATH = app_path
 
     if not hasattr(config_mod, "HUB_DB_BACKEND"):

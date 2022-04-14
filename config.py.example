@@ -54,7 +54,6 @@ CACHE_FORMAT = "xz"
 
 # Role, when master, hub will publish data (updates, snapshot, etc...) that
 # other instances can use (production, standalones)
-#- skip -#
 BIOTHINGS_ROLE = "slave"
 
 # Hub environment (like, prod, dev, ...)
@@ -120,5 +119,4 @@ logger = ConfigurationDefault(
 CONFIG_READONLY = True
 
 # don't check used versions, just propagate them when publishing
-#- invisible -#
 SKIP_CHECK_VERSIONS = True

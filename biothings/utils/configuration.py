@@ -77,9 +77,9 @@ class ConfigurationWrapper():
     # This class contains some of Sebastien's original design
     # It has been moved from biothings.__init__ module to here.
 
-    def __init__(self, conf):
+    def __init__(self, default_config, conf):
         self._module = conf  # python module, typically config.py
-        self._annotations = _parse_comments(conf)  # section, visibility..
+        self._annotations = _parse_comments(default_config, conf)  # section, visibility..
         self._db = None  # typically set by _config_for_app()
 
         self._modified = False
@@ -288,14 +288,14 @@ def _list_attrs(conf_mod):
     return attrs
 
 
-def _parse_comments(conf_mod):
+def _parse_comments(default_conf_mod, conf_mod):
     """
     TODO NEED REVIEW
 
     Parse configuration module and extract documentation from it.
     Documentation can be found in different place (in order):
     1. the configuration value is a ConfigurationDefault instance (specify a default value)
-       or a ConfigurationError instance, in whic case the documentation is taken
+       or a ConfigurationError instance, in which case the documentation is taken
        from the instance doc.
     2. the documentation can be specified as an inline comment
     3. the documentation can be specified as comments above
@@ -332,14 +332,24 @@ def _parse_comments(conf_mod):
             #- readonly -#
             #- hidden -#
       will make the parameter read-only, and its value won't be displayed
+
+      Other note: Special comments donot come from default_conf_mod will be discarded
     """
-    attrs = _list_attrs(conf_mod)
+    attrs = _list_attrs(default_conf_mod)
+    attrs.update(_list_attrs(conf_mod))
+
     try:
         configs = []
-        _configs = deque([conf_mod])
+        _configs = deque([default_conf_mod, conf_mod])
+
         while _configs:
             config = _configs.popleft()
             lines = inspect.getsourcelines(config)[0]
+
+            # ignore special comment lines which donot come from default_config_mod
+            if config != default_conf_mod:
+                lines = [line for line in lines if not line.strip().startswith("#")]
+
             lines = ConfigLines(ConfigLine(line) for line in lines)
 
             pat = re.compile(r"^from\s+(.*?)\s+import\s+\*")
