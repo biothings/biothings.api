@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import aiocron
 import asyncssh
 from biothings.utils.configuration import *
+from biothings.utils.document_generator import generate_command_documentations
 
 
 def _config_for_app(config_mod=None):
@@ -991,6 +992,11 @@ class HubServer(object):
         self.commands = HubCommands()
         self.commands["status"] = CommandDefinition(command=partial(status, self.managers),
                                                     tracked=False)
+        self.commands["export_command_documents"] = CommandDefinition(
+            command=self.export_command_documents,
+            tracked=False
+        )
+
         if "config" in self.features:
             self.commands["config"] = CommandDefinition(command=config.show,
                                                         tracked=False)
@@ -1498,6 +1504,9 @@ class HubServer(object):
             self.api_endpoints.pop("standalone")
         if "upgrade" in self.commands:
             self.api_endpoints["code/upgrade"] = EndpointDefinition(name="upgrade", method="put")
+
+    def export_command_documents(self, filepath):
+        generate_command_documentations(filepath, self.commands)
 
 
 class HubSSHServer(asyncssh.SSHServer):
