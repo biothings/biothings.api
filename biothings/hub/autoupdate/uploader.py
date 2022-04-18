@@ -52,7 +52,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         return self._syncer_func
 
     async def load(self, *args, **kwargs):
-        return super().load(steps=["data"], *args, **kwargs)
+        return await super().load(steps=["data"], *args, **kwargs)
 
     async def update_data(self, batch_size, job_manager):
         """
