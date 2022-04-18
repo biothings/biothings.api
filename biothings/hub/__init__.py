@@ -1581,6 +1581,14 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         for line in lines[:-1]:
             try:
                 outs = [out for out in self.shell.eval(line) if out]
+
+                # Prepend the standout out/err 
+                last_std_contents = self.shell.last_std_contents or {}
+                if "stdout" in last_std_contents:
+                    outs.append(last_std_contents["stdout"])
+                if "stderr" in last_std_contents:
+                    outs.append(last_std_contents["stderr"])
+
                 # trailing \n if not already there
                 if outs:
                     strout = "\n".join(outs).strip("\n") + "\n"

@@ -25,6 +25,7 @@ import biothings.utils.aws as aws
 from biothings.utils.hub_db import get_cmd, get_last_command, backup, restore
 from biothings.utils.loggers import ShellLogger
 from biothings.utils.docs import flatten_doc
+from biothings.utils.redirect_streams import RedirectStdStreams
 from biothings import config
 if hasattr(config, 'logger'):
     logging = config.logger
@@ -104,6 +105,7 @@ class HubShell(InteractiveShell):
         # there should be only one shell instance (todo: singleton)
         self.__class__.cmd = get_cmd()
         self.__class__.set_command_counter()
+        self.last_std_contents = None
         super(HubShell, self).__init__(user_ns=self.extra_ns)
 
     @classmethod
@@ -387,8 +389,13 @@ class HubShell(InteractiveShell):
                 cmdline = "_and(%s)" % ",".join(strcmds)
             else:
                 raise CommandError("Using '&&' operator required two operands\n")
-        r = self.run_cell(cmdline, store_history=True)
+        
+        # r = self.run_cell(cmdline, store_history=True)
         outputs = []
+        with RedirectStdStreams() as redirect_stream:
+            r = self.run_cell(cmdline, store_history=True)
+            self.last_std_contents = redirect_stream.get_std_contents()
+
         if not r.success:
             raise CommandError("%s\n" % repr(r.error_in_exec))
         else:
