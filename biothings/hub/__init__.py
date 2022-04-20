@@ -16,6 +16,7 @@ import aiocron
 import asyncssh
 from biothings.utils.configuration import *
 from biothings.utils.document_generator import generate_command_documentations
+from . import default_config
 
 
 def _config_for_app(config_mod=None):
@@ -39,7 +40,7 @@ def _config_for_app(config_mod=None):
         logging.exception(config_mod)
         app_path = ""  # TODO
 
-    wrapper = ConfigurationWrapper(config_mod)
+    wrapper = ConfigurationWrapper(default_config, config_mod)
     wrapper.APP_PATH = app_path
 
     if not hasattr(config_mod, "HUB_DB_BACKEND"):
