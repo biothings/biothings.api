@@ -59,7 +59,7 @@ web_extra_requires = [
 hub_requires = [
     'beautifulsoup4',   # used in dumper.GoogleDriveDumper
     'aiocron==1.8',     # setup scheduled jobs
-    'aiohttp==3.6.2',   # for compatibility with elasticsearch-async==6.x
+    'aiohttp==3.8.1',   # elasticsearch requires aiohttp>=3,<4
     'asyncssh==2.5.0',  # needs libffi-dev installed (apt-get)
     'pymongo>=3.12.0,<4.0',  # support MongoDB 5.0 since v3.12.0
     'psutil',
@@ -111,10 +111,11 @@ setup(
     classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
         "Development Status :: 4 - Beta",
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",

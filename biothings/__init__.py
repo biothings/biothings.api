@@ -8,8 +8,9 @@ class _version_info(NamedTuple):
     micro: int
 
 
-version_info = _version_info(0, 10, 1)
+version_info = _version_info(0, 11, 0)
 __version__ = '.'.join(map(str, version_info))
+
 
 def config_for_app(config):
     import warnings
