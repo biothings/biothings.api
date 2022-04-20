@@ -68,3 +68,4 @@ We recommend to follow `this tutorial <tutorial/studio.html>`_ to develop your f
    apidoc/biothings.web
    apidoc/biothings.tests
    apidoc/biothings.utils
+   apidoc/biothings.hub.commands

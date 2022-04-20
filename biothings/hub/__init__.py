@@ -15,6 +15,8 @@ from types import SimpleNamespace
 import aiocron
 import asyncssh
 from biothings.utils.configuration import *
+from biothings.utils.document_generator import generate_command_documentations
+from . import default_config
 
 
 def _config_for_app(config_mod=None):
@@ -38,7 +40,7 @@ def _config_for_app(config_mod=None):
         logging.exception(config_mod)
         app_path = ""  # TODO
 
-    wrapper = ConfigurationWrapper(config_mod)
+    wrapper = ConfigurationWrapper(default_config, config_mod)
     wrapper.APP_PATH = app_path
 
     if not hasattr(config_mod, "HUB_DB_BACKEND"):
@@ -991,6 +993,11 @@ class HubServer(object):
         self.commands = HubCommands()
         self.commands["status"] = CommandDefinition(command=partial(status, self.managers),
                                                     tracked=False)
+        self.commands["export_command_documents"] = CommandDefinition(
+            command=self.export_command_documents,
+            tracked=False
+        )
+
         if "config" in self.features:
             self.commands["config"] = CommandDefinition(command=config.show,
                                                         tracked=False)
@@ -1499,6 +1506,9 @@ class HubServer(object):
         if "upgrade" in self.commands:
             self.api_endpoints["code/upgrade"] = EndpointDefinition(name="upgrade", method="put")
 
+    def export_command_documents(self, filepath):
+        generate_command_documentations(filepath, self.commands)
+
 
 class HubSSHServer(asyncssh.SSHServer):
 
@@ -1572,6 +1582,14 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         for line in lines[:-1]:
             try:
                 outs = [out for out in self.shell.eval(line) if out]
+
+                # Prepend the standout out/err 
+                last_std_contents = self.shell.last_std_contents or {}
+                if "stdout" in last_std_contents:
+                    outs.append(last_std_contents["stdout"])
+                if "stderr" in last_std_contents:
+                    outs.append(last_std_contents["stderr"])
+
                 # trailing \n if not already there
                 if outs:
                     strout = "\n".join(outs).strip("\n") + "\n"

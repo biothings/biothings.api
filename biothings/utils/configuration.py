@@ -11,6 +11,7 @@ from importlib import import_module
 
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.jsondiff import make as jsondiff
+from biothings.utils.loggers import setup_default_log
 
 
 class ConfigurationError(Exception):
@@ -77,9 +78,23 @@ class ConfigurationWrapper():
     # This class contains some of Sebastien's original design
     # It has been moved from biothings.__init__ module to here.
 
-    def __init__(self, conf):
+    def __init__(self, default_config, conf):
+        """
+        When constructing a ConfigurationWrapper instance,
+        variables will be defined with default values coming from default_config,
+        then they can be overridden by conf's values,
+        or new variables will be added if not defined in default_conf.
+        Only metadata come from default_config will be used.
+        """
+
         self._module = conf  # python module, typically config.py
-        self._annotations = _parse_comments(conf)  # section, visibility..
+        # update self._module with default value for missing configrations
+        for attr in dir(default_config):
+            default_value = getattr(default_config, attr)
+            if not hasattr(self._module, attr):
+                setattr(self._module, attr, default_value)
+
+        self._annotations = _parse_comments(default_config, conf)  # section, visibility..
         self._db = None  # typically set by _config_for_app()
 
         self._modified = False
@@ -87,6 +102,10 @@ class ConfigurationWrapper():
 
         if hasattr(self._module, "CONFIG_READONLY"):
             self._readonly = self._module.CONFIG_READONLY
+
+        logger = getattr(self._module, "logger", None)
+        if hasattr(self._module, "LOG_FOLDER") and not logger or isinstance(logger, ConfigurationDefault):
+            self._module.logger = setup_default_log("hub", self.LOG_FOLDER)
 
     @property
     def modified(self):
@@ -288,14 +307,14 @@ def _list_attrs(conf_mod):
     return attrs
 
 
-def _parse_comments(conf_mod):
+def _parse_comments(default_conf_mod, conf_mod):
     """
     TODO NEED REVIEW
 
-    Parse configuration module and extract documentation from it.
+    Parse configuration module and extract documentation from default_conf_mod.
     Documentation can be found in different place (in order):
     1. the configuration value is a ConfigurationDefault instance (specify a default value)
-       or a ConfigurationError instance, in whic case the documentation is taken
+       or a ConfigurationError instance, in which case the documentation is taken
        from the instance doc.
     2. the documentation can be specified as an inline comment
     3. the documentation can be specified as comments above
@@ -333,13 +352,21 @@ def _parse_comments(conf_mod):
             #- hidden -#
       will make the parameter read-only, and its value won't be displayed
     """
-    attrs = _list_attrs(conf_mod)
+    attrs = _list_attrs(default_conf_mod)
+    attrs.update(_list_attrs(conf_mod))
+
     try:
         configs = []
-        _configs = deque([conf_mod])
+        _configs = deque([default_conf_mod, conf_mod])
+
         while _configs:
             config = _configs.popleft()
             lines = inspect.getsourcelines(config)[0]
+
+            # ignore special comment lines which donot come from default_config_mod
+            if config != default_conf_mod:
+                lines = [line for line in lines if not line.strip().startswith("#")]
+
             lines = ConfigLines(ConfigLine(line) for line in lines)
 
             pat = re.compile(r"^from\s+(.*?)\s+import\s+\*")

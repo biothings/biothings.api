@@ -37,3 +37,4 @@ config.py
 .hubdb.*
 
 .env
+.notes
