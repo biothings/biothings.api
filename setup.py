@@ -46,7 +46,8 @@ install_requires = [
     'singledispatchmethod; python_version < "3.8.0"',
     'dataclasses; python_version < "3.7.0"',
     'PyYAML>=5.1',
-    'orjson>=3.6.7',    # this is a faster json lib support inf/nan and datetime
+    'orjson>=3.6.1',    # this is a faster json lib support inf/nan and datetime
+                        # v3.6.1 is the last version supports Python 3.6
 ]
 
 # extra requirements for biothings.web
