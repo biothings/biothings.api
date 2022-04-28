@@ -1,8 +1,10 @@
 import time, logging, os, io, glob, datetime
 import dateutil.parser as dtparser
+from collections import Iterable
 from functools import wraps
 from pymongo import MongoClient, DESCENDING
-from pymongo.collection import Collection
+from pymongo.database import Database as PymongoDatabase
+from pymongo.collection import Collection as PymongoCollection
 from functools import partial
 from collections import defaultdict
 import bson
@@ -32,11 +34,65 @@ class DummyDatabase(dotdict):
         return DummyCollection()
 
 
-class Database(MongoClient,IDatabase):
+class Collection(PymongoCollection):
+    # https://pymongo.readthedocs.io/en/4.1.1/migrate-to-pymongo4.html
+
+    def __bool__(self):
+        return self is not None
+
+    def insert(self, doc_or_docs, *args, **kwargs):
+        if isinstance(doc_or_docs, Iterable):
+            return self.insert_many(doc_or_docs)
+        else:
+            return self.insert_one(doc_or_docs)
+
+    def update(self, spec, doc, *args, **kwargs):
+        if kwargs.pop("multi", None):
+            return self.update_many(spec, doc, *args, **kwargs)
+        else:
+            return self.update_one(spec, doc, *args, **kwargs)
+
+    def remove(self, spec_or_id=None, **kwargs):
+        if kwargs.pop("multi", None):
+            return self.delete_many(spec_or_id, **kwargs)
+        else:
+            return self.delete_one(spec_or_id, **kwargs)
+
+    def save(self, doc, *args, **kwargs):
+        if '_id' in doc:
+            kwargs["upsert"] = True
+            self.replace_one({'_id': doc['_id']}, doc, *args, **kwargs)
+            return doc['_id']
+        else:
+            res = self.insert_one(doc, *args, **kwargs)
+            return res.inserted_id
+
+    def count(self, _filter=None, **kwargs):
+        if _filter:
+            return self.count_documents(_filter, **kwargs)
+        return self.estimated_document_count(**kwargs)
+
+
+class Database(PymongoDatabase):
+    def __getitem__(self, name):
+        return Collection(self, name)
+
+    def collection_names(self, include_system_collections=True, session=None):
+        _filter = None
+        if not include_system_collections:
+            _filter = {"name": {"$regex": r"^(?!system\\.)"}}
+        return self.list_collection_names(session=session, filter=_filter)
+
+
+class DatabaseClient(MongoClient,IDatabase):
 
     def __init__(self,dbname,*args,**kwargs):
-        super(Database,self).__init__(dbname)
+        super(DatabaseClient, self).__init__(dbname)
         self.name = dbname
+
+    def __getitem__(self, name):
+        return Database(self, name)
+
 
 def requires_config(func):
     @wraps(func)
@@ -60,7 +116,7 @@ def get_conn(server, port):
                                                  server, port)
         else:
             uri = "mongodb://{}:{}".format(server, port)
-        conn = Database(uri)
+        conn = DatabaseClient(uri)
         return conn
     except (AttributeError,ValueError) as e:
         # missing config variables (or invalid), we'll pretend it's a dummy access to mongo
@@ -72,7 +128,7 @@ def get_conn(server, port):
 
 @requires_config
 def get_hub_db_conn():
-    conn = Database(config.HUB_DB_BACKEND["uri"])
+    conn = DatabaseClient(config.HUB_DB_BACKEND["uri"])
     return conn
 
 @requires_config
@@ -144,7 +200,7 @@ def get_target_conn():
                                              config.DATA_TARGET_PORT)
     else:
         uri = "mongodb://{}:{}".format(config.DATA_TARGET_SERVER,config.DATA_TARGET_PORT)
-    conn = Database(uri)
+    conn = DatabaseClient(uri)
     return conn
 
 
@@ -197,7 +253,7 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
     if isinstance(collection,DocMongoBackend):
         collection = collection.target_collection
     cur = collection.find(query, no_cursor_timeout=True, projection=fields)
-    n = cur.count()
+    n = collection.count_documents(query)
     s = s or 0
     e = e or n
     ##logger.info('Retrieving %d documents from database "%s".' % (n, collection.name))
@@ -399,7 +455,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
         else:
             logger.info("Can't build cache, cache not allowed or no cache folder")
             build_cache = False
-        if isinstance(col,Collection):
+        if isinstance(col, PymongoCollection):
             doc_feeder_func = partial(doc_feeder,col, step=batch_size, inbatch=True, fields={"_id":1})
         elif isinstance(col,DocMongoBackend):
             doc_feeder_func = partial(doc_feeder,col.target_collection, step=batch_size, inbatch=True, fields={"_id":1})
