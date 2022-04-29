@@ -74,6 +74,9 @@ class Collection(PymongoCollection):
 
 
 class Database(PymongoDatabase):
+    def __bool__(self):
+        return self is not None
+
     def __getitem__(self, name):
         return Collection(self, name)
 
@@ -84,10 +87,10 @@ class Database(PymongoDatabase):
         return self.list_collection_names(session=session, filter=_filter)
 
 
-class DatabaseClient(MongoClient,IDatabase):
+class DatabaseClient(MongoClient, IDatabase):
 
-    def __init__(self,dbname,*args,**kwargs):
-        super(DatabaseClient, self).__init__(dbname)
+    def __init__(self, dbname, *args, **kwargs):
+        super(DatabaseClient, self).__init__(*args, **kwargs)
         self.name = dbname
 
     def __getitem__(self, name):
@@ -106,6 +109,7 @@ def requires_config(func):
                 raise Exception("call biothings.config_for_app() first")
         return func(*args,**kwargs)
     return func_wrapper
+
 
 @requires_config
 def get_conn(server, port):
@@ -253,7 +257,7 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
     if isinstance(collection,DocMongoBackend):
         collection = collection.target_collection
     cur = collection.find(query, no_cursor_timeout=True, projection=fields)
-    n = collection.count_documents(query)
+    n = collection.count_documents(query or {})
     s = s or 0
     e = e or n
     ##logger.info('Retrieving %d documents from database "%s".' % (n, collection.name))
