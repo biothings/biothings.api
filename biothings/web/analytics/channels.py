@@ -54,3 +54,35 @@ class GAChannel(Channel):
                 'http://www.google-analytics.com/batch', method='POST',
                 body='\n'.join(events[i: i + 20])
             )
+
+
+class GA4Channel(Channel):
+
+    def __init__(self, measurement_id, api_secret, uid_version=1):
+        self.measurement_id = measurement_id
+        self.api_secret = api_secret
+        self.uid_version = uid_version
+
+    def handles(self, event):
+        return isinstance(event, Event)
+
+    def send(self, payload):
+        """
+
+        Limitations:
+        https://developers.google.com/analytics/devguides/collection/protocol/ga4/sending-events?client_type=gtag
+        """
+        events = payload.to_GA4_payload(self.measurement_id, self.uid_version)
+        # #batch-limitations section of the URL above
+        # A maximum of 25 hits can be specified per request.
+        url = f'https://www.google-analytics.com/mp/collect?measurement_id={self.measurement_id}&api_secret={self.api_secret}'
+        for i in range(0, len(events), 25):
+            data = {
+                'client_id': str(payload._cid(self.uid_version)),
+                'user_id': str(payload._cid(1)),
+                'events': events[i: i + 25]
+            }
+            yield HTTPRequest(
+                url, method='POST',
+                body=orjson.dumps(data)
+            )

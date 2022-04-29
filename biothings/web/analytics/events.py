@@ -111,6 +111,30 @@ class Event(UserDict):
         # this also escapes payload vals
         return [urlencode(payload)]
 
+    def to_GA4_payload(self, measurement_id, cid_version=1):
+        payload = {
+            "name": "page_view",
+            "params": _clean({
+                "client_id": self._cid(cid_version),
+                "user_ip": self.user_ip,
+                "page_location": f'{self.host}{self.path}',
+                "page_title": self.path.strip('/').replace('/', '-') if self.path.strip('/') else 'index',
+                "page_path": self.path
+            })
+        }
+
+        # add document referer
+        if isinstance(self.referer, str):
+            # Parameter values (including item parameter values) must be 100 character or fewer.
+            if len(self.referer) <= 100:
+                payload["params"]["page_referrer"] = self.referer
+
+        # add user_agent
+        if self.user_agent:
+            payload["params"]["user_agent"] = self.user_agent[:100]
+
+        return [payload]
+
     def __str__(self):  # to facilitate logging
         return f"{type(self).__name__}({pformat(self)})"
 
@@ -145,9 +169,27 @@ class GAEvent(Event):
             })))
         for event in self.get("__secondary__", []):
             event["__request__"] = self["__request__"]
-            payloads.extend(
-                event.to_GA_payload(
-                    tracking_id, cid_version)[1:])
+            payloads.extend(event.to_GA_payload(tracking_id, cid_version)[1:])
+            # ignore the first event (pageview)
+            # which is already generated once
+        return payloads
+
+    def to_GA4_payload(self, measurement_id, cid_version=1):
+
+        payloads = super().to_GA4_payload(measurement_id, cid_version)
+        if self.get("category") and self.get("action"):
+            payloads.append({
+                "name": self["action"],  # Event hit type
+                "params": _clean({
+                    "client_id": str(self._cid(cid_version)),  # Anonymous Client ID.
+                    "event_category": self["category"],  # Event Category. Required.
+                    "event_label": self.get("label", ""),  # Event label.
+                    "value": self.get("value", ""),  # Event value.
+                })
+            })
+        for event in self.get("__secondary__", []):
+            event["__request__"] = self["__request__"]
+            payloads.extend(event.to_GA4_payload(measurement_id, cid_version)[1:])
             # ignore the first event (pageview)
             # which is already generated once
         return payloads

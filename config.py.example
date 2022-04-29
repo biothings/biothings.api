@@ -84,3 +84,7 @@ LOG_FOLDER = os.path.join(DATA_ARCHIVE_ROOT, "logs")
 
 # Provide a default hub logger instance (use setup_default_log(name,log_folder)
 logger = setup_default_log("hub", LOG_FOLDER)
+
+GA4_MEASUREMENT_ID = 'G-XXXXXXXXXX'
+GA4_API_SECRET = 'XtXXXXXXXXXXVw'
+GA4_UID_GENERATOR_VERSION = 1

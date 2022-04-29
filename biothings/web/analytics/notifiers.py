@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from biothings.web.analytics.channels import SlackChannel, GAChannel
+from biothings.web.analytics.channels import SlackChannel, GAChannel, GA4Channel
 from tornado.httpclient import AsyncHTTPClient
 from tornado.web import RequestHandler
 
@@ -18,6 +18,12 @@ class Notifier:
             self.channels.append(GAChannel(
                 getattr(settings, 'GA_ACCOUNT'),
                 getattr(settings, 'GA_UID_GENERATOR_VERSION', 1)
+            ))
+        if getattr(settings, 'GA4_MEASUREMENT_ID', None):
+            self.channels.append(GA4Channel(
+                measurement_id=getattr(settings, 'GA4_MEASUREMENT_ID'),
+                api_secret=getattr(settings, 'GA4_API_SECRET'),
+                uid_version=getattr(settings, 'GA4_UID_GENERATOR_VERSION', 1)
             ))
 
     def broadcast(self, event):
