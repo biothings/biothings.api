@@ -8,6 +8,7 @@ from collections import UserList, UserString, deque
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from importlib import import_module
+from pymongo.errors import AutoReconnect
 
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.jsondiff import make as jsondiff
@@ -245,9 +246,21 @@ class ConfigurationWrapper():
         if not self._db:  # without db, only support module params.
             raise AttributeError("Transient parameter requires DB setup.")
 
-        doc = self._db.find_one({"_id": name})
+        doc = None
+        retry = 0
+        while True and retry < 30:
+            try:
+                doc = self._db.find_one({"_id": name})
+                if not doc:
+                    raise AttributeError(name)
+                retry += 1
+                break
+            except AutoReconnect:
+                self._db.__database.close()
+                self._db = self._get_db_function()
+
         if not doc:
-            raise AttributeError(name)
+            raise Exception("Cannot find document due to connection problem")
 
         val = json.loads(doc["json"])
         return val

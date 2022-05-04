@@ -88,11 +88,6 @@ class Database(PymongoDatabase):
 
 
 class DatabaseClient(MongoClient, IDatabase):
-
-    def __init__(self, dbname, *args, **kwargs):
-        super(DatabaseClient, self).__init__(*args, **kwargs)
-        self.name = dbname
-
     def __getitem__(self, name):
         return Database(self, name)
 

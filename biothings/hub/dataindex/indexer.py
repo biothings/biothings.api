@@ -442,7 +442,7 @@ class Indexer():
 
     async def do_index(self, job_manager, batch_size, ids, mode, **kwargs):
 
-        client = DatabaseClient(dbname=self.mongo_database_name, **self.mongo_client_args)
+        client = DatabaseClient(**self.mongo_client_args)
         database = client[self.mongo_database_name]
         collection = database[self.mongo_collection_name]
 
