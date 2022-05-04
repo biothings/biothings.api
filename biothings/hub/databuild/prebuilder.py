@@ -57,10 +57,11 @@ class MongoDBPreCompiledDataProvider(BasePreCompiledDataProvider):
     def register(self, _id, col_name):
         updt = {"$set": {"srcs.%s" % col_name: 1}}
         if type(_id) == list:
-            bob = self.col.initialize_unordered_bulk_op()
+            bulk = []
             for oneid in _id:
-                bob.find({"_id": oneid}).upsert().update(updt)
-            bob.execute()
+                bulk.append(pymongo.UpdateOne(filter={"_id": oneid}, update=updt, upsert=True))
+            if bulk:
+                self.col.bulk_write(bulk, ordered=False)
         else:
             self.col.update_one({"_id": _id}, updt, upsert=True)
 

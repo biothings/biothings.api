@@ -2,6 +2,7 @@
 from functools import partial
 
 from elasticsearch.exceptions import NotFoundError, TransportError
+from pymongo import UpdateOne
 
 from biothings.utils.es import ESIndexer
 from biothings import config as btconfig
@@ -145,23 +146,18 @@ class DocMongoBackend(DocBackendBase):
         '''if id does not exist in the target_collection,
             the update will be ignored except if upsert is True
         '''
-        bulk = self.target_collection.initialize_ordered_bulk_op()
-        at_least_one = False
+        bulk = []
         for doc in docs:
-            at_least_one = True
-            op = bulk.find({'_id': doc["_id"]})
-            if upsert:
-                op = op.upsert()
-            op.update({"$set": doc})
-        if at_least_one:
-            res = bulk.execute()
+            bulk.append(UpdateOne({'_id': doc["_id"]}, {"$set": doc}, upsert=upsert))
+        
+        if bulk:
+            result = self.target_collection.bulk_write(bulk)
             # if doc is the same, it'll be matched but not modified.
             # but for us, it's been processed. if upserted, then it can't be matched
-            # before (so matched cound doesn't include upserted). finally, it's only update
-            # ops, so don't count nInserted and nRemoved
-            return res["nMatched"] + res["nUpserted"]
-        else:
-            return 0
+            # before (so matched count doesn't include upserted). finally, it's only update
+            # ops, so don't count inserted_count and deleted_count
+            return result.matched_count + result.upserted_count
+        return 0
 
     def update_diff(self, diff, extra={}):
         '''update a doc based on the diff returned from diff.diff_doc
