@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+import os
 from collections import UserDict, UserString
 from dataclasses import dataclass
 from datetime import datetime
@@ -189,9 +190,10 @@ class SnapshotEnv():
         return doc  # TODO UNIQUENESS
 
     def setup_log(self, index):
-        self.logger, self.logfile = get_logger(
-            f"snapshot_{index}", btconfig.LOG_FOLDER, force=True
-        )
+        build_doc = self._doc(index)
+        log_name = build_doc['target_name'] or build_doc['_id']
+        log_folder = os.path.join(btconfig.LOG_FOLDER, 'build', log_name)
+        self.logger, _ = get_logger(f"snapshot_{index}", log_folder=log_folder, force=True)
 
     def snapshot(self, index, snapshot=None):
         self.setup_log(index)
