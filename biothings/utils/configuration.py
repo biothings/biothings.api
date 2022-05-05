@@ -243,6 +243,8 @@ class ConfigurationWrapper():
             return res
 
     def get_value_from_db(self, name):
+        from biothings.utils.mongo import MaxRetryAutoReconnectException
+
         if not self._db:  # without db, only support module params.
             raise AttributeError("Transient parameter requires DB setup.")
 
@@ -260,7 +262,7 @@ class ConfigurationWrapper():
                 self._db = self._get_db_function()
 
         if not doc:
-            raise Exception("Cannot find document due to connection problem")
+            raise MaxRetryAutoReconnectException()
 
         val = json.loads(doc["json"])
         return val

@@ -5,9 +5,11 @@ from functools import wraps
 from pymongo import MongoClient, DESCENDING
 from pymongo.database import Database as PymongoDatabase
 from pymongo.collection import Collection as PymongoCollection
+from pymongo.errors import AutoReconnect
 from functools import partial
 from collections import defaultdict
 import bson
+
 
 from biothings.utils.common import timesofar, get_random_string, iter_n, \
                                    open_compressed_file, get_compressed_outfile, \
@@ -16,6 +18,10 @@ from biothings.utils.backend import DocESBackend, DocMongoBackend
 from biothings.utils.hub_db import IDatabase, ChangeWatcher
 # stub, until set to real config module
 config = None
+
+
+class MaxRetryAutoReconnectException(AutoReconnect):
+    """Raised when we reach maximum retry to connect to Mongo server"""
 
 
 class DummyCollection(dotdict):
