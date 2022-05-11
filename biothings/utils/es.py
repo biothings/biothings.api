@@ -372,7 +372,7 @@ class ESIndexer():
                 doc_type=self._doc_type,
             )
             return m[self._index]["mappings"]
-        elif self._host_major_ver == 7:
+        elif self._host_major_ver <= 8:
             m = self._es.indices.get_mapping(
                 index=self._index
             )
@@ -395,7 +395,7 @@ class ESIndexer():
             return self._es.indices.put_mapping(
                 index=self._index, doc_type=self._doc_type, body=m
             )
-        elif self._host_major_ver == 7:
+        elif self._host_major_ver <= 8:
             # this is basically guessing based on heuristics
             if len(m) == 1:
                 if 'properties' not in m:  # basically {'_doc': mapping}
@@ -721,7 +721,9 @@ class ESIndexer():
                 "rename_replacement": index_name,
                 "ignore_unavailable": True,
                 "rename_pattern": "(.+)",
-                "include_global_state": True
+                # set to False, snapshots were created without global state anyway.
+                #  In ES8, an error will be raised if set to True
+                "include_global_state": False
             }
             return self._es.snapshot.restore(repo_name, snapshot_name, body=body)
         except TransportError as e:
