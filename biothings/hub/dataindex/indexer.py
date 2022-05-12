@@ -18,9 +18,8 @@ from biothings.utils.es import ESIndexer
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
-from biothings.utils.mongo import id_feeder
+from biothings.utils.mongo import id_feeder, DatabaseClient
 from elasticsearch import AsyncElasticsearch
-from pymongo.mongo_client import MongoClient
 
 from .indexer_payload import *
 from .indexer_registrar import *
@@ -443,7 +442,7 @@ class Indexer():
 
     async def do_index(self, job_manager, batch_size, ids, mode, **kwargs):
 
-        client = MongoClient(**self.mongo_client_args)
+        client = DatabaseClient(**self.mongo_client_args)
         database = client[self.mongo_database_name]
         collection = database[self.mongo_collection_name]
 

@@ -46,7 +46,8 @@ install_requires = [
     'singledispatchmethod; python_version < "3.8.0"',
     'dataclasses; python_version < "3.7.0"',
     'PyYAML>=5.1',
-    'orjson>=3.6.7',    # this is a faster json lib support inf/nan and datetime
+    'orjson>=3.6.1',    # this is a faster json lib support inf/nan and datetime
+                        # v3.6.1 is the last version supports Python 3.6
 ]
 
 # extra requirements for biothings.web
@@ -61,7 +62,7 @@ hub_requires = [
     'aiocron==1.8',     # setup scheduled jobs
     'aiohttp==3.8.1',   # elasticsearch requires aiohttp>=3,<4
     'asyncssh==2.5.0',  # needs libffi-dev installed (apt-get)
-    'pymongo>=3.12.0,<4.0',  # support MongoDB 5.0 since v3.12.0
+    'pymongo>=4.1.0,<5.0',  # support MongoDB 5.0 since v3.12.0
     'psutil',
     'jsonpointer',      # for utils.jsonpatch
     'IPython',          # for interactive hub console

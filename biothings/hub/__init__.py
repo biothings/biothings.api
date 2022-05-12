@@ -56,6 +56,7 @@ def _config_for_app(config_mod=None):
     wrapper.hub_db = import_module(config_mod.HUB_DB_BACKEND["module"])
     biothings.utils.hub_db.setup(wrapper)
     wrapper._db = biothings.utils.hub_db.get_hub_config()
+    wrapper._get_db_function = biothings.utils.hub_db.get_hub_config
 
     # setup logging
     from biothings.utils.loggers import EventRecorder

@@ -4,6 +4,7 @@ import time
 import logging
 
 from pymongo.errors import DuplicateKeyError, BulkWriteError
+from pymongo import InsertOne, UpdateOne, ReplaceOne
 
 from biothings.utils.common import timesofar, iter_n
 from biothings.utils.dataload import merge_struct, merge_root_keys
@@ -116,12 +117,13 @@ class MergerStorage(BasicStorage):
             nbinsert = 0
             self.logger.info("Inserting %s records ... " % toinsert)
             try:
-                bob = self.temp_collection.initialize_unordered_bulk_op()
+                bulk = []
                 for d in doc_li:
                     aslistofdict = d.pop("__aslistofdict__", None)
-                    bob.insert(d)
-                res = bob.execute()
-                nbinsert += res["nInserted"]
+                    bulk.append(InsertOne(d))
+                
+                res = self.temp_collection.bulk_write(bulk, ordered=False)
+                nbinsert += res.inserted_count
                 self.logger.info("OK [%s]" % timesofar(tinner))
             except BulkWriteError as e:
                 inserted = e.details["nInserted"]
@@ -134,7 +136,7 @@ class MergerStorage(BasicStorage):
                 hdocs = {}
                 for doc in docs:
                     hdocs[doc["_id"]] = doc
-                bob2 = self.temp_collection.initialize_unordered_bulk_op()
+                bulk = []
                 for err in e.details["writeErrors"]:
                     errdoc = err["op"]
                     existing = hdocs[errdoc["_id"]]
@@ -151,11 +153,11 @@ class MergerStorage(BasicStorage):
                     # update previously fetched doc. if several errors are about the same doc id,
                     # we would't merged things properly without an updated document
                     assert "_id" in merged
-                    bob2.find({"_id": _id}).update_one({"$set": merged})
+                    bulk.append(UpdateOne({"_id": _id}, {"$set": merged}))
                     hdocs[_id] = merged
                     nbinsert += 1
 
-                res = bob2.execute()
+                self.temp_collection.bulk_write(bulk, ordered=False)
                 self.logger.info("OK [%s]" % timesofar(tinner))
             assert nbinsert == toinsert, "nb %s to %s" % (nbinsert, toinsert)
             # end of loop so it counts the time spent in doc_iterator
@@ -201,13 +203,13 @@ class IgnoreDuplicatedStorage(BasicStorage):
                                         batch=True,
                                         batch_size=batch_size):
             try:
-                bob = self.temp_collection.initialize_unordered_bulk_op()
+                bulk = []
                 for d in doc_li:
-                    bob.insert(d)
-                res = bob.execute()
-                total += res['nInserted']
+                    bulk.append(InsertOne(d))
+                res = self.temp_collection.bulk_write(bulk, ordered=False)
+                total += res.inserted_count
                 self.logger.info("Inserted %s records [%s]" %
-                                 (res['nInserted'], timesofar(tinner)))
+                                 (res.inserted_count, timesofar(tinner)))
             except BulkWriteError as e:
                 self.logger.info(
                     "Inserted %s records, ignoring %d [%s]" %
@@ -267,11 +269,11 @@ class UpsertStorage(BasicStorage):
                                         batch=True,
                                         batch_size=batch_size):
             try:
-                bob = self.temp_collection.initialize_unordered_bulk_op()
+                bulk = []
                 for d in doc_li:
-                    bob.find({"_id": d["_id"]}).upsert().replace_one(d)
-                res = bob.execute()
-                nb = res["nUpserted"] + res["nModified"]
+                    bulk.append(ReplaceOne(filter={"_id": d["_id"]}, replacement=d, upsert=True))
+                res = self.temp_collection.bulk_write(bulk, ordered=False)
+                nb = res.upserted_count + res.modified_count
                 total += nb
                 self.logger.info("Upserted %s records [%s]" %
                                  (nb, timesofar(tinner)))
