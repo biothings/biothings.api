@@ -47,6 +47,28 @@ logfile = Template("""
 """)
 
 
+def get_log_content(file_path, **kwargs):
+    lines = None
+    if file_path.endswith(".gz"):
+        with gzip.open(file_path, "rb") as f:
+            lines = f.read().decode().splitlines()
+    else:
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+
+    if lines and "lines" in kwargs:
+        cap_lines = kwargs["lines"]
+        cap_lines = cap_lines[0] if isinstance(cap_lines, list) else cap_lines
+        try:
+            cap_lines = int(cap_lines)
+            lines = lines[-cap_lines:]
+            if len(lines) == cap_lines:
+                lines.append(f"\n***Logs were capped at {cap_lines} lines***")
+        except Exception:
+            pass
+    return lines
+
+
 class DefaultCORSHeaderMixin:
     def set_default_headers(self):
         self.set_header("Access-Control-Allow-Origin", "*")
@@ -60,7 +82,7 @@ class HubLogDirHandler(DefaultCORSHeaderMixin, RequestHandler):
 
     def get(self, filename):
         fullname = join(self.path, filename)
-        if isdir(fullname):           
+        if isdir(fullname):
             logs = sorted([
                 f"{f}/"
                 if isdir(join(fullname, f))
@@ -82,19 +104,6 @@ class HubLogDirHandler(DefaultCORSHeaderMixin, RequestHandler):
         if not isfile(fullname):
             self.set_status(404)
             return
-
-        def get_log_content(file_path, **kwargs):
-            lines = None
-            if file_path.endswith(".gz"):
-                with gzip.open(file_path, "rb") as f:
-                    lines = f.read().decode().splitlines()
-            else:
-                with open(file_path, 'r') as file:
-                    lines = file.readlines()
-            if lines and kwargs:
-                _l = self.get_argument('lines')
-                lines = lines[-int(_l):]
-            return lines
 
         lines = get_log_content(fullname, **self.request.arguments)
         self.finish(logfile.generate(
@@ -118,15 +127,16 @@ class HubLogFileHandler(DefaultCORSHeaderMixin, StaticFileHandler):
         if self.absolute_path is None:
             return
 
-        if include_body and self.path.endswith(".gz"):
+        if include_body:
             download_file_name = self.path.replace(".gz", "")
             self.set_header("Content-Type", "text")
             self.set_header("Content-Disposition", f"attachment; filename={download_file_name}")
             with TemporaryDirectory(dir=self.root) as temp_dir:
                 _, temp_file = mkstemp(dir=temp_dir)
-                with gzip.open(self.absolute_path, "rb") as fread, open(temp_file, mode="w") as fwrite:
-                    content = fread.read().decode()
-                    fwrite.write(content)
+                lines = get_log_content(self.absolute_path, **self.request.arguments)
+                lines = "\n".join(lines)
+                with open(temp_file, mode="w") as fwrite:
+                    fwrite.write(lines)
                 return await super().get(temp_file, include_body=True)
 
         return await super().get(path, include_body=include_body)
