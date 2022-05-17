@@ -730,17 +730,18 @@ class ESIndexer():
             raise IndexerException("Can't restore snapshot '%s' (does index '%s' already exist ?): %s" %
                                    (snapshot_name, index_name, e))
 
-    def get_alias(self, alias_name: str) -> List[str]:
+    def get_alias(self, index: str=None, alias_name: str=None) -> List[str]:
         """
-        Get list of indices names associated with given alias
+        Get list of indices names associated with given index name or alias name
 
         Args:
+            index: name of index
             alias_name: name of alias
 
         Returns:
             list of index names (str)
         """
-        return self._es.indices.get_alias(name=alias_name)
+        return self._es.indices.get_alias(index=index, name=alias_name)
 
     def update_alias(self, alias_name: str, index: Optional[str] = None):
         """
