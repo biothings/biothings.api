@@ -704,8 +704,9 @@ class ESIndexer():
                 err_msg = e.error
             raise IndexerException("Can't snapshot '%s': %s" % (self._index, err_msg))
 
-    def restore(self, repo_name, snapshot_name, index_name=None, purge=False, body=None):
+    def restore(self, repo_name, snapshot_name, index_name=None, alias_name=None, purge=False, body=None):
         index_name = index_name or snapshot_name
+        alias_name = alias_name or snapshot_name
         if purge:
             try:
                 self._es.indices.get(index=index_name)
@@ -717,7 +718,7 @@ class ESIndexer():
         try:
             # this is just about renaming index within snapshot to index_name
             body = {
-                "indices": snapshot_name,   # snaphost name is the same as index in snapshot
+                "indices": alias_name,
                 "rename_replacement": index_name,
                 "ignore_unavailable": True,
                 "rename_pattern": "(.+)",
