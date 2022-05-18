@@ -11,6 +11,7 @@ from typing import Optional
 from biothings import config as btconfig
 import biothings.hub.dataload.uploader as uploader
 from biothings.utils.backend import DocESBackend
+from biothings.utils.common import get_random_string
 from biothings.utils.es import IndexerException
 from elasticsearch import Elasticsearch, NotFoundError, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
@@ -219,17 +220,19 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         use_no_downtime_method = kwargs.get("use_no_downtime_method", True)
         append_ts = kwargs.get("append_ts", True)
         if use_no_downtime_method:
-            base_index_name = f"{snapshot_name}_"
+            base_index_name = snapshot_name
             if append_ts:
                 ts = datetime.datetime.now().strftime("%Y%m%d%H%M")
-                base_index_name = f"{snapshot_name}_{ts}_"
+                base_index_name = f"{snapshot_name}_{ts}"
             if len(base_index_name) >= 255:
                 raise RuntimeError("Deterministic part of index name already too long")
+            
+            index_name = base_index_name
+            append_random_str = False
             while True:
-                index_name = base_index_name + ''.join(random.choices(  # nosec
-                    string.digits + string.ascii_lowercase, k=20
-                ))
-                index_name = index_name[:255]  # elasticsearch restriction
+                if append_random_str:
+                    index_name += "_" + get_random_string()
+                    index_name = index_name[:255]  # elasticsearch restriction
                 if not idxr.exists_index(index=index_name):
                     break
         else:
@@ -270,21 +273,12 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         await job
 
         def update_alias_and_delete_old_indices():
-            # Find indices which starts with snapshot_name
-            # if append_ts, we append to the pattern the length of the timestamp
-            # Finally, sort the old_indices by asc
-            pattern = rf"{snapshot_name}_"
-            if append_ts:
-                pattern += r"\d{12}_"
-
+            # Find indices which starts with snapshot_name, and sort by creation date and order by asc
             old_indices = []
             try:
-                old_indices.extend([
-                    indice
-                    for indice in idxr.get_alias(index=alias_name + "*")
-                    if re.match(pattern, indice)
-                ])
-                old_indices.sort()
+                old_indices.extend(idxr.get_indice_names_by_settings(
+                    index=alias_name + "*", sort_by_creation_date=True, reverse=False
+                ))
             except Exception:
                 pass
             self.logger.debug("Alias '%s' points to '%s'" % (alias_name, old_indices))
