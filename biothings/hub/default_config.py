@@ -259,6 +259,12 @@ STANDALONE_CONFIG = {
 # a standalone instance). Modify thorougly (ie. don't modify it)
 STANDALONE_VERSION = {"branch" : "standalone_v2", "commit": None, "date" : None}
 
+# Specific how many old indices should we keep, after restore a snapshot.
+# 0: delete all old index.
+# 1-10: keep recent n of old indices
+# -1: do not delete old index at all
+RELEASE_KEEP_N_RECENT_INDICES = 0
+
 #* 6. Job Manager *#
 # How much memory hub is allowed to use:
 # "auto" will let hub decides (will use 50%-60% of available RAM)

@@ -4,12 +4,14 @@ import asyncio
 import json
 import random
 import string
+import re
 from functools import partial
-from typing import Optional, Tuple
+from typing import Optional
 
 from biothings import config as btconfig
 import biothings.hub.dataload.uploader as uploader
 from biothings.utils.backend import DocESBackend
+from biothings.utils.common import get_random_string
 from biothings.utils.es import IndexerException
 from elasticsearch import Elasticsearch, NotFoundError, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
@@ -213,19 +215,29 @@ class BiothingsUploader(uploader.BaseSourceUploader):
 
         # backup the original value of indexer's replica
         original_number_of_replicas = idxr.get_internal_number_of_replicas() or 0
-
         alias_name = idxr.canonical_index_name
-        d = datetime.datetime.now().strftime('%Y%m%d')
-        base_index_name = f'{alias_name}_{snapshot_name}_{d}_'
-        if len(base_index_name) >= 255:
-            raise RuntimeError("Deterministic part of index name already too long")
-        while True:
-            index_name = base_index_name + ''.join(random.choices(  # nosec
-                string.digits + string.ascii_lowercase, k=20
-            ))
-            index_name = index_name[:255]  # elasticsearch restriction
-            if not idxr.exists_index(index=index_name):
-                break
+
+        use_no_downtime_method = kwargs.get("use_no_downtime_method", True)
+        append_ts = kwargs.get("append_ts", True)
+        if use_no_downtime_method:
+            base_index_name = snapshot_name
+            if append_ts:
+                ts = datetime.datetime.now().strftime("%Y%m%d%H%M")
+                base_index_name = f"{snapshot_name}_{ts}"
+            if len(base_index_name) >= 255:
+                raise RuntimeError("Deterministic part of index name already too long")
+            
+            index_name = base_index_name
+            append_random_str = False
+            while True:
+                if append_random_str:
+                    index_name += "_" + get_random_string()
+                    index_name = index_name[:255]  # elasticsearch restriction
+                if not idxr.exists_index(index=index_name):
+                    break
+        else:
+            index_name = alias_name
+
         pinfo = self.get_pinfo()
         pinfo["step"] = "restore"
         pinfo["description"] = snapshot_name
@@ -255,14 +267,18 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                     repo_name,
                     snapshot_name,
                     index_name,
+                    alias_name=alias_name,
                     purge=self.__class__.AUTO_PURGE_INDEX))
         job.add_done_callback(partial(done_callback, step='restore'))
         await job
 
         def update_alias_and_delete_old_indices():
+            # Find indices which starts with snapshot_name, and sort by creation date and order by asc
             old_indices = []
             try:
-                old_indices.extend(idxr.get_alias(alias_name))
+                old_indices.extend(idxr.get_indice_names_by_settings(
+                    index=alias_name + "*", sort_by_creation_date=True, reverse=False
+                ))
             except Exception:
                 pass
             self.logger.debug("Alias '%s' points to '%s'" % (alias_name, old_indices))
@@ -285,6 +301,16 @@ class BiothingsUploader(uploader.BaseSourceUploader):
 
             # after successful swap, delete old indices
             # only issue messages on errors
+            # we only keep n recent indices depends on the config.RELEASE_KEEP_N_RECENT_INDICES
+            # n < 0: keep all
+            # n == 0: only keep the new created indice
+            # n > 0: only keep at most n latest indices
+            number_indexes_to_keep = btconfig.RELEASE_KEEP_N_RECENT_INDICES
+            if number_indexes_to_keep > 0:
+                old_indices = old_indices[:-number_indexes_to_keep]
+            elif number_indexes_to_keep < 0:
+                old_indices = []
+
             try:
                 for rm_idx_name in old_indices:
                     idxr.delete_index(rm_idx_name)
@@ -292,7 +318,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             except Exception:  # nosec
                 # just inform the user that deletion failed, not that harmful
                 self.logger.error("Failed to delete old indices, try deleting "
-                                  f"{old_indices} manually")
+                                f"{old_indices} manually")
 
             # restore indexer's replica to original value
             idxr.set_internal_number_of_replicas(original_number_of_replicas)
@@ -309,11 +335,12 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 if status == "DONE":
                     self.logger.info("Snapshot '%s' successfully restored to index '%s' (host: '%s')" %
                                      (snapshot_name, index_name, idxr.es_host), extra={"notify": True})
-                    job = await job_manager.defer_to_thread(
-                        pinfo={}, func=update_alias_and_delete_old_indices
-                    )
-                    job.add_done_callback(partial(done_callback, step='alias'))
-                    await job
+                    if use_no_downtime_method:
+                        job = await job_manager.defer_to_thread(
+                            pinfo={}, func=update_alias_and_delete_old_indices
+                        )
+                        job.add_done_callback(partial(done_callback, step='alias'))
+                        await job
                 else:
                     e = uploader.ResourceError("Failed to restore snapshot '%s' on index '%s', status: %s" %
                                                (snapshot_name, idxr._index, status))

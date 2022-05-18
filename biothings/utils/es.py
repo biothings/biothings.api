@@ -5,7 +5,7 @@ import json
 import re
 import time
 import functools
-from typing import Optional, List
+from typing import Optional, List, Mapping
 
 from elasticsearch import (Elasticsearch, NotFoundError, RequestError,
                            TransportError, ElasticsearchException)
@@ -704,8 +704,9 @@ class ESIndexer():
                 err_msg = e.error
             raise IndexerException("Can't snapshot '%s': %s" % (self._index, err_msg))
 
-    def restore(self, repo_name, snapshot_name, index_name=None, purge=False, body=None):
+    def restore(self, repo_name, snapshot_name, index_name=None, alias_name=None, purge=False, body=None):
         index_name = index_name or snapshot_name
+        alias_name = alias_name or snapshot_name
         if purge:
             try:
                 self._es.indices.get(index=index_name)
@@ -717,7 +718,7 @@ class ESIndexer():
         try:
             # this is just about renaming index within snapshot to index_name
             body = {
-                "indices": snapshot_name,   # snaphost name is the same as index in snapshot
+                "indices": alias_name,
                 "rename_replacement": index_name,
                 "ignore_unavailable": True,
                 "rename_pattern": "(.+)",
@@ -730,17 +731,60 @@ class ESIndexer():
             raise IndexerException("Can't restore snapshot '%s' (does index '%s' already exist ?): %s" %
                                    (snapshot_name, index_name, e))
 
-    def get_alias(self, alias_name: str) -> List[str]:
+    def get_alias(self, index: str=None, alias_name: str=None) -> List[str]:
         """
-        Get list of indices names associated with given alias
+        Get indices with alias associated with given index name or alias name
 
         Args:
+            index: name of index
             alias_name: name of alias
+
+        Returns:
+            Mapping of index names with their aliases
+        """
+        return self._es.indices.get_alias(index=index, name=alias_name)
+
+    def get_settings(self, index: str=None) -> Mapping[str, Mapping]:
+        """
+        Get indices with settings associated with given index name
+
+        Args:
+            index: name of index
+
+        Returns:
+            Mapping of index names with their settings
+        """
+        return self._es.indices.get_settings(index=index)
+
+    def get_indice_names_by_settings(
+        self, index: str=None, sort_by_creation_date=False, reverse=False
+    ) -> List[str]:
+        """
+        Get list of indices names associated with given index name, using indices' settings
+
+        Args:
+            index: name of index
+            sort_by_creation_date: sort the result by indice's creation_date
+            reverse: control the direction of the sorting
 
         Returns:
             list of index names (str)
         """
-        return self._es.indices.get_alias(name=alias_name)
+        indices_settings = self.get_settings(index)
+        names_with_creation_date = [
+            (indice_name, setting['settings']['index']['creation_date'])
+            for indice_name, setting in indices_settings.items()
+        ]
+        
+        if sort_by_creation_date:
+            names_with_creation_date = sorted(
+                names_with_creation_date,
+                key=lambda name_with_creation_date: name_with_creation_date[1],
+                reverse=reverse,
+            )
+
+        indice_names = [name for name, _ in names_with_creation_date]
+        return indice_names
 
     def update_alias(self, alias_name: str, index: Optional[str] = None):
         """
