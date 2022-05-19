@@ -318,7 +318,7 @@ def create_backend(db_col_names, name_only=False, follow_ref=False, **kwargs):
         col = db[db_col_names[1]]
         # normalize params (0:host, 1:port)
         db_col_names = [
-            "%s:%s" % (db.client.address[0], db.client.address[1]), db.name,
+            "%s:%s" % (db.client.HOST, db.client.PORT), db.name,
             col.name
         ]
     assert col is not None, "Could not create collection object from %s" % repr(
