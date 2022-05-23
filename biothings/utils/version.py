@@ -8,7 +8,7 @@ import shlex
 import sys
 from subprocess import DEVNULL, check_output
 
-from git import (Git, GitCommandError, InvalidGitRepositoryError,
+from git import (GitCommandError, InvalidGitRepositoryError,
                  NoSuchPathError, Repo)
 
 import biothings
@@ -18,17 +18,18 @@ from biothings.utils.dataload import dict_sweep
 def get_python_version():
     ''' Get a list of python packages installed and their versions. '''
     try:
-        output = check_output(f'{sys.executable} -m pip list', shell=True, stderr=DEVNULL)
+        output = check_output(f'{sys.executable or "python3"} -m pip list', shell=True, stderr=DEVNULL)
         return output.decode('utf-8').replace('\r', '').split('\n')[2: -1]
     except Exception:
         return []
+
 
 @functools.lru_cache()
 def get_biothings_commit():
     ''' Gets the biothings commit information. '''
     try:
         with open(os.path.join(os.path.dirname(biothings.__file__), '.git-info'), 'r') as f:
-            lines = [l.strip('\n') for l in f.readlines()]
+            lines = [ln.strip('\n') for ln in f.readlines()]
             return {
                 'repository-url': lines[0],
                 'commit-hash': lines[1],
@@ -85,6 +86,7 @@ def get_python_exec_version():
             "micro": sys.version_info[2]
         }
     }
+
 
 @functools.lru_cache()
 def get_software_info(app_dir=None):
@@ -158,6 +160,7 @@ def check_new_version(folder, max_commits=10):
         raise e
 
     return new_info
+
 
 def get_version(folder):
     try:
