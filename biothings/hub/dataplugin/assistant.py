@@ -257,11 +257,12 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 "Invalid manifest, expecting 'data_url' key in 'dumper' section"
             )
 
-    def get_uploader_dynamic_class(self, uploader_section, metadata):
+    def get_uploader_dynamic_class(self, uploader_section, metadata, sub_source_name=''):
         if uploader_section.get("parser"):
-            uploader_name = self.plugin_name.capitalize() + "Uploader"
+            uploader_name = self.plugin_name.capitalize() + sub_source_name + "Uploader"
             confdict = {
                 "SRC_NAME": self.plugin_name,
+                "SUB_SRC_NAME": sub_source_name,
                 "UPLOADER_NAME": uploader_name
             }
             try:
@@ -339,6 +340,10 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
                 if hasattr(btconfig, "DUMPER_TEMPLATE"):
                     tpl_file = btconfig.DUMPER_TEMPLATE
+                elif sub_source_name:
+                    curmodpath = os.path.realpath(__file__)
+                    tpl_file = os.path.join(os.path.dirname(curmodpath),
+                                            "subuploader.py.tpl")
                 else:
                     # default: assuming in ..../biothings/hub/dataplugin/
                     curmodpath = os.path.realpath(__file__)
@@ -380,12 +385,12 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 #print(pystr)
                 import imp
                 code = compile(pystr, "<string>", "exec")
-                mod = imp.new_module(self.plugin_name)
+                mod = imp.new_module(self.plugin_name + sub_source_name)
                 exec(code, mod.__dict__, mod.__dict__)
                 uklass = getattr(mod, uploader_name)
                 # we need to inherit from a class here in this file so it can be pickled
                 assisted_uploader_class = type(
-                    "AssistedUploader_%s" % self.plugin_name, (
+                    "AssistedUploader_%s" % self.plugin_name + sub_source_name, (
                         AssistedUploader,
                         uklass,
                     ), {})
@@ -400,6 +405,20 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             raise AssistantException(
                 "Invalid manifest, expecting 'parser' key in 'uploader' section"
             )
+
+    def get_uploader_dynamic_classes(self, uploader_section, metadata, data_plugin_folder):
+        uploader_classes = []
+        for uploader_conf in uploader_section:
+            sub_source_name = uploader_conf.get('name', '')
+            uploader_class = self.get_uploader_dynamic_class(uploader_conf, metadata, sub_source_name)
+            uploader_class.DATA_PLUGIN_FOLDER = data_plugin_folder
+
+            # register class in module so it can be pickled easily
+            sys.modules["biothings.hub.dataplugin.assistant"].__dict__[
+                "AssistedUploader_%s" % self.plugin_name + sub_source_name] = uploader_class
+
+            uploader_classes.append(uploader_class)
+        return uploader_classes
 
     def interpret_manifest(self, manifest_file):
         manifest = json.load(open(manifest_file))
@@ -434,7 +453,14 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             sys.modules["biothings.hub.dataplugin.assistant"].__dict__[
                 "AssistedUploader_%s" %
                 self.plugin_name] = assisted_uploader_class
-
+        if manifest.get("uploaders"):
+            data_plugin_folder = os.path.dirname(manifest_file)
+            assisted_uploader_classes = self.get_uploader_dynamic_classes(
+                manifest["uploaders"], manifest.get("__metadata__"),
+                data_plugin_folder
+            )
+            self.__class__.uploader_manager.register_classes(
+                assisted_uploader_classes)
 
 class AdvancedPluginLoader(BasePluginLoader):
 
@@ -886,40 +912,41 @@ class AssistantManager(BaseSourceManager):
         res = {
             "uploader": {
                 "status": None,
-                "file": None,
-                "class": None,
+                "file": [],
+                "class": [],
                 "message": None
             }
         }
         try:
-            uclass = self.uploader_manager[plugin_name]
+            uclasses = self.uploader_manager[plugin_name]
         except KeyError:
             res["uploader"]["status"] = "warning"
-            res["uploader"][
-                "message"] = "No uploader found for plugin '%s'" % plugin_name
+            res["uploader"]["message"] = "No uploader found for plugin '%s'" % plugin_name
             return res
-        try:
-            uploader_name = plugin_name.capitalize() + "Uploader"
-            self.logger.debug("Exporting uploader %s" % uploader_name)
-            assert len(
-                uclass) == 1, "More than one uploader found: %s" % uclass
-            uclass = uclass[0]
-            assert hasattr(uclass, "python_code"), "No generated code found"
-            dinit = os.path.join(folder, "__init__.py")
-            ufile = os.path.join(folder, "upload.py")
-            beauty, _ = yapf_api.FormatCode(uclass.python_code)
-            with open(ufile, "w") as fout:
-                fout.write(beauty)
-            with open(dinit, "a") as fout:
-                fout.write("from .upload import %s\n" % uploader_name)
-            res["uploader"]["status"] = "ok"
-            res["uploader"]["file"] = ufile
-            res["uploader"]["class"] = uploader_name
-        except Exception as e:
-            res["uploader"]["status"] = "error"
-            res["uploader"]["message"] = "Error exporting uploader: %s" % e
-            return res
+        status = 'ok'
+        message = ''
+        for uclass in uclasses:
+            try:
+                uploader_name = uclass.__name__.split('_')[1].capitalize() + "Uploader"
+                self.logger.debug("Exporting uploader %s" % uploader_name)
+                # assert len(uclass) == 1, "More than one uploader found: %s" % uclass
+                assert hasattr(uclass, "python_code"), "No generated code found"
+                dinit = os.path.join(folder, "__init__.py")
+                mod_name = f"{uclass.__name__.split('_')[1]}_upload"
+                ufile = os.path.join(folder, mod_name + ".py")
+                beauty, _ = yapf_api.FormatCode(uclass.python_code)
+                with open(ufile, "w") as fout:
+                    fout.write(beauty)
+                with open(dinit, "a") as fout:
+                    fout.write(f"from .{mod_name} import %s\n" % uploader_name)
 
+                res["uploader"]["file"].append(ufile)
+                res["uploader"]["class"].append(uploader_name)
+            except Exception as e:
+                status = "error"
+                message = "Error exporting uploader: %s" % e
+        res["uploader"]["status"] = status
+        res["uploader"]["message"] = message
         return res
 
     def export_mapping(self, plugin_name, folder):
