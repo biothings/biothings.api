@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 import aiocron
 import asyncssh
+from biothings.utils.common import get_random_string, get_timestamp
 from biothings.utils.configuration import *
 from biothings.utils.document_generator import generate_command_documentations
 from . import default_config
@@ -1234,6 +1235,13 @@ class HubServer(object):
                 return self.managers["dump_manager"].dump_src("__" + code_base)
             self.commands["upgrade"] = CommandDefinition(command=upgrade)
 
+        # quick index command for testing purpose
+        if (
+            self.managers.get("build_manager")
+            and self.managers.get("index_manager")
+        ):
+            self.extra_commands["quick_index"] = self.quick_index
+
         self.extra_commands["expose"] = self.add_api_endpoint
 
         logging.debug("Registered extra (private) commands: %s",
@@ -1506,9 +1514,80 @@ class HubServer(object):
             self.api_endpoints.pop("standalone")
         if "upgrade" in self.commands:
             self.api_endpoints["code/upgrade"] = EndpointDefinition(name="upgrade", method="put")
+        if "quick_index" in self.extra_commands:
+            self.api_endpoints["quick_index"] = EndpointDefinition(name="quick_index", method="post", force_bodyargs=True)
 
     def export_command_documents(self, filepath):
         generate_command_documentations(filepath, self.commands)
+
+    def quick_index(
+        self,
+        datasource_name,
+        doc_type,
+        indexer_env,
+        index_name=None,
+        **kwargs,
+    ):
+        """
+        Intention for datasource developers to quickly create an index to test their datasources.
+        Automatically create temporary build config, build collection
+        Then call the index method with the temporary build collection's name
+        """
+
+        random_string = f"{get_timestamp()}_{get_random_string()}"
+        # generate random build_configuration name
+        build_configuration_name = f"{datasource_name}_configuration_{random_string}"
+        # generate random build name
+        build_name = f"{datasource_name}_{random_string}"
+        # # generate index_name if needed
+        if not index_name:
+            index_name = build_name
+        index_name = index_name.lower()
+
+        async def do():
+            # create a temporary build configuration:
+            
+            self.managers["build_manager"].create_build_configuration(
+                build_configuration_name,
+                doc_type=doc_type,
+                sources=[datasource_name],
+            )
+
+            # create a temporary build
+            merge_job = self.managers["build_manager"].merge(
+                build_name=build_configuration_name,
+                target_name=build_name,
+                force=True,
+            )
+
+            # Wait for merging process to finish
+            retry = 0
+            max_retry = 12
+            while retry < max_retry:
+                if merge_job.done():
+                    break
+                retry += 1
+                await asyncio.sleep(5)
+
+            index_job = self.managers["index_manager"].index(
+                indexer_env,
+                build_name,
+                index_name=index_name,
+                **kwargs
+            )
+            # Wait for indexing process to finish
+            while not index_job.done():
+                await asyncio.sleep(5)
+
+            # delete temporary build
+            self.managers["build_manager"].delete_merge(build_name)
+
+            # delete temporary build configuration
+            self.managers["build_manager"].delete_build_configuration(
+                build_configuration_name
+            )
+
+        return asyncio.ensure_future(do())
 
 
 class HubSSHServer(asyncssh.SSHServer):
