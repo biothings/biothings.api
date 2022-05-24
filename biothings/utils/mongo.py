@@ -1,6 +1,6 @@
 import time, logging, os, io, glob, datetime
 import dateutil.parser as dtparser
-from collections import Iterable
+from collections.abc import Iterable
 from functools import wraps
 from pymongo import MongoClient, DESCENDING
 from pymongo.database import Database as PymongoDatabase
@@ -126,7 +126,7 @@ def get_conn(server, port):
     except (AttributeError,ValueError) as e:
         # missing config variables (or invalid), we'll pretend it's a dummy access to mongo
         # (dummy here means there really shouldn't be any call to get_conn()
-        # but mongo is too much tied to the code and needs more work to 
+        # but mongo is too much tied to the code and needs more work to
         # unlink it
         return DummyDatabase()
 
@@ -229,7 +229,7 @@ def get_source_fullname(col_name):
     src_dump = get_src_dump()
     # "sources" in config is a list a collection names. src_dump _id is the name of the
     # resource but can have sub-resources with different collection names. We need
-    # to query inner keys upload.job.*.step, which always contains the collection name  
+    # to query inner keys upload.job.*.step, which always contains the collection name
     info = src_dump.find_one({"$where":"function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}}" % col_name})
     if info:
         name = info["_id"]
@@ -358,7 +358,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
        return a doc_feeder for that collection. Valid cache is
        a cache file that is newer than the collection.
        "db" can be "target" or "src".
-       "build_cache" True will build a cache file as _ids are fetched, 
+       "build_cache" True will build a cache file as _ids are fetched,
        if no cache file was found
        "force_use" True will use any existing cache file and won't check whether
        it's valid of not.
@@ -412,7 +412,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
                 logger.warning("Force building cache file")
                 use_cache = False
             # check size, delete if invalid
-            elif os.path.getsize(cache_file) <= empty_size.get(cache_format,32): 
+            elif os.path.getsize(cache_file) <= empty_size.get(cache_format,32):
                 logger.warning("Cache file exists but is empty, delete it")
                 os.remove(cache_file)
             elif force_use:
@@ -465,7 +465,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
         elif isinstance(col,DocMongoBackend):
             doc_feeder_func = partial(doc_feeder,col.target_collection, step=batch_size, inbatch=True, fields={"_id":1})
         elif isinstance(col,DocESBackend):
-            # get_id_list directly return the _id, wrap it to match other 
+            # get_id_list directly return the _id, wrap it to match other
             # doc_feeder_func returned vals. Also return a batch of id
             def wrap_id():
                 ids = []
@@ -519,7 +519,7 @@ def get_previous_collection(new_id):
     col = get_src_build()
     doc = col.find_one({"_id":new_id})
     assert doc, "No build document found for '%s'" % new_id
-    assert "build_config" in doc, "No build configuration found for document '%s'" % new_id 
+    assert "build_config" in doc, "No build configuration found for document '%s'" % new_id
     assert doc["build_config"]["name"] == doc["build_config"]["_id"]
     confname = doc["build_config"]["name"]
     docs = get_src_build().find({
