@@ -1193,6 +1193,9 @@ class HubServer(object):
             self.extra_commands["index_info"] = CommandDefinition(
                 command=self.managers["index_manager"].index_info,
                 tracked=False)
+            self.commands["indexes_by_name"] = CommandDefinition(
+                command=self.managers["index_manager"].get_indexes_by_name,
+                tracked=False)
             self.extra_commands["validate_mapping"] = CommandDefinition(
                 command=self.managers["index_manager"].validate_mapping)
             self.extra_commands["update_metadata"] = CommandDefinition(
@@ -1336,6 +1339,8 @@ class HubServer(object):
         if "index_info" in cmdnames:
             self.api_endpoints["index_manager"] = EndpointDefinition(
                 name="index_info", method="get")
+            self.api_endpoints["indexes_by_name"] = EndpointDefinition(
+                name="indexes_by_name", method="get")
         if "snapshot_info" in cmdnames:
             self.api_endpoints["snapshot_manager"] = EndpointDefinition(
                 name="snapshot_info", method="get")

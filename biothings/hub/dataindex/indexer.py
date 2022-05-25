@@ -797,6 +797,52 @@ class IndexManager(BaseManager):
 
         return self._config
 
+    def get_indexes_by_name(self, index_name=None):
+        """The return will be like this:
+        [
+            {
+                "index_name": "...",
+                "build_version": "...",
+                "count": 1000,
+                "creation_date": 1653468868933,
+                "environment": {
+                    "name": "env name",
+                    "host": "localhost:9200",
+                }
+            },
+        ]
+        """
+
+        if not index_name:
+            index_name = "*"
+
+        async def fetch():
+            indexes = []
+            for env_name, env in self.register.items():
+                async with AsyncElasticsearch(**env["args"]) as client:
+                    try:
+                        indices = await client.indices.get(index_name)
+                    except Exception:
+                        continue
+                    for index_name, index_data in indices.items():
+                        mapping_meta = index_data["mappings"]["_meta"]
+                        indexes.append({
+                            "index_name": index_name,
+                            "build_version": mapping_meta["build_version"],
+                            "count": mapping_meta["stats"]["total"],
+                            "creation_date": index_data["settings"]["index"]["creation_date"],
+                            "environment": {
+                                "name": env_name,
+                                "host": env["args"]["host"],
+                            }
+                        })
+            return indexes
+
+        job = asyncio.ensure_future(fetch())
+        job.add_done_callback(self.logger.debug)
+        return job
+
+
     def validate_mapping(self, mapping, env):
 
         indexer = self._select_indexer()  # default indexer
