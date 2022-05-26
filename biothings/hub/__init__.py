@@ -1546,7 +1546,7 @@ class HubServer(object):
         build_name = f"{datasource_name}_{random_string}"
         # # generate index_name if needed
         if not index_name:
-            index_name = f"_QUICK_{build_name}"
+            index_name = build_name
         index_name = index_name.lower()
 
         async def do():

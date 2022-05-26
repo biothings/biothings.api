@@ -797,8 +797,13 @@ class IndexManager(BaseManager):
 
         return self._config
 
-    def get_indexes_by_name(self, index_name=None):
-        """The return will be like this:
+    def get_indexes_by_name(self, index_name=None, limit=10):
+        """ Accept an index_name and return a list of indexes get from all elasticsearch environments
+
+        If index_name is blank, it will be return all indexes.
+        limit can be used to specify how many indexes should be return.
+
+        The list of indexes will be like this:
         [
             {
                 "index_name": "...",
@@ -815,8 +820,9 @@ class IndexManager(BaseManager):
 
         if not index_name:
             index_name = "*"
+        limit = int(limit)
 
-        async def fetch():
+        async def fetch(index_name, limit=None):
             indexes = []
             for env_name, env in self.register.items():
                 async with AsyncElasticsearch(**env["args"]) as client:
@@ -833,12 +839,17 @@ class IndexManager(BaseManager):
                             "creation_date": index_data["settings"]["index"]["creation_date"],
                             "environment": {
                                 "name": env_name,
-                                "host": env["args"]["host"],
+                                "host": env["args"]["hosts"],
                             }
                         })
+
+            indexes.sort(key=lambda index: index['creation_date'], reverse=True)
+
+            if limit:
+                indexes = indexes[:limit]
             return indexes
 
-        job = asyncio.ensure_future(fetch())
+        job = asyncio.ensure_future(fetch(index_name, limit=limit))
         job.add_done_callback(self.logger.debug)
         return job
 
