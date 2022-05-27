@@ -219,8 +219,8 @@ RELEASE_CONFIG = {
                             {
                                 "action" : "upload",
                                 "type" : "s3",
-                                "bucket" : ConfigurationValue("""S3 SNAPSHOT BUCKET"""),
-                                "region" : ConfigurationValue("""S3 REGION"""),
+                                "bucket" : ConfigurationValue("""S3_SNAPSHOT_BUCKET"""),
+                                "region" : ConfigurationValue("""S3_REGION"""),
                                 "base_path" : "%(build_config.name)s/$(Y)",
                                 "file" : "%(build_config.name)s_snapshot_%(_meta.build_version)s.tar.xz",
                                 "acl" : "private",
