@@ -1,6 +1,7 @@
 v0.11.0
     Added Authentication Mixin class for BioThings SDK Web.
     Added GitHub and ORCID Mixin class for BioThings SDK Web.
+    Support multiple uploaders data plugin https://github.com/biothings/biothings_docker/issues/8
 
 v0.10.1
     Fixed multiple issues involving Elasticsearch 7 support on BioThings SDK Hub.
