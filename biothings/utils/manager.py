@@ -1068,7 +1068,7 @@ async def %s():
         res = {}
         for child in tchildren:
             res[child.name] = {
-                "is_alive": child.isAlive(),
+                "is_alive": child.is_alive(),
                 "is_daemon": child.isDaemon(),
             }
 
