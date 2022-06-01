@@ -2,6 +2,19 @@ v0.11.0
     Added Authentication Mixin class for BioThings SDK Web.
     Added GitHub and ORCID Mixin class for BioThings SDK Web.
     Support multiple uploaders data plugin https://github.com/biothings/biothings_docker/issues/8
+    docs: created a redirect for an old studio doc
+    Using ProcessPoolExecutor in set_default_executor https://github.com/biothings/biothings.api/issues/153
+    Upgrade aiocron to 1.6 https://github.com/biothings/biothings.api/issues/180
+    Upgrade to use sentry-sdk https://github.com/biothings/biothings.api/issues/204
+    Implement full release installation without downtime https://github.com/biothings/biothings.api/issues/134
+    Switch to use TimedRotatingFileHandler for hub log files https://github.com/biothings/biothings.api/issues/211
+    Remove redundant and unused hub log file https://github.com/biothings/biothings.api/issues/210
+    Hub console improvements https://github.com/biothings/biothings.api/issues/216
+    Create hub's default settings https://github.com/biothings/biothings.api/issues/217
+    Refactor _parse_comments method logic https://github.com/biothings/biothings.api/issues/218
+    Upgrade to pymongo v4 https://github.com/biothings/biothings.api/issues/222
+    get_python_version in utils.version does not return the correct package list https://github.com/biothings/biothings.api/issues/224
+    Fixed an error when using python 3.9, 3.10: thread.isAlive was replaced by thread.is_alive: https://bugs.python.org/issue37804
 
 v0.10.1
     Fixed multiple issues involving Elasticsearch 7 support on BioThings SDK Hub.
