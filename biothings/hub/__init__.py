@@ -1550,47 +1550,36 @@ class HubServer(object):
         index_name = index_name.lower()
 
         async def do():
-            # create a temporary build configuration:
-            
-            self.managers["build_manager"].create_build_configuration(
-                build_configuration_name,
-                doc_type=doc_type,
-                sources=[datasource_name],
-            )
+            try:
+                # create a temporary build configuration:
+                self.managers["build_manager"].create_build_configuration(
+                    build_configuration_name,
+                    doc_type=doc_type,
+                    sources=[datasource_name],
+                )
 
-            # create a temporary build
-            merge_job = self.managers["build_manager"].merge(
-                build_name=build_configuration_name,
-                target_name=build_name,
-                force=True,
-            )
+                # create a temporary build
+                await self.managers["build_manager"].merge(
+                    build_name=build_configuration_name,
+                    target_name=build_name,
+                    force=True,
+                )
 
-            # Wait for merging process to finish
-            retry = 0
-            max_retry = 12
-            while retry < max_retry:
-                if merge_job.done():
-                    break
-                retry += 1
-                await asyncio.sleep(5)
+                # Wait for merging process to finish
+                await self.managers["index_manager"].index(
+                    indexer_env,
+                    build_name,
+                    index_name=index_name,
+                    **kwargs
+                )
+            finally:
+                # delete temporary build
+                self.managers["build_manager"].delete_merge(build_name)
 
-            index_job = self.managers["index_manager"].index(
-                indexer_env,
-                build_name,
-                index_name=index_name,
-                **kwargs
-            )
-            # Wait for indexing process to finish
-            while not index_job.done():
-                await asyncio.sleep(5)
-
-            # delete temporary build
-            self.managers["build_manager"].delete_merge(build_name)
-
-            # delete temporary build configuration
-            self.managers["build_manager"].delete_build_configuration(
-                build_configuration_name
-            )
+                # delete temporary build configuration
+                self.managers["build_manager"].delete_build_configuration(
+                    build_configuration_name
+                )
 
         return asyncio.ensure_future(do())
 
