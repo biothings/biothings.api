@@ -1552,10 +1552,16 @@ class HubServer(object):
         async def do():
             try:
                 # create a temporary build configuration:
+                builder_class = None
+                for build_class_name in self.managers["build_manager"].builder_classes.keys():
+                    if build_class_name.endswith("LinkDataBuilder"):
+                        builder_class = build_class_name
+                        break
                 self.managers["build_manager"].create_build_configuration(
                     build_configuration_name,
                     doc_type=doc_type,
                     sources=[datasource_name],
+                    builder_class=builder_class,
                 )
 
                 # create a temporary build
