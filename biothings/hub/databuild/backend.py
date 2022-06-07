@@ -154,7 +154,13 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             # are sub-source names, not main source so we have to deal with src_dump as well
             # in order to resolve/map main/sub source name
             subsrc_versions = []
+
+            if src and src.get("download"):
+                # Store the latest dump time
+                src_meta.setdefault(src["_id"], {}).setdefault("dump_date", src["download"]["started_at"])
+
             if src and src.get("upload"):
+                latest_upload_date = None
                 meta = {}
                 for job_name in src["upload"].get("jobs", {}):
                     job = src["upload"]["jobs"][job_name]
@@ -162,6 +168,10 @@ class SourceDocMongoBackend(SourceDocBackendBase):
                     docm = self.master.find_one({"_id": job.get("step")})
                     if docm and docm.get("src_meta"):
                         meta[job.get("step")] = docm["src_meta"]
+                    # Store the latest upload time
+                    if not latest_upload_date or latest_upload_date < job["started_at"]:
+                        latest_upload_date = job["started_at"]
+                        meta[job.get("step")]["upload_date"] = latest_upload_date
                 # when more than 1 sub-sources, we can have different version in sub-sources
                 # (not normal) if one sub-source uploaded, then dumper downloaded a new version,
                 # then the other sub-source uploaded that version. This should never happen, just make sure
