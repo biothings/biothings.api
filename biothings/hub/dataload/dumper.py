@@ -874,7 +874,8 @@ class LastModifiedHTTPDumper(HTTPDumper, LastModifiedBaseDumper):
                 self.release = remote_dt.strftime(
                     self.__class__.RELEASE_FORMAT)
             except KeyError:
-                self.release = res.headers[self.__class__.ETAG]
+                # Use entity tag (ETag) as version number. Remove weak ETag prefix.
+                self.release = res.headers[self.__class__.ETAG].lstrip("W/")
 
 
 class WgetDumper(BaseDumper):
