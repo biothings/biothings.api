@@ -877,7 +877,10 @@ class LastModifiedHTTPDumper(HTTPDumper, LastModifiedBaseDumper):
                 # Use entity tag (ETag) as version number. Remove weak ETag prefix.
                 # Nginx marks an ETag as weak whenever a response body has been modified (including compression with gzip).
                 # See: https://stackoverflow.com/questions/55305687/how-to-address-weak-etags-conversion-by-nginx-on-gzip-compression
-                self.release = res.headers[self.__class__.ETAG].lstrip("W/")
+                etag = res.headers[self.__class__.ETAG]
+                if etag.startswith("W/"):
+                    etag = etag[2:]
+                self.release = etag
 
 
 class WgetDumper(BaseDumper):
