@@ -1021,6 +1021,8 @@ class HubServer(object):
                 "upload_manager"].upload_src
             self.commands["upload_all"] = self.managers[
                 "upload_manager"].upload_all
+            self.commands["update_source_meta"] = self.managers[
+                "upload_manager"].update_source_meta
         # building/merging
         if self.managers.get("build_manager"):
             self.commands["whatsnew"] = CommandDefinition(
@@ -1367,6 +1369,11 @@ class HubServer(object):
                 EndpointDefinition(name="upload",
                                    method="put",
                                    suffix="upload"))
+        if "update_source_meta" in cmdnames:
+            self.api_endpoints["source"].append(
+                EndpointDefinition(name="update_source_meta",
+                                   method="put",
+                                   suffix="update_source_meta"))
         if "source_save_mapping" in cmdnames:
             self.api_endpoints["source"].append(
                 EndpointDefinition(name="source_save_mapping",

@@ -805,6 +805,51 @@ class UploaderManager(BaseSourceManager):
                               extra={"notify": True})
             raise
 
+    def update_source_meta(self, src):
+        """
+        Trigger update for registered resource named 'src'.
+        """
+        try:
+            klasses = self[src]
+        except KeyError:
+            raise ResourceNotFound(
+                "Can't find '%s' in registered sources (whether as main or sub-source)"
+                % src)
+
+        jobs = []
+        try:
+            for i, klass in enumerate(klasses):
+                job = self.job_manager.submit(
+                    partial(self.create_and_update_master,
+                            klass))
+                jobs.append(job)
+            tasks = asyncio.gather(*jobs)
+
+            def done(f):
+                try:
+                    # just consume the result to raise exception
+                    # if there were an error... (what an api...)
+                    f.result()
+                    logging.info("success", extra={"notify": True})
+                except Exception as e:
+                    logging.exception("failed: %s" % e, extra={"notify": True})
+
+            tasks.add_done_callback(done)
+            return jobs
+        except Exception as e:
+            logging.exception("Error while update src meta '%s': %s" % (src, e),
+                              extra={"notify": True})
+            raise
+
+    async def create_and_update_master(self, klass):
+        insts = self.create_instance(klass)
+        if type(insts) != list:
+            insts = [insts]
+        for inst in insts:
+            inst.prepare()
+            inst.update_master()
+            inst.unprepare()
+
     async def create_and_load(self, klass, *args, **kwargs):
         insts = self.create_instance(klass)
         if type(insts) != list:
