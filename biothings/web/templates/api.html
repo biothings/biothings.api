@@ -1,53 +1,63 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 
 <head>
-    <link type="text/css" rel="stylesheet"
-        href="https://cdn.rawgit.com/josdejong/jsoneditor/v5.11.0/dist/jsoneditor.min.css">
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
-    <script src="https://cdn.rawgit.com/josdejong/jsoneditor/v5.11.0/dist/jsoneditor.min.js"></script>
-    <script type="text/javascript">
-        $(document).ready(function () {
-            var container = document.getElementById("jsonview");
-            var options = {
-                mode: 'view'
-            };
-            var editor = new JSONEditor(container, options);
-            var data = {% raw data %};
-        editor.set(data);
-        });
-    </script>
+    <meta charset="utf-8">
+    <link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsoneditor@9.9.0/dist/jsoneditor.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/jsoneditor@9.9.0/dist/jsoneditor.min.js"></script>
+
+    <style>
+        html, body {
+            margin: 0 5px 5px 5px;
+            font-family:'Open Sans',sans-serif;
+        }
+        header {
+            font-weight:bold;
+            font-size:16px;
+            display: flex;
+            align-items: center;
+        }
+        header a {
+            text-decoration: none;
+            color: black;
+        }
+        .logo {
+            height: 35px;
+            width: 35px;
+            margin-right: 8px;
+        }
+        #jsonview {
+            height: 95vh;
+        }
+    </style>
+
 </head>
 
 <body>
-    <table style="width:100%; height:100%">
-        <tbody>
-            {% if "title_div" in globals() and title_div %}
-            <tr style="height:35px;">
-                <td style="width: 35px"><img src="{{ header_img }}" alt="logo" height="35" width="35"></img></td>
-                <td style="vertical-align:center; padding-left:5px;">{% raw title_div %}</td>
-            </tr>
-            {% end %}
-            {% if "learn_more" in globals() and learn_more %}
-            <tr style="height:15px;">
-                <td colspan="2">
-                    <p>
-                        <a href="{{ link }}" target="_blank">{% raw link %}</a> &nbsp;&nbsp;
-                        [
-                        <a href="{{ learn_more }}" target="_blank">
-                            Learn more about this API endpoint
-                        </a>
-                        ]
-                    </p>
-                </td>
-            </tr>
-            {% end %}
-            <tr>
-                <td colspan="2">
-                    <div id="jsonview" style="overflow:auto; height: 100%"></div>
-                </td>
-            </tr>
-        </tbody>
-    </table>
+    <header>
+        {% if "title_div" in globals() and title_div %}
+        <img src="{{ header_img }}" class="logo" alt="logo" />
+        <p>{% raw title_div %}</p>
+        {% end %}
+    </header>
+    {% if "learn_more" in globals() and learn_more %}
+    <div>
+        <a href="{{ link }}" target="_blank">{% raw link %}</a> &nbsp;&nbsp;
+        [<a href="{{ learn_more }}" target="_blank">Learn more about this API endpoint</a>]
+    </div>
+    {% end %}
+    <div id="jsonview"></div>
+
+
+    <script type="text/javascript">
+        const container = document.getElementById("jsonview");
+        const options = {
+            mode: "view"
+        };
+        const editor = new JSONEditor(container, options);
+        const data = {% raw data %};
+        editor.set(data);
+    </script>
 </body>
 
 </html>
