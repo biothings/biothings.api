@@ -8,6 +8,10 @@
 
     <style>
         html, body {
+            margin:0;
+            padding:0;
+        }
+        .container {
             margin: 0 5px 5px 5px;
             font-family:'Open Sans',sans-serif;
         }
@@ -26,28 +30,37 @@
             width: 35px;
             margin-right: 8px;
         }
-        #jsonview {
+        .wrapper {
+            display: flex;
+            flex-direction: column;
             height: 95vh;
+        }
+        #jsonview {
+            flex-grow: 2;
+            overflow: auto;
         }
     </style>
 
 </head>
 
 <body>
-    <header>
-        {% if "title_div" in globals() and title_div %}
-        <img src="{{ header_img }}" class="logo" alt="logo" />
-        <p>{% raw title_div %}</p>
-        {% end %}
-    </header>
-    {% if "learn_more" in globals() and learn_more %}
-    <div>
-        <a href="{{ link }}" target="_blank">{% raw link %}</a> &nbsp;&nbsp;
-        [<a href="{{ learn_more }}" target="_blank">Learn more about this API endpoint</a>]
-    </div>
-    {% end %}
-    <div id="jsonview"></div>
-
+    <main class="container">
+        <header>
+            {% if "title_div" in globals() and title_div %}
+            <img src="{{ header_img }}" class="logo" alt="logo" />
+            <p>{% raw title_div %}</p>
+            {% end %}
+        </header>
+        <div class="wrapper">
+            {% if "learn_more" in globals() and learn_more %}
+            <div>
+                <a href="{{ link }}" target="_blank">{% raw link %}</a> &nbsp;&nbsp;
+                [<a href="{{ learn_more }}" target="_blank">Learn more about this API endpoint</a>]
+            </div>
+            {% end %}
+            <div id="jsonview"></div>
+        </div>
+    </main>
 
     <script type="text/javascript">
         const container = document.getElementById("jsonview");
