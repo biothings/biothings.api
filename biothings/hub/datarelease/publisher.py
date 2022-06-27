@@ -12,10 +12,9 @@ import subprocess
 
 from .releasenote import ReleaseNoteSrcBuildReader, ReleaseNoteSource
 
-from biothings.utils.mongo import get_previous_collection, get_target_db
-from biothings.utils.hub_db import get_src_build, get_source_fullname
+from biothings.utils.mongo import get_previous_collection
+from biothings.utils.hub_db import get_src_build
 import biothings.utils.aws as aws
-from biothings.utils.dataload import update_dict_recur
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager, BaseStatusRegisterer
 from biothings.utils.backend import DocMongoBackend
@@ -240,9 +239,9 @@ class BasePublisher(BaseManager, BaseStatusRegisterer):
                         return archive_file
                     else:
                         # produce a json file with metadata about the splits
-                        jsonfile = "%s.json" % outfile
+                        jsonfile = "%s.json" % archive_file
                         json.dump({
-                            "filename": outfile,
+                            "filename": archive_file,
                             "parts": flist
                         }, open(jsonfile, "w"))
                         self.logger.info(
