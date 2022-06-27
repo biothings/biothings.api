@@ -10,7 +10,7 @@ import asyncio
 from functools import partial
 import subprocess
 
-from releasenote import ReleaseNoteSrcBuildReader, ReleaseNoteSource
+from .releasenote import ReleaseNoteSrcBuildReader, ReleaseNoteSource
 
 from biothings.utils.mongo import get_previous_collection, get_target_db
 from biothings.utils.hub_db import get_src_build, get_source_fullname
