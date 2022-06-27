@@ -10,11 +10,12 @@ import asyncio
 from functools import partial
 import subprocess
 
+from releasenote import ReleaseNoteSrcBuildReader, ReleaseNoteSource
+
 from biothings.utils.mongo import get_previous_collection, get_target_db
 from biothings.utils.hub_db import get_src_build, get_source_fullname
 import biothings.utils.aws as aws
 from biothings.utils.dataload import update_dict_recur
-from biothings.utils.jsondiff import make as jsondiff
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager, BaseStatusRegisterer
 from biothings.utils.backend import DocMongoBackend
@@ -1391,9 +1392,8 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
 
     def load_build(self, key_name, stage=None):
         if stage is None:
-            # picke build doc searching for snapshot then diff key if not found
-            return self.load_doc(key_name, "snapshot") or self.load_doc(
-                key_name, "diff")
+            # pick build doc searching for snapshot then diff key if not found
+            return self.load_doc(key_name, "snapshot") or self.load_doc(key_name, "diff")
         else:
             return self.load_doc(key_name, stage)
 
@@ -1558,26 +1558,33 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
 
         txt 'format' is the only one supported for now.
         """
-        bdoc = self.load_build(new)
+        build_doc = self.load_build(new)
+
         old = old or get_previous_collection(new)
+
         release_folder = generate_folder(btconfig.RELEASE_PATH, old, new)
         if not os.path.exists(release_folder):
             os.makedirs(release_folder)
+
         filepath = None
 
         def do():
             changes = self.build_release_note(old, new, note=note)
+
+            assert format == "txt", "Only 'txt' format supported for now"
+
             nonlocal filepath
             nonlocal filename
-            assert format == "txt", "Only 'txt' format supported for now"
-            filename = filename or "release_%s.%s" % (
-                changes["new"]["_version"], format)
+
+            filename = filename or "release_%s.%s" % (changes["new"]["_version"], format)
             filepath = os.path.join(release_folder, filename)
             render = ReleaseNoteTxt(changes)
             txt = render.save(filepath)
+
             filename = filename.replace(".%s" % format, ".json")
             filepath = os.path.join(release_folder, filename)
             json.dump(changes, open(filepath, "w"), indent=True)
+
             return {"txt": txt, "changes": changes}
 
         @asyncio.coroutine
@@ -1587,7 +1594,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
             pinfo["step"] = "release_note"
             pinfo["source"] = release_folder
             pinfo["description"] = filename
-            self.register_status(bdoc,
+            self.register_status(build_doc,
                                  "release_note",
                                  "generating",
                                  transient=True,
@@ -1600,19 +1607,17 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                 nonlocal got_error
                 try:
                     res = f.result()
-                    self.register_status(bdoc,
+                    self.register_status(build_doc,
                                          "release_note",
                                          "success",
                                          job={"step": "release_note"},
                                          release_note={
                                              old: {
                                                  "changes": res["changes"],
-                                                 "release_folder":
-                                                 release_folder
+                                                 "release_folder": release_folder
                                              }
                                          })
-                    self.logger.info("Release note ready, saved in %s: %s" %
-                                     (release_folder, res["txt"]),
+                    self.logger.info("Release note ready, saved in %s: %s" % (release_folder, res["txt"]),
                                      extra={"notify": True})
                     set_pending_to_publish(new)
                 except Exception as e:
@@ -1622,16 +1627,12 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
             job.add_done_callback(reported)
             yield from job
             if got_error:
-                self.logger.exception("Failed to create release note: %s" %
-                                      got_error,
+                self.logger.exception("Failed to create release note: %s" % got_error,
                                       extra={"notify": True})
-                self.register_status(bdoc,
+                self.register_status(build_doc,
                                      "release_note",
                                      "failed",
-                                     job={
-                                         "step": "release_note",
-                                         "err": str(e)
-                                     },
+                                     job={"step": "release_note", "err": str(got_error)},
                                      release_note={old: {}})
                 raise got_error
 
@@ -1643,143 +1644,61 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         Build a release note containing most significant changes between build names "old_colname" and "new_colname".
         An optional end note can be added to bring more specific information about the release.
 
-        Return a dictionnary containing significant changes.
+        Return a dictionary containing significant changes.
         """
-        def get_counts(dstats):
-            stats = {}
-            for subsrc, count in dstats.items():
-                try:
-                    src_sub = get_source_fullname(subsrc).split(".")
-                except AttributeError:
-                    # not a merge stats coming from a source
-                    # (could be custom field stats, eg. total_* in mygene)
-                    src_sub = [subsrc]
-                if len(src_sub) > 1:
-                    # we have sub-sources we need to split the count
-                    src, sub = src_sub
-                    stats.setdefault(src, {})
-                    stats[src][sub] = {"_count": count}
-                else:
-                    src = src_sub[0]
-                    stats[src] = {"_count": count}
-            return stats
+        def get_backend_from_colname(colname):
+            backend = create_backend(colname)
+            assert isinstance(backend, DocMongoBackend), \
+                "Only MongoDB backend types are allowed when generating a release note"
+            assert backend.target_collection.database.name == btconfig.DATA_TARGET_DATABASE, \
+                "Target databases must match current DATA_TARGET_DATABASE setting"
+            return backend
 
-        def get_versions(doc):
-            try:
-                versions = dict((k, {"_version": v["version"]}) for k, v in
-                                doc.get("_meta", {}).get("src", {}).items() if "version" in v)
-            except KeyError:
-                # previous version format
-                versions = dict((k, {
-                    "_version": v
-                })
-                    for k, v in doc.get("_meta", {}).get(
-                        "src_version", {}).items())
-            return versions
+        def check_cold_collection(src_build_reader: ReleaseNoteSrcBuildReader):
+            if src_build_reader.has_cold_collection():
+                # We have been querying src_build with collection names across publisher.py,
+                #   because src_build `_id`s and collection names are interchangeable.
+                # See https://github.com/biothings/biothings.api/blob/master/biothings/hub/databuild/builder.py#L311
+                cold_doc = get_src_build().find_one({"_id": src_build_reader.cold_collection_name})
+                cold_reader = ReleaseNoteSrcBuildReader(cold_doc)
 
-        diff_folder = generate_folder(btconfig.DIFF_PATH, old_colname,
-                                      new_colname)
+                src_build_reader.attach_cold_src_build_reader(cold_reader)
+
+            return src_build_reader
+
+        diff_folder = generate_folder(btconfig.DIFF_PATH, old_colname, new_colname)
         try:
             metafile = os.path.join(diff_folder, "metadata.json")
             metadata = json.load(open(metafile))
+
             old_colname = metadata["old"]["backend"]
             new_colname = metadata["new"]["backend"]
             diff_stats = metadata["diff"]["stats"]
         except FileNotFoundError:
             # we're generating a release note without diff information
-            self.logger.info(
-                "No metadata.json file found, this release note won't have diff stats included"
-            )
+            self.logger.info("No metadata.json file found, this release note won't have diff stats included")
             diff_stats = {}
 
-        new = create_backend(new_colname)
-        old = create_backend(old_colname)
-        assert isinstance(old, DocMongoBackend) and isinstance(new, DocMongoBackend), \
-            "Only MongoDB backend types are allowed when generating a release note"
-        assert old.target_collection.database.name == btconfig.DATA_TARGET_DATABASE and \
-            new.target_collection.database.name == btconfig.DATA_TARGET_DATABASE, \
-            "Target databases must match current DATA_TARGET_DATABASE setting"
-        new_doc = get_src_build().find_one({"_id": new.target_collection.name})
-        if not new_doc:
+        new_backend = get_backend_from_colname(new_colname)
+        old_backend = get_backend_from_colname(old_colname)
+
+        new_src_build_doc = get_src_build().find_one({"_id": new_backend.target_collection.name})
+        if not new_src_build_doc:
             raise PublisherException("Collection '%s' has no corresponding build document" %
-                                     new.target_collection.name)
-        # old_doc doesn't have to exist (but new_doc has) in case we build a initial release note
+                                     new_backend.target_collection.name)
+        # old_doc doesn't have to exist (but new_src_build_doc has) in case we build a initial release note
         # compared against nothing
-        old_doc = get_src_build().find_one({"_id": old.target_collection.name
-                                            }) or {}
-        tgt_db = get_target_db()
-        old_total = tgt_db[old.target_collection.name].count()
-        new_total = tgt_db[new.target_collection.name].count()
-        changes = {
-            "old": {
-                "_version": old.version,
-                "_count": old_total,
-            },
-            "new": {
-                "_version": new.version,
-                "_count": new_total,
-                "_fields": {},
-                "_summary": diff_stats,
-            },
-            "stats": {
-                "added": {},
-                "deleted": {},
-                "updated": {},
-            },
-            "note": note,
-            "generated_on": str(datetime.now().astimezone()),
-            "sources": {
-                "added": {},
-                "deleted": {},
-                "updated": {},
-            }
-        }
-        # for later use
-        new_versions = get_versions(new_doc)
-        old_versions = get_versions(old_doc)
-        # now deal with stats/counts. Counts are related to uploader, ie. sub-sources
-        new_merge_stats = get_counts(new_doc.get("merge_stats", {}))
-        old_merge_stats = get_counts(old_doc.get("merge_stats", {}))
-        new_stats = get_counts(new_doc.get("_meta", {}).get("stats", {}))
-        old_stats = get_counts(old_doc.get("_meta", {}).get("stats", {}))
-        new_info = update_dict_recur(new_versions, new_merge_stats)
-        old_info = update_dict_recur(old_versions, old_merge_stats)
+        old_src_build_doc = get_src_build().find_one({"_id": old_backend.target_collection.name}) or {}
 
-        def analyze_diff(ops, destdict, old, new):
-            for op in ops:
-                # get main source / main field
-                key = op["path"].strip("/").split("/")[0]
-                if op["op"] == "add":
-                    destdict["added"][key] = new[key]
-                elif op["op"] == "remove":
-                    destdict["deleted"][key] = old[key]
-                elif op["op"] == "replace":
-                    destdict["updated"][key] = {
-                        "new": new[key],
-                        "old": old[key]
-                    }
-                else:
-                    raise ValueError(
-                        "Unknown operation '%s' while computing changes" %
-                        op["op"])
+        new_src_build_reader = ReleaseNoteSrcBuildReader(new_src_build_doc)
+        new_src_build_reader = check_cold_collection(new_src_build_reader)
+        old_src_build_reader = ReleaseNoteSrcBuildReader(old_src_build_doc)
+        old_src_build_reader = check_cold_collection(old_src_build_reader)
 
-        # diff source info
-        # this only works on main source information: if there's a difference in a
-        # sub-source, it won't be shown but considered as if it was the main-source
-        ops = jsondiff(old_info, new_info)
-        analyze_diff(ops, changes["sources"], old_info, new_info)
+        release_note_source = ReleaseNoteSource(old_src_build_reader, new_src_build_reader,
+                                                diff_stats_from_metadata_file=diff_stats, addon_note=note)
 
-        ops = jsondiff(old_stats, new_stats)
-        analyze_diff(ops, changes["stats"], old_stats, new_stats)
-
-        # mapping diff: we re-compute them and don't use any mapping.pyobj because that file
-        # only allows "add" operation as a safety rule (can't delete fields in ES mapping once indexed)
-        ops = jsondiff(old_doc.get("mapping", {}), new_doc["mapping"])
-        for op in ops:
-            changes["new"]["_fields"].setdefault(op["op"], []).append(
-                op["path"].strip("/").replace("/", "."))
-
-        return changes
+        return release_note_source.to_dict()
 
     def release_info(self, env=None, remote=False):
         res = copy.deepcopy(self.release_config)
