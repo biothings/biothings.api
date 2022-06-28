@@ -28,8 +28,8 @@ def get_python_version():
 def get_biothings_commit():
     ''' Gets the biothings commit information. '''
     try:
-        with open(os.path.join(os.path.dirname(biothings.__file__), '.git-info'), 'r') as f:
-            lines = [ln.strip('\n') for ln in f.readlines()]
+        with open(os.path.join(os.path.dirname(biothings.__file__), '.git-info'), 'r', encoding="utf-8") as git_file:
+            lines = [ln.strip('\n') for ln in git_file.readlines()]
             return {
                 'repository-url': lines[0],
                 'commit-hash': lines[1],
@@ -78,6 +78,7 @@ def get_repository_information(app_dir=None):
 
 
 def get_python_exec_version():
+    """return Python version"""
     return {
         'version': sys.version,
         'version_info': {
@@ -90,6 +91,7 @@ def get_python_exec_version():
 
 @functools.lru_cache()
 def get_software_info(app_dir=None):
+    """return current application info"""
     return {
         'python-package-info': get_python_version(),
         'codebase': get_repository_information(app_dir=app_dir),
@@ -108,7 +110,7 @@ def check_new_version(folder, max_commits=10):
     try:
         repo = Repo(folder)
     except InvalidGitRepositoryError:
-        logging.warning("Not a valid git repository for folder '%s', skipped for checking new version." % folder)
+        logging.warning("Not a valid git repository for folder '%s', skipped for checking new version.", folder)
         return
 
     try:
@@ -117,8 +119,8 @@ def check_new_version(folder, max_commits=10):
         remote_name = repo.active_branch.tracking_branch().remote_name
         url = repo.remote(remote_name).url
         repo_url = re.sub(r"\.git$", "", url)
-    except Exception as e:
-        logging.debug("Can't determine repository URL: %s" % e)
+    except Exception as err:
+        logging.debug("Can't determine repository URL: %s", err)
         repo_url = None
     new_info = {}
     try:
@@ -142,8 +144,8 @@ def check_new_version(folder, max_commits=10):
             # hashes the same, we're up-to-date with the remote
             return
         else:
-            logging.info("HEAD on remote is different, new commit(s) available for '%s'" % folder)
-            logging.info("HEAD(remote): %s, HEAD(local): %s" % (remote_head_hexsha, head.commit.hexsha))
+            logging.info("HEAD on remote is different, new commit(s) available for '%s'", folder)
+            logging.info("HEAD(remote): %s, HEAD(local): %s", remote_head_hexsha, head.commit.hexsha)
             # need to fetch new code locally
             # usually one remotes, but just in case...
             for remote in repo.remotes:
@@ -162,18 +164,19 @@ def check_new_version(folder, max_commits=10):
                     } for c in new_commits][:max_commits],
                 "total": len(new_commits),
             }
-    except Exception as e:
-        logging.warning("Can't check for new version: %s" % e)
-        raise e
+    except Exception as err:
+        logging.warning("Can't check for new version: %s", err)
+        raise err
 
     return new_info
 
 
 def get_version(folder):
+    """return revision of a git folder"""
     try:
         repo = Repo(folder)  # app or lib dir
     except InvalidGitRepositoryError:
-        logging.warning("Not a valid git repository for folder '%s', skipped for getting its version." % folder)
+        logging.warning("Not a valid git repository for folder '%s', skipped for getting its version.", folder)
         return
     try:
         # Get URL from actual remote branch name that is being tracked.
@@ -187,8 +190,8 @@ def get_version(folder):
     try:
         commit = repo.head.object.hexsha[:6]
         commitdate = repo.head.object.committed_datetime.isoformat()
-    except Exception as e:
-        logging.warning("can't determine app commit hash: %s" % e)
+    except Exception as err:
+        logging.warning("can't determine app commit hash: %s", err)
         commit = "unknown"
         commitdate = "unknown"
 
@@ -197,8 +200,8 @@ def get_version(folder):
                 "commit": commit,
                 "date": commitdate,
                 "giturl": url}
-    except Exception as e:
-        logging.warning("can't determine app version, assuming HEAD detached': %s" % e)
+    except Exception as err:
+        logging.warning("can't determine app version, assuming HEAD detached': %s", err)
         return {"branch": "HEAD detached",
                 "commit": commit,
                 "date": commitdate,
@@ -213,13 +216,13 @@ def set_versions(config, app_folder):
     see biothings.__init__.py, regex PARAM_PAT)
     """
     if not os.path.exists(app_folder):
-        raise FileNotFoundError("'%s' application folder doesn't exist")
+        raise FileNotFoundError(f"'{app_folder}' application folder doesn't exist")
     # app_version: version of the API application
     if not hasattr(config, "APP_VERSION"):
         config.APP_VERSION = get_version(app_folder)
         config.app_folder = app_folder
     else:
-        logging.info("app_version '%s' forced in configuration file" % config.APP_VERSION)
+        logging.info("app_version '%s' forced in configuration file", config.APP_VERSION)
 
     # biothings_version: version of BioThings SDK
     if not hasattr(config, "BIOTHINGS_VERSION"):
@@ -227,16 +230,16 @@ def set_versions(config, app_folder):
         # .../biothings.api/biothings/__init__.py
         bt_folder, _bt = os.path.split(os.path.split(os.path.realpath(biothings.__file__))[0])
         if not os.path.exists(bt_folder):
-            raise FileNotFoundError("'%s' biothings folder doesn't exist")
+            raise FileNotFoundError(f"'{bt_folder}' biothings folder doesn't exist")
         assert _bt == "biothings", "Expectig 'biothings' dir in biothings lib path"
         config.BIOTHINGS_VERSION = get_version(bt_folder)
         config.biothings_folder = bt_folder
     else:
-        logging.info("biothings_version '%s' forced in configuration file" %
+        logging.info("biothings_version '%s' forced in configuration file",
                      config.BIOTHINGS_VERSION)
 
-    logging.info("Running app_version=%s with biothings_version=%s" %
-                 (repr(config.APP_VERSION), repr(config.BIOTHINGS_VERSION)))
+    logging.info("Running app_version=%s with biothings_version=%s",
+                 repr(config.APP_VERSION), repr(config.BIOTHINGS_VERSION))
 
 
 def get_source_code_info(src_file):
@@ -256,31 +259,31 @@ def get_source_code_info(src_file):
     try:
         repo = Repo(abs_src_file, search_parent_directories=True)
     except (InvalidGitRepositoryError, NoSuchPathError):
-        logging.exception("Can't find a github repository for file '%s'" % src_file)
+        logging.exception("Can't find a github repository for file '%s'", src_file)
         return None
     try:
         gcmd = repo.git
-        hash = gcmd.rev_list(-1, repo.active_branch, abs_src_file)
+        _hash = gcmd.rev_list(-1, repo.active_branch, abs_src_file)
         rel_src_file = abs_src_file.replace(repo.working_dir, "").strip("/")
-        if not hash:
+        if not _hash:
             # seems to be a repo cloned within a repo, change directory
             curdir = os.path.abspath(os.curdir)
             try:
                 if os.path.isdir(abs_src_file):
                     os.chdir(abs_src_file)
-                    hash = gcmd.rev_list(-1, repo.active_branch)
+                    _hash = gcmd.rev_list(-1, repo.active_branch)
                 else:
                     dirname, filename = os.path.split(abs_src_file)
                     os.chdir(dirname)
-                    hash = gcmd.rev_list(-1, repo.active_branch, filename)
+                    _hash = gcmd.rev_list(-1, repo.active_branch, filename)
                 rel_src_file = ""  # will point to folder by commit hash
             finally:
                 os.chdir(curdir)
-        if hash:
-            short_hash = gcmd.rev_parse(hash, short=7)
+        if _hash:
+            short_hash = gcmd.rev_parse(_hash, short=7)
         else:
-            logging.warning("Couldn't determine commit hash for file '%s'" % src_file)
-            hash = None
+            logging.warning("Couldn't determine commit hash for file '%s'", src_file)
+            _hash = None
             short_hash = None
         # could have more than one URLs for origin, only take first
         repo_url = next(repo.remote().urls)
@@ -297,14 +300,14 @@ def get_source_code_info(src_file):
         # rebuild URL to that file
         if "github.com" in repo_url:
             info["url"] = os.path.join(re.sub(r"\.git$", "", repo_url),
-                                       "tree", hash, rel_src_file)
+                                       "tree", _hash, rel_src_file)
 
         return info
 
     except GitCommandError:
-        logging.exception("Error while getting git information for file '%s'" % src_file)
+        logging.exception("Error while getting git information for file '%s'", src_file)
         return None
-    except TypeError as e:
+    except TypeError as err:
         # happens with biothings symlink, just ignore
-        logging.debug("Can't determine source code info (but that's fine): %s" % e)
+        logging.debug("Can't determine source code info (but that's fine): %s", err)
         return None
