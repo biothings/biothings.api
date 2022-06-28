@@ -1552,8 +1552,11 @@ class HubServer(object):
         async def do():
             extra_index_settings = kwargs.pop("extra_index_settings", '{}')
             extra_index_settings = json.loads(extra_index_settings)
-            extra_index_settings["num_shards"] = int(kwargs.pop("num_shards", 1))
-            extra_index_settings["num_replicas"] = int(kwargs.pop("num_replicas", 0))
+            build_config_params = {}
+            build_config_params["num_shards"] = int(kwargs.pop("num_shards", 1))
+            build_config_params["num_replicas"] = int(kwargs.pop("num_replicas", 0))
+            if extra_index_settings:
+                build_config_params["extra_index_settings"] = extra_index_settings
             try:
                 # create a temporary build configuration:
                 builder_class = None
@@ -1566,7 +1569,7 @@ class HubServer(object):
                     doc_type=doc_type,
                     sources=[datasource_name],
                     builder_class=builder_class,
-                    params=extra_index_settings,
+                    params=build_config_params,
                 )
 
                 # create a temporary build
