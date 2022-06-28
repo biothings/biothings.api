@@ -12,6 +12,8 @@ locale.setlocale(locale.LC_ALL, '')
 
 
 class ReleaseNoteSrcBuildReader:
+    # TODO shall we use biothings.hub.dataindex.indexer._Build_doc here?
+
     def __init__(self, src_build_doc: dict):
         self.src_build_doc = src_build_doc
 
