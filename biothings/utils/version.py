@@ -126,7 +126,14 @@ def check_new_version(folder, max_commits=10):
         # but we'd like to avoid fetching all the time just to check.
         # what we can do is a ls-remote and check the HEAD hash, if different, then fetch
         # (no pull) and inspect differences.
-        head = repo.head.ref
+        try:
+            head = repo.head.ref
+        except TypeError as err:
+            # cannot get the head reference, e.g. when HEAD is detached at certain commit point
+            # For example, TypeError: HEAD is a detached symbolic reference as it points to '19ad50463d0cdd3329618789040c4b9012ccca24'
+            logging.warning("%s, skipped for checking new version.", err)
+            return
+
         tracking = head.tracking_branch()
         # inspect remote HEAD for that branch
         output = repo.git.ls_remote("--heads", tracking.remote_name, tracking.remote_head)
