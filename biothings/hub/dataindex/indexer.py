@@ -490,7 +490,7 @@ class Indexer():
             if error:
                 for job in jobs:
                     if not job.done():
-                        job.cancel()
+                        await job.cancel()
                 raise error
 
             self.logger.info(schedule)
