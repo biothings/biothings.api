@@ -18,20 +18,20 @@ REPO_URL = "https://github.com/biothings/biothings.api"
 # version gets set to MAJOR.MINOR.# commits on master branch if installed from pip repo
 # otherwise to MAJOR.MINOR.MICRO as defined in biothings.version
 try:
-    num_commits = check_output("git rev-list --count master", shell=True).strip().decode('utf-8')
+    NUM_COMMITS = check_output("git rev-list --count master", shell=True).strip().decode('utf-8')
 except CalledProcessError:
-    num_commits = ''
+    NUM_COMMITS = ''
 
 # Calculate commit hash, should fail if installed from source or from pypi
 try:
-    commit_hash = check_output("git rev-parse HEAD", shell=True).strip().decode('utf-8')
+    COMMIT_HASH = check_output("git rev-parse HEAD", shell=True).strip().decode('utf-8')
 except CalledProcessError:
-    commit_hash = ''
+    COMMIT_HASH = ''
 
 # Write commit to file inside package, that can be read later
-if commit_hash or num_commits:
-    with open('biothings/.git-info', 'w') as git_file:
-        git_file.write("{}.git\n{}\n{}".format(REPO_URL, commit_hash, num_commits))
+if COMMIT_HASH or NUM_COMMITS:
+    with open('biothings/.git-info', 'w', encoding="utf-8") as git_file:
+        git_file.write(f"{REPO_URL}.git\n{COMMIT_HASH}\n{NUM_COMMITS}")
 
 
 # very minimal requirement for running biothings.web
