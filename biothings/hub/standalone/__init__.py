@@ -65,7 +65,7 @@ class AutoHubFeature(object):
 
         return vurls
 
-    def install(self, src_name, version="latest", dry=False, force=False):
+    def install(self, src_name, version="latest", dry=False, force=False, use_no_downtime_method=True):
         """
         Update hub's data up to the given version (default is latest available),
         using full and incremental updates to get up to that given version (if possible).
@@ -95,7 +95,10 @@ class AutoHubFeature(object):
                     if res[0] is None:
                         # download ready, now install
                         logging.info("Updating backend to version '%s'", step_version)
-                        jobs = self.managers["upload_manager"].upload_src(src_name)
+                        jobs = self.managers["upload_manager"].upload_src(
+                            src_name,
+                            use_no_downtime_method=use_no_downtime_method,
+                        )
                         upload = asyncio.gather(*jobs)
                         res = await upload
 
