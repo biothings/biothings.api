@@ -156,8 +156,9 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             subsrc_versions = []
 
             if src and src.get("download"):
-                # Store the latest dump time
-                src_meta.setdefault(src["_id"], {}).setdefault("dump_date", src["download"]["started_at"])
+                # Store the latest success dump time
+                if src["download"]["status"] == "success":
+                    src_meta.setdefault(src["_id"], {}).setdefault("download_date", src["download"]["started_at"])
 
             if src and src.get("upload"):
                 latest_upload_date = None
@@ -168,10 +169,11 @@ class SourceDocMongoBackend(SourceDocBackendBase):
                     docm = self.master.find_one({"_id": job.get("step")})
                     if docm and docm.get("src_meta"):
                         meta[job.get("step")] = docm["src_meta"]
-                    # Store the latest upload time
+                    # Store the latest success upload time
                     if not latest_upload_date or latest_upload_date < job["started_at"]:
-                        latest_upload_date = job["started_at"]
-                        meta[job.get("step")]["upload_date"] = latest_upload_date
+                        if job["status"] == "success":
+                            latest_upload_date = job["started_at"]
+                            meta[job.get("step")]["upload_date"] = latest_upload_date
                 # when more than 1 sub-sources, we can have different version in sub-sources
                 # (not normal) if one sub-source uploaded, then dumper downloaded a new version,
                 # then the other sub-source uploaded that version. This should never happen, just make sure

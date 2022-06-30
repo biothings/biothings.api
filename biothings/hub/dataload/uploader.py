@@ -388,6 +388,16 @@ class BaseSourceUploader(object):
             _doc.setdefault("src_meta", {}).update({"code": info})
         return _doc
 
+    def get_current_and_new_master(self):
+        new = self.generate_doc_src_master()
+        dkey = {"_id": new["_id"]}
+        current = self.src_master.find_one(dkey)
+        return {
+            "kclass": f"{self.__class__.__module__}.{self.__class__.__name__}",
+            "current": current,
+            "new": new,
+        }
+
     def update_master(self):
         _doc = self.generate_doc_src_master()
         self.save_doc_src_master(_doc)
@@ -805,7 +815,7 @@ class UploaderManager(BaseSourceManager):
                               extra={"notify": True})
             raise
 
-    def update_source_meta(self, src):
+    def update_source_meta(self, src, dry=False):
         """
         Trigger update for registered resource named 'src'.
         """
@@ -821,7 +831,8 @@ class UploaderManager(BaseSourceManager):
             for i, klass in enumerate(klasses):
                 job = self.job_manager.submit(
                     partial(self.create_and_update_master,
-                            klass))
+                            klass,
+                            dry=dry))
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
 
@@ -841,14 +852,16 @@ class UploaderManager(BaseSourceManager):
                               extra={"notify": True})
             raise
 
-    async def create_and_update_master(self, klass):
-        insts = self.create_instance(klass)
-        if type(insts) != list:
-            insts = [insts]
-        for inst in insts:
-            inst.prepare()
+    async def create_and_update_master(self, klass, dry=False):
+        compare_data = None
+        inst = self.create_instance(klass)
+        inst.prepare()
+        if dry:
+            compare_data = inst.get_current_and_new_master()
+        else:
             inst.update_master()
-            inst.unprepare()
+        inst.unprepare()
+        return compare_data
 
     async def create_and_load(self, klass, *args, **kwargs):
         insts = self.create_instance(klass)
