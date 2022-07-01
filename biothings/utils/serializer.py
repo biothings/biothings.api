@@ -1,14 +1,37 @@
 import datetime
-import json
-from collections import OrderedDict, UserString
+from collections import OrderedDict, UserString, UserDict, UserList
 from urllib.parse import parse_qs, unquote_plus, urlencode, urlparse, urlunparse
 
+import orjson
 import yaml
-from biothings.utils.common import BiothingsJSONEncoder
 
 
-def to_json(data):
+def to_json_0(data):
+    '''deprecated'''
+    import json
+    from biothings.utils.common import BiothingsJSONEncoder
+
     return json.dumps(data, cls=BiothingsJSONEncoder)
+
+
+def orjson_default(o):
+    '''The default function passed to orjson to serialize non-serializable objects'''
+    if isinstance(o, (UserDict, UserList)):
+        return o.data     # o.data is the actual dictionary of list to store the data
+    raise TypeError(f"Type {type(o)} not serializable")
+
+
+def to_json(data, indent=False, sort_keys=False):
+    # default option:
+    #    OPT_NON_STR_KEYS: non string dictionary key, e.g. integer
+    #    OPT_NAIVE_UTC: use UTC as the timezone when it's missing
+    option = orjson.OPT_NON_STR_KEYS | orjson.OPT_NAIVE_UTC
+    if indent:
+        option |= orjson.OPT_INDENT_2
+    if sort_keys:
+        option |= orjson.OPT_SORT_KEYS
+    return orjson.dumps(data, default=orjson_default, option=option).decode()
+
 
 def to_yaml(data, stream=None, Dumper=yaml.SafeDumper, default_flow_style=False):
     # Author: Cyrus Afrasiabi

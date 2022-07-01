@@ -49,9 +49,13 @@ class BaseDiffer(object):
         self.metadata = {}  # diff metadata
         self.metadata_filename = None
 
-    def setup_log(self):
-        self.logger, self.logfile = get_logger(
-            'diff_%s' % self.__class__.diff_type, self.log_folder)
+    def setup_log(self, old=None, new=None):
+        log_folder = self.log_folder
+        name = f"diff_{self.__class__.diff_type}"
+        if old and new:
+            log_folder = os.path.join(btconfig.LOG_FOLDER, 'build', new, 'diff')
+            name = f"diff_{old}_{new}"
+        self.logger, self.logfile = get_logger(name, log_folder, force=True)
 
     def get_predicates(self):
         return []
@@ -139,8 +143,7 @@ class BaseDiffer(object):
             build = merge_info(build, diff_info)
             src_build.replace_one({"_id": build["_id"]}, build)
 
-    @asyncio.coroutine
-    def diff_cols(self,
+    async def diff_cols(self,
                   old_db_col_names,
                   new_db_col_names,
                   batch_size,
@@ -310,10 +313,10 @@ class BaseDiffer(object):
                                  transient=True,
                                  init=True,
                                  job={"step": "diff-mapping"})
-            job = yield from self.job_manager.defer_to_thread(
+            job = await self.job_manager.defer_to_thread(
                 pinfo, partial(diff_mapping, self.old, self.new, diff_folder))
             job.add_done_callback(mapping_diffed)
-            yield from job
+            await job
             if got_error:
                 raise got_error
 
@@ -350,7 +353,7 @@ class BaseDiffer(object):
                                          job={"step": "diff-content"})
 
                 self.logger.info("Creating diff worker for batch #%s" % cnt)
-                job = yield from self.job_manager.defer_to_process(
+                job = await self.job_manager.defer_to_process(
                     pinfo,
                     partial(diff_worker_new_vs_old, id_list_new,
                             old_db_col_names, new_db_col_names, cnt,
@@ -358,7 +361,7 @@ class BaseDiffer(object):
                             selfcontained))
                 job.add_done_callback(diffed)
                 jobs.append(job)
-            yield from asyncio.gather(*jobs)
+            await asyncio.gather(*jobs)
             self.logger.info(
                 "Finished calculating diff for the new collection. Total number of docs updated: {}, added: {}"
                 .format(diff_stats["update"], diff_stats["add"]))
@@ -381,13 +384,13 @@ class BaseDiffer(object):
                     self.logger.info("(Deleted: {})".format(res["delete"]))
 
                 self.logger.info("Creating diff worker for batch #%s" % cnt)
-                job = yield from self.job_manager.defer_to_process(
+                job = await self.job_manager.defer_to_process(
                     pinfo,
                     partial(diff_worker_old_vs_new, id_list_old,
                             new_db_col_names, cnt, diff_folder))
                 job.add_done_callback(diffed)
                 jobs.append(job)
-            yield from asyncio.gather(*jobs)
+            await asyncio.gather(*jobs)
             self.logger.info(
                 "Finished calculating diff for the old collection. Total number of docs deleted: {}"
                 .format(diff_stats["delete"]))
@@ -401,9 +404,7 @@ class BaseDiffer(object):
                     diff_stats["delete"], diff_stats["mapping_changed"]))
 
         if "reduce" in steps:
-
-            @asyncio.coroutine
-            def merge_diff():
+            async def merge_diff():
                 self.logger.info("Reduce/merge diff files")
                 max_diff_size = getattr(btconfig, "MAX_DIFF_SIZE",
                                         10 * 1024**2)
@@ -438,7 +439,7 @@ class BaseDiffer(object):
                         self.logger.info("%d diff files to process" %
                                          len(diff_files))
                     if current_size > max_diff_size:
-                        job = yield from self.job_manager.defer_to_process(
+                        job = await self.job_manager.defer_to_process(
                             pinfo,
                             partial(reduce_diffs, tomerge, cnt, diff_folder,
                                     done_folder))
@@ -455,27 +456,27 @@ class BaseDiffer(object):
                 assert not diff_files
 
                 if tomerge:
-                    job = yield from self.job_manager.defer_to_process(
+                    job = await self.job_manager.defer_to_process(
                         pinfo,
                         partial(reduce_diffs, tomerge, cnt, diff_folder,
                                 done_folder))
                     job.add_done_callback(partial(merged, cnt=cnt))
                     jobs.append(job)
-                    yield from job
+                    await job
 
-                yield from asyncio.gather(*jobs)
+                await asyncio.gather(*jobs)
 
                 return final_res
 
             pinfo = self.get_pinfo()
             pinfo["source"] = "diff_folder"
             pinfo["step"] = "reduce"
-            #job = yield from self.job_manager.defer_to_thread(pinfo,merge_diff)
+            #job = await self.job_manager.defer_to_thread(pinfo,merge_diff)
             self.register_status("diffing",
                                  transient=True,
                                  init=True,
                                  job={"step": "diff-reduce"})
-            res = yield from merge_diff()
+            res = await merge_diff()
             self.metadata["diff"]["files"] = res
             json.dump(self.metadata,
                       open(self.metadata_filename, "w"),
@@ -495,7 +496,7 @@ class BaseDiffer(object):
                                  transient=True,
                                  init=True,
                                  job={"step": "diff-post"})
-            job = yield from self.job_manager.defer_to_thread(
+            job = await self.job_manager.defer_to_thread(
                 pinfo,
                 partial(self.post_diff_cols,
                         old_db_col_names,
@@ -518,7 +519,7 @@ class BaseDiffer(object):
                     got_error = e
 
             job.add_done_callback(posted)
-            yield from job
+            await job
             json.dump(self.metadata,
                       open(self.metadata_filename, "w"),
                       indent=True)
@@ -548,6 +549,7 @@ class BaseDiffer(object):
              mode=None,
              exclude=[]):
         """wrapper over diff_cols() coroutine, return a task"""
+        self.setup_log(old_db_col_names, new_db_col_names)
         job = asyncio.ensure_future(
             self.diff_cols(old_db_col_names, new_db_col_names, batch_size,
                            steps, mode, exclude))
@@ -573,8 +575,7 @@ class BaseDiffer(object):
 
 
 class ColdHotDiffer(BaseDiffer):
-    @asyncio.coroutine
-    def diff_cols(self, old_db_col_names, new_db_col_names, *args, **kwargs):
+    async def diff_cols(self, old_db_col_names, new_db_col_names, *args, **kwargs):
         self.new = create_backend(new_db_col_names)
         new_doc = get_src_build().find_one(
             {"_id": self.new.target_collection.name})
@@ -1138,14 +1139,13 @@ class DifferManager(BaseManager):
                 self.logger.debug("Report already generated, now using it")
                 return open(reportfilepath).read()
 
-        @asyncio.coroutine
-        def main(diff_folder):
+        async def main(diff_folder):
             got_error = False
             pinfo = self.get_pinfo()
             pinfo["step"] = "report"
             pinfo["source"] = diff_folder
             pinfo["description"] = report_filename
-            job = yield from self.job_manager.defer_to_thread(pinfo, do)
+            job = await self.job_manager.defer_to_thread(pinfo, do)
 
             def reported(f):
                 nonlocal got_error
@@ -1161,7 +1161,7 @@ class DifferManager(BaseManager):
                     got_error = e
 
             job.add_done_callback(reported)
-            yield from job
+            await job
             if got_error:
                 self.logger.exception("Failed to create diff report: %s" %
                                       got_error,

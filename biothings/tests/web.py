@@ -21,15 +21,15 @@
         BiothingsWebAppTest targets layer 2 and runs its own layer 3.
         Note no utility is provided to directly talk to layer 1.
 
-    The above discussed the python structures provided as programming 
+    The above discussed the python structures provided as programming
     utilities, on the other hand, there are three types of use cases,
     or testing objectives:
         L3 Data test, which is aimed to test the data integrity of an API.
             It subclasses BiothingsWebTest and ensures all layers working.
             The data has to reside in elasticsearch already.
-        L3 Feature test, which is aimed to test the API implementation. 
-            It makes sure the settings in config file is reflected. 
-            These tests work on production data and require constant 
+        L3 Feature test, which is aimed to test the API implementation.
+            It makes sure the settings in config file is reflected.
+            These tests work on production data and require constant
             updates to keep the test cases in sync with the actual data.
             These test cases subclass BiothingsWebTest as well and asl
             require existing production data in elasticsearch.
@@ -53,7 +53,7 @@
       Elasticsearch at the start of the testing and get deleted after testing finishes. The other
       two types of testing require existing production data on the corresponding ES servers.
 
-    In development, it is certainly possible for a particular test case 
+    In development, it is certainly possible for a particular test case
     to fall under multiple test types, then the developer can use proper
     inheritance structures to avoid repeating the specific test case.
 
@@ -69,7 +69,7 @@
     TEST_CONF
 
     L2 Envs:
-    
+
     TEST_KEEPDATA
     < Config Module Override >
 
@@ -289,20 +289,28 @@ class BiothingsWebAppTest(BiothingsWebTest, AsyncHTTPTestCase):
                 else:
                     raise RuntimeError("This shouldn't have happened")
                 r.raise_for_status()
-                r = s.post(f'{es_host}/{index_name}/_doc/_bulk',
-                           data=bulk_data,
-                           headers={'Content-type': 'application/x-ndjson'})
+                if version_info[0] < 8:
+                    r = s.post(f'{es_host}/{index_name}/_doc/_bulk',
+                            data=bulk_data,
+                            headers={'Content-type': 'application/x-ndjson'})
+                elif version_info[0] >= 8:
+                    r = s.post(f'{es_host}/{index_name}/_bulk',
+                            data=bulk_data,
+                            headers={'Content-type': 'application/x-ndjson'})
+                else:
+                    raise RuntimeError("This shouldn't have happened")
                 r.raise_for_status()
                 s.post(f'{es_host}/{index_name}/_refresh')
             yield
-        except Exception:
+        except Exception as e:
+            err_msg = str(e)
             err_flag = True
         finally:
             if not os.environ.get('TEST_KEEPDATA'):
                 for index_name in indices:
                     s.delete(f'{es_host}/{index_name}')
             if err_flag:
-                pytest.exit("Error setting up ES for tests")
+                pytest.exit("Error setting up ES for tests:", err_msg)
 
     @property
     def config(self):

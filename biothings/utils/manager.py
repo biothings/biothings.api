@@ -196,8 +196,7 @@ class BaseManager(object):
         if not self.poll_schedule:
             raise ManagerError("poll_schedule is not defined")
 
-        @asyncio.coroutine
-        def check_pending(state):
+        async def check_pending(state):
             sources = [src for src in col.find({'pending': state}) if isinstance(src['_id'], str)]
             if sources:
                 logger.info(
@@ -385,12 +384,14 @@ class BaseSourceManager(BaseManager):
             try:
                 src_m = importlib.import_module(src)
                 src_m = importlib.reload(src_m)
-            except ImportError:
+            except ImportError as ex:
+                logger.warning(ex)
                 try:
                     src_m = importlib.import_module("%s.%s" % (self.default_src_path, src))
-                except ImportError:
+                except ImportError as e:
                     msg = "Can't find module '%s', even in '%s'" % (src, self.default_src_path)
                     logger.error(msg)
+                    logger.warning(e)
                     raise UnknownResource(msg)
 
         elif isinstance(src, dict):
@@ -448,7 +449,7 @@ class JobManager(object):
     DATALINE = HEADERLINE.replace("^", "<")
 
     def __init__(self, loop, process_queue=None, thread_queue=None, max_memory_usage=None,
-                 num_workers=None, num_threads=None, default_executor="thread", auto_recycle=True):
+                 num_workers=None, num_threads=None, auto_recycle=True):
         if not os.path.exists(config.RUN_DIR):
             logger.info("Creating RUN_DIR directory '%s'", config.RUN_DIR)
             os.makedirs(config.RUN_DIR)
@@ -466,15 +467,12 @@ class JobManager(object):
         # TODO: limit the number of threads (as argument) ?
         self.thread_queue = thread_queue or concurrent.futures.ThreadPoolExecutor(max_workers=self.num_threads)
 
-        # FIXME: In Py38 using an executor that is not a ThreadPoolExecutor is
+        #  In Py38 using an executor that is not a ThreadPoolExecutor is
         #  deprecated. And it seems in Py39 , it must be a ThreadPoolExecutor,
         #  using a ProcessPoolExecutor will trigger an error.
         #  However, loop.run_in_executor still accepts ProcessPoolExecutor
         #  see https://bugs.python.org/issue34075
-        if default_executor == "thread":
-            self.loop.set_default_executor(self.thread_queue)
-        else:
-            self.loop.set_default_executor(self.process_queue)
+        self.loop.set_default_executor(self.thread_queue)
         # this lock is acquired when defer_to_process/thread is invoked
         # and released when the inner coroutine is run
         #  purpose being: "control job submission", as it only creates a new
@@ -510,8 +508,7 @@ class JobManager(object):
         self.clean_staled()
 
     def stop(self, force=False, recycling=False, wait=1):
-        @asyncio.coroutine
-        def do():
+        async def do():
             try:
                 # shutting down the process queue can take a while
                 # if some processes are still running (it'll wait until they're done)
@@ -524,9 +521,9 @@ class JobManager(object):
                          "step": "",
                          "description": "Stopping process queue"}
                 # await on coroutine
-                j = yield from self.defer_to_thread(pinfo, self.process_queue.shutdown)
+                j = await self.defer_to_thread(pinfo, self.process_queue.shutdown)
                 # await on the future to be done
-                yield from j
+                await j
                 if recycling:
                     # now replace
                     logger.info("Replacing process queue with new one")
@@ -537,13 +534,12 @@ class JobManager(object):
                 logger.error("Error while recycling the process queue: %s", e)
                 raise
 
-        @asyncio.coroutine
-        def kill():
+        async def kill():
             nonlocal wait
             if wait < 1:
                 wait = 1  # wait a little bit so job manager has time to stop if nothing is running
             logger.warning("Wait %s seconds before killing queue processes", wait)
-            yield from asyncio.sleep(wait)
+            await asyncio.sleep(wait)
             logger.warning("Can't wait anymore, killing running processed in the queue !")
             for proc in self.pchildren:
                 logger.warning("Killing %s", proc)
@@ -598,8 +594,7 @@ class JobManager(object):
         """
         return self.stop(recycling=True)
 
-    @asyncio.coroutine
-    def check_constraints(self, pinfo=None):
+    async def check_constraints(self, pinfo=None):
         mem_req = pinfo and pinfo.get("__reqs__", {}).get("mem") or 0
         t0 = time.time()
         waited = False
@@ -638,7 +633,7 @@ class JobManager(object):
                     pinfo.get("category"), pinfo.get("source"), pinfo.get("step"),
                     sizeof_fmt(hub_mem), sizeof_fmt(self.max_memory_usage), timesofar(t0)
                 )
-                yield from asyncio.sleep(sleep_time)
+                await asyncio.sleep(sleep_time)
                 waited = True
                 hub_mem = self.hub_memory
         if mem_req:
@@ -654,7 +649,7 @@ class JobManager(object):
                     pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), sizeof_fmt(mem_req),
                     sizeof_fmt(hub_mem), sizeof_fmt(max_mem), timesofar(t0)
                 )
-                yield from asyncio.sleep(sleep_time)
+                await asyncio.sleep(sleep_time)
                 waited = True
                 # refresh limites and usage (manager can be modified from hub
                 # thus memory usage can be modified on-the-fly
@@ -667,7 +662,7 @@ class JobManager(object):
                     "Can't run job {cat:%s,source:%s,step:%s} right now, too much pending jobs in the queue (max: %s), will retry until possible",
                     pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), config.MAX_QUEUED_JOBS
                 )
-            yield from asyncio.sleep(sleep_time)
+            await asyncio.sleep(sleep_time)
             pendings = len(self.process_queue._pending_work_items.keys()) - config.HUB_MAX_WORKERS
             waited = True
         # finally check custom predicates
@@ -684,7 +679,7 @@ class JobManager(object):
             if failed_predicate:
                 logger.info("Can't run job {cat:%s,source:%s,step:%s} right now, predicate %s failed, will retry until possible",
                             pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), failed_predicate)
-                yield from asyncio.sleep(sleep_time)
+                await asyncio.sleep(sleep_time)
                 waited = True
             else:
                 break  # while loop
@@ -697,13 +692,11 @@ class JobManager(object):
             if self.auto_recycle_setting:
                 self.auto_recycle = self.auto_recycle_setting
 
-    @asyncio.coroutine
-    def defer_to_process(self, pinfo=None, func=None, *args, **kwargs):
+    async def defer_to_process(self, pinfo=None, func=None, *args, **kwargs):
 
-        @asyncio.coroutine
-        def run(future, job_id):
+        async def run(future, job_id):
             nonlocal pinfo
-            yield from self.check_constraints(pinfo)
+            await self.check_constraints(pinfo)
             self.ok_to_run.release()
             # pinfo can contain predicates hardly pickleable during run_in_executor
             # but we also need not to touch the original one
@@ -749,15 +742,15 @@ class JobManager(object):
                     self.jobs.pop(job_id)
                     self._process_job_ids.discard(job_id)
             res.add_done_callback(ran)
-            res = yield from res
+            res = await res
             # process could generate other parallelized jobs and return a Future/Task
             # If so, we want to make sure we get the results from that task
             if type(res) == asyncio.Task:
-                res = yield from res
+                res = await res
             future.set_result(res)
 
         # lock is released in run coroutine
-        yield from self.ok_to_run.acquire()
+        await self.ok_to_run.acquire()
         f = asyncio.Future()
 
         def runned(innerf, job_id):
@@ -772,15 +765,13 @@ class JobManager(object):
         fut.add_done_callback(partial(runned, job_id=job_id))
         return f
 
-    @asyncio.coroutine
-    def defer_to_thread(self, pinfo=None, func=None, *args):
+    async def defer_to_thread(self, pinfo=None, func=None, *args):
 
         skip_check = pinfo.get("__skip_check__", False)
 
-        @asyncio.coroutine
-        def run(future, job_id):
+        async def run(future, job_id):
             if not skip_check:
-                yield from self.check_constraints(pinfo)
+                await self.check_constraints(pinfo)
                 self.ok_to_run.release()
             self.jobs[job_id] = pinfo
             res = self.loop.run_in_executor(
@@ -796,14 +787,14 @@ class JobManager(object):
                     # to keep it sync with actual running jobs
                     self.jobs.pop(job_id)
             res.add_done_callback(ran)
-            res = yield from res
+            res = await res
             # thread could generate other parallelized jobs and return a Future/Task
             # If so, we want to make sure we get the results from that task
             if type(res) == asyncio.Task:
-                res = yield from res
+                res = await res
             future.set_result(res)
         if not skip_check:
-            yield from self.ok_to_run.acquire()
+            await self.ok_to_run.acquire()
         f = asyncio.Future()
 
         def runned(innerf, job_id):
@@ -843,8 +834,7 @@ class JobManager(object):
         else:
             func_name = func.__name__
         strcode = """
-@asyncio.coroutine
-def %s():
+async def %s():
     func(*args, **kwargs)
 """ % func_name
         code = compile(strcode, "<string>", "exec")
@@ -1080,7 +1070,7 @@ def %s():
         res = {}
         for child in tchildren:
             res[child.name] = {
-                "is_alive": child.isAlive(),
+                "is_alive": child.is_alive(),
                 "is_daemon": child.isDaemon(),
             }
 

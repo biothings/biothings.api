@@ -1,5 +1,5 @@
 import hashlib
-import smtplib
+# import smtplib
 import uuid
 from collections import UserDict
 from email.mime.multipart import MIMEMultipart
@@ -9,6 +9,7 @@ from random import randint
 from typing import Union
 from urllib.parse import urlencode
 from pprint import pformat
+
 
 class Event(UserDict):
 
@@ -113,8 +114,10 @@ class Event(UserDict):
     def __str__(self):  # to facilitate logging
         return f"{type(self).__name__}({pformat(self)})"
 
+
 def _clean(dict):
     return {k: v for k, v in dict.items() if v}
+
 
 class GAEvent(Event):
 

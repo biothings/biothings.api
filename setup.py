@@ -18,20 +18,20 @@ REPO_URL = "https://github.com/biothings/biothings.api"
 # version gets set to MAJOR.MINOR.# commits on master branch if installed from pip repo
 # otherwise to MAJOR.MINOR.MICRO as defined in biothings.version
 try:
-    num_commits = check_output("git rev-list --count master", shell=True).strip().decode('utf-8')
+    NUM_COMMITS = check_output("git rev-list --count master", shell=True).strip().decode('utf-8')
 except CalledProcessError:
-    num_commits = ''
+    NUM_COMMITS = ''
 
 # Calculate commit hash, should fail if installed from source or from pypi
 try:
-    commit_hash = check_output("git rev-parse HEAD", shell=True).strip().decode('utf-8')
+    COMMIT_HASH = check_output("git rev-parse HEAD", shell=True).strip().decode('utf-8')
 except CalledProcessError:
-    commit_hash = ''
+    COMMIT_HASH = ''
 
 # Write commit to file inside package, that can be read later
-if commit_hash or num_commits:
-    with open('biothings/.git-info', 'w') as git_file:
-        git_file.write("{}.git\n{}\n{}".format(REPO_URL, commit_hash, num_commits))
+if COMMIT_HASH or NUM_COMMITS:
+    with open('biothings/.git-info', 'w', encoding="utf-8") as git_file:
+        git_file.write(f"{REPO_URL}.git\n{COMMIT_HASH}\n{NUM_COMMITS}")
 
 
 # very minimal requirement for running biothings.web
@@ -46,22 +46,23 @@ install_requires = [
     'singledispatchmethod; python_version < "3.8.0"',
     'dataclasses; python_version < "3.7.0"',
     'PyYAML>=5.1',
-    'pytest'
+    'orjson>=3.6.1',    # this is a faster json lib support inf/nan and datetime
+                        # v3.6.1 is the last version supports Python 3.6
 ]
 
 # extra requirements for biothings.web
 web_extra_requires = [
     'msgpack>=0.6.1',   # support format=msgpack
-    'raven'
+    'sentry-sdk>=1.5.3',  # new sentry package
 ]
 
 # extra requirements to run biothings.hub
 hub_requires = [
     'beautifulsoup4',   # used in dumper.GoogleDriveDumper
-    'aiocron==1.3',     # setup scheduled jobs
-    'aiohttp==3.6.2',   # for compatibility with elasticsearch-async==6.x
+    'aiocron==1.8',     # setup scheduled jobs
+    'aiohttp==3.8.1',   # elasticsearch requires aiohttp>=3,<4
     'asyncssh==2.5.0',  # needs libffi-dev installed (apt-get)
-    'pymongo>=3.12.0,<4.0',  # support MongoDB 5.0 since v3.12.0
+    'pymongo>=4.1.0,<5.0',  # support MongoDB 5.0 since v3.12.0
     'psutil',
     'jsonpointer',      # for utils.jsonpatch
     'IPython',          # for interactive hub console
@@ -73,11 +74,17 @@ hub_requires = [
     'jsonschema>=2.6.0',
     'pip',              # auto-install requirements from plugins
     # 'pandas==1.0.1',    # json with inf/nan and more to come (replaced by orjson below now)
-    'orjson>=3.5.2',    # this is a faster json lib support inf/nan and datetime
+    # 'orjson>=3.5.2',    # this is a faster json lib support inf/nan and datetime
     'yapf',             # code reformatter, better results than autopep8
     'requests-aws4auth',    # aws s3 auth requests for autohub
     'networkx>=2.1,<2.6',            # datatransform
     'biothings_client>=0.2.6'   # datatransform (api client)
+]
+
+# extra requirements to develop biothings
+dev_requires = [
+    'pytest',
+    'pytest-mock',
 ]
 
 # extra requirements for building docs
@@ -105,10 +112,11 @@ setup(
     classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
         "Development Status :: 4 - Beta",
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
@@ -124,6 +132,6 @@ setup(
     extras_require={
         'web_extra': web_extra_requires,
         'hub': hub_requires,
-        'dev': web_extra_requires + hub_requires + docs_requires
+        'dev': web_extra_requires + hub_requires + dev_requires + docs_requires
     },
 )

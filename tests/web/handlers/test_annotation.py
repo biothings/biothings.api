@@ -119,7 +119,7 @@ class TestAnnotationGET(BiothingsWebAppTest):
         ...
         """
         res = self.request('/v1/gene/102812112?format=html').text
-        assert res.strip().startswith('<html>')
+        assert res.strip().startswith('<!DOCTYPE html>')
         assert 'AMDV01086628.1' in res
 
     ### Result Transform Keywords ###

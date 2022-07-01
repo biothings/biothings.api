@@ -330,8 +330,7 @@ class BaseSourceUploader(object):
            data has been uploaded"""
         pass
 
-    @asyncio.coroutine
-    def update_data(self, batch_size, job_manager):
+    async def update_data(self, batch_size, job_manager):
         """
         Iterate over load_data() to pull data and store it
         """
@@ -339,7 +338,7 @@ class BaseSourceUploader(object):
         pinfo["step"] = "update_data"
         got_error = False
         self.unprepare()
-        job = yield from job_manager.defer_to_process(
+        job = await job_manager.defer_to_process(
             pinfo,
             partial(
                 upload_worker,
@@ -359,7 +358,7 @@ class BaseSourceUploader(object):
                     % repr(f.result()))
 
         job.add_done_callback(uploaded)
-        yield from job
+        await job
         if got_error:
             raise got_error
         self.switch_collection()
@@ -446,8 +445,7 @@ class BaseSourceUploader(object):
             upd["%s.data_folder" % job_key] = data_folder
             self.src_dump.update_one({"_id": self.main_source}, {"$set": upd})
 
-    @asyncio.coroutine
-    def load(self,
+    async def load(self,
              steps=["data", "post", "master", "clean"],
              force=False,
              batch_size=10000,
@@ -483,7 +481,7 @@ class BaseSourceUploader(object):
             if update_data:
                 # unsync to make it pickable
                 state = self.unprepare()
-                cnt = yield from self.update_data(batch_size, job_manager,
+                cnt = await self.update_data(batch_size, job_manager,
                                                   **kwargs)
                 self.prepare(state)
             if update_master:
@@ -493,7 +491,7 @@ class BaseSourceUploader(object):
                 self.unprepare()
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "post_update_data"
-                f2 = yield from job_manager.defer_to_thread(
+                f2 = await job_manager.defer_to_thread(
                     pinfo,
                     partial(self.post_update_data, steps, force, batch_size,
                             job_manager, **kwargs))
@@ -504,7 +502,7 @@ class BaseSourceUploader(object):
                         got_error = f.exception()
 
                 f2.add_done_callback(postupdated)
-                yield from f2
+                await f2
                 if got_error:
                     raise got_error
             # take the total from update call or directly from collection
@@ -591,8 +589,7 @@ class DummySourceUploader(BaseSourceUploader):
         # bypass checks about src_dump
         pass
 
-    @asyncio.coroutine
-    def update_data(self, batch_size, job_manager=None, release=None):
+    async def update_data(self, batch_size, job_manager=None, release=None):
         assert release is not None, "Dummy uploader requires 'release' argument to be specified"
         self.logger.info("Dummy uploader, nothing to upload")
         # dummy uploaders have no dumper associated b/c it's collection-only resource,
@@ -614,8 +611,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
         """
         raise NotImplementedError("implement me in subclass")
 
-    @asyncio.coroutine
-    def update_data(self, batch_size, job_manager=None):
+    async def update_data(self, batch_size, job_manager=None):
         jobs = []
         job_params = self.jobs()
         got_error = False
@@ -636,7 +632,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
             pinfo = self.get_pinfo()
             pinfo["step"] = "update_data"
             pinfo["description"] = "%s" % str(args)
-            job = yield from job_manager.defer_to_process(
+            job = await job_manager.defer_to_process(
                 pinfo,
                 partial(
                     # pickable worker
@@ -676,7 +672,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
             job.add_done_callback(
                 partial(batch_uploaded, name=fullname, batch_num=bnum))
         if jobs:
-            yield from asyncio.gather(*jobs)
+            await asyncio.gather(*jobs)
             if got_error:
                 raise got_error
             self.switch_collection()
@@ -692,8 +688,7 @@ class NoDataSourceUploader(BaseSourceUploader):
     """
     storage_class = NoStorage
 
-    @asyncio.coroutine
-    def update_data(self, batch_size, job_manager=None):
+    async def update_data(self, batch_size, job_manager=None):
         self.logger.debug("No data to upload, skip")
 
 
@@ -810,13 +805,12 @@ class UploaderManager(BaseSourceManager):
                               extra={"notify": True})
             raise
 
-    @asyncio.coroutine
-    def create_and_load(self, klass, *args, **kwargs):
+    async def create_and_load(self, klass, *args, **kwargs):
         insts = self.create_instance(klass)
         if type(insts) != list:
             insts = [insts]
         for inst in insts:
-            yield from inst.load(*args, **kwargs)
+            await inst.load(*args, **kwargs)
 
     def poll(self, state, func):
         super(UploaderManager, self).poll(state, func, col=get_src_dump())

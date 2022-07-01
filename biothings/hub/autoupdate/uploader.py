@@ -1,12 +1,17 @@
+import datetime
 import os
 import asyncio
 import json
+import random
+import string
+import re
 from functools import partial
-from typing import Optional, Tuple
+from typing import Optional
 
 from biothings import config as btconfig
 import biothings.hub.dataload.uploader as uploader
 from biothings.utils.backend import DocESBackend
+from biothings.utils.common import get_random_string
 from biothings.utils.es import IndexerException
 from elasticsearch import Elasticsearch, NotFoundError, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
@@ -51,12 +56,10 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             self._syncer_func = self.__class__.SYNCER_FUNC
         return self._syncer_func
 
-    @asyncio.coroutine
-    def load(self, *args, **kwargs):
-        return super().load(steps=["data"], *args, **kwargs)
+    async def load(self, *args, **kwargs):
+        return await super().load(steps=["data"], *args, **kwargs)
 
-    @asyncio.coroutine
-    def update_data(self, batch_size, job_manager):
+    async def update_data(self, batch_size, job_manager, **kwargs):
         """
         Look in data_folder and either restore a snapshot to ES
         or apply diff to current ES index
@@ -69,11 +72,13 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         build_meta = json.load(
             open(os.path.join(self.data_folder, "%s.json" % release)))
         if build_meta["type"] == "full":
-            res = yield from self.restore_snapshot(build_meta,
-                                                   job_manager=job_manager)
+            res = await self.restore_snapshot(build_meta,
+                                                   job_manager=job_manager,
+                                                   **kwargs)
         elif build_meta["type"] == "incremental":
-            res = yield from self.apply_diff(build_meta,
-                                             job_manager=job_manager)
+            res = await self.apply_diff(build_meta,
+                                             job_manager=job_manager,
+                                             **kwargs)
         return res
 
     def get_snapshot_repository_config(self, build_meta):
@@ -135,8 +140,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         es = self._get_es_client(es_host, auth)
         es.snapshot.create_repository(repository=repo_name, body=repo_settings)
 
-    @asyncio.coroutine
-    def restore_snapshot(self, build_meta, job_manager, **kwargs):
+    async def restore_snapshot(self, build_meta, job_manager, **kwargs):
         self.logger.debug("Restoring snapshot...")
         idxr = self.target_backend.target_esidxer
         es_host = idxr.es_host
@@ -210,48 +214,134 @@ class BiothingsUploader(uploader.BaseSourceUploader):
 
         # repository is now ready, let's trigger the restore
         snapshot_name = build_meta["metadata"]["snapshot_name"]
+
+        # backup the original value of indexer's replica
+        original_number_of_replicas = idxr.get_internal_number_of_replicas() or 0
+        alias_name = idxr.canonical_index_name
+
+        use_no_downtime_method = kwargs.get("use_no_downtime_method", True)
+        append_ts = kwargs.get("append_ts", True)
+        if use_no_downtime_method:
+            base_index_name = snapshot_name
+            if append_ts:
+                ts = datetime.datetime.now().strftime("%Y%m%d%H%M")
+                base_index_name = f"{snapshot_name}_{ts}"
+            if len(base_index_name) >= 255:
+                raise RuntimeError("Deterministic part of index name already too long")
+            
+            index_name = base_index_name
+            append_random_str = False
+            while True:
+                if append_random_str:
+                    index_name += "_" + get_random_string()
+                    index_name = index_name[:255]  # elasticsearch restriction
+                if not idxr.exists_index(index=index_name):
+                    break
+        else:
+            index_name = alias_name
+
         pinfo = self.get_pinfo()
         pinfo["step"] = "restore"
         pinfo["description"] = snapshot_name
 
         def get_status_info():
             try:
-                res = idxr.get_restore_status(idxr._index)
+                res = idxr.get_restore_status(index_name)
                 return res
             except Exception as e:
                 # somethng went wrong, report as failure
                 return {"status": "FAILED %s" % e}
 
-        def restore_launched(f):
+        def done_callback(f, step: str):
             try:
-                self.logger.info("Restore launched: %s" % f.result())
+                self.logger.info("%s launched: %s" % (step, f.result()))
             except Exception as e:
-                self.logger.error("Error while lauching restore: %s" % e)
+                self.logger.error("Error while launching %s: %s" % (step, e))
                 raise e
 
         self.logger.info("Restoring snapshot '%s' to index '%s' on host '%s'" %
-                         (snapshot_name, idxr._index, idxr.es_host))
-        job = yield from job_manager.defer_to_thread(
+                         (snapshot_name, index_name, idxr.es_host))
+        # ESIndexer.restore is synchronous but should return relatively
+        # quickly
+        job = await job_manager.defer_to_thread(
             pinfo,
             partial(idxr.restore,
                     repo_name,
                     snapshot_name,
-                    idxr._index,
+                    index_name,
                     purge=self.__class__.AUTO_PURGE_INDEX))
-        job.add_done_callback(restore_launched)
-        yield from job
+        job.add_done_callback(partial(done_callback, step='restore'))
+        await job
+
+        def update_alias_and_delete_old_indices():
+            # Find indices which starts with snapshot_name, and sort by creation date and order by asc
+            old_indices = []
+            try:
+                old_indices.extend(idxr.get_indice_names_by_settings(
+                    index=alias_name + "*", sort_by_creation_date=True, reverse=False
+                ))
+            except Exception:
+                pass
+            self.logger.debug("Alias '%s' points to '%s'" % (alias_name, old_indices))
+            if index_name in old_indices:
+                self.logger.warning("new index name in old alias, something is not right")
+                self.logger.warning("continuing alias swap despite potential problem")
+                old_indices.remove(index_name)
+            try:
+                idxr.update_alias(alias_name, index_name)
+                self.logger.info(f"Alias '{alias_name}' updated to "
+                                 f"associate with index '{index_name}'")
+            except IndexerException as e:
+                self.logger.warning(f"Alias index swap ran into a problem {e}")
+                self.logger.warning(f"Deleting new index '{index_name}'")
+                idxr.delete_index(index_name)
+                raise
+
+            # have ESIndexer look at the correct index after snapshot restore
+            idxr.check_index()
+
+            # after successful swap, delete old indices
+            # only issue messages on errors
+            # we only keep n recent indices depends on the config.RELEASE_KEEP_N_RECENT_INDICES
+            # n < 0: keep all
+            # n == 0: only keep the new created indice
+            # n > 0: only keep at most n latest indices
+            number_indexes_to_keep = btconfig.RELEASE_KEEP_N_RECENT_INDICES
+            if number_indexes_to_keep > 0:
+                old_indices = old_indices[:-number_indexes_to_keep]
+            elif number_indexes_to_keep < 0:
+                old_indices = []
+
+            try:
+                for rm_idx_name in old_indices:
+                    idxr.delete_index(rm_idx_name)
+                    self.logger.info("Deleted old index '%s'" % rm_idx_name)
+            except Exception:  # nosec
+                # just inform the user that deletion failed, not that harmful
+                self.logger.error("Failed to delete old indices, try deleting "
+                                f"{old_indices} manually")
+
+            # restore indexer's replica to original value
+            idxr.set_internal_number_of_replicas(original_number_of_replicas)
+
         while True:
             status_info = get_status_info()
             status = status_info["status"]
             self.logger.info("Recovery status for index '%s': %s" %
-                             (idxr._index, status_info))
+                             (index_name, status_info))
             if status in ["INIT", "IN_PROGRESS"]:
-                yield from asyncio.sleep(
+                await asyncio.sleep(
                     getattr(btconfig, "MONITOR_SNAPSHOT_DELAY", 60))
             else:
                 if status == "DONE":
                     self.logger.info("Snapshot '%s' successfully restored to index '%s' (host: '%s')" %
-                                     (snapshot_name, idxr._index, idxr.es_host), extra={"notify": True})
+                                     (snapshot_name, index_name, idxr.es_host), extra={"notify": True})
+                    if use_no_downtime_method:
+                        job = await job_manager.defer_to_thread(
+                            pinfo={}, func=update_alias_and_delete_old_indices
+                        )
+                        job.add_done_callback(partial(done_callback, step='alias'))
+                        await job
                 else:
                     e = uploader.ResourceError("Failed to restore snapshot '%s' on index '%s', status: %s" %
                                                (snapshot_name, idxr._index, status))
@@ -261,8 +351,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         # return current number of docs in index
         return self.target_backend.count()
 
-    @asyncio.coroutine
-    def apply_diff(self, build_meta, job_manager, **kwargs):
+    async def apply_diff(self, build_meta, job_manager, **kwargs):
         self.logger.info("Applying incremental update from diff folder: %s" %
                          self.data_folder)
         meta = json.load(open(os.path.join(self.data_folder, "metadata.json")))
@@ -280,7 +369,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         new = (self.target_backend.target_esidxer.es_host,
                meta["new"]["backend"],
                self.target_backend.target_esidxer._doc_type)
-        yield from self.syncer_func(old_db_col_names=old,
+        await self.syncer_func(old_db_col_names=old,
                                     new_db_col_names=new,
                                     diff_folder=self.data_folder)
         # return current number of docs in index (even if diff update)

@@ -14,7 +14,10 @@ from types import SimpleNamespace
 
 import aiocron
 import asyncssh
+from biothings.utils.common import get_random_string, get_timestamp
 from biothings.utils.configuration import *
+from biothings.utils.document_generator import generate_command_documentations
+from . import default_config
 
 
 def _config_for_app(config_mod=None):
@@ -38,7 +41,7 @@ def _config_for_app(config_mod=None):
         logging.exception(config_mod)
         app_path = ""  # TODO
 
-    wrapper = ConfigurationWrapper(config_mod)
+    wrapper = ConfigurationWrapper(default_config, config_mod)
     wrapper.APP_PATH = app_path
 
     if not hasattr(config_mod, "HUB_DB_BACKEND"):
@@ -54,6 +57,7 @@ def _config_for_app(config_mod=None):
     wrapper.hub_db = import_module(config_mod.HUB_DB_BACKEND["module"])
     biothings.utils.hub_db.setup(wrapper)
     wrapper._db = biothings.utils.hub_db.get_hub_config()
+    wrapper._get_db_function = biothings.utils.hub_db.get_hub_config
 
     # setup logging
     from biothings.utils.loggers import EventRecorder
@@ -104,7 +108,7 @@ if os.environ.get("HUB_VERBOSE", "0") != "1":
 
 def get_loop(max_workers=None):
     loop = asyncio.get_event_loop()
-    executor = concurrent.futures.ProcessPoolExecutor(max_workers=max_workers)
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
     loop.set_default_executor(executor)
     return loop
 
@@ -265,7 +269,6 @@ def get_schedule(loop):
     return "\n".join(out)
 
 
-# @asyncio.coroutine
 async def start_ssh_server(loop,
                            name,
                            passwords,
@@ -847,8 +850,11 @@ class HubServer(object):
             [cls for cls in [bt_upgrader_class, app_upgrader_class] if cls]
         )
 
-        @asyncio.coroutine
-        def check_code_upgrade():
+        loop = self.managers.get("job_manager") and self.managers[
+            "job_manager"].loop or asyncio.get_event_loop()
+
+        @aiocron.crontab(HUB_CHECK_UPGRADE, start=True, loop=loop)
+        async def check_code_upgrade():
             _skip_list = getattr(self, 'upgrader_skip_folders', [])
             if _skip_list and config.biothings_folder in _skip_list and config.app_folder in _skip_list:
                 # both folders cannot be checked for versions, exit now
@@ -880,15 +886,7 @@ class HubServer(object):
                     if val:
                         val.pop("upgrade", None)
 
-        loop = self.managers.get("job_manager") and self.managers[
-            "job_manager"].loop or asyncio.get_event_loop()
-
-        # check at startup, then regularly
-        asyncio.ensure_future(check_code_upgrade())
-        aiocron.crontab(HUB_CHECK_UPGRADE,
-                        func=check_code_upgrade,
-                        start=True,
-                        loop=loop)
+        asyncio.ensure_future(check_code_upgrade.func())
 
     def get_websocket_urls(self):
 
@@ -997,6 +995,11 @@ class HubServer(object):
         self.commands = HubCommands()
         self.commands["status"] = CommandDefinition(command=partial(status, self.managers),
                                                     tracked=False)
+        self.commands["export_command_documents"] = CommandDefinition(
+            command=self.export_command_documents,
+            tracked=False
+        )
+
         if "config" in self.features:
             self.commands["config"] = CommandDefinition(command=config.show,
                                                         tracked=False)
@@ -1190,6 +1193,9 @@ class HubServer(object):
             self.extra_commands["index_info"] = CommandDefinition(
                 command=self.managers["index_manager"].index_info,
                 tracked=False)
+            self.commands["indexes_by_name"] = CommandDefinition(
+                command=self.managers["index_manager"].get_indexes_by_name,
+                tracked=False)
             self.extra_commands["validate_mapping"] = CommandDefinition(
                 command=self.managers["index_manager"].validate_mapping)
             self.extra_commands["update_metadata"] = CommandDefinition(
@@ -1231,6 +1237,13 @@ class HubServer(object):
                 assert code_base in ("application", "biothings_sdk"), "Unknown code base '%s'" % code_base
                 return self.managers["dump_manager"].dump_src("__" + code_base)
             self.commands["upgrade"] = CommandDefinition(command=upgrade)
+
+        # quick index command for testing purpose
+        if (
+            self.managers.get("build_manager")
+            and self.managers.get("index_manager")
+        ):
+            self.extra_commands["quick_index"] = self.quick_index
 
         self.extra_commands["expose"] = self.add_api_endpoint
 
@@ -1326,6 +1339,8 @@ class HubServer(object):
         if "index_info" in cmdnames:
             self.api_endpoints["index_manager"] = EndpointDefinition(
                 name="index_info", method="get")
+            self.api_endpoints["indexes_by_name"] = EndpointDefinition(
+                name="indexes_by_name", method="get")
         if "snapshot_info" in cmdnames:
             self.api_endpoints["snapshot_manager"] = EndpointDefinition(
                 name="snapshot_info", method="get")
@@ -1504,6 +1519,83 @@ class HubServer(object):
             self.api_endpoints.pop("standalone")
         if "upgrade" in self.commands:
             self.api_endpoints["code/upgrade"] = EndpointDefinition(name="upgrade", method="put")
+        if "quick_index" in self.extra_commands:
+            self.api_endpoints["quick_index"] = EndpointDefinition(name="quick_index", method="post", force_bodyargs=True)
+
+    def export_command_documents(self, filepath):
+        generate_command_documentations(filepath, self.commands)
+
+    def quick_index(
+        self,
+        datasource_name,
+        doc_type,
+        indexer_env,
+        index_name=None,
+        **kwargs,
+    ):
+        """
+        Intention for datasource developers to quickly create an index to test their datasources.
+        Automatically create temporary build config, build collection
+        Then call the index method with the temporary build collection's name
+        """
+
+        random_string = f"{get_timestamp()}_{get_random_string()}"
+        # generate random build_configuration name
+        build_configuration_name = f"{datasource_name}_configuration_{random_string}"
+        # generate random build name
+        build_name = f"{datasource_name}_{random_string}"
+        # # generate index_name if needed
+        if not index_name:
+            index_name = build_name
+        index_name = index_name.lower()
+
+        async def do():
+            extra_index_settings = kwargs.pop("extra_index_settings", '{}')
+            extra_index_settings = json.loads(extra_index_settings)
+            build_config_params = {}
+            build_config_params["num_shards"] = int(kwargs.pop("num_shards", 1))
+            build_config_params["num_replicas"] = int(kwargs.pop("num_replicas", 0))
+            if extra_index_settings:
+                build_config_params["extra_index_settings"] = extra_index_settings
+            try:
+                # create a temporary build configuration:
+                builder_class = None
+                for build_class_name in self.managers["build_manager"].builder_classes.keys():
+                    if build_class_name.endswith("LinkDataBuilder"):
+                        builder_class = build_class_name
+                        break
+                self.managers["build_manager"].create_build_configuration(
+                    build_configuration_name,
+                    doc_type=doc_type,
+                    sources=[datasource_name],
+                    builder_class=builder_class,
+                    params=build_config_params,
+                )
+
+                # create a temporary build
+                await self.managers["build_manager"].merge(
+                    build_name=build_configuration_name,
+                    target_name=build_name,
+                    force=True,
+                )
+
+                # Wait for merging process to finish
+                await self.managers["index_manager"].index(
+                    indexer_env,
+                    build_name,
+                    index_name=index_name,
+                    **kwargs
+                )
+            finally:
+                # delete temporary build
+                self.managers["build_manager"].delete_merge(build_name)
+
+                # delete temporary build configuration
+                self.managers["build_manager"].delete_build_configuration(
+                    build_configuration_name
+                )
+
+        return asyncio.ensure_future(do())
 
 
 class HubSSHServer(asyncssh.SSHServer):
@@ -1578,6 +1670,14 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         for line in lines[:-1]:
             try:
                 outs = [out for out in self.shell.eval(line) if out]
+
+                # Prepend the standout out/err 
+                last_std_contents = self.shell.last_std_contents or {}
+                if "stdout" in last_std_contents:
+                    outs.append(last_std_contents["stdout"])
+                if "stderr" in last_std_contents:
+                    outs.append(last_std_contents["stderr"])
+
                 # trailing \n if not already there
                 if outs:
                     strout = "\n".join(outs).strip("\n") + "\n"

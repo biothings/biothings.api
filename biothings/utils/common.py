@@ -715,8 +715,8 @@ def gunzip(f, pattern="*.gz"):
         logging.info("Done gunzip '%s'", gz.name)
     fout.close()
 
-@asyncio.coroutine
-def aiogunzipall(folder, pattern, job_manager, pinfo):
+
+async def aiogunzipall(folder, pattern, job_manager, pinfo):
     """
     Gunzip all files in folder matching pattern. job_manager is used
     for parallelisation, and pinfo is a pre-filled dict used by
@@ -727,8 +727,9 @@ def aiogunzipall(folder, pattern, job_manager, pinfo):
     logging.info("Unzipping files in '%s'", folder)
     for f in glob.glob(os.path.join(folder, pattern)):
         pinfo["description"] = os.path.basename(f)
-        suffix = pattern.replace("*", "")
-        job = yield from job_manager.defer_to_process(pinfo, partial(gunzip, f, suffix=suffix))
+        job = await job_manager.defer_to_process(
+            pinfo, partial(gunzip, f, pattern=pattern)
+        )
 
         def gunzipped(fut, infile):
             try:
@@ -743,7 +744,7 @@ def aiogunzipall(folder, pattern, job_manager, pinfo):
         if got_error:
             raise got_error
     if jobs:
-        yield from asyncio.gather(*jobs)
+        await asyncio.gather(*jobs)
         if got_error:
             raise got_error
 

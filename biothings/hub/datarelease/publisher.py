@@ -68,8 +68,11 @@ class BasePublisher(BaseManager, BaseStatusRegisterer):
     def setup(self):
         self.setup_log()
 
-    def setup_log(self):
-        self.logger, self.logfile = get_logger(self.category, self.log_folder)
+    def setup_log(self, build_name=None):
+        log_folder = self.log_folder
+        if build_name:
+            log_folder = os.path.join(btconfig.LOG_FOLDER, "build", build_name)
+        self.logger, self.logfile = get_logger(self.category, log_folder, force=True)
 
     def get_predicates(self):
         return []
@@ -382,6 +385,9 @@ class SnapshotPublisher(BasePublisher):
                 "Error loading build document using snapshot named '%s': %s" %
                 (snapshot, e))
             raise
+
+        self.setup_log(bdoc["_id"])
+
         if isinstance(bdoc, list):
             raise PublisherException(
                 "Snapshot '%s' found in more than one builds: %s." %
@@ -421,8 +427,7 @@ class SnapshotPublisher(BasePublisher):
         # hold error/exception on each step
         got_error = None
 
-        @asyncio.coroutine
-        def do():
+        async def do():
             jobs = []
             pinfo = self.get_pinfo()
             pinfo["step"] = "publish"
@@ -483,11 +488,11 @@ class SnapshotPublisher(BasePublisher):
                                      publish={"full": {
                                          snapshot: {}
                                      }})
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     pinfo,
                     partial(self.pre_publish, snapshot, self.envconf, bdoc))
                 job.add_done_callback(partial(done, step="pre"))
-                yield from job
+                await job
                 if got_error:
                     raise got_error
                 jobs.append(job)
@@ -624,6 +629,7 @@ class SnapshotPublisher(BasePublisher):
                                             "conf": self.envconf,
                                             "release-note": {
                                                 "err": str(e),
+                                                # TODO: set value to s3basedir in case it not defined before
                                                 "base_dir": s3basedir,
                                                 "bucket": s3_release_bucket
                                             },
@@ -741,11 +747,11 @@ class SnapshotPublisher(BasePublisher):
                                      publish={"fulle": {
                                          snapshot: {}
                                      }})
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     pinfo,
                     partial(self.post_publish, snapshot, self.envconf, bdoc))
                 job.add_done_callback(partial(done, step="post"))
-                yield from job
+                await job
                 jobs.append(job)
 
             def published(f):
@@ -761,10 +767,10 @@ class SnapshotPublisher(BasePublisher):
                         extra={"notify": True})
 
             if jobs:
-                yield from asyncio.wait(jobs)
+                await asyncio.wait(jobs)
                 task = asyncio.gather(*jobs)
                 task.add_done_callback(published)
-                yield from task
+                await task
 
         def done(f):
             try:
@@ -853,6 +859,9 @@ class DiffPublisher(BasePublisher):
           * meta: publish/register the version as available for auto-updating hubs
         """
         bdoc = self.load_build(build_name)
+
+        self.setup_log(bdoc["_id"])
+
         assert bdoc, "No such build named '%s'" % build_name
         assert "diff" in bdoc, "No diff release found in build document named '%s'" % build_name
         if previous_build is None:
@@ -895,8 +904,7 @@ class DiffPublisher(BasePublisher):
         # hold error/exception on each step
         got_error = None
 
-        @asyncio.coroutine
-        def do():
+        async def do():
             jobs = []
             pinfo = self.get_pinfo()
             pinfo["source"] = diff_folder
@@ -958,12 +966,12 @@ class DiffPublisher(BasePublisher):
                     publish={"incremental": {
                         previous_build: {}
                     }})
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     pinfo,
                     partial(self.pre_publish, previous_build, self.envconf,
                             bdoc))
                 job.add_done_callback(partial(done, step="pre"))
-                yield from job
+                await job
                 if got_error:
                     raise got_error
                 jobs.append(job)
@@ -984,10 +992,10 @@ class DiffPublisher(BasePublisher):
                     publish={"incremental": {
                         previous_build: {}
                     }})
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     pinfo, partial(self.reset_synced, diff_folder))
                 job.add_done_callback(partial(done, step="reset"))
-                yield from job
+                await job
                 if got_error:
                     raise got_error
                 jobs.append(job)
@@ -1007,7 +1015,7 @@ class DiffPublisher(BasePublisher):
                     publish={"incremental": {
                         previous_build: {}
                     }})
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     pinfo,
                     partial(aws.send_s3_folder,
                             diff_folder,
@@ -1019,7 +1027,7 @@ class DiffPublisher(BasePublisher):
                             s3_bucket=s3_diff_bucket,
                             overwrite=True))
                 job.add_done_callback(partial(done, step="upload"))
-                yield from job
+                await job
                 jobs.append(job)
 
             if "meta" in steps:
@@ -1192,12 +1200,12 @@ class DiffPublisher(BasePublisher):
                     publish={"incremental": {
                         previous_build: {}
                     }})
-                job = yield from self.job_manager.defer_to_thread(
+                job = await self.job_manager.defer_to_thread(
                     pinfo,
                     partial(self.post_publish, previous_build, self.envconf,
                             bdoc))
                 job.add_done_callback(partial(done, step="post"))
-                yield from job
+                await job
                 if got_error:
                     raise got_error
                 jobs.append(job)
@@ -1214,10 +1222,10 @@ class DiffPublisher(BasePublisher):
                         % (diff_folder, e),
                         extra={"notify": True})
 
-            yield from asyncio.wait(jobs)
+            await asyncio.wait(jobs)
             task = asyncio.gather(*jobs)
             task.add_done_callback(uploaded)
-            yield from task
+            await task
 
         def done(f):
             try:
@@ -1282,9 +1290,12 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
     def setup(self):
         self.setup_log()
 
-    def setup_log(self):
-        self.logger, self.logfile = get_logger(RELEASEMANAGER_CATEGORY,
-                                               self.log_folder)
+    def setup_log(self, build_name=None):
+        name = RELEASEMANAGER_CATEGORY
+        log_folder = self.log_folder
+        if build_name:
+            log_folder = os.path.join(btconfig.LOG_FOLDER, "build", build_name)
+        self.logger, self.logfile = get_logger(name, log_folder=log_folder, force=True)
 
     def poll(self, state, func):
         super().poll(state, func, col=get_src_build())
@@ -1510,8 +1521,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         return content
 
     def create_release_note_from_build(self, build_doc):
-        @asyncio.coroutine
-        def _():
+        async def _():
             if build_doc.get("release_note"):
                 self.logger.info(
                     "Not a brand-new build. "
@@ -1530,7 +1540,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                     "Error finding the previous build. "
                     "Skip release note automation. ")
                 return
-            yield from self.create_release_note(old=old, new=build_doc["_id"])
+            await self.create_release_note(old=old, new=build_doc["_id"])
 
             build_conf = AutoBuildConfig(build_doc['build_config'])
             if build_conf.should_publish_new_diff() or build_conf.should_publish_new_snapshot():
@@ -1558,6 +1568,8 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         txt 'format' is the only one supported for now.
         """
         build_doc = self.load_build(new)
+
+        self.setup_log(build_doc["_id"])
 
         old = old or get_previous_collection(new)
 
@@ -1587,8 +1599,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
 
             return {"txt": txt, "changes": changes}
 
-        @asyncio.coroutine
-        def main(release_folder):
+        async def main(release_folder):
             got_error = False
             pinfo = self.get_pinfo()
             pinfo["step"] = "release_note"
@@ -1601,7 +1612,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                                  init=True,
                                  job={"step": "release_note"},
                                  release_note={old: {}})
-            job = yield from self.job_manager.defer_to_thread(pinfo, do)
+            job = await self.job_manager.defer_to_thread(pinfo, do)
 
             def reported(f):
                 nonlocal got_error
@@ -1625,7 +1636,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                     got_error = e
 
             job.add_done_callback(reported)
-            yield from job
+            await job
             if got_error:
                 self.logger.exception("Failed to create release note: %s" % got_error,
                                       extra={"notify": True})

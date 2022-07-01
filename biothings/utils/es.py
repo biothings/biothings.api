@@ -5,6 +5,7 @@ import json
 import re
 import time
 import functools
+from typing import Optional, List, Mapping
 
 from elasticsearch import (Elasticsearch, NotFoundError, RequestError,
                            TransportError, ElasticsearchException)
@@ -58,6 +59,8 @@ def get_es(es_host, timeout=120, max_retries=3, retry_on_timeout=False):
     return es
 
 
+# WARNING: this wrapper changes the _index and _doc_type
+#  usually this is unwanted but we will leave it this way here
 def wrapper(func):
     '''this wrapper allows passing index and doc_type from wrapped method.'''
     def outter_fn(*args, **kwargs):
@@ -119,17 +122,14 @@ class ESIndexer():
         self.es_host = es_host
         self._es = get_es(es_host, **kwargs)
         self._host_major_ver = int(self._es.info()['version']['number'].split('.')[0])
+        # the name of the index when ESIndexer is initialized
+        self.canonical_index_name = index
+        self._index = index  # placeholder, will be updated later
         if check_index:
             # if index is actually an alias, resolve the alias to
             # the real underlying index
-            try:
-                res = self._es.indices.get_alias(index=index)
-                # this was an alias
-                assert len(res) == 1, "Expecing '%s' to be an alias, but got nothing..." % index
-                self._index = list(res.keys())[0]
-            except NotFoundError:
-                # this was a real index name
-                self._index = index
+            self.check_index()
+
         self._doc_type = None
         if doc_type:
             self._doc_type = doc_type
@@ -147,6 +147,27 @@ class ESIndexer():
         self.step = step or 500   # the bulk size when doing bulk operation.
         self.step_size = (step_size or 10) * 1048576  # MB -> bytes
         self.s = None      # number of records to skip, useful to continue indexing after an error.
+
+    def check_index(self):
+        """
+        Check if index is an alias, and update self._index to point to
+        actual index
+
+        TODO: the overall design of ESIndexer is not great. If we are exposing ES
+         implementation details (such as the abilities to create and delete indices,
+         create and update aliases, etc.) to the user of this Class, then this method
+         doesn't seem that out of place.
+        """
+        try:
+            res = self._es.indices.get_alias(name=self.canonical_index_name)
+            # this is an alias
+            if len(res) != 1:
+                raise RuntimeError(f"Alias '{self.canonical_index_name}' does not "
+                                   "associate with exactly 1 index")
+            self._index = list(res.keys())[0]
+        except NotFoundError:
+            # probably intended to be an index name
+            self._index = self.canonical_index_name
 
     @wrapper
     def get_biothing(self, bid, only_source=False, **kwargs):
@@ -236,9 +257,10 @@ class ESIndexer():
         if not hasattr(self, "_es_version"):
             self._es_version = int(self._es.info()['version']['number'].split('.')[0])
 
-    @wrapper
-    def exists_index(self):
-        return self._es.indices.exists(index=self._index)
+    def exists_index(self, index: Optional[str] = None):
+        if not index:
+            index = self._index
+        return self._es.indices.exists(index)
 
     def index(self, doc, id=None, action="index"):       # pylint: disable=redefined-builtin
         '''add a doc to the index. If id is not None, the existing doc will be
@@ -298,8 +320,10 @@ class ESIndexer():
         actions = (_get_bulk(_id) for _id in ids)
         return helpers.bulk(self._es, actions, chunk_size=step, stats_only=True, raise_on_error=False)
 
-    def delete_index(self):
-        self._es.indices.delete(index=self._index)
+    def delete_index(self, index=None):
+        if not index:
+            index = self._index
+        self._es.indices.delete(index)
 
     def update(self, id, extra_doc, upsert=True):          # pylint: disable=redefined-builtin
         '''update an existing doc with extra_doc.
@@ -348,7 +372,7 @@ class ESIndexer():
                 doc_type=self._doc_type,
             )
             return m[self._index]["mappings"]
-        elif self._host_major_ver == 7:
+        elif self._host_major_ver <= 8:
             m = self._es.indices.get_mapping(
                 index=self._index
             )
@@ -371,7 +395,7 @@ class ESIndexer():
             return self._es.indices.put_mapping(
                 index=self._index, doc_type=self._doc_type, body=m
             )
-        elif self._host_major_ver == 7:
+        elif self._host_major_ver <= 8:
             # this is basically guessing based on heuristics
             if len(m) == 1:
                 if 'properties' not in m:  # basically {'_doc': mapping}
@@ -392,6 +416,7 @@ class ESIndexer():
         doc_type = self._doc_type
         if doc_type is None:
             # fetch doc_type from mapping
+
             assert len(m) == 1, "More than one doc_type found, not supported when self._doc_type " + \
                                 "is not initialized"
             doc_type = list(m.keys())[0]
@@ -679,8 +704,12 @@ class ESIndexer():
                 err_msg = e.error
             raise IndexerException("Can't snapshot '%s': %s" % (self._index, err_msg))
 
-    def restore(self, repo_name, snapshot_name, index_name=None, purge=False, body=None):
-        index_name = index_name or snapshot_name
+    def restore(self, repo_name, snapshot_name, index_name=None, purge=False):
+        indices = self.get_indices_from_snapshots(repo_name, snapshot_name)
+        if not index_name:
+            index_name = indices[0]
+        indices = ",".join(indices)
+
         if purge:
             try:
                 self._es.indices.get(index=index_name)
@@ -692,16 +721,134 @@ class ESIndexer():
         try:
             # this is just about renaming index within snapshot to index_name
             body = {
-                "indices": snapshot_name,   # snaphost name is the same as index in snapshot
+                "indices": indices,
                 "rename_replacement": index_name,
                 "ignore_unavailable": True,
                 "rename_pattern": "(.+)",
-                "include_global_state": True
+                # set to False, snapshots were created without global state anyway.
+                #  In ES8, an error will be raised if set to True
+                "include_global_state": False
             }
             return self._es.snapshot.restore(repo_name, snapshot_name, body=body)
         except TransportError as e:
             raise IndexerException("Can't restore snapshot '%s' (does index '%s' already exist ?): %s" %
                                    (snapshot_name, index_name, e))
+
+    def get_alias(self, index: str=None, alias_name: str=None) -> List[str]:
+        """
+        Get indices with alias associated with given index name or alias name
+
+        Args:
+            index: name of index
+            alias_name: name of alias
+
+        Returns:
+            Mapping of index names with their aliases
+        """
+        return self._es.indices.get_alias(index=index, name=alias_name)
+
+    def get_settings(self, index: str=None) -> Mapping[str, Mapping]:
+        """
+        Get indices with settings associated with given index name
+
+        Args:
+            index: name of index
+
+        Returns:
+            Mapping of index names with their settings
+        """
+        return self._es.indices.get_settings(index=index)
+
+    def get_indice_names_by_settings(
+        self, index: str=None, sort_by_creation_date=False, reverse=False
+    ) -> List[str]:
+        """
+        Get list of indices names associated with given index name, using indices' settings
+
+        Args:
+            index: name of index
+            sort_by_creation_date: sort the result by indice's creation_date
+            reverse: control the direction of the sorting
+
+        Returns:
+            list of index names (str)
+        """
+        indices_settings = self.get_settings(index)
+        names_with_creation_date = [
+            (indice_name, setting['settings']['index']['creation_date'])
+            for indice_name, setting in indices_settings.items()
+        ]
+        
+        if sort_by_creation_date:
+            names_with_creation_date = sorted(
+                names_with_creation_date,
+                key=lambda name_with_creation_date: name_with_creation_date[1],
+                reverse=reverse,
+            )
+
+        indice_names = [name for name, _ in names_with_creation_date]
+        return indice_names
+
+    def update_alias(self, alias_name: str, index: Optional[str] = None):
+        """
+        Create or update an ES alias pointing to an index
+
+        Creates or updates an alias in Elasticsearch, associated with the
+        given index name or the underlying index of the ESIndexer instance.
+
+        When the alias name does not exist, it will be created. If an existing
+        alias already exists, it will be updated to only associate with the
+        index.
+
+        When the alias name already exists, an exception will be raised,
+        UNLESS the alias name is the same as index name that the ESIndexer is
+        initialized with. In this case, the existing index with the name
+        collision will be deleted, and the alias will be created
+        in its place. This feature is intended for seamless migration from
+        an index to an alias associated with an index for zero-downtime
+        installs.
+
+        Args:
+            alias_name: name of the alias
+            index: name of the index to associate with alias. If None, the
+                index of the ESIndexer instance is used.
+
+        Raises:
+            IndexerException
+        """
+        if index is None:
+            index = self._index
+
+        if not self._es.indices.exists(alias_name):
+            # case 1 it does not already exist
+            #  create the alias pointing to _index
+            self._es.indices.put_alias(index=index, name=alias_name)
+        else:  # case 2 it already exists
+            if self._es.indices.exists_alias(name=alias_name):
+                # if it is an alias, blindly update
+                #  This removes any other indices associated with the alias
+                actions = {
+                    "actions": [
+                        {"add": {"index": index, "alias": alias_name}}
+                    ]
+                }
+                removes = [
+                    {
+                        "remove": {"index": index_name, "alias": alias_name}
+                    } for index_name in self.get_alias(alias_name)
+                ]
+                actions["actions"].extend(removes)
+                self._es.indices.update_aliases(body=actions)
+            else:  # it is an index
+                # if not _index and is the canonical index name
+                #  then delete the index and create alias
+                if alias_name == self.canonical_index_name:
+                    self._es.indices.delete(alias_name)
+                    self._es.indices.put_alias(index=index, name=alias_name)
+                else:
+                    raise IndexerException(f"Cannot create alias {alias_name} "
+                                           "an index with the same name "
+                                           "already exists")
 
     def get_repository(self, repo_name):
         try:
@@ -714,6 +861,28 @@ class ESIndexer():
             self._es.snapshot.create_repository(repo_name, settings)
         except TransportError as e:
             raise IndexerException("Can't create snapshot repository '%s': %s" % (repo_name, e))
+
+    def get_snapshots(self, repo_name, snapshot_name):
+        try:
+            snapshots = self._es.snapshot.get(repository=repo_name, snapshot=snapshot_name)
+            return [snapshot for snapshot in snapshots["snapshots"]]
+        except NotFoundError as ex:
+            message = str(ex)
+            if ex.error == "repository_missing_exception":
+                message = "Repository '%s' doesn't exist" % repo_name
+            if ex.error == "snapshot_missing_exception":
+                message = "Snapshot '%s' doesn't exist" % snapshot_name
+            raise IndexerException(message)
+
+    def get_indices_from_snapshots(self, repo_name, snapshot_name):
+        snapshots = self.get_snapshots(repo_name, snapshot_name)
+        indices = []
+        for snapshot in snapshots:
+            indices.extend([
+                index
+                for index in (snapshot.get("indices") or [])
+            ])
+        return indices
 
     def get_snapshot_status(self, repo, snapshot):
         return self._es.snapshot.status(repo, snapshot)
@@ -732,6 +901,18 @@ class ESIndexer():
         else:
             return {"status": "IN_PROGRESS", "progress": "%.2f%%" % (done/len(shards_status)*100)}
 
+    def get_internal_number_of_replicas(self):
+        try:
+            index_settings = self._es.indices.get_settings(self._index)
+            return index_settings[self._index]["settings"]["index"]["number_of_replicas"]
+        except Exception:
+            return
+
+    def set_internal_number_of_replicas(self, number_of_replicas=None):
+        if not number_of_replicas:
+            number_of_replicas = self.number_of_replicas
+        settings = json.dumps({'index': {'number_of_replicas': number_of_replicas}})
+        self._es.indices.put_settings(settings, index=self._index)
 
 class MappingError(Exception):
     pass

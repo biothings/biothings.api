@@ -18,7 +18,7 @@ biothings.web.handlers.BaseAPIHandler
     - default common http headers (CORS and Cache Control)
 
 """
-import json
+import orjson
 import logging
 
 import yaml
@@ -26,29 +26,16 @@ from biothings.utils import serializer
 from biothings.web.analytics.events import Event
 from biothings.web.analytics.notifiers import AnalyticsMixin
 from biothings.web.options import OptionError, ReqArgs
-from tornado.escape import json_decode
 from tornado.web import HTTPError, RequestHandler
 
-try:
-    from raven.contrib.tornado import SentryMixin
-except ImportError:
-    class SentryMixin():
-        """dummy mixin"""
 
 logger = logging.getLogger(__name__)
 
-class BaseHandler(SentryMixin, RequestHandler):
+class BaseHandler(RequestHandler):
 
     @property
     def biothings(self):
         return self.application.biothings
-
-    def get_sentry_client(self):
-        # Override and retrieve from tornado settings instead.
-        client = self.settings.get('sentry_client')
-        if not client:  # need to set config.SENTRY_CLIENT_KEY
-            raise ValueError("Sentry Not Configured.")
-        return client
 
 
 class BaseAPIHandler(BaseHandler, AnalyticsMixin):
@@ -64,9 +51,18 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         }
     }
     format = 'json'
-    cache = 604800  # 7 days
+    cache = None
+    cache_control_template = "max-age={cache}, public"
 
-    def initialize(self):
+    def initialize(self,  cache=None):
+        cache_value = self.biothings.config.DEFAULT_CACHE_MAX_AGE
+        if self.cache is not None:
+            cache_value = self.cache
+        if cache is not None:
+            cache_value = cache
+        # self._header has already set when call set_default_headers func before
+        # so we need to overwrite it to make custom cache age works
+        self.set_cache_header(cache_value)
 
         self.args = {}  # processed args will be available here
         self.args_query = {}  # query parameters in the URL
@@ -114,8 +110,8 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
                 'Remove the content-type header, or '
                 'provide an empty object in the body.'))
         try:
-            return json_decode(self.request.body)
-        except json.JSONDecodeError:
+            return orjson.loads(self.request.body)
+        except orjson.JSONDecodeError:
             raise HTTPError(400, reason='Invalid JSON body.')
 
     def _parse_yaml(self):
@@ -165,7 +161,7 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
                 self.set_header("Content-Type", "application/x-msgpack")
 
             elif self.format == "html":
-                chunk = self.render_string("api.html", data=json.dumps(chunk))
+                chunk = self.render_string("api.html", data=serializer.to_json(chunk))
                 self.set_header("Content-Type", "text/html; charset=utf-8")
 
         except Exception as exc:
@@ -236,9 +232,11 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         self.set_header("Access-Control-Allow-Credentials", "false")
         self.set_header("Access-Control-Max-Age", "60")
 
-        if self.cache and isinstance(self.cache, int):
+    def set_cache_header(self, cache_value):
+        if isinstance(cache_value, int):
             # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
-            self.set_header("Cache-Control", f"max-age={self.cache}, public")
-
-        # to disable caching for a handler, set cls.cache to 0 or
-        # run self.clear_header('Cache-Control') in an HTTP method
+            # to disable caching for a handler, set cls.cache to 0 or
+            # run self.clear_header('Cache-Control') in an HTTP method
+            # or set cache value on the config file:
+            # r"/api/query/?", "biothings.web.handlers.QueryHandler", {"biothing_type": "schema", "cache": 0}),
+            self.set_header("Cache-Control", self.cache_control_template.format(cache=cache_value))

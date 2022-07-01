@@ -25,6 +25,7 @@ import biothings.utils.aws as aws
 from biothings.utils.hub_db import get_cmd, get_last_command, backup, restore
 from biothings.utils.loggers import ShellLogger
 from biothings.utils.docs import flatten_doc
+from biothings.utils.redirect_streams import RedirectStdStreams
 from biothings import config
 if hasattr(config, 'logger'):
     logging = config.logger
@@ -104,6 +105,7 @@ class HubShell(InteractiveShell):
         # there should be only one shell instance (todo: singleton)
         self.__class__.cmd = get_cmd()
         self.__class__.set_command_counter()
+        self.last_std_contents = None
         super(HubShell, self).__init__(user_ns=self.extra_ns)
 
     @classmethod
@@ -177,8 +179,7 @@ class HubShell(InteractiveShell):
 
     def restart(self, force=False, stop=False):
 
-        @asyncio.coroutine
-        def do():
+        async def do():
             try:
                 if stop:
                     event = "hub_stop"
@@ -201,7 +202,7 @@ class HubShell(InteractiveShell):
                     f.result()  # consume
                     logging.error("Job manager stopped")
                 j.add_done_callback(ok)
-                yield from j
+                await j
             except Exception as e:
                 logging.error("Error while recycling the process queue: %s", e)
                 raise
@@ -388,8 +389,13 @@ class HubShell(InteractiveShell):
                 cmdline = "_and(%s)" % ",".join(strcmds)
             else:
                 raise CommandError("Using '&&' operator required two operands\n")
-        r = self.run_cell(cmdline, store_history=True)
+        
+        # r = self.run_cell(cmdline, store_history=True)
         outputs = []
+        with RedirectStdStreams() as redirect_stream:
+            r = self.run_cell(cmdline, store_history=True)
+            self.last_std_contents = redirect_stream.get_std_contents()
+
         if not r.success:
             raise CommandError("%s\n" % repr(r.error_in_exec))
         else:
@@ -757,8 +763,7 @@ try:
 
         def monitor(self):
 
-            @asyncio.coroutine
-            def do():
+            async def do():
                 logging.info(
                     "Monitoring source code in, %s:\n%s",
                     repr(self.paths),
@@ -766,7 +771,7 @@ try:
                 )
                 while self.do_monitor:
                     try:
-                        yield from asyncio.sleep(self.wait)
+                        await asyncio.sleep(self.wait)
                         # this reads events from OS
                         if self.notifier.check_events(0.1):
                             self.notifier.read_events()

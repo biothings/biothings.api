@@ -1,0 +1,2264 @@
+{
+  "aliases": {
+    "genedoc_mygene_allspecies_current": {}
+  },
+  "mappings": {
+     "dynamic": "false",
+      "_meta": {
+        "build_date": "2020-01-19T02:00:00.027534",
+        "biothing_type": "gene",
+        "src": {
+          "entrez": {
+            "code": {
+              "entrez_accession": {
+                "file": "src/hub/dataload/sources/entrez/accession_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "1718071",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/1718071ee51376f19ed7fa707c630259c210d4f2/src/hub/dataload/sources/entrez/accession_upload.py"
+              },
+              "entrez_unigene": {
+                "file": "src/hub/dataload/sources/entrez/unigene_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "6485f15",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/6485f15379deefd1fc2bfe73d52d145ee344e1d7/src/hub/dataload/sources/entrez/unigene_upload.py"
+              },
+              "entrez_retired": {
+                "file": "src/hub/dataload/sources/entrez/retired_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "0b1ad77",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/0b1ad7738a0b82b1857a606bf7f20597ed2cd911/src/hub/dataload/sources/entrez/retired_upload.py"
+              },
+              "entrez_gene": {
+                "file": "src/hub/dataload/sources/entrez/gene_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "6485f15",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/6485f15379deefd1fc2bfe73d52d145ee344e1d7/src/hub/dataload/sources/entrez/gene_upload.py"
+              },
+              "entrez_genomic_pos": {
+                "file": "src/hub/dataload/sources/entrez/genomic_pos_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "7103df5",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/7103df508b9a52fdc058cb61c8f81e79157be7e1/src/hub/dataload/sources/entrez/genomic_pos_upload.py"
+              },
+              "entrez_refseq": {
+                "file": "src/hub/dataload/sources/entrez/refseq_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "1718071",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/1718071ee51376f19ed7fa707c630259c210d4f2/src/hub/dataload/sources/entrez/refseq_upload.py"
+              },
+              "entrez_go": {
+                "file": "src/hub/dataload/sources/entrez/go_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "6485f15",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/6485f15379deefd1fc2bfe73d52d145ee344e1d7/src/hub/dataload/sources/entrez/go_upload.py"
+              }
+            },
+            "stats": {
+              "entrez_accession": 25969207,
+              "entrez_unigene": 542943,
+              "entrez_retired": 299607,
+              "entrez_gene": 26068808,
+              "entrez_genomic_pos": 2597701,
+              "entrez_refseq": 25947600,
+              "entrez_go": 205176
+            },
+            "version": "20191227"
+          },
+          "cpdb": {
+            "code": {
+              "file": "src/hub/dataload/sources/cpdb/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "5e6ade9",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/5e6ade930f971ffc0f8c79fedd2359a1c6082fe2/src/hub/dataload/sources/cpdb/upload.py"
+            },
+            "stats": {
+              "cpdb": 22149
+            },
+            "version": "34"
+          },
+          "pharos": {
+            "code": {
+              "file": "src/hub/dataload/sources/pharos/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "dbb1e12",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/dbb1e1258140d26ea8671dff2e6039aa9d88ba6d/src/hub/dataload/sources/pharos/upload.py"
+            },
+            "stats": {
+              "pharos": 19828
+            },
+            "version": "5.2.0"
+          },
+          "homologene": {
+            "code": {
+              "file": "src/hub/dataload/sources/homologene/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "0b1ad77",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/0b1ad7738a0b82b1857a606bf7f20597ed2cd911/src/hub/dataload/sources/homologene/upload.py"
+            },
+            "stats": {
+              "homologene": 268222
+            },
+            "version": "68"
+          },
+          "clingen": {
+            "licence": "CC0 1.0 Universal",
+            "code": {
+              "file": "src/hub/dataload/sources/clingen/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "4ee0bef",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/4ee0befebdc00da066d011836cf2c87763a9c460/src/hub/dataload/sources/clingen/upload.py"
+            },
+            "stats": {
+              "clingen": 684
+            },
+            "version": "2020-01-18",
+            "license_url": "https://www.clinicalgenome.org/docs/terms-of-use/",
+            "url": "https://search.clinicalgenome.org/kb/gene-validity"
+          },
+          "pharmgkb": {
+            "code": {
+              "file": "src/hub/dataload/sources/pharmgkb/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "6485f15",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/6485f15379deefd1fc2bfe73d52d145ee344e1d7/src/hub/dataload/sources/pharmgkb/upload.py"
+            },
+            "stats": {
+              "pharmgkb": 26661
+            },
+            "version": "2020-01-05"
+          },
+          "ensembl": {
+            "code": {
+              "ensembl_acc": {
+                "file": "src/hub/dataload/sources/ensembl/acc_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "72b57c7",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/72b57c7dd58811f1289e7f8ee4c44e3466c7fd60/src/hub/dataload/sources/ensembl/acc_upload.py"
+              },
+              "ensembl_prosite": {
+                "file": "src/hub/dataload/sources/ensembl/prosite_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "72b57c7",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/72b57c7dd58811f1289e7f8ee4c44e3466c7fd60/src/hub/dataload/sources/ensembl/prosite_upload.py"
+              },
+              "ensembl_pfam": {
+                "file": "src/hub/dataload/sources/ensembl/pfam_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "72b57c7",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/72b57c7dd58811f1289e7f8ee4c44e3466c7fd60/src/hub/dataload/sources/ensembl/pfam_upload.py"
+              },
+              "ensembl_interpro": {
+                "file": "src/hub/dataload/sources/ensembl/interpro_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "72b57c7",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/72b57c7dd58811f1289e7f8ee4c44e3466c7fd60/src/hub/dataload/sources/ensembl/interpro_upload.py"
+              },
+              "ensembl_gene": {
+                "file": "src/hub/dataload/sources/ensembl/gene_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "b610d41",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/b610d418c1f6c2f2bc412ccee2963844088a7e56/src/hub/dataload/sources/ensembl/gene_upload.py"
+              },
+              "ensembl_genomic_pos": {
+                "file": "src/hub/dataload/sources/ensembl/genomic_pos_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "72b57c7",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/72b57c7dd58811f1289e7f8ee4c44e3466c7fd60/src/hub/dataload/sources/ensembl/genomic_pos_upload.py"
+              }
+            },
+            "stats": {
+              "ensembl_acc": 5266985,
+              "ensembl_prosite": 2148007,
+              "ensembl_interpro": 3863911,
+              "ensembl_pfam": 3612691,
+              "ensembl_gene": 5361018,
+              "ensembl_genomic_pos": 5266985
+            },
+            "version": "99"
+          },
+          "ensembl_protists": {
+            "code": {
+              "file": "src/hub/dataload/sources/ensembl_protists/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "94901fe",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/94901fe4d69bb4ea1309edd4471ee3b5c0689721/src/hub/dataload/sources/ensembl_protists/upload.py"
+            },
+            "stats": {
+              "ensembl_protists_pfam": 261602,
+              "ensembl_protists_gene": 501830,
+              "ensembl_protists_acc": 502003,
+              "ensembl_protists_interpro": 304636,
+              "ensembl_protists_prosite": 126580,
+              "ensembl_protists_genomic_pos": 502003
+            },
+            "version": "46"
+          },
+          "uniprot_ipi": {
+            "code": {
+              "file": "src/hub/dataload/sources/uniprot/ipi_upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "6485f15",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/6485f15379deefd1fc2bfe73d52d145ee344e1d7/src/hub/dataload/sources/uniprot/ipi_upload.py"
+            },
+            "stats": {
+              "uniprot_ipi": 157025
+            },
+            "version": null
+          },
+          "reagent": {
+            "code": {
+              "file": "src/hub/dataload/sources/reagent/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "6485f15",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/6485f15379deefd1fc2bfe73d52d145ee344e1d7/src/hub/dataload/sources/reagent/upload.py"
+            },
+            "stats": {
+              "reagent": 38621
+            },
+            "version": null
+          },
+          "uniprot_pir": {
+            "code": {
+              "file": "src/hub/dataload/sources/uniprot/pir_upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "6485f15",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/6485f15379deefd1fc2bfe73d52d145ee344e1d7/src/hub/dataload/sources/uniprot/pir_upload.py"
+            },
+            "stats": {
+              "uniprot_pir": 152091
+            },
+            "version": "20191218"
+          },
+          "ensembl_genomic_pos_mm9": {
+            "code": {
+              "file": "src/hub/dataload/sources/ensembl/genomic_pos_mm9_upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "eac7e59",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/eac7e59f0b95be3debd3434beb5747ba8b590f5f/src/hub/dataload/sources/ensembl/genomic_pos_mm9_upload.py"
+            },
+            "stats": {
+              "ensembl_genomic_pos_mm9": 38646
+            },
+            "version": null
+          },
+          "ensembl_fungi": {
+            "code": {
+              "file": "src/hub/dataload/sources/ensembl_fungi/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "94901fe",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/94901fe4d69bb4ea1309edd4471ee3b5c0689721/src/hub/dataload/sources/ensembl_fungi/upload.py"
+            },
+            "stats": {
+              "ensembl_fungi_pfam": 396512,
+              "ensembl_fungi_genomic_pos": 661526,
+              "ensembl_fungi_prosite": 150067,
+              "ensembl_fungi_gene": 660740,
+              "ensembl_fungi_acc": 661679,
+              "ensembl_fungi_interpro": 433012
+            },
+            "version": "46"
+          },
+          "wikipedia": {
+            "code": {
+              "file": "src/hub/dataload/sources/wikipedia/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "0b1ad77",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/0b1ad7738a0b82b1857a606bf7f20597ed2cd911/src/hub/dataload/sources/wikipedia/upload.py"
+            },
+            "stats": {
+              "wikipedia": 11075
+            },
+            "version": null
+          },
+          "reactome": {
+            "code": {
+              "file": "src/hub/dataload/sources/reactome/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "5e6ade9",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/5e6ade930f971ffc0f8c79fedd2359a1c6082fe2/src/hub/dataload/sources/reactome/upload.py"
+            },
+            "stats": {
+              "reactome": 64759
+            },
+            "version": "2019-11-22"
+          },
+          "generif": {
+            "code": {
+              "file": "src/hub/dataload/sources/generif/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "0b1ad77",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/0b1ad7738a0b82b1857a606bf7f20597ed2cd911/src/hub/dataload/sources/generif/upload.py"
+            },
+            "stats": {
+              "generif": 100133
+            },
+            "version": "20200118"
+          },
+          "ensembl_genomic_pos_hg19": {
+            "code": {
+              "file": "src/hub/dataload/sources/ensembl/genomic_pos_hg19_upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "eac7e59",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/eac7e59f0b95be3debd3434beb5747ba8b590f5f/src/hub/dataload/sources/ensembl/genomic_pos_hg19_upload.py"
+            },
+            "stats": {
+              "ensembl_genomic_pos_hg19": 55966
+            },
+            "version": null
+          },
+          "ensembl_plant": {
+            "code": {
+              "file": "src/hub/dataload/sources/ensembl_plant/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "9a95558",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/9a9555832b2c4bbb0798b993e53224985c8b66ff/src/hub/dataload/sources/ensembl_plant/upload.py"
+            },
+            "stats": {
+              "ensembl_plant_acc": 2662391,
+              "ensembl_plant_pfam": 1751004,
+              "ensembl_plant_genomic_pos": 2662391,
+              "ensembl_plant_prosite": 792664,
+              "ensembl_plant_interpro": 1922189,
+              "ensembl_plant_gene": 2661169
+            },
+            "version": "46"
+          },
+          "ensembl_metazoa": {
+            "code": {
+              "file": "src/hub/dataload/sources/ensembl_metazoa/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "94901fe",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/94901fe4d69bb4ea1309edd4471ee3b5c0689721/src/hub/dataload/sources/ensembl_metazoa/upload.py"
+            },
+            "stats": {
+              "ensembl_metazoa_prosite": 653980,
+              "ensembl_metazoa_genomic_pos": 2143485,
+              "ensembl_metazoa_interpro": 1423897,
+              "ensembl_metazoa_acc": 2143487,
+              "ensembl_metazoa_gene": 2146575,
+              "ensembl_metazoa_pfam": 1245655
+            },
+            "version": "46"
+          },
+          "ucsc": {
+            "code": {
+              "file": "src/hub/dataload/sources/ucsc/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "d71daef",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/d71daefc70560d410066f7a02f81c4b4435d3e8c/src/hub/dataload/sources/ucsc/upload.py"
+            },
+            "stats": {
+              "ucsc_exons": 209597
+            },
+            "version": "20191022"
+          },
+          "umls": {
+            "code": {
+              "file": "src/hub/dataload/sources/umls/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "6485f15",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/6485f15379deefd1fc2bfe73d52d145ee344e1d7/src/hub/dataload/sources/umls/upload.py"
+            },
+            "stats": {
+              "umls": 39665
+            },
+            "version": "2017-05-08"
+          },
+          "reporter": {
+            "code": {
+              "file": "src/hub/dataload/sources/reporter/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "6485f15",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/6485f15379deefd1fc2bfe73d52d145ee344e1d7/src/hub/dataload/sources/reporter/upload.py"
+            },
+            "stats": {
+              "reporter": 426561
+            },
+            "version": "na36"
+          },
+          "refseq": {
+            "code": {
+              "entrez_genesummary": {
+                "file": "src/hub/dataload/sources/refseq/genesummary_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "0b1ad77",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/0b1ad7738a0b82b1857a606bf7f20597ed2cd911/src/hub/dataload/sources/refseq/genesummary_upload.py"
+              },
+              "entrez_ec": {
+                "file": "src/hub/dataload/sources/refseq/ec_upload.py",
+                "repo": "https://github.com/biothings/mygene.info.git",
+                "commit": "6485f15",
+                "branch": "v3",
+                "url": "https://github.com/biothings/mygene.info/tree/6485f15379deefd1fc2bfe73d52d145ee344e1d7/src/hub/dataload/sources/refseq/ec_upload.py"
+              }
+            },
+            "stats": {
+              "entrez_genesummary": 28180,
+              "entrez_ec": 20176
+            },
+            "version": "98"
+          },
+          "uniprot_pdb": {
+            "code": {
+              "file": "src/hub/dataload/sources/uniprot/pdb_upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "6485f15",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/6485f15379deefd1fc2bfe73d52d145ee344e1d7/src/hub/dataload/sources/uniprot/pdb_upload.py"
+            },
+            "stats": {
+              "uniprot_pdb": 32163
+            },
+            "version": "20191218"
+          },
+          "pantherdb": {
+            "licence": "GNU General Public License Version 2",
+            "code": {
+              "folder": "src/plugins/pantherdb",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "61e2766",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/61e27660441ca0ec9a0917fdf33d3427208a6db0/src/plugins/pantherdb"
+            },
+            "stats": {
+              "pantherdb": 155116
+            },
+            "version": "2019-03-12",
+            "url": "http://pantherdb.org/",
+            "license_url": "http://pantherdb.org/tou.jsp"
+          },
+          "exac": {
+            "license": "ODbL",
+            "license_url_short": "http://bit.ly/2H9c4hg",
+            "code": {
+              "file": "src/hub/dataload/sources/exac/upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "60d3d9b",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/60d3d9ba323091395a28beff156f48f28b60aef1/src/hub/dataload/sources/exac/upload.py"
+            },
+            "stats": {
+              "broadinstitute_exac": 18240
+            },
+            "version": "0.3.1",
+            "license_url": "http://exac.broadinstitute.org/terms"
+          },
+          "uniprot": {
+            "code": {
+              "file": "src/hub/dataload/sources/uniprot/uniprot_upload.py",
+              "repo": "https://github.com/biothings/mygene.info.git",
+              "commit": "6485f15",
+              "branch": "v3",
+              "url": "https://github.com/biothings/mygene.info/tree/6485f15379deefd1fc2bfe73d52d145ee344e1d7/src/hub/dataload/sources/uniprot/uniprot_upload.py"
+            },
+            "stats": {
+              "uniprot": 10543749
+            },
+            "version": "20191218"
+          }
+        },
+        "stats": {
+          "total_ensembl_genes_mapped_to_entrez": 5971556,
+          "total_species": 28089,
+          "total_genes": 35181089,
+          "total_entrez_genes": 26068808,
+          "total_ensembl_genes": 37867675,
+          "total_ensembl_only_genes": 9112281
+        },
+        "build_version": "20200119"
+      },
+      "properties": {
+        "AnimalQTLdb": {
+          "type": "text",
+          "index": false
+        },
+        "FLYBASE": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "HGNC": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "HPRD": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "MGI": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "MIM": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "RATMAP": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "RGD": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "TAIR": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "Vega": {
+          "type": "text",
+          "index": false
+        },
+        "WormBase": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "Xenbase": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "ZFIN": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "accession": {
+          "dynamic": "false",
+          "properties": {
+            "genomic": {
+              "type": "text",
+              "index": false
+            },
+            "protein": {
+              "type": "text",
+              "copy_to": [
+                "all",
+                "accession_agg"
+              ],
+              "analyzer": "refseq_analyzer"
+            },
+            "rna": {
+              "type": "text",
+              "copy_to": [
+                "all",
+                "accession_agg"
+              ],
+              "analyzer": "refseq_analyzer"
+            },
+            "translation": {
+              "type": "object",
+              "enabled": false
+            }
+          }
+        },
+        "accession_agg": {
+          "type": "text",
+          "analyzer": "refseq_analyzer"
+        },
+        "alias": {
+          "type": "keyword",
+          "copy_to": [
+            "all"
+          ],
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "all": {
+          "type": "text"
+        },
+        "biocarta": {
+          "type": "text"
+        },
+        "clingen": {
+          "properties": {
+            "clinical_validity": {
+              "properties": {
+                "classification": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "disease_label": {
+                  "type": "text"
+                },
+                "mondo": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "online_report": {
+                  "type": "text",
+                  "index": false
+                },
+                "sop": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                }
+              }
+            }
+          }
+        },
+        "ec": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "ensembl": {
+          "dynamic": "false",
+          "properties": {
+            "gene": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "protein": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "transcript": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "translation": {
+              "type": "object",
+              "enabled": false
+            },
+            "type_of_gene": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            }
+          }
+        },
+        "entrezgene": {
+          "type": "keyword",
+          "copy_to": [
+            "all"
+          ],
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "exac": {
+          "dynamic": "false",
+          "properties": {
+            "all": {
+              "type": "object",
+              "enabled": false
+            },
+            "bp": {
+              "type": "integer",
+              "index": false
+            },
+            "cds_end": {
+              "type": "integer",
+              "index": false
+            },
+            "cds_start": {
+              "type": "integer",
+              "index": false
+            },
+            "n_exons": {
+              "type": "integer",
+              "index": false
+            },
+            "nonpsych": {
+              "type": "object",
+              "enabled": false
+            },
+            "nontcga": {
+              "type": "object",
+              "enabled": false
+            },
+            "transcript": {
+              "type": "text",
+              "analyzer": "refseq_analyzer"
+            }
+          }
+        },
+        "exons": {
+          "type": "object",
+          "enabled": false
+        },
+        "exons_hg19": {
+          "type": "object",
+          "enabled": false
+        },
+        "exons_mm9": {
+          "type": "object",
+          "enabled": false
+        },
+        "generif": {
+          "properties": {
+            "pubmed": {
+              "type": "long",
+              "index": false
+            },
+            "text": {
+              "type": "text",
+              "index": false
+            }
+          }
+        },
+        "genomic_pos": {
+          "type": "nested",
+          "dynamic": "false",
+          "properties": {
+            "chr": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "end": {
+              "type": "long"
+            },
+            "start": {
+              "type": "long"
+            },
+            "strand": {
+              "type": "byte",
+              "index": false
+            }
+          }
+        },
+        "genomic_pos_hg19": {
+          "type": "nested",
+          "dynamic": "false",
+          "properties": {
+            "chr": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "end": {
+              "type": "long"
+            },
+            "start": {
+              "type": "long"
+            },
+            "strand": {
+              "type": "byte",
+              "index": false
+            }
+          }
+        },
+        "genomic_pos_mm9": {
+          "type": "nested",
+          "dynamic": "false",
+          "properties": {
+            "chr": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "end": {
+              "type": "long"
+            },
+            "start": {
+              "type": "long"
+            },
+            "strand": {
+              "type": "byte",
+              "index": false
+            }
+          }
+        },
+        "go": {
+          "dynamic": "false",
+          "properties": {
+            "BP": {
+              "dynamic": "false",
+              "properties": {
+                "category": {
+                  "type": "text",
+                  "index": false
+                },
+                "evidence": {
+                  "type": "text",
+                  "index": false
+                },
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "pubmed": {
+                  "type": "long",
+                  "index": false
+                },
+                "term": {
+                  "type": "text"
+                }
+              }
+            },
+            "CC": {
+              "dynamic": "false",
+              "properties": {
+                "category": {
+                  "type": "text",
+                  "index": false
+                },
+                "evidence": {
+                  "type": "text",
+                  "index": false
+                },
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "pubmed": {
+                  "type": "long",
+                  "index": false
+                },
+                "term": {
+                  "type": "text"
+                }
+              }
+            },
+            "MF": {
+              "dynamic": "false",
+              "properties": {
+                "category": {
+                  "type": "text",
+                  "index": false
+                },
+                "evidence": {
+                  "type": "text",
+                  "index": false
+                },
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "pubmed": {
+                  "type": "long",
+                  "index": false
+                },
+                "term": {
+                  "type": "text"
+                }
+              }
+            }
+          }
+        },
+        "homologene": {
+          "dynamic": "false",
+          "properties": {
+            "genes": {
+              "type": "long",
+              "index": false
+            },
+            "id": {
+              "type": "long"
+            }
+          }
+        },
+        "humancyc": {
+          "type": "text"
+        },
+        "interpro": {
+          "dynamic": "false",
+          "properties": {
+            "desc": {
+              "type": "text",
+              "index": false
+            },
+            "id": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "short_desc": {
+              "type": "text",
+              "index": false
+            }
+          }
+        },
+        "ipi": {
+          "type": "keyword",
+          "copy_to": [
+            "all"
+          ],
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "kegg": {
+          "type": "text"
+        },
+        "locus_tag": {
+          "type": "keyword",
+          "copy_to": [
+            "all"
+          ],
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "map_location": {
+          "type": "text",
+          "index": false
+        },
+        "miRBase": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "mousecyc": {
+          "type": "text"
+        },
+        "name": {
+          "type": "text",
+          "copy_to": [
+            "all"
+          ]
+        },
+        "netpath": {
+          "type": "text"
+        },
+        "other_names": {
+          "type": "text",
+          "copy_to": [
+            "all"
+          ]
+        },
+        "pantherdb": {
+          "properties": {
+            "Araport": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "EcoGene": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "Ensembl": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "EnsemblGenome": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "FlyBase": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "Gene": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "GeneID": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "Gene_Name": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "Gene_ORFName": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "Gene_OrderedLocusName": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "HGNC": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "MGI": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "PomBase": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "RGD": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "SGD": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "TAIR": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "WormBase": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "ZFIN": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "dictyBase": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "ortholog": {
+              "properties": {
+                "Araport": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "EcoGene": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "Ensembl": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "EnsemblGenome": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "FlyBase": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "Gene": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "GeneCards": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "GeneID": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "Gene_Name": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "Gene_ORFName": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "Gene_OrderedLocusName": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "HGNC": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "MGI": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "PomBase": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "RGD": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "SGD": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "TAIR": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "WormBase": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "ZFIN": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "dictyBase": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "ortholog_type": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "panther_family": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "taxid": {
+                  "type": "integer"
+                },
+                "uniprot_kb": {
+                  "type": "keyword",
+                  "normalizer": "keyword_lowercase_normalizer"
+                }
+              }
+            },
+            "uniprot_kb": {
+              "type": "keyword",
+              "normalizer": "keyword_lowercase_normalizer"
+            }
+          }
+        },
+        "pathway": {
+          "dynamic": "false",
+          "properties": {
+            "biocarta": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                },
+                "name": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                }
+              }
+            },
+            "humancyc": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                },
+                "name": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                }
+              }
+            },
+            "kegg": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                },
+                "name": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                }
+              }
+            },
+            "mousecyc": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                },
+                "name": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                }
+              }
+            },
+            "netpath": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                },
+                "name": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                }
+              }
+            },
+            "pharmgkb": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                },
+                "name": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                }
+              }
+            },
+            "pid": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                },
+                "name": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                }
+              }
+            },
+            "reactome": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                },
+                "name": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                }
+              }
+            },
+            "smpdb": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                },
+                "name": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                }
+              }
+            },
+            "wikipathways": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                },
+                "name": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                }
+              }
+            },
+            "yeastcyc": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                },
+                "name": {
+                  "type": "text",
+                  "copy_to": [
+                    "all"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "pdb": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "pfam": {
+          "type": "keyword",
+          "copy_to": [
+            "all"
+          ],
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "pharmgkb": {
+          "type": "keyword",
+          "copy_to": [
+            "all"
+          ],
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "pharos": {
+          "properties": {
+            "target_id": {
+              "type": "integer"
+            }
+          }
+        },
+        "pid": {
+          "type": "text"
+        },
+        "pir": {
+          "type": "keyword",
+          "copy_to": [
+            "all"
+          ],
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "prosite": {
+          "type": "keyword",
+          "copy_to": [
+            "all"
+          ],
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "reactome": {
+          "type": "text"
+        },
+        "reagent": {
+          "dynamic": "false",
+          "properties": {
+            "CM-LibrX-no-seq": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "CondMedia_CM_LibrAB": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_Qia_hs-genome_v1_siRNA": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_hs-GPCR_IDT-siRNA": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_hs-ORFeome1_1_reads": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_hs-Origene": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_hs-druggable_lenti-shRNA": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_hs-druggable_plasmid-shRNA": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_hs-druggable_siRNA": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_hs-oncomine_IDT-siRNA": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_hs-pkinase_IDT-siRNA": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_hs_LentiORF-HA-MYC": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_hs_LentiORF-Jred": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_mm+hs-MGC": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_mm+hs_RetroCDNA": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_mm-GIPZ_shRNA": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_mm-TLR_lenti_shRNA": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_mm-kinase_lenti-shRNA": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "GNF_mm-kinase_plasmid-shRNA": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "IDT_27mer_hs_ATPase_siRNAs": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "Invitrogen_IVTHSSIPKv2": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "MasterSecretomicsList": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "NIBRI_hs-Secretome_pDEST": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "NOVART_hs-genome_siRNA": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "Qiagen_mouse_QMIHSINHIBv1": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            },
+            "Qiagen_mouse_QMIHSMIMv1": {
+              "dynamic": "false",
+              "properties": {
+                "id": {
+                  "type": "keyword",
+                  "copy_to": [
+                    "all"
+                  ],
+                  "normalizer": "keyword_lowercase_normalizer"
+                },
+                "relationship": {
+                  "type": "text",
+                  "index": false
+                }
+              }
+            }
+          }
+        },
+        "refseq": {
+          "dynamic": "false",
+          "properties": {
+            "genomic": {
+              "type": "text",
+              "index": false
+            },
+            "protein": {
+              "type": "text",
+              "copy_to": [
+                "all",
+                "refseq_agg"
+              ],
+              "analyzer": "refseq_analyzer"
+            },
+            "rna": {
+              "type": "text",
+              "copy_to": [
+                "all",
+                "refseq_agg"
+              ],
+              "analyzer": "refseq_analyzer"
+            },
+            "translation": {
+              "type": "object",
+              "enabled": false
+            }
+          }
+        },
+        "refseq_agg": {
+          "type": "text",
+          "analyzer": "refseq_analyzer"
+        },
+        "reporter": {
+          "dynamic": "false",
+          "properties": {
+            "AraGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "BovGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "CanGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "ChiGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "CyRGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "CynGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "DroGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "EleGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "EquGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "FelGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "GNF1H": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "GNF1M": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "GuiGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "HG-U133_Plus_2": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "HG-U95Av2": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "HG-U95B": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "HTA-2_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "HuEx-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "HuGene-1_1": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "HuGene-2_1": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "MG-U74Av2": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "MG-U74Bv2": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "MTA-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "MarGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "MoEx-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "MoGene-1_1": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "MoGene-2_1": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "Mouse430_2": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "PorGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "RCnGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "RG-U34A": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "RG-U34B": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "RJpGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "RUSGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "RaEx-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "RaGene-1_1": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "RaGene-2_1": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "RabGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "Rat230_2": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "RheGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "SoyGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "ZebGene-1_0": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "snowball": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            }
+          }
+        },
+        "retired": {
+          "type": "long",
+          "copy_to": [
+            "all"
+          ]
+        },
+        "smpdb": {
+          "type": "text"
+        },
+        "summary": {
+          "type": "text",
+          "copy_to": [
+            "all"
+          ]
+        },
+        "symbol": {
+          "type": "keyword",
+          "copy_to": [
+            "all"
+          ],
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "taxid": {
+          "type": "integer"
+        },
+        "type_of_gene": {
+          "type": "keyword",
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "umls": {
+          "properties": {
+            "cui": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            }
+          }
+        },
+        "unigene": {
+          "type": "keyword",
+          "copy_to": [
+            "all"
+          ],
+          "normalizer": "keyword_lowercase_normalizer"
+        },
+        "uniprot": {
+          "dynamic": "false",
+          "properties": {
+            "Swiss-Prot": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            },
+            "TrEMBL": {
+              "type": "keyword",
+              "copy_to": [
+                "all"
+              ],
+              "normalizer": "keyword_lowercase_normalizer"
+            }
+          }
+        },
+        "wikipathways": {
+          "type": "text"
+        },
+        "wikipedia": {
+          "dynamic": "false",
+          "properties": {
+            "url_stub": {
+              "type": "text",
+              "copy_to": [
+                "all"
+              ]
+            }
+          }
+        },
+        "yeastcyc": {
+          "type": "text"
+        }
+      }
+  },
+  "settings": {
+    "index": {
+      "analysis": {
+        "normalizer": {
+          "keyword_lowercase_normalizer": {
+            "filter": [
+              "lowercase"
+            ],
+            "type": "custom",
+            "char_filter": []
+          }
+        },
+        "analyzer": {
+          "string_lowercase": {
+            "filter": "lowercase",
+            "tokenizer": "keyword"
+          },
+          "whitespace_lowercase": {
+            "filter": "lowercase",
+            "tokenizer": "whitespace"
+          },
+          "refseq_analyzer": {
+            "filter": "lowercase",
+            "type": "custom",
+            "tokenizer": "refseq_tokenizer"
+          }
+        },
+        "tokenizer": {
+          "refseq_tokenizer": {
+            "type": "path_hierarchy",
+            "delimiter": "."
+          }
+        }
+      }
+    }
+  }
+}

@@ -251,7 +251,9 @@ class DataBuilder(object):
         return pinfo
 
     def setup_log(self):
-        self.logger, _ = get_logger('build_%s' % self.build_name)
+        log_name = self.target_name or self.build_name
+        log_folder = os.path.join(btconfig.LOG_FOLDER, 'build', log_name)
+        self.logger, _ = get_logger('build', log_folder=log_folder, force=True)
 
     def check_ready(self, force=False):
         if force:
@@ -588,6 +590,8 @@ class DataBuilder(object):
         self.target_name = target_name
         self.target_backend.set_target_name(self.target_name)
 
+        self.setup_log()  # Force logs will be stored in the target_name file
+
         self.custom_metadata = {}
         self.clean_old_collections()
         self.logger.info("Merging into target collection '%s'" %
@@ -595,9 +599,7 @@ class DataBuilder(object):
         strargs = "[sources=%s,target_name=%s]" % (sources, target_name)
 
         try:
-
-            @asyncio.coroutine
-            def do():
+            async def do():
                 res = None
                 if "merge" in steps or "post" in steps:
                     job = self.merge_sources(source_names=sources,
@@ -606,7 +608,7 @@ class DataBuilder(object):
                                              job_manager=job_manager,
                                              *args,
                                              **kwargs)
-                    res = yield from job
+                    res = await job
                 if "metadata" in steps:
                     pinfo = self.get_pinfo()
                     pinfo["step"] = "metadata"
@@ -614,7 +616,7 @@ class DataBuilder(object):
                                          transient=True,
                                          init=True,
                                          job={"step": "metadata"})
-                    postjob = yield from job_manager.defer_to_thread(
+                    postjob = await job_manager.defer_to_thread(
                         pinfo,
                         partial(self.store_metadata,
                                 res,
@@ -671,7 +673,7 @@ class DataBuilder(object):
                             raise
 
                     postjob.add_done_callback(stored)
-                    yield from postjob
+                    await postjob
 
             task = asyncio.ensure_future(do())
             return task
@@ -704,8 +706,7 @@ class DataBuilder(object):
                 "Found mapper named '%s' but no mapper associated" %
                 mapper_name)
 
-    @asyncio.coroutine
-    def merge_sources(self,
+    async def merge_sources(self,
                       source_names,
                       steps=["merge", "post"],
                       batch_size=100000,
@@ -747,11 +748,10 @@ class DataBuilder(object):
 
         got_error = False
 
-        @asyncio.coroutine
-        def merge(src_names):
+        async def merge(src_names):
             jobs = []
             for i, src_name in enumerate(src_names):
-                yield from asyncio.sleep(0.0)
+                await asyncio.sleep(0.0)
                 job = self.merge_source(src_name,
                                         batch_size=batch_size,
                                         ids=ids,
@@ -771,12 +771,12 @@ class DataBuilder(object):
                 job.add_done_callback(
                     partial(merged, name=src_name, stats=self.merge_stats))
                 jobs.append(job)
-                yield from asyncio.wait([job])
+                await asyncio.wait([job])
                 # raise error as soon as we know something went wrong
                 if got_error:
                     raise got_error
             tasks = asyncio.gather(*jobs)
-            yield from tasks
+            await tasks
 
         if do_merge:
             if root_sources:
@@ -789,7 +789,7 @@ class DataBuilder(object):
                                      })
                 self.logger.info("Merging root document sources: %s" %
                                  root_sources)
-                yield from merge(root_sources)
+                await merge(root_sources)
                 self.register_status("success",
                                      job={
                                          "step": "merge-root",
@@ -805,7 +805,7 @@ class DataBuilder(object):
                                          "sources": other_sources
                                      })
                 self.logger.info("Merging other resources: %s" % other_sources)
-                yield from merge(other_sources)
+                await merge(other_sources)
                 self.register_status("success",
                                      job={
                                          "step": "merge-others",
@@ -830,7 +830,7 @@ class DataBuilder(object):
                                  job={"step": "post-merge"})
             pinfo = self.get_pinfo()
             pinfo["step"] = "post-merge"
-            job = yield from job_manager.defer_to_thread(
+            job = await job_manager.defer_to_thread(
                 pinfo,
                 partial(self.post_merge, source_names, batch_size,
                         job_manager))
@@ -846,13 +846,13 @@ class DataBuilder(object):
                     got_error = e
 
             job.add_done_callback(postmerged)
-            yield from job
+            await job
             if got_error:
                 raise got_error
         else:
             self.logger.info("Skip post-merge process")
 
-        yield from asyncio.sleep(0.0)
+        await asyncio.sleep(0.0)
         return self.merge_stats
 
     def document_cleaner(self, src_name, *args, **kwargs):
@@ -864,8 +864,7 @@ class DataBuilder(object):
         """
         return None
 
-    @asyncio.coroutine
-    def merge_source(self,
+    async def merge_source(self,
                      src_name,
                      batch_size=100000,
                      ids=None,
@@ -938,7 +937,7 @@ class DataBuilder(object):
             for doc_ids in iter_n(big_doc_ids, batch_size):
                 # try to put some async here to give control back
                 # (but everybody knows it's a blocking call: doc_feeder)
-                yield from asyncio.sleep(0.1)
+                await asyncio.sleep(0.1)
                 cnt += len(doc_ids)
                 pinfo = self.get_pinfo()
                 pinfo["step"] = src_name
@@ -946,7 +945,7 @@ class DataBuilder(object):
                                                             (cnt / total * 100))
                 self.logger.info("Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)" %
                                  (bnum, btotal, src_name, cnt, total, (cnt/total*100.)))
-                job = yield from job_manager.defer_to_process(
+                job = await job_manager.defer_to_process(
                     pinfo,
                     partial(merger_worker, self.source_backend[src_name].name,
                             self.target_backend.target_name, doc_ids,
@@ -978,7 +977,7 @@ class DataBuilder(object):
             _ = sum(f.result())
 
         tasks.add_done_callback(done)
-        yield from tasks
+        await tasks
         if got_error:
             raise got_error
         else:
@@ -1012,8 +1011,7 @@ class LinkDataBuilder(DataBuilder):
         self.target_backend.datasource_name = conf["sources"][0]
         self.target_backend.source_db = self.source_backend
 
-    @asyncio.coroutine
-    def merge_source(self, src_name, *args, **kwargs):
+    async def merge_source(self, src_name, *args, **kwargs):
         total = self.source_backend[src_name].count()
         return {"%s" % src_name: total}
 
@@ -1544,8 +1542,7 @@ class BuilderManager(BaseManager):
             if conf.get("autobuild", {}).get("schedule")
         }
 
-        @asyncio.coroutine
-        def _autobuild(conf_name):
+        async def _autobuild(conf_name):
 
             new = self.whatsnew(conf_name)
             logger.info(f"{conf_name}:{schedules[conf_name]}")
@@ -1656,7 +1653,9 @@ class BuilderManager(BaseManager):
         builds = [b for b in get_src_build().find(q, fields)]
         res = [
             b for b in sorted(
-                builds, key=lambda e: str(e["started_at"]), reverse=True)
+                builds,
+                key=lambda e: str(e.get("started_at") or ""),
+                reverse=True)
         ]
         # set a global status (ie. latest job's status)
         # + get total #docs

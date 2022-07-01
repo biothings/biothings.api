@@ -9,6 +9,7 @@
 .*.swp
 __pycache__
 .DS_Store
+.env
 
 # temp files
 docs/_build
@@ -17,6 +18,7 @@ tests/.noseids
 
 # IDEs
 .vscode
+.idea
 
 # runtime files
 biothings/.git-info
@@ -32,3 +34,9 @@ config.py
 !/tests/web/handlers/config.py
 !/tests/hub/hubdb/config.py
 .hubdb
+.hubdb.*
+
+# other local files
+.notes/
+.env
+.notes

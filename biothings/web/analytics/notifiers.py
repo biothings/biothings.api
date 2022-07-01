@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from biothings.web.analytics.channels import *
+from biothings.web.analytics.channels import SlackChannel, GAChannel
 from tornado.httpclient import AsyncHTTPClient
 from tornado.web import RequestHandler
 
@@ -27,6 +27,7 @@ class Notifier:
 
 # Web Framework Support
 # ----------------------------
+
 
 # Tornado
 

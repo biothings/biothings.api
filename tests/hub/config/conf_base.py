@@ -2,7 +2,10 @@ HUB_DB_BACKEND = {
     "module": "biothings.utils.sqlite3",
     "sqlite_db_folder": "."
 }
-
+DIFF_PATH = ''
+RELEASE_PATH = ''
+S3_SNAPSHOT_BUCKET = ''
+S3_REGION = ''
 DATA_HUB_DB_DATABASE = ".hubdb"
 
 # descONE
@@ -50,7 +53,7 @@ READ_ONLY = "written in stone"
 # it's read-only and value is hidden, not the param
 #- readonly -#
 #- hide -#
-READ_ONLY_PASSWORD = "can't read the stone"
+RUN_DIR = "can't read the stone"
 
 # invisible has full power
 # read-only is not necessary anyways
@@ -61,3 +64,7 @@ INVISIBLE_READ_ONLY = "evaporated"
 # special param, by default config is read-only
 # but we want to test modification
 CONFIG_READONLY = False
+
+LOG_FOLDER = "/tmp/testhub/datasources/logs"
+
+HUB_SSH_PORT = '123'

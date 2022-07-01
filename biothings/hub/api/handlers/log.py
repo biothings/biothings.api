@@ -1,8 +1,14 @@
+import os
+import gzip
 from os import listdir
-from os.path import isfile, join
+from os.path import isfile, join, isdir
+from tempfile import TemporaryDirectory, mkstemp
 
 from tornado.web import RequestHandler, StaticFileHandler
 from tornado.template import Template
+
+from biothings.utils.serializer import to_json
+
 
 catalog = Template("""
     <html>
@@ -40,47 +46,97 @@ logfile = Template("""
     </html>
 """)
 
-class HubLogDirHandler(RequestHandler):
 
-    def initialize(self, path):
-        self.path = path
+def get_log_content(file_path, **kwargs):
+    lines = None
+    if file_path.endswith(".gz"):
+        with gzip.open(file_path, "rb") as f:
+            lines = f.read().decode().splitlines()
+    else:
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
 
-    def get(self, filename):
+    if lines and "lines" in kwargs:
+        cap_lines = kwargs["lines"]
+        cap_lines = cap_lines[0] if isinstance(cap_lines, list) else cap_lines
+        try:
+            cap_lines = int(cap_lines)
+            lines = lines[-cap_lines:]
+            if len(lines) == cap_lines:
+                lines.append(f"\n***Logs were capped at {cap_lines} lines***")
+        except Exception:
+            pass
+    return lines
 
-        if not filename:
-            logs = sorted([
-                f for f in listdir(self.path)
-                if isfile(join(self.path, f))
-            ])
-            if 'filter' in self.request.arguments:
-                _f = self.get_argument('filter')
-                logs = filter(lambda f: _f in f, logs)
 
-            self.finish(catalog.generate(logs=logs))
-            return
-
-        if not isfile(join(self.path, filename)):
-            self.set_status(404)
-            return
-
-        with open(join(self.path, filename), 'r') as file:
-
-            lines = file.read().split('\n')
-            if 'lines' in self.request.arguments:
-                _l = self.get_argument('lines')
-                lines = lines[-int(_l):]
-
-            self.finish(logfile.generate(
-                name=filename,
-                lines=lines
-            ))
-
-class HubLogFileHandler(StaticFileHandler):
-
+class DefaultCORSHeaderMixin:
     def set_default_headers(self):
         self.set_header("Access-Control-Allow-Origin", "*")
         self.set_header("Access-Control-Allow-Methods", "GET,OPTIONS")
         self.set_header("Access-Control-Allow-Headers", "*")
 
+
+class HubLogDirHandler(DefaultCORSHeaderMixin, RequestHandler):
+    def initialize(self, path):
+        self.path = path
+
+    def get(self, filename):
+        fullname = join(self.path, filename)
+        if isdir(fullname):
+            logs = sorted([
+                f"{f}/"
+                if isdir(join(fullname, f))
+                else f
+                for f in listdir(fullname)
+            ])
+
+            if 'filter' in self.request.arguments:
+                filters = self.get_argument('filter') or ''
+                filters = filters.split(',')
+                logs = set([f for keyword in filters for f in logs if keyword in f])
+
+            if 'json' in self.request.arguments:
+                self.finish(to_json(list(logs)))
+            else:
+                self.finish(catalog.generate(logs=logs))
+            return
+
+        if not isfile(fullname):
+            self.set_status(404)
+            return
+
+        lines = get_log_content(fullname, **self.request.arguments)
+        self.finish(logfile.generate(
+            name=filename,
+            lines=lines
+        ))
+
+
+class HubLogFileHandler(DefaultCORSHeaderMixin, StaticFileHandler):
+
     def options(self, *args, **kwargs):
         self.set_status(204)
+
+    async def get(self, path: str, include_body: bool = True) -> None:
+        """If request path is a gz file, we will uncompress it first, then return get with the uncompress file path
+        """
+
+        self.path = self.parse_url_path(path)
+        absolute_path = self.get_absolute_path(self.root, self.path)
+        self.absolute_path = self.validate_absolute_path(self.root, absolute_path)
+        if self.absolute_path is None:
+            return
+
+        if include_body:
+            download_file_name = self.path.replace(".gz", "")
+            self.set_header("Content-Type", "text")
+            self.set_header("Content-Disposition", f"attachment; filename={download_file_name}")
+            with TemporaryDirectory(dir=self.root) as temp_dir:
+                _, temp_file = mkstemp(dir=temp_dir)
+                lines = get_log_content(self.absolute_path, **self.request.arguments)
+                lines = "\n".join(lines)
+                with open(temp_file, mode="w") as fwrite:
+                    fwrite.write(lines)
+                return await super().get(temp_file, include_body=True)
+
+        return await super().get(path, include_body=include_body)

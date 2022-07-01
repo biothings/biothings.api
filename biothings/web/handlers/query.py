@@ -29,7 +29,6 @@ biothings.web.handlers.ESRequestHandler
 
 """
 
-import json
 import logging
 from collections import Counter
 from types import CoroutineType
@@ -54,9 +53,9 @@ logger = logging.getLogger(__name__)
 
 class BaseQueryHandler(BaseAPIHandler):
 
-    def initialize(self, biothing_type=None):
+    def initialize(self, biothing_type=None, *args, **kwargs):
 
-        super().initialize()
+        super().initialize(*args, **kwargs)
         self.biothing_type = biothing_type
         self.pipeline = self.biothings.pipeline
         self.metadata = self.biothings.metadata
@@ -109,7 +108,7 @@ class BaseQueryHandler(BaseAPIHandler):
             if self.format == "html":
                 config = self.biothings.config
                 chunk = self.render_string(
-                    template_name="api.html", data=json.dumps(chunk),
+                    template_name="api.html", data=serializer.to_json(chunk),
                     link=serializer.URL(self.request.full_url()).remove('format'),
                     title_div=getattr(config, "HTML_OUT_TITLE", "") or DEFAULT_TITLE,
                     header_img=getattr(config, "HTML_OUT_HEADER_IMG", "") or DEFAULT_IMG,
@@ -122,6 +121,7 @@ class BaseQueryHandler(BaseAPIHandler):
             logger.warning(exc)
 
         super().write(chunk)
+
 
 class MetadataSourceHandler(BaseQueryHandler):
     """
@@ -189,6 +189,7 @@ async def ensure_awaitable(obj):
         return await obj
     return obj
 
+
 def capture_exceptions(coro):
     async def _method(*args, **kwargs):
         try:
@@ -198,6 +199,7 @@ def capture_exceptions(coro):
         except QueryPipelineException as exc:
             raise HTTPError(exc.code, None, exc.details, reason=exc.summary)
     return _method
+
 
 class BiothingHandler(BaseQueryHandler):
     """

@@ -8,7 +8,7 @@
     of the query term and query options vary. At a minimum,
     a query builder should support:
 
-    q: str, a query term, 
+    q: str, a query term,
         when not provided, always perform a match all query.
         when provided as an empty string, always match none.
 
@@ -28,7 +28,7 @@
         facet_size: int, maximum number of agg results.
 
 """
-import json
+import orjson
 import logging
 import os
 import re
@@ -246,7 +246,7 @@ class ESQueryBuilder():
     def _build_match_query(self, q, scopes, options):
         """ q + scopes + options -> query object
 
-            case 1: 
+            case 1:
                 # single match query
                 q = "1017"
                 scopes = ["_id"] or "_id"
@@ -339,7 +339,16 @@ class ESQueryBuilder():
             search = search.sort(*options.sort)
         if isinstance(options._source, list):
             if 'all' not in options._source:
-                search = search.source(options._source)
+                fields_with_minus = [
+                    field.lstrip('-') for field in options._source if field.startswith('-')
+                ]
+                fields_without_minus = [
+                    field for field in options._source if not field.startswith('-')
+                ]
+                search = search.source(
+                    includes=fields_without_minus,
+                    excludes=fields_with_minus
+                )
         for key in ('from', 'size', 'explain', 'version'):
             if key in options:
                 search = search.extra(**{key: options[key]})
@@ -453,9 +462,9 @@ class ESUserQuery():
                             ## alternative implementation
                             # self._queries[os.path.basename(dirpath)] = text_file.read()
                             ##
-                            self._queries[os.path.basename(dirpath)] = json.load(text_file)
+                            self._queries[os.path.basename(dirpath)] = orjson.loads(text_file.read())
                         elif 'filter' in filename:
-                            self._filters[os.path.basename(dirpath)] = json.load(text_file)
+                            self._filters[os.path.basename(dirpath)] = orjson.loads(text_file.read())
         except Exception:
             self.logger.exception('Error loading user queries.')
 

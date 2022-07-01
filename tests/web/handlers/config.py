@@ -3,8 +3,9 @@
 """
 import os
 
-from biothings.web.settings.default import QUERY_KWARGS
 
+from biothings.web.settings.default import QUERY_KWARGS, APP_LIST
+from custom_cache_handler import *
 # *****************************************************************************
 # Elasticsearch Variables
 # *****************************************************************************
@@ -38,3 +39,9 @@ STATUS_CHECK = {
     'id': '1017',
     'index': 'bts_test',
 }
+
+APP_LIST += [
+    (r'/case/1', CustomCacheHandler, {'cache': 100}),
+    (r'/case/2', CustomCacheHandler),
+    (r'/case/3', DefautlAPIHandler),
+]
