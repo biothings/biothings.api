@@ -115,12 +115,12 @@ class ReleaseNoteSrcBuildReader:
         return combined_mapping
 
 
-class ReleaseNoteDatasourceInfoReader:
+class ReleaseNoteSrcBuildReaderAdapter:
     def __init__(self, src_build_reader: ReleaseNoteSrcBuildReader):
         self.src_build_reader = src_build_reader
 
-    @property
-    def _transformed_datasource_stats(self) -> dict:
+    @classmethod
+    def _get_datasource_fullname_stats(cls, datasource_stats) -> dict:
         """
         Receive a stat dictionary of <datasource_name>:<doc_count>, fetch the full datasource name, and
         return a new stat dictionary.
@@ -151,7 +151,7 @@ class ReleaseNoteDatasourceInfoReader:
             { "total" : { "_count" : 12345678 } }
         """
         result = {}
-        for datasource_name, doc_count in self.src_build_reader.datasource_stats.items():
+        for datasource_name, doc_count in datasource_stats.items():
             datasource_fullname = get_source_fullname(datasource_name)
 
             if (datasource_fullname is None) or (datasource_fullname == datasource_name):
@@ -165,23 +165,30 @@ class ReleaseNoteDatasourceInfoReader:
 
         return result
 
-    @property
-    def _transformed_datasource_versions(self) -> dict:
+    @classmethod
+    def _expand_datasource_versions(cls, datasource_versions) -> dict:
         """
-        For each datasource (e.g. clinvar, dbsnp) attached to the build, get its version number (e.g. "2022-01",
-        "155"). A dictionary of the following structure is returned:
+        Receive a version dictionary of <datasource_name>:<version> (e.g. {"dbsnp" : "155"}), rewrite it to
 
-            { <datasource_name> : {"_version" : <datasource_version>} }
+            { <datasource_name> : {"_version" : <version>} }
         """
-        return dict((k, {"_version": v}) for k, v in self.src_build_reader.datasource_versions.items())
+        return dict((k, {"_version": v}) for k, v in datasource_versions.items())
 
     @property
     def datasource_info(self):
-        datasource_versions = self._transformed_datasource_versions
-        datasource_stats = self._transformed_datasource_stats
+        datasource_versions = self._expand_datasource_versions(self.src_build_reader.datasource_versions)
+        datasource_stats = self._get_datasource_fullname_stats(self.src_build_reader.datasource_stats)
 
         datasource_info = update_dict_recur(datasource_versions, datasource_stats)
         return datasource_info
+
+    @property
+    def build_stats(self):
+        # TODO this is the original logic, however I don't think it's necessary to apply get_source_fullname() to
+        #  `build_stats.keys()`. E.g. in MyVariant, the `build_stats` keys are "total", "vcf", "hg19", and "observed",
+        #  none of which has a two-tier full name. So the only effect of _get_datasource_fullname_stats() is to add a
+        #  "_count" key to each of them.
+        return self._get_datasource_fullname_stats(self.src_build_reader.build_stats)
 
 
 class ReleaseNoteSource:
@@ -193,8 +200,8 @@ class ReleaseNoteSource:
         self.old_src_build_reader = old_src_build_reader
         self.new_src_build_reader = new_src_build_reader
 
-        self.old_datasource_info_reader = ReleaseNoteDatasourceInfoReader(self.old_src_build_reader)
-        self.new_datasource_info_reader = ReleaseNoteDatasourceInfoReader(self.new_src_build_reader)
+        self.old_src_build_reader_adapter = ReleaseNoteSrcBuildReaderAdapter(self.old_src_build_reader)
+        self.new_src_build_reader_adapter = ReleaseNoteSrcBuildReaderAdapter(self.new_src_build_reader)
 
         self.diff_stats_from_metadata_file = diff_stats_from_metadata_file
         self.addon_note = addon_note
@@ -258,14 +265,15 @@ class ReleaseNoteSource:
         return fields
 
     def diff_build_stats(self) -> dict:
-        old_stats = self.old_src_build_reader.build_stats
-        new_stats = self.new_src_build_reader.build_stats
+        # Read from the reader adapters, not the readers directly
+        old_stats = self.old_src_build_reader_adapter.build_stats
+        new_stats = self.new_src_build_reader_adapter.build_stats
 
         return self._make_stats_diff(old_stats, new_stats)
 
     def diff_datasource_info(self) -> dict:
-        old_info = self.old_datasource_info_reader.datasource_info
-        new_info = self.new_datasource_info_reader.datasource_info
+        old_info = self.old_src_build_reader_adapter.datasource_info
+        new_info = self.new_src_build_reader_adapter.datasource_info
 
         return self._make_stats_diff(old_info, new_info)
 

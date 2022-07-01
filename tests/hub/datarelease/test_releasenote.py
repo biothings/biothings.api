@@ -1,7 +1,7 @@
 from copy import deepcopy
 import pytest
 from pytest_mock import MockerFixture
-from biothings.hub.datarelease.releasenote import ReleaseNoteSrcBuildReader, ReleaseNoteDatasourceInfoReader, \
+from biothings.hub.datarelease.releasenote import ReleaseNoteSrcBuildReader, ReleaseNoteSrcBuildReaderAdapter, \
     ReleaseNoteSource, ReleaseNoteTxt
 
 
@@ -253,6 +253,13 @@ def old_cold_src_build_docs(cold_src_build_doc):
 def mock_get_source_fullname(mocker: MockerFixture):
     def mock_fn(col_name):
         source_fullname_map = {
+            # build stat names
+            "hg19": "hg19",
+            "vcf": "vcf",
+            "observed": "observed",
+            "total": "total",
+
+            # datasource names
             "cosmic": "cosmic",
             "geno2mp": "geno2mp",
             "clinvar_hg19": "clinvar.clinvar_hg19"
@@ -261,14 +268,14 @@ def mock_get_source_fullname(mocker: MockerFixture):
         if col_name in source_fullname_map:
             return source_fullname_map[col_name]
 
-        raise ValueError(f"behavior is not mocked when input col_name is f{col_name}.")
+        raise ValueError(f"behavior is not mocked when input col_name is {col_name}.")
 
     # should not be "biothings.utils.hub_db.get_source_fullname", nor "biothings.utils.sqlite3.get_source_fullname"
     return mocker.patch("biothings.hub.datarelease.releasenote.get_source_fullname", mock_fn)
 
 
 @pytest.mark.ReleaseNoteSrcBuildReader
-def test_reading_cold_src_build(cold_src_build_doc):
+def test_read_cold_src_build(cold_src_build_doc):
     cold_doc = cold_src_build_doc
     cold_reader = ReleaseNoteSrcBuildReader(cold_doc)
 
@@ -287,7 +294,7 @@ def test_reading_cold_src_build(cold_src_build_doc):
 
 
 @pytest.mark.ReleaseNoteSrcBuildReader
-def test_reading_hot_src_build(hot_src_build_doc, cold_src_build_doc):
+def test_read_hot_src_build(hot_src_build_doc, cold_src_build_doc):
     hot_doc = hot_src_build_doc
     hot_reader = ReleaseNoteSrcBuildReader(hot_doc)
 
@@ -310,20 +317,20 @@ def test_reading_hot_src_build(hot_src_build_doc, cold_src_build_doc):
     assert hot_reader.datasource_mapping == {**hot_doc["mapping"], **cold_doc["mapping"]}
 
 
-@pytest.mark.ReleaseNoteDatasourceInfoReader
-def test_reading_cold_datasource_info(mock_get_source_fullname, cold_src_build_doc):
+@pytest.mark.ReleaseNoteSrcBuildReaderAdapter
+def test_read_cold_datasource_info(mock_get_source_fullname, cold_src_build_doc):
     cold_doc = cold_src_build_doc
     cold_reader = ReleaseNoteSrcBuildReader(cold_doc)
-    datasource_info_reader = ReleaseNoteDatasourceInfoReader(cold_reader)
+    cold_adapter = ReleaseNoteSrcBuildReaderAdapter(cold_reader)
 
-    info = datasource_info_reader.datasource_info
+    info = cold_adapter.datasource_info
     assert len(info) == 1
     assert info["cosmic"] == {'_version': cold_doc["_meta"]["src"]["cosmic"]["version"],
                               '_count': cold_doc["merge_stats"]["cosmic"]}
 
 
-@pytest.mark.ReleaseNoteDatasourceInfoReader
-def test_reading_hot_datasource_info(mock_get_source_fullname, cold_src_build_doc, hot_src_build_doc):
+@pytest.mark.ReleaseNoteSrcBuildReaderAdapter
+def test_read_hot_datasource_info(mock_get_source_fullname, cold_src_build_doc, hot_src_build_doc):
     hot_doc = hot_src_build_doc
     cold_doc = cold_src_build_doc
 
@@ -331,9 +338,9 @@ def test_reading_hot_datasource_info(mock_get_source_fullname, cold_src_build_do
     cold_reader = ReleaseNoteSrcBuildReader(cold_doc)
     hot_reader.attach_cold_src_build_reader(cold_reader)
 
-    datasource_info_reader = ReleaseNoteDatasourceInfoReader(hot_reader)
+    hot_adapter = ReleaseNoteSrcBuildReaderAdapter(hot_reader)
 
-    info = datasource_info_reader.datasource_info
+    info = hot_adapter.datasource_info
     assert len(info) == 3
     assert info["geno2mp"] == {'_version': hot_doc["_meta"]["src"]["geno2mp"]["version"],
                                '_count': hot_doc["merge_stats"]["geno2mp"]}
@@ -341,6 +348,26 @@ def test_reading_hot_datasource_info(mock_get_source_fullname, cold_src_build_do
                               '_count': cold_doc["merge_stats"]["cosmic"]}
     assert info["clinvar"] == {'_version': hot_doc["_meta"]["src"]["clinvar"]["version"],
                                'clinvar_hg19': {'_count': hot_doc["merge_stats"]["clinvar_hg19"]}}
+
+
+@pytest.mark.ReleaseNoteSrcBuildReaderAdapter
+def test_read_hot_build_stats(mock_get_source_fullname, cold_src_build_doc, hot_src_build_doc):
+    hot_doc = hot_src_build_doc
+    cold_doc = cold_src_build_doc
+
+    hot_reader = ReleaseNoteSrcBuildReader(hot_doc)
+    cold_reader = ReleaseNoteSrcBuildReader(cold_doc)
+    hot_reader.attach_cold_src_build_reader(cold_reader)
+
+    hot_adapter = ReleaseNoteSrcBuildReaderAdapter(hot_reader)
+
+    stats = hot_adapter.build_stats
+
+    assert len(stats) == 4
+    assert stats["total"] == {'_count': hot_doc["_meta"]["stats"]["total"]}
+    assert stats["hg19"] == {'_count': hot_doc["_meta"]["stats"]["hg19"]}
+    assert stats["vcf"] == {'_count': hot_doc["_meta"]["stats"]["vcf"]}
+    assert stats["observed"] == {'_count': hot_doc["_meta"]["stats"]["observed"]}
 
 
 @pytest.fixture
@@ -383,10 +410,10 @@ def test_diff_build_stats(release_note_source):
     assert diff["deleted"] == {}
 
     assert len(diff["updated"]) == 2
-    assert diff["updated"]["total"] == {"new": new_doc["_meta"]["stats"]["total"],
-                                        "old": old_doc["_meta"]["stats"]["total"]}
-    assert diff["updated"]["observed"] == {"new": new_doc["_meta"]["stats"]["observed"],
-                                           "old": old_doc["_meta"]["stats"]["observed"]}
+    assert diff["updated"]["total"] == {"new": {"_count": new_doc["_meta"]["stats"]["total"]},
+                                        "old": {"_count": old_doc["_meta"]["stats"]["total"]}}
+    assert diff["updated"]["observed"] == {"new": {"_count": new_doc["_meta"]["stats"]["observed"]},
+                                           "old": {"_count": old_doc["_meta"]["stats"]["observed"]}}
 
 
 @pytest.mark.ReleaseNoteSource
