@@ -704,9 +704,12 @@ class ESIndexer():
                 err_msg = e.error
             raise IndexerException("Can't snapshot '%s': %s" % (self._index, err_msg))
 
-    def restore(self, repo_name, snapshot_name, index_name=None, alias_name=None, purge=False, body=None):
-        index_name = index_name or snapshot_name
-        alias_name = alias_name or snapshot_name
+    def restore(self, repo_name, snapshot_name, index_name=None, purge=False):
+        indices = self.get_indices_from_snapshots(repo_name, snapshot_name)
+        if not index_name:
+            index_name = indices[0]
+        indices = ",".join(indices)
+
         if purge:
             try:
                 self._es.indices.get(index=index_name)
@@ -718,7 +721,7 @@ class ESIndexer():
         try:
             # this is just about renaming index within snapshot to index_name
             body = {
-                "indices": alias_name,
+                "indices": indices,
                 "rename_replacement": index_name,
                 "ignore_unavailable": True,
                 "rename_pattern": "(.+)",
@@ -858,6 +861,28 @@ class ESIndexer():
             self._es.snapshot.create_repository(repo_name, settings)
         except TransportError as e:
             raise IndexerException("Can't create snapshot repository '%s': %s" % (repo_name, e))
+
+    def get_snapshots(self, repo_name, snapshot_name):
+        try:
+            snapshots = self._es.snapshot.get(repository=repo_name, snapshot=snapshot_name)
+            return [snapshot for snapshot in snapshots["snapshots"]]
+        except NotFoundError as ex:
+            message = str(ex)
+            if ex.error == "repository_missing_exception":
+                message = "Repository '%s' doesn't exist" % repo_name
+            if ex.error == "snapshot_missing_exception":
+                message = "Snapshot '%s' doesn't exist" % snapshot_name
+            raise IndexerException(message)
+
+    def get_indices_from_snapshots(self, repo_name, snapshot_name):
+        snapshots = self.get_snapshots(repo_name, snapshot_name)
+        indices = []
+        for snapshot in snapshots:
+            indices.extend([
+                index
+                for index in (snapshot.get("indices") or [])
+            ])
+        return indices
 
     def get_snapshot_status(self, repo, snapshot):
         return self._es.snapshot.status(repo, snapshot)

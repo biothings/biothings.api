@@ -269,7 +269,6 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                     repo_name,
                     snapshot_name,
                     index_name,
-                    alias_name=alias_name,
                     purge=self.__class__.AUTO_PURGE_INDEX))
         job.add_done_callback(partial(done_callback, step='restore'))
         await job
