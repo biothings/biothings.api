@@ -384,12 +384,14 @@ class BaseSourceManager(BaseManager):
             try:
                 src_m = importlib.import_module(src)
                 src_m = importlib.reload(src_m)
-            except ImportError:
+            except ImportError as ex:
+                logger.warning(ex)
                 try:
                     src_m = importlib.import_module("%s.%s" % (self.default_src_path, src))
-                except ImportError:
+                except ImportError as e:
                     msg = "Can't find module '%s', even in '%s'" % (src, self.default_src_path)
                     logger.error(msg)
+                    logger.warning(e)
                     raise UnknownResource(msg)
 
         elif isinstance(src, dict):
