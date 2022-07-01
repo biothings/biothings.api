@@ -1568,7 +1568,8 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         filepath = None
 
         def do():
-            changes = self.build_release_note(old, new, note=note)
+            release_note_source = self.build_release_note(old, new, note=note)
+            changes = release_note_source.to_dict()
 
             assert format == "txt", "Only 'txt' format supported for now"
 
@@ -1577,7 +1578,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
 
             filename = filename or "release_%s.%s" % (changes["new"]["_version"], format)
             filepath = os.path.join(release_folder, filename)
-            render = ReleaseNoteTxt(changes)
+            render = ReleaseNoteTxt(release_note_source)
             txt = render.save(filepath)
 
             filename = filename.replace(".%s" % format, ".json")
@@ -1638,7 +1639,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         job = asyncio.ensure_future(main(release_folder))
         return job
 
-    def build_release_note(self, old_colname, new_colname, note=None):
+    def build_release_note(self, old_colname, new_colname, note=None) -> ReleaseNoteSource:
         """
         Build a release note containing most significant changes between build names "old_colname" and "new_colname".
         An optional end note can be added to bring more specific information about the release.
@@ -1697,7 +1698,9 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         release_note_source = ReleaseNoteSource(old_src_build_reader, new_src_build_reader,
                                                 diff_stats_from_metadata_file=diff_stats, addon_note=note)
 
-        return release_note_source.to_dict()
+        changes = release_note_source.to_dict()
+        self.logger.debug(f"old_colname={old_colname}, new_colname={new_colname}, changes={changes}")
+        return release_note_source
 
     def release_info(self, env=None, remote=False):
         res = copy.deepcopy(self.release_config)
