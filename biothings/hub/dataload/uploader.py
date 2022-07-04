@@ -389,14 +389,15 @@ class BaseSourceUploader(object):
         return _doc
 
     def get_current_and_new_master(self):
-        new = self.generate_doc_src_master()
+        new = self.generate_doc_src_master() or {}
         dkey = {"_id": new["_id"]}
-        current = self.src_master.find_one(dkey)
-        return {
-            "kclass": f"{self.__class__.__module__}.{self.__class__.__name__}",
-            "current": current,
-            "new": new,
-        }
+        current = self.src_master.find_one(dkey) or {}
+        if current.get("src_meta") != new.get("src_meta"):
+            return {
+                "kclass": f"{self.__class__.__module__}.{self.__class__.__name__}",
+                "current": current.get("src_meta"),
+                "new": new.get("src_meta"),
+            }
 
     def update_master(self):
         _doc = self.generate_doc_src_master()
