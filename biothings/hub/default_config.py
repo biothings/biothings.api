@@ -259,6 +259,24 @@ STANDALONE_CONFIG = {
 # a standalone instance). Modify thorougly (ie. don't modify it)
 STANDALONE_VERSION = {"branch" : "standalone_v2", "commit": None, "date" : None}
 
+# This configuration used for autorelease feature,
+# which specifies when and how the backend should automatically install a release
+# the key is the source name,
+# the value can be a string that will be a croniter's schedule: Ref: https://pypi.python.org/pypi/croniter
+# or it can be a dict, which has a schedule and an extra item which will be passed to the install function.
+AUTO_RELEASE_CONFIG = None
+# AUTO_RELEASE_CONFIG = {
+#   "source_name": "*/1 * * * *",
+#   "source_name": {
+#     "schedule": "*/1 * * * *",
+#     "extra": {
+#         "force": True,
+#         "use_no_downtime_method": False,
+#     }
+#   },
+# }
+
+
 # Specific how many old indices should we keep, after restore a snapshot.
 # 0: delete all old index.
 # 1-10: keep recent n of old indices
