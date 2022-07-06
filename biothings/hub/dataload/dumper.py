@@ -293,7 +293,7 @@ class BaseDumper(object):
                 self.logger.warning("Found '%s'='%s' at root level, convert to new format" % (field, self.src_doc[field]))
                 self.src_doc.pop(field)
 
-        self.src_doc.update({
+        current_download_info = {
             '_id': self.src_name,
             'download': {
                 'release': release,
@@ -302,7 +302,18 @@ class BaseDumper(object):
                 'started_at': datetime.now().astimezone(),
                 'status': status
             }
-        })
+        }
+        # Update last success download time.
+        # If last time is success, we will get the started_at
+        # If failed, we will get the last_time instead
+        last_download_info = self.src_doc.get("download", {})
+        last_status = last_download_info.get("status")
+        current_download_info["download"]["last_time"] = last_download_info.get("last_time")
+        if last_status == "success":
+            current_download_info["download"]["last_time"] = last_download_info.get("started_at")
+
+        self.src_doc.update(current_download_info)
+
         # only register time when it's a final state
         if transient:
             self.src_doc["download"]["pid"] = os.getpid()

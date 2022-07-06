@@ -158,7 +158,9 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             if src and src.get("download"):
                 # Store the latest success dump time
                 if src["download"]["status"] == "success":
-                    src_meta.setdefault(src["_id"], {}).setdefault("download_date", src["download"]["started_at"])
+                    src_meta.setdefault(src["_id"], {})
+                    src_meta[src["_id"]]["last_download_date"] = src["download"].get("last_time")
+                    src_meta[src["_id"]].setdefault("download_date", src["download"]["started_at"])
 
             if src and src.get("upload"):
                 latest_upload_date = None
@@ -173,6 +175,7 @@ class SourceDocMongoBackend(SourceDocBackendBase):
                     if not latest_upload_date or latest_upload_date < job["started_at"]:
                         if job["status"] == "success":
                             latest_upload_date = job["started_at"]
+                            meta[job.get("step")]["last_upload_date"] = meta[job.get("step")].get("last_time")
                             meta[job.get("step")]["upload_date"] = latest_upload_date
                 # when more than 1 sub-sources, we can have different version in sub-sources
                 # (not normal) if one sub-source uploaded, then dumper downloaded a new version,

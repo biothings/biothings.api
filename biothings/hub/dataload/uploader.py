@@ -423,12 +423,23 @@ class BaseSourceUploader(object):
         # with arguments like 'init' and 'transient'...
         if status.endswith("ing"):
             # record some "in-progress" information
+
+            # Update last success upload time.
+            # If last time is success, we will get the started_at
+            # If failed, we will get the last_time instead
+            last_upload_info = self.src_doc.get(subkey, {}).get('jobs', {}).get(self.name, {})
+            last_status = last_upload_info.get('status')
+            last_time = last_upload_info.get('last_time')
+            if last_status == 'success':
+                last_time = last_upload_info.get('started_at')
+
             upload_info[
                 'step'] = self.name  # this is the actual collection name
             upload_info['temp_collection'] = self.temp_collection_name
             upload_info['pid'] = os.getpid()
             upload_info['logfile'] = self.logfile
             upload_info['started_at'] = datetime.datetime.now().astimezone()
+            upload_info['last_time'] = last_time
             self.src_dump.update_one({"_id": self.main_source},
                                      {"$set": {
                                          job_key: upload_info
