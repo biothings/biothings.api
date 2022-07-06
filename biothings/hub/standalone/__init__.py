@@ -185,9 +185,17 @@ class AutoHubFeature(object):
     def configure_auto_release(self, config):
         if hasattr(config, "AUTO_RELEASE_CONFIG"):
             if isinstance(config.AUTO_RELEASE_CONFIG, dict):
-                for src in config.AUTO_RELEASE_CONFIG:
+                for src, src_config in config.AUTO_RELEASE_CONFIG.items():
+                    schedule = src_config
+                    install_args = {
+                        "src_name": src
+                    }
+                    if isinstance(src_config, dict):
+                        schedule = src_config["schedule"]
+                        install_args.update(src_config.get("extra") or {})
+
                     self.logger.info("Scheduling auto release for %s.", src)
                     self.managers["job_manager"].submit(
-                        partial(self.install, src),
-                        config.AUTO_RELEASE_CONFIG[src]
+                        partial(self.install, **install_args),
+                        schedule,
                     )
