@@ -1,5 +1,5 @@
 *****************
-Developer's guide
+B. Developer's guide
 *****************
 
 This section provides both an overview and detailed information about **BioThings Studio**,
@@ -9,13 +9,13 @@ A complementary `tutorial <studio_tutorial.html>`_ is also available, explaining
 step-by-step, by building an API from a flat file.
 
 ========================
-What is BioThings Studio
+1. What is BioThings Studio
 ========================
 
 **BioThings Studio** is a pre-configured, ready-to-use application. At its core is **BioThings Hub**, the
 backend service behind all BioThings APIs.
 
-BioThings Hub: the backend service
+1.1. BioThings Hub: the backend service
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 **Hub** is responsible for maintaining data up-to-date, and
@@ -38,7 +38,7 @@ The final index along with the Tornado application represents the frontend that 
 different available clients, and is out of this document's scope.
 
 
-BioThings Studio
+1.2. BioThings Studio
 ^^^^^^^^^^^^^^^^
 
 The architecture and different software involved in this system can be quite intimidating. To help,
@@ -73,7 +73,7 @@ of these services:
   and get real-time notifications when processes are running. This interface is a good choice for third-party integration.
 
 
-Who should use BioThings Studio ?
+1.3. Who should use BioThings Studio ?
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 **BioThings Studio** can be used in different scenarios:
@@ -83,7 +83,7 @@ Who should use BioThings Studio ?
   learn how to configure all the sub-systems
 
 
-Filesystem overview
+1.4. Filesystem overview
 ^^^^^^^^^^^^^^^^^^^
 
 Several locations on the filesystem are important, when it comes to change default configuration or troubleshoot the application:
@@ -115,7 +115,7 @@ Several locations on the filesystem are important, when it comes to change defau
    Please refer to Docker documentation. It's also important to give enough permissions so the different services
    (MongoDB, ElasticSearch, NGNIX, BioThings Hub, ...) can actually write data on the docker host.
 
-Configuration files
+1.5. Configuration files
 ^^^^^^^^^^^^^^^^^^^
 
 **BioThings Hub** expects some configuration variables to be defined first, in order to properly work. In most **BioThings Studio**, a ``config_hub.py`` defines
@@ -139,7 +139,7 @@ Finally, a special (simple) dialect can be used while defining configuration par
 This process is used to expose **Hub** configuration through the UI, automatically providing documentation in the webapp without having to duplicate code, parameters and documentation.
 For more information, see class ``biothings.ConfigurationParser``, as well as existing configuration files in the different studios.
 
-Services check
+1.6. Services check
 ^^^^^^^^^^^^^^
 
 Let's enter the container to check everything is running fine. Services may take a while, up to 1 min, before fully started.
@@ -170,7 +170,7 @@ Specifically, BioThings Studio services' ports are: 7080, 7022 and 8080.
 
 
 ============================================
-Overview of BioThings Studio web application
+2. Overview of BioThings Studio web application
 ============================================
 
 **BioThings Studio** web application can simply be accessed using any browser pointing to port 8080. The home page
@@ -238,7 +238,7 @@ new API. On the right, we have different information about jobs and resources:
    Finally, a logo shows the websocket connection status (green power button means "connected", red plug means "not connected").
 
 =============
-Configuration
+3. Configuration
 =============
 
 By clicking on the cog icon in the bar on the right, **Hub** configuration can be accessed. The configuration parameters, documentation, sections are defined in python configuration files
@@ -275,13 +275,13 @@ Note each time a parameter is changed, **Hub** needs to be restarted, as shown o
 
 
 ===========================================
-Data plugin architecture and specifications
+4. Data plugin architecture and specifications
 ===========================================
 
 **BioThings Studio** allows to easily define and register datasources using *data plugins*. As of **BioThings Studio 0.2b**, there are two
 different types of data plugin.
 
-1. Manifest-based data plugins
+4.1. Manifest plugins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
  - a *manifest.json* file
@@ -422,21 +422,21 @@ take an filename as input, it should select the file(s) to parse.
    the ``release`` key; https://github.com/sirloon/FIRE will demonstrate the parallelization in the uploader section.
 
 
-2. "Advanced" data plugins
+4.2. Advanced plugins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-This type of plugins is more advanced in the sense that it's plain python code. They typically come from a code export of a manifest-based plugin. The resulting python code defines
+This type of plugins is more advanced in the sense that it's plain python code. They typically come from a code export of a manifest plugin. The resulting python code defines
 dumpers and uploaders as python class, inheriting from BioThings SDK components. These plugins can be written from scratch, they're "advanced" because they require more knowledge about
 BioThings SDK.
 
 In the root folder (local folder or remote git repository), a ``__init__.py`` is expected, and should
 contain imports for one dumper, and one or more uploaders.
 
-An example of advanced data plugin can be found at https://github.com/sirloon/mvcgi_advanced.git. It comes from "mvcgi" manifest-based plugin, where code was exported.
+An example of advanced data plugin can be found at https://github.com/sirloon/mvcgi_advanced.git. It comes from "mvcgi" manifest plugin, where code was exported.
 
 
 =========================
-Hooks and custom commands
+5. Hooks and custom commands
 =========================
 
 While it's possible to define custom commands for the Hub console by deriving class ``biothings.hub.HubServer``, there's also an easy way to enrich existing commands using **hooks**.
