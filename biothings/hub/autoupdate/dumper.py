@@ -114,6 +114,7 @@ class BiothingsDumper(HTTPDumper):
         [{
             'host': 'es6.mygene.info:9200', 
             'index': 'mygene_allspecies_20200823_ufkwdv79', 
+            'index_alias': 'mygene_allspecies', 
             'version': '20200906', 
             'count': 38729977
         }]
@@ -123,6 +124,7 @@ class BiothingsDumper(HTTPDumper):
             return {
                 "host": self.target_backend.target_esidxer.es_host,
                 "index": self.target_backend.target_name,
+                "index_alias": self.target_backend.target_alias,
                 "version": self.target_backend.version,
                 "count": cnt
             }

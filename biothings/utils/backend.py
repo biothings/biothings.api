@@ -249,6 +249,14 @@ class DocESBackend(DocBackendBase):
         return self.target_esidxer._index
 
     @property
+    def target_alias(self):
+        try:
+            alias_info = self.target_esidxer.get_alias(self.target_name) or {}
+            return list(alias_info[self.target_name]["aliases"].keys())[0]
+        except Exception:
+            return
+
+    @property
     def version(self):
         try:
             mapping = self.target_esidxer.get_mapping_meta()
