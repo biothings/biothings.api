@@ -104,9 +104,16 @@ class ConfigurationWrapper():
         if hasattr(self._module, "CONFIG_READONLY"):
             self._readonly = self._module.CONFIG_READONLY
 
+        # setup config.logger if not set yet
         logger = getattr(self._module, "logger", None)
-        if hasattr(self._module, "LOG_FOLDER") and not logger or isinstance(logger, ConfigurationDefault):
-            self._module.logger = setup_default_log("hub", self.LOG_FOLDER)
+        if not logger or isinstance(logger, ConfigurationDefault):
+            if hasattr(self._module, "LOG_FOLDER"):
+                self._module.logger = setup_default_log(
+                    getattr(self._module, "LOGGER_NAME", "hub"),
+                    self._module.LOG_FOLDER
+                )
+            else:
+                raise ConfigurationError('Missing required "LOG_FOLDER" setting')
 
     @property
     def modified(self):
