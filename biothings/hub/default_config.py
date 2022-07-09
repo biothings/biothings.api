@@ -108,7 +108,7 @@ ACTIVE_DATASOURCES = ConfigurationDefault(
         default=[],
         desc="List of package paths for active datasources")
 
-#* 3. Folders *# 
+#* 3. Folders *#
 # Path to a folder to store all downloaded files, logs, caches, etc...
 DATA_ARCHIVE_ROOT = ConfigurationError("Define path to folder which will contain all downloaded data, cache files, etc...")
 
@@ -148,8 +148,11 @@ LOG_FOLDER = ConfigurationDefault(
         default=ConfigurationValue("""os.path.join(DATA_ARCHIVE_ROOT,"logs")"""),
         desc="Define path to folder which will contain log files")
 
+# hub logger name
+LOGGER_NAME = "hub"
+
 logger = ConfigurationDefault(
-        default=logging,
+        default="""logging.getLogger(LOGGER_NAME)""",
         desc="Provide a default hub logger instance (use setup_default_log(name,log_folder)")
 
 #* 4. Index & Diff *#
@@ -179,7 +182,7 @@ SNAPSHOT_CONFIG = {}
 MAX_REPORTED_IDS = 1000
 # for diff updates, number of IDs randomly picked as examples when rendering the report
 MAX_RANDOMLY_PICKED = 10
-# size of a diff file when in memory (used when merged/reduced)                                                                                                                                      
+# size of a diff file when in memory (used when merged/reduced)
 MAX_DIFF_SIZE = 50 * 1024**2  # 50MiB (~1MiB on disk when compressed)
 
 
@@ -229,7 +232,7 @@ RELEASE_CONFIG = {
                                 }
                             ],
                         "diff" : [],
-                        }                    
+                        }
                     },
                 }
             }
@@ -241,21 +244,21 @@ RELEASE_CONFIG = {
 # releases.
 # Note: if data release name doesn't any key here, a _default will be
 # used (it must then exist, key = "_default")
-STANDALONE_CONFIG = { 
+STANDALONE_CONFIG = {
     # default config
     "_default": {
         "es_host" : "localhost:9200",
         "index" : "biothings_current",
-    },  
+    },
     ## custom definition
-    #"release_name" : { 
+    #"release_name" : {
     #    "es_host" : "anotherhost:9200",
     #    "index" : "specical_index_name",
-    #    }   
-}   
+    #    }
+}
 
 # Default targeted standalone version
-# (once published, data is fetched and deployed by what's called 
+# (once published, data is fetched and deployed by what's called
 # a standalone instance). Modify thorougly (ie. don't modify it)
 STANDALONE_VERSION = {"branch" : "standalone_v2", "commit": None, "date" : None}
 
@@ -286,7 +289,7 @@ RELEASE_KEEP_N_RECENT_INDICES = 0
 #* 6. Job Manager *#
 # How much memory hub is allowed to use:
 # "auto" will let hub decides (will use 50%-60% of available RAM)
-# while None won't put any limits. Number of bytes can also be 
+# while None won't put any limits. Number of bytes can also be
 # specified
 HUB_MAX_MEM_USAGE = None
 
@@ -300,7 +303,7 @@ MAX_SYNC_WORKERS = HUB_MAX_WORKERS
 # this shouldn't be 0 to make sure a job is pending and ready to be processed
 # at any time (avoiding job submission preparation) but also not a huge number
 # as any pending job will consume some memory).
-MAX_QUEUED_JOBS = os.cpu_count() * 4 
+MAX_QUEUED_JOBS = os.cpu_count() * 4
 
 #* 7. Hub Internals *#
 DATA_SRC_SERVER = ConfigurationError("Define hostname for source database")
@@ -366,7 +369,7 @@ HUB_DB_BACKEND = ConfigurationError("Define Hub DB connection")
 
 # Hub environment (like, prod, dev, ...)
 # Used to generate remote metadata file, like "latest.json", "versions.json"
-# If non-empty, this constant will be used to generate those url, as a prefix 
+# If non-empty, this constant will be used to generate those url, as a prefix
 # with "-" between. So, if "dev", we'll have "dev-latest.json", etc...
 # "" means production
 HUB_ENV = ""
