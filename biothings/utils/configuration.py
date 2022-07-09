@@ -104,16 +104,31 @@ class ConfigurationWrapper():
         if hasattr(self._module, "CONFIG_READONLY"):
             self._readonly = self._module.CONFIG_READONLY
 
+        # When config is readonly, or for readonly config keys,
+        # we do a one-time evaluation for those config values set to a ConfigurationDefault instance.
+        # This will save repeated code evaluation.
+        for attr in dir(self._module):
+            if attr == "logger":
+                continue             # config.logger will be handled specifically later
+            if isinstance(getattr(self._module, attr), ConfigurationDefault):
+                if self._readonly or self._annotations.get(attr, {}).get('readonly', False):
+                    setattr(self._module, attr, self.get_value_from_file(attr))
+
         # setup config.logger if not set yet
         logger = getattr(self._module, "logger", None)
         if not logger or isinstance(logger, ConfigurationDefault):
             if hasattr(self._module, "LOG_FOLDER"):
+                # set logger if LOG_FOLDER is set
                 self._module.logger = setup_default_log(
                     getattr(self._module, "LOGGER_NAME", "hub"),
                     self._module.LOG_FOLDER
                 )
+            elif isinstance(logger, ConfigurationDefault):
+                # set logger based on default value from default_config
+                self._module.logger = self.get_value_from_file("logger")
+                self._module.logger.warning('Missing "LOG_FOLDER" setting, default logger set to console only')
             else:
-                raise ConfigurationError('Missing required "LOG_FOLDER" setting')
+                raise ConfigurationError('Cannot set "config.logger", check "LOG_FOLDER" or "logger" setting')
 
     @property
     def modified(self):
