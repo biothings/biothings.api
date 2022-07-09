@@ -105,6 +105,10 @@ if os.environ.get("HUB_VERBOSE", "0") != "1":
     logging.getLogger("botocore").setLevel(logging.ERROR)
     logging.getLogger("boto3").setLevel(logging.ERROR)
     logging.getLogger("git").setLevel(logging.ERROR)
+    # these prevent debug output in iPython console
+    logging.getLogger("parso.python.diff").setLevel(logging.ERROR)
+    logging.getLogger("parso.cache").setLevel(logging.ERROR)
+
 
 def get_loop(max_workers=None):
     loop = asyncio.get_event_loop()
@@ -1671,7 +1675,7 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
             try:
                 outs = [out for out in self.shell.eval(line) if out]
 
-                # Prepend the standout out/err 
+                # Prepend the standout out/err
                 last_std_contents = self.shell.last_std_contents or {}
                 if "stdout" in last_std_contents:
                     outs.append(last_std_contents["stdout"])
