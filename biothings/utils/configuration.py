@@ -59,12 +59,14 @@ class ConfigurationDefault:
 # and not cached, because they may contain reference to the
 # current time, which is commonly used in hub operations.
 
+
 def is_jsonable(x):
     try:
         json.dumps(x)
         return True
     except (TypeError, OverflowError):
         return False
+
 
 class ConfigurationWrapper():
     """
@@ -302,6 +304,10 @@ class ConfigurationWrapper():
                     return (k, v.default)
             elif isinstance(v, ConfigurationValue):
                 return (k, v.get_value(k, self._module))
+            elif isinstance(v, ConfigurationError):
+                # default ConfigurationError value needs to be
+                # set in hub's config file
+                raise v
             else:
                 return (k, v)
 
@@ -430,6 +436,7 @@ def _parse_comments(default_conf_mod, conf_mod):
     except Exception:
         return dict.fromkeys(attrs, {})
 
+
 class MetaField():
     default = type(None)
 
@@ -446,11 +453,13 @@ class MetaField():
     def clear(self):
         self._value = self.default()
 
+
 class Text(MetaField):
 
     def feed(self, value):
         assert isinstance(value, str)
         self._value = value.strip() or None
+
 
 class Flag(MetaField):
     default = bool
@@ -458,6 +467,7 @@ class Flag(MetaField):
     def feed(self, value):
         if value:  # cannot unset a flag
             self._value = value
+
 
 class Paragraph(MetaField):
     default = list
@@ -491,8 +501,8 @@ class ConfigAttrMeta():
 
     def update(self, meta):
         assert isinstance(meta, ConfigAttrMeta)
-        for field, value in meta.asdict().items():
-            self.feed(field, value)
+        for _field, value in meta.asdict().items():
+            self.feed(_field, value)
 
     def asdict(self):
         confmod, self.confmod = self.confmod, MetaField()
@@ -500,7 +510,7 @@ class ConfigAttrMeta():
         result['confmod'] = confmod.value  # cannot pickle in asdict
         return result
 
-    ## ------------------------------------
+    # ------------------------------------
 
     def feed(self, field, value):
         if field and value is not None:
