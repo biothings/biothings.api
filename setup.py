@@ -104,7 +104,7 @@ setup(
     license="Apache License, Version 2.0",
     keywords="biology annotation web service client api",
     url=REPO_URL,
-    packages=find_packages(),
+    packages=find_packages(exclude=['tests']),
     package_data={'': ['*.html', '*.py.tpl']},
     include_package_data=True,
     scripts=list(glob.glob('biothings/bin/*')),
