@@ -1,3 +1,5 @@
+""" comment out the following code for now
+
 import os
 import logging
 from dummy_config import HUB_DB_BACKEND, DATA_HUB_DB_DATABASE
@@ -28,3 +30,4 @@ def pytest_sessionfinish(session):
         LOGGER.info(f"{db_folder} deleted.")
     else:
         LOGGER.info(f"{db_folder} not empty, kept as is.")
+"""
