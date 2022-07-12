@@ -272,21 +272,9 @@ class ConfigurationWrapper():
         if not self._db:  # without db, only support module params.
             raise AttributeError("Transient parameter requires DB setup.")
 
-        doc = None
-        retry = 0
-        while True and retry < 30:
-            try:
-                doc = self._db.find_one({"_id": name})
-                if not doc:
-                    raise AttributeError(name)
-                retry += 1
-                break
-            except AutoReconnect:
-                self._db.__database.close()
-                self._db = self._get_db_function()
-
+        doc = self._db.find_one({"_id": name})
         if not doc:
-            raise MaxRetryAutoReconnectException()
+            raise AttributeError(name)
 
         val = json.loads(doc["json"])
         return val
