@@ -1,4 +1,3 @@
-""" comment out the following code for now
 
 import os
 import logging
@@ -19,7 +18,8 @@ def pytest_sessionfinish(session):
     db_folder = HUB_DB_BACKEND.get("sqlite_db_folder", ".")
     db_filename = DATA_HUB_DB_DATABASE
     db_filepath = os.path.join(db_folder, db_filename)
-
+    if not os.path.exists(db_folder):
+        os.mkdir(db_folder)
     if os.path.exists(db_filepath):
         os.remove(db_filepath)
         LOGGER.info(f"{db_filepath} deleted.")
@@ -30,4 +30,3 @@ def pytest_sessionfinish(session):
         LOGGER.info(f"{db_folder} deleted.")
     else:
         LOGGER.info(f"{db_folder} not empty, kept as is.")
-"""
