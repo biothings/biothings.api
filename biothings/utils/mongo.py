@@ -128,7 +128,7 @@ class Database(HandleAutoReconnectMixin, PymongoDatabase):
         return self.list_collection_names(session=session, filter=_filter)
 
 
-class DatabaseClient(MongoClient, IDatabase):
+class DatabaseClient(HandleAutoReconnectMixin, MongoClient, IDatabase):
     def __getitem__(self, name):
         return Database(self, name)
 
