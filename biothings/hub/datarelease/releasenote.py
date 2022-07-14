@@ -1,4 +1,6 @@
-from __future__ import annotations  # for cyclic type hints
+# from __future__ import annotations  # for cyclic type hints
+# Use forward-references for compatible with python3.6
+# ref https://peps.python.org/pep-0484/#forward-references
 
 from biothings.utils.hub_db import get_source_fullname
 from biothings.utils.dataload import update_dict_recur
@@ -19,7 +21,7 @@ class ReleaseNoteSrcBuildReader:
 
         # If `self` is a "hot" src_build doc reader, it can refer to a "cold" reader to access the cold build info.
         # This works like a two-node linked list.
-        self.cold_src_build_reader: ReleaseNoteSrcBuildReader = None
+        self.cold_src_build_reader: 'ReleaseNoteSrcBuildReader' = None
 
     @property
     def build_id(self) -> str:
@@ -36,7 +38,7 @@ class ReleaseNoteSrcBuildReader:
     def has_cold_collection(self) -> bool:
         return self.cold_collection_name is not None
 
-    def attach_cold_src_build_reader(self, other: ReleaseNoteSrcBuildReader):
+    def attach_cold_src_build_reader(self, other: 'ReleaseNoteSrcBuildReader'):
         """
         Attach a cold src_build reader.
 
