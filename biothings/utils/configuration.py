@@ -59,12 +59,14 @@ class ConfigurationDefault:
 # and not cached, because they may contain reference to the
 # current time, which is commonly used in hub operations.
 
+
 def is_jsonable(x):
     try:
         json.dumps(x)
         return True
     except (TypeError, OverflowError):
         return False
+
 
 class ConfigurationWrapper():
     """
@@ -104,9 +106,31 @@ class ConfigurationWrapper():
         if hasattr(self._module, "CONFIG_READONLY"):
             self._readonly = self._module.CONFIG_READONLY
 
+        # When config is readonly, or for readonly config keys,
+        # we do a one-time evaluation for those config values set to a ConfigurationDefault instance.
+        # This will save repeated code evaluation.
+        for attr in dir(self._module):
+            if attr == "logger":
+                continue             # config.logger will be handled specifically later
+            if isinstance(getattr(self._module, attr), ConfigurationDefault):
+                if self._readonly or self._annotations.get(attr, {}).get('readonly', False):
+                    setattr(self._module, attr, self.get_value_from_file(attr))
+
+        # setup config.logger if not set yet
         logger = getattr(self._module, "logger", None)
-        if hasattr(self._module, "LOG_FOLDER") and not logger or isinstance(logger, ConfigurationDefault):
-            self._module.logger = setup_default_log("hub", self.LOG_FOLDER)
+        if not logger or isinstance(logger, ConfigurationDefault):
+            if hasattr(self._module, "LOG_FOLDER"):
+                # set logger if LOG_FOLDER is set
+                self._module.logger = setup_default_log(
+                    getattr(self._module, "LOGGER_NAME", "hub"),
+                    self._module.LOG_FOLDER
+                )
+            elif isinstance(logger, ConfigurationDefault):
+                # set logger based on default value from default_config
+                self._module.logger = self.get_value_from_file("logger")
+                self._module.logger.warning('Missing "LOG_FOLDER" setting, default logger set to console only')
+            else:
+                raise ConfigurationError('Cannot set "config.logger", check "LOG_FOLDER" or "logger" setting')
 
     @property
     def modified(self):
@@ -248,21 +272,9 @@ class ConfigurationWrapper():
         if not self._db:  # without db, only support module params.
             raise AttributeError("Transient parameter requires DB setup.")
 
-        doc = None
-        retry = 0
-        while True and retry < 30:
-            try:
-                doc = self._db.find_one({"_id": name})
-                if not doc:
-                    raise AttributeError(name)
-                retry += 1
-                break
-            except AutoReconnect:
-                self._db.__database.close()
-                self._db = self._get_db_function()
-
+        doc = self._db.find_one({"_id": name})
         if not doc:
-            raise MaxRetryAutoReconnectException()
+            raise AttributeError(name)
 
         val = json.loads(doc["json"])
         return val
@@ -280,6 +292,10 @@ class ConfigurationWrapper():
                     return (k, v.default)
             elif isinstance(v, ConfigurationValue):
                 return (k, v.get_value(k, self._module))
+            elif isinstance(v, ConfigurationError):
+                # default ConfigurationError value needs to be
+                # set in hub's config file
+                raise v
             else:
                 return (k, v)
 
@@ -408,6 +424,7 @@ def _parse_comments(default_conf_mod, conf_mod):
     except Exception:
         return dict.fromkeys(attrs, {})
 
+
 class MetaField():
     default = type(None)
 
@@ -424,11 +441,13 @@ class MetaField():
     def clear(self):
         self._value = self.default()
 
+
 class Text(MetaField):
 
     def feed(self, value):
         assert isinstance(value, str)
         self._value = value.strip() or None
+
 
 class Flag(MetaField):
     default = bool
@@ -436,6 +455,7 @@ class Flag(MetaField):
     def feed(self, value):
         if value:  # cannot unset a flag
             self._value = value
+
 
 class Paragraph(MetaField):
     default = list
@@ -469,8 +489,8 @@ class ConfigAttrMeta():
 
     def update(self, meta):
         assert isinstance(meta, ConfigAttrMeta)
-        for field, value in meta.asdict().items():
-            self.feed(field, value)
+        for _field, value in meta.asdict().items():
+            self.feed(_field, value)
 
     def asdict(self):
         confmod, self.confmod = self.confmod, MetaField()
@@ -478,7 +498,7 @@ class ConfigAttrMeta():
         result['confmod'] = confmod.value  # cannot pickle in asdict
         return result
 
-    ## ------------------------------------
+    # ------------------------------------
 
     def feed(self, field, value):
         if field and value is not None:

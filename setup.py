@@ -18,20 +18,20 @@ REPO_URL = "https://github.com/biothings/biothings.api"
 # version gets set to MAJOR.MINOR.# commits on master branch if installed from pip repo
 # otherwise to MAJOR.MINOR.MICRO as defined in biothings.version
 try:
-    num_commits = check_output("git rev-list --count master", shell=True).strip().decode('utf-8')
+    NUM_COMMITS = check_output("git rev-list --count master", shell=True).strip().decode('utf-8')
 except CalledProcessError:
-    num_commits = ''
+    NUM_COMMITS = ''
 
 # Calculate commit hash, should fail if installed from source or from pypi
 try:
-    commit_hash = check_output("git rev-parse HEAD", shell=True).strip().decode('utf-8')
+    COMMIT_HASH = check_output("git rev-parse HEAD", shell=True).strip().decode('utf-8')
 except CalledProcessError:
-    commit_hash = ''
+    COMMIT_HASH = ''
 
 # Write commit to file inside package, that can be read later
-if commit_hash or num_commits:
-    with open('biothings/.git-info', 'w') as git_file:
-        git_file.write("{}.git\n{}\n{}".format(REPO_URL, commit_hash, num_commits))
+if COMMIT_HASH or NUM_COMMITS:
+    with open('biothings/.git-info', 'w', encoding="utf-8") as git_file:
+        git_file.write(f"{REPO_URL}.git\n{COMMIT_HASH}\n{NUM_COMMITS}")
 
 
 # very minimal requirement for running biothings.web
@@ -39,7 +39,8 @@ install_requires = [
     'boto3',
     'requests>=2.21.0',
     'requests-aws4auth',
-    'tornado==6.1.0',
+    'tornado==6.1.0; python_version < "3.7.0"',
+    'tornado==6.2.0; python_version >= "3.7.0"',
     'gitpython>=3.1.0',
     'elasticsearch[async]>=7, <8',
     'elasticsearch-dsl>=7, <8',
@@ -61,7 +62,7 @@ hub_requires = [
     'beautifulsoup4',   # used in dumper.GoogleDriveDumper
     'aiocron==1.8',     # setup scheduled jobs
     'aiohttp==3.8.1',   # elasticsearch requires aiohttp>=3,<4
-    'asyncssh==2.5.0',  # needs libffi-dev installed (apt-get)
+    'asyncssh==2.11.0',  # needs libffi-dev installed (apt-get)
     'pymongo>=4.1.0,<5.0',  # support MongoDB 5.0 since v3.12.0
     'psutil',
     'jsonpointer',      # for utils.jsonpatch
@@ -103,7 +104,7 @@ setup(
     license="Apache License, Version 2.0",
     keywords="biology annotation web service client api",
     url=REPO_URL,
-    packages=find_packages(),
+    packages=find_packages(exclude=['tests']),
     package_data={'': ['*.html', '*.py.tpl']},
     include_package_data=True,
     scripts=list(glob.glob('biothings/bin/*')),

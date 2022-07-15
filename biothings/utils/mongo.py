@@ -1,4 +1,4 @@
-import time, logging, os, io, glob, datetime
+import time, logging, os, io, glob, datetime, inspect
 import dateutil.parser as dtparser
 from collections.abc import Iterable
 from functools import wraps
@@ -18,6 +18,41 @@ from biothings.utils.backend import DocESBackend, DocMongoBackend
 from biothings.utils.hub_db import IDatabase, ChangeWatcher
 # stub, until set to real config module
 config = None
+
+
+def handle_autoreconnect(cls_instance, func):
+    """This decorator will handle AutoReconnect error,
+    by wait for sometimes then retry.
+    If the error still happends after MAX_RETRY, it must be a connection-related problem.
+    We should stop retry and raise error.
+    """
+
+    MAX_RETRY = 30
+    SLEEP_TIME = 0.5  # seconds
+
+    def inner(*args, **kwargs):
+        retry = 0
+        while retry < MAX_RETRY:
+            try:
+                return func(*args, **kwargs)
+            except AutoReconnect as ex:
+                retry += 1
+                time.sleep(SLEEP_TIME)
+
+        raise MaxRetryAutoReconnectException()
+    return inner
+
+
+class HandleAutoReconnectMixin:
+    """This mixin will decor any non-hidden method with handle_autoreconnect decorator"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        for name, func in inspect.getmembers(self, inspect.ismethod):
+            if name.startswith("_"):
+                continue
+            setattr(self, name, handle_autoreconnect(self, func))
 
 
 class MaxRetryAutoReconnectException(AutoReconnect):
@@ -40,7 +75,7 @@ class DummyDatabase(dotdict):
         return DummyCollection()
 
 
-class Collection(PymongoCollection):
+class Collection(HandleAutoReconnectMixin, PymongoCollection):
     # https://pymongo.readthedocs.io/en/4.1.1/migrate-to-pymongo4.html
 
     def __bool__(self):
@@ -79,7 +114,7 @@ class Collection(PymongoCollection):
         return self.estimated_document_count(**kwargs)
 
 
-class Database(PymongoDatabase):
+class Database(HandleAutoReconnectMixin, PymongoDatabase):
     def __bool__(self):
         return self is not None
 
@@ -93,7 +128,7 @@ class Database(PymongoDatabase):
         return self.list_collection_names(session=session, filter=_filter)
 
 
-class DatabaseClient(MongoClient, IDatabase):
+class DatabaseClient(HandleAutoReconnectMixin, MongoClient, IDatabase):
     def __getitem__(self, name):
         return Database(self, name)
 

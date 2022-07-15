@@ -59,7 +59,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
     async def load(self, *args, **kwargs):
         return await super().load(steps=["data"], *args, **kwargs)
 
-    async def update_data(self, batch_size, job_manager):
+    async def update_data(self, batch_size, job_manager, **kwargs):
         """
         Look in data_folder and either restore a snapshot to ES
         or apply diff to current ES index
@@ -73,10 +73,12 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             open(os.path.join(self.data_folder, "%s.json" % release)))
         if build_meta["type"] == "full":
             res = await self.restore_snapshot(build_meta,
-                                                   job_manager=job_manager)
+                                                   job_manager=job_manager,
+                                                   **kwargs)
         elif build_meta["type"] == "incremental":
             res = await self.apply_diff(build_meta,
-                                             job_manager=job_manager)
+                                             job_manager=job_manager,
+                                             **kwargs)
         return res
 
     def get_snapshot_repository_config(self, build_meta):
@@ -267,7 +269,6 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                     repo_name,
                     snapshot_name,
                     index_name,
-                    alias_name=alias_name,
                     purge=self.__class__.AUTO_PURGE_INDEX))
         job.add_done_callback(partial(done_callback, step='restore'))
         await job

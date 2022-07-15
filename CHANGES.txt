@@ -1,38 +1,43 @@
 v0.11.0
     Added Authentication Mixin class for BioThings SDK Web.
     Added GitHub and ORCID Mixin class for BioThings SDK Web.
-    Support multiple uploaders data plugin https://github.com/biothings/biothings_docker/issues/8
-    docs: created a redirect for an old studio doc
-    Using ProcessPoolExecutor in set_default_executor https://github.com/biothings/biothings.api/issues/153
-    Upgrade aiocron to 1.6 https://github.com/biothings/biothings.api/issues/180
-    Upgrade to use sentry-sdk https://github.com/biothings/biothings.api/issues/204
+    Allow customize cache settings https://github.com/biothings/biothings.api/issues/206
+    Support exclude for "fields" parameter https://github.com/biothings/biothings.api/issues/195
+
+    Support Elasticsearch both 7 and 8
+    Support Python 3.9 and 3.10 and dropped Python 3.5 support
+        - Replaced use of yield in coroutine with preferred async/await
+        - Using ProcessPoolExecutor in set_default_executor https://github.com/biothings/biothings.api/issues/153
+        - Upgrade aiocron to 1.6 https://github.com/biothings/biothings.api/issues/180
+        - Upgrade to pymongo v4 https://github.com/biothings/biothings.api/issues/222
+        - Fixed an error when using python 3.9, 3.10: thread.isAlive was replaced by thread.is_alive: https://bugs.python.org/issue37804
+    Hub log improvements
+        - Grouped log files by builds https://github.com/newgene/biothings.api/pull/8
+        - Switch to use TimedRotatingFileHandler for hub log files https://github.com/biothings/biothings.api/issues/211
+        - Remove redundant and unused hub log file https://github.com/biothings/biothings.api/issues/210
     Implement full release installation without downtime https://github.com/biothings/biothings.api/issues/134
-    Switch to use TimedRotatingFileHandler for hub log files https://github.com/biothings/biothings.api/issues/211
-    Remove redundant and unused hub log file https://github.com/biothings/biothings.api/issues/210
+    Support multiple uploaders in data plugin https://github.com/biothings/biothings_docker/issues/8
+    Upgrade to use sentry-sdk https://github.com/biothings/biothings.api/issues/204
     Hub console improvements https://github.com/biothings/biothings.api/issues/216
     Create hub's default settings https://github.com/biothings/biothings.api/issues/217
     Refactor _parse_comments method logic https://github.com/biothings/biothings.api/issues/218
-    Upgrade to pymongo v4 https://github.com/biothings/biothings.api/issues/222
-    get_python_version in utils.version does not return the correct package list https://github.com/biothings/biothings.api/issues/224
-    Fixed an error when using python 3.9, 3.10: thread.isAlive was replaced by thread.is_alive: https://bugs.python.org/issue37804
 
-v0.10.1
-    Fixed multiple issues involving Elasticsearch 7 support on BioThings SDK Hub.
+    get_python_version in utils.version does not return the correct package list https://github.com/biothings/biothings.api/issues/224
     Fixed a few timezone display issues in BioThings SDK Hub.
     Correctly handles the situation when POST requests resulted in too many matches.
     BioThings SDK Hub Builders only wait on Uploaders of dependency sources
     Updated documentation and other minor fixes.
 
-v0.10.0
+v0.10.0 (2021/09/26)
     Separate "connections", "services", "applications" and "launcher" layers.
     Support MongoDB, SQLAlchemy-compatible SQLs and AWS OpenSearch query backend.
     Support Flask, and FastAPI web framework and WSGI and ASGI gateway interfaces.
     Generalize analytics reporting from traditional GA-Universal Analytics support.
 
-v0.9.1
+v0.9.1 (2021/03/10)
     Revise str -> list parsing for backward compatibility.
 
-v0.9.0
+v0.9.0 (2021/02/21)
     Add features to request argument parsing module.
     Support YAML content-type parsing in request body.
     Support batch query concurrency control.
@@ -70,7 +75,7 @@ v0.7.2 (2020/05/20)
     Add API root path trailing slash redirection.
 
 v0.7.1 (2020/05/19)
-    Improve metadata host info display under dev mode. 
+    Improve metadata host info display under dev mode.
 
 v0.7.0 (2020/05/19)
     Support application/json input.
@@ -84,7 +89,7 @@ v0.6.0 (2020/04/25):
     Add functionalities to create and publish data release (full & incremental)
 
 v0.5.0 (2019/12/02):
-    Support adding license url from datasource metadata. 
+    Support adding license url from datasource metadata.
     Improve concurrent performance with async elasticsearch transport client.
 
 v0.4.0 (2019/08/07):

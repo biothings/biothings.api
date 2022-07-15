@@ -65,7 +65,7 @@ class AutoHubFeature(object):
 
         return vurls
 
-    def install(self, src_name, version="latest", dry=False, force=False):
+    def install(self, src_name, version="latest", dry=False, force=False, use_no_downtime_method=True):
         """
         Update hub's data up to the given version (default is latest available),
         using full and incremental updates to get up to that given version (if possible).
@@ -95,7 +95,10 @@ class AutoHubFeature(object):
                     if res[0] is None:
                         # download ready, now install
                         logging.info("Updating backend to version '%s'", step_version)
-                        jobs = self.managers["upload_manager"].upload_src(src_name)
+                        jobs = self.managers["upload_manager"].upload_src(
+                            src_name,
+                            use_no_downtime_method=use_no_downtime_method,
+                        )
                         upload = asyncio.gather(*jobs)
                         res = await upload
 
@@ -182,9 +185,17 @@ class AutoHubFeature(object):
     def configure_auto_release(self, config):
         if hasattr(config, "AUTO_RELEASE_CONFIG"):
             if isinstance(config.AUTO_RELEASE_CONFIG, dict):
-                for src in config.AUTO_RELEASE_CONFIG:
+                for src, src_config in config.AUTO_RELEASE_CONFIG.items():
+                    schedule = src_config
+                    install_args = {
+                        "src_name": src
+                    }
+                    if isinstance(src_config, dict):
+                        schedule = src_config["schedule"]
+                        install_args.update(src_config.get("extra") or {})
+
                     self.logger.info("Scheduling auto release for %s.", src)
                     self.managers["job_manager"].submit(
-                        partial(self.install, src),
-                        config.AUTO_RELEASE_CONFIG[src]
+                        partial(self.install, **install_args),
+                        schedule,
                     )
