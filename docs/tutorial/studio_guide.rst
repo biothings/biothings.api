@@ -311,10 +311,46 @@ A manifest file is defined like this:
 	        "release" : "<path.to.module>:<function_name>"  # optional
 	        "schedule" : "0 12 * * *"  # optional
 	    },
-	    "uploader" : { # optional, a manifest is allowed to only have a "dumper" section
+	    "uploader" : { # optional
 	        "parser" : "<path.to.module>:<function_name>",
 	        "on_duplicates" : "ignore|error|merge" # optional, default to "error"
 	    }
+		]
+	}
+
+or with multiple uploader
+
+.. code:: bash
+
+	{
+        "version": "0.2",
+		"__metadata__" : { # optional
+	        "url" : "<datasource website/url>",
+	        "license_url" : "<url>",
+	        "licence" : "<license name>",
+            "author" : {
+                "name" : "<author name>",
+                "url" : "<link to github's author for instance>"
+            }
+	    },
+	    "requires" : ["lib==1.3","anotherlib"],
+	    "dumper" : {
+	        "data_url" : "<url>" # (or list of url: ["<url1>", "<url1>"]),
+	        "uncompress" : true|false, # optional, default to false
+	        "release" : "<path.to.module>:<function_name>"  # optional
+	        "schedule" : "0 12 * * *"  # optional
+	    },
+	    "uploaders" : [{ # optional
+	        "parser" : "<path.to.module>:<function_name_1>",
+	        "on_duplicates" : "ignore|error|merge" # optional, default to "error"
+	        },{
+	        "parser" : "<path.to.module>:<function_name_2>",
+	        "on_duplicates" : "ignore|error|merge" # optional, default to "error"
+	        },{
+	        "parser" : "<path.to.module>:<function_name_3>",
+	        "on_duplicates" : "ignore|error|merge" # optional, default to "error"
+	        }
+		]
 	}
 
 .. note:: it's possible to only have a dumper section, without any uploader specified. In that case, the data plugin will only download data and won't provide
@@ -351,6 +387,11 @@ A manifest file is defined like this:
     If none of those are available or satisfactory, a *release* section can be specified, and should point to a python module and a function name
     following this format: ``module:function_name``. Within this module, function has the following signature and should return the release, as a string.
     ``set_release`` is a reserved name and must not be used.
+
+    The example about *release* can be found at https://github.com/remoteeng00/FIRE.git
+
+    - In master branch, the manifest file does not contain *release* field, so you can see the "failed" when dump the data source.
+    - When you checkout to the version "v2" (https://github.com/remoteeng00/FIRE/tree/v2) then you can dump the data source.
 
 .. code:: python
 
@@ -417,16 +458,21 @@ take an filename as input, it should select the file(s) to parse.
             }
        }
 
+- If you want to use multiple uploader in you data plugin, you will need to use *uploaders* section, it's a list of above *uploader*.
+Please see https://github.com/remoteeng00/pharmgkb/tree/pharmgkb_v5 for a example about multiple uploader definition.
+
+.. note:: Please do not use both *uploaders* and *uploader* in your manifest file.
 
 .. note:: Please see https://github.com/sirloon/mvcgi for a simple plugin definition. https://github.com/sirloon/gwascatalog will show how to use
-   the ``release`` key; https://github.com/sirloon/FIRE will demonstrate the parallelization in the uploader section.
+   the ``release`` key; https://github.com/remoteeng00/FIRE will demonstrate the parallelization in the uploader section.
 
 
 4.2. Advanced plugins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-This type of plugins is more advanced in the sense that it's plain python code. They typically come from a code export of a manifest plugin. The resulting python code defines
-dumpers and uploaders as python class, inheriting from BioThings SDK components. These plugins can be written from scratch, they're "advanced" because they require more knowledge about
+This type of plugins is more advanced in the sense that it's plain python code. They typically come from a code export of a manifest plugin but has slightly different (Following the **A.5.2. Code export** section,
+the exported python code is placed in ``hub/dataload/sources/*`` folder, but advanced plugins are placed in the same folder with manifest plugins at ``config.DATA_PLUGIN_FOLDER``).
+The resulting python code defines dumpers and uploaders as python class, inheriting from BioThings SDK components. These plugins can be written from scratch, they're "advanced" because they require more knowledge about
 BioThings SDK.
 
 In the root folder (local folder or remote git repository), a ``__init__.py`` is expected, and should
