@@ -21,10 +21,16 @@ config = None
 
 
 def handle_autoreconnect(cls_instance, func):
-    """This decorator will handle AutoReconnect error,
-    by wait for sometimes then retry.
-    If the error still happends after MAX_RETRY, it must be a connection-related problem.
-    We should stop retry and raise error.
+    """After upgrading the pymongo package from 3.12 to 4.x,
+    the AutoReconnect: "connection pool paused" problem appears quite often.
+    It is not clear that the problem happens with our codebase, maybe a pymongo's problem.
+
+    This function is an attempt to handle the AutoReconnect exception, without modifying our codebase.
+    When the exception is raised, we just wait for some time, then retry.
+    If the error still happens after MAX_RETRY, it must be a connection-related problem.
+    We should stop retrying and raise error.
+
+    Ref: https://github.com/newgene/biothings.api/pull/40#issuecomment-1185334545
     """
 
     MAX_RETRY = 30
