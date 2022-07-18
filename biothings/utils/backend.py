@@ -45,6 +45,7 @@ class DocBackendBase(object):
            Final optimization or compacting can be done here as well.
         '''
 
+
 class DocMemoryBackend(DocBackendBase):
     name = 'memory'
 
@@ -81,6 +82,7 @@ class DocMemoryBackend(DocBackendBase):
         from biothings.utils.common import dump
         dump(self.target_dict, self.target_name + '.pyobj')
 
+
 class DocMongoBackend(DocBackendBase):
     name = 'mongo'
 
@@ -98,8 +100,8 @@ class DocMongoBackend(DocBackendBase):
         if not isinstance(other, DocMongoBackend):
             return False
         return self.target_name == other.target_name and \
-               self.target_collection.database.name == other.target_collection.database.name and \
-               self.target_collection.database.client.address == other.target_collection.database.client.address
+            self.target_collection.database.name == other.target_collection.database.name and \
+            self.target_collection.database.client.address == other.target_collection.database.client.address
 
     @property
     def target_name(self):
@@ -149,7 +151,7 @@ class DocMongoBackend(DocBackendBase):
         bulk = []
         for doc in docs:
             bulk.append(UpdateOne({'_id': doc["_id"]}, {"$set": doc}, upsert=upsert))
-        
+
         if bulk:
             result = self.target_collection.bulk_write(bulk)
             # if doc is the same, it'll be matched but not modified.
@@ -206,7 +208,7 @@ class DocMongoBackend(DocBackendBase):
         total_cnt = 0
         for i in range(0, len(ids), step):
             _ids = ids[i:i + step]
-            _cnt = self.target_collection.find({'_id': {'$in': _ids}}).count()
+            _cnt = self.target_collection.count_documents({'_id': {'$in': _ids}})
             total_cnt += _cnt
         return total_cnt
 
@@ -223,8 +225,10 @@ class DocMongoBackend(DocBackendBase):
             deleted += res.deleted_count
         return deleted
 
+
 # backward-compatible
 DocMongoDBBackend = DocMongoBackend
+
 
 class DocESBackend(DocBackendBase):
     name = 'es'
@@ -235,7 +239,7 @@ class DocESBackend(DocBackendBase):
             self._target_esidxer_provider = esidxer
             self._target_esidxer = None
         else:
-            _target_esidxer_provider = None
+            self._target_esidxer_provider = None
             self._target_esidxer = esidxer
 
     @property
@@ -330,6 +334,7 @@ class DocESBackend(DocBackendBase):
         if not options.es_index or not options.es_host or not options.es_doc_type:
             raise Exception("Cannot create backend class from options, ensure that es_index, es_host, and es_doc_type are set")
         return cls(ESIndexer(index=options.es_index, doc_type=options.es_doc_type, es_host=options.es_host))
+
 
 class DocBackendOptions(object):
     def __init__(self, cls, es_index=None, es_host=None, es_doc_type=None,
