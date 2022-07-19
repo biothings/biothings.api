@@ -11,6 +11,7 @@ import textwrap
 import pip  # noqa: F401
 import subprocess
 import copy
+import yaml
 from string import Template
 from yapf.yapflib import yapf_api
 
@@ -110,7 +111,9 @@ class ManifestBasedPluginLoader(BasePluginLoader):
     def can_load_plugin(self):
         plugin = self.get_plugin_obj()
         df = plugin["download"]["data_folder"]
-        if "manifest.json" in os.listdir(df) and os.path.exists(os.path.join(df,"manifest.json")):
+        if "manifest.json" in os.listdir(df) and os.path.exists(os.path.join(df, "manifest.json")):
+            return True
+        elif "manifest.yaml" in os.listdir(df) and os.path.exists(os.path.join(df, "manifest.yaml")):
             return True
         else:
             return False
@@ -120,10 +123,17 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         df = plugin["download"]["data_folder"]
         if os.path.exists(df):
             mf = os.path.join(df, "manifest.json")
+            mf_yaml = os.path.join(df, "manifest.yaml")
+            manifest = None
             if os.path.exists(mf):
+                self.logger.debug(f"Loading manifest: {mf}")
+                manifest = json.load(open(mf))
+            elif os.path.exists(mf_yaml):
+                self.logger.debug(f"Loading manifest: {mf_yaml}")
+                manifest = yaml.safe_load(open(mf_yaml))
+            if manifest:
                 try:
-                    self.logger.debug("Loading manifest: %s" % mf)
-                    self.interpret_manifest(mf)
+                    self.interpret_manifest(manifest, df)
                 except Exception as e:
                     self.invalidate_plugin("Error loading manifest: %s" %
                                            str(e))
@@ -420,8 +430,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             uploader_classes.append(uploader_class)
         return uploader_classes
 
-    def interpret_manifest(self, manifest_file):
-        manifest = json.load(open(manifest_file))
+    def interpret_manifest(self, manifest, data_plugin_folder):
         # start with requirements before importing anything
         if manifest.get("requires"):
             reqs = manifest["requires"]
@@ -434,8 +443,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         if manifest.get("dumper"):
             assisted_dumper_class = self.get_dumper_dynamic_class(
                 manifest["dumper"], manifest.get("__metadata__"))
-            assisted_dumper_class.DATA_PLUGIN_FOLDER = os.path.dirname(
-                manifest_file)
+            assisted_dumper_class.DATA_PLUGIN_FOLDER = data_plugin_folder
             self.__class__.dumper_manager.register_classes(
                 [assisted_dumper_class])
             # register class in module so it can be pickled easily
@@ -445,8 +453,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         if manifest.get("uploader"):
             assisted_uploader_class = self.get_uploader_dynamic_class(
                 manifest["uploader"], manifest.get("__metadata__"))
-            assisted_uploader_class.DATA_PLUGIN_FOLDER = os.path.dirname(
-                manifest_file)
+            assisted_uploader_class.DATA_PLUGIN_FOLDER = data_plugin_folder
             self.__class__.uploader_manager.register_classes(
                 [assisted_uploader_class])
             # register class in module so it can be pickled easily
@@ -454,13 +461,13 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 "AssistedUploader_%s" %
                 self.plugin_name] = assisted_uploader_class
         if manifest.get("uploaders"):
-            data_plugin_folder = os.path.dirname(manifest_file)
             assisted_uploader_classes = self.get_uploader_dynamic_classes(
                 manifest["uploaders"], manifest.get("__metadata__"),
                 data_plugin_folder
             )
             self.__class__.uploader_manager.register_classes(
                 assisted_uploader_classes)
+
 
 class AdvancedPluginLoader(BasePluginLoader):
 
