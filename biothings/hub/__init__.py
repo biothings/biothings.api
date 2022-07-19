@@ -1608,7 +1608,7 @@ class HubSSHServer(asyncssh.SSHServer):
     SHELL = None
 
     def session_requested(self):
-        return HubSSHServerSession(self.__class__.NAME, self.__class__.SHELL)
+        return HubSSHServerSession(self.__class__.NAME, self.__class__.SHELL, self._conn)
 
     def connection_made(self, connection):
         self._conn = connection
@@ -1642,10 +1642,11 @@ class HubSSHServer(asyncssh.SSHServer):
 
 
 class HubSSHServerSession(asyncssh.SSHServerSession):
-    def __init__(self, name, shell):
+    def __init__(self, name, shell, connection):
         self.name = name
         self.shell = shell
         self._input = ''
+        self._conn = connection
 
     def connection_made(self, chan):
         self._chan = chan
@@ -1698,6 +1699,9 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
     def eof_received(self):
         self._chan.write('Have a good one...\n')
         self._chan.exit(0)
+
+    def soft_eof_received(self):
+        return self.eof_received()
 
     def break_received(self, msec):
         # simulate CR
