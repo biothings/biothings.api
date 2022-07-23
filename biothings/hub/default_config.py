@@ -133,7 +133,9 @@ SKIP_UPLOADER_POLL = False
 DATA_ARCHIVE_ROOT = ConfigurationError("Define path to folder which will contain all downloaded data, cache files, etc...")
 
 # where to store info about processes launched by the hub
-RUN_DIR = './run'
+RUN_DIR = ConfigurationDefault(
+    default=ConfigurationValue("""set_default_folder(DATA_ARCHIVE_ROOT,"run")"""),
+    desc="Define path to folder which will store info about processes launched by the hub")
 
 # cached data (it None, caches won't be used at all)
 CACHE_FOLDER = ConfigurationDefault(
@@ -156,6 +158,14 @@ DIFF_PATH = ConfigurationDefault(
 RELEASE_PATH = ConfigurationDefault(
     default=ConfigurationValue("""set_default_folder(DATA_ARCHIVE_ROOT,"release")"""),
     desc="Define path to folder which will contain release files")
+
+
+# Define a folder to store uploaded files via biothings.hub.api.handlder.UploadHandler
+# It's enabled with "upload" feature for HubServer
+DATA_UPLOAD_FOLDER = ConfigurationDefault(
+    default=ConfigurationValue("""set_default_folder(DATA_ARCHIVE_ROOT,"dataupload")"""),
+    desc="Define path to folder which will store uploaded files via upload handler")
+
 
 # Root folder containing ElasticSearch backups, created
 # by snapshots with repo type "fs". This setting must match
@@ -435,7 +445,9 @@ CACHE_FORMAT = "xz"
 # other instances can use (production, standalones)
 BIOTHINGS_ROLE = "slave"
 
-# Additional optional settings avaiable if needed:
+####################################################
+# Additional optional settings avaiable if needed: #
+####################################################
 
 # Pass any optional tornado settings to tornado.httpserver.HTTPServer
 # see biothings.hub.api.start_api
