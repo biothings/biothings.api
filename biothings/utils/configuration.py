@@ -8,6 +8,8 @@ from collections import UserList, UserString, deque
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from importlib import import_module
+import os.path
+
 from pymongo.errors import AutoReconnect
 
 from biothings.utils.dataload import dict_traverse
@@ -66,6 +68,16 @@ def is_jsonable(x):
         return True
     except (TypeError, OverflowError):
         return False
+
+
+def set_default_folder(data_archive_root, sub_folder):
+    """set default sub folder based on data_archive_root"""
+
+    # trim off "datasources" to get the data_root folder, otherwise, use it as is.
+    # '/data/mydisease/datasources' --> '/data/mydisease/'
+    # "datasources" was reserved for downloaded data sources files
+    _data_root = data_archive_root[:-len("datasources")] if data_archive_root.endswith("datasources") else data_archive_root
+    return os.path.join(_data_root, sub_folder)
 
 
 class ConfigurationWrapper():

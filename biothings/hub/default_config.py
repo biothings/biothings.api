@@ -55,7 +55,7 @@ DATA_HUB_DB_DATABASE = ConfigurationDefault(
 or use a python statement:
 
 DIFF_PATH = ConfigurationDefault(
-        default=ConfigurationValue('os.path.join(DATA_ARCHIVE_ROOT,"diff")'),
+        default=ConfigurationValue('set_default_folder(DATA_ARCHIVE_ROOT,"diff")'),
         desc="Define path to folder which will contain output files from diff")
 ```
 
@@ -75,11 +75,13 @@ HUB_API_PORT = 7080
 """
 
 import importlib
-# logging is needed for evaluate default logger value
+# logging is needed for evaluating default logger value below
 import logging     # pylint: disable=unused-import      # noqa
 import os
 
 import biothings.utils.jsondiff
+# set_default_folder is needed for evaluating some default values below
+from biothings.utils.configuration import set_default_folder     # pylint: disable=unused-import      # noqa
 from biothings.utils.configuration import (
     ConfigurationDefault, ConfigurationValue, ConfigurationError
 )
@@ -134,7 +136,9 @@ DATA_ARCHIVE_ROOT = ConfigurationError("Define path to folder which will contain
 RUN_DIR = './run'
 
 # cached data (it None, caches won't be used at all)
-CACHE_FOLDER = None
+CACHE_FOLDER = ConfigurationDefault(
+    default=ConfigurationValue("""set_default_folder(DATA_ARCHIVE_ROOT,"cache")"""),
+    desc="Define path to folder which will contain cache files, set to None to disable")
 
 # Path to a folder to store all 3rd party parsers, dumpers, etc...
 DATA_PLUGIN_FOLDER = ConfigurationDefault(
@@ -144,13 +148,13 @@ DATA_PLUGIN_FOLDER = ConfigurationDefault(
 # Path to folder containing diff files
 # Usually inside DATA_ARCHIVE_ROOT
 DIFF_PATH = ConfigurationDefault(
-    default=ConfigurationValue("""os.path.join(DATA_ARCHIVE_ROOT,"diff")"""),
+    default=ConfigurationValue("""set_default_folder(DATA_ARCHIVE_ROOT,"diff")"""),
     desc="Define path to folder which will contain output files from diff")
 
 # Path to folder containing release note files
 # Usually inside DATA_ARCHIVE_ROOT
 RELEASE_PATH = ConfigurationDefault(
-    default=ConfigurationValue("""os.path.join(DATA_ARCHIVE_ROOT,"release")"""),
+    default=ConfigurationValue("""set_default_folder(DATA_ARCHIVE_ROOT,"release")"""),
     desc="Define path to folder which will contain release files")
 
 # Root folder containing ElasticSearch backups, created
@@ -158,12 +162,14 @@ RELEASE_PATH = ConfigurationDefault(
 # elasticsearch.yml value, param "path.repo"
 # If using "fs" type repository with post-step "archive",
 # this folder must have permissions set for user/group running the hub
-ES_BACKUPS_FOLDER = "/data/es_backups"
+ES_BACKUPS_FOLDER = ConfigurationDefault(
+    default=ConfigurationValue('set_default_folder(DATA_ARCHIVE_ROOT,"es_backups")'),
+    desc="Define path to folder which will contain containing ElasticSearch snapshot backups")
 
 # this dir must be created manually
 # Usually inside DATA_ARCHIVE_ROOT
 LOG_FOLDER = ConfigurationDefault(
-    default=ConfigurationValue("""os.path.join(DATA_ARCHIVE_ROOT,"logs")"""),
+    default=ConfigurationValue('set_default_folder(DATA_ARCHIVE_ROOT,"logs")'),
     desc="Define path to folder which will contain log files")
 
 # hub logger name
@@ -428,6 +434,15 @@ CACHE_FORMAT = "xz"
 # Role, when master, hub will publish data (updates, snapshot, etc...) that
 # other instances can use (production, standalones)
 BIOTHINGS_ROLE = "slave"
+
+# Additional optional settings avaiable if needed:
+
+# Pass any optional tornado settings to tornado.httpserver.HTTPServer
+# see biothings.hub.api.start_api
+#TORNADO_SETTINGS = {
+#    # max 10GiB upload
+#    "max_buffer_size" : 10*1024*1024*1024,
+#}
 
 # don't bother with elements order in a list when diffing,
 # mygene optmized uploaders can't produce different results
