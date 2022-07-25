@@ -8,7 +8,6 @@ from collections import UserList, UserString, deque
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from importlib import import_module
-from pymongo.errors import AutoReconnect
 
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.jsondiff import make as jsondiff
@@ -267,8 +266,6 @@ class ConfigurationWrapper():
             return res
 
     def get_value_from_db(self, name):
-        from biothings.utils.mongo import MaxRetryAutoReconnectException
-
         if not self._db:  # without db, only support module params.
             raise AttributeError("Transient parameter requires DB setup.")
 
