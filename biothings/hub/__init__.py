@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import copy
 import glob
+import json
 import logging
 import os
 import sys
@@ -9,15 +10,21 @@ import time
 import types
 from collections import OrderedDict
 from functools import partial
+from importlib import import_module
 from pprint import pformat
 from types import SimpleNamespace
 
 import aiocron
 import asyncssh
+
 from biothings.utils.common import get_random_string, get_timestamp
-from biothings.utils.configuration import *
+from biothings.utils.configuration import (ConfigurationError,
+                                           ConfigurationWrapper)
 from biothings.utils.document_generator import generate_command_documentations
+
 from . import default_config
+
+config = None  # a global variable. It should be set by calling the _config_for_app function
 
 
 def _config_for_app(config_mod=None):
@@ -187,7 +194,7 @@ class JobRenderer(object):
         else:
             return "%s.%s" % (m.__self__.__class__.__name__, m.__name__)
 
-    def render_lambda(self, l):
+    def render_lambda(self, l):  # noqa: E741
         return l.__name__
 
 
@@ -897,8 +904,9 @@ class HubServer(object):
         if self.ws_urls:
             return self.ws_urls
 
-        import biothings.hub.api.handlers.ws as ws
         import sockjs.tornado
+
+        import biothings.hub.api.handlers.ws as ws
         from biothings.utils.hub_db import ChangeWatcher
 
         # monitor change in database to report activity in webapp
@@ -1608,7 +1616,7 @@ class HubSSHServer(asyncssh.SSHServer):
     SHELL = None
 
     def session_requested(self):
-        return HubSSHServerSession(self.__class__.NAME, self.__class__.SHELL, self._conn)
+        return HubSSHServerSession(self.__class__.NAME, self.__class__.SHELL)
 
     def connection_made(self, connection):
         self._conn = connection
@@ -1642,11 +1650,10 @@ class HubSSHServer(asyncssh.SSHServer):
 
 
 class HubSSHServerSession(asyncssh.SSHServerSession):
-    def __init__(self, name, shell, connection):
+    def __init__(self, name, shell):
         self.name = name
         self.shell = shell
         self._input = ''
-        self._conn = connection
 
     def connection_made(self, chan):
         self._chan = chan
@@ -1701,6 +1708,10 @@ class HubSSHServerSession(asyncssh.SSHServerSession):
         self._chan.exit(0)
 
     def soft_eof_received(self):
+        # After upgrading asyncssh from 2.5.0 to 2.11.0 or higher,
+        # in order to handle the EOF signal when user trigger a CTRL+D,
+        # the asyncssh calls the soft_eof_received callback instead of eof_received.
+        # This method is simple added to support this change.
         return self.eof_received()
 
     def break_received(self, msec):
