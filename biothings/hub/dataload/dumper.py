@@ -1238,12 +1238,12 @@ class GitDumper(BaseDumper):
                 branch = self._get_default_branch()
                 cmd = ["git", "checkout", branch]
                 subprocess.check_call(cmd)
-                # then merge
-                cmd = ["git", "merge"]
-                subprocess.check_call(cmd)
-                # and then get the commit hash
-                out = subprocess.check_output(["git", "rev-parse", "HEAD"])
-                self.release = "HEAD (%s)" % out.decode().strip()
+            # then merge all remote changes to the current branch
+            cmd = ["git", "merge"]
+            subprocess.check_call(cmd)
+            # and then get the commit hash
+            out = subprocess.check_output(["git", "rev-parse",  "--short", "HEAD"])
+            self.release = f"{commit} {out.decode().strip()}"
         finally:
             os.chdir(old)
         pass
