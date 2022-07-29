@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from time import time
 
 from biothings.utils.common import merge, timesofar
@@ -63,8 +63,16 @@ class _TaskState():
     def _finished(self, _doc, _job):
         doc = self._col.find_one({'_id': self._id})
         job = doc["jobs"][-1]
+        t0 = job["step_started_at"]
 
-        t0 = job["step_started_at"].timestamp()
+        # New pymongo lib version changed the default configuration value of `tz_aware` to `False` instead of `True`.
+        # Because of that the datetime value read from mongodb was not including the timezone anymore.
+        # The solution is forcing the datetime value to include the UTC timezone when it is missing.
+        # Reference: https://pymongo.readthedocs.io/en/stable/migrate-to-pymongo4.html?highlight=datetime#tz-aware-defaults-to-false
+        if not t0.tzinfo:
+            t0 = t0.replace(tzinfo=timezone.utc)
+        t0 = t0.timestamp()
+
         job["time_in_s"] = round(time() - t0, 0)
         job["time"] = timesofar(t0)
 
