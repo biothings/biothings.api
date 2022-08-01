@@ -174,7 +174,6 @@ class ESResultFormatter(ResultFormatter):
         """
         options = dotdict(options)
         if isinstance(response, list):
-            max_total = 0
             count_by_queries = {}
 
             responses_ = []
@@ -186,7 +185,6 @@ class ESResultFormatter(ResultFormatter):
             responses = [self.transform(res, **options) for res in response]
             for tpl, res in zip(templates, responses):
                 total = res.get('total', {}).get('value') or 0
-                max_total += total
                 if tpl['query'] not in count_by_queries:
                     count_by_queries[tpl['query']] = 0
                 count_by_queries[tpl['query']] += total
@@ -210,6 +208,7 @@ class ESResultFormatter(ResultFormatter):
                         responses_.append(hit_)
             response_ = list(filter(None, responses_))
             if options.with_total:
+                max_total = max(count_by_queries.values())
                 response_ = {
                     'max_total': max_total,
                     'hits': response_,
