@@ -132,6 +132,13 @@ Some Python code formatters can be useful, but use them with caution. Double che
 * [black](https://github.com/python/black)
 * [yapf](https://github.com/google/yapf/)
 
+### Setup pre-commit
+
+After all above recommendations, we already setup [pre-commit](https://github.com/pre-commit/pre-commit) framework.
+You just need to install it on your local git repo:
+
+      pre-commit install
+
 ### Some useful references
 
 * [**requests** code style](http://python-requests.org//en/latest/dev/contributing/#kenneth-reitz-s-code-style)

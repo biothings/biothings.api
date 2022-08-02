@@ -19,7 +19,7 @@ from typing import Optional, Union, List, Generator, Tuple, Any, Dict, Callable,
 import orjson
 
 from biothings import config as btconfig
-from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY
+from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, renderer as job_renderer
 from biothings.hub.dataload.uploader import set_pending_to_upload
 from biothings.utils.common import timesofar, rmdashfr
 from biothings.utils.hub_db import get_src_dump
@@ -66,7 +66,7 @@ class BaseDumper(object):
         self.log_folder = log_folder or btconfig.LOG_FOLDER
         self.archive = archive or self.ARCHIVE
         self.to_dump = []
-        self.to_delete: List[Union[str, bytes,os.PathLike]] = []
+        self.to_delete: List[Union[str, bytes, os.PathLike]] = []
         """Populate with list of relative path of files to delete"""
         self.release = None
         self.t0 = time.time()
@@ -315,11 +315,11 @@ class BaseDumper(object):
         self.src_dump.save(self.src_doc)
 
     async def dump(self,
-             steps=None,
-             force=False,
-             job_manager=None,
-             check_only=False,
-             **kwargs):
+                   steps=None,
+                   force=False,
+                   job_manager=None,
+                   check_only=False,
+                   **kwargs):
         '''
         Dump (ie. download) resource as needed
         this should be called after instance creation
@@ -547,7 +547,6 @@ class FTPDumper(BaseDumper):
     FTP_PASSWD = ''
     FTP_TIMEOUT = 10 * 60.0  # we want dumper to timout if necessary
     BLOCK_SIZE: Optional[int] = None  # default is still kept at 8KB
-
 
     # TODO: should we add a __del__ to make sure to close ftp connection ?
     # ftplib has a context __enter__, but we don't use it that way ("with ...")
@@ -968,6 +967,7 @@ class DummyDumper(BaseDumper):
     (useful for datasources that can't be downloaded anymore
     but still need to be integrated, ie. fill src_dump, etc...)
     """
+
     def __init__(self, *args, **kwargs):
         # make sure we don't create empty directory each time it's launched
         # so create a non-archiving dumper
@@ -1002,6 +1002,7 @@ class ManualDumper(BaseDumper):
     Once downloaded, a call to dump() will make sure everything is fine in terms of
     files and metadata
     '''
+
     def __init__(self, *args, **kwargs):
         super(ManualDumper, self).__init__(*args, **kwargs)
         # overide @property, it'll be set manually in this case (ie. not dynamically generated)
@@ -1033,11 +1034,11 @@ class ManualDumper(BaseDumper):
             "Manual dumper, assuming data will be downloaded manually")
 
     async def dump(self,
-             path,
-             release=None,
-             force=False,
-             job_manager=None,
-             **kwargs):
+                   path,
+                   release=None,
+                   force=False,
+                   job_manager=None,
+                   **kwargs):
         if os.path.isabs(path):
             self.new_data_folder = path
         elif path:
@@ -1207,14 +1208,13 @@ class GitDumper(BaseDumper):
         # Case 4, use 'master' for compatibility reasons
         return 'master'
 
-
     def _clone(self, repourl, localdir):
         self.logger.info("git clone '%s' into '%s'" % (repourl, localdir))
         subprocess.check_call(["git", "clone", repourl, localdir])
 
     def _pull(self, localdir, commit):
         # fetch+merge
-        self.logger.info("git pull data (commit %s) into '%s'" % (commit,localdir))
+        self.logger.info("git pull data (commit %s) into '%s'" % (commit, localdir))
         old = os.path.abspath(os.curdir)
         try:
             os.chdir(localdir)
@@ -1329,8 +1329,8 @@ class DumperManager(BaseSourceManager):
         # skip those deriving from bt.h.autoupdate.dumper.BiothingsDumper, they're used for autohub
         # and considered internal (note: only one dumper per source, so [0])
         from biothings.hub.autoupdate.dumper import BiothingsDumper
-        registered = sorted([src for src,klasses in self.register.items() if not src.startswith("__") and
-                             not issubclass(klasses[0],BiothingsDumper)])
+        registered = sorted([src for src, klasses in self.register.items() if not src.startswith("__")
+                             and not issubclass(klasses[0], BiothingsDumper)])
         return registered
 
     def __repr__(self):
@@ -1472,6 +1472,21 @@ class DumperManager(BaseSourceManager):
                             pprint.pformat(errors))
             return errors
 
+    def get_schedule(self, dumper_name):
+        '''Return the corresponding schedule for dumper_name
+        Example result's format: [0 9 * * *] {run in 15h:20m:33s}
+        '''
+        info = None
+        for sch in self.job_manager.loop._scheduled:
+            if not isinstance(sch, asyncio.TimerHandle):
+                continue
+            if sch._cancelled:
+                continue
+            if sch._callback and dumper_name in str(sch._callback):
+                info = job_renderer.render_only_cron_and_strdelta(sch)
+                break
+        return info
+
     def source_info(self, source=None):
         src_dump = get_src_dump()
         src_ids = self.get_source_ids()
@@ -1488,11 +1503,20 @@ class DumperManager(BaseSourceManager):
             ) == 1, "Found more than one dumper for source '%s': %s" % (
                 _id, self.register[_id])
             dumper = self.register[_id][0]
+            name = "%s.%s" % (inspect.getmodule(dumper).__name__, dumper.__name__)
+            bases = [
+                "%s.%s" % (inspect.getmodule(k).__name__, k.__name__)
+                for k in dumper.__bases__
+                if inspect.getmodule(k)
+            ]
+            schedule = self.get_schedule(name)
             src.setdefault("download", {})
-            src["download"]["dumper"] = {"name": "%s.%s" % (inspect.getmodule(dumper).__name__, dumper.__name__),
-                                         "bases": ["%s.%s" % (inspect.getmodule(k).__name__, k.__name__) for k in dumper.__bases__
-                                                   if inspect.getmodule(k)],
-                                         "manual": issubclass(dumper, ManualDumper)}
+            src["download"]["dumper"] = {
+                "name": name,
+                "bases": bases,
+                "schedule": schedule,
+                "manual": issubclass(dumper, ManualDumper)
+            }
             src["name"] = _id
             src["_id"] = _id
             res.append(src)
@@ -1719,7 +1743,7 @@ def _run_api_and_store_to_disk(
             will be written in the given directory.
     """
     pid = os.getpid()
-    ppid = os.getppid()  # TODO: check parent process
+    ppid = os.getppid()  # TODO: check parent process  # noqa: F841
     if not os.path.isabs(working_directory):
         raise ValueError(
             f"desired working_directory {working_directory}"
