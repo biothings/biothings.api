@@ -176,7 +176,9 @@ class ESResultFormatter(ResultFormatter):
         if isinstance(response, list):
             max_total = 0
             count_query_exceed_max_size = 0
-            max_size = options.size or 1000
+            # If options.set isn't set, the default number of hits returned by the ES is 10.
+            # Ref: https://www.elastic.co/guide/en/elasticsearch/reference/current/search-multi-search.html#search-multi-search-api-request-body  # noqa: F501
+            max_size = options.size or 10
 
             responses_ = []
             options.pop('one', None)  # ignore
