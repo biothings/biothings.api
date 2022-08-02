@@ -1,8 +1,10 @@
 v0.11.0
-    Added Authentication Mixin class for BioThings SDK Web.
-    Added GitHub and ORCID Mixin class for BioThings SDK Web.
-    Allow customize cache settings https://github.com/biothings/biothings.api/issues/206
-    Support exclude for "fields" parameter https://github.com/biothings/biothings.api/issues/195
+    biothings.web improvements
+        - Added Authentication Mixin class for BioThings SDK Web.
+        - Added GitHub and ORCID Mixin class for BioThings SDK Web.
+        - Allow customize cache settings https://github.com/biothings/biothings.api/issues/206
+        - Support exclude for "fields" parameter https://github.com/biothings/biothings.api/issues/195
+        - Upgrade to use sentry-sdk https://github.com/biothings/biothings.api/issues/204
 
     Support Elasticsearch both 7 and 8
     Support Python 3.9 and 3.10 and dropped Python 3.5 support
@@ -15,14 +17,20 @@ v0.11.0
         - Grouped log files by builds https://github.com/newgene/biothings.api/pull/8
         - Switch to use TimedRotatingFileHandler for hub log files https://github.com/biothings/biothings.api/issues/211
         - Remove redundant and unused hub log file https://github.com/biothings/biothings.api/issues/210
-    Implement full release installation without downtime https://github.com/biothings/biothings.api/issues/134
-    Support multiple uploaders in data plugin https://github.com/biothings/biothings_docker/issues/8
-    Upgrade to use sentry-sdk https://github.com/biothings/biothings.api/issues/204
-    Hub console improvements https://github.com/biothings/biothings.api/issues/216
-    Create hub's default settings https://github.com/biothings/biothings.api/issues/217
-    Refactor _parse_comments method logic https://github.com/biothings/biothings.api/issues/218
+    Data plugin improvements
+        - Support multiple uploaders in data plugin https://github.com/biothings/biothings_docker/issues/8
+        - Allow YAML-based manifest file (manifest.yaml) in a data plugin https://github.com/biothings/biothings.api/issues/245
+    Hub improvements
+        - Implement full release installation without downtime https://github.com/biothings/biothings.api/issues/134
+        - Hub console improvements https://github.com/biothings/biothings.api/issues/216
+        - Create hub's default settings https://github.com/biothings/biothings.api/issues/217
+        - Refactor _parse_comments method logic https://github.com/biothings/biothings.api/issues/218
 
     get_python_version in utils.version does not return the correct package list https://github.com/biothings/biothings.api/issues/224
+    Fixed "UserWarning: MongoClient opened before fork" in hub logs https://github.com/biothings/biothings.api/issues/247
+
+v0.10.1 (not publically released)
+    Fixed multiple issues involving Elasticsearch 7 support on BioThings SDK Hub.
     Fixed a few timezone display issues in BioThings SDK Hub.
     Correctly handles the situation when POST requests resulted in too many matches.
     BioThings SDK Hub Builders only wait on Uploaders of dependency sources
