@@ -128,6 +128,7 @@ QUERY_KWARGS = {
         'scopes': {'type': list, 'default': ['_id'], 'max': 1000},
         'from': {'type': int, 'max': 10000, 'alias': 'skip'},
         'sort': {'type': list, 'max': 10},
+        'with_total': {'type': bool},
     }
 }
 
