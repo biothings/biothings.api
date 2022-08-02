@@ -174,7 +174,9 @@ class ESResultFormatter(ResultFormatter):
         """
         options = dotdict(options)
         if isinstance(response, list):
-            count_by_queries = {}
+            max_total = 0
+            count_query_exceed_max_size = 0
+            max_size = options.size or 1000
 
             responses_ = []
             options.pop('one', None)  # ignore
@@ -184,10 +186,12 @@ class ESResultFormatter(ResultFormatter):
             template_miss = options.pop('template_miss', dict(found=False))
             responses = [self.transform(res, **options) for res in response]
             for tpl, res in zip(templates, responses):
-                total = res.get('total', {}).get('value') or 0
-                if tpl['query'] not in count_by_queries:
-                    count_by_queries[tpl['query']] = 0
-                count_by_queries[tpl['query']] += total
+                if options.with_total:
+                    total = res.get('total', {}).get('value') or 0
+                    if total > max_total:
+                        max_total = total
+                    if total > max_size:
+                        count_query_exceed_max_size += 1
 
                 for _res in res if isinstance(res, list) else [res]:
                     assert isinstance(_res, dict)
@@ -207,22 +211,19 @@ class ESResultFormatter(ResultFormatter):
                         hit_.update(hit)
                         responses_.append(hit_)
             response_ = list(filter(None, responses_))
+
             if options.with_total:
-                max_total = max(count_by_queries.values())
                 response_ = {
                     'max_total': max_total,
                     'hits': response_,
                 }
-                max_size = options.size or 1000
-                count_query_exceed_max_size = len([
-                    query for query, count in count_by_queries.items() if count >= max_size
-                ])
                 if count_query_exceed_max_size > 0:
-                    _from = (options['from'] or 0) + max_size
+                    _from = (options.get('from') or 0) + max_size
                     response_['msg'] = (
                         f'{count_query_exceed_max_size} query terms return > {max_size} hits, '
                         f'using from={_from} to retrieve the remaining hits'
                     )
+
             return response_
 
         if isinstance(response, dict):
