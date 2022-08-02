@@ -165,14 +165,7 @@ class JobRenderer(object):
     def render(self, job):
         r = self.rendered.get(type(job._callback))
         rstr = r(job._callback)
-        delta = job._when - job._loop.time()
-        days = None
-        if delta > 86400:
-            days = int(delta / 86400)
-            delta = delta - 86400
-        strdelta = time.strftime("%Hh:%Mm:%Ss", time.gmtime(int(delta)))
-        if days:
-            strdelta = "%d day(s) %s" % (days, strdelta)
+        strdelta = self.render_strdelta(job)
         return "%s {run in %s}" % (rstr, strdelta)
 
     def render_partial(self, p):
@@ -196,6 +189,22 @@ class JobRenderer(object):
 
     def render_lambda(self, l):  # noqa: E741
         return l.__name__
+
+    def render_strdelta(self, job):
+        delta = job._when - job._loop.time()
+        days = None
+        if delta > 86400:
+            days = int(delta / 86400)
+            delta = delta - 86400
+        strdelta = time.strftime("%Hh:%Mm:%Ss", time.gmtime(int(delta)))
+        if days:
+            strdelta = "%d day(s) %s" % (days, strdelta)
+        return strdelta
+
+    def render_only_cron_and_strdelta(self, job):
+        cron_info = "[%s]" % job._callback.__self__.spec
+        strdelta = self.render_strdelta(job)
+        return "%s {run in %s}" % (cron_info, strdelta)
 
 
 renderer = JobRenderer()
