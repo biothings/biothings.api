@@ -110,6 +110,7 @@ setup(
     scripts=list(glob.glob('biothings/bin/*')),
     long_description=read('README.md'),
     long_description_content_type='text/markdown',
+    python_requires=">=3.6",
     classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
