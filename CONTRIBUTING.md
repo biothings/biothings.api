@@ -90,7 +90,7 @@ Fix the styling issue before you push the code to the github.
 You can use this as your [flake8](http://flake8.pycqa.org) [config file](http://flake8.pycqa.org/en/latest/user/configuration.html):
 
     [flake8]
-    ignore=E226,E265,E302,E402,E731,F821,W503
+    # ignore=E226,E265,E302,E402,E731,F821,W503
     max-line-length=160
 
 There are project-level [flake8](http://flake8.pycqa.org) settings provided in this top-level [setup.cfg](setup.cfg) file, so you can just run `flake8 <your file>` to check your code, or explicitly `flake8 --config ./setup.cfg <your file>`.
@@ -99,7 +99,7 @@ In VSCode, you can add this to settings.json:
 
     "python.linting.flake8Args": [
         "--max-line-length=160",
-        "--ignore=E226,E265,E302,E402,E731,F821,W503"
+        //"--ignore=E226,E265,E302,E402,E731,F821,W503"
             //E226  Missing whitespace around arithmetic operator
             //E265  block comment should start with '# '
             //E302  Expected 2 blank lines, found 0
@@ -108,6 +108,8 @@ In VSCode, you can add this to settings.json:
             //F821  Undefined name name
             //W503  Line break occurred before a binary operator
     ],
+
+The above configuration includes an example of ignoring certain errors or warnings. You may include them if needed, but we recommend to [ignore specific errors/warnings at the specific code](https://flake8.pycqa.org/en/3.1.1/user/ignoring-errors.html#in-line-ignoring-errors) instead.
 
 ### Other recommended but not required style checks
 
@@ -129,6 +131,7 @@ You can always do extra checks on your code before commits. Some checkers may gi
 
 Some Python code formatters can be useful, but use them with caution. Double check the converted code to make sure you don't break your own code.
 
+* [fourmat](https://github.com/4Catalyzer/fourmat):  Flake8 + Black + isort = ❤️
 * [black](https://github.com/python/black)
 * [yapf](https://github.com/google/yapf/)
 
@@ -141,6 +144,7 @@ You just need to install it on your local git repo:
 
 ### Some useful references
 
-* [**requests** code style](http://python-requests.org//en/latest/dev/contributing/#kenneth-reitz-s-code-style)
 * [The list of Flake8 rules](https://lintlyci.github.io/Flake8Rules/)
+* [The Black code style](https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html)
+* [**requests** code style](http://python-requests.org//en/latest/dev/contributing/#kenneth-reitz-s-code-style)
 * [Google's Python code style guide](http://flake8.pycqa.org/en/latest/)
