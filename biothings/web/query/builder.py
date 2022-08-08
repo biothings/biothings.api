@@ -25,10 +25,10 @@
         sort: str, customized sort keys for result list
 
         aggs: str, customized aggregation string.
+        post_filter: str, when provided, the search hits are filtered after the aggregations are calculated.
         facet_size: int, maximum number of agg results.
 
 """
-import orjson
 import logging
 import os
 import re
@@ -36,9 +36,11 @@ from collections import UserString, namedtuple
 from copy import deepcopy
 from random import randrange
 
-from biothings.utils.common import dotdict
+import orjson
 from elasticsearch_dsl import MultiSearch, Q, Search
 from elasticsearch_dsl.exceptions import IllegalOperation
+
+from biothings.utils.common import dotdict
 
 
 class RawQueryInterrupt(Exception):
@@ -50,12 +52,14 @@ class RawQueryInterrupt(Exception):
 Query = namedtuple('Query', ('term', 'scopes'))
 Group = namedtuple('Group', ('term', 'scopes'))
 
-class QStringParser:
 
+class QStringParser:
     def __init__(
-            self, default_scopes=("_id", ),
-            patterns=((r"(?P<scope>\w+):(?P<term>[^:]+)", ()),),
-            gpnames=('term', 'scope')):
+        self,
+        default_scopes=("_id",),
+        patterns=((r"(?P<scope>\w+):(?P<term>[^:]+)", ()),),
+        gpnames=('term', 'scope'),
+    ):
         assert isinstance(default_scopes, (tuple, list))
         assert all(isinstance(field, str) for field in default_scopes)
         self.default = default_scopes  # ["_id", "entrezgene", "ensembl.gene"]
@@ -81,45 +85,49 @@ class QStringParser:
                 return Query(q, fields)
         return Query(q, self.default)
 
+
 class ESScrollID(UserString):
     def __init__(self, seq: object):
         super().__init__(seq)
         # scroll id cannot be empty
         assert self.data
 
+
 #
 #             ES Query Builder Architecture
-#-------------------------------------------------------
+# -------------------------------------------------------
 #                         build
 #                 (support multisearch)
-#--------------------------↓↓↓--------------------------
+# --------------------------↓↓↓--------------------------
 #                        _build_one
 #  (dispatch basing on scopes, then apply_extras(..))
-#------------↓↓↓------------------------↓↓↓-------------
+# ------------↓↓↓------------------------↓↓↓-------------
 #    _build_string_query    |  _build_match_query
 #  (__all__, userquery,..)  | (compound match query)
-#------------↓↓↓------------------------↓↓↓-------------
+# ------------↓↓↓------------------------↓↓↓-------------
 #    default_string_query   |   default_match_query
 #  (map to ES query string) | (map to ES match query)
-#-------------------------------------------------------
+# -------------------------------------------------------
 
 
-class ESQueryBuilder():
+class ESQueryBuilder:
     """
     Build an Elasticsearch query with elasticsearch-dsl.
     """
+
     # Different from other query pipelines, elasticsearch
     # supports querystring query, which means we can directly
     # dispatch queires without fields to querystring query,
     # and those with fields specified to typical match queries.
 
     def __init__(
-        self, user_query=None,  # like a prepared statement in SQL
+        self,
+        user_query=None,  # like a prepared statement in SQL
         scopes_regexs=(),  # inference used when encountering empty scopes
         scopes_default=('_id',),  # fallback used when scope inference fails
         allow_random_query=True,  # used for data exploration, can be expensive
         allow_nested_query=False,  # nested aggregation can be expensive
-        metadata=None  # access to data like total number of documents
+        metadata=None,  # access to data like total number of documents
     ):
         # for autoscope feature, to infer scope from q when enabled
         self.parser = QStringParser(scopes_default, scopes_regexs)
@@ -200,10 +208,10 @@ class ESQueryBuilder():
         return search
 
     def _build_string_query(self, q, options):
-        """ q + options -> query object
+        """q + options -> query object
 
-            options:
-                userquery
+        options:
+            userquery
         """
         search = Search()
         userquery = options.userquery or ''
@@ -244,17 +252,17 @@ class ESQueryBuilder():
         return search
 
     def _build_match_query(self, q, scopes, options):
-        """ q + scopes + options -> query object
+        """q + scopes + options -> query object
 
-            case 1:
-                # single match query
-                q = "1017"
-                scopes = ["_id"] or "_id"
+        case 1:
+            # single match query
+            q = "1017"
+            scopes = ["_id"] or "_id"
 
-            case 2:
-                # compound match query
-                q = ["1017", "CDK2"]
-                scopes = [["_id", "entrezgene"], "symbol"]
+        case 2:
+            # compound match query
+            q = ["1017", "CDK2"]
+            scopes = [["_id", "entrezgene"], "symbol"]
         """
 
         if not isinstance(q, (list, tuple)):
@@ -297,10 +305,7 @@ class ESQueryBuilder():
         """
         assert isinstance(q, str) and q
         assert not options.scopes
-        return Search().query(
-            "query_string", query=q,
-            default_operator="AND", lenient=True
-        )
+        return Search().query("query_string", query=q, default_operator="AND", lenient=True)
 
     def default_match_query(self, q, scopes, options):
         """
@@ -309,10 +314,7 @@ class ESQueryBuilder():
         """
         assert isinstance(q, (str, int, float, bool))
         assert isinstance(scopes, (list, tuple, str)) and scopes
-        return Search().query(
-            'multi_match', query=q, fields=scopes,
-            operator="and", lenient=True
-        )
+        return Search().query('multi_match', query=q, fields=scopes, operator="and", lenient=True)
 
     def apply_extras(self, search, options):
         """
@@ -325,13 +327,11 @@ class ESQueryBuilder():
         for agg in options.aggs or []:
             term, bucket = agg, search.aggs
             while term:
-                if self.allow_nested_query and \
-                        '(' in term and term.endswith(')'):
+                if self.allow_nested_query and '(' in term and term.endswith(')'):
                     _term, term = term[:-1].split('(', 1)
                 else:
                     _term, term = term, ''
-                bucket = bucket.bucket(
-                    _term, 'terms', field=_term, size=facet_size)
+                bucket = bucket.bucket(_term, 'terms', field=_term, size=facet_size)
 
         # add es params
         if isinstance(options.sort, list):
@@ -345,10 +345,7 @@ class ESQueryBuilder():
                 fields_without_minus = [
                     field for field in options._source if not field.startswith('-')
                 ]
-                search = search.source(
-                    includes=fields_without_minus,
-                    excludes=fields_with_minus
-                )
+                search = search.source(includes=fields_without_minus, excludes=fields_with_minus)
         for key in ('from', 'size', 'explain', 'version'):
             if key in options:
                 search = search.extra(**{key: options[key]})
@@ -360,10 +357,16 @@ class ESQueryBuilder():
         # https://www.elastic.co/guide/en/elasticsearch/
         # reference/current/index-modules.html
 
+        # Feature: post_filter
+        # -- implementation using query string matching
+        # Ref: https://www.elastic.co/guide/en/elasticsearch/reference/8.1/filter-search-results.html#post-filter
+        if options.post_filter:
+            search = search.post_filter("query_string", query=options['post_filter'])
+
         return search
 
-class MongoQueryBuilder():
 
+class MongoQueryBuilder:
     def __init__(self, default_scopes=('_id',)):
         self.parser = QStringParser(default_scopes)
 
@@ -377,33 +380,24 @@ class MongoQueryBuilder():
         assert all((isinstance(field, str) for field in fields))
 
         filter_ = {
-            field: 1  # project fields to return
-            for field in options.get('_source', ())
+            field: 1 for field in options.get('_source', ())  # project fields to return
         } or None
 
-        query = {
-            "$or": [
-                {field: q}
-                for field in fields
-            ]
-        } if fields else {}
+        query = {"$or": [{field: q} for field in fields]} if fields else {}
 
         if options.get('rawquery'):
             raise RawQueryInterrupt((query, filter_))
 
         return (query, filter_)
 
-class SQLQueryBuilder():
+
+class SQLQueryBuilder:
 
     # PROOF OF CONCEPT
     # INPUT NOT SANITIZED
     # INTERNAL USE ONLY
 
-    def __init__(
-            self, tables,
-            default_scopes=('id',),
-            default_limit=10
-    ):
+    def __init__(self, tables, default_scopes=('id',), default_limit=10):
         assert default_scopes
         assert isinstance(default_limit, int)
         assert tables and isinstance(tables, dict)
@@ -433,8 +427,7 @@ class SQLQueryBuilder():
             statements.append(' OR '.join(selections))
 
         # limit result window
-        statements.append('LIMIT {}'.format(
-            options.get('size', self.default_limit)))
+        statements.append('LIMIT {}'.format(options.get('size', self.default_limit)))
 
         if 'from_' in options:
             statements.append('OFFSET {}'.format(options['from_']))
@@ -445,8 +438,7 @@ class SQLQueryBuilder():
         return ' '.join(statements)
 
 
-class ESUserQuery():
-
+class ESUserQuery:
     def __init__(self, path):
 
         self._queries = {}
@@ -459,12 +451,16 @@ class ESUserQuery():
                 for filename in filenames:
                     with open(os.path.join(dirpath, filename)) as text_file:
                         if 'query' in filename:
-                            ## alternative implementation
+                            ## alternative implementation  # noqa: E266
                             # self._queries[os.path.basename(dirpath)] = text_file.read()
                             ##
-                            self._queries[os.path.basename(dirpath)] = orjson.loads(text_file.read())
+                            self._queries[os.path.basename(dirpath)] = orjson.loads(
+                                text_file.read()
+                            )
                         elif 'filter' in filename:
-                            self._filters[os.path.basename(dirpath)] = orjson.loads(text_file.read())
+                            self._filters[os.path.basename(dirpath)] = orjson.loads(
+                                text_file.read()
+                            )
         except Exception:
             self.logger.exception('Error loading user queries.')
 
@@ -477,7 +473,6 @@ class ESUserQuery():
         return named_query in self._filters
 
     def get_query(self, named_query, **kwargs):
-
         def in_place_sub(dic, kwargs):
             for key in dic:
                 if isinstance(dic[key], dict):
@@ -493,7 +488,7 @@ class ESUserQuery():
         key, val = next(iter(dic.items()))
         return Q(key, **val)
 
-        ## alternative implementation
+        ## alternative implementation  # noqa: E266
         # string = self._queries.get(named_query)
         # string1 = re.sub(r"\}", "}}", string)
         # string2 = re.sub(r"\{", "{{", string1)

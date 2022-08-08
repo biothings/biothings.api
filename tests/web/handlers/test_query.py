@@ -600,6 +600,38 @@ class TestQueryKeywords(BiothingsWebAppTest):
         res = self.request('/v1/query?scroll_id=<invalid>', expect=400).json()
         assert res['success'] is False
 
+    def test_32_post_filters(self):
+        """
+        {
+            'facets': {
+                'type_of_gene': {
+                    '_type': 'terms',
+                    'missing': 0,
+                    'other': 0,
+                    'terms': [{'count': 79, 'term': 'protein-coding'}],
+                    'total': 79
+                }
+            },
+            'hits': [...],
+            'max_score': 0.4116186,
+            'took': 7,
+            'total': 1
+        }
+        """
+
+        res = self.request(
+            '/v1/query?q={q}&aggs={aggs}&post_filter={post_filter}'.format(
+                q='cyclin dependent kinase 2',
+                aggs='type_of_gene',
+                post_filter='taxid:216574',
+            )
+        ).json()
+
+        assert res['total'] == 1
+        term = res['facets']['type_of_gene']['terms'][0]
+        assert term['count'] == 79
+        assert term['term'] == 'protein-coding'
+
 
 class TestQueryString(BiothingsWebAppTest):
     def test_00_all(self):
