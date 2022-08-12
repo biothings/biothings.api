@@ -113,15 +113,17 @@ class Event(UserDict):
         return [urlencode(payload)]
 
     def to_GA4_payload(self, measurement_id, cid_version=1):
+        # Document about page_view event: https://support.google.com/analytics/answer/9964640#pageviews&zippy=%2Cin-this-article
+        # GA4 does not support [Document path as UA](https://developers.google.com/analytics/devguides/collection/protocol/v1/parameters#dp)
+        # so we use location instead of host and path
+
+        # TODO consider to use request.uri as page_location
         payload = {
             "name": "page_view",
             "params": _clean(
                 {
-                    "client_id": self._cid(cid_version),
-                    "user_ip": self.user_ip,
                     "page_location": f'{self.host}{self.path}',
                     "page_title": self.path.strip('/').replace('/', '-'),
-                    "page_path": self.path,
                 }
             ),
         }
@@ -184,18 +186,19 @@ class GAEvent(Event):
         return payloads
 
     def to_GA4_payload(self, measurement_id, cid_version=1):
-
         payloads = super().to_GA4_payload(measurement_id, cid_version)
         if self.get("category") and self.get("action"):
             payloads.append(
                 {
-                    "name": self["action"],  # Event hit type
+                    # Following this article https://support.google.com/analytics/answer/11091026?hl=en&ref_topic=11091421#zippy=%2Cin-this-article
+                    # <action> in the Universal Analytics property maps to <event_name> in the Google Analytics 4
+                    # and 'event_category', 'event_label', and 'value' — along with their respective values — map to parameters with values.
+                    "name": self["action"],
                     "params": _clean(
                         {
-                            "client_id": str(self._cid(cid_version)),  # Anonymous Client ID.
-                            "event_category": self["category"],  # Event Category. Required.
-                            "event_label": self.get("label", ""),  # Event label.
-                            "value": self.get("value", ""),  # Event value.
+                            "event_category": self["category"],
+                            "event_label": self.get("label", ""),
+                            "value": self.get("value", ""),
                         }
                     ),
                 }
