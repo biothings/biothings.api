@@ -4,6 +4,8 @@ v0.11.0
         - Added GitHub and ORCID Mixin class for BioThings SDK Web.
         - Allow customize cache settings https://github.com/biothings/biothings.api/issues/206
         - Support exclude for "fields" parameter https://github.com/biothings/biothings.api/issues/195
+        - Support post_filter query parameter https://github.com/biothings/biothings.api/issues/208
+        - Added "max_total" parameter to POST query https://github.com/biothings/biothings.api/issues/233
         - Upgrade to use sentry-sdk https://github.com/biothings/biothings.api/issues/204
 
     Support Elasticsearch both 7 and 8
