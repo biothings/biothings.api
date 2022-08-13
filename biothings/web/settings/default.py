@@ -21,7 +21,7 @@ ES_INDICES = {
 ES_ARGS = {
     # https://elasticsearch-py.readthedocs.io/en/v7.12.1/connection.html
     'sniff': False,  # this is a shortcut to configure multiple values
-    'timeout': 60  # increase from default (10s) to support heavy query
+    'timeout': 60,  # increase from default (10s) to support heavy query
 }
 
 # *****************************************************************************
@@ -37,7 +37,7 @@ MONGO_ARGS = {
     # https://pymongo.readthedocs.io/en/stable/api/pymongo/mongo_client.html \
     # #pymongo.mongo_client.MongoClient
     'connect': False,  # lazy connection to speed up initialization
-    'tz_aware': True  # to maintain consistency with the hub design
+    'tz_aware': True,  # to maintain consistency with the hub design
 }
 
 # *****************************************************************************
@@ -104,32 +104,34 @@ COMMON_KWARGS = {
     'dotfield': {'type': bool, 'default': False},
     '_sorted': {'type': bool, 'default': True},  # alaphabetically
     'always_list': {'type': list, 'max': 1000},
-    'allow_null': {'type': list, 'max': 1000}
+    'allow_null': {'type': list, 'max': 1000},
 }
 ANNOTATION_KWARGS = {
     '*': COMMON_KWARGS.copy(),
     'GET': {'id': {'type': str, 'path': 0, 'required': True}},
-    'POST': {'id': {'type': list, 'max': 1000, 'required': True, 'alias': 'ids'}}
+    'POST': {'id': {'type': list, 'max': 1000, 'required': True, 'alias': 'ids'}},
 }
 QUERY_KWARGS = {
     '*': COMMON_KWARGS.copy(),
     'GET': {
         'q': {'type': str, 'default': None},
         'aggs': {'type': list, 'max': 1000, 'alias': 'facets'},
+        'post_filter': {'type': str, 'default': None},
         'facet_size': {'type': int, 'default': 10, 'max': 1000},
         'from': {'type': int, 'max': 10000, 'alias': 'skip'},
         'userquery': {'type': str, 'alias': ['userfilter']},
         'sort': {'type': list, 'max': 10},
         'explain': {'type': bool},
         'fetch_all': {'type': bool},
-        'scroll_id': {'type': str}},
+        'scroll_id': {'type': str},
+    },
     'POST': {
         'q': {'type': list, 'required': True},
         'scopes': {'type': list, 'default': ['_id'], 'max': 1000},
         'from': {'type': int, 'max': 10000, 'alias': 'skip'},
         'sort': {'type': list, 'max': 10},
         'with_total': {'type': bool},
-    }
+    },
 }
 
 # LONG TERM GOAL: REMOVE THESE COMPATIBILITY SETTINGS
