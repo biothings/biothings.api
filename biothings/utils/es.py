@@ -778,7 +778,7 @@ class ESIndexer():
             (indice_name, setting['settings']['index']['creation_date'])
             for indice_name, setting in indices_settings.items()
         ]
-        
+
         if sort_by_creation_date:
             names_with_creation_date = sorted(
                 names_with_creation_date,
@@ -1105,15 +1105,16 @@ class Database(IDatabase):
         self.client = Elasticsearch(self.host, serializer=_HubDBEncoder())
 
         if not self.client.indices.exists(index=self.name):
-            self.client.indices.create(index=self.name, body={
-                'settings': {
-                    'number_of_shards': 1,
+            self.client.indices.create(
+                index=self.name,
+                settings={
+                    "number_of_shards": 1,
                     "number_of_replicas": 0,
                 },
-                'mappings': {
+                mappings={
                     "enabled": False
                 }
-            })
+            )
 
     @property
     def address(self):
@@ -1123,16 +1124,16 @@ class Database(IDatabase):
     # ON "COLLECTION"
 
     def _exists(self, _id):
-        return self.client.exists(self.name, _id)
+        return self.client.exists(index=self.name, id=_id)
 
     def _read(self, _id):
-        doc = self.client.get(self.name, _id)
+        doc = self.client.get(index=self.name, id=_id)
         return doc["_source"]
 
     def _write(self, _id, doc):
         assert doc.pop("_id", None) in (_id, None)
-        self.client.index(self.name, doc, id=_id)
-        self.client.indices.refresh(self.name)
+        self.client.index(index=self.name, document=doc, id=_id)
+        self.client.indices.refresh(index=self.name)
 
     def _modify(self, _id, func):
         doc = self._read(_id)
