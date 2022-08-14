@@ -314,7 +314,10 @@ class ESQueryBuilder:
         """
         assert isinstance(q, (str, int, float, bool))
         assert isinstance(scopes, (list, tuple, str)) and scopes
-        return Search().query('multi_match', query=q, fields=scopes, operator="and", lenient=True)
+        _params = dict(query=q, fields=scopes, operator="AND", lenient=True)
+        if options.analyzer:
+            _params["analyzer"] = options.analyzer
+        return Search().query('multi_match', **_params)
 
     def apply_extras(self, search, options):
         """

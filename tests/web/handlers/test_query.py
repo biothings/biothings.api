@@ -922,3 +922,23 @@ class TestQueryMatch(BiothingsWebAppTest):
         assert isinstance(res, dict)
         assert 'msg' not in res
         assert len(res['hits']) == res['max_total']
+
+    def test_25_analyzer(self):
+        '''
+        {
+            'hits': [...],
+            'max_total': 100
+        }
+        '''
+        payload = {
+            "q": ["CDKN2 p33(CDK2)"],
+            "scopes": ["alias"],
+            "analyzer": "whitespace",
+            "with_total": True,
+            "size": 100
+        }
+
+        res = self.request('query', method='POST', json=payload, expect=200).json()
+
+        assert isinstance(res, dict)
+        assert len(res['hits']) == 1
