@@ -280,7 +280,7 @@ class HubShell(InteractiveShell):
     def extract_command_name(self, cmd):
         try:
             # extract before () (non-callable are never tracked)
-            grps = re.fullmatch("([\w\.]+)(\(.*\))", cmd.strip()).groups()
+            grps = re.fullmatch(r"([\w\.]+)(\(.*\))", cmd.strip()).groups()
             return grps[0]
         except AttributeError:
             raise CommandError("Can't extract command name from '%s'" % repr(cmd))
@@ -381,7 +381,7 @@ class HubShell(InteractiveShell):
                 # to the partials
                 strcmds = []
                 for one_cmd in chained_cmds:
-                    func, args = re.match("(.*)\((.*)\)", one_cmd).groups()
+                    func, args = re.match(r"(.*)\((.*)\)", one_cmd).groups()
                     if args:
                         strcmds.append("partial(%s,%s)" % (func, args))
                     else:
@@ -389,7 +389,7 @@ class HubShell(InteractiveShell):
                 cmdline = "_and(%s)" % ",".join(strcmds)
             else:
                 raise CommandError("Using '&&' operator required two operands\n")
-        
+
         # r = self.run_cell(cmdline, store_history=True)
         outputs = []
         with RedirectStdStreams() as redirect_stream:
@@ -537,7 +537,7 @@ def template_out(field, confdict):
         => "one_two_three_201908" # assuming we're in August 2019
     """
     # first deal with timestamp
-    pat = re.compile(".*(\$\((.*?)\)).*")
+    pat = re.compile(r".*(\$\((.*?)\)).*")
 
     try:
         m = pat.match(field)

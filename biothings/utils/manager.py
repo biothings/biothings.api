@@ -557,7 +557,7 @@ class JobManager(object):
         # clean old/staled files
         children_pids = [p.pid for p in self.pchildren]
         active_tids = [t.getName() for t in self.thread_queue._threads]
-        pid_pat = re.compile(".*/(\d+)_.*\.pickle")  # see track() for filename format
+        pid_pat = re.compile(r".*/(\d+)_.*\.pickle")  # see track() for filename format
         for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle")):
             pid = pid_pat.findall(fn)
             if not pid:
@@ -570,7 +570,7 @@ class JobManager(object):
             if pid not in children_pids:
                 logger.info("Removing staled pid file '%s'", fn)
                 os.unlink(fn)
-        tid_pat = re.compile(".*/(Thread\w*-\d+)_.*\.pickle")
+        tid_pat = re.compile(r".*/(Thread\w*-\d+)_.*\.pickle")
         for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle")):
             try:
                 tid = tid_pat.findall(fn)[0].split("_")[0]
@@ -880,7 +880,7 @@ async def %s():
     def get_pid_files(self, child=None):
         pids = {}
         try:
-            pat = re.compile(".*/(\d+)_.*\.pickle")  # see track() for filename format
+            pat = re.compile(r".*/(\d+)_.*\.pickle")  # see track() for filename format
             children_pids = [p.pid for p in self.pchildren]
             for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle")):
                 try:
@@ -910,7 +910,7 @@ async def %s():
         tids = {}
         try:
             # see track() for filename format
-            pat = re.compile(".*/(Thread\w*-\d+)_.*\.pickle")
+            pat = re.compile(r".*/(Thread\w*-\d+)_.*\.pickle")
             threads = self.thread_queue._threads
             active_tids = [t.getName() for t in threads]
             for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle")):
