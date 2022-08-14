@@ -49,8 +49,8 @@ class RawQueryInterrupt(Exception):
         self.data = data
 
 
-Query = namedtuple('Query', ('term', 'scopes'))
-Group = namedtuple('Group', ('term', 'scopes'))
+Query = namedtuple("Query", ("term", "scopes"))
+Group = namedtuple("Group", ("term", "scopes"))
 
 
 class QStringParser:
@@ -58,7 +58,7 @@ class QStringParser:
         self,
         default_scopes=("_id",),
         patterns=((r"(?P<scope>\w+):(?P<term>[^:]+)", ()),),
-        gpnames=('term', 'scope'),
+        gpnames=("term", "scope"),
     ):
         assert isinstance(default_scopes, (tuple, list))
         assert all(isinstance(field, str) for field in default_scopes)
@@ -69,7 +69,7 @@ class QStringParser:
             fields = [fields] if isinstance(fields, str) else fields
             assert all(isinstance(field, str) for field in fields)
             pattern = re.compile(pattern) if isinstance(pattern, str) else pattern
-            if hasattr(re, 'Pattern'):  # TODO remove for python>3.7
+            if hasattr(re, "Pattern"):  # TODO remove for python>3.7
                 assert isinstance(pattern, re.Pattern)
             self.patterns.append((pattern, fields))
 
@@ -124,7 +124,7 @@ class ESQueryBuilder:
         self,
         user_query=None,  # like a prepared statement in SQL
         scopes_regexs=(),  # inference used when encountering empty scopes
-        scopes_default=('_id',),  # fallback used when scope inference fails
+        scopes_default=("_id",),  # fallback used when scope inference fails
         allow_random_query=True,  # used for data exploration, can be expensive
         allow_nested_query=False,  # nested aggregation can be expensive
         metadata=None,  # access to data like total number of documents
@@ -133,7 +133,7 @@ class ESQueryBuilder:
         self.parser = QStringParser(scopes_default, scopes_regexs)
 
         # all settings below affect only query string queries
-        self.user_query = user_query or ESUserQuery('userquery')
+        self.user_query = user_query or ESUserQuery("userquery")
         self.allow_random_query = allow_random_query
         self.allow_nested_query = allow_nested_query  # for aggregations
 
@@ -168,8 +168,8 @@ class ESQueryBuilder:
 
         if options.fetch_all:
             # clean up conflicting parameters
-            options.pop('sort', None)
-            options.pop('size', None)
+            options.pop("sort", None)
+            options.pop("size", None)
 
         try:
             # process single q vs list of q(s).
@@ -186,7 +186,7 @@ class ESQueryBuilder:
         except IllegalOperation as exc:
             raise ValueError(str(exc))  # ex. sorting by -_score
 
-        if options.get('rawquery'):
+        if options.get("rawquery"):
             raise RawQueryInterrupt(search.to_dict())
 
         return search
@@ -214,27 +214,27 @@ class ESQueryBuilder:
             userquery
         """
         search = Search()
-        userquery = options.userquery or ''
+        userquery = options.userquery or ""
 
         if q == "":  # same empty q behavior as that of ES.
             search = search.query("match_none")
 
-        elif q == '__all__' or q is None:
+        elif q == "__all__" or q is None:
             search = search.query()
             if options.aggs and not options.size:
                 options.size = 0
 
-        elif q == '__any__':
+        elif q == "__any__":
             if self.allow_random_query:
-                search = search.query('function_score', random_score={})
+                search = search.query("function_score", random_score={})
             else:  # pseudo random by overriding 'from' value
                 search = search.query()
                 try:  # limit 'from' parameter to a valid result window
                     metadata = self.metadata[options.biothing_type]
-                    total = metadata['stats']['total']
-                    fmax = total - options.get('size', 0)
+                    total = metadata["stats"]["total"]
+                    fmax = total - options.get("size", 0)
                     from_ = randrange(fmax if fmax < 10000 else 10000)
-                    options['from'] = from_ if from_ >= 0 else 0
+                    options["from"] = from_ if from_ >= 0 else 0
                 except Exception:
                     raise ValueError("random query not available.")
 
@@ -317,7 +317,7 @@ class ESQueryBuilder:
         _params = dict(query=q, fields=scopes, operator="AND", lenient=True)
         if options.analyzer:
             _params["analyzer"] = options.analyzer
-        return Search().query('multi_match', **_params)
+        return Search().query("multi_match", **_params)
 
     def apply_extras(self, search, options):
         """
@@ -330,26 +330,26 @@ class ESQueryBuilder:
         for agg in options.aggs or []:
             term, bucket = agg, search.aggs
             while term:
-                if self.allow_nested_query and '(' in term and term.endswith(')'):
-                    _term, term = term[:-1].split('(', 1)
+                if self.allow_nested_query and "(" in term and term.endswith(")"):
+                    _term, term = term[:-1].split("(", 1)
                 else:
-                    _term, term = term, ''
-                bucket = bucket.bucket(_term, 'terms', field=_term, size=facet_size)
+                    _term, term = term, ""
+                bucket = bucket.bucket(_term, "terms", field=_term, size=facet_size)
 
         # add es params
         if isinstance(options.sort, list):
             # accept '-' prefixed field names
             search = search.sort(*options.sort)
         if isinstance(options._source, list):
-            if 'all' not in options._source:
+            if "all" not in options._source:
                 fields_with_minus = [
-                    field.lstrip('-') for field in options._source if field.startswith('-')
+                    field.lstrip("-") for field in options._source if field.startswith("-")
                 ]
                 fields_without_minus = [
-                    field for field in options._source if not field.startswith('-')
+                    field for field in options._source if not field.startswith("-")
                 ]
                 search = search.source(includes=fields_without_minus, excludes=fields_with_minus)
-        for key in ('from', 'size', 'explain', 'version'):
+        for key in ("from", "size", "explain", "version"):
             if key in options:
                 search = search.extra(**{key: options[key]})
 
@@ -364,13 +364,13 @@ class ESQueryBuilder:
         # -- implementation using query string matching
         # Ref: https://www.elastic.co/guide/en/elasticsearch/reference/8.1/filter-search-results.html#post-filter
         if options.post_filter:
-            search = search.post_filter("query_string", query=options['post_filter'])
+            search = search.post_filter("query_string", query=options["post_filter"])
 
         return search
 
 
 class MongoQueryBuilder:
-    def __init__(self, default_scopes=('_id',)):
+    def __init__(self, default_scopes=("_id",)):
         self.parser = QStringParser(default_scopes)
 
     def build(self, q, **options):
@@ -383,12 +383,12 @@ class MongoQueryBuilder:
         assert all((isinstance(field, str) for field in fields))
 
         filter_ = {
-            field: 1 for field in options.get('_source', ())  # project fields to return
+            field: 1 for field in options.get("_source", ())  # project fields to return
         } or None
 
         query = {"$or": [{field: q} for field in fields]} if fields else {}
 
-        if options.get('rawquery'):
+        if options.get("rawquery"):
             raise RawQueryInterrupt((query, filter_))
 
         return (query, filter_)
@@ -400,7 +400,7 @@ class SQLQueryBuilder:
     # INPUT NOT SANITIZED
     # INTERNAL USE ONLY
 
-    def __init__(self, tables, default_scopes=('id',), default_limit=10):
+    def __init__(self, tables, default_scopes=("id",), default_limit=10):
         assert default_scopes
         assert isinstance(default_limit, int)
         assert tables and isinstance(tables, dict)
@@ -415,7 +415,7 @@ class SQLQueryBuilder:
     def build(self, q, **options):
 
         statements = [
-            "SELECT {}".format(', '.join(options.get("_source", ())) or "*"),
+            "SELECT {}".format(", ".join(options.get("_source", ())) or "*"),
             "FROM {}".format(self.tables[options.get("biothing_type")]),
         ]
 
@@ -426,19 +426,19 @@ class SQLQueryBuilder:
         if scopes and q:
             assert isinstance(q, str)
             selections = ['{} = "{}"'.format(field, q) for field in scopes]
-            statements.append('WHERE')
-            statements.append(' OR '.join(selections))
+            statements.append("WHERE")
+            statements.append(" OR ".join(selections))
 
         # limit result window
-        statements.append('LIMIT {}'.format(options.get('size', self.default_limit)))
+        statements.append("LIMIT {}".format(options.get("size", self.default_limit)))
 
-        if 'from_' in options:
-            statements.append('OFFSET {}'.format(options['from_']))
+        if "from_" in options:
+            statements.append("OFFSET {}".format(options["from_"]))
 
-        if options.get('rawquery'):
+        if options.get("rawquery"):
             raise RawQueryInterrupt(statements)
 
-        return ' '.join(statements)
+        return " ".join(statements)
 
 
 class ESUserQuery:
@@ -453,19 +453,19 @@ class ESUserQuery:
                     continue
                 for filename in filenames:
                     with open(os.path.join(dirpath, filename)) as text_file:
-                        if 'query' in filename:
+                        if "query" in filename:
                             ## alternative implementation  # noqa: E266
                             # self._queries[os.path.basename(dirpath)] = text_file.read()
                             ##
                             self._queries[os.path.basename(dirpath)] = orjson.loads(
                                 text_file.read()
                             )
-                        elif 'filter' in filename:
+                        elif "filter" in filename:
                             self._filters[os.path.basename(dirpath)] = orjson.loads(
                                 text_file.read()
                             )
         except Exception:
-            self.logger.exception('Error loading user queries.')
+            self.logger.exception("Error loading user queries.")
 
     def has_query(self, named_query):
 

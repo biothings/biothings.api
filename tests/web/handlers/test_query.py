@@ -1,10 +1,10 @@
-'''
+"""
     Test Query Endpoint
 
     GET /query
     POST /query
 
-'''
+"""
 from biothings.tests.web import BiothingsWebAppTest
 from setup import setup_es  # pylint: disable=unused-import  # noqa: F401
 
@@ -33,10 +33,10 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ...
         }
         """
-        res = self.request('/v1/query?q=__all__&aggs=type_of_gene').json()
-        term = res['facets']['type_of_gene']['terms'][0]
-        assert term['count'] == 82
-        assert term['term'] == 'protein-coding'
+        res = self.request("/v1/query?q=__all__&aggs=type_of_gene").json()
+        term = res["facets"]["type_of_gene"]["terms"][0]
+        assert term["count"] == 82
+        assert term["term"] == "protein-coding"
 
     def test_01_facet_size(self):
         """GET /v1/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=2
@@ -53,8 +53,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ...
         }
         """
-        res = self.request('/v1/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=2').json()
-        terms = res['facets']['uniprot.TrEMBL']['terms']
+        res = self.request("/v1/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=2").json()
+        terms = res["facets"]["uniprot.TrEMBL"]["terms"]
         assert len(terms) == 2
 
     def test_02_facet_size_default(self):
@@ -72,8 +72,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ...
         }
         """
-        res = self.request('/v1/query?q=__all__&aggs=uniprot.TrEMBL').json()
-        terms = res['facets']['uniprot.TrEMBL']['terms']
+        res = self.request("/v1/query?q=__all__&aggs=uniprot.TrEMBL").json()
+        terms = res["facets"]["uniprot.TrEMBL"]["terms"]
         assert len(terms) == 3
 
     def test_03_facet_size_max(self):
@@ -88,9 +88,9 @@ class TestQueryKeywords(BiothingsWebAppTest):
         }
         """
         res = self.request(
-            '/v1/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=10', expect=400
+            "/v1/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=10", expect=400
         ).json()
-        assert res['success'] is False
+        assert res["success"] is False
 
     def test_04_facet_nested(self):
         """GET /v1/query?q=__all__&facets=symbol(alias)
@@ -123,9 +123,9 @@ class TestQueryKeywords(BiothingsWebAppTest):
             }
         }
         """
-        res = self.request('/v1/query?q=__all__&facets=symbol(alias)').json()
-        assert res['facets']['symbol']['terms']
-        assert res['facets']['symbol']['terms'][0]["alias"]
+        res = self.request("/v1/query?q=__all__&facets=symbol(alias)").json()
+        assert res["facets"]["symbol"]["terms"]
+        assert res["facets"]["symbol"]["terms"][0]["alias"]
 
     def test_10_from(self):
         """GET /v1/query?q=__all__&from=99
@@ -138,8 +138,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.request('/v1/query?q=__all__&from=99').json()
-        assert len(res['hits']) == 1
+        res = self.request("/v1/query?q=__all__&from=99").json()
+        assert len(res["hits"]) == 1
 
     def test_11_from_oob(self):
         """GET /v1/query?q=__all__&from=10001
@@ -152,8 +152,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
             "max": 10000
         }
         """
-        res = self.request('/v1/query?q=__all__&from=10001', expect=400).json()
-        assert res['success'] is False
+        res = self.request("/v1/query?q=__all__&from=10001", expect=400).json()
+        assert res["success"] is False
 
     def test_12_size(self):
         """GET /v1/query?q=__all__&size=3
@@ -168,8 +168,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.request('/v1/query?q=__all__&size=3').json()
-        assert len(res['hits']) == 3
+        res = self.request("/v1/query?q=__all__&size=3").json()
+        assert len(res["hits"]) == 3
 
     def test_13_size_oob(self):
         """GET /v1/query?q=__all__&size=1001
@@ -182,8 +182,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
             "max": 1000
         }
         """
-        res = self.request('/v1/query?q=__all__&size=1001', expect=400).json()
-        assert res['success'] is False
+        res = self.request("/v1/query?q=__all__&size=1001", expect=400).json()
+        assert res["success"] is False
 
     def test_14_explain(self):
         """GET /v1/query?q=__any__&explain
@@ -206,8 +206,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.request('/v1/query?q=__any__&explain').json()
-        assert '_explanation' in res['hits'][0]
+        res = self.request("/v1/query?q=__any__&explain").json()
+        assert "_explanation" in res["hits"][0]
 
     def test_15_sort(self):
         """GET /v1/query?q=__all__&sort=taxid
@@ -223,10 +223,10 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.request('/v1/query?q=__all__&sort=taxid').json()
-        assert res['hits'][0]["taxid"] == 7091
-        assert res['hits'][1]["taxid"] == 7425
-        assert res['hits'][2]["taxid"] == 7764
+        res = self.request("/v1/query?q=__all__&sort=taxid").json()
+        assert res["hits"][0]["taxid"] == 7091
+        assert res["hits"][1]["taxid"] == 7425
+        assert res["hits"][2]["taxid"] == 7764
 
     def test_16_sort_desc(self):
         """GET /v1/query?q=__all__&sort=-taxid
@@ -242,10 +242,10 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.request('/v1/query?q=__all__&sort=-taxid').json()
-        assert res['hits'][0]["taxid"] == 2587831
-        assert res['hits'][1]["taxid"] == 1868482
-        assert res['hits'][2]["taxid"] == 1841481
+        res = self.request("/v1/query?q=__all__&sort=-taxid").json()
+        assert res["hits"][0]["taxid"] == 2587831
+        assert res["hits"][1]["taxid"] == 1868482
+        assert res["hits"][2]["taxid"] == 1841481
 
     def test_17_sorted_false_dotfield(self):
         """GET /v1/query?q=1017&dotfield&_sorted=false
@@ -276,8 +276,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.request('/v1/query?q=1017&dotfield&_sorted=false').json()
-        protein = res['hits'][0]['accession.translation.protein']
+        res = self.request("/v1/query?q=1017&dotfield&_sorted=false").json()
+        protein = res["hits"][0]["accession.translation.protein"]
         assert protein[0] == "BAA32794.1"
 
     def test_20_always_list(self):
@@ -296,10 +296,10 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.request('/v1/query?q=1017&always_list=symbol').json()
-        hit = res['hits'][0]
-        assert 'symbol' in hit
-        assert hit['symbol'] == ['CDK2']
+        res = self.request("/v1/query?q=1017&always_list=symbol").json()
+        hit = res["hits"][0]
+        assert "symbol" in hit
+        assert hit["symbol"] == ["CDK2"]
 
     def test_21_always_list_noop(self):
         """GET /v1/query?q=1017&always_list=alias,accession.genomic
@@ -328,10 +328,10 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.request('/v1/query?q=1017&always_list=alias,accession.genomic').json()
-        hit = res['hits'][0]
-        assert isinstance(hit['alias'], list)
-        assert isinstance(hit['accession']['genomic'], list)
+        res = self.request("/v1/query?q=1017&always_list=alias,accession.genomic").json()
+        hit = res["hits"][0]
+        assert isinstance(hit["alias"], list)
+        assert isinstance(hit["accession"]["genomic"], list)
 
     def test_22_always_list_multilist(self):
         """GET /v1/query?q=1017&always_list=exons.position,exons.chr
@@ -368,11 +368,11 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.request('/v1/query?q=1017&always_list=exons.position,exons.chr').json()
-        exons = res['hits'][0]['exons']
+        res = self.request("/v1/query?q=1017&always_list=exons.position,exons.chr").json()
+        exons = res["hits"][0]["exons"]
         for item in exons:
-            assert isinstance(item['chr'], list)
-            assert isinstance(item['position'], list)
+            assert isinstance(item["chr"], list)
+            assert isinstance(item["position"], list)
 
     def test_23_always_list_obj(self):
         """GET /v1/query?q=1017&always_list=genomic_pos_hg19
@@ -397,8 +397,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.request('/v1/query?q=1017&always_list=genomic_pos_hg19').json()
-        genomic = res['hits'][0]['genomic_pos_hg19']
+        res = self.request("/v1/query?q=1017&always_list=genomic_pos_hg19").json()
+        genomic = res["hits"][0]["genomic_pos_hg19"]
         assert isinstance(genomic, list)
 
     def test_24_allow_null(self):
@@ -419,9 +419,9 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.request('/v1/query?q=1017&allow_null=__test__').json()
-        hit = res['hits'][0]
-        assert hit['__test__'] is None
+        res = self.request("/v1/query?q=1017&allow_null=__test__").json()
+        hit = res["hits"][0]
+        assert hit["__test__"] is None
 
     def test_25_allow_null_list(self):
         """GET /v1/query?q=1017&allow_null=accession.translation.__test__
@@ -452,10 +452,10 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.request('/v1/query?q=1017&allow_null=accession.translation.__test__').json()
-        translations = res['hits'][0]['accession']['translation']
+        res = self.request("/v1/query?q=1017&allow_null=accession.translation.__test__").json()
+        translations = res["hits"][0]["accession"]["translation"]
         for item in translations:
-            assert item['__test__'] is None
+            assert item["__test__"] is None
 
     def test_26_allow_null_list_always(self):
         """GET /v1/query?q=1017&allow_null=accession.translation.__test__
@@ -489,13 +489,13 @@ class TestQueryKeywords(BiothingsWebAppTest):
         }
         """
         res = self.request(
-            '/v1/query?q=1017'
-            '&allow_null=accession.translation.__test__'
-            '&always_list=accession.translation.__test__'
+            "/v1/query?q=1017"
+            "&allow_null=accession.translation.__test__"
+            "&always_list=accession.translation.__test__"
         ).json()
-        translations = res['hits'][0]['accession']['translation']
+        translations = res["hits"][0]["accession"]["translation"]
         for item in translations:
-            assert item['__test__'] == []
+            assert item["__test__"] == []
 
     def test_27_allow_null_dotfield(self):
         """GET /v1/query?q=1017&allow_null=genomic_pos.__test__&dotfield
@@ -517,9 +517,9 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.request('/v1/query?q=1017&allow_null=genomic_pos.__test__&dotfield').json()
-        hit = res['hits'][0]
-        assert hit['genomic_pos.__test__'] is None
+        res = self.request("/v1/query?q=1017&allow_null=genomic_pos.__test__&dotfield").json()
+        hit = res["hits"][0]
+        assert hit["genomic_pos.__test__"] is None
 
     def test_28_allow_null_dotfield_list(self):
         """GET /v1/query?q=1017&allow_null=accession.translation.__test__&dotfield
@@ -539,10 +539,10 @@ class TestQueryKeywords(BiothingsWebAppTest):
         }
         """
         res = self.request(
-            '/v1/query?q=1017&dotfield' '&allow_null=accession.translation.__test__'
+            "/v1/query?q=1017&dotfield" "&allow_null=accession.translation.__test__"
         ).json()
-        hit = res['hits'][0]
-        assert hit['accession.translation.__test__'] == []
+        hit = res["hits"][0]
+        assert hit["accession.translation.__test__"] == []
 
     def test_29_allow_null_dotfield_list_always(self):
         """GET /v1/query?q=1017&allow_null=accession.translation.__test__
@@ -564,12 +564,12 @@ class TestQueryKeywords(BiothingsWebAppTest):
         }
         """
         res = self.request(
-            '/v1/query?q=1017&dotfield'
-            '&allow_null=accession.translation.__test__'
-            '&always_list=accession.translation.__test__'
+            "/v1/query?q=1017&dotfield"
+            "&allow_null=accession.translation.__test__"
+            "&always_list=accession.translation.__test__"
         ).json()
-        hit = res['hits'][0]
-        assert hit['accession.translation.__test__'] == []
+        hit = res["hits"][0]
+        assert hit["accession.translation.__test__"] == []
 
     def test_30_scroll(self):
         """GET /v1/query?q=__all__&fetch_all
@@ -578,16 +578,16 @@ class TestQueryKeywords(BiothingsWebAppTest):
             ...
         }
         """
-        res = self.request('/v1/query?q=__all__&fetch_all').json()
-        assert len(res['hits']) == 60
-        scroll_id = res['_scroll_id']
+        res = self.request("/v1/query?q=__all__&fetch_all").json()
+        assert len(res["hits"]) == 60
+        scroll_id = res["_scroll_id"]
 
-        res = self.request('/v1/query?scroll_id=' + scroll_id).json()
-        assert len(res['hits']) == 40
-        scroll_id = res['_scroll_id']
+        res = self.request("/v1/query?scroll_id=" + scroll_id).json()
+        assert len(res["hits"]) == 40
+        scroll_id = res["_scroll_id"]
 
-        res = self.request('/v1/query?scroll_id=' + scroll_id).json()
-        assert res['success'] is False
+        res = self.request("/v1/query?scroll_id=" + scroll_id).json()
+        assert res["success"] is False
 
     def test_31_scroll_stale(self):
         """GET /v1/query?scroll_id=<invalid>
@@ -597,8 +597,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
             "error": "Invalid or stale scroll_id."
         }
         """
-        res = self.request('/v1/query?scroll_id=<invalid>', expect=400).json()
-        assert res['success'] is False
+        res = self.request("/v1/query?scroll_id=<invalid>", expect=400).json()
+        assert res["success"] is False
 
     def test_32_post_filters(self):
         """
@@ -620,17 +620,17 @@ class TestQueryKeywords(BiothingsWebAppTest):
         """
 
         res = self.request(
-            '/v1/query?q={q}&aggs={aggs}&post_filter={post_filter}'.format(
-                q='cyclin dependent kinase 2',
-                aggs='type_of_gene',
-                post_filter='taxid:216574',
+            "/v1/query?q={q}&aggs={aggs}&post_filter={post_filter}".format(
+                q="cyclin dependent kinase 2",
+                aggs="type_of_gene",
+                post_filter="taxid:216574",
             )
         ).json()
 
-        assert res['total'] == 1
-        term = res['facets']['type_of_gene']['terms'][0]
-        assert term['count'] == 79
-        assert term['term'] == 'protein-coding'
+        assert res["total"] == 1
+        term = res["facets"]["type_of_gene"]["terms"][0]
+        assert term["count"] == 79
+        assert term["term"] == "protein-coding"
 
 
 class TestQueryString(BiothingsWebAppTest):
@@ -643,9 +643,9 @@ class TestQueryString(BiothingsWebAppTest):
             "hits": [ ... ]
         }
         """
-        res = self.query(q='__all__')
-        assert res['max_score'] == 1
-        assert res['total'] == 100
+        res = self.query(q="__all__")
+        assert res["max_score"] == 1
+        assert res["total"] == 100
 
     def test_01_any(self):
         """GET /query?q=__any__
@@ -656,9 +656,9 @@ class TestQueryString(BiothingsWebAppTest):
             "hits": [ ... ]
         }
         """
-        res1 = self.query(q='__any__')
-        res2 = self.query(q='__any__')
-        assert res1['hits'][0]['_id'] != res2['hits'][0]['_id']
+        res1 = self.query(q="__any__")
+        res2 = self.query(q="__any__")
+        assert res1["hits"][0]["_id"] != res2["hits"][0]["_id"]
 
     def test_02_none(self):
         """GET /query?q=
@@ -686,8 +686,8 @@ class TestQueryString(BiothingsWebAppTest):
             ]
         }
         """
-        res = self.query(q='taxid:9606')
-        assert res['hits'][0]['_id'] == "1017"
+        res = self.query(q="taxid:9606")
+        assert res["hits"][0]["_id"] == "1017"
 
     def test_10_userquery_query(self):
         """GET /v1/query?q=gene&userquery=prefix
@@ -698,8 +698,8 @@ class TestQueryString(BiothingsWebAppTest):
             "hits": [ ... ] // 5 items
         }
         """
-        res = self.request('/v1/query?q=gene&userquery=prefix').json()
-        assert len(res['hits']) == 5
+        res = self.request("/v1/query?q=gene&userquery=prefix").json()
+        assert len(res["hits"]) == 5
 
     def test_11_userquery_query_rawquery(self):
         """GET /v1/query?q=cdk2&userquery=prefix&rawquery
@@ -719,8 +719,8 @@ class TestQueryString(BiothingsWebAppTest):
             }
         }
         """
-        res = self.request('/v1/query?q=cdk2&userquery=prefix&rawquery').json()
-        assert res['query']['bool']['should'][0]['prefix']['name'] == 'cdk2'
+        res = self.request("/v1/query?q=cdk2&userquery=prefix&rawquery").json()
+        assert res["query"]["bool"]["should"][0]["prefix"]["name"] == "cdk2"
 
     def test_12_userquery_filter_rawquery(self):
         """GET /v1/query?q=cdk2&userquery=exrna&rawquery
@@ -745,13 +745,13 @@ class TestQueryString(BiothingsWebAppTest):
             }
         }
         """
-        res = self.request('/v1/query?q=cdk2&userquery=exrna&rawquery').json()
-        assert res['query']['bool']['filter'][0]['term']['type_of_gene'] == 'ncRNA'
+        res = self.request("/v1/query?q=cdk2&userquery=exrna&rawquery").json()
+        assert res["query"]["bool"]["filter"][0]["term"]["type_of_gene"] == "ncRNA"
 
     ### Invalid Values ###  # noqa: E266
 
     def test_22_invalid(self):
-        '''Unmatched Quotes'''
+        """Unmatched Quotes"""
         # Sentry
         # Issue 529121368
         # Event 922fc99638cb4987bccbfd30c914ff03
@@ -765,19 +765,19 @@ class TestQueryMatch(BiothingsWebAppTest):
     # https://github.com/biothings/biothings.api/issues/49
 
     def test_01(self):
-        self.query(method='POST', json={'q': '1017'})
+        self.query(method="POST", json={"q": "1017"})
 
     def test_02(self):
-        self.query(method='POST', json={'q': 1017})
+        self.query(method="POST", json={"q": 1017})
 
     def test_03(self):
-        self.query(method='POST', json={'q': ['1017']})
+        self.query(method="POST", json={"q": ["1017"]})
 
     def test_04(self):
-        self.query(method='POST', json={'q': [1017]})
+        self.query(method="POST", json={"q": [1017]})
 
     def test_05(self):
-        self.query(method='POST', json={'q': ['1017'], 'scopes': []})  # default es *.*
+        self.query(method="POST", json={"q": ["1017"], "scopes": []})  # default es *.*
 
     def test_06(self):
         payload = {
@@ -785,7 +785,7 @@ class TestQueryMatch(BiothingsWebAppTest):
             "scopes": ["symbol", "entrezgene"],
             "fields": ["symbol", "name", "taxid", "entrezgene", "ensemblgene"],
         }
-        ans = self.query(method='POST', json=payload)
+        ans = self.query(method="POST", json=payload)
         assert len(ans) == 10
 
     def test_07(self):
@@ -800,18 +800,18 @@ class TestQueryMatch(BiothingsWebAppTest):
             ...
         ]
         """
-        self.request('query', method='POST', json={'q': [1017], 'scopes': '*'})
+        self.request("query", method="POST", json={"q": [1017], "scopes": "*"})
 
     def test_08(self):
         # related to sentry issue 2230892501
-        self.request('query', method='POST', data={'q': "", 'scopes': "symbol"}, expect=400)
+        self.request("query", method="POST", data={"q": "", "scopes": "symbol"}, expect=400)
 
     def test_09(self):
-        self.request('query', method='POST', json={'q': [], 'scopes': "taxid"}, expect=400)
+        self.request("query", method="POST", json={"q": [], "scopes": "taxid"}, expect=400)
 
     def test_10(self):
         # for biothings client 0.2.3 compatibility
-        self.query(method='POST', json={'q': "8167, 8036", 'scopes': "taxid"})
+        self.query(method="POST", json={"q": "8167, 8036", "scopes": "taxid"})
 
     def test_20_nested(self):
         """
@@ -835,7 +835,7 @@ class TestQueryMatch(BiothingsWebAppTest):
             "scopes": ["symbol", "taxid"],
             "fields": ["symbol", "name", "taxid", "entrezgene", "ensemblgene"],
         }
-        ans = self.query(method='POST', json=payload)
+        ans = self.query(method="POST", json=payload)
         assert len(ans) == 1
 
     def test_21_nested(self):
@@ -860,7 +860,7 @@ class TestQueryMatch(BiothingsWebAppTest):
             "scopes": [["symbol", "entrezgene"], "taxid"],
             "fields": ["symbol", "name", "taxid", "entrezgene", "ensemblgene"],
         }
-        ans = self.query(method='POST', json=payload)
+        ans = self.query(method="POST", json=payload)
         assert len(ans) == 1
 
     def test_22_nested_invalid(self):
@@ -876,7 +876,7 @@ class TestQueryMatch(BiothingsWebAppTest):
             "scopes": [["symbol", "entrezgene"], "taxid", "taxi"],  # 3 values
             "fields": ["symbol", "name", "taxid", "entrezgene", "ensemblgene"],
         }
-        self.request('query', method='POST', json=payload, expect=400)
+        self.request("query", method="POST", json=payload, expect=400)
 
     def test_23_with_total_has_msg(self):
         """
@@ -893,23 +893,23 @@ class TestQueryMatch(BiothingsWebAppTest):
             "with_total": True,
         }
 
-        res = self.request('query', method='POST', json=payload, expect=200).json()
+        res = self.request("query", method="POST", json=payload, expect=200).json()
 
         assert isinstance(res, dict)
-        assert res['max_total'] > 10
+        assert res["max_total"] > 10
         assert (
-            '1 query terms return > 10 hits, using from=10 to retrieve the remaining hits'
-            == res['msg']
+            "1 query terms return > 10 hits, using from=10 to retrieve the remaining hits"
+            == res["msg"]
         )
-        assert len(res['hits']) == 10
+        assert len(res["hits"]) == 10
 
     def test_24_with_total_hasnot_msg(self):
-        '''
+        """
         {
             'hits': [...],
             'max_total': 100
         }
-        '''
+        """
         payload = {
             "q": ["cyclin dependent kinase 2"],
             "scopes": ["name"],
@@ -917,28 +917,28 @@ class TestQueryMatch(BiothingsWebAppTest):
             "with_total": True,
         }
 
-        res = self.request('query', method='POST', json=payload, expect=200).json()
+        res = self.request("query", method="POST", json=payload, expect=200).json()
 
         assert isinstance(res, dict)
-        assert 'msg' not in res
-        assert len(res['hits']) == res['max_total']
+        assert "msg" not in res
+        assert len(res["hits"]) == res["max_total"]
 
     def test_25_analyzer(self):
-        '''
+        """
         {
             'hits': [...],
             'max_total': 100
         }
-        '''
+        """
         payload = {
             "q": ["CDKN2 p33(CDK2)"],
             "scopes": ["alias"],
             "analyzer": "whitespace",
             "with_total": True,
-            "size": 100
+            "size": 100,
         }
 
-        res = self.request('query', method='POST', json=payload, expect=200).json()
+        res = self.request("query", method="POST", json=payload, expect=200).json()
 
         assert isinstance(res, dict)
-        assert len(res['hits']) == 1
+        assert len(res["hits"]) == 1
