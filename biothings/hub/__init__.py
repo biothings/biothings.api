@@ -366,7 +366,7 @@ class HubServer(object):
         source_list,
         features=None,
         name="BioThings Hub",
-        managers_custom_args={},
+        managers_custom_args=None,
         api_config=None,
         reloader_config=None,
         dataupload_config=None,
@@ -392,6 +392,7 @@ class HubServer(object):
         can be used to customize reloader, dataupload and websocket. If None, default config
         is used. If explicitely False, feature is deactivated.
         """
+        managers_custom_args = managers_custom_args or {}
         self.name = name
         self.source_list = source_list
         self.logger, self.logfile = get_logger("hub")
