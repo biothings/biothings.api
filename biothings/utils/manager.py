@@ -1,17 +1,17 @@
-import importlib
-import threading
-import re
-import copy
 import asyncio
-import os
-import types
-import glob
-import time
-import datetime
-from functools import wraps, partial
-from pprint import pformat
-from collections import OrderedDict
 import concurrent.futures
+import copy
+import datetime
+import glob
+import importlib
+import os
+import re
+import threading
+import time
+import types
+from collections import OrderedDict
+from functools import partial, wraps
+from pprint import pformat
 
 import aiocron
 import dill as pickle
@@ -19,10 +19,10 @@ import psutil
 
 import biothings.hub  # noqa
 from biothings import config
-logger = config.logger
-
+from biothings.utils.common import get_random_string, sizeof_fmt, timesofar
 from biothings.utils.mongo import get_src_conn
-from biothings.utils.common import timesofar, get_random_string, sizeof_fmt
+
+logger = config.logger
 
 
 def track(func):
@@ -56,25 +56,22 @@ def track(func):
         innerargs = [str(arg) for arg in innerargs]
         if type(innerfunc) == partial:
             fname = innerfunc.func.__name__
-        elif type(innerfunc) == types.MethodType:
+        elif isinstance(innerfunc, types.MethodType):
             fname = innerfunc.__self__.__class__.__name__
         else:
             fname = innerfunc.__name__
 
         firstarg = innerargs and innerargs[0] or ""
         if not pinfo:
-            pinfo = {"category": None,
-                     "source": None,
-                     "step": None,
-                     "description": "%s %s" % (fname, firstarg)}
+            pinfo = {
+                "category": None,
+                "source": None,
+                "step": None,
+                "description": "%s %s" % (fname, firstarg),
+            }
 
         pinfo["started_at"] = time.time()
-        worker = {
-            'func_name': fname,
-            'args': innerargs,
-            'kwargs': kwargs,
-            'job': pinfo
-        }
+        worker = {"func_name": fname, "args": innerargs, "kwargs": kwargs, "job": pinfo}
         results = None
         exc = None
         trace = None
@@ -95,6 +92,7 @@ def track(func):
             results = func(*args, **kwargs)
         except Exception as e:
             import traceback
+
             trace = traceback.format_exc()
             logger.error("err %s\n%s", e, trace)
             # we want to store exception so for now, just make a reference
@@ -107,7 +105,9 @@ def track(func):
         if exc:
             raise exc
         return results
+
     return func_wrapper
+
 
 @track
 def do_work(job_id, ptype, pinfo=None, func=None, *args, **kwargs):
@@ -136,15 +136,21 @@ def find_process(pid):
 
 class UnknownResource(Exception):
     pass
+
+
 class ResourceError(Exception):
     pass
+
+
 class ManagerError(Exception):
     pass
+
+
 class ResourceNotFound(Exception):
     pass
 
-class BaseManager(object):
 
+class BaseManager(object):
     def __init__(self, job_manager, poll_schedule=None):
         self.register = {}
         self.poll_schedule = poll_schedule
@@ -163,7 +169,11 @@ class BaseManager(object):
 
     def __repr__(self):
         registered = sorted(list(self.register.keys()))
-        return "<%s [%d registered]: %s>" % (self.__class__.__name__, len(self.register), registered)
+        return "<%s [%d registered]: %s>" % (
+            self.__class__.__name__,
+            len(self.register),
+            registered,
+        )
 
     def __getitem__(self, src_name):
         try:
@@ -188,20 +198,22 @@ class BaseManager(object):
                 raise KeyError(src_name)
 
     def poll(self, state, func, col):
-        '''
+        """
         Search for source in collection 'col' with a pending flag list
         containing 'state' and and call 'func' for each document found
         (with doc as only param)
-        '''
+        """
         if not self.poll_schedule:
             raise ManagerError("poll_schedule is not defined")
 
         async def check_pending(state):
-            sources = [src for src in col.find({'pending': state}) if isinstance(src['_id'], str)]
+            sources = [src for src in col.find({"pending": state}) if isinstance(src["_id"], str)]
             if sources:
                 logger.info(
                     "Found %d resources with pending flag %s (%s)",
-                    len(sources), state, repr([src["_id"] for src in sources])
+                    len(sources),
+                    state,
+                    repr([src["_id"] for src in sources]),
                 )
             for src in sources:
                 logger.info("Run %s for pending flag %s on source '%s'", func, state, src["_id"])
@@ -210,17 +222,21 @@ class BaseManager(object):
                     col.update({"_id": src["_id"]}, {"$pull": {"pending": state}})
                     func(src)
                 except ResourceNotFound:
-                    logger.error("Resource '%s' has a pending flag set to %s but is not registered in manager",
-                                 src["_id"], state)
+                    logger.error(
+                        "Resource '%s' has a pending flag set to %s but is not registered in manager",
+                        src["_id"],
+                        state,
+                    )
 
         return aiocron.crontab(
-            self.poll_schedule, func=partial(check_pending, state),
-            start=True, loop=self.job_manager.loop
+            self.poll_schedule,
+            func=partial(check_pending, state),
+            start=True,
+            loop=self.job_manager.loop,
         )
 
 
 class BaseStatusRegisterer(object):
-
     def load_doc(self, key_name, stage):
         """
         Find document using key_name and stage, stage being a
@@ -233,7 +249,7 @@ class BaseStatusRegisterer(object):
             load_doc{"abc","snapshot")
         will return doc with _id="abc", not "123"
         """
-        doc = self.collection.find_one({'_id': key_name})
+        doc = self.collection.find_one({"_id": key_name})
         if not doc:
             doc = []
             bdocs = self.collection.find()
@@ -258,9 +274,9 @@ class BaseStatusRegisterer(object):
         assert self.collection, "No collection set"
         # stage: "snapshot", "publish", etc... depending on the what's being done
         job_info = {
-            'status': status,
-            'step_started_at': datetime.datetime.now().astimezone(),
-            'logfile': self.logfile
+            "status": status,
+            "step_started_at": datetime.datetime.now().astimezone(),
+            "logfile": self.logfile,
         }
         stage_info = {}
         stage_key = None
@@ -271,22 +287,24 @@ class BaseStatusRegisterer(object):
         stage_key = stage_key.pop()
         if transient:
             # record some "in-progress" information
-            job_info['pid'] = os.getpid()
+            job_info["pid"] = os.getpid()
         else:
             # only register time when it's a final state
             job_info["time"] = timesofar(self.ti)
             t1 = round(time.time() - self.ti, 0)
             job_info["time_in_s"] = t1
-            stage_info.setdefault(stage, {}).setdefault(stage_key, {}).update({"created_at": datetime.datetime.now().astimezone()})
+            stage_info.setdefault(stage, {}).setdefault(stage_key, {}).update(
+                {"created_at": datetime.datetime.now().astimezone()}
+            )
         if "job" in extra:
             job_info.update(extra["job"])
         # since the base is the merged collection, we register info there
         if init:
             # init timer for this step
             self.ti = time.time()
-            self.collection.update({'_id': doc["_id"]}, {"$push": {'jobs': job_info}})
+            self.collection.update({"_id": doc["_id"]}, {"$push": {"jobs": job_info}})
             # now refresh/sync
-            doc = self.collection.find_one({'_id': doc["_id"]})
+            doc = self.collection.find_one({"_id": doc["_id"]})
         else:
             # merge extra at root level
             doc["jobs"] and doc["jobs"].append(job_info)
@@ -363,16 +381,24 @@ class BaseSourceManager(BaseManager):
             # not interested in classes coming from biothings.hub.*, these would typically come
             # from "from biothings.hub.... import aclass" statements and would be incorrectly registered
             # we only look for classes defined straight from the actual module
-            if type(something) == type and issubclass(something, self.__class__.SOURCE_CLASS) and \
-                    not something.__module__.startswith("biothings.hub"):
+            if (
+                type(something) == type
+                and issubclass(something, self.__class__.SOURCE_CLASS)
+                and not something.__module__.startswith("biothings.hub")
+            ):
                 klass = something
                 if not self.filter_class(klass):
                     continue
-                logger.debug("Found a class based on %s: '%s'", self.__class__.SOURCE_CLASS.__name__, klass)
+                logger.debug(
+                    "Found a class based on %s: '%s'", self.__class__.SOURCE_CLASS.__name__, klass
+                )
                 klasses.append(klass)
         if not klasses:
             if fail_on_notfound:
-                raise UnknownResource("Can't find a class based on %s in module '%s'" % (self.__class__.SOURCE_CLASS.__name__, src_module))
+                raise UnknownResource(
+                    "Can't find a class based on %s in module '%s'"
+                    % (self.__class__.SOURCE_CLASS.__name__, src_module)
+                )
         return klasses
 
     def register_source(self, src, fail_on_notfound=True):
@@ -412,7 +438,11 @@ class BaseSourceManager(BaseManager):
                 for d in os.listdir(src_m_path):
                     if d.endswith("__pycache__"):
                         continue
-                    modpath = os.path.join(src_m.__name__, d).replace(".py", "").replace(os.path.sep, ".")
+                    modpath = (
+                        os.path.join(src_m.__name__, d)
+                        .replace(".py", "")
+                        .replace(os.path.sep, ".")
+                    )
                     try:
                         m = importlib.import_module(modpath)
                         klasses.extend(self.find_classes(m, fail_on_notfound))
@@ -423,7 +453,9 @@ class BaseSourceManager(BaseManager):
                         logger.debug("Couldn't import %s: %s", modpath, e)
                         continue
             except TypeError as e:
-                logger.warning("Can't register source '%s', something's wrong with path: %s", src_m, e)
+                logger.warning(
+                    "Can't register source '%s', something's wrong with path: %s", src_m, e
+                )
         logger.debug("Found classes to register: %s", repr(klasses))
 
         self.register_classes(klasses)
@@ -438,18 +470,37 @@ class BaseSourceManager(BaseManager):
             except (UnknownResource, ResourceError) as e:
                 logger.info("Can't register source '%s', skip it; %s", src, e)
                 import traceback
+
                 logger.error(traceback.format_exc())
 
 
 class JobManager(object):
     # TODO: Add class docstring
-    COLUMNS = ["pid", "source", "category", "step", "description", "mem", "cpu", "started_at", "duration"]
+    COLUMNS = [
+        "pid",
+        "source",
+        "category",
+        "step",
+        "description",
+        "mem",
+        "cpu",
+        "started_at",
+        "duration",
+    ]
     HEADER = dict(zip(COLUMNS, [c.upper() for c in COLUMNS]))  # upper() for column titles
     HEADERLINE = "{pid:^10}|{source:^35}|{category:^10}|{step:^20}|{description:^30}|{mem:^10}|{cpu:^6}|{started_at:^20}|{duration:^10}"
     DATALINE = HEADERLINE.replace("^", "<")
 
-    def __init__(self, loop, process_queue=None, thread_queue=None, max_memory_usage=None,
-                 num_workers=None, num_threads=None, auto_recycle=True):
+    def __init__(
+        self,
+        loop,
+        process_queue=None,
+        thread_queue=None,
+        max_memory_usage=None,
+        num_workers=None,
+        num_threads=None,
+        auto_recycle=True,
+    ):
         if not os.path.exists(config.RUN_DIR):
             logger.info("Creating RUN_DIR directory '%s'", config.RUN_DIR)
             os.makedirs(config.RUN_DIR)
@@ -459,13 +510,17 @@ class JobManager(object):
             logger.debug("Adjusting number of worker to 1")
             self.num_workers = 1
         self.num_threads = num_threads or self.num_workers
-        self.process_queue = process_queue or concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
+        self.process_queue = process_queue or concurrent.futures.ProcessPoolExecutor(
+            max_workers=self.num_workers
+        )
         # notes on fixing BPE (BrokenProcessPool Exception):
         # whenever a process exits unexpectedly, BPE is raised, and while that
         # all the processes in the pool gets a SIGTERM from the management
         # thread (see _queue_management_worker in concurrent.futures.process)
         # TODO: limit the number of threads (as argument) ?
-        self.thread_queue = thread_queue or concurrent.futures.ThreadPoolExecutor(max_workers=self.num_threads)
+        self.thread_queue = thread_queue or concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.num_threads
+        )
 
         #  In Py38 using an executor that is not a ThreadPoolExecutor is
         #  deprecated. And it seems in Py39 , it must be a ThreadPoolExecutor,
@@ -484,7 +539,7 @@ class JobManager(object):
 
         if max_memory_usage == "auto":
             # try to find a nice limit...
-            limited = int(psutil.virtual_memory().available * .6)
+            limited = int(psutil.virtual_memory().available * 0.6)
             logger.info("Auto-setting memory usage limit to %s", sizeof_fmt(limited))
             max_memory_usage = limited
         elif max_memory_usage:
@@ -496,7 +551,9 @@ class JobManager(object):
         self._phub = None
         # Process obj. for hub (process which JobManager is in)
         self.auto_recycle = auto_recycle  # active
-        self.auto_recycle_setting = auto_recycle  # keep setting if we need to restore it its orig value
+        self.auto_recycle_setting = (
+            auto_recycle  # keep setting if we need to restore it its orig value
+        )
         self.jobs = {}  # all active jobs (thread/process)
         # _process_job_ids is for storing Job IDs of calls deferred in process
         # executor, so that when Executor is recreated, staled Job IDs can
@@ -514,12 +571,14 @@ class JobManager(object):
                 # if some processes are still running (it'll wait until they're done)
                 # we'll wait in a thread to prevent the hub from being blocked
                 logger.info("Shutting down current process queue...")
-                pinfo = {"__skip_check__": True,  # skip sanity check, mem check to make sure
-                                                  # this worker will be run
-                         "category": "admin",
-                         "source": "maintenance",
-                         "step": "",
-                         "description": "Stopping process queue"}
+                pinfo = {
+                    "__skip_check__": True,  # skip sanity check, mem check to make sure
+                    # this worker will be run
+                    "category": "admin",
+                    "source": "maintenance",
+                    "step": "",
+                    "description": "Stopping process queue",
+                }
                 # await on coroutine
                 j = await self.defer_to_thread(pinfo, self.process_queue.shutdown)
                 # await on the future to be done
@@ -527,7 +586,9 @@ class JobManager(object):
                 if recycling:
                     # now replace
                     logger.info("Replacing process queue with new one")
-                    self.process_queue = concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
+                    self.process_queue = concurrent.futures.ProcessPoolExecutor(
+                        max_workers=self.num_workers
+                    )
                 else:
                     self.process_queue = None
             except Exception as e:
@@ -547,10 +608,12 @@ class JobManager(object):
 
         def done(f):
             f.result()  # consume future's result to potentially raise exception
+
         fut = asyncio.ensure_future(do())
         fut.add_done_callback(done)
         if force:
-            futkill = asyncio.ensure_future(kill())
+            # futkill = asyncio.ensure_future(kill())
+            asyncio.ensure_future(kill())
         return fut
 
     def clean_staled(self):
@@ -602,7 +665,11 @@ class JobManager(object):
         if mem_req:
             logger.info(
                 "Job {cat:%s,source:%s,step:%s} requires %s memory, checking if available",
-                pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), sizeof_fmt(mem_req))
+                pinfo.get("category"),
+                pinfo.get("source"),
+                pinfo.get("step"),
+                sizeof_fmt(mem_req),
+            )
         if self.max_memory_usage:
             hub_mem = self.hub_memory
             while hub_mem >= self.max_memory_usage:
@@ -614,7 +681,8 @@ class JobManager(object):
                         fut = self.recycle_process_queue()
 
                         def recycled(f):
-                            res = f.result()
+                            # res = f.result()
+                            f.result()
                             # still out of memory ?
                             avail_mem = self.max_memory_usage - self.hub_memory
                             if avail_mem <= 0:
@@ -622,7 +690,7 @@ class JobManager(object):
                                     "After recycling process queue, "
                                     "memory usage is still too high (needs at least %s more)"
                                     "now turn auto-recycling off to prevent infinite recycling...",
-                                    sizeof_fmt(abs(avail_mem))
+                                    sizeof_fmt(abs(avail_mem)),
                                 )
                                 self.auto_recycle = False
 
@@ -630,8 +698,12 @@ class JobManager(object):
                 logger.info(
                     "Hub is using too much memory to launch job {cat:%s,source:%s,step:%s}"
                     " (%s used, more than max allowed %s), wait a little (job's already been postponed for %s)",
-                    pinfo.get("category"), pinfo.get("source"), pinfo.get("step"),
-                    sizeof_fmt(hub_mem), sizeof_fmt(self.max_memory_usage), timesofar(t0)
+                    pinfo.get("category"),
+                    pinfo.get("source"),
+                    pinfo.get("step"),
+                    sizeof_fmt(hub_mem),
+                    sizeof_fmt(self.max_memory_usage),
+                    timesofar(t0),
                 )
                 await asyncio.sleep(sleep_time)
                 waited = True
@@ -646,8 +718,13 @@ class JobManager(object):
                 logger.info(
                     "Job {cat:%s,source:%s,step:%s} needs %s to run, not enough to launch it "
                     "(hub consumes %s while max allowed is %s), wait a little  (job's already been postponed for %s)",
-                    pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), sizeof_fmt(mem_req),
-                    sizeof_fmt(hub_mem), sizeof_fmt(max_mem), timesofar(t0)
+                    pinfo.get("category"),
+                    pinfo.get("source"),
+                    pinfo.get("step"),
+                    sizeof_fmt(mem_req),
+                    sizeof_fmt(hub_mem),
+                    sizeof_fmt(max_mem),
+                    timesofar(t0),
                 )
                 await asyncio.sleep(sleep_time)
                 waited = True
@@ -660,7 +737,10 @@ class JobManager(object):
             if not waited:
                 logger.info(
                     "Can't run job {cat:%s,source:%s,step:%s} right now, too much pending jobs in the queue (max: %s), will retry until possible",
-                    pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), config.MAX_QUEUED_JOBS
+                    pinfo.get("category"),
+                    pinfo.get("source"),
+                    pinfo.get("step"),
+                    config.MAX_QUEUED_JOBS,
                 )
             await asyncio.sleep(sleep_time)
             pendings = len(self.process_queue._pending_work_items.keys()) - config.HUB_MAX_WORKERS
@@ -677,15 +757,25 @@ class JobManager(object):
                     # reset flag
                     failed_predicate = None
             if failed_predicate:
-                logger.info("Can't run job {cat:%s,source:%s,step:%s} right now, predicate %s failed, will retry until possible",
-                            pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), failed_predicate)
+                logger.info(
+                    "Can't run job {cat:%s,source:%s,step:%s} right now, predicate %s failed, will retry until possible",
+                    pinfo.get("category"),
+                    pinfo.get("source"),
+                    pinfo.get("step"),
+                    failed_predicate,
+                )
                 await asyncio.sleep(sleep_time)
                 waited = True
             else:
                 break  # while loop
         if waited:
-            logger.info("Job {cat:%s,source:%s,step:%s} now can be launched (total waiting time: %s)",
-                        pinfo.get("category"), pinfo.get("source"), pinfo.get("step"), timesofar(t0))
+            logger.info(
+                "Job {cat:%s,source:%s,step:%s} now can be launched (total waiting time: %s)",
+                pinfo.get("category"),
+                pinfo.get("source"),
+                pinfo.get("step"),
+                timesofar(t0),
+            )
             # auto-recycle could have been temporarily disabled until more mem is assigned.
             # if we've been able to run the job, it means we had enough mem so restore
             # recycling setting (if auto_recycle was False, it's ignored
@@ -693,7 +783,6 @@ class JobManager(object):
                 self.auto_recycle = self.auto_recycle_setting
 
     async def defer_to_process(self, pinfo=None, func=None, *args, **kwargs):
-
         async def run(future, job_id):
             nonlocal pinfo
             await self.check_constraints(pinfo)
@@ -722,7 +811,7 @@ class JobManager(object):
                 self._process_job_ids.clear()
             res = self.loop.run_in_executor(
                 self.process_queue,
-                partial(do_work, job_id, "process", copy_pinfo, func, *args, **kwargs)
+                partial(do_work, job_id, "process", copy_pinfo, func, *args, **kwargs),
             )
             # do_work will create and clean up the pickle files unless
             # the worker process gets killed unexpectedly
@@ -732,7 +821,8 @@ class JobManager(object):
             def ran(f):
                 try:
                     # consume future, just to trigger potential exceptions
-                    r = f.result()
+                    # r = f.result()
+                    f.result()
                 finally:
                     # whatever the result we want to make sure to clean the job registry
                     # to keep it sync with actual running jobs
@@ -741,6 +831,7 @@ class JobManager(object):
                     # block indefer_to_process.run.ran (names are hard, I know)
                     self.jobs.pop(job_id)
                     self._process_job_ids.discard(job_id)
+
             res.add_done_callback(ran)
             res = await res
             # process could generate other parallelized jobs and return a Future/Task
@@ -760,6 +851,7 @@ class JobManager(object):
             # Future from the Executor
             if innerf.exception():
                 f.set_exception(innerf.exception())
+
         job_id = get_random_string()
         fut = asyncio.ensure_future(run(f, job_id))
         fut.add_done_callback(partial(runned, job_id=job_id))
@@ -775,17 +867,18 @@ class JobManager(object):
                 self.ok_to_run.release()
             self.jobs[job_id] = pinfo
             res = self.loop.run_in_executor(
-                self.thread_queue,
-                partial(do_work, job_id, "thread", pinfo, func, *args)
+                self.thread_queue, partial(do_work, job_id, "thread", pinfo, func, *args)
             )
 
             def ran(f):
                 try:
-                    r = f.result()
+                    # r = f.result()
+                    f.result()
                 finally:
                     # whatever the result we want to make sure to clean the job registry
                     # to keep it sync with actual running jobs
                     self.jobs.pop(job_id)
+
             res.add_done_callback(ran)
             res = await res
             # thread could generate other parallelized jobs and return a Future/Task
@@ -793,6 +886,7 @@ class JobManager(object):
             if type(res) == asyncio.Task:
                 res = await res
             future.set_result(res)
+
         if not skip_check:
             await self.ok_to_run.acquire()
         f = asyncio.Future()
@@ -800,6 +894,7 @@ class JobManager(object):
         def runned(innerf, job_id):
             if innerf.exception():
                 f.set_exception(innerf.exception())
+
         job_id = get_random_string()
         fut = asyncio.ensure_future(run(f, job_id))
         fut.add_done_callback(partial(runned, job_id=job_id))
@@ -833,18 +928,16 @@ class JobManager(object):
             func_name = func.func.__name__
         else:
             func_name = func.__name__
-        strcode = """
+        strcode = (
+            """
 async def %s():
     func(*args, **kwargs)
-""" % func_name
+"""
+            % func_name
+        )
         code = compile(strcode, "<string>", "exec")
         command_globals = {}
-        command_locals = {
-            "asyncio": asyncio,
-            "func": func,
-            "args": args,
-            "kwargs": kwargs
-        }
+        command_locals = {"asyncio": asyncio, "func": func, "args": args, "kwargs": kwargs}
         eval(code, command_locals, command_globals)
         run_func = command_globals[func_name]
         job = self.submit(run_func, schedule=crontab)
@@ -897,7 +990,7 @@ async def %s():
 
                         worker["process"] = {
                             "mem": proc.memory_info().rss,
-                            "cpu": proc.cpu_percent()
+                            "cpu": proc.cpu_percent(),
                         }
                         pids[pid] = worker
                 except IndexError:
@@ -911,8 +1004,8 @@ async def %s():
         try:
             # see track() for filename format
             pat = re.compile(r".*/(Thread\w*-\d+)_.*\.pickle")
-            threads = self.thread_queue._threads
-            active_tids = [t.getName() for t in threads]
+            # threads = self.thread_queue._threads
+            # active_tids = [t.getName() for t in threads]
             for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle")):
                 try:
                     tid = pat.findall(fn)[0].split("_")[0]
@@ -948,7 +1041,7 @@ async def %s():
             info["duration"] = timesofar(worker["job"]["started_at"])
         # for now, don't display files used by the process
         info["files"] = []
-        #if proc:
+        # if proc:
         #    for pfile in proc.open_files():
         #        # skip 'a' (logger)
         #        if pfile.mode == 'r':
@@ -1004,18 +1097,23 @@ async def %s():
         res = {}
         for child in self.pchildren:
             try:
-                mem = child.memory_info().rss
+                # mem = child.memory_info().rss
+                child.memory_info().rss
                 try:
                     pio = child.io_counters()
                 except AttributeError:
                     # workaround for OS w/o this feature
                     # namely macOS
-                    pio = type('', (), {
-                        'read_count': -1,
-                        'write_count': -1,
-                        'read_bytes': -1,
-                        'write_bytes': -1,
-                    })()
+                    pio = type(
+                        "",
+                        (),
+                        {
+                            "read_count": -1,
+                            "write_count": -1,
+                            "read_bytes": -1,
+                            "write_bytes": -1,
+                        },
+                    )()
                 # TODO: cpu as reported here isn't reliable, the only to get something
                 # consistent to call cpu_percent() with a waiting time argument to integrate
                 # CPU activity over this time, but this is a blocking call and freeze the hub
@@ -1035,14 +1133,14 @@ async def %s():
                         # having a "sleeping" process that's actually running something
                         # (prob happening because delay between status and cpu_percent(), like a race condition)
                         "status": cpu > 0.0 and "running" or child.status(),
-                        "percent": cpu
+                        "percent": cpu,
                     },
                     "io": {
                         "read_count": pio.read_count,
                         "write_count": pio.write_count,
                         "read_bytes": pio.read_bytes,
-                        "write_bytes": pio.write_bytes
-                    }
+                        "write_bytes": pio.write_bytes,
+                    },
                 }
 
                 if child.pid in running_pids:
@@ -1100,7 +1198,7 @@ async def %s():
                 "running": list(pworkers.keys()),
                 "pending": list(ppendings.keys()),
                 "all": self.get_process_summary(),
-                "max": self.process_queue._max_workers
+                "max": self.process_queue._max_workers,
             },
             "thread": {
                 "running": list(tworkers.keys()),
@@ -1111,7 +1209,7 @@ async def %s():
             "memory": self.hub_memory,
             "available_system_memory": self.avail_memory,
             "max_memory_usage": self.max_memory_usage,
-            "hub_pid": self.hub_process.pid
+            "hub_pid": self.hub_process.pid,
         }
 
     def get_pending_summary(self, getstr=False):
@@ -1144,12 +1242,12 @@ async def %s():
         return "\n".join(out)
 
     def top(self, action="summary"):
-        pending = False
-        done = False
-        run = False
-        pid = None
+        # pending = False
+        # done = False
+        # run = False
+        # pid = None
         child = None
-        #if action:
+        # if action:
         #    try:
         #        # want to see details for a specific process ?
         #        pid = int(action)
@@ -1169,8 +1267,16 @@ async def %s():
             # TODO: delete the follow two lines
             # pworkers = dict([(pid, proc) for pid, proc in res["process"]["all"].items() if pid in res["process"]["running"]])
             # tworkers = dict([(tid, thread) for tid, thread in res["thread"]["all"].items() if tid in res["thread"]["running"]])
-            pworkers = {pid: proc for pid, proc in res["process"]["all"].items() if pid in res["process"]["running"]}
-            tworkers = {tid: thread for tid, thread in res["thread"]["all"].items() if tid in res["thread"]["running"]}
+            pworkers = {
+                pid: proc
+                for pid, proc in res["process"]["all"].items()
+                if pid in res["process"]["running"]
+            }
+            tworkers = {
+                tid: thread
+                for tid, thread in res["thread"]["all"].items()
+                if tid in res["thread"]["running"]
+            }
 
             out.append(self.print_workers(pworkers))
             out.append(self.print_workers(tworkers))
@@ -1185,10 +1291,10 @@ async def %s():
 
     def job_info(self):
         summary = self.get_summary()
-        prunning = summary["process"]["running"]
-        trunning = summary["thread"]["running"]
-        ppending = summary["process"]["pending"]
-        tpending = summary["thread"]["pending"]
+        # prunning = summary["process"]["running"]
+        # trunning = summary["thread"]["running"]
+        # ppending = summary["process"]["pending"]
+        # tpending = summary["thread"]["pending"]
         return {
             "queue": {
                 "process": summary["process"],
@@ -1197,11 +1303,12 @@ async def %s():
             "memory": summary["memory"],
             "available_system_memory": summary["available_system_memory"],
             "max_memory_usage": summary["max_memory_usage"],
-            "hub_pid": summary["hub_pid"]
+            "hub_pid": summary["hub_pid"],
         }
+
 
 # just a helper to clean/prepare job's values printing
 def norm(value, maxlen):
     if len(value) > maxlen:
-        value = "...%s" % value[-maxlen+3:]
+        value = "...%s" % value[-maxlen + 3 :]
     return value
