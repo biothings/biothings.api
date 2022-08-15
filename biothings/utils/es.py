@@ -281,7 +281,7 @@ class ESIndexer:
 
                 mapping = {"mappings": mapping}
                 body.update(mapping)
-            self._es.indices.create(index=self._index, body=body)
+            self._es.indices.create(index=self._index, **body)
 
     def _populate_es_version(self):
         if not hasattr(self, "_es_version"):
