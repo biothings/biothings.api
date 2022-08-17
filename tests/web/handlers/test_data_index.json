@@ -948,7 +948,6 @@
         },
         "name": {
           "type": "text",
-          "boost": 0.8,
           "copy_to": [
             "all"
           ]
@@ -2153,14 +2152,12 @@
         },
         "summary": {
           "type": "text",
-          "boost": 0.5,
           "copy_to": [
             "all"
           ]
         },
         "symbol": {
           "type": "keyword",
-          "boost": 5.0,
           "copy_to": [
             "all"
           ],
