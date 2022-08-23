@@ -394,6 +394,17 @@ class BaseSourceUploader(object):
             _doc.setdefault("src_meta", {}).update({"code": info})
         return _doc
 
+    def get_current_and_new_master(self):
+        new = self.generate_doc_src_master() or {}
+        dkey = {"_id": new["_id"]}
+        current = self.src_master.find_one(dkey) or {}
+        if current.get("src_meta") != new.get("src_meta"):
+            return {
+                "kclass": f"{self.__class__.__module__}.{self.__class__.__name__}",
+                "current": current.get("src_meta"),
+                "new": new.get("src_meta"),
+            }
+
     def update_master(self):
         _doc = self.generate_doc_src_master()
         self.save_doc_src_master(_doc)
@@ -823,6 +834,54 @@ class UploaderManager(BaseSourceManager):
         except Exception as e:
             logging.exception("Error while uploading '%s': %s" % (src, e), extra={"notify": True})
             raise
+
+    def update_source_meta(self, src, dry=False):
+        """
+        Trigger update for registered resource named 'src'.
+        """
+        try:
+            klasses = self[src]
+        except KeyError:
+            raise ResourceNotFound(
+                "Can't find '%s' in registered sources (whether as main or sub-source)"
+                % src)
+
+        jobs = []
+        try:
+            for i, klass in enumerate(klasses):
+                job = self.job_manager.submit(
+                    partial(self.create_and_update_master,
+                            klass,
+                            dry=dry))
+                jobs.append(job)
+            tasks = asyncio.gather(*jobs)
+
+            def done(f):
+                try:
+                    # just consume the result to raise exception
+                    # if there were an error... (what an api...)
+                    f.result()
+                    logging.info("success", extra={"notify": True})
+                except Exception as e:
+                    logging.exception("failed: %s" % e, extra={"notify": True})
+
+            tasks.add_done_callback(done)
+            return jobs
+        except Exception as e:
+            logging.exception("Error while update src meta '%s': %s" % (src, e),
+                              extra={"notify": True})
+            raise
+
+    async def create_and_update_master(self, klass, dry=False):
+        compare_data = None
+        inst = self.create_instance(klass)
+        inst.prepare()
+        if dry:
+            compare_data = inst.get_current_and_new_master()
+        else:
+            inst.update_master()
+        inst.unprepare()
+        return compare_data
 
     async def create_and_load(self, klass, *args, **kwargs):
         insts = self.create_instance(klass)
