@@ -64,7 +64,7 @@ def setup_es():
     #     pytest.exit('ES version does not match its python library.')
 
     try:
-        if not client.indices.exists(TEST_INDEX):
+        if not client.indices.exists(index=TEST_INDEX):
 
 
             mapping_file = 'test_data_index.json'
@@ -78,13 +78,13 @@ def setup_es():
 
             if int(server_major_version) >= 8:
                 client.indices.create(TEST_INDEX, mapping)
-                client.bulk(ndjson, TEST_INDEX)
+                client.bulk(body=ndjson, index=TEST_INDEX)
             elif elasticsearch.__version__[0] > 6:
                 client.indices.create(TEST_INDEX, mapping, include_type_name=True)
-                client.bulk(ndjson, TEST_INDEX)
+                client.bulk(body=ndjson, index=TEST_INDEX)
             else:
                 client.indices.create(TEST_INDEX, mapping)
-                client.bulk(ndjson, TEST_INDEX, TEST_DOC_TYPE)
+                client.bulk(body=ndjson, index=TEST_INDEX, doc_type=TEST_DOC_TYPE)
 
             client.indices.refresh()
             yield

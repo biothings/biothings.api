@@ -1,14 +1,12 @@
-
-
 import inspect
 import json
 from json.decoder import JSONDecodeError
 import re
+import os
 from collections import UserList, UserString, deque
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from importlib import import_module
-from pymongo.errors import AutoReconnect
 
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.jsondiff import make as jsondiff
@@ -68,6 +66,16 @@ def is_jsonable(x):
         return False
 
 
+def set_default_folder(data_archive_root, sub_folder):
+    """set default sub folder based on data_archive_root"""
+
+    # trim off "datasources" to get the data_root folder, otherwise, use it as is.
+    # '/data/mydisease/datasources' --> '/data/mydisease/'
+    # "datasources" was reserved for downloaded data sources files
+    _data_root = data_archive_root[:-len("datasources")] if data_archive_root.endswith("datasources") else data_archive_root
+    return os.path.join(_data_root, sub_folder)
+
+
 class ConfigurationWrapper():
     """
         Wraps and manages configuration access and edit. A singleton
@@ -89,6 +97,9 @@ class ConfigurationWrapper():
         or new variables will be added if not defined in default_conf.
         Only metadata come from default_config will be used.
         """
+
+        # Store current pid to use later for checking with the runtime's pid.
+        self._pid = os.getpid()
 
         self._module = conf  # python module, typically config.py
         # update self._module with default value for missing configrations
@@ -267,10 +278,16 @@ class ConfigurationWrapper():
             return res
 
     def get_value_from_db(self, name):
-        from biothings.utils.mongo import MaxRetryAutoReconnectException
-
         if not self._db:  # without db, only support module params.
             raise AttributeError("Transient parameter requires DB setup.")
+
+        # Our db instance is shared with child process when this process is folked, and that action it not fork-safe.
+        # So we must recreate db instance in the child process.
+        # Ref: https://pymongo.readthedocs.io/en/stable/faq.html#id3
+        if os.getpid() != self._pid:
+            self._pid = os.getpid()
+            self._db = None
+            self._db = self._get_db_function()
 
         doc = self._db.find_one({"_id": name})
         if not doc:

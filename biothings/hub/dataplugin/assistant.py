@@ -1,35 +1,32 @@
+import importlib
+import inspect
+import json
 import os
 import pprint
-import json
-import sys
 import re
-import urllib.parse
-import requests
-import inspect
-import importlib
-import textwrap
-import pip  # noqa: F401
 import subprocess
-import copy
+import sys
+import textwrap
+import urllib.parse
 from string import Template
-from yapf.yapflib import yapf_api
 
 import orjson
+import requests
+import yaml
+from yapf.yapflib import yapf_api
 
-from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
-from biothings.utils.common import rmdashfr, get_class_from_classpath
-from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
-
-from biothings.utils.manager import BaseSourceManager
-from biothings.hub.dataload.dumper import LastModifiedHTTPDumper, LastModifiedFTPDumper  # noqa: F402
-from biothings.hub.dataload.uploader import BaseSourceUploader, ParallelizedSourceUploader  # noqa: F401
-from biothings.hub.dataload.storage import IgnoreDuplicatedStorage, BasicStorage, MergerStorage  # noqa: F401
+from biothings.hub.dataload.dumper import LastModifiedFTPDumper, LastModifiedHTTPDumper
 from biothings.hub.dataplugin.manager import GitDataPlugin, ManualDataPlugin
+from biothings.utils.common import get_class_from_classpath, rmdashfr
+from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
+from biothings.utils.loggers import get_logger
+from biothings.utils.manager import BaseSourceManager
 
 
 class AssistantException(Exception):
     pass
+
 
 class LoaderException(Exception):
     pass
@@ -45,7 +42,10 @@ class BasePluginLoader(object):
 
     def setup_log(self):
         """Setup and return a logger instance"""
-        self.logger, self.logfile = get_logger('loader_%s' % self.plugin_name)
+        log_folder = os.path.join(btconfig.LOG_FOLDER, 'dataload')
+        self.logger, self.logfile = get_logger(
+            'loader_%s' % self.plugin_name, log_folder=log_folder
+        )
 
     def get_plugin_obj(self):
         dp = get_data_plugin()
@@ -55,8 +55,7 @@ class BasePluginLoader(object):
         return plugin
 
     def invalidate_plugin(self, error):
-        self.logger.exception("Invalidate plugin '%s' because: %s" %
-                              (self.plugin_name, error))
+        self.logger.exception("Invalidate plugin '%s' because: %s" % (self.plugin_name, error))
         # flag all plugin associated (there should only one though, but no need to care here)
         for klass in self.__class__.data_plugin_manager[self.plugin_name]:
             klass.data_plugin_error = error
@@ -83,7 +82,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
     dumper_registry = {
         "http": LastModifiedHTTPDumper,
         "https": LastModifiedHTTPDumper,
-        "ftp": LastModifiedFTPDumper
+        "ftp": LastModifiedFTPDumper,
     }
 
     def _dict_for_base(self, data_url):
@@ -92,7 +91,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         return {
             "SRC_NAME": self.plugin_name,
             "SRC_ROOT_FOLDER": os.path.join(btconfig.DATA_ARCHIVE_ROOT, self.plugin_name),
-            "SRC_URLS": data_url
+            "SRC_URLS": data_url,
         }
 
     def _dict_for_http(self, data_url):
@@ -110,7 +109,11 @@ class ManifestBasedPluginLoader(BasePluginLoader):
     def can_load_plugin(self):
         plugin = self.get_plugin_obj()
         df = plugin["download"]["data_folder"]
-        if "manifest.json" in os.listdir(df) and os.path.exists(os.path.join(df,"manifest.json")):
+        if "manifest.json" in os.listdir(df) and os.path.exists(os.path.join(df, "manifest.json")):
+            return True
+        elif "manifest.yaml" in os.listdir(df) and os.path.exists(
+            os.path.join(df, "manifest.yaml")
+        ):
             return True
         else:
             return False
@@ -120,16 +123,21 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         df = plugin["download"]["data_folder"]
         if os.path.exists(df):
             mf = os.path.join(df, "manifest.json")
+            mf_yaml = os.path.join(df, "manifest.yaml")
+            manifest = None
             if os.path.exists(mf):
+                self.logger.debug(f"Loading manifest: {mf}")
+                manifest = json.load(open(mf))
+            elif os.path.exists(mf_yaml):
+                self.logger.debug(f"Loading manifest: {mf_yaml}")
+                manifest = yaml.safe_load(open(mf_yaml))
+            if manifest:
                 try:
-                    self.logger.debug("Loading manifest: %s" % mf)
-                    self.interpret_manifest(mf)
+                    self.interpret_manifest(manifest, df)
                 except Exception as e:
-                    self.invalidate_plugin("Error loading manifest: %s" %
-                                           str(e))
+                    self.invalidate_plugin("Error loading manifest: %s" % str(e))
             else:
-                self.logger.info("No manifest found for plugin: %s" %
-                                 plugin["plugin"]["url"])
+                self.logger.info("No manifest found for plugin: %s" % plugin["plugin"]["url"])
                 self.invalidate_plugin("No manifest found")
         else:
             self.invalidate_plugin("Missing plugin folder '%s'" % df)
@@ -149,7 +157,10 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         try:
             mod, funcname = map(str.strip, mod_name.split(":"))
         except ValueError as e:
-            raise AssistantException("'Wrong format for '%s', it must be defined following format 'module:func': %s" % (mod_name, e))
+            raise AssistantException(
+                "'Wrong format for '%s', it must be defined following format 'module:func': %s"
+                % (mod_name, e)
+            )
         modpath = self.plugin_name + "." + mod
         pymod = importlib.import_module(modpath)
         # reload in case we need to refresh plugin's code
@@ -169,12 +180,13 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 durls = [dumper_section["data_url"]]
             else:
                 durls = dumper_section["data_url"]
-            schemes = set(
-                [urllib.parse.urlsplit(durl).scheme for durl in durls])
+            schemes = set([urllib.parse.urlsplit(durl).scheme for durl in durls])
             # https = http regarding dumper generation
             if len(set([sch.replace("https", "http") for sch in schemes])) > 1:
-                raise AssistantException("Manifest specifies URLs of different types (%s), " % schemes
-                                         + "expecting only one")
+                raise AssistantException(
+                    "Manifest specifies URLs of different types (%s), " % schemes
+                    + "expecting only one"
+                )
             scheme = schemes.pop()
             klass = dumper_section.get("class")
             confdict = getattr(self, "_dict_for_%s" % scheme)(durls)
@@ -184,12 +196,13 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 confdict["BASE_CLASSES"] = klass
             else:
                 dumper_class = self.dumper_registry.get(scheme)
-                confdict[
-                    "BASE_CLASSES"] = "biothings.hub.dataload.dumper.%s" % dumper_class.__name__
+                confdict["BASE_CLASSES"] = (
+                    "biothings.hub.dataload.dumper.%s" % dumper_class.__name__
+                )
             if not dumper_class:
                 raise AssistantException(
-                    "No dumper class registered to handle scheme '%s'" %
-                    scheme)
+                    "No dumper class registered to handle scheme '%s'" % scheme
+                )
             if metadata:
                 confdict["__metadata__"] = metadata
             else:
@@ -197,21 +210,29 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
             if dumper_section.get("release"):
                 indentfunc, func = self.get_code_for_mod_name(dumper_section["release"])
-                assert func != "set_release", "'set_release' is a reserved method name, pick another name"
-                confdict["SET_RELEASE_FUNC"] = """
+                assert (
+                    func != "set_release"
+                ), "'set_release' is a reserved method name, pick another name"
+                confdict[
+                    "SET_RELEASE_FUNC"
+                ] = """
 %s
 
     def set_release(self):
         self.release = self.%s()
-""" % (indentfunc, func)
+""" % (
+                    indentfunc,
+                    func,
+                )
 
             else:
                 confdict["SET_RELEASE_FUNC"] = ""
 
             dklass = None
             pnregex = r"^[A-z_][\w\d]+$"
-            assert re.compile(pnregex).match(self.plugin_name), \
-                "Incorrect plugin name '%s' (doesn't match regex '%s'" % (self.plugin_name, pnregex)
+            assert re.compile(pnregex).match(
+                self.plugin_name
+            ), "Incorrect plugin name '%s' (doesn't match regex '%s'" % (self.plugin_name, pnregex)
             dumper_name = self.plugin_name.capitalize() + "Dumper"
             '%s'
             try:
@@ -220,8 +241,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 else:
                     # default: assuming in ..../biothings/hub/dataplugin/
                     curmodpath = os.path.realpath(__file__)
-                    tpl_file = os.path.join(os.path.dirname(curmodpath),
-                                            "dumper.py.tpl")
+                    tpl_file = os.path.join(os.path.dirname(curmodpath), "dumper.py.tpl")
                 tpl = Template(open(tpl_file).read())
                 confdict["DUMPER_NAME"] = dumper_name
                 confdict["SRC_NAME"] = self.plugin_name
@@ -230,21 +250,24 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 else:
                     schedule = "None"
                 confdict["SCHEDULE"] = schedule
-                confdict["UNCOMPRESS"] = dumper_section.get(
-                    "uncompress") or False
+                confdict["UNCOMPRESS"] = dumper_section.get("uncompress") or False
                 pystr = tpl.substitute(confdict)
-                #print(pystr)
+                # print(pystr)
                 import imp
+
                 code = compile(pystr, "<string>", "exec")
                 mod = imp.new_module(self.plugin_name)
                 exec(code, mod.__dict__, mod.__dict__)
                 dklass = getattr(mod, dumper_name)
                 # we need to inherit from a class here in this file so it can be pickled
                 assisted_dumper_class = type(
-                    "AssistedDumper_%s" % self.plugin_name, (
+                    "AssistedDumper_%s" % self.plugin_name,
+                    (
                         AssistedDumper,
                         dklass,
-                    ), {})
+                    ),
+                    {},
+                )
                 assisted_dumper_class.python_code = pystr
 
                 return assisted_dumper_class
@@ -263,7 +286,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             confdict = {
                 "SRC_NAME": self.plugin_name,
                 "SUB_SRC_NAME": sub_source_name,
-                "UPLOADER_NAME": uploader_name
+                "UPLOADER_NAME": uploader_name,
             }
             try:
                 mod, func = uploader_section.get("parser").split(":")
@@ -273,31 +296,37 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     parser_kwargs_serialized = orjson.dumps(
                         uploader_section['parser_kwargs']
                     ).decode('utf-8')
-                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(f'''
-                        # get json 
+                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(
+                        f'''
+                        # get json
                         import orjson
-                        
+
                         # Setup parser to parser factory
                         from {mod} import {func} as parser_factory
-                        
+
                         parser_kwargs_serialized = r\'\'\'
                             {parser_kwargs_serialized}
                         \'\'\'  # I am not 100 percent certain this works
-                        
+
                         parser_kwargs = orjson.loads(parser_kwargs_serialized)
                         parser_func = parser_factory(**parser_kwargs)
-                    ''')
+                    '''
+                    )
                 else:
-                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(f'''
+                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(
+                        f'''
                     # when code is exported, import becomes relative
                     try:
                         from {self.plugin_name}.{mod} import {func} as parser_func
                     except ImportError:
                         from .{mod} import {func} as parser_func
-                    ''')
+                    '''
+                    )
             except ValueError:
-                raise AssistantException("'parser' must be defined as 'module:parser_func' but got: '%s'" %
-                                         uploader_section["parser"])
+                raise AssistantException(
+                    "'parser' must be defined as 'module:parser_func' but got: '%s'"
+                    % uploader_section["parser"]
+                )
             try:
                 ondups = uploader_section.get("on_duplicates")
                 if ondups and ondups != "error":
@@ -309,30 +338,36 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     storage_class = "biothings.hub.dataload.storage.BasicStorage"
                 if uploader_section.get("ignore_duplicates"):
                     raise AssistantException(
-                        "'ignore_duplicates' key not supported anymore, "
-                        + "use 'on_duplicates' : 'error|ignore|merge'")
+                        "'ignore_duplicates' key not supported anymore, use 'on_duplicates' : 'error|ignore|merge'"
+                    )
                 confdict["STORAGE_CLASS"] = storage_class
                 # default is not ID conversion at all
                 confdict["IMPORT_IDCONVERTER_FUNC"] = ""
                 confdict["IDCONVERTER_FUNC"] = None
                 confdict["CALL_PARSER_FUNC"] = "parser_func(data_folder)"
                 if uploader_section.get("keylookup"):
-                    assert self.__class__.keylookup, "Plugin %s needs _id conversion " % self.plugin_name + \
-                                                     "but no keylookup instance was found"
-                    self.logger.info("Keylookup conversion required: %s" %
-                                     uploader_section["keylookup"])
+                    assert self.__class__.keylookup, (
+                        "Plugin %s needs _id conversion " % self.plugin_name
+                        + "but no keylookup instance was found"
+                    )
+                    self.logger.info(
+                        "Keylookup conversion required: %s" % uploader_section["keylookup"]
+                    )
                     klmod = inspect.getmodule(self.__class__.keylookup)
-                    confdict[
-                        "IMPORT_IDCONVERTER_FUNC"] = "from %s import %s" % (
-                            klmod.__name__, self.__class__.keylookup.__name__)
-                    convargs = ",".join([
-                        "%s=%s" % (k, v)
-                        for k, v in uploader_section["keylookup"].items()
-                    ])
+                    confdict["IMPORT_IDCONVERTER_FUNC"] = "from %s import %s" % (
+                        klmod.__name__,
+                        self.__class__.keylookup.__name__,
+                    )
+                    convargs = ",".join(
+                        ["%s=%s" % (k, v) for k, v in uploader_section["keylookup"].items()]
+                    )
                     confdict["IDCONVERTER_FUNC"] = "%s(%s)" % (
-                        self.__class__.keylookup.__name__, convargs)
+                        self.__class__.keylookup.__name__,
+                        convargs,
+                    )
                     confdict[
-                        "CALL_PARSER_FUNC"] = "self.__class__.idconverter(parser_func)(data_folder)"
+                        "CALL_PARSER_FUNC"
+                    ] = "self.__class__.idconverter(parser_func)(data_folder)"
                 if metadata:
                     confdict["__metadata__"] = metadata
                 else:
@@ -342,58 +377,72 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     tpl_file = btconfig.DUMPER_TEMPLATE
                 elif sub_source_name:
                     curmodpath = os.path.realpath(__file__)
-                    tpl_file = os.path.join(os.path.dirname(curmodpath),
-                                            "subuploader.py.tpl")
+                    tpl_file = os.path.join(os.path.dirname(curmodpath), "subuploader.py.tpl")
                 else:
                     # default: assuming in ..../biothings/hub/dataplugin/
                     curmodpath = os.path.realpath(__file__)
-                    tpl_file = os.path.join(os.path.dirname(curmodpath),
-                                            "uploader.py.tpl")
+                    tpl_file = os.path.join(os.path.dirname(curmodpath), "uploader.py.tpl")
                 tpl = Template(open(tpl_file).read())
 
                 if uploader_section.get("parallelizer"):
                     indentfunc, func = self.get_code_for_mod_name(uploader_section["parallelizer"])
                     assert func != "jobs", "'jobs' is a reserved method name, pick another name"
                     confdict[
-                        "BASE_CLASSES"] = "biothings.hub.dataload.uploader.ParallelizedSourceUploader"
+                        "BASE_CLASSES"
+                    ] = "biothings.hub.dataload.uploader.ParallelizedSourceUploader"
                     confdict["IMPORT_FROM_PARALLELIZER"] = ""
-                    confdict["JOBS_FUNC"] = """
+                    confdict[
+                        "JOBS_FUNC"
+                    ] = """
 %s
     def jobs(self):
         return self.%s()
-""" % (indentfunc, func)
+""" % (
+                        indentfunc,
+                        func,
+                    )
                 else:
-                    confdict[
-                        "BASE_CLASSES"] = "biothings.hub.dataload.uploader.BaseSourceUploader"
+                    confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.BaseSourceUploader"
                     confdict["JOBS_FUNC"] = ""
 
                 if uploader_section.get("mapping"):
                     indentfunc, func = self.get_code_for_mod_name(uploader_section["mapping"])
-                    assert func != "get_mapping", "'get_mapping' is a reserved class method name, pick another name"
-                    confdict["MAPPING_FUNC"] = """
+                    assert (
+                        func != "get_mapping"
+                    ), "'get_mapping' is a reserved class method name, pick another name"
+                    confdict[
+                        "MAPPING_FUNC"
+                    ] = """
     @classmethod
 %s
 
     @classmethod
     def get_mapping(cls):
         return cls.%s()
-""" % (indentfunc, func)
+""" % (
+                        indentfunc,
+                        func,
+                    )
                 else:
                     confdict["MAPPING_FUNC"] = ""
 
                 pystr = tpl.substitute(confdict)
-                #print(pystr)
+                # print(pystr)
                 import imp
+
                 code = compile(pystr, "<string>", "exec")
                 mod = imp.new_module(self.plugin_name + sub_source_name)
                 exec(code, mod.__dict__, mod.__dict__)
                 uklass = getattr(mod, uploader_name)
                 # we need to inherit from a class here in this file so it can be pickled
                 assisted_uploader_class = type(
-                    "AssistedUploader_%s" % self.plugin_name + sub_source_name, (
+                    "AssistedUploader_%s" % self.plugin_name + sub_source_name,
+                    (
                         AssistedUploader,
                         uklass,
-                    ), {})
+                    ),
+                    {},
+                )
                 assisted_uploader_class.python_code = pystr
 
                 return assisted_uploader_class
@@ -410,18 +459,20 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         uploader_classes = []
         for uploader_conf in uploader_section:
             sub_source_name = uploader_conf.get('name', '')
-            uploader_class = self.get_uploader_dynamic_class(uploader_conf, metadata, sub_source_name)
+            uploader_class = self.get_uploader_dynamic_class(
+                uploader_conf, metadata, sub_source_name
+            )
             uploader_class.DATA_PLUGIN_FOLDER = data_plugin_folder
 
             # register class in module so it can be pickled easily
             sys.modules["biothings.hub.dataplugin.assistant"].__dict__[
-                "AssistedUploader_%s" % self.plugin_name + sub_source_name] = uploader_class
+                "AssistedUploader_%s" % self.plugin_name + sub_source_name
+            ] = uploader_class
 
             uploader_classes.append(uploader_class)
         return uploader_classes
 
-    def interpret_manifest(self, manifest_file):
-        manifest = json.load(open(manifest_file))
+    def interpret_manifest(self, manifest, data_plugin_folder):
         # start with requirements before importing anything
         if manifest.get("requires"):
             reqs = manifest["requires"]
@@ -429,38 +480,34 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 reqs = [reqs]
             for req in reqs:
                 self.logger.info("Install requirement '%s'" % req)
-                subprocess.check_call(
-                    [sys.executable, '-m', 'pip', 'install', req])
+                subprocess.check_call([sys.executable, '-m', 'pip', 'install', req])
         if manifest.get("dumper"):
             assisted_dumper_class = self.get_dumper_dynamic_class(
-                manifest["dumper"], manifest.get("__metadata__"))
-            assisted_dumper_class.DATA_PLUGIN_FOLDER = os.path.dirname(
-                manifest_file)
-            self.__class__.dumper_manager.register_classes(
-                [assisted_dumper_class])
+                manifest["dumper"], manifest.get("__metadata__")
+            )
+            assisted_dumper_class.DATA_PLUGIN_FOLDER = data_plugin_folder
+            self.__class__.dumper_manager.register_classes([assisted_dumper_class])
             # register class in module so it can be pickled easily
             sys.modules["biothings.hub.dataplugin.assistant"].__dict__[
-                "AssistedDumper_%s" % self.plugin_name] = assisted_dumper_class
+                "AssistedDumper_%s" % self.plugin_name
+            ] = assisted_dumper_class
 
         if manifest.get("uploader"):
             assisted_uploader_class = self.get_uploader_dynamic_class(
-                manifest["uploader"], manifest.get("__metadata__"))
-            assisted_uploader_class.DATA_PLUGIN_FOLDER = os.path.dirname(
-                manifest_file)
-            self.__class__.uploader_manager.register_classes(
-                [assisted_uploader_class])
+                manifest["uploader"], manifest.get("__metadata__")
+            )
+            assisted_uploader_class.DATA_PLUGIN_FOLDER = data_plugin_folder
+            self.__class__.uploader_manager.register_classes([assisted_uploader_class])
             # register class in module so it can be pickled easily
             sys.modules["biothings.hub.dataplugin.assistant"].__dict__[
-                "AssistedUploader_%s" %
-                self.plugin_name] = assisted_uploader_class
+                "AssistedUploader_%s" % self.plugin_name
+            ] = assisted_uploader_class
         if manifest.get("uploaders"):
-            data_plugin_folder = os.path.dirname(manifest_file)
             assisted_uploader_classes = self.get_uploader_dynamic_classes(
-                manifest["uploaders"], manifest.get("__metadata__"),
-                data_plugin_folder
+                manifest["uploaders"], manifest.get("__metadata__"), data_plugin_folder
             )
-            self.__class__.uploader_manager.register_classes(
-                assisted_uploader_classes)
+            self.__class__.uploader_manager.register_classes(assisted_uploader_classes)
+
 
 class AdvancedPluginLoader(BasePluginLoader):
 
@@ -482,22 +529,24 @@ class AdvancedPluginLoader(BasePluginLoader):
             # as necessary
             modpath = df.split("/")[-1]
             # before registering, process optional requirements.txt
-            reqfile = os.path.join(df,"requirements.txt")
+            reqfile = os.path.join(df, "requirements.txt")
             if os.path.exists(reqfile):
-                self.logger.info("Installing requirements from %s for plugin '%s'" % (reqfile,self.plugin_name))
-                subprocess.check_call([sys.executable,"-m","pip","install","-r",reqfile])
+                self.logger.info(
+                    "Installing requirements from %s for plugin '%s'" % (reqfile, self.plugin_name)
+                )
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", reqfile])
             # submit to managers to register datasources
             self.logger.info("Registering '%s' to dump/upload managers" % modpath)
             # register dumpers if any
             try:
                 self.__class__.dumper_manager.register_source(modpath)
             except Exception as e:
-                self.logger.info("Couldn't register dumper from module '%s': %s" % (modpath,e))
+                self.logger.info("Couldn't register dumper from module '%s': %s" % (modpath, e))
             # register uploaders if any
             try:
                 self.__class__.uploader_manager.register_source(modpath)
             except Exception as e:
-                self.logger.info("Couldn't register uploader from module '%s': %s" % (modpath,e))
+                self.logger.info("Couldn't register uploader from module '%s': %s" % (modpath, e))
         else:
             self.invalidate_plugin("Missing plugin folder '%s'" % df)
 
@@ -522,19 +571,20 @@ class BaseAssistant(object):
         self._src_folder = None
         self._loader = None
         self.logfile = None
+        self.logger = None
         self.setup_log()
 
     def setup_log(self):
         """Setup and return a logger instance"""
-        self.logger, self.logfile = get_logger('assistant_%s' %
-                                               self.__class__.plugin_type)
+        self.logger, self.logfile = get_logger('assistant_%s' % self.__class__.plugin_type)
 
     def register_loader(self):
         dp = get_data_plugin()
-        dp.update({"_id": self.plugin_name}, {
-            "$set": { "plugin.loader": self.loader.loader_type }
-            },
-            upsert=True)
+        dp.update(
+            {"_id": self.plugin_name},
+            {"$set": {"plugin.loader": self.loader.loader_type}},
+            upsert=True,
+        )
 
     @property
     def loader(self):
@@ -552,11 +602,15 @@ class BaseAssistant(object):
                 loader = klass(self.plugin_name)
                 if loader.can_load_plugin():
                     self._loader = loader
-                    self.logger.info("For plugin '%s', selecting loader %s" % (self.plugin_name, self._loader))
+                    self.logger.info(
+                        "For plugin '%s', selecting loader %s" % (self.plugin_name, self._loader)
+                    )
                     self.register_loader()
                     break
                 else:
-                    self.logger.debug("Loader %s can't load plugin '%s'" % (loader, self.plugin_name))
+                    self.logger.debug(
+                        "Loader %s can't load plugin '%s'" % (loader, self.plugin_name)
+                    )
                     continue
         return self._loader
 
@@ -586,7 +640,6 @@ class BaseAssistant(object):
         raise NotImplementedError("implement 'load_plugin' in subclass")
 
 
-
 class AssistedDumper(object):
     DATA_PLUGIN_FOLDER = None
 
@@ -614,8 +667,9 @@ class GithubAssistant(BaseAssistant):
             if headers.get("server").lower() == "github.com":
                 return True
         except Exception as e:
-            self.logger.error("%s plugin can't handle URL '%s': %s" %
-                             (self.plugin_type, self.url, e))
+            self.logger.error(
+                "%s plugin can't handle URL '%s': %s" % (self.plugin_type, self.url, e)
+            )
             return False
 
     def get_classdef(self):
@@ -623,11 +677,10 @@ class GithubAssistant(BaseAssistant):
         confdict = {
             "SRC_NAME": self.plugin_name,
             "GIT_REPO_URL": self.url,
-            "SRC_ROOT_FOLDER": self._src_folder
+            "SRC_ROOT_FOLDER": self._src_folder,
         }
         # TODO: store confdict in hubconf collection
-        k = type("AssistedGitDataPlugin_%s" % self.plugin_name,
-                 (GitDataPlugin, ), confdict)
+        k = type("AssistedGitDataPlugin_%s" % self.plugin_name, (GitDataPlugin,), confdict)
         return k
 
     def handle(self):
@@ -650,8 +703,12 @@ class LocalAssistant(BaseAssistant):
             # add .../plugins/subdir to sys.path, not impossible but might have side effects
             # so for now we stay on the safe (and also let's remember 1st version of
             # MS DOS didn't support subdirs, so I guess we're on the right path :))
-            assert not split.path, "It seems URL '%s' references a sub-directory (%s)," % (self.url, split.hostname) \
-                                   + " with plugin name '%s', sub-directories are not supported (yet)" % split.path.strip("/")
+            assert not split.path, "It seems URL '%s' references a sub-directory (%s)," % (
+                self.url,
+                split.hostname,
+            ) + " with plugin name '%s', sub-directories are not supported (yet)" % split.path.strip(
+                "/"
+            )
             # don't use hostname here because it's lowercased, netloc isn't
             # (and we're matching directory names on the filesystem, it's case-sensitive)
             self._plugin_name = os.path.basename(split.netloc)
@@ -666,12 +723,8 @@ class LocalAssistant(BaseAssistant):
 
     def get_classdef(self):
         # generate class dynamically and register
-        confdict = {
-            "SRC_NAME": self.plugin_name,
-            "SRC_ROOT_FOLDER": self._src_folder
-        }
-        k = type("AssistedManualDataPlugin_%s" % self.plugin_name,
-                 (ManualDataPlugin, ), confdict)
+        confdict = {"SRC_NAME": self.plugin_name, "SRC_ROOT_FOLDER": self._src_folder}
+        k = type("AssistedManualDataPlugin_%s" % self.plugin_name, (ManualDataPlugin,), confdict)
         return k
 
     def handle(self):
@@ -681,15 +734,16 @@ class LocalAssistant(BaseAssistant):
 
 
 class AssistantManager(BaseSourceManager):
-
-    def __init__(self,
-                 data_plugin_manager,
-                 dumper_manager,
-                 uploader_manager,
-                 keylookup=None,
-                 default_export_folder="hub/dataload/sources",
-                 *args,
-                 **kwargs):
+    def __init__(
+        self,
+        data_plugin_manager,
+        dumper_manager,
+        uploader_manager,
+        keylookup=None,
+        default_export_folder="hub/dataload/sources",
+        *args,
+        **kwargs,
+    ):
         super(AssistantManager, self).__init__(*args, **kwargs)
         self.data_plugin_manager = data_plugin_manager
         self.dumper_manager = dumper_manager
@@ -711,7 +765,7 @@ class AssistantManager(BaseSourceManager):
     def create_instance(self, klass, url):
         return klass(url)
 
-    def configure(self, klasses=[GithubAssistant, LocalAssistant, ]):
+    def configure(self, klasses=[GithubAssistant, LocalAssistant]):  # noqa: B006
         self.register_classes(klasses)
 
     def register_classes(self, klasses):
@@ -743,8 +797,7 @@ class AssistantManager(BaseSourceManager):
         else:
             raise ValueError("Specify 'url' or 'name'")
         if not doc:
-            raise AssistantException(
-                "Plugin is not registered (url=%s, name=%s)" % (url, name))
+            raise AssistantException("Plugin is not registered (url=%s, name=%s)" % (url, name))
         # should be only one but just in case
         dp.remove({"_id": doc["_id"]})
         # delete plugin code so it won't be auto-register
@@ -775,16 +828,11 @@ class AssistantManager(BaseSourceManager):
             # (we can't know until we have a look at the content). So assistant will have
             # manifest-based loader. If it fails, another assistant with advanced loader will
             # be used to try again.
-            dp.update({"_id": assistant.plugin_name}, {
-                "$set": {
-                    "plugin": {
-                        "url": url,
-                        "type": assistant.plugin_type,
-                        "active": True
-                    }
-                }
-            },
-                upsert=True)
+            dp.update(
+                {"_id": assistant.plugin_name},
+                {"$set": {"plugin": {"url": url, "type": assistant.plugin_type, "active": True}}},
+                upsert=True,
+            )
             assistant.handle()
             job = self.data_plugin_manager.load(assistant.plugin_name)
             assert len(job) == 1, "Expecting one job, got: %s" % job
@@ -794,18 +842,18 @@ class AssistantManager(BaseSourceManager):
                 try:
                     _ = f.result()
                     self.logger.debug(
-                        "Plugin '%s' downloaded, now loading manifest" %
-                        assistant.plugin_name)
+                        "Plugin '%s' downloaded, now loading manifest" % assistant.plugin_name
+                    )
                     assistant.loader.load_plugin()
                 except Exception as e:
-                    self.logger.exception("Unable to download plugin '%s': %s" %
-                                          (assistant.plugin_name, e))
+                    self.logger.exception(
+                        "Unable to download plugin '%s': %s" % (assistant.plugin_name, e)
+                    )
 
             job.add_done_callback(loaded)
             return job
         else:
-            raise AssistantException(
-                "Could not find any assistant able to handle URL '%s'" % url)
+            raise AssistantException("Could not find any assistant able to handle URL '%s'" % url)
 
     def load_plugin(self, plugin):
         ptype = plugin["plugin"]["type"]
@@ -821,8 +869,7 @@ class AssistantManager(BaseSourceManager):
                 assistant.handle()
                 assistant.loader.load_plugin()
             except Exception as e:
-                self.logger.exception("Unable to load plugin '%s': %s" %
-                                      (url, e))
+                self.logger.exception("Unable to load plugin '%s': %s" % (url, e))
         else:
             raise AssistantException("Unknown data plugin type '%s'" % ptype)
 
@@ -849,39 +896,29 @@ class AssistantManager(BaseSourceManager):
             try:
                 self.load_plugin(plugin)
             except Exception as e:
-                self.logger.warning("Couldn't load plugin '%s': %s" %
-                                    (plugin["_id"], e))
+                self.logger.warning("Couldn't load plugin '%s': %s" % (plugin["_id"], e))
                 continue
 
         # some still unregistered ? (note: list always empty if autodiscover=False)
         if plugin_dirs:
             for pdir in plugin_dirs:
-                fulldir = os.path.join(btconfig.DATA_PLUGIN_FOLDER, pdir)
+                os.path.join(btconfig.DATA_PLUGIN_FOLDER, pdir)
                 try:
                     self.logger.info(
-                        "Found unregistered manifest-based plugin '%s', auto-register it"
-                        % pdir)
+                        "Found unregistered manifest-based plugin '%s', auto-register it" % pdir
+                    )
                     self.register_url("local://%s" % pdir.strip().strip("/"))
                 except Exception as e:
-                    self.logger.exception(
-                        "Couldn't auto-register plugin '%s': %s" % (pdir, e))
+                    self.logger.exception("Couldn't auto-register plugin '%s': %s" % (pdir, e))
                     continue
 
     def export_dumper(self, plugin_name, folder):
-        res = {
-            "dumper": {
-                "status": None,
-                "file": None,
-                "class": None,
-                "message": None
-            }
-        }
+        res = {"dumper": {"status": None, "file": None, "class": None, "message": None}}
         try:
             dclass = self.dumper_manager[plugin_name]
         except KeyError:
             res["dumper"]["status"] = "warning"
-            res["dumper"][
-                "message"] = "No dumper found for plugin '%s'" % plugin_name
+            res["dumper"]["message"] = "No dumper found for plugin '%s'" % plugin_name
         try:
             dumper_name = plugin_name.capitalize() + "Dumper"
             self.logger.debug("Exporting dumper %s" % dumper_name)
@@ -909,14 +946,7 @@ class AssistantManager(BaseSourceManager):
         return res
 
     def export_uploader(self, plugin_name, folder):
-        res = {
-            "uploader": {
-                "status": None,
-                "file": [],
-                "class": [],
-                "message": None
-            }
-        }
+        res = {"uploader": {"status": None, "file": [], "class": [], "message": None}}
         try:
             uclasses = self.uploader_manager[plugin_name]
         except KeyError:
@@ -950,14 +980,7 @@ class AssistantManager(BaseSourceManager):
         return res
 
     def export_mapping(self, plugin_name, folder):
-        res = {
-            "mapping": {
-                "status": None,
-                "file": None,
-                "message": None,
-                "origin": None
-            }
-        }
+        res = {"mapping": {"status": None, "file": None, "message": None, "origin": None}}
         # first check if plugin defines a custom mapping in manifest
         # if that's the case, we don't need to export mapping there
         # as it'll be exported with "uploader" code
@@ -981,34 +1004,39 @@ class AssistantManager(BaseSourceManager):
             res["mapping"]["origin"] = "registered"
         else:
             doc = get_src_dump().find_one({"_id": plugin_name})
-            mapping = doc and doc.get("inspect", {}).get("jobs", {}).get(plugin_name, {}).get("inspect", {}).\
-                get("results", {}).get("mapping")
+            mapping = doc and doc.get("inspect", {}).get("jobs", {}).get(plugin_name, {}).get(
+                "inspect", {}
+            ).get("results", {}).get("mapping")
             res["mapping"]["origin"] = "inspection"
         if not mapping:
             res["mapping"]["origin"] = None
             res["mapping"]["status"] = "warning"
-            res["mapping"][
-                "message"] = "Can't find registered or generated (inspection) mapping"
+            res["mapping"]["message"] = "Can't find registered or generated (inspection) mapping"
             return res
         else:
             ufile = os.path.join(folder, "upload.py")
             strmap, _ = yapf_api.FormatCode(pprint.pformat(mapping))
             with open(ufile, "a") as fout:
-                fout.write("""
+                fout.write(
+                    """
     @classmethod
     def get_mapping(klass):
-        return %s\n""" % textwrap.indent((strmap), prefix="    " * 2))
+        return %s\n"""
+                    % textwrap.indent((strmap), prefix="    " * 2)
+                )
 
         res["mapping"]["file"] = ufile
         res["mapping"]["status"] = "ok"
 
         return res
 
-    def export(self,
-               plugin_name,
-               folder=None,
-               what=["dumper", "uploader", "mapping"],
-               purge=False):
+    def export(
+        self,
+        plugin_name,
+        folder=None,
+        what=["dumper", "uploader", "mapping"],  # noqa: B006
+        purge=False,
+    ):
         """
         Export generated code for a given plugin name, in given folder
         (or use DEFAULT_EXPORT_FOLDER if None). Exported information can be:
@@ -1025,8 +1053,7 @@ class AssistantManager(BaseSourceManager):
         folder = folder or self.default_export_folder
         assert os.path.exists(
             folder
-        ), "Folder used to export code doesn't exist: %s" % os.path.abspath(
-            folder)
+        ), "Folder used to export code doesn't exist: %s" % os.path.abspath(folder)
         assert plugin_name  # avoid deleting the whole export folder when purge=True...
         folder = os.path.join(folder, plugin_name)
         if purge:
@@ -1034,8 +1061,7 @@ class AssistantManager(BaseSourceManager):
         if not os.path.exists(folder):
             os.makedirs(folder)
         elif not purge:
-            raise FileExistsError(
-                "Folder '%s' already exists, use purge=True" % folder)
+            raise FileExistsError("Folder '%s' already exists, use purge=True" % folder)
         dinit = os.path.join(folder, "__init__.py")
         with open(dinit, "w") as fout:
             fout.write("")
@@ -1054,8 +1080,7 @@ class AssistantManager(BaseSourceManager):
             src = os.path.join(plugin_folder, f)
             dst = os.path.join(folder, f)
             # useless or strictly plugin-machinery-specific, skip
-            if f in ["__pycache__", "manifest.json", "__init__.py"
-                     ] or f.startswith("."):
+            if f in ["__pycache__", "manifest.json", "__init__.py"] or f.startswith("."):
                 self.logger.debug("Skipping '%s', not necessary" % src)
                 continue
             self.logger.debug("Copying %s to %s" % (src, dst))
@@ -1064,8 +1089,7 @@ class AssistantManager(BaseSourceManager):
                     with open(dst, "w") as fout:
                         fout.write(fin.read())
             except IsADirectoryError:
-                self.logger.error(
-                    "%s is a directory, expecting only files to copy" % src)
+                self.logger.error("%s is a directory, expecting only files to copy" % src)
                 continue
 
         return res

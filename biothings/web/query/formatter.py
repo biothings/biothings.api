@@ -4,7 +4,7 @@
     Transform the raw query result into consumption-friendly
     structures by possibly removing from, adding to, and/or
     flattening the raw response from the database engine for
-    one or more individual queries. 
+    one or more individual queries.
 
 """
 
@@ -162,10 +162,24 @@ class ESResultFormatter(ResultFormatter):
             native: bool, if the returned result is in python primitive types.
             version: bool, if _version field is kept.
             score: bool, if _score field is kept.
-
+            with_total: bool, if True, the response will include max_total documents,
+                and a message to tell how many query terms return greater than the max_size of hits.
+                The default is False.
+                An example when with_total is True:
+                {
+                    'max_total': 100,
+                    'msg': '12 query terms return > 1000 hits, using from=1000 to retrieve the remaining hits',
+                    'hits': [...]
+                }
         """
         options = dotdict(options)
         if isinstance(response, list):
+            max_total = 0
+            count_query_exceed_max_size = 0
+            # If options.set isn't set, the default number of hits returned by the ES is 10.
+            # Ref: https://www.elastic.co/guide/en/elasticsearch/reference/current/search-multi-search.html#search-multi-search-api-request-body  # noqa: F501
+            max_size = options.size or 10
+
             responses_ = []
             options.pop('one', None)  # ignore
             template = options.pop('template', {})
@@ -174,6 +188,13 @@ class ESResultFormatter(ResultFormatter):
             template_miss = options.pop('template_miss', dict(found=False))
             responses = [self.transform(res, **options) for res in response]
             for tpl, res in zip(templates, responses):
+                if options.with_total:
+                    total = res.get('total', {}).get('value') or 0
+                    if total > max_total:
+                        max_total = total
+                    if total > max_size:
+                        count_query_exceed_max_size += 1
+
                 for _res in res if isinstance(res, list) else [res]:
                     assert isinstance(_res, dict)
                     if _res and 'hits' not in _res:
@@ -191,7 +212,21 @@ class ESResultFormatter(ResultFormatter):
                         hit_.update(template_hit)
                         hit_.update(hit)
                         responses_.append(hit_)
-            return list(filter(None, responses_))
+            response_ = list(filter(None, responses_))
+
+            if options.with_total:
+                response_ = {
+                    'max_total': max_total,
+                    'hits': response_,
+                }
+                if count_query_exceed_max_size > 0:
+                    _from = (options.get('from') or 0) + max_size
+                    response_['msg'] = (
+                        f'{count_query_exceed_max_size} query terms return > {max_size} hits, '
+                        f'using from={_from} to retrieve the remaining hits'
+                    )
+
+            return response_
 
         if isinstance(response, dict):
             response = self._Hits(response)
