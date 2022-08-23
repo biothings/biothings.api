@@ -6,7 +6,7 @@ Note: unittests available in biothings.tests.hub
 import math
 import statistics
 import random
-import collections
+from collections.abc import Iterable
 import time
 import re
 import logging
@@ -223,7 +223,7 @@ def merge_record(target, tomerge, mode):
                 tom = tomerge[mode_inst.key]
                 mode_inst.merge(tgt, tom)
                 continue
-            if not isinstance(tomerge[k], collections.Iterable):
+            if not isinstance(tomerge[k], Iterable):
                 continue
             for typ in tomerge[k]:
                 # if not an actual type we need to merge further to reach them

@@ -57,24 +57,34 @@ def setup_es():
 
     server_major_version = client.info()['version']['number'].split('.')[0]
     client_major_version = str(elasticsearch.__version__[0])
-    if server_major_version != client_major_version:
-        pytest.exit('ES version does not match its python library.')
+
+    # NOTE: Temporary comment to bypass this check.
+    # Because we still use elasticsearch library ver under 8
+    # if server_major_version != client_major_version:
+    #     pytest.exit('ES version does not match its python library.')
 
     try:
-        if not client.indices.exists(TEST_INDEX):
+        if not client.indices.exists(index=TEST_INDEX):
 
-            with open(os.path.join(dirname, 'test_data_index.json'), 'r') as file:
+
+            mapping_file = 'test_data_index.json'
+            if int(server_major_version) >= 8:
+                mapping_file = 'test_data_index_for_es8.json'
+            with open(os.path.join(dirname, mapping_file), 'r') as file:
                 mapping = json.load(file)
 
             with open(os.path.join(dirname, 'test_data.ndjson'), 'r') as file:
                 ndjson = file.read()
 
-            if elasticsearch.__version__[0] > 6:
+            if int(server_major_version) >= 8:
+                client.indices.create(TEST_INDEX, mapping)
+                client.bulk(body=ndjson, index=TEST_INDEX)
+            elif elasticsearch.__version__[0] > 6:
                 client.indices.create(TEST_INDEX, mapping, include_type_name=True)
-                client.bulk(ndjson, TEST_INDEX)
+                client.bulk(body=ndjson, index=TEST_INDEX)
             else:
                 client.indices.create(TEST_INDEX, mapping)
-                client.bulk(ndjson, TEST_INDEX, TEST_DOC_TYPE)
+                client.bulk(body=ndjson, index=TEST_INDEX, doc_type=TEST_DOC_TYPE)
 
             client.indices.refresh()
             yield

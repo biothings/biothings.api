@@ -1,7 +1,7 @@
 """
     Search Execution Engine
 
-    Take the output of the query builder and feed 
+    Take the output of the query builder and feed
     to the corresponding database engine. This stage
     typically resolves the db destination from a
     biothing_type and applies presentation and/or
@@ -15,7 +15,7 @@
 
     >>> backend = ESQueryBackend(Elasticsearch())
     >>> backend.execute(Search().query("match", _id="1017"))
-    
+
     >>> _["hits"]["hits"][0]["_source"].keys()
     dict_keys(['taxid', 'symbol', 'name', ... ])
 
@@ -137,12 +137,12 @@ class AsyncESQueryBackend(ESQueryBackend):
                 query = query.params(scroll=self.scroll_time)
             if self.total_hits_as_int:
                 query = query.params(rest_total_hits_as_int=True)
-            res = await self.client.search(query.to_dict(), index, **query._params)
+            res = await self.client.search(body=query.to_dict(), index=index, **query._params)
 
         elif isinstance(query, MultiSearch):
             await self.semaphore.acquire()
             try:
-                res = await self.client.msearch(query.to_dict(), index)
+                res = await self.client.msearch(body=query.to_dict(), index=index)
             finally:
                 self.semaphore.release()
             res = res['responses']

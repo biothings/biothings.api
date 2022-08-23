@@ -1,5 +1,5 @@
 ********
-Tutorial
+A. Tutorial
 ********
 
 This tutorial will guide you through **BioThings Studio** by showing, in a first part, how to convert a simple flat file
@@ -11,7 +11,7 @@ to a fully operational BioThings API. In a second part, this API will enrich for
    all available `releases <https://github.com/biothings/biothings_studio/releases>`_ for more.
 
 =================
-What you'll learn
+1. What you'll learn
 =================
 
 Through this guide, you'll learn:
@@ -25,7 +25,7 @@ Through this guide, you'll learn:
 
 
 =============
-Prerequisites
+2. Prerequisites
 =============
 
 Using **BioThings Studio** requires a Docker server up and running, some basic knowledge
@@ -49,7 +49,7 @@ using ``-g`` option:
 
 
 ============
-Installation
+3. Installation
 ============
 
 **BioThings Studio** is available as a Docker image that you can pull from our BioThings Docker Hub repository:
@@ -111,9 +111,9 @@ by adding ``no-update`` at the end of the command line of ``docker run ...``.
 We can now access **BioThings Studio** using the dedicated web application (see `webapp overview <studio_guide.html#overview-of-biothings-studio-web-application>`_).
 
 
-=========================
-Part 1: single datasource
-=========================
+===================================
+4. Getting start with data plugin
+===================================
 
 In this section we'll dive in more details on using the **BioThings Studio** and **Hub**. We will be integrating a simple flat file as a new datasource
 within the **Hub**, declare a build configuration using that datasource, create a build from that configuration, then a data release and finally instantiate a new API service
@@ -121,8 +121,8 @@ and use it to query our data.
 
 The whole source code is available at https://github.com/sirloon/pharmgkb, each branch pointing to a specific step in this tutorial.
 
-Input data
-^^^^^^^^^^
+4.1. Input data
+^^^^^^^^^^^^^^^
 
 For this tutorial, we will use several input files provided by `PharmGKB <https://www.pharmgkb.org/>`_,
 freely available in their `download <https://www.pharmgkb.org/downloads>`_ section, under "Annotation data":
@@ -137,8 +137,8 @@ The last two files will be used in the second part of this tutorial when we'll a
 .. _`drugLabels.zip`: https://s3.pgkb.org/data/drugLabels.zip
 .. _`occurrences.zip`: https://s3.pgkb.org/data/occurrences.zip
 
-Parser
-^^^^^^
+4.2. Parser
+^^^^^^^^^^^
 
 In order to ingest this data and make it available as an API, we first need to write a parser. Data is pretty simple, tab-separated files, and we'll
 make it even simpler by using ``pandas`` python library. The first version of this parser is available in branch ``pharmgkb_v1`` at
@@ -232,8 +232,8 @@ in a dictionary indexed by gene ID. The final documents are assembled in the las
    is small enough to do this, but memory usage always needs to be cautiously considered when we write a parser.
 
 
-Data plugin
-^^^^^^^^^^^
+4.3. Data plugin
+^^^^^^^^^^^^^^^^
 
 Parser is ready, it's now time to glue everything together and build our API. We can easily create a new datasource and integrate data using
 **BioThings Studio**, by declaring a `data plugin`. Such plugin is defined by:
@@ -380,8 +380,8 @@ Same for the `Uploader` tab, we now have 979 documents uploaded to MongoDB.
    :width: 450px
 
 
-Inspection and mapping
-^^^^^^^^^^^^^^^^^^^^^^
+4.4. Inspection and mapping
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Now that we have integrated a new datasource, we can move forward. Ultimately, data will be sent to ElasticSearch, an indexing engine.
 In order to do so, we need to tell ElasticSearch how the data is structured and which fields should be indexed (and which should not).
@@ -479,8 +479,8 @@ inspection as many times as we want, without impacting active/registered mapping
 .. image:: ../_static/registered.png
    :width: 450px
 
-Build
-^^^^^
+4.5. Build
+^^^^^^^^^^
 
 Once we have integrated data and a valid ElasticSearch mapping, we can move forward by creating a build configuration. A `build configuration`
 tells the **Hub** which datasources should be merged together, and how. Click on |builds| then |menu| and finally, click on |newbuildconf|.
@@ -523,8 +523,8 @@ You can give a specific name for that build, or let the **Hub** generate one for
 
 Open it by clicking on its name. You can explore the tabs for more information about it (sources involved, build times, etc...). The "Release" tab is the one we're going to use next.
 
-Data release
-^^^^^^^^^^^^
+4.6. Data release
+^^^^^^^^^^^^^^^^^
 
 If not there yet, open the new created build and go the "Release" tab. This is the place where we can create new data releases. Click on |newrelease|.
 
@@ -563,8 +563,8 @@ Clicking on an index gives access to different information, such as the mapping,
    :width: 100%
 
 
-API creation
-^^^^^^^^^^^^
+4.7. API creation
+^^^^^^^^^^^^^^^^^
 
 At this stage, a new index containing our data has been created on ElasticSearch, it is now time for final step. Click on |api| then |menu| and finally |newapi|
 
@@ -600,8 +600,8 @@ can be accessed:
    means nothing outside of Docker's context. In order to use the API you may need to replace this hostname by the one actually used to access the
    Docker instance.
 
-Tests
-^^^^^
+4.8. Tests
+^^^^^^^^^^
 
 Assuming API is accessible through http://localhost:8000, we can easily query it with ``curl`` for instance. The endpoint ``/metadata`` gives
 information about the datasources and build date:
@@ -703,8 +703,8 @@ Finally, we can fetch a variant by its PharmGKB ID:
   }
 
 
-Conclusions
-^^^^^^^^^^^
+4.9. Conclusions
+^^^^^^^^^^^^^^^^^
 
 We've been able to easily convert a remote flat file to a fully operational BioThings API:
 
@@ -717,29 +717,37 @@ We've been able to easily convert a remote flat file to a fully operational BioT
 
 The next step is to enrich that existing API with more datasources.
 
-============================
-Part 2: multiple datasources
-============================
+4.10. Multiple sources data plugin
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
 In the previous part, we generated an API from a single flat file. This API serves data about gene annotations, but we need more: as mentioned earlier in **Input data**,
-we also downloaded drug labels and publications information. Integrating those unused files, we'll be able to enrich our API even more, that's the goal of this second part.
+we also downloaded drug labels and publications information. Integrating those unused files, we'll be able to enrich our API even more, that's the goal of this part.
 
-Data plugin limitations
-^^^^^^^^^^^^^^^^^^^^^^^
+In our case, we have one *dumper* responsible for downloading three different files, and we now need three different *uploaders* in order to process these files. With above data plugin (4.3), only one file is parsed. In order to proceed
+further, we need to specify multiple *uploaders* on the *manifest.json* file, the full example can be found in branch ``pharmgkb_v5`` available at https://github.com/remoteeng00/pharmgkb/tree/pharmgkb_v5.
+
+.. note:: You can learn more about data plugin in the section **B.4. Data plugin architecture and specifications**
+
+======================
+5. Regular data source
+======================
+
+5.1. Data plugin limitations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The **data plugin architecture** provided by **BioThings Studio** allows to quickly integrate a new datasource, describing where the data is located, and how the data should be parsed.
-It provides a simple and generic way to do so, but also comes with some limitations. Indeed, only one *uploader* can be specificed. In our case, we have one *dumper* responsible for
-downloading three different files, and we now need three different *uploaders* in order to process these files. With our data plugin, only one file is parsed. In order to proceed
-further, we need to manually write dumper and uploaders code...
-
-.. note:: We could also process all three files in one single parser, that is, one single uploder, but for the sake of this tutorial, we'll proceed individually. Files can also
-   be updated at different times, keeping uploaders separated helps maintaining data up-to-date without having to process all files at once each time.
+It provides a simple and generic way to do so, but also comes with some limitations. Indeed, in many advanced use cases, you need to use a custom data builder instead of `LinkDataBuilder` (that you used at the point 4.5). But you can not define a custom builder on the data plugin.
 
 Luckily, **BioThings Studio** provides an easy to export python code that has been generated during data plugin registration. Indeed, code is generated from the manifest file, compiled
 and injected into **Hub**'s memory. Exporting the code consists in writing down that dynamically generated code.
+After successful export,we have a new folder stays in `hub/dataload/sources` and contains exported python files - that is a **Regular data source** (or a regular dumper/uploader based data sources)
+Following below steps, you will learn about how to deal with a regular data source.
 
-Code export
-^^^^^^^^^^^
+
+5.2. Code export
+^^^^^^^^^^^^^^^^
+
+.. note:: You MUST to update above `pharmgkb` data plugin to the version `pharmgkb_v2`.
 
 Let's go back to our datasource, **Plugin** tab. Clicking on |exportcode| brings the following form:
 
@@ -832,7 +840,7 @@ this tutorial without having to type too much is to replace folder ``pharmgkb`` 
   $ git checkout pharmgkb_v3
 
 
-More uploaders
+5.3. More uploaders
 ^^^^^^^^^^^^^^
 
 Now that we have exported the code, we can start the modifications. The final code can be found on branch https://github.com/sirloon/pharmgkb/tree/pharmgkb_v4.
@@ -944,7 +952,7 @@ If we look at the other uploader tabs, we don't see much information, that's bec
 After a while, all uploaders have run, data is populated, as shown in the different tabs.
 
 
-More data inspection
+5.4. More data inspection
 ^^^^^^^^^^^^^^^^^^^^
 
 Data is ready, it's now time to inspect the data for the new uploaders. Indeed, if we check the "Mapping" tab, we still have the old mapping from the original ``pharmgkb`` uploader
@@ -955,7 +963,7 @@ let's fix that by click on |inspectlabelicon|. After few seconds, mappings are g
 each tab.
 
 
-Modifying build configuration
+5.5. Modifying build configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 All data is now ready, as well as mappings, it's time to move forward and build the merged data. We now have three differents source for documents, and we need to merge them
@@ -985,7 +993,7 @@ The next configuration is summarized in the following picture:
 
 Upon validation, build configuration is ready to be used.
 
-Incremental release
+5.6. Incremental release
 ^^^^^^^^^^^^^^^^^^^
 
 Configuration reflects our changes and is up-to-date, let's create a new build. Click on |menu| if not already open, then "Create a new build"
@@ -1049,7 +1057,7 @@ also from the notification popups when it's done.
 Our index, currently served by our API defined in the part 1, has been updated, using a diff, or incremental, release. It's time to have a look at the data.
 
 
-Testing final API
+5.7. Testing final API
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Because we directly apply a diff, or patch our data, on ElasticSearch index, we don't need to re-create an API. Querying the API should just transparently reflect that "live" update.
@@ -1150,7 +1158,7 @@ Let's query by symbol name, just as before:
 
 We new have much information associated (much have been remove for clarity), including keys ``drug_labels`` and ``occurrences`` coming the two new uploaders.
 
-Conclusions
+5.8. Conclusions
 ^^^^^^^^^^^
 
 Moving from a single datasource based API, previously defined as a data plugin, we've been able to export this data plugin code. This code was used as a base
@@ -1167,14 +1175,14 @@ for everyone.
    it's not recommended to expose any ports, including API ports, to public-facing internet.
 
 =========================================
-Part 3: API cloud deployments and hosting
+6. API cloud deployments and hosting
 =========================================
 
 This part is still under development... Stay tuned and join Biothings Google Groups (https://groups.google.com/forum/#!forum/biothings) for more.
 
 
 ===============
-Troubleshooting
+7. Troubleshooting
 ===============
 
 We test and make sure, as much as we can, that the **BioThings Studio** image is up-to-date and running properly. But things can still go wrong...

@@ -9,7 +9,8 @@ import csv
 import os
 import os.path
 import json
-import collections
+from collections.abc import Mapping
+from collections import OrderedDict
 from functools import total_ordering
 
 from .common import open_anyfile, is_str, safewfile, anyfile
@@ -122,7 +123,7 @@ def boolean_convert(d, convert_keys=None, level=0):
                     d[key] = [boolean_convert(v, convert_keys, level+1) for v in val]
                 else:
                     d[key] = [to_boolean(x) for x in val]
-            elif isinstance(val, dict) or isinstance(val, collections.OrderedDict):
+            elif isinstance(val, dict) or isinstance(val, OrderedDict):
                 d[key] = boolean_convert(val, convert_keys, level+1)
             else:
                 d[key] = to_boolean(val)
@@ -730,7 +731,7 @@ def update_dict_recur(d, u):
     (so existing values in d but not in u are kept even if nested)
     """
     for k, v in u.items():
-        if isinstance(v, collections.Mapping):
+        if isinstance(v, Mapping):
             r = update_dict_recur(d.get(k, {}), v)
             d[k] = r
         else:

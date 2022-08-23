@@ -490,7 +490,7 @@ class Indexer():
             if error:
                 for job in jobs:
                     if not job.done():
-                        job.cancel()
+                        await job.cancel()
                 raise error
 
             self.logger.info(schedule)
@@ -796,6 +796,63 @@ class IndexManager(BaseManager):
             return job
 
         return self._config
+
+    def get_indexes_by_name(self, index_name=None, limit=10):
+        """ Accept an index_name and return a list of indexes get from all elasticsearch environments
+
+        If index_name is blank, it will be return all indexes.
+        limit can be used to specify how many indexes should be return.
+
+        The list of indexes will be like this:
+        [
+            {
+                "index_name": "...",
+                "build_version": "...",
+                "count": 1000,
+                "creation_date": 1653468868933,
+                "environment": {
+                    "name": "env name",
+                    "host": "localhost:9200",
+                }
+            },
+        ]
+        """
+
+        if not index_name:
+            index_name = "*"
+        limit = int(limit)
+
+        async def fetch(index_name, limit=None):
+            indexes = []
+            for env_name, env in self.register.items():
+                async with AsyncElasticsearch(**env["args"]) as client:
+                    try:
+                        indices = await client.indices.get(index_name)
+                    except Exception:
+                        continue
+                    for index_name, index_data in indices.items():
+                        mapping_meta = index_data["mappings"]["_meta"]
+                        indexes.append({
+                            "index_name": index_name,
+                            "build_version": mapping_meta["build_version"],
+                            "count": mapping_meta["stats"]["total"],
+                            "creation_date": index_data["settings"]["index"]["creation_date"],
+                            "environment": {
+                                "name": env_name,
+                                "host": env["args"]["hosts"],
+                            }
+                        })
+
+            indexes.sort(key=lambda index: index['creation_date'], reverse=True)
+
+            if limit:
+                indexes = indexes[:limit]
+            return indexes
+
+        job = asyncio.ensure_future(fetch(index_name, limit=limit))
+        job.add_done_callback(self.logger.debug)
+        return job
+
 
     def validate_mapping(self, mapping, env):
 

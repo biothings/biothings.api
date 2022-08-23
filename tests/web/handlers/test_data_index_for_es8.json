@@ -3,8 +3,7 @@
     "genedoc_mygene_allspecies_current": {}
   },
   "mappings": {
-    "gene": {
-      "dynamic": "false",
+     "dynamic": "false",
       "_meta": {
         "build_date": "2020-01-19T02:00:00.027534",
         "biothing_type": "gene",
@@ -2225,7 +2224,6 @@
           "type": "text"
         }
       }
-    }
   },
   "settings": {
     "index": {
