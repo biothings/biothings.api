@@ -307,13 +307,14 @@ class BaseDumper(object):
             }
         }
         # Update last success download time.
-        # If last time is success, we will get the started_at
-        # If failed, we will get the last_time instead
-        last_download_info = self.src_doc.get("download", {})
-        last_status = last_download_info.get("status")
-        current_download_info["download"]["last_time"] = last_download_info.get("last_time")
-        if last_status == "success":
-            current_download_info["download"]["last_time"] = last_download_info.get("started_at")
+        # If current status is success, we will get the current's started_at
+        # If failed, we will get the last_success from the last download instead.
+        last_download_info = self.src_doc.setdefault("download", {})
+        current_download_info["download"]["last_success"] = last_download_info.get("last_success")
+        if status == "success":
+            current_download_info["download"]["last_success"] = current_download_info["download"][
+                "started_at"
+            ]
 
         self.src_doc.update(current_download_info)
 

@@ -157,10 +157,10 @@ class SourceDocMongoBackend(SourceDocBackendBase):
 
             if src and src.get("download"):
                 # Store the latest success dump time
-                if src["download"]["status"] == "success":
-                    src_meta.setdefault(src["_id"], {})
-                    src_meta[src["_id"]]["last_download_date"] = src["download"].get("last_time")
-                    src_meta[src["_id"]].setdefault("download_date", src["download"]["started_at"])
+                src_meta.setdefault(src["_id"], {})
+                src_meta[src["_id"]].setdefault(
+                    "download_date", src["download"].get("last_success")
+                )
 
             if src and src.get("upload"):
                 latest_upload_date = None
@@ -168,15 +168,16 @@ class SourceDocMongoBackend(SourceDocBackendBase):
                 for job_name in src["upload"].get("jobs", {}):
                     job = src["upload"]["jobs"][job_name]
                     # "step" is the actual sub-source name
-                    docm = self.master.find_one({"_id": job.get("step")})
+                    sub_source = job.get("step")
+                    docm = self.master.find_one({"_id": sub_source})
                     if docm and docm.get("src_meta"):
-                        meta[job.get("step")] = docm["src_meta"]
+                        meta[sub_source] = docm["src_meta"]
                     # Store the latest success upload time
                     if not latest_upload_date or latest_upload_date < job["started_at"]:
-                        if job["status"] == "success":
-                            latest_upload_date = job["started_at"]
-                            meta[job.get("step")]["last_upload_date"] = meta[job.get("step")].get("last_time")
-                            meta[job.get("step")]["upload_date"] = latest_upload_date
+                        step_meta = meta.setdefault(sub_source, {})
+                        step_meta["upload_date"] = src["upload"]["jobs"][sub_source].get(
+                            "last_success"
+                        )
                 # when more than 1 sub-sources, we can have different version in sub-sources
                 # (not normal) if one sub-source uploaded, then dumper downloaded a new version,
                 # then the other sub-source uploaded that version. This should never happen, just make sure
