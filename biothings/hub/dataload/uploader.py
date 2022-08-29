@@ -429,11 +429,16 @@ class BaseSourceUploader(object):
         # with arguments like 'init' and 'transient'...
         if status.endswith("ing"):
             # record some "in-progress" information
-            upload_info['step'] = self.name  # this is the actual collection name
-            upload_info['temp_collection'] = self.temp_collection_name
-            upload_info['pid'] = os.getpid()
-            upload_info['logfile'] = self.logfile
-            upload_info['started_at'] = datetime.datetime.now().astimezone()
+
+            upload_info["step"] = self.name  # this is the actual collection name
+            upload_info["temp_collection"] = self.temp_collection_name
+            upload_info["pid"] = os.getpid()
+            upload_info["logfile"] = self.logfile
+            upload_info["started_at"] = datetime.datetime.now().astimezone()
+
+            # We should use the last_success from the last upload time as a default value for the current's last_success
+            last_upload_info = self.src_doc.get(subkey, {}).get("jobs", {}).setdefault(self.name, {})
+            upload_info["last_success"] = last_upload_info.get("last_success")
             self.src_dump.update_one({"_id": self.main_source}, {"$set": {job_key: upload_info}})
         else:
             # get release that's been uploaded from download part
@@ -455,6 +460,11 @@ class BaseSourceUploader(object):
             upd["%s.step" % job_key] = self.name  # collection name
             upd["%s.release" % job_key] = release
             upd["%s.data_folder" % job_key] = data_folder
+            # Update last success upload time only when the success
+            if status == "success":
+                upd["%s.last_success" % job_key] = src_doc["upload"]["jobs"][self.name][
+                    "started_at"
+                ]
             self.src_dump.update_one({"_id": self.main_source}, {"$set": upd})
 
     async def load(

@@ -296,18 +296,28 @@ class BaseDumper(object):
                 )
                 self.src_doc.pop(field)
 
-        self.src_doc.update(
-            {
-                '_id': self.src_name,
-                'download': {
-                    'release': release,
-                    'data_folder': data_folder,
-                    'logfile': self.logfile,
-                    'started_at': datetime.now().astimezone(),
-                    'status': status,
-                },
+        current_download_info = {
+            '_id': self.src_name,
+            'download': {
+                'release': release,
+                'data_folder': data_folder,
+                'logfile': self.logfile,
+                'started_at': datetime.now().astimezone(),
+                'status': status
             }
-        )
+        }
+        # Update last success download time.
+        # If current status is success, we will get the current's started_at
+        # If failed, we will get the last_success from the last download instead.
+        last_download_info = self.src_doc.setdefault("download", {})
+        current_download_info["download"]["last_success"] = last_download_info.get("last_success")
+        if status == "success":
+            current_download_info["download"]["last_success"] = current_download_info["download"][
+                "started_at"
+            ]
+
+        self.src_doc.update(current_download_info)
+
         # only register time when it's a final state
         if transient:
             self.src_doc["download"]["pid"] = os.getpid()
