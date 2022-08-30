@@ -158,9 +158,11 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             if src and src.get("download"):
                 # Store the latest success dump time
                 src_meta.setdefault(src["_id"], {})
-                src_meta[src["_id"]].setdefault(
-                    "download_date", src["download"].get("last_success")
-                )
+                last_success = src["download"].get("last_success")
+                if not last_success and src["download"].get("status") == "success":
+                    last_success = src["download"].get("started_at")
+                if last_success:
+                    src_meta[src["_id"]]["download_date"] = last_success
 
             if src and src.get("upload"):
                 latest_upload_date = None
@@ -175,9 +177,13 @@ class SourceDocMongoBackend(SourceDocBackendBase):
                     # Store the latest success upload time
                     if not latest_upload_date or latest_upload_date < job["started_at"]:
                         step_meta = meta.setdefault(sub_source, {})
-                        step_meta["upload_date"] = src["upload"]["jobs"][sub_source].get(
-                            "last_success"
-                        )
+                        sub_source_info = src["upload"]["jobs"][sub_source]
+                        last_success = sub_source_info.get("last_success")
+                        if not last_success and sub_source_info.get("status") == "success":
+                            last_success = sub_source_info.get("started_at")
+                        if last_success:
+                            step_meta["upload_date"] = last_success
+
                 # when more than 1 sub-sources, we can have different version in sub-sources
                 # (not normal) if one sub-source uploaded, then dumper downloaded a new version,
                 # then the other sub-source uploaded that version. This should never happen, just make sure
