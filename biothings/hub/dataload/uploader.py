@@ -437,8 +437,16 @@ class BaseSourceUploader(object):
             upload_info["started_at"] = datetime.datetime.now().astimezone()
 
             # We should use the last_success from the last upload time as a default value for the current's last_success
+            # If last_success from the last upload doesn't exist or is None, and last upload's status is success,
+            # the last upload's started_at will be used.
             last_upload_info = self.src_doc.get(subkey, {}).get("jobs", {}).setdefault(self.name, {})
-            upload_info["last_success"] = last_upload_info.get("last_success")
+            last_success = last_upload_info.get("last_success")
+            last_status = last_upload_info.get("status")
+            if not last_success and last_status == "success":
+                last_success = last_upload_info.get("started_at")
+            if last_success:
+                upload_info["last_success"] = last_success
+
             self.src_dump.update_one({"_id": self.main_source}, {"$set": {job_key: upload_info}})
         else:
             # get release that's been uploaded from download part
