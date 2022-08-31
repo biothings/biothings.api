@@ -25,6 +25,7 @@ v0.11.0
         - Allow YAML-based manifest file (manifest.yaml) in a data plugin https://github.com/biothings/biothings.api/issues/245
     Hub improvements
         - Implement full release installation without downtime https://github.com/biothings/biothings.api/issues/134
+        - Add dumper and uploader timestamps in source metadata https://github.com/biothings/biothings.api/issues/230
         - Hub console improvements https://github.com/biothings/biothings.api/issues/216
         - Create hub's default settings https://github.com/biothings/biothings.api/issues/217
         - Refactor _parse_comments method logic https://github.com/biothings/biothings.api/issues/218
