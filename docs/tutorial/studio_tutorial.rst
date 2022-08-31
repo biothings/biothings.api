@@ -224,9 +224,10 @@ in a dictionary indexed by gene ID. The final documents are assembled in the las
         yield doc
 
 
-.. note:: The `_id` key is mandatory and represents a unique identifier for this document. The type must be a string. The _id key is
+.. note:: The `_id` key is mandatory and represents a unique identifier for this document. The type must be a string. The `_id` key is
    used when data from multiple datasources are merged together, that process is done according to its value
-   (all documents sharing the same _id from different datasources will be merged together).
+   (all documents sharing the same `_id` from different datasources will be merged together). Due to the `indexing limitation <https://www.elastic.co/guide/en/elasticsearch/reference/8.4/mapping-id-field.html>`_, the length of
+   the `_id` key should be kept no more than 512.
 
 .. note:: In this specific example, we read the whole content of this input file in memory, then store annotations per gene. The data itself
    is small enough to do this, but memory usage always needs to be cautiously considered when we write a parser.
