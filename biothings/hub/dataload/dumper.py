@@ -307,22 +307,19 @@ class BaseDumper(object):
             }
         }
         # Update last success download time.
-        # If current status is success, we will get the current's started_at
-        # If failed, we will get the last_success from the last download instead.
-        # If last_success from the last download doesn't exist or is None, and last download's status is success,
-        # the last download's started_at will be used.
-        last_download_info = self.src_doc.setdefault("download", {})
-        last_success = last_download_info.get("last_success")
-        last_status = last_download_info.get("status")
-        if not last_success and last_status == "success":
-            last_success = last_download_info.get("started_at")
-        if last_success:
-            current_download_info["download"]["last_success"] = last_success
-
         if status == "success":
-            current_download_info["download"]["last_success"] = current_download_info["download"][
-                "started_at"
-            ]
+            # If current status is success, we will get the current's started_at
+            last_success = current_download_info["download"]["started_at"]
+        else:
+            # If failed, we will get the last_success from the last download instead.
+            last_download_info = self.src_doc.setdefault("download", {})
+            last_success = last_download_info.get("last_success", None)
+            if not last_success and last_download_info.get("status") == 'success':
+                # If last_success from the last download doesn't exist or is None, and last
+                # download's status is success, the last download's started_at will be used.
+                last_success = last_download_info.get("started_at")
+        if last_success:
+            current_download_info["download"]["last_success"] = _last_success
 
         self.src_doc.update(current_download_info)
 
@@ -1257,7 +1254,7 @@ class GitDumper(BaseDumper):
             cmd = ["git", "merge"]
             subprocess.check_call(cmd)
             # and then get the commit hash
-            out = subprocess.check_output(["git", "rev-parse",  "--short", "HEAD"])
+            out = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
             self.release = f"{commit} {out.decode().strip()}"
         finally:
             os.chdir(old)
