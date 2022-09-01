@@ -319,7 +319,7 @@ class BaseDumper(object):
                 # download's status is success, the last download's started_at will be used.
                 last_success = last_download_info.get("started_at")
         if last_success:
-            current_download_info["download"]["last_success"] = _last_success
+            current_download_info["download"]["last_success"] = last_success
 
         self.src_doc.update(current_download_info)
 
