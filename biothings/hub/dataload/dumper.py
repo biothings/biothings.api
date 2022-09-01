@@ -1320,7 +1320,7 @@ class GitDumper(BaseDumper):
 
     def download(self, remotefile, localfile):
         self.prepare_local_folders(localfile)
-        cmdline = "wget %s -O %s" % (remoteurl, localfile)
+        cmdline = "wget %s -O %s" % (remotefile, localfile)
         return_code = os.system(cmdline)
         if return_code == 0:
             self.logger.info("Success.")
