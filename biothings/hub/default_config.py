@@ -284,6 +284,8 @@ STANDALONE_AWS_CREDENTIALS = {
 # releases.
 # Note: if data release name doesn't any key here, a _default will be
 # used (it must then exist, key = "_default")
+# Note: ES host can be a string which stands for a single host,
+# or a dict, which contains a collection of es hosts for same index, same release name
 STANDALONE_CONFIG = {
     # default config
     "_default": {
@@ -293,6 +295,14 @@ STANDALONE_CONFIG = {
     # # custom definition
     # "release_name" : {
     #     "es_host" : "anotherhost:9200",
+    #     "index" : "specical_index_name",
+    # }
+    # # release with multiple es hosts
+    # "release_name_2" : {
+    #     "es_host" : {
+    #         "prod": "prodserver:9200",
+    #         "staging": "stagingserver:9200"
+    #     },
     #     "index" : "specical_index_name",
     # }
 }
