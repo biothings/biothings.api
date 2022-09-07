@@ -1496,7 +1496,11 @@ class DumperManager(BaseSourceManager):
 
     def get_schedule(self, dumper_name):
         '''Return the corresponding schedule for dumper_name
-        Example result's format: [0 9 * * *] {run in 15h:20m:33s}
+        Example result:
+        {
+            "cron": "0 9 * * *",
+            "strdelta": "15h:20m:33s",
+        }
         '''
         info = None
         for sch in self.job_manager.loop._scheduled:
@@ -1505,7 +1509,7 @@ class DumperManager(BaseSourceManager):
             if sch._cancelled:
                 continue
             if sch._callback and dumper_name in str(sch._callback):
-                info = job_renderer.render_only_cron_and_strdelta(sch)
+                info = job_renderer.cron_and_strdelta_info(sch)
                 break
         return info
 

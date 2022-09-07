@@ -203,10 +203,13 @@ class JobRenderer(object):
             strdelta = "%d day(s) %s" % (days, strdelta)
         return strdelta
 
-    def render_only_cron_and_strdelta(self, job):
-        cron_info = "[%s]" % job._callback.__self__.spec
+    def cron_and_strdelta_info(self, job):
+        cron_info = job._callback.__self__.spec
         strdelta = self.render_strdelta(job)
-        return "%s {run in %s}" % (cron_info, strdelta)
+        return {
+            "cron": cron_info,
+            "strdelta": strdelta,
+        }
 
 
 renderer = JobRenderer()
