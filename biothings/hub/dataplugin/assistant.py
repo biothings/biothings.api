@@ -502,6 +502,26 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 manifest["uploaders"], manifest.get("__metadata__"), data_plugin_folder
             )
             self.__class__.uploader_manager.register_classes(assisted_uploader_classes)
+        if manifest.get("display_name"):
+            dp = get_data_plugin()
+            dp.update(
+                {"_id": self.plugin_name},
+                {
+                    "$set": {
+                        "plugin.display_name": manifest.get("display_name"),
+                    }
+                },
+            )
+        if manifest.get("biothings_type"):
+            dp = get_data_plugin()
+            dp.update(
+                {"_id": self.plugin_name},
+                {
+                    "$set": {
+                        "plugin.biothings_type": manifest.get("biothings_type"),
+                    }
+                },
+            )
 
 
 class AdvancedPluginLoader(BasePluginLoader):
