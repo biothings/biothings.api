@@ -512,13 +512,13 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     }
                 },
             )
-        if manifest.get("biothings_type"):
+        if manifest.get("biothing_type"):
             dp = get_data_plugin()
             dp.update(
                 {"_id": self.plugin_name},
                 {
                     "$set": {
-                        "plugin.biothings_type": manifest.get("biothings_type"),
+                        "plugin.biothing_type": manifest.get("biothing_type"),
                     }
                 },
             )
