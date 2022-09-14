@@ -900,8 +900,7 @@ class LastModifiedHTTPDumper(HTTPDumper, LastModifiedBaseDumper):
                 etag = res.headers[self.__class__.ETAG]
                 if etag.startswith("W/"):
                     etag = etag[2:]
-                etag.replace('"', '')
-                self.release = etag
+                self.release = etag.replace('"', '')
 
 
 class WgetDumper(BaseDumper):
