@@ -29,6 +29,8 @@ v0.11.0
         - Hub console improvements https://github.com/biothings/biothings.api/issues/216
         - Create hub's default settings https://github.com/biothings/biothings.api/issues/217
         - Refactor _parse_comments method logic https://github.com/biothings/biothings.api/issues/218
+        - indexer should check _id length, skip if too long and raise a warning https://github.com/biothings/biothings.api/issues/253
+        - Removed Nginx weak etag prefix and quotes 'W/"<etag>"` when used as src version https://github.com/biothings/biothings.api/pull/234
 
     get_python_version in utils.version does not return the correct package list https://github.com/biothings/biothings.api/issues/224
     Fixed "UserWarning: MongoClient opened before fork" in hub logs https://github.com/biothings/biothings.api/issues/247
