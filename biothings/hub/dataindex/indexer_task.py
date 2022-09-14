@@ -124,13 +124,23 @@ def _ensure_logger(logger):
         return get_logger(logger)[0]
     return logger
 
-def _validate_ids(ids):
+
+def _validate_ids(ids, logger=None):
+    validated_ids = []
+    invalid_ids = []
     for _id in ids:
         if not isinstance(_id, str):
             raise TypeError("_id '%s' has invalid type (!str)." % repr(_id))
         if len(_id) > 512:  # this is an ES limitation
-            raise ValueError("_id is too long: '%s'" % _id)
-    return ids
+            invalid_ids.append(_id)
+            message = "_id is too long: '%s'" % _id
+            if logger:
+                logger.warning(message)
+            else:
+                print(message)
+        else:
+            validated_ids.append(_id)
+    return validated_ids, invalid_ids
 
 
 class Mode(Enum):
@@ -150,7 +160,10 @@ class IndexingTask():
         assert callable(es)
         assert callable(mongo)
 
-        self.ids = _validate_ids(ids)
+        self.logger = _ensure_logger(logger)
+        self.name = f"#{name}" if isinstance(name, int) else name
+
+        self.ids, self.invalid_ids = _validate_ids(ids, self.logger)
         self.mode = Mode(mode or 'index')
 
         # these are functions to create clients,
@@ -161,9 +174,6 @@ class IndexingTask():
         self.backend = SimpleNamespace()
         self.backend.es = es  # wrt an index
         self.backend.mongo = mongo  # wrt a collection
-
-        self.logger = _ensure_logger(logger)
-        self.name = f"#{name}" if isinstance(name, int) else name
 
     def _get_clients(self):
         clients = SimpleNamespace()
@@ -189,7 +199,8 @@ class IndexingTask():
                 '$in': self.ids
             }})
         self.logger.info("%s: %d documents.", self.name, len(self.ids))
-        return clients.es.mindex(docs)
+        count_docs = clients.es.mindex(docs)
+        return count_docs + len(self.invalid_ids)
 
     def merge(self):
         clients = self._get_clients()
