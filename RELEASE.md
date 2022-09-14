@@ -5,7 +5,7 @@
     pip install wheel twine
     ```
 
-2. Update version number in [version.py](biothings/version.py).
+2. Update version number in [biothings/__init__.py](biothings/__init__.py).
 
 3. Check and update [setup.py](setup.py) if needed (dependencies, metadata etc.).
 
