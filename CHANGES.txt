@@ -1,4 +1,4 @@
-v0.11.0
+v0.11.0 (2022/09/14)
     biothings.web improvements
         - Added Authentication Mixin class for BioThings SDK Web
         - Added GitHub and ORCID Mixin class for BioThings SDK Web
