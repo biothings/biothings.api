@@ -330,12 +330,12 @@ def open_compressed_file(filename):
     return fobj
 
 
-def dump(obj, filename, protocol=2, compress='gzip'):
+def dump(obj, filename, protocol=4, compress='gzip'):
     '''Saves a compressed object to disk
-       binary protocol 2 is compatible with py2, 3 and 4 are for py3
+       protocol version 4 is the default for py3.8, supported since py3.4
     '''
-    # TODO: in py3, protocol=3 is the default, and also support protocol=4
-    #       for py>=3.4. We should check which one works best for us.
+    # NOTE: py3.8 added protocol=5 support, 4 is still the default,
+    #       We can check later to set 5 as the default when it's time.
     out_f = get_compressed_outfile(filename, compress=compress)
     pickle.dump(obj, out_f, protocol=protocol)
     out_f.close()
