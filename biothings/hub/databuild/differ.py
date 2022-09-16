@@ -9,7 +9,7 @@ import glob
 import random
 
 from biothings.utils.common import timesofar, get_timestamp, \
-    dump, rmdashfr, loadobj, md5sum
+    dump, rmdashfr, loadobj, md5sum, BiothingsJSONEncoder
 from biothings.utils.mongo import id_feeder, get_target_db, get_previous_collection
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
@@ -299,7 +299,8 @@ class BaseDiffer(object):
                     diff_stats["mapping_changed"] = True
                     json.dump(self.metadata,
                               open(self.metadata_filename, "w"),
-                              indent=True)
+                              indent=True,
+                              cls=BiothingsJSONEncoder)
 
                 self.logger.info(
                     "Diff file containing mapping differences generated: %s" %
@@ -396,7 +397,8 @@ class BaseDiffer(object):
                 .format(diff_stats["delete"]))
             json.dump(self.metadata,
                       open(self.metadata_filename, "w"),
-                      indent=True)
+                      indent=True,
+                      cls=BiothingsJSONEncoder)
 
         self.logger.info(
             "Summary: (Updated: {}, Added: {}, Deleted: {}, Mapping changed: {})"
@@ -480,7 +482,8 @@ class BaseDiffer(object):
             self.metadata["diff"]["files"] = res
             json.dump(self.metadata,
                       open(self.metadata_filename, "w"),
-                      indent=True)
+                      indent=True,
+                      cls=BiothingsJSONEncoder)
             if got_error:
                 self.logger.exception("Failed to reduce diff files: %s" %
                                       got_error,
@@ -522,7 +525,8 @@ class BaseDiffer(object):
             await job
             json.dump(self.metadata,
                       open(self.metadata_filename, "w"),
-                      indent=True)
+                      indent=True,
+                      cls=BiothingsJSONEncoder)
             if got_error:
                 self.logger.exception("Failed to run post diff process: %s" %
                                       got_error,
@@ -1324,7 +1328,8 @@ class DifferManager(BaseManager):
                     metadata["diff"]["files"].append(info)
             json.dump(metadata,
                       open(os.path.join(diff_folder, "metadata.json"), "w"),
-                      indent=True)
+                      indent=True,
+                      cls=BiothingsJSONEncoder)
             self.logger.info(
                 "Successfully rebuild diff_files list with all files found in %s"
                 % diff_folder)
