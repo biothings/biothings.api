@@ -33,6 +33,11 @@ def to_json(data, indent=False, sort_keys=False):
     return orjson.dumps(data, default=orjson_default, option=option).decode()
 
 
+def to_json_file(data, fobj, indent=False, sort_keys=False):
+    json_str = to_json(data, indent=False, sort_keys=False)
+    fobj.write(json_str)
+
+
 def to_yaml(data, stream=None, Dumper=yaml.SafeDumper, default_flow_style=False):
     # Author: Cyrus Afrasiabi
 
