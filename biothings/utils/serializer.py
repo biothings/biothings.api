@@ -34,7 +34,7 @@ def to_json(data, indent=False, sort_keys=False):
 
 
 def to_json_file(data, fobj, indent=False, sort_keys=False):
-    json_str = to_json(data, indent=False, sort_keys=False)
+    json_str = to_json(data, indent=indent, sort_keys=sort_keys)
     fobj.write(json_str)
 
 
