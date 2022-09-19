@@ -77,13 +77,13 @@ def setup_es():
                 ndjson = file.read()
 
             if int(server_major_version) >= 8:
-                client.indices.create(TEST_INDEX, mapping)
+                client.indices.create(index=TEST_INDEX, **mapping)
                 client.bulk(body=ndjson, index=TEST_INDEX)
             elif elasticsearch.__version__[0] > 6:
-                client.indices.create(TEST_INDEX, mapping, include_type_name=True)
+                client.indices.create(index=TEST_INDEX, include_type_name=True, **mapping)
                 client.bulk(body=ndjson, index=TEST_INDEX)
             else:
-                client.indices.create(TEST_INDEX, mapping)
+                client.indices.create(index=TEST_INDEX, **mapping)
                 client.bulk(body=ndjson, index=TEST_INDEX, doc_type=TEST_DOC_TYPE)
 
             client.indices.refresh()
