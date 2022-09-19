@@ -8,6 +8,9 @@ from operator import add
 import elasticsearch
 from dateutil.parser import parse as dtparse
 
+from biothings.hub import get_loop
+
+
 logger = logging.getLogger(__name__)
 
 class BiothingsMetadata:
@@ -72,7 +75,7 @@ class BiothingsESMetadata(BiothingsMetadata):
         self.client = client
 
         # initial refresh
-        loop = asyncio.get_event_loop()
+        loop = get_loop()
         for btype in self.indices:
             obj = self.refresh(btype)
             if asyncio.iscoroutine(obj):
