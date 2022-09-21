@@ -470,9 +470,9 @@ class BaseSourceUploader(object):
             upd["%s.data_folder" % job_key] = data_folder
             # Update last success upload time only when the success
             if status == "success":
-                upd["%s.last_success" % job_key] = src_doc["upload"]["jobs"][self.name][
-                    "started_at"
-                ]
+                upd["%s.last_success" % job_key] = (
+                    src_doc["upload"]["jobs"].get(self.name) or {}
+                ).get("started_at")
             self.src_dump.update_one({"_id": self.main_source}, {"$set": upd})
 
     async def load(
