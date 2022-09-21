@@ -1657,6 +1657,7 @@ class HubServer(object):
         datasource_name,
         doc_type,
         indexer_env,
+        subsource=None,
         index_name=None,
         **kwargs,
     ):
@@ -1668,9 +1669,10 @@ class HubServer(object):
 
         random_string = f"{get_timestamp()}_{get_random_string()}"
         # generate random build_configuration name
-        build_configuration_name = f"{datasource_name}_configuration_{random_string}"
+        subsource_str = f"_{subsource}" if subsource else ""
+        build_configuration_name = f"{datasource_name}{subsource_str}_configuration_{random_string}"
         # generate random build name
-        build_name = f"{datasource_name}_{random_string}"
+        build_name = f"{datasource_name}{subsource_str}_{random_string}"
         # # generate index_name if needed
         if not index_name:
             index_name = build_name
@@ -1694,7 +1696,7 @@ class HubServer(object):
                 self.managers["build_manager"].create_build_configuration(
                     build_configuration_name,
                     doc_type=doc_type,
-                    sources=[datasource_name],
+                    sources=[datasource_name] if not subsource else [subsource],
                     builder_class=builder_class,
                     params=build_config_params,
                 )
