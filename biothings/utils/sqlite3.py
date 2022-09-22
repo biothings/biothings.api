@@ -1,59 +1,108 @@
 import os
 import sqlite3
 import json
+from functools import wraps
 
 from biothings.utils.hub_db import IDatabase
 from biothings.utils.dotfield import parse_dot_fields
 from biothings.utils.dataload import update_dict_recur
 from biothings.utils.common import json_serial
 
+config = None
+
+
+def requires_config(func):
+    @wraps(func)
+    def func_wrapper(*args, **kwargs):
+        global config
+        if not config:
+            try:
+                from biothings import config as config_mod
+                config = config_mod
+            except ImportError:
+                raise Exception("call biothings.config_for_app() first")
+        return func(*args, **kwargs)
+
+    return func_wrapper
+
+@requires_config
 def get_hub_db_conn():
-    return Database()
+    conn = DatabaseClient()
+    return conn
 
+
+@requires_config
+def get_src_conn():
+    conn = get_hub_db_conn()
+    return conn
+
+
+@requires_config
+def get_src_db():
+    conn = get_src_conn()
+    return conn[config.DATA_SRC_DATABASE]
+
+
+@requires_config
 def get_src_dump():
-    db = Database()
-    return db[getattr(db.CONFIG, "DATA_SRC_DUMP_COLLECTION", "src_dump")]
+    conn = get_hub_db_conn()
+    return conn[config.DATA_HUB_DB_DATABASE][
+        getattr(config, "DATA_SRC_DUMP_COLLECTION", "src_dump")]
 
+
+@requires_config
 def get_src_master():
-    db = Database()
-    return db[db.CONFIG.DATA_SRC_MASTER_COLLECTION]
+    conn = get_hub_db_conn()
+    return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_MASTER_COLLECTION]
+
 
 def get_src_build():
-    db = Database()
-    return db[db.CONFIG.DATA_SRC_BUILD_COLLECTION]
+    conn = get_hub_db_conn()
+    return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
+
 
 def get_src_build_config():
-    db = Database()
-    return db[db.CONFIG.DATA_SRC_BUILD_CONFIG_COLLECTION]
+    conn = get_hub_db_conn()
+    return conn[config.DATA_HUB_DB_DATABASE][
+        config.DATA_SRC_BUILD_COLLECTION + "_config"]
+
 
 def get_data_plugin():
-    db = Database()
-    return db[db.CONFIG.DATA_PLUGIN_COLLECTION]
+    conn = get_hub_db_conn()
+    return conn[config.DATA_HUB_DB_DATABASE][config.DATA_PLUGIN_COLLECTION]
+
 
 def get_api():
-    db = Database()
-    return db[db.CONFIG.API_COLLECTION]
+    conn = get_hub_db_conn()
+    return conn[config.DATA_HUB_DB_DATABASE][config.API_COLLECTION]
+
 
 def get_cmd():
-    db = Database()
-    return db[db.CONFIG.CMD_COLLECTION]
+    conn = get_hub_db_conn()
+    return conn[config.DATA_HUB_DB_DATABASE][config.CMD_COLLECTION]
+
 
 def get_event():
-    db = Database()
-    return db[getattr(db.CONFIG, "EVENT_COLLECTION", "event")]
+    conn = get_hub_db_conn()
+    return conn[config.DATA_HUB_DB_DATABASE][
+        getattr(config, "EVENT_COLLECTION", "event")]
+
 
 def get_hub_config():
-    db = Database()
-    return db[getattr(db.CONFIG, "HUB_CONFIG_COLLECTION", "hub_config")]
+    conn = get_hub_db_conn()
+    return conn[config.DATA_HUB_DB_DATABASE][
+        getattr(config, "HUB_CONFIG_COLLECTION", "hub_config")]
+
 
 def get_last_command():
     try:
-        db = Database()
+        db = get_cmd()
         res = db.get_conn().execute("SELECT MAX(_id) FROM cmd").fetchall()
         assert res[0][0], "No command ID found, bootstrap ?"
         return {"_id": res[0][0]}
     except Exception:
         return {"_id": 1}
+
 
 def get_source_fullname(col_name):
     """
@@ -73,14 +122,15 @@ def get_source_fullname(col_name):
         else:
             return name
 
-class Database(IDatabase):
 
-    def __init__(self):
+class Database(IDatabase):
+    def __init__(self, db_folder, name=None):
         super(Database, self).__init__()
-        self.name = getattr(self.CONFIG, "DATA_HUB_DB_DATABASE", "hubdb")
-        if not os.path.exists(self.CONFIG.HUB_DB_BACKEND["sqlite_db_folder"]):
-            os.makedirs(self.CONFIG.HUB_DB_BACKEND["sqlite_db_folder"])
-        self.dbfile = os.path.join(self.CONFIG.HUB_DB_BACKEND["sqlite_db_folder"], self.name)
+        if not name:
+            self.name = config.DATA_HUB_DB_DATABASE
+        else:
+            self.name = name
+        self.dbfile = os.path.join(db_folder, self.name)
         self.cols = {}
 
     @property
@@ -111,6 +161,21 @@ class Database(IDatabase):
             self.create_if_needed(colname)
             self.cols[colname] = Collection(colname, self)
         return self.cols[colname]
+
+
+class DatabaseClient(IDatabase):
+    def __init__(self):
+        super().__init__()
+        self.sqlite_db_folder = config.HUB_DB_BACKEND["sqlite_db_folder"]
+
+        if not os.path.exists(self.sqlite_db_folder):
+            os.makedirs(self.sqlite_db_folder)
+        self.name = None
+        self.dbfile = None
+        self.cols = {}
+
+    def __getitem__(self, name):
+        return Database(self.sqlite_db_folder, name)
 
 
 class Collection(object):
@@ -181,6 +246,15 @@ class Collection(object):
             ).fetchone()
             conn.commit()
 
+    def insert(self, docs, *args, **kwargs):
+        with self.get_conn() as conn:
+            for doc in docs:
+                conn.execute(
+                    "INSERT INTO %s (_id,document) VALUES (?,?)" % self.colname,
+                    (doc["_id"], json.dumps(doc, default=json_serial))
+                ).fetchone()
+                conn.commit()
+
     def update_one(self, query, what, upsert=False):
         assert len(what) == 1 and ("$set" in what or "$unset" in what or "$push" in what), "$set/$unset/$push operators not found"
         doc = self.find_one(query)
@@ -204,10 +278,10 @@ class Collection(object):
             query.update(what["$set"])
             self.save(query)
 
-    def update(self, query, what):
+    def update(self, query, what, upsert=False):
         docs = self.find(query)
         for doc in docs:
-            self.update_one({"_id": doc["_id"]}, what)
+            self.update_one({"_id": doc["_id"]}, what, upsert)
 
     def save(self, doc):
         if self.find_one({"_id": doc["_id"]}):
@@ -241,6 +315,12 @@ class Collection(object):
             for doc in docs:
                 conn.execute("DELETE FROM %s WHERE _id = ?" % self.colname, (doc["_id"],)).fetchone()
             conn.commit()
+
+    def rename(self, new_name, dropTarget=False):
+        with self.get_conn() as conn:
+            if dropTarget:
+                conn.execute(f"DROP TABLE IF EXISTS {new_name}")
+            conn.execute(f"ALTER TABLE {self.colname} RENAME TO {new_name}").fetchall()
 
     def count(self):
         return self.get_conn().execute("SELECT count(_id) FROM %s" % self.colname).fetchone()[0]

@@ -10,10 +10,9 @@ from functools import partial
 from biothings import config
 from biothings.hub import BUILDER_CATEGORY, DUMPER_CATEGORY, UPLOADER_CATEGORY
 from biothings.utils.common import get_random_string, get_timestamp, timesofar
-from biothings.utils.hub_db import get_src_dump, get_src_master
+from biothings.utils.hub_db import get_src_dump, get_src_master, get_src_conn
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseSourceManager, ResourceNotFound
-from biothings.utils.mongo import get_src_conn
 from biothings.utils.version import get_source_code_info
 
 from .storage import (
@@ -35,7 +34,7 @@ class ResourceError(Exception):
     pass
 
 
-def upload_worker(name, storage_class, loaddata_func, col_name, batch_size, batch_num, *args):
+def upload_worker(name, storage_class, loaddata_func, col_name, batch_size, batch_num, *args, **kwargs):
     """
     Pickable job launcher, typically running from multiprocessing.
     storage_class will instanciate with col_name, the destination
@@ -43,13 +42,16 @@ def upload_worker(name, storage_class, loaddata_func, col_name, batch_size, batc
     called with `*args`.
     """
     data = []
+    db = None
+    if 'db' in kwargs:
+        db = kwargs.get('db')
     try:
         data = loaddata_func(*args)
         if type(storage_class) is tuple:
             klass_name = "_".join([k.__class__.__name__ for k in storage_class])
             storage = type(klass_name, storage_class, {})(None, col_name, loggingmod)
         else:
-            storage = storage_class(None, col_name, loggingmod)
+            storage = storage_class(db, col_name, loggingmod)
         return storage.process(data, batch_size)
     except Exception as e:
         logger_name = "%s_batch_%s" % (name, batch_num)
@@ -323,6 +325,10 @@ class BaseSourceUploader(object):
                 # renaming existing collections
                 new_name = "_".join(
                     [self.collection_name, "archive", get_timestamp(), get_random_string()]
+                )
+                self.logger.info(
+                    "Renaming collection '%s' to '%s' for archiving purpose."
+                    % (self.collection_name, new_name)
                 )
                 self.collection.rename(new_name, dropTarget=True)
             self.logger.info(

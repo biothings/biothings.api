@@ -1,0 +1,24 @@
+---
+version: '0.3'
+display_name: "Test test"
+biothings_type: "biothings_type_test"
+requires:
+- pandas
+- numpy
+dumper:
+  data_url:
+  - https://s3.pgkb.org/data/annotations.zip
+  - https://s3.pgkb.org/data/drugLabels.zip
+  - https://s3.pgkb.org/data/occurrences.zip
+  uncompress: true
+uploaders:
+- name: annotations
+  parser: parser:load_annotations
+  mapping: parser:custom_annotations_mapping
+  ignore_duplicates: false
+- name: druglabels
+  parser: parser:load_druglabels
+  ignore_duplicates: false
+- name: occurrences
+  parser: parser:load_occurrences
+  ignore_duplicates: false
