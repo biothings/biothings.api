@@ -4,6 +4,7 @@ In general, do not include utils depending on any third-party modules.
 """
 import asyncio
 import base64
+import concurrent.futures
 import glob
 import gzip
 import hashlib
@@ -20,6 +21,7 @@ import string
 import sys
 import time
 import types
+import warnings
 from collections import UserDict, UserList
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
@@ -877,3 +879,21 @@ def merge(x, dx):
         else:
             x[k] = v
     return x
+
+
+
+def get_loop():
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop
+
+
+def get_loop_with_max_workers(max_workers=None):
+    loop = get_loop()
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+    loop.set_default_executor(executor)
+    return loop

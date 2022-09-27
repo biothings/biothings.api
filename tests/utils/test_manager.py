@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 from biothings.utils.manager import JobManager
-from biothings.hub import get_loop
+from biothings.utils.common import get_loop
 
 
 class TestJobManager():

@@ -8,10 +8,11 @@ from operator import add
 import elasticsearch
 from dateutil.parser import parse as dtparse
 
-from biothings.hub import get_loop
+from biothings.utils.common import get_loop
 
 
 logger = logging.getLogger(__name__)
+
 
 class BiothingsMetadata:
 
