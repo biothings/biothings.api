@@ -883,6 +883,12 @@ def merge(x, dx):
 
 
 def get_loop():
+    """Since Python 3.10, a Deprecation warning is emitted if there is no running event loop.
+    In future Python releases, a RuntimeError will be raised instead.
+
+    Ref: https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.get_event_loop
+    """
+
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     try:
         loop = asyncio.get_event_loop()
