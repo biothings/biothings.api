@@ -6,6 +6,7 @@ import os
 import logging
 import sys
 import asyncio
+from copy import deepcopy
 from functools import partial
 
 from biothings import config as btconfig
@@ -120,7 +121,17 @@ class AutoHubFeature(object):
         [{'name': 'mygene.info',
         'url': 'https://biothings-releases.s3-us-west-2.amazonaws.com/mygene.info/versions.json'}]
         """
-        return self.version_urls
+        versions = deepcopy(self.version_urls)
+        for version in versions:
+            environments = []
+            for name in self.managers["dump_manager"].register.keys():
+                if name == version["name"]:
+                    break
+                if name.startswith(f"{version['name']}__"):
+                    environments.append(name)
+            if environments:
+                version["environments"] = environments
+        return versions
 
     def configure(self):
         """
@@ -132,30 +143,70 @@ class AutoHubFeature(object):
         default_standalone_conf = getattr(btconfig, "STANDALONE_CONFIG", {}).get("_default")
         if not default_standalone_conf:
             assert self.indexer_factory, "No STANDALONE_CONFIG defined, and no indexer factory class defined as well"
+
+        indexer_configs = []
         for info in self.version_urls:
             version_url = info["url"]
             self.__class__.DEFAULT_DUMPER_CLASS.VERSION_URL = version_url
             if self.indexer_factory:
                 pidxr, actual_conf = self.indexer_factory.create(info["name"])
+                indexer_configs.append({
+                    "src_name": info["name"],
+                    "pidxr": pidxr,
+                    "es_host": actual_conf["es_host"],
+                    "index": actual_conf["index"],
+                })
                 self.logger.info("Autohub configured for %s (dynamic): %s" % (info["name"], actual_conf))
             else:
                 actual_conf = btconfig.STANDALONE_CONFIG.get(info["name"], default_standalone_conf)
                 assert actual_conf, "No standalone config could be found for data release '%s'" % info["name"]
                 self.logger.info("Autohub configured for %s (static): %s" % (info["name"], actual_conf))
-                pidxr = partial(ESIndexer, index=actual_conf["index"],
-                                doc_type=None,
-                                es_host=actual_conf["es_host"])
-            partial_backend = partial(DocESBackend, pidxr)
 
-            SRC_NAME = info["name"]
-            dump_class_name = "%sDumper" % self.get_class_name(SRC_NAME)
+                if isinstance(actual_conf["es_host"], dict):
+                    indexer_configs += [
+                        {
+                            "src_name": info["name"],
+                            "pidxr": partial(
+                                ESIndexer,
+                                index=actual_conf["index"],
+                                doc_type=None,
+                                es_host=es_host_url,
+                            ),
+                            "es_host": es_host_url,
+                            "es_host_environment": es_host_environment,
+                            "index": actual_conf["index"],
+                        }
+                        for es_host_environment, es_host_url in actual_conf["es_host"].items()
+                    ]
+                else:
+                    indexer_configs.append({
+                        "src_name": info["name"],
+                        "pidxr": partial(
+                            ESIndexer,
+                            index=actual_conf["index"],
+                            doc_type=None,
+                            es_host=actual_conf["es_host"]
+                        ),
+                        "es_host": actual_conf["es_host"],
+                        "index": actual_conf["index"],
+                    })
+
+        for indexer_config in indexer_configs:
+            partial_backend = partial(DocESBackend, indexer_config["pidxr"])
+
+            SRC_NAME = indexer_config["src_name"]
+            SRC_NAME_BY_ENVIRONMENT = SRC_NAME
+            if "es_host_environment" in indexer_config:
+                SRC_NAME_BY_ENVIRONMENT += f"__{indexer_config['es_host_environment']}"
+
+            dump_class_name = "%sDumper" % self.get_class_name(SRC_NAME_BY_ENVIRONMENT)
             # dumper
             dumper_klass = type(
                 dump_class_name, (self.__class__.DEFAULT_DUMPER_CLASS,),
                 {
                     "TARGET_BACKEND": partial_backend,
-                    "SRC_NAME": SRC_NAME,
-                    "SRC_ROOT_FOLDER": os.path.join(btconfig.DATA_ARCHIVE_ROOT, SRC_NAME),
+                    "SRC_NAME": SRC_NAME_BY_ENVIRONMENT,
+                    "SRC_ROOT_FOLDER": os.path.join(btconfig.DATA_ARCHIVE_ROOT, SRC_NAME_BY_ENVIRONMENT),
                     "VERSION_URL": version_url,
                     "AWS_ACCESS_KEY_ID": btconfig.STANDALONE_AWS_CREDENTIALS.get("AWS_ACCESS_KEY_ID"),
                     "AWS_SECRET_ACCESS_KEY": btconfig.STANDALONE_AWS_CREDENTIALS.get("AWS_SECRET_ACCESS_KEY")
@@ -165,18 +216,18 @@ class AutoHubFeature(object):
             self.managers["dump_manager"].register_classes([dumper_klass])
             # uploader
             # syncer will work on index used in web part
-            esb = (actual_conf["es_host"], actual_conf["index"], None)
+            esb = (indexer_config["es_host"], indexer_config["index"], None)
             partial_syncer = partial(self.managers["sync_manager"].sync, "es", target_backend=esb)
             # manually register biothings source uploader
             # this uploader will use dumped data to update an ES index
-            uploader_class_name = "%sUploader" % self.get_class_name(SRC_NAME)
+            uploader_class_name = "%sUploader" % self.get_class_name(SRC_NAME_BY_ENVIRONMENT)
             uploader_klass = type(
                 uploader_class_name, (self.__class__.DEFAULT_UPLOADER_CLASS,),
                 {
                     "TARGET_BACKEND": partial_backend,
                     "SYNCER_FUNC": partial_syncer,
                     "AUTO_PURGE_INDEX": True,   # because we believe
-                    "name": SRC_NAME
+                    "name": SRC_NAME_BY_ENVIRONMENT
                 }
             )
             sys.modules["biothings.hub.standalone"].__dict__[uploader_class_name] = uploader_klass
