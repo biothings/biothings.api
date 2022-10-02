@@ -1,5 +1,4 @@
 import asyncio
-import concurrent.futures
 import copy
 import glob
 import json
@@ -121,13 +120,6 @@ if os.environ.get("HUB_VERBOSE", "0") != "1":
     # these prevent debug output in iPython console
     logging.getLogger("parso.python.diff").setLevel(logging.ERROR)
     logging.getLogger("parso.cache").setLevel(logging.ERROR)
-
-
-def get_loop(max_workers=None):
-    loop = asyncio.get_event_loop()
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-    loop.set_default_executor(executor)
-    return loop
 
 
 # Keys used as category in pinfo (description of jobs submitted to JobManager)

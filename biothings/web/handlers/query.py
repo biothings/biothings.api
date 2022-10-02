@@ -202,7 +202,7 @@ def capture_exceptions(coro):
 
 
 class BiothingHandler(BaseQueryHandler):
-    """
+    r"""
     Biothings Annotation Endpoint
 
     URL pattern examples:

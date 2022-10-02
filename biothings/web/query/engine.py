@@ -137,7 +137,11 @@ class AsyncESQueryBackend(ESQueryBackend):
                 query = query.params(scroll=self.scroll_time)
             if self.total_hits_as_int:
                 query = query.params(rest_total_hits_as_int=True)
-            res = await self.client.search(body=query.to_dict(), index=index, **query._params)
+            query_kwargs = query.to_dict()
+            query_kwargs.update(query._params)
+            if "from" in query_kwargs:
+                query_kwargs["from_"] = query_kwargs.pop("from")
+            res = await self.client.search(index=index, **query_kwargs)
 
         elif isinstance(query, MultiSearch):
             await self.semaphore.acquire()
