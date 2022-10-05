@@ -147,7 +147,6 @@ class AutoHubFeature(object):
         indexer_configs = []
         for info in self.version_urls:
             version_url = info["url"]
-            self.__class__.DEFAULT_DUMPER_CLASS.VERSION_URL = version_url
             if self.indexer_factory:
                 pidxr, actual_conf = self.indexer_factory.create(info["name"])
                 indexer_configs.append({
@@ -155,6 +154,7 @@ class AutoHubFeature(object):
                     "pidxr": pidxr,
                     "es_host": actual_conf["es_host"],
                     "index": actual_conf["index"],
+                    "version_url": version_url,
                 })
                 self.logger.info("Autohub configured for %s (dynamic): %s" % (info["name"], actual_conf))
             else:
@@ -175,6 +175,7 @@ class AutoHubFeature(object):
                             "es_host": es_host_url,
                             "es_host_environment": es_host_environment,
                             "index": actual_conf["index"],
+                            "version_url": version_url,
                         }
                         for es_host_environment, es_host_url in actual_conf["es_host"].items()
                     ]
@@ -189,10 +190,12 @@ class AutoHubFeature(object):
                         ),
                         "es_host": actual_conf["es_host"],
                         "index": actual_conf["index"],
+                        "version_url": version_url,
                     })
 
         for indexer_config in indexer_configs:
             partial_backend = partial(DocESBackend, indexer_config["pidxr"])
+            version_url = indexer_config["version_url"]
 
             SRC_NAME = indexer_config["src_name"]
             SRC_NAME_BY_ENVIRONMENT = SRC_NAME
