@@ -331,7 +331,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                         storage_class = "biothings.hub.dataload.storage.IgnoreDuplicatedStorage"
                 else:
                     storage_class = "biothings.hub.dataload.storage.BasicStorage"
-                if uploader_section.get("ignore_duplicates"):
+                if "ignore_duplicates" in uploader_section:
                     raise AssistantException(
                         "'ignore_duplicates' key not supported anymore, use 'on_duplicates' : 'error|ignore|merge'"
                     )

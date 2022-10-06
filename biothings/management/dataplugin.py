@@ -1,8 +1,8 @@
+import json
 import math
 import os
 import pathlib
 import time
-import json
 from shutil import copytree
 from typing import Optional
 
@@ -19,7 +19,6 @@ from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.hub_db import get_data_plugin, get_src_db
 from biothings.utils.loggers import get_logger
-
 
 app = typer.Typer()
 
@@ -98,8 +97,20 @@ def load_plugin(plugin_name):
 
 
 @app.command("test_dump_and_upload")
-def test_dump_and_upload():
-    plugin_name = "pharmgkb"
+def test_dump_and_upload(
+    plugin_name: Optional[str] = typer.Option(  # NOQA: B008
+        default="",
+        help="Data plugin name",
+        prompt="What's your data plugin name?",
+    )
+    # multi_uploaders: bool = typer.Option(  # NOQA: B008
+    #     False, "--multi-uploaders", help="Add this option if you want to create multiple uploaders"
+    # ),
+    # parallelizer: bool = typer.Option(  # NOQA: B008
+    #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
+    # ),
+):
+    # plugin_name = "pharmgkb"
     # prepare dumper
     dumper_manager, uploader_manager = load_plugin(plugin_name)
     dumper_class = dumper_manager[plugin_name][0]
@@ -136,34 +147,74 @@ def test_dump_and_upload():
 
 
 @app.command("test_inspect")
-def test_inspect():
+def test_inspect(
+    plugin_name: Optional[str] = typer.Option(  # NOQA: B008
+        default="",
+        help="Data plugin name",
+        prompt="What's your data plugin name?",
+    ),
+    sub_source_name: Optional[str] = typer.Option(  # NOQA: B008
+        default="",
+        help="Your sub source name",
+    ),
+    mode: Optional[str] = typer.Option(  # NOQA: B008
+        default="mapping,type,stats",
+        help="""
+            mode: the inspect mode or list of modes (comma separated) eg. "type,mapping".
+            Possible values are:
+            - "type": (default) explore documents and report strict data structure
+            - "mapping": same as type but also perform test on data so guess best mapping
+                       (eg. check if a string is splitable, etc...). Implies merge=True
+            - "stats": explore documents and compute basic stats (count,min,max,sum)
+            - "deepstats": same as stats but record values and also compute mean,stdev,median
+                         (memory intensive...)
+            - "jsonschema", same as "type" but returned a json-schema formatted result
+            """,
+    ),
+    limit: Optional[int] = typer.Option(  # NOQA: B008
+        None,
+        "--limit",
+        help="""
+        can limit the inspection to the x first docs (None = no limit, inspects all)
+        """,
+    ),
+    merge: Optional[bool] = typer.Option(  # NOQA: B008
+        False,
+        "--merge",
+        help="""
+        merge scalar into list when both exist (eg. {"val":..} and [{"val":...}]
+        """,
+    ),
+):
     logger, logfile = get_logger("inspect")
-    # input:
-    #     {"data_provider":["src","pharmgkb"],"mode":["mapping","type","stats"],"limit":100}
-    # build inspect(data_provider='pham1',mode=['mapping'])
-    plugin_name = "pharmgkb"
-    sub_source_name = "annotations"
-    mode = ["mapping", "type", "stats"]
+    mode = mode.split(",")
+    if "jsonschema" in mode:
+        mode = ["jsonschema", "type"]
+    if not limit:
+        limit = None
+    sample = None
+    clean = True
+    logger.info(
+        f"Inspect Data plugin {plugin_name} with sub-source name: {sub_source_name} mode: {mode} limit {limit}"
+    )
 
-    data_provider = ("src", sub_source_name)
+    t0 = time.time()
+    data_provider = ("src", plugin_name)
+    source_name = plugin_name
+    if sub_source_name:
+        data_provider = ("src", sub_source_name)
+        source_name = f"{plugin_name}.{sub_source_name}"
+
     src_db = get_src_db()
-
-    fullname = f"{plugin_name}.{sub_source_name}"
     dumper_manager, uploader_manager = load_plugin(plugin_name)
-    uploader_cls = uploader_manager[fullname][0]
-
+    uploader_cls = uploader_manager[source_name][0]
     registerer_obj = uploader_cls.create(db_conn_info="")
     registerer_obj.prepare()
 
-    t0 = time.time()
-    # started_at = datetime.now().astimezone()
-    limit = 10
-    sample = None
     pre_mapping = "mapping" in mode
-    clean = True
-    merge = False
-    src_cols = src_db[sub_source_name]
+    src_cols = src_db[source_name]
     inspected = {}
+    converters, mode = btinspect.get_converters(mode)
     for m in mode:
         inspected.setdefault(m, {})
     cur = src_cols.find()
@@ -179,7 +230,7 @@ def test_inspect():
         metadata=False,
         auto_convert=False,
     )
-    converters, mode = btinspect.get_converters(mode)
+
     for m in mode:
         inspected[m] = btinspect.merge_record(inspected[m], res[m], m)
     for m in mode:
@@ -195,10 +246,9 @@ def test_inspect():
     btinspect.run_converters(inspected, converters)
 
     res = btinspect.stringify_inspect_doc(inspected)
-    _map = {"results": res}
-    _map["data_provider"] = repr(data_provider)
+    _map = {"results": res, "data_provider": repr(data_provider), "duration": timesofar(t0)}
+
     # _map["started_at"] = started_at
-    _map["duration"] = timesofar(t0)
 
     def clean_big_nums(k, v):
         # TODO: same with float/double? seems mongo handles more there ?

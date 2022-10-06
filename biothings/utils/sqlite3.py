@@ -255,6 +255,11 @@ class Collection(object):
                 ).fetchone()
                 conn.commit()
 
+    def bulk_write(self, docs, *args, **kwargs):
+        doc_objs = [item._doc for item in docs]
+        self.insert(doc_objs, *args, **kwargs)
+        return Cursor(len(doc_objs))
+
     def update_one(self, query, what, upsert=False):
         assert len(what) == 1 and ("$set" in what or "$unset" in what or "$push" in what), "$set/$unset/$push operators not found"
         doc = self.find_one(query)
@@ -334,3 +339,8 @@ class Collection(object):
     def __getstate__(self):
         self.__dict__.pop("db", None)
         return self.__dict__
+
+
+class Cursor(object):
+    def __init__(self, inserted_count):
+        self.inserted_count = inserted_count

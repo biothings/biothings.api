@@ -28,9 +28,9 @@ uploaders:  # Tells the studio how to parse and upload data once it's been dumpe
   - name: data1  # The name of uploader, must difference with other uploader
     parser: parser:load_data  # Format "module:fuction", where function takes a data folder path as argument
     mapping: mapping:custom_mapping  # Points to a module:classmethod_name that can be used to specify a custom ElasticSearch mapping.
-    ignore_duplicates: false  # What to do if duplicates are found (parser returns dict with same _id). Can be either error|ignore|merge.
+    on_duplicates: ignore  # What to do if duplicates are found (parser returns dict with same _id). Can be either error|ignore|merge.
     {% if parallelizer %}parallelizer: parallelizer:custom_jobs  # Optional.  If multiple input files exist, using the exact same parser, the uploader can be parallelized using that option{% end %}
 #  - name: data2
 #    parser: parser:load_data2
-#    ignore_duplicates: false
+#    on_duplicates: error
 {% end %}
