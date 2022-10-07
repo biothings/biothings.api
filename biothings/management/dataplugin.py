@@ -200,19 +200,20 @@ def test_inspect(
 
     t0 = time.time()
     data_provider = ("src", plugin_name)
-    source_name = plugin_name
+    source_full_name = source_table_name = plugin_name
     if sub_source_name:
         data_provider = ("src", sub_source_name)
-        source_name = f"{plugin_name}.{sub_source_name}"
+        source_full_name = f"{plugin_name}.{sub_source_name}"
+        source_table_name = sub_source_name
 
     src_db = get_src_db()
     dumper_manager, uploader_manager = load_plugin(plugin_name)
-    uploader_cls = uploader_manager[source_name][0]
+    uploader_cls = uploader_manager[source_full_name][0]
     registerer_obj = uploader_cls.create(db_conn_info="")
     registerer_obj.prepare()
 
     pre_mapping = "mapping" in mode
-    src_cols = src_db[source_name]
+    src_cols = src_db[source_table_name]
     inspected = {}
     converters, mode = btinspect.get_converters(mode)
     for m in mode:
