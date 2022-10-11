@@ -1,3 +1,4 @@
+import asyncio
 import json
 import math
 import os
@@ -260,3 +261,23 @@ def test_inspect(
 
     dict_traverse(_map, clean_big_nums)
     print(json.dumps(_map, indent=2))
+
+
+@app.command("serve")
+def serve(
+    plugin_name: Optional[str] = typer.Option(  # NOQA: B008
+        default="",
+        help="Data plugin name",
+        prompt="What's your data plugin name?",
+    ),
+):
+    src_db = get_src_db()
+    dumper_manager, uploader_manager = load_plugin(plugin_name)
+    uploader_cls = uploader_manager[plugin_name]
+    if not isinstance(uploader_cls, list):
+        uploader_cls = [uploader_cls]
+    table_space = [item.name for item in uploader_cls]
+
+    from .app import main
+
+    asyncio.run(main(port=9999, db=src_db, table_space=table_space))

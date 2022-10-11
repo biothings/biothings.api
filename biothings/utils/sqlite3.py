@@ -229,11 +229,19 @@ class Collection(object):
                         return doc
                     else:
                         results.append(doc)
+            if 'limit' in kwargs:
+                start = kwargs.get('start', 0)
+                end = start + kwargs.get('limit', 0)
+                return results[start: end]
             return results
         elif not args or len(args) == 1 and len(args[0]) == 0:
             # nothing or empty dict
-            return [json.loads(doc[0]) for doc in
-                    self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall()]
+            results = [json.loads(doc[0]) for doc in self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall()]
+            if 'limit' in kwargs:
+                start = kwargs.get('start', 0)
+                end = start + kwargs.get('limit', 0)
+                return results[start: end]
+            return results
         else:
             raise NotImplementedError("find: args=%s kwargs=%s" % (repr(args), repr(kwargs)))
 
