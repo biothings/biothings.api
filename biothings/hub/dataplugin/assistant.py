@@ -302,24 +302,35 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                         import orjson
 
                         # Setup parser to parser factory
-                        from {mod} import {func} as parser_factory
+                        from {mod} import {func} as parser_func
 
                         parser_kwargs_serialized = r\'\'\'
                             {parser_kwargs_serialized}
                         \'\'\'  # I am not 100 percent certain this works
 
                         parser_kwargs = orjson.loads(parser_kwargs_serialized)
-                        parser_func = parser_factory(**parser_kwargs)
                     '''
                     )
                 else:
+                    # create empty parser_kwargs to pass to parser_func
+                    parser_kwargs_serialized = orjson.dumps({}).decode('utf-8')
+
                     confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(
                         f'''
+                    # get json
+                    import orjson
+
                     # when code is exported, import becomes relative
                     try:
                         from {self.plugin_name}.{mod} import {func} as parser_func
                     except ImportError:
                         from .{mod} import {func} as parser_func
+
+                    parser_kwargs_serialized = r\'\'\'
+                        {parser_kwargs_serialized}
+                    \'\'\'  # I am not 100 percent certain this works
+
+                    parser_kwargs = orjson.loads(parser_kwargs_serialized)
                     '''
                     )
             except ValueError:
@@ -344,7 +355,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 # default is not ID conversion at all
                 confdict["IMPORT_IDCONVERTER_FUNC"] = ""
                 confdict["IDCONVERTER_FUNC"] = None
-                confdict["CALL_PARSER_FUNC"] = "parser_func(data_folder)"
+                confdict["CALL_PARSER_FUNC"] = "parser_func(data_folder, **parser_kwargs)"
                 if uploader_section.get("keylookup"):
                     assert self.__class__.keylookup, (
                         "Plugin %s needs _id conversion " % self.plugin_name
@@ -367,7 +378,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     )
                     confdict[
                         "CALL_PARSER_FUNC"
-                    ] = "self.__class__.idconverter(parser_func)(data_folder)"
+                    ] = "self.__class__.idconverter(parser_func)(data_folder, **parser_kwargs)"
                 if metadata:
                     confdict["__metadata__"] = metadata
                 else:
