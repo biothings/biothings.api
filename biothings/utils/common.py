@@ -253,6 +253,49 @@ def get_dotfield_value(dotfield, d):
         first = fields[0]
         return get_dotfield_value(".".join(fields[1:]), d[first])
 
+
+def find_value_in_doc(dotfield, value, d):
+    """
+    Explore mixed dictionary d using dotfield notation and return value.
+    Example::
+
+        d = {"a":{"b": "1"},"x":[{"y": "3", "z": "4"}, "5"]}.
+        find_value_in_doc("a.b", "1", d) => True
+        find_value_in_doc("x.[].y", "3", d) => True
+        find_value_in_doc("x.[]", "5", d) => True
+        find_value_in_doc("a.b", "c", d) => False
+        find_value_in_doc("a", "c", d) => False
+    """
+
+    fields = dotfield.split(".")
+    field = fields[0]
+    if len(fields) == 1:
+        try:
+            if isinstance(d, list):
+                if field == '[]':
+                    return value in d
+                return False
+            return d[field] == value
+        except Exception as ex:
+            print(ex)
+            return None
+    else:
+        try:
+            if isinstance(d, list):
+                if field == '[]':
+                    for item in d:
+                        result = find_value_in_doc(".".join(fields[1:]), value, item)
+                        if result:
+                            return True
+                    return False
+                else:
+                    return False
+            return find_value_in_doc(".".join(fields[1:]), value, d[field])
+        except Exception as ex:
+            print(ex)
+            return False
+
+
 def split_ids(q):
     '''
     split input query string into list of ids.

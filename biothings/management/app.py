@@ -49,14 +49,19 @@ class EntriesHandler(BaseHandler):
 
         start = self.get_argument("start", "0", True)
         limit = self.get_argument("limit", None, True)
+        query_params = {
+            key: self.get_argument(key)
+            for key in self.request.arguments
+            if key not in ["start", "limit"]
+        }
         if limit:
             limit = int(limit)
             start = int(start)
-            entries = src_cols.find(start=start, limit=limit)
+            entries = src_cols.find(query_params, start=start, limit=limit)
         else:
-            entries = src_cols.find()
+            entries = src_cols.find(query_params)
         if not entries:
-            raise tornado.web.HTTPError(404)
+            entries = []
 
         r = json.dumps(entries)
         self.write(r)

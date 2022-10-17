@@ -6,7 +6,7 @@ from functools import wraps
 from biothings.utils.hub_db import IDatabase
 from biothings.utils.dotfield import parse_dot_fields
 from biothings.utils.dataload import update_dict_recur
-from biothings.utils.common import json_serial
+from biothings.utils.common import json_serial, find_value_in_doc
 
 config = None
 
@@ -218,9 +218,9 @@ class Collection(object):
                 found = False
                 doc = json.loads(doc[0])
                 for k, v in args[0].items():
-                    if k in doc:
-                        if doc[k] == v:
-                            found = True
+                    value = find_value_in_doc(k, v, doc)
+                    if value:
+                        found = True
                     else:
                         found = False
                         break

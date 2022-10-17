@@ -97,8 +97,8 @@ def load_plugin(plugin_name):
     return p_loader.__class__.dumper_manager, assistant.__class__.uploader_manager
 
 
-@app.command("test_dump_and_upload")
-def test_dump_and_upload(
+@app.command("dump_and_upload")
+def dump_and_upload(
     plugin_name: Optional[str] = typer.Option(  # NOQA: B008
         default="",
         help="Data plugin name",
@@ -147,8 +147,8 @@ def test_dump_and_upload(
     dp.remove({"_id": plugin_name})
 
 
-@app.command("test_inspect")
-def test_inspect(
+@app.command("inspect")
+def inspect(
     plugin_name: Optional[str] = typer.Option(  # NOQA: B008
         default="",
         help="Data plugin name",
@@ -209,6 +209,10 @@ def test_inspect(
 
     src_db = get_src_db()
     dumper_manager, uploader_manager = load_plugin(plugin_name)
+    if len(uploader_manager[source_full_name]) > 1 and not sub_source_name:
+        raise Exception(
+            "This is a multiple uploader data plugin, so 'sub_source_name' option is required!"
+        )
     uploader_cls = uploader_manager[source_full_name][0]
     registerer_obj = uploader_cls.create(db_conn_info="")
     registerer_obj.prepare()
@@ -270,7 +274,31 @@ def serve(
         help="Data plugin name",
         prompt="What's your data plugin name?",
     ),
+    port: Optional[int] = typer.Option(  # NOQA: B008
+        default=9999,
+        help="API server port",
+    ),
 ):
+    """
+
+    :param plugin_name: Data plugin name
+    :param port: API server port
+    :return: Run the simple API server for serving dumped documents from above 'dump_and_upload' command,
+    Support pagination by using: start=&limit=
+    Support filtering by document keys, for example:
+    After run 'dump_and_upload', we have a source_name = "test"
+    doc = {"_id": "123", "key": {"a":{"b": "1"},"x":[{"y": "3", "z": "4"}, "5"]}}.
+    - You can list all docs by:
+    http://localhost:9999/tests/
+    http://localhost:9999/tests/start=10&limit=10
+    - You can filter out this doc by:
+    http://localhost:9999/tests/?key.a.b=1 (find all docs that have nested dict keys a.b)
+    http://localhost:9999/tests/?key.x.[].y=3 (find all docs that have mixed type dict-list)
+    http://localhost:9999/tests/?key.x.[].z=4
+    http://localhost:9999/tests/?key.x.[]=5
+    - Or you can retrieve this doc by:
+    http://localhost:9999/tests/123/
+    """
     src_db = get_src_db()
     dumper_manager, uploader_manager = load_plugin(plugin_name)
     uploader_cls = uploader_manager[plugin_name]
@@ -280,4 +308,5 @@ def serve(
 
     from .app import main
 
-    asyncio.run(main(port=9999, db=src_db, table_space=table_space))
+    print(f"Serving data plugin source {plugin_name} on port http://127.0.0.1:{port}")
+    asyncio.run(main(port=port, db=src_db, table_space=table_space))
