@@ -8,7 +8,7 @@ class _version_info(NamedTuple):
     micro: int
 
 
-version_info = _version_info(0, 11, 1)
+version_info = _version_info(0, 12, 'dev')
 __version__ = '.'.join(map(str, version_info))
 
 
