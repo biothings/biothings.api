@@ -124,11 +124,15 @@ class AutoHubFeature(object):
         versions = deepcopy(self.version_urls)
         for version in versions:
             environments = []
-            for name in self.managers["dump_manager"].register.keys():
+            for name, dumpers in self.managers["dump_manager"].register.items():
                 if name == version["name"]:
                     break
                 if name.startswith(f"{version['name']}__"):
-                    environments.append(name)
+                    dumper = dumpers[0]
+                    environments.append({
+                        'name': name,
+                        'es_host': dumper.ES_HOST
+                    })
             if environments:
                 version["environments"] = environments
         return versions
@@ -212,7 +216,8 @@ class AutoHubFeature(object):
                     "SRC_ROOT_FOLDER": os.path.join(btconfig.DATA_ARCHIVE_ROOT, SRC_NAME_BY_ENVIRONMENT),
                     "VERSION_URL": version_url,
                     "AWS_ACCESS_KEY_ID": btconfig.STANDALONE_AWS_CREDENTIALS.get("AWS_ACCESS_KEY_ID"),
-                    "AWS_SECRET_ACCESS_KEY": btconfig.STANDALONE_AWS_CREDENTIALS.get("AWS_SECRET_ACCESS_KEY")
+                    "AWS_SECRET_ACCESS_KEY": btconfig.STANDALONE_AWS_CREDENTIALS.get("AWS_SECRET_ACCESS_KEY"),
+                    "ES_HOST": indexer_config["es_host"],
                 }
             )
             sys.modules["biothings.hub.standalone"].__dict__[dump_class_name] = dumper_klass
