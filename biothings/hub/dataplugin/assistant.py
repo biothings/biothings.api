@@ -293,44 +293,29 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 confdict["PARSER_MOD"] = mod
                 confdict["PARSER_FUNC"] = func
                 if uploader_section.get('parser_kwargs'):
-                    parser_kwargs_serialized = orjson.dumps(
-                        uploader_section['parser_kwargs']
-                    ).decode('utf-8')
+                    parser_kwargs_serialized = repr(uploader_section['parser_kwargs'])
+
                     confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(
                         f'''
-                        # get json
-                        import orjson
-
                         # Setup parser to parser factory
                         from {mod} import {func} as parser_func
 
-                        parser_kwargs_serialized = r\'\'\'
-                            {parser_kwargs_serialized}
-                        \'\'\'  # I am not 100 percent certain this works
-
-                        parser_kwargs = orjson.loads(parser_kwargs_serialized)
+                        parser_kwargs = {parser_kwargs_serialized}
                     '''
                     )
                 else:
                     # create empty parser_kwargs to pass to parser_func
-                    parser_kwargs_serialized = orjson.dumps({}).decode('utf-8')
+                    parser_kwargs_serialized = repr({})
 
                     confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(
                         f'''
-                    # get json
-                    import orjson
-
                     # when code is exported, import becomes relative
                     try:
                         from {self.plugin_name}.{mod} import {func} as parser_func
                     except ImportError:
                         from .{mod} import {func} as parser_func
 
-                    parser_kwargs_serialized = r\'\'\'
-                        {parser_kwargs_serialized}
-                    \'\'\'  # I am not 100 percent certain this works
-
-                    parser_kwargs = orjson.loads(parser_kwargs_serialized)
+                    parser_kwargs = {parser_kwargs_serialized}
                     '''
                     )
             except ValueError:
