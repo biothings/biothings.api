@@ -23,7 +23,7 @@ def generate_command_documentations(filepath, commands):
 
     command_docs = []
 
-    for command_name, command_data in commands.items():
+    for command_name, command_data in sorted(commands.items()):
         func = None
         sign = None
         docstring = ""
