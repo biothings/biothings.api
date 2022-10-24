@@ -649,6 +649,21 @@ def find_classes_subclassing(mods, baseclass):
                 classes.append(klass)
     return classes
 
+
+def sanitize_tarfile(tar_object, directory):
+    """
+    Prevent user-assisted remote attackers to overwrite arbitrary files via a .. (dot dot) sequence
+    in filenames in a TAR archive, a related issue to CVE-2007-4559
+    """
+    for member in tar_object.getmembers():
+        target = os.path.join(directory, member.name)
+        abs_directory = os.path.abspath(directory)
+        abs_target = os.path.abspath(target)
+        prefix = os.path.commonprefix([abs_directory, abs_target])
+        if not prefix == abs_directory:
+            raise Exception("Attempted Path Traversal in Tar File")
+
+
 def sizeof_fmt(num, suffix='B'):
     # http://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
     for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
@@ -677,6 +692,7 @@ def untargzall(folder, pattern="*.tar.gz"):
     for tgz in glob.glob(os.path.join(folder, pattern)):
         gz = gzip.GzipFile(tgz)
         tf = tarfile.TarFile(fileobj=gz)
+        sanitize_tarfile(tf, folder)
         logging.info("untargz '%s'", tf.name)
         tf.extractall(folder)
         logging.info("done untargz '%s'", tf.name)
@@ -701,8 +717,9 @@ def unxzall(folder, pattern="*.xz"):
     import tarfile
     for xzfile in glob.glob(os.path.join(folder, pattern)):
         logging.info("unxzing '%s'", xzfile)
-        with tarfile.open(xzfile, 'r:xz') as t:
-            t.extractall(folder)
+        with tarfile.open(xzfile, 'r:xz') as tf:
+            sanitize_tarfile(tf, folder)
+            tf.extractall(folder)
         logging.info("done unxzing '%s'", xzfile)
 
 
