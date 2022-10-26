@@ -1,5 +1,5 @@
 biothings.hub.commands
-===============
+===============================
 
 This document will show you all available commands that can be used when you access the Hub shell, and their usages.
 
