@@ -128,6 +128,19 @@ SKIP_DUMPER_SCHEDULE = False
 # Skip all scheduled uploader jobs after a success dump
 SKIP_UPLOADER_POLL = False
 
+# Auto archive feature will use this configuration to get schedule config for corresponding build configuration.
+# If not set it will use the default value defined in AutoArchiveManager
+AUTO_ARCHIVE_CONFIG = None
+"""
+AUTO_ARCHIVE_CONFIG = {
+    "build_configuration_name": {
+        "schedule: "* 0 * * *",  # run daily at 0am UTC
+        "days": 3
+    },
+    ...
+}
+"""
+
 #* 3. Folders *#
 # Path to a folder to store all downloaded files, logs, caches, etc...
 DATA_ARCHIVE_ROOT = ConfigurationError("Define path to folder which will contain all downloaded data, cache files, etc...")

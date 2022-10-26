@@ -325,6 +325,7 @@ class HubServer(object):
         "dataplugin",
         "source",
         "build",
+        "auto_archive",
         "diff",
         "index",
         "snapshot",
@@ -644,6 +645,22 @@ class HubServer(object):
         build_manager.configure()
         self.managers["build_manager"] = build_manager
         build_manager.poll()
+    
+    def configure_auto_archive_manager(self):
+        from biothings.hub.databuild.auto_archive import AutoArchiveManager
+
+        if not self.managers.get("build_manager"):
+            self.configure_build_manager()
+        
+        args = self.mixargs("auto_archive")
+        auto_archive_manager = AutoArchiveManager(
+            build_manager=self.managers["build_manager"],
+            job_manager=self.managers["job_manager"],
+            auto_archive_config=getattr(config, "AUTO_ARCHIVE_CONFIG"),
+            **args
+        )
+        auto_archive_manager.configure()
+        self.managers["auto_archive_manager"] = auto_archive_manager
 
     def configure_diff_manager(self):
         from biothings.hub.databuild.differ import DifferManager, SelfContainedJsonDiffer
@@ -1110,6 +1127,9 @@ class HubServer(object):
             self.commands["rmmerge"] = self.managers["build_manager"].delete_merge
             self.commands["merge"] = self.managers["build_manager"].merge
             self.commands["archive"] = self.managers["build_manager"].archive_merge
+        # auto archive
+        if self.managers.get("auto_archive_manager"):
+            self.commands["auto_archive"] = self.managers["auto_archive_manager"].archive
         if hasattr(config, "INDEX_CONFIG"):
             self.commands["index_config"] = config.INDEX_CONFIG
         if hasattr(config, "SNAPSHOT_CONFIG"):
@@ -1411,6 +1431,13 @@ class HubServer(object):
             )
         if not self.api_endpoints["build"]:
             self.api_endpoints.pop("build")
+        
+        # auto archive
+        if "auto_archive" in cmdnames:
+            self.api_endpoints["auto_archive"] = EndpointDefinition(
+                name="auto_archive", method="post", force_bodyargs=True
+            )
+
         self.api_endpoints["publish"] = []
         if "publish_diff" in cmdnames:
             self.api_endpoints["publish"].append(
