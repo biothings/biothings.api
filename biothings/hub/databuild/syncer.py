@@ -18,7 +18,7 @@ from biothings.utils.loggers import get_logger
 from biothings import config as btconfig
 from biothings.utils.manager import BaseManager
 from .backend import create_backend, generate_folder
-from ..dataload.storage import UpsertStorage
+from biothings.utils.storage import UpsertStorage
 import biothings.utils.jsonpatch as jsonpatch
 from biothings.hub import SYNCER_CATEGORY
 

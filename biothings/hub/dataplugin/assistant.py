@@ -20,6 +20,7 @@ from biothings.hub.dataplugin.manager import GitDataPlugin, ManualDataPlugin
 from biothings.utils.common import get_class_from_classpath, rmdashfr
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
+from biothings.utils import storage
 from biothings.utils.manager import BaseSourceManager
 
 
@@ -324,13 +325,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 )
             try:
                 ondups = uploader_section.get("on_duplicates")
-                if ondups and ondups != "error":
-                    if ondups == "merge":
-                        storage_class = "biothings.hub.dataload.storage.MergerStorage"
-                    elif ondups == "ignore":
-                        storage_class = "biothings.hub.dataload.storage.IgnoreDuplicatedStorage"
-                else:
-                    storage_class = "biothings.hub.dataload.storage.BasicStorage"
+                storage_class = storage.get_storage_class(ondups)
                 if "ignore_duplicates" in uploader_section:
                     raise AssistantException(
                         "'ignore_duplicates' key not supported anymore, use 'on_duplicates' : 'error|ignore|merge'"

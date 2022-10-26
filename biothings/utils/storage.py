@@ -298,3 +298,13 @@ class NoStorage(object):
     def process(self, iterable, *args, **kwargs):
         self.logger.info("NoStorage stores nothing, skip...")
         return 0
+
+
+def get_storage_class(ondups=None):
+    if ondups and ondups != "error":
+        if ondups == "merge":
+            return "biothings.utils.storage.MergerStorage"
+        elif ondups == "ignore":
+            return "biothings.utils.storage.IgnoreDuplicatedStorage"
+    else:
+        return "biothings.utils.storage.BasicStorage"

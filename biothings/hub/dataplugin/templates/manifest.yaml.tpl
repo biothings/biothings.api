@@ -1,5 +1,7 @@
 ---
 version: '0.3'
+display_name: # Optional. This will be displayed as friendly name on the Biothing Studio
+biothing_type: # Optional. Can be used to provide the default value to some hub functions (e.g. in quick_index as the default doc_type value.
 __metadata__: # Optional.
   license_url: https://example.com/  # Optional. Put your license url here
   licence: ABCXYZ # Optional. Your license name
@@ -20,13 +22,15 @@ dumper:
 {% if not multi_uploaders %}
 uploader: # Tells the studio how to parse and upload data once it's been dumped locally
   parser: parser:load_data  # Format "module:fuction", where function takes a data folder path as argument
+  parser_kwargs:  # Optional. Extra kwargs will be passed to the parser function. ex: '{ "name":"John", "age":30, "city":"New York"}'
   mapping: mapping:custom_mapping  # Optional. Points to a module:classmethod_name that can be used to specify a custom ElasticSearch mapping.
-  ignore_duplicates: false  # What to do if duplicates are found (parser returns dict with same _id). Can be either error|ignore|merge.
+  on_duplicates: error  # What to do if duplicates are found (parser returns dict with same _id). Can be either error|ignore|merge.
   {% if parallelizer %}parallelizer: parallelizer:custom_jobs  # Optional.  If multiple input files exist, using the exact same parser, the uploader can be parallelized using that option{% end %}
 {% else %}
 uploaders:  # Tells the studio how to parse and upload data once it's been dumped locally
   - name: data1  # The name of uploader, must difference with other uploader
     parser: parser:load_data  # Format "module:fuction", where function takes a data folder path as argument
+    parser_kwargs: {}  # Optional. Extra kwargs will be passed to the parser function
     mapping: mapping:custom_mapping  # Points to a module:classmethod_name that can be used to specify a custom ElasticSearch mapping.
     on_duplicates: ignore  # What to do if duplicates are found (parser returns dict with same _id). Can be either error|ignore|merge.
     {% if parallelizer %}parallelizer: parallelizer:custom_jobs  # Optional.  If multiple input files exist, using the exact same parser, the uploader can be parallelized using that option{% end %}
