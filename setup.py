@@ -73,11 +73,11 @@ hub_requires = [
     "pip",  # auto-install requirements from plugins
     # 'pandas==1.0.1',    # json with inf/nan and more to come (replaced by orjson below now)
     # 'orjson>=3.5.2',    # this is a faster json lib support inf/nan and datetime
-    'yapf',  # code reformatter, better results than autopep8
-    'requests-aws4auth',  # aws s3 auth requests for autohub
-    'networkx>=2.1,<2.6',  # datatransform
-    'biothings_client>=0.2.6',  # datatransform (api client)
-    'typer[all]',  # Lib for building CLI applications
+    "yapf",  # code reformatter, better results than autopep8
+    "requests-aws4auth",  # aws s3 auth requests for autohub
+    "networkx>=2.1,<2.6",  # datatransform
+    "biothings_client>=0.2.6",  # datatransform (api client)
+    "typer[all]",  # Lib for building CLI applications
 ]
 
 # extra requirements to develop biothings
@@ -132,6 +132,6 @@ setup(
         "dev": web_extra_requires + hub_requires + dev_requires + docs_requires,
     },
     entry_points={
-        'console_scripts': ['biothings-admin=biothings.management:cli'],
+        "console_scripts": ["biothings-admin=biothings.management.cli:main"],
     },
 )
