@@ -67,7 +67,6 @@ hub_requires = [
     "IPython",  # for interactive hub console
     "multiprocessing_on_dill",  # can replace pickler in concurrent.futures
     "dill",  # a pickle alternative with extra object type support
-    'pyinotify; sys_platform == "linux"',  # Linux-only; used in utils.hub.PyInotifyHubReloader
     "prettytable",  # diff report renderer
     "sockjs-tornado==1.0.7",  # websocket server for HubServer
     "jsonschema>=2.6.0",

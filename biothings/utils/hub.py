@@ -750,102 +750,6 @@ class BaseHubReloader(object):
         raise NotImplementedError("Implement me in a sub-class")
 
 
-try:
-    import pyinotify
-
-    class PyInotifyHubReloader(BaseHubReloader):
-        """Based on pyinotify events"""
-
-        # inner class to hide pyinotify in case not available
-        class ReloadListener(pyinotify.ProcessEvent):
-            def my_init(self, watcher_manager, reload_func):
-                self.reload_func = reload_func
-                self.watcher_manager = watcher_manager
-
-            def process_default(self, event):
-                pyinotify = sys.modules["pyinotify"]
-                if exclude_from_reloader(event.pathname):
-                    return
-                if event.dir:
-                    if event.mask & pyinotify.IN_CREATE:
-                        # add to watcher. no need to check if already watched, manager knows
-                        # how to deal with that
-                        logging.info("Add '%s' to watcher", event.pathname)
-                        self.watcher_manager.add_watch(event.pathname, self.notifier.mask, rec=1)
-                    elif event.mask & pyinotify.IN_DELETE:
-                        logging.info("Remove '%s' from watcher", event.pathname)
-                        # watcher knows when directory is deleted (file descriptor become invalid),
-                        # so no need to do it manually
-                logging.error("Need to reload manager because of %s", event)
-                self.reload_func()
-
-        def __init__(self, paths, reload_func, wait=5, mask=None):
-            pyinotify = sys.modules[
-                "pyinotify"
-            ]  # get it from sys.modules or we'd need another "import"
-            # just sure why...
-            if isinstance(paths, str):
-                paths = [paths]
-            paths = set(paths)  # get rid of duplicated, just in case
-            self.mask = (
-                mask or pyinotify.IN_CREATE | pyinotify.IN_DELETE | pyinotify.IN_CLOSE_WRITE
-            )
-            self.reload_func = reload_func
-            # only listen to these events. Note: directory detection is done via a flag so
-            # no need to use IS_DIR
-            self.watcher_manager = pyinotify.WatchManager(exclude_filter=exclude_from_reloader)
-            self.paths = []  # cleaned
-            for path in paths:
-                if not os.path.isabs(path):
-                    path = os.path.abspath(path)
-                self.paths.append(path)
-                self.watcher_manager.add_watch(
-                    path, self.mask, rec=True, exclude_filter=exclude_from_reloader
-                )  # recursive
-
-            self.listener = self.__class__.ReloadListener(
-                watcher_manager=self.watcher_manager, reload_func=self.reload_func
-            )
-            self.notifier = pyinotify.Notifier(
-                self.watcher_manager, default_proc_fun=self.listener
-            )
-            # propagate notifier so notifer itself can be reloaded (when new directory/source)
-            self.listener.notifier = self
-            self.wait = wait
-            self.do_monitor = False
-
-        def monitor(self):
-            async def do():
-                logging.info(
-                    "Monitoring source code in, %s:\n%s",
-                    repr(self.paths),
-                    pformat(self.watched_files()),
-                )
-                while self.do_monitor:
-                    try:
-                        await asyncio.sleep(self.wait)
-                        # this reads events from OS
-                        if self.notifier.check_events(0.1):
-                            self.notifier.read_events()
-                        # Listener gets called there if event avail
-                        self.notifier.process_events()
-                    except KeyboardInterrupt:
-                        logging.warning("Stop monitoring code")
-                        break
-
-            self.do_monitor = True
-            return asyncio.ensure_future(do())
-
-        def watched_files(self):
-            return [v.path for v in self.watcher_manager.watches.values()]
-
-except ImportError:
-
-    class PyInotifyHubReloader:
-        def __new__(cls, *args, **kwargs):
-            raise RuntimeError("Can't create PyInotifyHubReloader instance" "without inotify")
-
-
 class TornadoAutoReloadHubReloader(BaseHubReloader):
     """Reloader based on tornado.autoreload module"""
 
@@ -858,24 +762,9 @@ class TornadoAutoReloadHubReloader(BaseHubReloader):
         self.mod.add_reload_hook(self.reload_func)
         # only listen to these events. Note: directory detection is done via a flag so
         # no need to use IS_DIR
-        self.paths = []  # cleaned
-        for path in paths:
-            if not os.path.isabs(path):
-                path = os.path.abspath(path)
-            self.paths.append(path)
-            self.mod.watch(path)
-            for dirpath, dirnames, filenames in os.walk(path):
-                if exclude_from_reloader(dirpath):
-                    continue
-                if not dirnames:
-                    # reaching files (leaves)
-                    for fn in filenames:
-                        f_path = os.path.join(dirpath, fn)
-                        if exclude_from_reloader(f_path):
-                            continue
-                        self.mod.watch(f_path)
+        self.add_watch(paths)
+
         self.wait = wait
-        self.do_monitor = False
 
     def monitor(self):
         logging.info(
@@ -883,27 +772,52 @@ class TornadoAutoReloadHubReloader(BaseHubReloader):
         )
         self.mod.start(self.wait * 1000)  # millis
 
+    def add_watch(self, paths):
+        """This method recursively adds the input paths, and their children to tornado autoreload for watching them.
+        If any file changes, the tornado will call our hook to reload the hub.
+
+        Each path will be forced to become an absolute path.
+        If a path is matched excluding patterns, it will be ignored.
+        Only file is added for watching. Directory will be passed to another add_watch.
+        """
+
+        input_paths = paths.copy()
+        self.paths = []
+        for path in input_paths:
+            if not os.path.isabs(path):
+                path = os.path.abspath(path)
+
+            if exclude_from_reloader(path):
+                continue
+
+            self.paths.append(path)
+            self.mod.watch(path)
+
+            for dirpath, dirnames, filenames in os.walk(path):
+                if exclude_from_reloader(dirpath):
+                    continue
+
+                # Add file to watcher
+                for fn in filenames:
+                    f_path = os.path.join(dirpath, fn)
+                    if exclude_from_reloader(f_path):
+                        continue
+                    self.mod.watch(f_path)
+
+                # add dirnames' contents to watcher
+                self.add_watch([os.path.join(dirpath, dirname) for dirname in dirnames])
+
     def watched_files(self):
         return self.mod._watched_files
         # return [d for d in self.mod._watched_files if os.path.isdir(d)]
 
 
 def get_hub_reloader(*args, **kwargs):
-    """
-    Select proper reloader depending on whether pyinotify is
-    available (1st choice) or not (tornado.autoreload otherwise)
-    """
-    if getattr(config, "USE_RELOADER", False) and config.USE_RELOADER:
-        try:
-            import pyinotify  # noqa
+    if getattr(config, "USE_RELOADER", False):
+        import tornado.autoreload  # noqa
 
-            logging.info("Using Hub reloader based on pyinotify")
-            return PyInotifyHubReloader(*args, **kwargs)
-        except ImportError:
-            import tornado.autoreload  # noqa
-
-            logging.info("Using Hub reloader based on tornado.autoreload")
-            return TornadoAutoReloadHubReloader(*args, **kwargs)
+        logging.info("Using Hub reloader based on tornado.autoreload")
+        return TornadoAutoReloadHubReloader(*args, **kwargs)
     else:
         logging.info("USE_RELOADER not set (or False), won't monitor for changes")
         return None
