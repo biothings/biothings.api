@@ -773,6 +773,14 @@ class TornadoAutoReloadHubReloader(BaseHubReloader):
         self.mod.start(self.wait * 1000)  # millis
 
     def add_watch(self, paths):
+        """This method recursively adds the input paths, and their children to tornado autoreload for watching them.
+        If any file changes, the tornado will call our hook to reload the hub.
+
+        Each path will be forced to become an absolute path.
+        If a path is matched excluding patterns, it will be ignored.
+        Only file is added for watching. Directory will be passed to another add_watch.
+        """
+
         input_paths = paths.copy()
         self.paths = []
         for path in input_paths:
@@ -788,19 +796,16 @@ class TornadoAutoReloadHubReloader(BaseHubReloader):
             for dirpath, dirnames, filenames in os.walk(path):
                 if exclude_from_reloader(dirpath):
                     continue
-                
+
                 # Add file to watcher
                 for fn in filenames:
                     f_path = os.path.join(dirpath, fn)
                     if exclude_from_reloader(f_path):
                         continue
                     self.mod.watch(f_path)
-                
+
                 # add dirnames' contents to watcher
-                self.add_watch([
-                    os.path.join(dirpath, dirname)
-                    for dirname in dirnames
-                ])
+                self.add_watch([os.path.join(dirpath, dirname) for dirname in dirnames])
 
     def watched_files(self):
         return self.mod._watched_files
