@@ -12,6 +12,7 @@ from urllib import parse as urlparse
 
 import requests
 import typer
+import yaml
 from orjson import orjson
 
 import biothings.utils.inspect as btinspect
@@ -138,20 +139,6 @@ def make_temp_collection(uploader_name):
     return f"{uploader_name}_temp_{get_random_string()}"
 
 
-#
-# def prepare(*args, **kwargs):
-#     conn = get_src_conn()
-#     db = conn[self.__class__.__database__]
-#     self._state["collection"] = self._state["db"][self.collection_name]
-#     self._state["src_dump"] = self.prepare_src_dump()
-#     self._state["src_master"] = get_src_master()
-#     self._state["logger"], self.logfile = self.setup_log()
-#     self.data_folder = self.src_doc.get("download", {}).get(
-#         "data_folder") or self.src_doc.get(
-#         "data_folder"
-#     )
-
-
 def switch_collection(db, temp_collection_name, collection_name, logger):
     if temp_collection_name and db[temp_collection_name].count() > 0:
         if collection_name in db.collection_names():
@@ -225,7 +212,7 @@ def process_uploader(workspace_dir, data_folder, main_source, upload_section):
     )
 
 
-def process_inspect(plugin_name, sub_source_name, mode, limit, merge):
+def process_inspect(source_name, mode, limit, merge):
     mode = mode.split(",")
     if "jsonschema" in mode:
         mode = ["jsonschema", "type"]
@@ -233,16 +220,11 @@ def process_inspect(plugin_name, sub_source_name, mode, limit, merge):
         limit = None
     sample = None
     clean = True
-    logger.info(
-        f"Inspect Data plugin {plugin_name} with sub-source name: {sub_source_name} mode: {mode} limit {limit}"
-    )
+    logger.info(f"Inspecting source name: {source_name} mode: {mode} limit {limit} merge {merge}")
 
     t0 = time.time()
-    data_provider = ("src", plugin_name)
-    source_table_name = plugin_name
-    if sub_source_name:
-        data_provider = ("src", sub_source_name)
-        source_table_name = sub_source_name
+    data_provider = ("src", source_name)
+    source_table_name = source_name
 
     src_db = get_src_db()
     pre_mapping = "mapping" in mode
@@ -293,6 +275,19 @@ def process_inspect(plugin_name, sub_source_name, mode, limit, merge):
 
     dict_traverse(_map, clean_big_nums)
     print(json.dumps(_map, indent=2))
+
+
+def get_manifest_content(working_dir):
+    manifest_file_yml = os.path.join(working_dir, "manifest.yaml")
+    manifest_file_json = os.path.join(working_dir, "manifest.json")
+    if os.path.isfile(manifest_file_yml):
+        manifest = yaml.safe_load(open(manifest_file_yml))
+        return manifest
+    elif os.path.isfile(manifest_file_json):
+        manifest = json.load(open(manifest_file_json))
+        return manifest
+    else:
+        raise FileNotFoundError("manifest file does not exits in current working directory")
 
 
 def serve(port, plugin_name, table_space):

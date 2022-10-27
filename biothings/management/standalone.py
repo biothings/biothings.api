@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import pathlib
@@ -6,7 +5,6 @@ from types import SimpleNamespace
 from typing import Optional
 
 import typer
-import yaml
 
 app = typer.Typer()
 
@@ -34,11 +32,7 @@ from . import utils
 @app.command("dump")
 def dump():
     workspace_dir = pathlib.Path().resolve()
-    manifest_file = os.path.join(workspace_dir, "manifest.yaml")
-    if manifest_file.endswith(".yaml"):
-        manifest = yaml.safe_load(open(manifest_file))
-    else:
-        manifest = json.load(open(manifest_file))
+    manifest = utils.get_manifest_content(workspace_dir)
     to_dumps = utils.get_todump_list(manifest.get("dumper"))
     for to_dump in to_dumps:
         utils.download(**to_dump)
@@ -47,23 +41,18 @@ def dump():
 @app.command("upload")
 def upload():
     workspace_dir = pathlib.Path().resolve()
+    plugin_name = workspace_dir.name
     local_archive_dir = os.path.join(workspace_dir, ".biothings_hub")
     data_folder = os.path.join(workspace_dir, ".biothings_hub", "data_folder")
     os.makedirs(local_archive_dir, exist_ok=True)
-
-    manifest_file = os.path.join(workspace_dir, "manifest.yaml")
-    data_plugin_name = workspace_dir.name
-    if manifest_file.endswith(".yaml"):
-        manifest = yaml.safe_load(open(manifest_file))
-    else:
-        manifest = json.load(open(manifest_file))
+    manifest = utils.get_manifest_content(workspace_dir)
     upload_sections = manifest.get("uploaders")
     if not upload_sections:
         upload_section = manifest.get("uploader")
         upload_sections = [upload_section]
 
     for section in upload_sections:
-        utils.process_uploader(workspace_dir, data_folder, data_plugin_name, section)
+        utils.process_uploader(workspace_dir, data_folder, plugin_name, section)
 
 
 @app.command("inspect")
@@ -104,22 +93,17 @@ def inspect(
     workspace_dir = pathlib.Path().resolve()
     plugin_name = workspace_dir.name
     workspace_dir = pathlib.Path().resolve()
-    manifest_file = os.path.join(workspace_dir, "manifest.yaml")
-    data_plugin_name = workspace_dir.name
-
-    if manifest_file.endswith(".yaml"):
-        manifest = yaml.safe_load(open(manifest_file))
-    else:
-        manifest = json.load(open(manifest_file))
+    manifest = utils.get_manifest_content(workspace_dir)
     upload_section = manifest.get("uploader")
-    table_space = [data_plugin_name]
+    source_name = plugin_name
     if not upload_section:
         upload_sections = manifest.get("uploaders")
         table_space = [item["name"] for item in upload_sections]
-    if sub_source_name not in table_space:
-        logger.error(f"Your source name {sub_source_name} does not exits")
-        return
-    utils.process_inspect(plugin_name, sub_source_name, mode, limit, merge)
+        source_name = sub_source_name
+        if sub_source_name not in table_space:
+            logger.error(f"Your source name {sub_source_name} does not exits")
+            return
+    utils.process_inspect(source_name, mode, limit, merge)
 
 
 @app.command("serve")
@@ -130,12 +114,8 @@ def serve(
     ),
 ):
     workspace_dir = pathlib.Path().resolve()
-    manifest_file = os.path.join(workspace_dir, "manifest.yaml")
     data_plugin_name = workspace_dir.name
-    if manifest_file.endswith(".yaml"):
-        manifest = yaml.safe_load(open(manifest_file))
-    else:
-        manifest = json.load(open(manifest_file))
+    manifest = utils.get_manifest_content(workspace_dir)
     upload_section = manifest.get("uploader")
     table_space = [data_plugin_name]
     if not upload_section:
