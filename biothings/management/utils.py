@@ -11,21 +11,15 @@ from functools import partial
 from urllib import parse as urlparse
 
 import requests
-import typer
 import yaml
 from orjson import orjson
 
 import biothings.utils.inspect as btinspect
-from biothings import config
 from biothings.utils import es, storage
 from biothings.utils.common import get_random_string, get_timestamp, timesofar, uncompressall
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.sqlite3 import get_src_db
 from biothings.utils.workers import upload_worker
-
-app = typer.Typer()
-
-logger = config.logger
 
 
 def get_todump_list(dumper_section):
@@ -83,7 +77,7 @@ def _get_optimal_buffer_size(ftp_host):
         return known_optimal_sizes["DEFAULT"]
 
 
-def download(schema, remote_url, local_file, uncompress=True):
+def download(logger, schema, remote_url, local_file, uncompress=True):
     local_dir = os.path.dirname(local_file)
     os.makedirs(local_dir, exist_ok=True)
     if schema in ["http", "https"]:
@@ -170,7 +164,7 @@ def get_custom_mapping_func(workspace_dir, mapping):
     return mapping_func
 
 
-def process_uploader(workspace_dir, data_folder, main_source, upload_section):
+def process_uploader(workspace_dir, data_folder, main_source, upload_section, logger):
     parser = upload_section.get("parser")
     parser_kwargs = upload_section.get("parser_kwargs")
     parser_kwargs_serialized = {}
@@ -199,7 +193,7 @@ def process_uploader(workspace_dir, data_folder, main_source, upload_section):
         storage_class,
         load_data_func,
         temp_collection_name,
-        1,
+        1000,
         1,
         data_folder,
         db=src_db,
@@ -212,7 +206,7 @@ def process_uploader(workspace_dir, data_folder, main_source, upload_section):
     )
 
 
-def process_inspect(source_name, mode, limit, merge):
+def process_inspect(source_name, mode, limit, merge, logger):
     mode = mode.split(",")
     if "jsonschema" in mode:
         mode = ["jsonschema", "type"]

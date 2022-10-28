@@ -5,10 +5,23 @@ import os
 import pathlib
 import time
 from shutil import copytree
+from types import SimpleNamespace
 from typing import Optional
 
 import tornado.template
 import typer
+
+import biothings
+
+_config = SimpleNamespace()
+_config.HUB_DB_BACKEND = {
+    "module": "biothings.utils.sqlite3",
+    "sqlite_db_folder": ".biothings_hub",
+}
+_config.DATA_SRC_DATABASE = ".data_src_database"
+_config.LOG_FOLDER = ".biothings_hub/logs"
+
+biothings.config = _config
 
 import biothings.utils.inspect as btinspect
 from biothings.hub.dataload.dumper import DumperManager
@@ -21,7 +34,14 @@ from biothings.utils.dataload import dict_traverse
 from biothings.utils.hub_db import get_data_plugin, get_src_db
 from biothings.utils.loggers import get_logger
 
-app = typer.Typer()
+app = typer.Typer(
+    help="""
+        Test locally without the need of docker, mongodb, dedicated hub server, just use local sqlite.\n
+        Require: \n
+            config.py file is created at the current working folder \n
+            tested data plugin folder is placed at the current working folder\n
+    """
+)
 
 
 @app.command("create")
@@ -161,16 +181,14 @@ def inspect(
     mode: Optional[str] = typer.Option(  # NOQA: B008
         default="mapping,type,stats",
         help="""
-            mode: the inspect mode or list of modes (comma separated) eg. "type,mapping".
-            Possible values are:
-            - "type": (default) explore documents and report strict data structure
-            - "mapping": same as type but also perform test on data so guess best mapping
-                       (eg. check if a string is splitable, etc...). Implies merge=True
-            - "stats": explore documents and compute basic stats (count,min,max,sum)
-            - "deepstats": same as stats but record values and also compute mean,stdev,median
-                         (memory intensive...)
-            - "jsonschema", same as "type" but returned a json-schema formatted result
-            """,
+            The inspect mode or list of modes (comma separated) eg. "type,mapping".\n
+            Possible values are:\n
+            - "type": explore documents and report strict data structure\n
+            - "mapping": same as type but also perform test on data so guess best mapping\n
+               (eg. check if a string is splitable, etc...). Implies merge=True\n
+            - "stats": explore documents and compute basic stats (count,min,max,sum)\n
+            - "deepstats": same as stats but record values and also compute mean,stdev,median (memory intensive...)\n
+            - "jsonschema", same as "type" but returned a json-schema formatted result\n""",
     ),
     limit: Optional[int] = typer.Option(  # NOQA: B008
         None,
@@ -280,24 +298,20 @@ def serve(
     ),
 ):
     """
-
-    :param plugin_name: Data plugin name
-    :param port: API server port
-    :return: Run the simple API server for serving dumped documents from above 'dump_and_upload' command,
-    Support pagination by using: start=&limit=
-    Support filtering by document keys, for example:
-    After run 'dump_and_upload', we have a source_name = "test"
-    doc = {"_id": "123", "key": {"a":{"b": "1"},"x":[{"y": "3", "z": "4"}, "5"]}}.
-    - You can list all docs by:
-    http://localhost:9999/tests/
-    http://localhost:9999/tests/start=10&limit=10
-    - You can filter out this doc by:
-    http://localhost:9999/tests/?key.a.b=1 (find all docs that have nested dict keys a.b)
-    http://localhost:9999/tests/?key.x.[].y=3 (find all docs that have mixed type dict-list)
-    http://localhost:9999/tests/?key.x.[].z=4
-    http://localhost:9999/tests/?key.x.[]=5
-    - Or you can retrieve this doc by:
-    http://localhost:9999/tests/123/
+    Run the simple API server for serving dumped documents from above 'dump_and_upload' command, \n
+    Support pagination by using: start=&limit= \n
+    Support filtering by document keys, for example:\n
+    After run 'dump_and_upload', we have a source_name = "test"\n
+    doc = {"_id": "123", "key": {"a":{"b": "1"},"x":[{"y": "3", "z": "4"}, "5"]}}.\n
+    - You can list all docs by:\n
+    http://localhost:9999/tests/\n
+    http://localhost:9999/tests/start=10&limit=10\n
+    - You can filter out this doc by:\n
+    http://localhost:9999/tests/?key.a.b=1 (find all docs that have nested dict keys a.b)\n
+    http://localhost:9999/tests/?key.x.[].y=3 (find all docs that have mixed type dict-list)\n
+    http://localhost:9999/tests/?key.x.[].z=4\n
+    http://localhost:9999/tests/?key.x.[]=5\n
+    - Or you can retrieve this doc by: http://localhost:9999/tests/123/\n
     """
     src_db = get_src_db()
     dumper_manager, uploader_manager = load_plugin(plugin_name)
