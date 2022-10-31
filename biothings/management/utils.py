@@ -23,8 +23,8 @@ from biothings.utils.workers import upload_worker
 
 
 def get_todump_list(dumper_section):
-    workspace_dir = pathlib.Path().resolve()
-    data_folder = os.path.join(workspace_dir, ".biothings_hub", "data_folder")
+    working_dir = pathlib.Path().resolve()
+    data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
     remote_urls = dumper_section.get("data_url")
     uncompress = dumper_section.get("uncompress")
     to_dumps = []
@@ -148,23 +148,30 @@ def switch_collection(db, temp_collection_name, collection_name, logger):
         raise Exception("No temp collection (or it's empty)")
 
 
-def get_load_data_func(workspace_dir, parser, **kwargs):
-    sys.path.insert(1, workspace_dir)
-    mod_name, func = parser.split(":")
-    mod = importlib.import_module(mod_name)
-    parser_func = getattr(mod, func)
-    return partial(parser_func, **kwargs)
+def load_module_locally(module_name, working_dir):
+    file_path = os.path.join(working_dir, f"{module_name}.py")
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-def get_custom_mapping_func(workspace_dir, mapping):
-    sys.path.insert(1, workspace_dir)
-    mod_name, func = mapping.split(":")
-    mod = importlib.import_module(mod_name)
-    mapping_func = getattr(mod, func)
-    return mapping_func
+def get_load_data_func(working_dir, parser, **kwargs):
+    module_name, func = parser.split(":")
+    module = load_module_locally(module_name, working_dir)
+    func = getattr(module, func)
+    return partial(func, **kwargs)
 
 
-def process_uploader(workspace_dir, data_folder, main_source, upload_section, logger):
+def get_custom_mapping_func(working_dir, mapping):
+    module_name, func = mapping.split(":")
+    module = load_module_locally(module_name, working_dir)
+    func = getattr(module, func)
+    return func
+
+
+def process_uploader(working_dir, data_folder, main_source, upload_section, logger):
     parser = upload_section.get("parser")
     parser_kwargs = upload_section.get("parser_kwargs")
     parser_kwargs_serialized = {}
@@ -184,10 +191,10 @@ def process_uploader(workspace_dir, data_folder, main_source, upload_section, lo
     storage_mod, class_name = storage_class_name.rsplit(".", 1)
     storage_mod = importlib.import_module(storage_mod)
     storage_class = getattr(storage_mod, class_name)
-    load_data_func = get_load_data_func(workspace_dir, parser, **parser_kwargs_serialized)
+    load_data_func = get_load_data_func(working_dir, parser, **parser_kwargs_serialized)
     # TODO
     # if mapping:
-    #     mapping_func = get_custom_mapping_func(workspace_dir, mapping)
+    #     mapping_func = get_custom_mapping_func(working_dir, mapping)
     upload_worker(
         uploader_fullname,
         storage_class,

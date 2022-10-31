@@ -58,10 +58,10 @@ def create_data_plugin(
         False, "--parallelizer", help="Using parallelizer or not? Default: No"
     ),
 ):
-    workspace_dir = pathlib.Path().resolve()
+    working_dir = pathlib.Path().resolve()
     biothing_source_dir = pathlib.Path(__file__).parent.parent.resolve()
     template_dir = os.path.join(biothing_source_dir, "hub", "dataplugin", "templates")
-    plugin_dir = os.path.join(workspace_dir, name)
+    plugin_dir = os.path.join(working_dir, name)
     if os.path.isdir(plugin_dir):
         print("Data plugin with the same name is already exists, please remove it before create")
         return exit(1)
@@ -73,7 +73,7 @@ def create_data_plugin(
         .generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer)
         .decode()
     )
-    manifest_file_path = os.path.join(workspace_dir, name, "manifest.yaml")
+    manifest_file_path = os.path.join(working_dir, name, "manifest.yaml")
     with open(manifest_file_path, "w") as fh:
         fh.write(parsed_template)
 

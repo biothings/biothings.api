@@ -33,8 +33,8 @@ def dump(
 ):
     if verbose:
         logger.setLevel("DEBUG")
-    workspace_dir = pathlib.Path().resolve()
-    manifest = utils.get_manifest_content(workspace_dir)
+    working_dir = pathlib.Path().resolve()
+    manifest = utils.get_manifest_content(working_dir)
     to_dumps = utils.get_todump_list(manifest.get("dumper"))
     for to_dump in to_dumps:
         utils.download(
@@ -52,19 +52,19 @@ def upload(
 ):
     if verbose:
         logger.setLevel("DEBUG")
-    workspace_dir = pathlib.Path().resolve()
-    plugin_name = workspace_dir.name
-    local_archive_dir = os.path.join(workspace_dir, ".biothings_hub")
-    data_folder = os.path.join(workspace_dir, ".biothings_hub", "data_folder")
+    working_dir = pathlib.Path().resolve()
+    plugin_name = working_dir.name
+    local_archive_dir = os.path.join(working_dir, ".biothings_hub")
+    data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
     os.makedirs(local_archive_dir, exist_ok=True)
-    manifest = utils.get_manifest_content(workspace_dir)
+    manifest = utils.get_manifest_content(working_dir)
     upload_sections = manifest.get("uploaders")
     if not upload_sections:
         upload_section = manifest.get("uploader")
         upload_sections = [upload_section]
 
     for section in upload_sections:
-        utils.process_uploader(workspace_dir, data_folder, plugin_name, section, logger)
+        utils.process_uploader(working_dir, data_folder, plugin_name, section, logger)
 
 
 @app.command("inspect")
@@ -100,10 +100,10 @@ def inspect(
     """ """
     if verbose:
         logger.setLevel("DEBUG")
-    workspace_dir = pathlib.Path().resolve()
-    plugin_name = workspace_dir.name
-    workspace_dir = pathlib.Path().resolve()
-    manifest = utils.get_manifest_content(workspace_dir)
+    working_dir = pathlib.Path().resolve()
+    plugin_name = working_dir.name
+    working_dir = pathlib.Path().resolve()
+    manifest = utils.get_manifest_content(working_dir)
     upload_section = manifest.get("uploader")
     source_name = plugin_name
     if not upload_section:
@@ -142,9 +142,9 @@ def serve(
     """
     if verbose:
         logger.setLevel("DEBUG")
-    workspace_dir = pathlib.Path().resolve()
-    data_plugin_name = workspace_dir.name
-    manifest = utils.get_manifest_content(workspace_dir)
+    working_dir = pathlib.Path().resolve()
+    data_plugin_name = working_dir.name
+    manifest = utils.get_manifest_content(working_dir)
     upload_section = manifest.get("uploader")
     table_space = [data_plugin_name]
     if not upload_section:
