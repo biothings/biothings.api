@@ -9,7 +9,11 @@ cli = typer.Typer()
 @cli.callback()
 def callback():
     """
-    Biothing Admin CLI app.
+    Biothing Admin CLI app. Available subcommands:
+
+    biothings-admin dataplugin --help
+    biothings-admin dataplugin-localhub --help
+
     """
 
 
@@ -17,24 +21,21 @@ def main():
     module = ""
     if len(sys.argv) > 1:
         module = sys.argv[1]
-    if module == "standalone-dataplugin":
-        from .standalone import app as standalone_app
+    if module == "dataplugin":
+        from .dataplugin import app as standalone_app
 
-        cli.add_typer(standalone_app, name="standalone-dataplugin")
+        cli.add_typer(standalone_app, name="dataplugin")
         return cli()
-    elif module == "dataplugin":
+    elif module == "dataplugin-localhub":
         try:
-            from .dataplugin import app as dp_app
+            from .dataplugin_localhub import app as dp_app
         except Exception as ex:
             if "No module named 'config'" in str(ex):
-                logging.error(
-                    "This mode is require "
-                    "You have to create the config.py in order to run this command"
-                )
+                logging.error("You have to create the config.py in order to run this command")
                 return
             else:
                 logging.exception(ex, exc_info=True)
                 return
-        cli.add_typer(dp_app, name="dataplugin")
+        cli.add_typer(dp_app, name="dataplugin-localhub")
         return cli()
     return cli()

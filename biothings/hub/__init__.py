@@ -284,7 +284,7 @@ def get_schedule(loop):
 
 
 async def start_ssh_server(
-    loop, name, passwords, keys=["bin/ssh_host_key"], shell=None, host="", port=8022
+    loop, name, passwords, keys=["bin/ssh_host_key"], shell=None, host="", port=8022  # NOQA B006
 ):
     for key in keys:
         assert os.path.exists(key), "Missing key '%s' (use: 'ssh-keygen -f %s' to generate it" % (
@@ -826,7 +826,7 @@ class HubServer(object):
             try:
                 factory_class = get_class_from_classpath(indexer_factory)
                 factory = factory_class(version_urls, es_host)
-            except (ImportError, ModuleNotFoundError) as e:
+            except ImportError as e:
                 self.logger.error(
                     "Couldn't find indexer factory class from '%s': %s" % (indexer_factory, e)
                 )
@@ -930,7 +930,7 @@ class HubServer(object):
                 _skip_list = getattr(self, "upgrader_skip_folders", [])
                 if folder not in _skip_list:
                     _skip_list.append(folder)
-                    setattr(self, "upgrader_skip_folders", _skip_list)
+                    setattr(self, "upgrader_skip_folders", _skip_list)  # NOQA B010
 
         bt_upgrader_class = get_upgrader(BioThingsSystemUpgrade, config.biothings_folder)
         app_upgrader_class = get_upgrader(ApplicationSystemUpgrade, config.app_folder)
@@ -1120,7 +1120,9 @@ class HubServer(object):
         if self.managers.get("upload_manager"):
             self.commands["upload"] = self.managers["upload_manager"].upload_src
             self.commands["upload_all"] = self.managers["upload_manager"].upload_all
-            self.commands["update_source_meta"] = self.managers["upload_manager"].update_source_meta
+            self.commands["update_source_meta"] = self.managers[
+                "upload_manager"
+            ].update_source_meta
         # building/merging
         if self.managers.get("build_manager"):
             self.commands["whatsnew"] = CommandDefinition(
@@ -1514,11 +1516,13 @@ class HubServer(object):
             )
         if "upload" in cmdnames:
             self.api_endpoints["source"].append(
-              EndpointDefinition(name="upload", method="put", suffix="upload")
+                EndpointDefinition(name="upload", method="put", suffix="upload")
             )
         if "update_source_meta" in cmdnames:
             self.api_endpoints["source"].append(
-                EndpointDefinition(name="update_source_meta", method="put", suffix="update_source_meta")
+                EndpointDefinition(
+                    name="update_source_meta", method="put", suffix="update_source_meta"
+                )
             )
         if "source_save_mapping" in cmdnames:
             self.api_endpoints["source"].append(

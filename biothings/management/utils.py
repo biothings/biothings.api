@@ -292,7 +292,7 @@ def get_manifest_content(working_dir):
 
 
 def serve(port, plugin_name, table_space):
-    from .app import main
+    from .web_app import main
 
     src_db = get_src_db()
     print(f"Serving data plugin source {plugin_name} on port http://127.0.0.1:{port}")
