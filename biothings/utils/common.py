@@ -920,3 +920,15 @@ def get_loop_with_max_workers(max_workers=None):
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
     loop.set_default_executor(executor)
     return loop
+
+
+class DummyConfig(types.ModuleType):
+    """This class allows "import config" or "from biothings import config"
+    to work without actually creating a config.py file:
+
+        import sys
+        from biothings.utils.common import DummyConfig
+        sys.modules["config"] = DummyConfig('config')
+        sys.modules["biothings.config"] = DummyConfig('config')
+    """
+    pass
