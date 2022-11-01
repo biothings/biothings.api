@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import aiocron
 import asyncssh
 
-from biothings.utils.common import get_random_string, get_timestamp
+from biothings.utils.common import get_random_string, get_timestamp, DummyConfig
 from biothings.utils.configuration import ConfigurationError, ConfigurationWrapper
 from biothings.utils.document_generator import generate_command_documentations
 
@@ -28,6 +28,8 @@ config = None  # a global variable. It should be set by calling the _config_for_
 def _config_for_app(config_mod=None):
 
     if not config_mod:
+        if "." not in sys.path:
+            sys.path.insert(0, ".")  # import config.py in current folder
         config_name = os.environ.get("HUB_CONFIG", "config")
         config_mod = import_module(config_name)
 
@@ -43,7 +45,8 @@ def _config_for_app(config_mod=None):
         app_path = os.path.split(config_mod.__file__)[0]
         sys.path.insert(0, app_path)
     except Exception:
-        logging.exception(config_mod)
+        if not isinstance(config_mod, DummyConfig):  # Don't show log if config module is created on the fly
+            logging.exception(config_mod)
         app_path = ""  # TODO
 
     wrapper = ConfigurationWrapper(default_config, config_mod)
