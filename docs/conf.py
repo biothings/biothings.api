@@ -96,5 +96,18 @@ redirects = {
 
 # this allows "import config" or "from biothings import config"
 #  to work without actually creating a config.py file
-# sys.modules["config"] = DummyConfig()
-# sys.modules["biothings.config"] = DummyConfig()
+
+import sys
+from biothings.utils.common import DummyConfig
+
+config_mod = DummyConfig(name="config")
+config_mod.HUB_DB_BACKEND = {
+    "module": "biothings.utils.sqlite3",
+    "sqlite_db_folder": ".biothings_hub",
+}
+config_mod.DATA_SRC_DATABASE = ".data_src_database"
+config_mod.DATA_ARCHIVE_ROOT = ".biothings_hub/archive"
+config_mod.LOG_FOLDER = ".biothings_hub/logs"
+
+sys.modules["config"] = config_mod
+sys.modules["biothings.config"] = config_mod
