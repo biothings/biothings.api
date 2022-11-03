@@ -88,7 +88,7 @@ def download(logger, schema, remote_url, local_file, uncompress=True):
                 "Error while downloading '%s' (status: %s, reason: %s)"
                 % (remote_url, res.status_code, res.reason)
             )
-        logger.debug("Downloading '%s' as '%s'" % (remote_url, local_file))
+        logger.info("Downloading '%s' as '%s'" % (remote_url, local_file))
         fout = open(local_file, "wb")
         for chunk in res.iter_content(chunk_size=512 * 1024):
             if chunk:

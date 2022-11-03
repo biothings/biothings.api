@@ -5,23 +5,10 @@ import os
 import pathlib
 import time
 from shutil import copytree
-from types import SimpleNamespace
 from typing import Optional
 
 import tornado.template
 import typer
-
-import biothings
-
-_config = SimpleNamespace()
-_config.HUB_DB_BACKEND = {
-    "module": "biothings.utils.sqlite3",
-    "sqlite_db_folder": ".biothings_hub",
-}
-_config.DATA_SRC_DATABASE = ".data_src_database"
-_config.LOG_FOLDER = ".biothings_hub/logs"
-
-biothings.config = _config
 
 import biothings.utils.inspect as btinspect
 from biothings.hub.dataload.dumper import DumperManager

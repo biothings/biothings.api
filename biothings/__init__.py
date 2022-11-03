@@ -1,8 +1,5 @@
 from typing import NamedTuple
 
-# stub, until set to real config module
-config = None
-
 
 class _version_info(NamedTuple):
     # similar to sys._version_info
@@ -11,8 +8,8 @@ class _version_info(NamedTuple):
     micro: int
 
 
-version_info = _version_info(0, 12, 'dev')
-__version__ = '.'.join(map(str, version_info))
+version_info = _version_info(0, 12, "dev")
+__version__ = ".".join(map(str, version_info))
 
 
 def config_for_app(config):

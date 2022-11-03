@@ -1,23 +1,13 @@
 import os
 import pathlib
-from types import SimpleNamespace
 from typing import Optional
 
 import typer
 
-import biothings
-
-_config = SimpleNamespace()
-_config.HUB_DB_BACKEND = {
-    "module": "biothings.utils.sqlite3",
-    "sqlite_db_folder": ".biothings_hub",
-}
-_config.DATA_SRC_DATABASE = ".data_src_database"
-_config.LOG_FOLDER = ".biothings_hub/logs"
-biothings.config = _config
+from biothings import config
 from biothings.utils.loggers import setup_default_log
 
-logger = setup_default_log("standalone", _config.LOG_FOLDER, "INFO")
+logger = setup_default_log("standalone", config.LOG_FOLDER, "INFO")
 
 # To make sure biothings.config is initialized
 from . import utils

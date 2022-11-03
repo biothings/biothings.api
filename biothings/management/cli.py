@@ -1,7 +1,8 @@
-import logging
 import sys
 
 import typer
+
+from biothings.utils.common import DummyConfig
 
 cli = typer.Typer()
 
@@ -9,33 +10,30 @@ cli = typer.Typer()
 @cli.callback()
 def callback():
     """
-    Biothing Admin CLI app. Available subcommands:
+    Biothing Admin CLI app. Available subcommands:\n
 
-    biothings-admin dataplugin --help
-    biothings-admin dataplugin-localhub --help
+    biothings-admin dataplugin --help \n
+    biothings-admin dataplugin-localhub --help \n
 
     """
 
 
 def main():
-    module = ""
-    if len(sys.argv) > 1:
-        module = sys.argv[1]
-    if module == "dataplugin":
-        from .dataplugin import app as standalone_app
+    _config = DummyConfig("config")
+    _config.HUB_DB_BACKEND = {
+        "module": "biothings.utils.sqlite3",
+        "sqlite_db_folder": ".biothings_hub",
+    }
+    _config.DATA_SRC_DATABASE = ".data_src_database"
+    _config.DATA_ARCHIVE_ROOT = ".biothings_hub/archive"
+    _config.LOG_FOLDER = ".biothings_hub/logs"
 
-        cli.add_typer(standalone_app, name="dataplugin")
-        return cli()
-    elif module == "dataplugin-localhub":
-        try:
-            from .dataplugin_localhub import app as dp_app
-        except Exception as ex:
-            if "No module named 'config'" in str(ex):
-                logging.error("You have to create the config.py in order to run this command")
-                return
-            else:
-                logging.exception(ex, exc_info=True)
-                return
-        cli.add_typer(dp_app, name="dataplugin-localhub")
-        return cli()
+    sys.modules["config"] = _config
+    sys.modules["biothings.config"] = _config
+
+    from .dataplugin import app as dataplugin_app
+    from .dataplugin_localhub import app as dataplugin_localhub_app
+
+    cli.add_typer(dataplugin_app, name="dataplugin")
+    cli.add_typer(dataplugin_localhub_app, name="dataplugin-localhub")
     return cli()
