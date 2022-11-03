@@ -340,7 +340,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 # default is not ID conversion at all
                 confdict["IMPORT_IDCONVERTER_FUNC"] = ""
                 confdict["IDCONVERTER_FUNC"] = None
-                confdict["CALL_PARSER_FUNC"] = "parser_func(data_folder, **parser_kwargs)"
+                confdict["CALL_PARSER_FUNC"] = "parser_func(data_path, **parser_kwargs)"
                 if uploader_section.get("keylookup"):
                     assert self.__class__.keylookup, (
                         "Plugin %s needs _id conversion " % self.plugin_name
@@ -363,7 +363,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     )
                     confdict[
                         "CALL_PARSER_FUNC"
-                    ] = "self.__class__.idconverter(parser_func)(data_folder, **parser_kwargs)"
+                    ] = "self.__class__.idconverter(parser_func)(data_path, **parser_kwargs)"
                 if metadata:
                     confdict["__metadata__"] = metadata
                 else:

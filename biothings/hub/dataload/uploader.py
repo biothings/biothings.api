@@ -278,9 +278,14 @@ class BaseSourceUploader(object):
                 "Resource '%s' is already being uploaded (job: %s)" % (self.name, job)
             )
 
-    def load_data(self, data_folder):
-        """Parse data inside data_folder and return structure ready to be
-        inserted in database"""
+    def load_data(self, data_path):
+        """
+        Parse data from data_path and return structure ready to be inserted in database
+        In general, data_path is a folder path.
+        But in parallel mode (use parallelizer option), data_path is a file path
+        :param data_path: It can be a folder path or a file path
+        :return: structure ready to be inserted in database
+        """
         raise NotImplementedError("Implement in subclass")
 
     @classmethod
