@@ -10,7 +10,6 @@ import textwrap
 import urllib.parse
 from string import Template
 
-import orjson
 import requests
 import yaml
 from yapf.yapflib import yapf_api
@@ -42,9 +41,9 @@ class BasePluginLoader(object):
 
     def setup_log(self):
         """Setup and return a logger instance"""
-        log_folder = os.path.join(btconfig.LOG_FOLDER, 'dataload')
+        log_folder = os.path.join(btconfig.LOG_FOLDER, "dataload")
         self.logger, self.logfile = get_logger(
-            'loader_%s' % self.plugin_name, log_folder=log_folder
+            "loader_%s" % self.plugin_name, log_folder=log_folder
         )
 
     def get_plugin_obj(self):
@@ -234,7 +233,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 self.plugin_name
             ), "Incorrect plugin name '%s' (doesn't match regex '%s'" % (self.plugin_name, pnregex)
             dumper_name = self.plugin_name.capitalize() + "Dumper"
-            '%s'
+            "%s"
             try:
                 if hasattr(btconfig, "DUMPER_TEMPLATE"):
                     tpl_file = btconfig.DUMPER_TEMPLATE
@@ -280,7 +279,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 "Invalid manifest, expecting 'data_url' key in 'dumper' section"
             )
 
-    def get_uploader_dynamic_class(self, uploader_section, metadata, sub_source_name=''):
+    def get_uploader_dynamic_class(self, uploader_section, metadata, sub_source_name=""):
         if uploader_section.get("parser"):
             uploader_name = self.plugin_name.capitalize() + sub_source_name + "Uploader"
             confdict = {
@@ -292,23 +291,23 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 mod, func = uploader_section.get("parser").split(":")
                 confdict["PARSER_MOD"] = mod
                 confdict["PARSER_FUNC"] = func
-                if uploader_section.get('parser_kwargs'):
-                    parser_kwargs_serialized = repr(uploader_section['parser_kwargs'])
+                if uploader_section.get("parser_kwargs"):
+                    parser_kwargs_serialized = repr(uploader_section["parser_kwargs"])
 
                     confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(
-                        f'''
+                        f"""
                         # Setup parser to parser factory
                         from {mod} import {func} as parser_func
 
                         parser_kwargs = {parser_kwargs_serialized}
-                    '''
+                    """
                     )
                 else:
                     # create empty parser_kwargs to pass to parser_func
                     parser_kwargs_serialized = repr({})
 
                     confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(
-                        f'''
+                        f"""
                     # when code is exported, import becomes relative
                     try:
                         from {self.plugin_name}.{mod} import {func} as parser_func
@@ -316,7 +315,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                         from .{mod} import {func} as parser_func
 
                     parser_kwargs = {parser_kwargs_serialized}
-                    '''
+                    """
                     )
             except ValueError:
                 raise AssistantException(
@@ -340,7 +339,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 # default is not ID conversion at all
                 confdict["IMPORT_IDCONVERTER_FUNC"] = ""
                 confdict["IDCONVERTER_FUNC"] = None
-                confdict["CALL_PARSER_FUNC"] = "parser_func(data_folder, **parser_kwargs)"
+                confdict["CALL_PARSER_FUNC"] = "parser_func(data_path, **parser_kwargs)"
                 if uploader_section.get("keylookup"):
                     assert self.__class__.keylookup, (
                         "Plugin %s needs _id conversion " % self.plugin_name
@@ -363,7 +362,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     )
                     confdict[
                         "CALL_PARSER_FUNC"
-                    ] = "self.__class__.idconverter(parser_func)(data_folder, **parser_kwargs)"
+                    ] = "self.__class__.idconverter(parser_func)(data_path, **parser_kwargs)"
                 if metadata:
                     confdict["__metadata__"] = metadata
                 else:
@@ -454,7 +453,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
     def get_uploader_dynamic_classes(self, uploader_section, metadata, data_plugin_folder):
         uploader_classes = []
         for uploader_conf in uploader_section:
-            sub_source_name = uploader_conf.get('name', '')
+            sub_source_name = uploader_conf.get("name", "")
             uploader_class = self.get_uploader_dynamic_class(
                 uploader_conf, metadata, sub_source_name
             )
@@ -476,7 +475,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 reqs = [reqs]
             for req in reqs:
                 self.logger.info("Install requirement '%s'" % req)
-                subprocess.check_call([sys.executable, '-m', 'pip', 'install', req])
+                subprocess.check_call([sys.executable, "-m", "pip", "install", req])
         if manifest.get("dumper"):
             assisted_dumper_class = self.get_dumper_dynamic_class(
                 manifest["dumper"], manifest.get("__metadata__")
@@ -572,7 +571,7 @@ class BaseAssistant(object):
 
     def setup_log(self):
         """Setup and return a logger instance"""
-        self.logger, self.logfile = get_logger('assistant_%s' % self.__class__.plugin_type)
+        self.logger, self.logfile = get_logger("assistant_%s" % self.__class__.plugin_type)
 
     def register_loader(self):
         dp = get_data_plugin()
@@ -756,7 +755,7 @@ class AssistantManager(BaseSourceManager):
 
     def setup_log(self):
         """Setup and return a logger instance"""
-        self.logger, self.logfile = get_logger('assistantmanager')
+        self.logger, self.logfile = get_logger("assistantmanager")
 
     def create_instance(self, klass, url):
         return klass(url)
@@ -949,11 +948,11 @@ class AssistantManager(BaseSourceManager):
             res["uploader"]["status"] = "warning"
             res["uploader"]["message"] = "No uploader found for plugin '%s'" % plugin_name
             return res
-        status = 'ok'
-        message = ''
+        status = "ok"
+        message = ""
         for uclass in uclasses:
             try:
-                uploader_name = uclass.__name__.split('_')[1].capitalize() + "Uploader"
+                uploader_name = uclass.__name__.split("_")[1].capitalize() + "Uploader"
                 self.logger.debug("Exporting uploader %s" % uploader_name)
                 # assert len(uclass) == 1, "More than one uploader found: %s" % uclass
                 assert hasattr(uclass, "python_code"), "No generated code found"

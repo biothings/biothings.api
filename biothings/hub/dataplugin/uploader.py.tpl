@@ -17,8 +17,8 @@ class $UPLOADER_NAME($BASE_CLASSES):
     idconverter = $IDCONVERTER_FUNC
     storage_class = $STORAGE_CLASS
 
-    def load_data(self,data_folder):
-        self.logger.info("Load data from directory: '%s'" % data_folder)
+    def load_data(self, data_path):
+        self.logger.info("Load data from directory or file: '%s'" % data_path)
         return $CALL_PARSER_FUNC
 
     $JOBS_FUNC
