@@ -16,9 +16,11 @@
 
 
 # -- Project information -----------------------------------------------------
+import datetime
 
+current_year = datetime.datetime.now().year
 project = 'BioThings SDK'
-copyright = '2020, BioThings'
+copyright = f'{current_year}, BioThings'
 author = 'BioThings team'
 
 
