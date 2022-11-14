@@ -583,9 +583,10 @@ class ColdHotDiffer(BaseDiffer):
         assert "cold_collection" in new_doc.get("build_config", {}), "%s document doesn't have " % self.new.target_collection.name \
                                                                      + "a premerge collection declared. Is it really a hot merges collection ?"
         self.cold = create_backend(new_doc["build_config"]["cold_collection"])
-        return super(ColdHotDiffer,
+        diff_stat = await super(ColdHotDiffer,
                      self).diff_cols(old_db_col_names, new_db_col_names, *args,
                                      **kwargs)
+        return diff_stat
 
     def get_metadata(self):
         new_doc = get_src_build().find_one(
