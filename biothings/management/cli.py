@@ -1,3 +1,5 @@
+import logging
+import pathlib
 import sys
 
 import typer
@@ -5,6 +7,9 @@ import typer
 from biothings.utils.common import DummyConfig
 
 cli = typer.Typer()
+
+logger = logging.getLogger()
+logger.setLevel(level=logging.DEBUG)
 
 
 @cli.callback()
@@ -19,6 +24,7 @@ def callback():
 
 
 def main():
+    working_dir = pathlib.Path().resolve()
     _config = DummyConfig("config")
     _config.HUB_DB_BACKEND = {
         "module": "biothings.utils.sqlite3",
@@ -27,6 +33,7 @@ def main():
     _config.DATA_SRC_DATABASE = ".data_src_database"
     _config.DATA_ARCHIVE_ROOT = ".biothings_hub/archive"
     _config.LOG_FOLDER = ".biothings_hub/logs"
+    _config.DATA_PLUGIN_FOLDER = f"{working_dir}"
 
     sys.modules["config"] = _config
     sys.modules["biothings.config"] = _config

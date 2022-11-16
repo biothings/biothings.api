@@ -78,6 +78,7 @@ def _get_optimal_buffer_size(ftp_host):
 
 
 def download(logger, schema, remote_url, local_file, uncompress=True):
+    logger.debug(f"Start download {remote_url}")
     local_dir = os.path.dirname(local_file)
     os.makedirs(local_dir, exist_ok=True)
     if schema in ["http", "https"]:

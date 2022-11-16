@@ -80,7 +80,6 @@ def load_plugin(plugin_name):
     LocalAssistant.dumper_manager = dmanager
     LocalAssistant.uploader_manager = upload_manager
 
-    # load pharmgkb data plug,
     assistant = LocalAssistant(f"local://{plugin_name}")
     dp = get_data_plugin()
     dp.remove({"_id": assistant.plugin_name})
@@ -134,6 +133,7 @@ def dump_and_upload(
     dumper.steps = ["post"]
     dumper.post_dump()
     dumper.register_status("success")
+    dumper.release_client()
 
     for uploader_cls in uploader_classes:
         uploader = uploader_cls.create(db_conn_info="")
@@ -144,7 +144,7 @@ def dump_and_upload(
             uploader.__class__.storage_class,
             uploader.load_data,
             uploader.temp_collection_name,
-            1,
+            10000,
             1,
             uploader.data_folder,
             db=uploader.db,
