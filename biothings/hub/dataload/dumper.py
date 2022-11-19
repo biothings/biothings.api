@@ -37,6 +37,9 @@ logging = btconfig.logger
 class DumperException(Exception):
     pass
 
+class DockerContainerException(Exception):
+    pass
+
 
 class BaseDumper(object):
     # override in subclass accordingly
@@ -1922,6 +1925,7 @@ class DockerContainerDumper(BaseDumper):
         self.volume = client.volumes.create(name=volume_name)
         file_path = connection_info['file_path']
         file_dir = '/'.join(file_path.split("/")[:-1])
+        self.logger.info(f"Start a docker container with the custome command {self.DOCKER_RUN_CUSTOM_CMD}")
         self.container = client.containers.run(
             self.DOCKER_IMAGE, command=self.DOCKER_RUN_CUSTOM_CMD.strip('"'),
             detach=True, auto_remove=False,  # Don't auto remove this container, we need a stopped container when download file
@@ -1935,7 +1939,7 @@ class DockerContainerDumper(BaseDumper):
             return True
 
     def set_release(self):
-        self.release = ""
+        self.release = datetime.now().strftime('%Y%m%d%H%M%S')
 
     def release_client(self):
         if self.container:
@@ -1962,6 +1966,12 @@ class DockerContainerDumper(BaseDumper):
             self.container.reload()  # Load this object from the server again and update attrs with the new data
             self.logger.info("The container is processing file, please wait ...")
             time.sleep(1)
+        state = self.container.wait()
+        exit_code = state.get("StatusCode")
+        error = state.get("Error")
+        if exit_code != 0 or error:
+            stderr = self.container.logs(stdout=False)
+            raise DockerContainerException(stderr)
 
     def create_todump_list(self, force=False):
         assert type(self.__class__.SRC_URLS) is list, "SRC_URLS should be a list"
@@ -1973,6 +1983,11 @@ class DockerContainerDumper(BaseDumper):
             filename = os.path.basename(file_path)
             new_localfile = os.path.join(self.new_data_folder, filename)
             self.to_dump.append({"remote": src_url, "local": new_localfile})
+
+    def prepare_local_folders(self, localfile):
+        super().prepare_local_folders(localfile)
+        if os.path.isfile(localfile):
+            os.unlink(localfile)
 
     def download(self, urlremotefile, localfile):
         if self.need_prepare():
