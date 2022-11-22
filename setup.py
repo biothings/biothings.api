@@ -76,7 +76,8 @@ hub_requires = [
     "yapf",  # code reformatter, better results than autopep8
     "requests-aws4auth",  # aws s3 auth requests for autohub
     "networkx>=2.1,<2.6",  # datatransform
-    "biothings_client>=0.2.6",  # datatransform (api client)
+    "biothings_client>=0.2.6",  # datatransform (api client),
+    "cryptography==38.0.3", # for generate ssh keys, ssl cert.
 ]
 
 # extra requirements to develop biothings
