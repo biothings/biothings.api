@@ -239,7 +239,10 @@ class ESIndexer:
     @wrapper
     def count(self, q=None, raw=False):
         try:
-            _res = self._es.count(index=self._index, doc_type=self._doc_type, body=q)
+            count_kwargs = {"index": self._index}
+            if q is not None:
+                count_kwargs.update({"doc_type": self._doc_type, "q": q})
+            _res = self._es.count(**count_kwargs)
             return _res if raw else _res["count"]
         except NotFoundError:
             return None
@@ -467,11 +470,17 @@ class ESIndexer:
         else:
             raise ValueError('Input "meta" should have and only have "_meta" field.')
 
+    def flush_and_refresh(self):
+        try:
+            self._es.indices.flush()
+            self._es.indices.refresh()
+        except:  # pylint: disable=bare-except  # noqa
+            pass
+
     @wrapper
     def build_index(
         self, collection, verbose=True, query=None, bulk=True, update=False, allow_upsert=True
     ):
-        index_name = self._index
         # update some settings for bulk indexing
         body = {
             "index": {
@@ -479,7 +488,7 @@ class ESIndexer:
                 "auto_expand_replicas": "0-all",
             }
         }
-        self._es.indices.put_settings(body=body, index=index_name)
+        self.update_settings(body)
         try:
             self._build_index_sequential(
                 collection, verbose, query=query, bulk=bulk, update=update, allow_upsert=True
@@ -487,13 +496,9 @@ class ESIndexer:
         finally:
             # restore some settings after bulk indexing is done.
             body = {"index": {"refresh_interval": "1s"}}  # default settings
-            self._es.indices.put_settings(body=body, index=index_name)
+            self.update_settings(body)
 
-            try:
-                self._es.indices.flush()
-                self._es.indices.refresh()
-            except:  # pylint: disable=bare-except  # noqa
-                pass
+            self.flush_and_refresh()
 
             time.sleep(1)
             src_cnt = collection.count(query)
@@ -950,7 +955,57 @@ class ESIndexer:
         if not number_of_replicas:
             number_of_replicas = self.number_of_replicas
         settings = json.dumps({"index": {"number_of_replicas": number_of_replicas}})
-        self._es.indices.put_settings(settings, index=self._index)
+        self.update_settings(settings)
+
+    def update_settings(self, settings, remove_meta_fields=False, close=False, **params):
+        if remove_meta_fields:
+            remove_fields = [
+                "uuid",
+                "provided_name",
+                "creation_date",
+                "version",
+                "number_of_shards",
+            ]
+            for field in remove_fields:
+                settings["index"].pop(field, None)
+
+        if close:
+            self.close()
+
+        self._es.indices.put_settings(
+            body=settings,
+            index=self._index,
+            params=params,
+        )
+
+        if close:
+            self.open()
+
+    def reindex(self, src_index, is_remote=False):
+        """In order to reindex from remote,
+        - src es_host must be set to an IP which the current ES host can connect to.
+            It means that if 2 indices locate in same host, the es_host can be set to localhost,
+            but if they are in different hosts, an IP must be used instead.
+        - If src host uses SSL, https must be included in es_host. Eg: https://192.168.1.10:9200
+        - src host must be whitelisted in the current ES host.
+            Ref: https://www.elastic.co/guide/en/elasticsearch/reference/7.17/reindex-upgrade-remote.html
+        """
+        body = {
+            "source": {"index": src_index._index},
+            "dest": {"index": self._index},
+        }
+        if is_remote:
+            host = src_index.es_host
+            if not host.startswith("http"):
+                host = "http://" + host
+            body["source"]["remote"] = {"host": host}
+        return self._es.reindex(body=body)
+
+    def close(self):
+        self._es.indices.close(self._index)
+
+    def open(self):
+        self._es.indices.open(self._index)
 
 
 class MappingError(Exception):
