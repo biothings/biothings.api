@@ -17,7 +17,13 @@ from yapf.yapflib import yapf_api
 from biothings import config as btconfig
 from biothings.hub.dataload.dumper import LastModifiedFTPDumper, LastModifiedHTTPDumper
 from biothings.hub.dataplugin.manager import GitDataPlugin, ManualDataPlugin
-from biothings.utils.common import get_class_from_classpath, rmdashfr
+from biothings.utils.common import (
+    get_class_from_classpath,
+    get_plugin_name_from_local_manifest,
+    get_plugin_name_from_remote_manifest,
+    parse_folder_name_from_url,
+    rmdashfr,
+)
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseSourceManager
@@ -37,6 +43,7 @@ class BasePluginLoader(object):
 
     def __init__(self, plugin_name):
         self.plugin_name = plugin_name
+        self.plugin_path_name = None  # This will be set on loading step
         self.setup_log()
 
     def setup_log(self):
@@ -89,7 +96,8 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             data_url = [data_url]
         return {
             "SRC_NAME": self.plugin_name,
-            "SRC_ROOT_FOLDER": os.path.join(btconfig.DATA_ARCHIVE_ROOT, self.plugin_name),
+            "SRC_ROOT_FOLDER": os.path.join(btconfig.DATA_ARCHIVE_ROOT, self.plugin_path_name),
+            "SRC_FOLDER_NAME": self.plugin_path_name,
             "SRC_URLS": data_url,
         }
 
@@ -120,6 +128,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
     def load_plugin(self):
         plugin = self.get_plugin_obj()
         df = plugin["download"]["data_folder"]
+        self.plugin_path_name = os.path.basename(df)
         if os.path.exists(df):
             mf = os.path.join(df, "manifest.json")
             mf_yaml = os.path.join(df, "manifest.yaml")
@@ -160,7 +169,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 "'Wrong format for '%s', it must be defined following format 'module:func': %s"
                 % (mod_name, e)
             )
-        modpath = self.plugin_name + "." + mod
+        modpath = self.plugin_path_name + "." + mod
         pymod = importlib.import_module(modpath)
         # reload in case we need to refresh plugin's code
         importlib.reload(pymod)
@@ -289,6 +298,9 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             }
             try:
                 mod, func = uploader_section.get("parser").split(":")
+                # make sure the parser module is able to load
+                # otherwise, the error log should be shown in the UI
+                self.get_code_for_mod_name(uploader_section["parser"])
                 confdict["PARSER_MOD"] = mod
                 confdict["PARSER_FUNC"] = func
                 if uploader_section.get("parser_kwargs"):
@@ -310,7 +322,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                         f"""
                     # when code is exported, import becomes relative
                     try:
-                        from {self.plugin_name}.{mod} import {func} as parser_func
+                        from {self.plugin_path_name}.{mod} import {func} as parser_func
                     except ImportError:
                         from .{mod} import {func} as parser_func
 
@@ -669,10 +681,20 @@ class GithubAssistant(BaseAssistant):
 
     @property
     def plugin_name(self):
+        folder_name = parse_folder_name_from_url(self.url)
         if not self._plugin_name:
-            split = urllib.parse.urlsplit(self.url)
-            self._plugin_name = os.path.basename(split.path).replace(".git", "")
-            self._src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, self.plugin_name)
+            self._src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, folder_name)
+            # Try to load plugin name from the local first, if exist that mean we are working with a cloned and updated plugin
+            # If plugin name is empty that mean this plugin has not cloned to local then we try to fetch its name from the Github
+            # Otherwise we use the path_name as the fallback.
+            plugin_name = get_plugin_name_from_local_manifest(
+                os.path.join(btconfig.DATA_PLUGIN_FOLDER, folder_name)
+            )
+            if not plugin_name:
+                plugin_name = get_plugin_name_from_remote_manifest(self.url)
+            if not plugin_name:
+                plugin_name = folder_name
+            self._plugin_name = plugin_name
         return self._plugin_name
 
     def can_handle(self):
@@ -726,8 +748,15 @@ class LocalAssistant(BaseAssistant):
             )
             # don't use hostname here because it's lowercased, netloc isn't
             # (and we're matching directory names on the filesystem, it's case-sensitive)
-            self._plugin_name = os.path.basename(split.netloc)
-            self._src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, self._plugin_name)
+            src_folder_name = os.path.basename(split.netloc)
+            try:
+                self._plugin_name = get_plugin_name_from_local_manifest(
+                    os.path.join(btconfig.DATA_PLUGIN_FOLDER, src_folder_name)
+                )
+            except Exception as ex:
+                self.logger.exception(ex)
+                self._plugin_name = src_folder_name
+            self._src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, src_folder_name)
         return self._plugin_name
 
     def can_handle(self):
@@ -832,7 +861,10 @@ class AssistantManager(BaseSourceManager):
     def register_url(self, url):
         url = url.strip()
         dp = get_data_plugin()
-        if dp.find_one({"plugin.url": url}):
+        folder_name = parse_folder_name_from_url(url)
+        if dp.find_one({"plugin.url": url}) or dp.find_one(
+            {"download.data_folder": f"{btconfig.DATA_PLUGIN_FOLDER}/{folder_name}"}
+        ):
             self.logger.info("Plugin '%s' already registered" % url)
             return
         assistant = self.submit(url)
@@ -876,7 +908,7 @@ class AssistantManager(BaseSourceManager):
         if not plugin["plugin"]["active"]:
             self.logger.info("Data plugin '%s' is deactivated, skip" % url)
             return
-        self.logger.info("Loading data plugin '%s' (type: %s)" % (url, ptype))
+        self.logger.info("Loading data plugin '%s' (type: %s)" % (plugin["_id"], ptype))
         if ptype in self.register:
             try:
                 aklass = self.register[ptype]
@@ -905,15 +937,24 @@ class AssistantManager(BaseSourceManager):
         dp = get_data_plugin()
         cur = dp.find()
         for plugin in cur:
+            try:
+                plugin_dir_name = os.path.basename(plugin["download"]["data_folder"])
+            except Exception as e:
+                self.logger.warning("Couldn't load plugin '%s': %s" % (plugin["_id"], e))
+                continue
+            plugin_name = get_plugin_name_from_local_manifest(
+                plugin.get("download").get("data_folder")
+            )
+            if plugin["_id"] != plugin_name:
+                plugin = self.update_plugin_name(plugin, plugin_name)
             # remove plugins from folder list if already register
-            if plugin_dirs and plugin["_id"] in plugin_dirs:
-                plugin_dirs.remove(plugin["_id"])
+            if plugin_dir_name in plugin_dirs:
+                plugin_dirs.remove(plugin_dir_name)
             try:
                 self.load_plugin(plugin)
             except Exception as e:
                 self.logger.warning("Couldn't load plugin '%s': %s" % (plugin["_id"], e))
                 continue
-
         # some still unregistered ? (note: list always empty if autodiscover=False)
         if plugin_dirs:
             for pdir in plugin_dirs:
@@ -922,10 +963,31 @@ class AssistantManager(BaseSourceManager):
                     self.logger.info(
                         "Found unregistered manifest-based plugin '%s', auto-register it" % pdir
                     )
-                    self.register_url("local://%s" % pdir.strip().strip("/"))
+                    self.register_url(f"local://{pdir}")
                 except Exception as e:
                     self.logger.exception("Couldn't auto-register plugin '%s': %s" % (pdir, e))
                     continue
+
+    def update_plugin_name(self, plugin, new_name):
+        dp = get_data_plugin()
+        old_name = plugin.pop("_id")
+        dp.update({"_id": new_name}, {"$set": plugin}, upsert=True)
+        dp.remove({"_id": old_name})
+        plugin["_id"] = new_name
+        src_dump_db = get_src_dump()
+        src_dump_doc = src_dump_db.find_one({"_id": old_name})
+        if src_dump_doc:
+            src_dump_doc.pop("_id")
+            src_dump_db.update({"_id": new_name}, {"$set": src_dump_doc}, upsert=True)
+            src_dump_db.remove({"_id": old_name})
+        src_master_db = get_src_master()
+        src_master_doc = src_master_db.find_one({"_id": old_name})
+        if src_master_doc:
+            src_master_doc.pop("_id")
+            src_master_doc["name"] = new_name
+            src_master_db.update({"_id": new_name}, {"$set": src_master_doc}, upsert=True)
+            src_master_db.remove({"_id": old_name})
+        return plugin
 
     def export_dumper(self, plugin_name, folder):
         res = {"dumper": {"status": None, "file": None, "class": None, "message": None}}
@@ -1070,7 +1132,12 @@ class AssistantManager(BaseSourceManager):
             folder
         ), "Folder used to export code doesn't exist: %s" % os.path.abspath(folder)
         assert plugin_name  # avoid deleting the whole export folder when purge=True...
-        folder = os.path.join(folder, plugin_name)
+        dp = get_data_plugin()
+        plugin = dp.find_one({"_id": plugin_name})
+        plugin_path_name = os.path.basename(plugin["download"]["data_folder"])
+        if not plugin:
+            raise Exception(f"Data plugin {plugin_name} does not exist!")
+        folder = os.path.join(folder, plugin_path_name)
         if purge:
             rmdashfr(folder)
         if not os.path.exists(folder):
@@ -1090,7 +1157,7 @@ class AssistantManager(BaseSourceManager):
         # there's also at least a parser module, maybe a release module, and some more
         # dependencies, indirect, not listed in the manifest. We'll just copy everything from
         # the plugin folder to the export folder
-        plugin_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, plugin_name)
+        plugin_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, plugin_path_name)
         for f in os.listdir(plugin_folder):
             src = os.path.join(plugin_folder, f)
             dst = os.path.join(folder, f)
