@@ -6,13 +6,14 @@ Note: unittests available in biothings.tests.hub
 import math
 import statistics
 import random
-from collections.abc import Iterable
 import time
 import re
 import logging
 import copy
-from pprint import pformat
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from datetime import datetime
+from pprint import pformat
 
 import bson
 
@@ -590,3 +591,162 @@ def stringify_inspect_doc(dmap):
         else:
             return str(val)
     return dict_walk(dmap, stringify)
+
+
+@dataclass
+class FieldInspection:
+    field_name: str
+    field_type: str
+    stats: dict = None
+    messages: list = field(default_factory=list)
+
+
+@dataclass
+class FieldInspectValidation:
+    messages: set = field(default_factory=set)
+    types: set = field(default_factory=set)
+    has_multiple_types: bool = False
+
+
+def flatten_inspection_data(
+    data: dict[str, any],
+    current_deep: int = 0,
+    parent_name: str = None,
+    parent_type: str = None,
+) -> list[FieldInspection]:
+    '''This function will convert the multiple depth nested inspection data into a flatten list
+    Nested key will be appended with the parent key and seperate with a dot.
+    '''
+
+    ROOT_FIELD = "__root__"
+    STATS_FIELD = "_stats"
+    DICT_TYPE = "dict"
+    LIST_TYPE = "list"
+    TYPE_PREFIX = "__type__:"
+
+    field_inspections = []
+    if current_deep == 0:
+        field_inspections.append(FieldInspection(
+            field_name=ROOT_FIELD,
+            field_type=DICT_TYPE,
+            stats=data.get(STATS_FIELD),
+        ))
+
+    for field_name in data:
+        if field_name == STATS_FIELD:
+            continue
+
+        if not field_name.startswith(TYPE_PREFIX):
+            parent_type = DICT_TYPE
+            new_parent_name = field_name
+            if parent_name:
+                new_parent_name = parent_name + '.' + field_name
+
+            sub_field_inspections = flatten_inspection_data(
+                data[field_name],
+                current_deep + 1,
+                new_parent_name,
+                parent_type
+            )
+            field_inspections += sub_field_inspections
+            continue
+
+        field_type = field_name.replace(TYPE_PREFIX, "")
+        if field_type == LIST_TYPE:
+            parent_type = LIST_TYPE
+
+            sub_field_inspections = flatten_inspection_data(
+                data[field_name],
+                current_deep + 1,
+                parent_name,
+                parent_type
+            )
+
+            if len(sub_field_inspections) == 1 and sub_field_inspections[0].field_name == parent_name:
+                field_inspections.append(FieldInspection(
+                    field_name=parent_name,
+                    field_type=f"{parent_type} of {sub_field_inspections[0].field_type}",
+                    stats=data[field_name].get(STATS_FIELD)
+                ))
+            else:
+                field_inspections.append(FieldInspection(
+                    field_name=parent_name,
+                    field_type=parent_type,
+                    stats=data[field_name].get(STATS_FIELD),
+                ))
+                field_inspections += sub_field_inspections
+        else:
+            field_inspections.append(FieldInspection(
+                field_name=parent_name,
+                field_type=field_type,
+                stats=data[field_name].get(STATS_FIELD),
+            ))
+
+    return field_inspections
+
+
+
+def validate_inspection_data(data: list[FieldInspection]) -> dict[str, FieldInspectValidation]:
+    '''This function will check and flag any field name which:
+    - contains whitespace
+    - contains upper cased letter or special characters
+        (lower-cased is recommended, in some cases the upper-case field names are acceptable,
+        so we should raise it as a warning and let user to confirm it's necessary)
+    - when the type inspection detects more than one types
+        (but a mixed or single value and an array of same type of values are acceptable,
+        or the case of mixed integer and float should be acceptable too)
+    '''
+    SPACE_PATTERN = r"\s"
+    INVALID_CHARACTERS_PATTERN = r"[^a-zA-Z0-9_.]"
+    NUMBERIC_FIELDS = ['int', 'float']
+
+    field_validations = {}
+
+    for field_inspection in data:
+        field_name = field_inspection.field
+        type = field_inspection.type
+
+        if not field_name in field_validations:
+            field_validations[field_name] = FieldInspectValidation()
+
+        if field_validations[field_name].has_multiple_types and field_validations[field_name].messages:
+            continue
+
+        if re.match(SPACE_PATTERN, field_name):
+            field_validations[field_name].messages.add("field name contains whitespace.")
+
+        if field_name != field_name.lower():
+            field_validations[field_name].messages.add("field name contains uppercase.")
+
+        if re.match(INVALID_CHARACTERS_PATTERN, field_name):
+            field_validations[field_name].messages.add(
+                "field name contains special character. Only alphanumeric, dot, or underscore are valid."
+            )
+
+        for existing_type in field_validations[field_name].types:
+            normalized_type = type.replace('list of ', '')
+            normalized_existing_type = existing_type.replace('list of ', '')
+
+            if normalized_type == normalized_existing_type:
+                continue
+
+            if normalized_type in NUMBERIC_FIELDS and normalized_existing_type in NUMBERIC_FIELDS:
+                continue
+
+            field_validations[field_name].has_multiple_types = True
+            field_validations[field_name].messages.add("field name has more than one type.")
+
+        field_validations[field_name].types.add(type)
+
+    return field_validations
+
+
+def merge_field_inspections_validations(
+    field_inspections: list[FieldInspection],
+    field_validations: dict[str, FieldInspectValidation],
+):
+    '''Adding any messages from field_validations to field_inspections with corresponding field name'''
+    for field_inspection in field_inspections:
+        field_name = field_inspection.field
+        field_validation = field_validations.get(field_name, {})
+        field_inspection.messages = field_validation.messages
