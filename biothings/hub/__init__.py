@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import aiocron
 import asyncssh
 
-from biothings.utils.common import get_random_string, get_timestamp, DummyConfig
+from biothings.utils.common import DummyConfig, get_random_string, get_timestamp
 from biothings.utils.configuration import ConfigurationError, ConfigurationWrapper
 from biothings.utils.document_generator import generate_command_documentations
 
@@ -648,19 +648,19 @@ class HubServer(object):
         build_manager.configure()
         self.managers["build_manager"] = build_manager
         build_manager.poll()
-    
+
     def configure_auto_archive_manager(self):
         from biothings.hub.databuild.auto_archive import AutoArchiveManager
 
         if not self.managers.get("build_manager"):
             self.configure_build_manager()
-        
+
         args = self.mixargs("auto_archive")
         auto_archive_manager = AutoArchiveManager(
             build_manager=self.managers["build_manager"],
             job_manager=self.managers["job_manager"],
             auto_archive_config=getattr(config, "AUTO_ARCHIVE_CONFIG"),
-            **args
+            **args,
         )
         auto_archive_manager.configure()
         self.managers["auto_archive_manager"] = auto_archive_manager
@@ -1168,6 +1168,7 @@ class HubServer(object):
         # inspector
         if self.managers.get("inspect_manager"):
             self.commands["inspect"] = self.managers["inspect_manager"].inspect
+            self.commands["flatten_inspection_data"] = self.managers["inspect_manager"].flatten
         # data plugins
         if self.managers.get("assistant_manager"):
             self.commands["register_url"] = partial(
@@ -1436,7 +1437,7 @@ class HubServer(object):
             )
         if not self.api_endpoints["build"]:
             self.api_endpoints.pop("build")
-        
+
         # auto archive
         if "auto_archive" in cmdnames:
             self.api_endpoints["auto_archive"] = EndpointDefinition(
@@ -1533,6 +1534,9 @@ class HubServer(object):
         if "inspect" in cmdnames:
             self.api_endpoints["inspect"] = EndpointDefinition(
                 name="inspect", method="put", force_bodyargs=True
+            )
+            self.api_endpoints["flatten_inspection_data"] = EndpointDefinition(
+                name="flatten_inspection_data", method="put", force_bodyargs=True
             )
         if "register_url" in cmdnames:
             self.api_endpoints["dataplugin/register_url"] = EndpointDefinition(
@@ -1696,7 +1700,9 @@ class HubServer(object):
         random_string = f"{get_timestamp()}_{get_random_string()}"
         # generate random build_configuration name
         subsource_str = f"_{subsource}" if subsource else ""
-        build_configuration_name = f"{datasource_name}{subsource_str}_configuration_{random_string}"
+        build_configuration_name = (
+            f"{datasource_name}{subsource_str}_configuration_{random_string}"
+        )
         # generate random build name
         build_name = f"{datasource_name}{subsource_str}_{random_string}"
         # # generate index_name if needed
