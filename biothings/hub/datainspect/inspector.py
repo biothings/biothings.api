@@ -299,13 +299,6 @@ class InspectorManager(BaseManager):
             raise
 
     def flatten(self, data_provider, mode=["type", "stats"], do_validate=True):
-        def _flatten_and_validate(data):
-            flattened_data = btinspect.flatten_inspection_data(data)
-            if do_validate:
-                validated_data = btinspect.validate_inspection_data(flattened_data)
-                btinspect.merge_field_inspections_validations(flattened_data, validated_data)
-            return btinspect.simplify_inspection_data(flattened_data)
-
         if isinstance(mode, str):
             mode = [mode]
 
@@ -316,13 +309,13 @@ class InspectorManager(BaseManager):
             src_sources_inspect_data = registerer_obj.src_doc["inspect"]["jobs"]
             for src_source_name, inspect_data in src_sources_inspect_data.items():
                 results[src_source_name] = {
-                    _mode: _flatten_and_validate(inspect_data["inspect"]["results"].get(_mode) or {})
+                    _mode: btinspect.flatten_and_validate(inspect_data["inspect"]["results"].get(_mode) or {}, do_validate)
                     for _mode in mode
                 }
         else:
             inspect_data = registerer_obj.src_build["inspect"]["results"]
             results[backend_provider] = {
-                _mode: _flatten_and_validate(inspect_data.get(_mode) or {})
+                _mode: btinspect.flatten_and_validate(inspect_data.get(_mode) or {}, do_validate)
                 for _mode in mode
             }
 

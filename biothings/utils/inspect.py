@@ -784,3 +784,11 @@ def merge_field_inspections_validations(
 
 def simplify_inspection_data(field_inspections: list[FieldInspection]) -> list[dict[str, any]]:
     return [vars(field_inspection) for field_inspection in field_inspections]
+
+
+def flatten_and_validate(data, do_validate=True):
+    flattened_data = flatten_inspection_data(data)
+    if do_validate:
+        validated_data = validate_inspection_data(flattened_data)
+        merge_field_inspections_validations(flattened_data, validated_data)
+    return simplify_inspection_data(flattened_data)

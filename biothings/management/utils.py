@@ -4,13 +4,16 @@ import json
 import math
 import os
 import pathlib
+import shutil
 import sys
 import time
 from ftplib import FTP
 from functools import partial
 from urllib import parse as urlparse
 
+import pandas as pd
 import requests
+import typer
 import yaml
 from orjson import orjson
 
@@ -214,7 +217,7 @@ def process_uploader(working_dir, data_folder, main_source, upload_section, logg
     )
 
 
-def process_inspect(source_name, mode, limit, merge, logger):
+def process_inspect(source_name, mode, limit, merge, logger, do_validate):
     mode = mode.split(",")
     if "jsonschema" in mode:
         mode = ["jsonschema", "type"]
@@ -226,11 +229,10 @@ def process_inspect(source_name, mode, limit, merge, logger):
 
     t0 = time.time()
     data_provider = ("src", source_name)
-    source_table_name = source_name
 
     src_db = get_src_db()
     pre_mapping = "mapping" in mode
-    src_cols = src_db[source_table_name]
+    src_cols = src_db[source_name]
     inspected = {}
     converters, mode = btinspect.get_converters(mode)
     for m in mode:
@@ -276,7 +278,29 @@ def process_inspect(source_name, mode, limit, merge, logger):
             return k, v
 
     dict_traverse(_map, clean_big_nums)
-    print(json.dumps(_map, indent=2))
+    mapping = _map["results"].get("mapping", {}).get(source_name.lower(), {}).get("properties")
+    type_and_stats = {
+        source_name: {
+            _mode: btinspect.flatten_and_validate(_map["results"].get(_mode, {}), do_validate)
+            for _mode in ["type", "stats"]
+        }
+    }
+
+    if "mapping" in mode:
+        df = pd.DataFrame.from_dict(mapping)
+        print(25 * "-" + " MAPPING " + 25 * "-")
+        print(df.T)
+        print("\n")
+    if "type" in mode:
+        df = pd.json_normalize(type_and_stats[source_name]["type"])
+        print(25 * "-" + " TYPE " + 25 * "-")
+        print(df)
+        print("\n")
+    if "stats" in mode:
+        print(25 * "-" + " STATS " + 25 * "-")
+        df = pd.json_normalize(type_and_stats[source_name]["stats"])
+        print(df)
+        print("\n")
 
 
 def get_manifest_content(working_dir):
@@ -292,9 +316,67 @@ def get_manifest_content(working_dir):
         raise FileNotFoundError("manifest file does not exits in current working directory")
 
 
-def serve(port, plugin_name, table_space):
+def serve(host, port, plugin_name, table_space):
     from .web_app import main
 
     src_db = get_src_db()
-    print(f"Serving data plugin source {plugin_name} on port http://127.0.0.1:{port}")
+    print(f"Serving data plugin source {plugin_name} on port http://{host}:{port}")
     asyncio.run(main(port=port, db=src_db, table_space=table_space))
+
+
+def get_uploaders(working_dir: pathlib.Path):
+    data_plugin_name = working_dir.name
+    manifest = get_manifest_content(working_dir)
+    upload_section = manifest.get("uploader")
+    table_space = [data_plugin_name]
+    if not upload_section:
+        upload_sections = manifest.get("uploaders")
+        table_space = [item["name"] for item in upload_sections]
+    return table_space
+
+
+def remove_files_in_folder(folder_path):
+    for filename in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+        except Exception as e:
+            print("Failed to delete %s. Reason: %s" % (file_path, e))
+
+
+def do_clean_dumped_files(working_dir):
+    plugin_name = working_dir.name
+    data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
+    if not os.listdir(data_folder):
+        print("Empty folder!")
+    else:
+        print(f"There are dumped files by {plugin_name}:\n")
+        print("\n".join(os.listdir(data_folder)))
+        delete = typer.confirm("Are you sure you want to delete them?")
+        if not delete:
+            raise typer.Abort()
+        print("Deleting...")
+        remove_files_in_folder(data_folder)
+        print("Deleted")
+
+
+def do_clean_uploaded_sources(working_dir):
+    plugin_name = working_dir.name
+    uploaders = get_uploaders(working_dir)
+    src_db = get_src_db()
+    uploaded_sources = [item for item in src_db.collection_names() if item in uploaders]
+    if not uploaded_sources:
+        print("Empty sources!")
+    else:
+        print(f"There are uploaded sources by {plugin_name}:\n")
+        print("\n".join(uploaded_sources))
+        delete = typer.confirm("Are you sure you want to delete them?")
+        if not delete:
+            raise typer.Abort()
+        print("Deleting...")
+        for source in uploaded_sources:
+            src_db[source].drop()
+        print("Deleted")
