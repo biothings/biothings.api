@@ -83,17 +83,19 @@ class HubLogDirHandler(DefaultCORSHeaderMixin, RequestHandler):
     def get(self, filename):
         fullname = join(self.path, filename)
         if isdir(fullname):
-            logs = sorted([
+            logs = [
                 f"{f}/"
                 if isdir(join(fullname, f))
                 else f
                 for f in listdir(fullname)
-            ])
+            ]
 
             if 'filter' in self.request.arguments:
                 filters = self.get_argument('filter') or ''
                 filters = filters.split(',')
                 logs = set([f for keyword in filters for f in logs if keyword in f])
+
+            logs = sorted(logs)
 
             if 'json' in self.request.arguments:
                 self.finish(to_json(list(logs)))
