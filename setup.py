@@ -79,9 +79,8 @@ hub_requires = [
     "biothings_client>=0.2.6",  # datatransform (api client)
     "typer[all]",  # Lib for building CLI applications
     "rich",  # Lib for building CLI applications
-    "biothings_client>=0.2.6",  # datatransform (api client),
     "cryptography==38.0.3", # for generate ssh keys, ssl cert.
-    "docker-py",  # Docker SDK for Python
+    "docker",  # Docker SDK for Python
     "paramiko==2.12.0",  # Implementation of the SSHv2 protocol for Python
 ]
 

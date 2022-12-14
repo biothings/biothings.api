@@ -118,8 +118,6 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
     def _dict_for_docker(self, data_url):
         d = self._dict_for_base(data_url)
-        d["TLS_CERT_PATH"] = None
-        d["TLS_KEY_PATH"] = None
         return d
 
     def can_load_plugin(self):
@@ -208,15 +206,6 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 scheme = "docker"
             klass = dumper_section.get("class")
             confdict = getattr(self, "_dict_for_%s" % scheme)(durls)
-            if dumper_section.get("tls_cert_path"):
-                # tls_cert_path = os.path.join(df, dumper_section.get("tls_cert_path"))
-                # assert os.path.isfile(tls_cert_path), "Cert file does not exist!"
-                confdict["TLS_CERT_PATH"] = dumper_section.get("tls_cert_path")
-            if dumper_section.get("tls_key_path"):
-                # tls_key_path = os.path.join(df, dumper_section.get("tls_key_path"))
-                # assert os.path.isfile(tls_key_path), "Cert file does not exist!"
-                confdict["TLS_KEY_PATH"] = dumper_section.get("tls_key_path")
-            dumper_class = None
             if klass:
                 dumper_class = get_class_from_classpath(klass)
                 confdict["BASE_CLASSES"] = klass

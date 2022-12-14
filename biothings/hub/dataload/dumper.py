@@ -29,7 +29,7 @@ from biothings.utils.common import rmdashfr, timesofar, get_random_string
 from biothings.utils.hub_db import get_src_dump
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseSourceManager, ResourceError
-from biothings.utils.parsers import docker_connection_string_parser
+from biothings.utils.parsers import docker_source_info_parser
 
 logging = btconfig.logger
 
@@ -124,9 +124,6 @@ class BaseDumper(object):
             self.prepare()
         return self._state["src_doc"]
 
-    @property
-    def is_data_plugin(self):
-        return self.__module__ == 'biothings.hub.dataplugin.assistant'
 
     @client.setter
     def client(self, value):
@@ -1840,46 +1837,43 @@ def _run_api_and_store_to_disk(
 class DockerContainerDumper(BaseDumper):
     """
     Triggers a docker container (typically runs on a different server) to run and generate the output file, and then stop the container.
-    The dumper class will then get the processed file(s) and send it to the Uploader as normally files to datasource folder
-    This dumper will act following steps:
+    The dumper class will then get the processed file(s) and send it to the Uploader as normal files to the data source folder
+    This dumper will do the following steps:
      - Create a temporary docker volume on the remote server
-     - Start a container and mount remote folder to the temporary volume
+     - Start a container and mount the remote folder to the temporary volume
      - Wait for the container is stop - Supposing the remote file is ready for download
-     - Download remote file via Docker API
-     - Remove above container and volume after successfully download.
+     - Download the remote file via Docker API
+     - Remove the above container and volume after successfully downloading.
         If it failed to download, the container and volume will not be removed,
-        then you can troubleshot issues by show the logs of this container on the remote server
+        then you can troubleshoot issues by showing the logs of this container on the remote server
 
-    These are supported connection type from the Hub server to the remote Docker host server:
+    These are supported connection types from the Hub server to the remote Docker host server:
       - ssh: Prerequisite: the SSH Key-Based Authentication is configured
       - unix: Local connection
-      - http: Use the insecure HTTP connection over TCP socket
-      - https:  Use secured HTTPS connection using TLS. Prerequisite:
+      - http: Use an insecure HTTP connection over a TCP socket
+      - https:  Use a secured HTTPS connection using TLS. Prerequisite:
             - The Docker API on the remote server MUST BE secured with TLS
             - A TLS key pair is generated on the Hub server and placed inside the same data plugin folder or the data source folder
 
     The data_url should match the following format:
-        docker+DOCKER_CLIENT_URL?image=DOCKER_IMAGE&tag=TAG&path=/path/to/remote_file&custom_cmd="this is custom command"
+        docker://?image=DOCKER_IMAGE&tag=TAG&path=/path/to/remote_file&custom_cmd="this is custom command"
 
     Supported params:
        - image: (Required) the Docker image name
        - path: (Required) path to the remote file inside the Docker container
        - tag: (Optional) the image tag
-       - custom_cmd: (Optional) You don't need to fill this param if your docker entrypoint script already write output to the "/path/to/remote_file" file.
-                    Or you can override default docker entrypoint with this command with output to the /path/to/remote_file
+       - custom_cmd: (Optional) You don't need to fill this param if your docker entry point script already writes output to the "/path/to/remote_file" file.
+                    Or you can override the default docker entry point with this command with output to the /path/to/remote_file
     Ex:
-      - docker+unix:///var/run/docker.sock?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker+ssh://ubuntu@remote-server?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker+http://remote-server:2375?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker+http://remote-server:2375?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
     """
 
     DOCKER_CLIENT_URL = None
     DOCKER_IMAGE = None
     DOCKER_RUN_CUSTOM_CMD = None
-
-    TLS_CERT_PATH = ""
-    TLS_KEY_PATH = ""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1890,27 +1884,25 @@ class DockerContainerDumper(BaseDumper):
         assert type(self.__class__.SRC_URLS) is list, "SRC_URLS should be a list"
         assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
         url = self.__class__.SRC_URLS[0]
-        connection_info = docker_connection_string_parser(url)
-        connection_scheme = connection_info['scheme']
-        self.DOCKER_CLIENT_URL = connection_info["docker_client_url"]
-        self.DOCKER_IMAGE = connection_info["docker_image"]
-        self.DOCKER_RUN_CUSTOM_CMD = connection_info["custom_cmd"]
+        source_info = docker_source_info_parser(url)
+        parsed = urlparse.urlparse(btconfig.DOCKER_CONFIG.get("docker_client_url"))
+        connection_type = parsed.scheme
+        self.DOCKER_CLIENT_URL = btconfig.DOCKER_CONFIG.get("docker_client_url")
+        self.DOCKER_IMAGE = source_info["docker_image"]
+        self.DOCKER_RUN_CUSTOM_CMD = source_info["custom_cmd"]
 
         self.logger.info(f"Prepare the connection to Docker server {self.DOCKER_CLIENT_URL}")
         use_ssh_client = False
         tls_config = None
-        if connection_scheme not in ["tcp", "unix", "http", "https", "ssh"]:
-            raise DumperException(f"Connection scheme {connection_scheme} is not supported")
-        if connection_scheme == "ssh":
+        if connection_type not in ["tcp", "unix", "http", "https", "ssh"]:
+            raise DumperException(f"Connection scheme {connection_type} is not supported")
+        if connection_type == "ssh":
             use_ssh_client = True
-        if connection_scheme == "https":
-            if self.is_data_plugin:
-                cert_path = os.path.join(btconfig.DATA_PLUGIN_FOLDER, self.src_name, self.TLS_CERT_PATH)
-                key_path = os.path.join(btconfig.DATA_PLUGIN_FOLDER, self.src_name, self.TLS_KEY_PATH)
-            else:
-                dirname = os.path.dirname(sys.modules[self.__class__.__module__].__file__)
-                cert_path = os.path.join(dirname, self.TLS_CERT_PATH)
-                key_path = os.path.join(dirname, self.TLS_KEY_PATH)
+        if connection_type == "https":
+            cert_path = btconfig.DOCKER_CONFIG.get('tls_cert_path')
+            key_path = btconfig.DOCKER_CONFIG.get('tls_key_path')
+            if not cert_path or not key_path:
+                raise DumperException("Can not connect to the Docker server, missing cert info")
             tls_config = docker.tls.TLSConfig(client_cert=(cert_path, key_path), verify=False)
 
         client = docker.DockerClient(base_url=self.DOCKER_CLIENT_URL, use_ssh_client=use_ssh_client, tls=tls_config)
@@ -1923,7 +1915,7 @@ class DockerContainerDumper(BaseDumper):
         self._state["client"] = client
         volume_name = self.src_name + get_random_string()
         self.volume = client.volumes.create(name=volume_name)
-        file_path = connection_info['file_path']
+        file_path = source_info['file_path']
         file_dir = '/'.join(file_path.split("/")[:-1])
         self.logger.info(f"Start a docker container with the custome command {self.DOCKER_RUN_CUSTOM_CMD}")
         self.container = client.containers.run(
@@ -1958,7 +1950,7 @@ class DockerContainerDumper(BaseDumper):
         return True
 
     def get_remote_file(self, url):
-        connection_info = docker_connection_string_parser(url)
+        connection_info = docker_source_info_parser(url)
         return connection_info["file_path"]
 
     def waiting_for_remote_file_is_ready(self, remotefile):
@@ -1978,7 +1970,7 @@ class DockerContainerDumper(BaseDumper):
         assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
         self.set_release()  # so we can generate new_data_folder
         for src_url in self.__class__.SRC_URLS:
-            info = docker_connection_string_parser(src_url)
+            info = docker_source_info_parser(src_url)
             file_path = info["file_path"]
             filename = os.path.basename(file_path)
             new_localfile = os.path.join(self.new_data_folder, filename)

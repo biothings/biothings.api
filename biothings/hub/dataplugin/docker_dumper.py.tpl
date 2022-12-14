@@ -18,8 +18,6 @@ class $DUMPER_NAME($BASE_CLASSES):
     SRC_ROOT_FOLDER = os.path.join(DATA_ARCHIVE_ROOT, SRC_NAME)
     SCHEDULE = $SCHEDULE
     UNCOMPRESS = $UNCOMPRESS
-    TLS_CERT_PATH = "$TLS_CERT_PATH"
-    TLS_KEY_PATH = "$TLS_KEY_PATH"
     SRC_URLS = $SRC_URLS
     __metadata__ = {"src_meta" : $__metadata__}
 

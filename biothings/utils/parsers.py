@@ -74,25 +74,19 @@ def json_array_parser(
     return json_array_parser
 
 
-def docker_connection_string_parser(url):
+def docker_source_info_parser(url):
     """
     :param url: file url include docker connection string
-        format: docker+DOCKER_CLIENT_URL?image=DOCKER_IMAGE&tag=TAG&custom_cmd="python run.py"&path=/path/to/file
+        format: docker://?image=DOCKER_IMAGE&tag=TAG&custom_cmd="python run.py"&path=/path/to/file
         example:
-        docker+ssh://remote_ip:1234?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
-        docker+unix://var/run/docker.sock?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
-        docker+http://remote_ip:1234?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
-        docker+https://remote_ip:1234?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
+        docker://?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
+        docker://?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
+        docker://?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
+        docker"//?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
     :return:
 
     """
     parsed = urlparse(url)
-    scheme = parsed.scheme
-    scheme = scheme.replace("docker+", "")
-    if scheme == "unix":
-        docker_client_url = url.rsplit("?", 1)[0].replace("docker+", "")
-    else:
-        docker_client_url = f"{scheme}://{parsed.netloc}"
     query = dict(parse_qsl(parsed.query))
     image = query["image"]
     image_tag = query.get("tag")
@@ -101,9 +95,7 @@ def docker_connection_string_parser(url):
         image_tag = "latest"
     file_path = query["path"]
     return {
-        "scheme": scheme,
         "docker_image": f"{image}:{image_tag}",
         "file_path": file_path,
-        "docker_client_url": docker_client_url,
         "custom_cmd": custom_cmd,
     }
