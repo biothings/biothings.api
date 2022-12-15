@@ -11,10 +11,11 @@ requires:  # Optional. Listing all extra packages if need
 #  - pandas
 #  - numpy
 dumper:
-  data_url:  # A string, or a list of strings, containins URLs. Currently supported protocols are: http, https, and ftp. http/https must not be mixed with ftp (only one protocol supported)
+  data_url:  # A string, or a list of strings, contains URLs. Currently supported protocols are: http, https, ftp, docker. http/https must not be mixed with ftp (only one protocol supported)
 #    - https://s3.pgkb.org/data/annotations.zip
 #    - https://s3.pgkb.org/data/drugLabels.zip
 #    - https://s3.pgkb.org/data/occurrences.zip
+# If you wan to use DockerContainerDumper class, please read its docstring
   uncompress: true  # true|false. tells the studio to try to uncompress downloaded data. Currently supports zip, gz, bz2 and xz format.
   schedule: '* * * * * */10'  # Optional. Will trigger the scheduling of the dumper, so it automatically checks for new data on a regular basis.
   # Format is the same as crontabs, with the addition of an Optionall sixth parameter for scheduling by the seconds.

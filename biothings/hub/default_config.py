@@ -142,15 +142,17 @@ AUTO_ARCHIVE_CONFIG = {
 """
 
 # Docker connection configuration
-# docker_client_url should has the following formats:
-# ssh://remote_ip:port
+# client_url should match the following formats:
+# ssh://ubuntu@remote_ip:port
 # unix://var/run/docker.sock
 # http://remote_ip:port
 # https://remote_ip:port
 DOCKER_CONFIG = {
-    "tls_cert_path": None,
-    "tls_key_path": None,
-    "docker_client_url": ""
+    "docker1": {
+        "tls_cert_path": None,
+        "tls_key_path": None,
+        "client_url": ""
+    }
 }
 
 #* 3. Folders *#

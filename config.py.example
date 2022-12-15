@@ -61,15 +61,20 @@ HUB_ENV = ""
 ACTIVE_DATASOURCES = []
 
 # Docker connection configuration
-# docker_client_url should has the following formats:
-# ssh://remote_ip:port
+# client_url should match the following formats:
+# ssh://ubuntu@remote_ip:port
 # unix://var/run/docker.sock
 # http://remote_ip:port
 # https://remote_ip:port
 DOCKER_CONFIG = {
-    "tls_cert_path": "/path/to/cert.pem",
-    "tls_key_path": "/path/to/key.pem",
-    "docker_client_url": "https://remote-ip:port"
+    "connection_name_1": {
+        "tls_cert_path": "/path/to/cert.pem",
+        "tls_key_path": "/path/to/key.pem",
+        "client_url": "https://remote-docker-host:port"
+    },
+    "connection_name_2": {
+        "client_url": "ssh://user@remote-docker-host"
+    },
 }
 #* 3. Folders *#
 # Path to a folder to store all downloaded files, logs, caches, etc...

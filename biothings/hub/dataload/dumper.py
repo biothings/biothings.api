@@ -1856,7 +1856,19 @@ class DockerContainerDumper(BaseDumper):
             - A TLS key pair is generated on the Hub server and placed inside the same data plugin folder or the data source folder
 
     The data_url should match the following format:
-        docker://?image=DOCKER_IMAGE&tag=TAG&path=/path/to/remote_file&custom_cmd="this is custom command"
+        docker://CONNECTION_NAME?image=DOCKER_IMAGE&tag=TAG&path=/path/to/remote_file&custom_cmd="this is custom command"
+
+    All info about Docker client connection MUST BE defined in the `config.py` file, under the DOCKER_CONFIG key, Ex:
+        DOCKER_CONFIG = {
+            "CONNECTION_NAME_1": {
+                "tls_cert_path": "/path/to/cert.pem",
+                "tls_key_path": "/path/to/key.pem",
+                "client_url": "https://remote-docker-host:port"
+            },
+            "CONNECTION_NAME_2": {
+                "client_url": "ssh://user@remote-docker-host"
+            },
+        }
 
     Supported params:
        - image: (Required) the Docker image name
@@ -1865,10 +1877,10 @@ class DockerContainerDumper(BaseDumper):
        - custom_cmd: (Optional) You don't need to fill this param if your docker entry point script already writes output to the "/path/to/remote_file" file.
                     Or you can override the default docker entry point with this command with output to the /path/to/remote_file
     Ex:
-      - docker://?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
     """
 
     DOCKER_CLIENT_URL = None
@@ -1885,22 +1897,22 @@ class DockerContainerDumper(BaseDumper):
         assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
         url = self.__class__.SRC_URLS[0]
         source_info = docker_source_info_parser(url)
-        parsed = urlparse.urlparse(btconfig.DOCKER_CONFIG.get("docker_client_url"))
-        connection_type = parsed.scheme
-        self.DOCKER_CLIENT_URL = btconfig.DOCKER_CONFIG.get("docker_client_url")
+        docker_connection = btconfig.DOCKER_CONFIG.get(source_info["connection_name"])
+        self.DOCKER_CLIENT_URL = docker_connection.get("client_url")
         self.DOCKER_IMAGE = source_info["docker_image"]
         self.DOCKER_RUN_CUSTOM_CMD = source_info["custom_cmd"]
-
+        parsed = urlparse.urlparse(docker_connection.get("client_url"))
+        scheme = parsed.scheme
         self.logger.info(f"Prepare the connection to Docker server {self.DOCKER_CLIENT_URL}")
         use_ssh_client = False
         tls_config = None
-        if connection_type not in ["tcp", "unix", "http", "https", "ssh"]:
-            raise DumperException(f"Connection scheme {connection_type} is not supported")
-        if connection_type == "ssh":
+        if scheme not in ["tcp", "unix", "http", "https", "ssh"]:
+            raise DumperException(f"Connection scheme {scheme} is not supported")
+        if scheme == "ssh":
             use_ssh_client = True
-        if connection_type == "https":
-            cert_path = btconfig.DOCKER_CONFIG.get('tls_cert_path')
-            key_path = btconfig.DOCKER_CONFIG.get('tls_key_path')
+        if scheme == "https":
+            cert_path = docker_connection.get('tls_cert_path')
+            key_path = docker_connection.get('tls_key_path')
             if not cert_path or not key_path:
                 raise DumperException("Can not connect to the Docker server, missing cert info")
             tls_config = docker.tls.TLSConfig(client_cert=(cert_path, key_path), verify=False)
@@ -1917,7 +1929,7 @@ class DockerContainerDumper(BaseDumper):
         self.volume = client.volumes.create(name=volume_name)
         file_path = source_info['file_path']
         file_dir = '/'.join(file_path.split("/")[:-1])
-        self.logger.info(f"Start a docker container with the custome command {self.DOCKER_RUN_CUSTOM_CMD}")
+        self.logger.info(f"Start a docker container with the custom command {self.DOCKER_RUN_CUSTOM_CMD}")
         self.container = client.containers.run(
             self.DOCKER_IMAGE, command=self.DOCKER_RUN_CUSTOM_CMD.strip('"'),
             detach=True, auto_remove=False,  # Don't auto remove this container, we need a stopped container when download file

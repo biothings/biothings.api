@@ -77,12 +77,13 @@ def json_array_parser(
 def docker_source_info_parser(url):
     """
     :param url: file url include docker connection string
-        format: docker://?image=DOCKER_IMAGE&tag=TAG&custom_cmd="python run.py"&path=/path/to/file
+        format: docker://CONNECTION_NAME?image=DOCKER_IMAGE&tag=TAG&custom_cmd="python run.py"&path=/path/to/file
+        the CONNECTION_NAME must be defined in the biothings Hub config.
         example:
-        docker://?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
-        docker://?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
-        docker://?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
-        docker"//?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
+        docker://CONNECTION_NAME?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
+        docker://CONNECTION_NAME?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
+        docker://CONNECTION_NAME?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
+        docker"//CONNECTION_NAME?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
     :return:
 
     """
@@ -98,4 +99,5 @@ def docker_source_info_parser(url):
         "docker_image": f"{image}:{image_tag}",
         "file_path": file_path,
         "custom_cmd": custom_cmd,
+        "connection_name": parsed.netloc
     }
