@@ -92,6 +92,8 @@ def docker_source_info_parser(url):
     image = query["image"]
     image_tag = query.get("tag")
     custom_cmd = query.get("custom_cmd")
+    if custom_cmd:
+        custom_cmd = custom_cmd.strip('"')
     if not image_tag:
         image_tag = "latest"
     file_path = query["path"]

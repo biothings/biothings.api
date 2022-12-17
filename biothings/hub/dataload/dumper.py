@@ -1931,7 +1931,7 @@ class DockerContainerDumper(BaseDumper):
         file_dir = '/'.join(file_path.split("/")[:-1])
         self.logger.info(f"Start a docker container with the custom command {self.DOCKER_RUN_CUSTOM_CMD}")
         self.container = client.containers.run(
-            self.DOCKER_IMAGE, command=self.DOCKER_RUN_CUSTOM_CMD.strip('"'),
+            self.DOCKER_IMAGE, command=self.DOCKER_RUN_CUSTOM_CMD,
             detach=True, auto_remove=False,  # Don't auto remove this container, we need a stopped container when download file
             volumes={
                 self.volume.name: {'bind': file_dir, 'mode': 'rw'}
