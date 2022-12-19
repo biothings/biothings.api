@@ -958,6 +958,15 @@ class ESIndexer:
         self.update_settings(settings)
 
     def update_settings(self, settings, remove_meta_fields=False, close=False, **params):
+        """
+        Parameters:
+            - settings: should be valid ES index's settings.
+            - remove_meta_field: Some static fields like: "uuid", "provided_name", "creation_date", "version",
+                "number_of_shards", which ES doesn't allow update them.
+            - close: In order to update static settings, the index must be closed first.
+
+        Ref: https://www.elastic.co/guide/en/elasticsearch/reference/7.17/index-modules.html#index-modules-settings
+        """
         if remove_meta_fields:
             remove_fields = [
                 "uuid",
