@@ -42,7 +42,11 @@ class AutoArchiveManager(BaseManager):
 
     def configure(self):
         for build_config_name in self.build_manager.register.keys():
-            archive_config = self.auto_archive_config.get(build_config_name) or {}
+            archive_config = self.auto_archive_config.get(build_config_name)
+
+            if not isinstance(archive_config, dict):
+                continue
+
             schedule = archive_config.get("schedule") or self.DEFAULT_ARCHIVE_SCHEDULE
             days = archive_config.get("days")
             if days is None:
