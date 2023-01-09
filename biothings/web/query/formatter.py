@@ -423,8 +423,8 @@ class ESResultFormatter(ResultFormatter):
 
             res[facet]['_type'] = 'terms'  # a type of ES Bucket Aggs
             res[facet]['terms'] = res[facet].pop('buckets')
-            res[facet]['other'] = res[facet].pop('sum_other_doc_count')
-            res[facet]['missing'] = res[facet].pop('doc_count_error_upper_bound')
+            res[facet]['other'] = res[facet].pop('sum_other_doc_count', 0)
+            res[facet]['missing'] = res[facet].pop('doc_count_error_upper_bound', 0)
 
             count = 0
 
