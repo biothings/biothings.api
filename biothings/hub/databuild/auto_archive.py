@@ -26,18 +26,12 @@ class AutoArchiveManager(BaseManager):
     }
     """
 
-    DEFAULT_ARCHIVE_AFTER_DAYS = 3
     DEFAULT_ARCHIVE_SCHEDULE = "* 0 * * *"  # run daily at 0am UTC
 
-    def __init__(
-        self, build_manager, job_manager, days=None, auto_archive_config=None, *args, **kwargs
-    ):
+    def __init__(self, build_manager, job_manager, auto_archive_config=None, *args, **kwargs):
         super().__init__(job_manager, *args, **kwargs)
 
         self.build_manager = build_manager
-        self.archive_after_days = self.DEFAULT_ARCHIVE_AFTER_DAYS
-        if days is not None:
-            self.archive_after_days = days
         self.auto_archive_config = auto_archive_config or {}
 
     def configure(self):
@@ -45,28 +39,28 @@ class AutoArchiveManager(BaseManager):
             archive_config = self.auto_archive_config.get(build_config_name)
 
             if not isinstance(archive_config, dict):
+                logger.info(f"Build config: {build_config_name}: No archive config found!")
                 continue
 
             schedule = archive_config.get("schedule") or self.DEFAULT_ARCHIVE_SCHEDULE
             days = archive_config.get("days")
-            if days is None:
-                days = self.archive_after_days
+
+            if not days or days < 0:
+                logger.warning(f"Build config: {build_config_name}: Days is invalid or not give!")
+                continue
 
             self.job_manager.submit(
                 partial(self.archive, build_config_name, days=days, dryrun=False),
                 schedule=schedule,
             )
 
-    def archive(self, build_config_name, days=None, dryrun=True):
+    def archive(self, build_config_name, days, dryrun=True):
         """
         Archive any builds which build date is older than today's date
         by "days" day.
         """
-        if days is None:
-            days = self.archive_after_days
-
-        if days < 0:
-            logger.info("days is negative value. So nothing to do!")
+        if not days or days < 0:
+            logger.warning("Days is invalid or not give, so nothing to do!")
             return
 
         logger.info("Auto-archive builds older than %s days" % days)
