@@ -10,7 +10,6 @@ import pprint
 import re
 import stat
 import subprocess
-import sys
 
 import time
 from concurrent.futures import ProcessPoolExecutor
@@ -25,7 +24,7 @@ import orjson
 from biothings import config as btconfig
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, renderer as job_renderer
 from biothings.hub.dataload.uploader import set_pending_to_upload
-from biothings.utils.common import rmdashfr, timesofar, get_random_string
+from biothings.utils.common import rmdashfr, timesofar, untarall
 from biothings.utils.hub_db import get_src_dump
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseSourceManager, ResourceError
@@ -1839,13 +1838,11 @@ class DockerContainerDumper(BaseDumper):
     Triggers a docker container (typically runs on a different server) to run and generate the output file, and then stop the container.
     The dumper class will then get the processed file(s) and send it to the Uploader as normal files to the data source folder
     This dumper will do the following steps:
-     - Create a temporary docker volume on the remote server
-     - Start a container and mount the remote folder to the temporary volume
-     - Wait for the container is stop - Supposing the remote file is ready for download
-     - Download the remote file via Docker API
-     - Remove the above container and volume after successfully downloading.
-        If it failed to download, the container and volume will not be removed,
-        then you can troubleshoot issues by showing the logs of this container on the remote server
+     - Start a container if it stopped or create a new container if container_name param is not provided
+     - Run the get_version_cmd inside this container - if it provided
+     - Run the custom_cmd inside this container - if it provided
+     - Download the remote file via Docker API, extract the downloaded .tar file
+     - Remove the above container and volume after successfully downloading - if keep_container=true
 
     These are supported connection types from the Hub server to the remote Docker host server:
       - ssh: Prerequisite: the SSH Key-Based Authentication is configured
@@ -1856,7 +1853,7 @@ class DockerContainerDumper(BaseDumper):
             - A TLS key pair is generated on the Hub server and placed inside the same data plugin folder or the data source folder
 
     The data_url should match the following format:
-        docker://CONNECTION_NAME?image=DOCKER_IMAGE&tag=TAG&path=/path/to/remote_file&custom_cmd="this is custom command"
+        docker://CONNECTION_NAME?image=DOCKER_IMAGE&tag=TAG&path=/path/to/remote_file&custom_cmd="this is custom command"&container_name=CONTAINER_NAME&keep_container=true&get_version_cmd="cmd"
 
     All info about Docker client connection MUST BE defined in the `config.py` file, under the DOCKER_CONFIG key, Ex:
         DOCKER_CONFIG = {
@@ -1871,75 +1868,83 @@ class DockerContainerDumper(BaseDumper):
         }
 
     Supported params:
-       - image: (Required) the Docker image name
+       - image: (Optional) the Docker image name
+       - container_name: (Optional) If this param is provided, the `image` param will be discard when dumper run.
        - path: (Required) path to the remote file inside the Docker container
        - tag: (Optional) the image tag
        - custom_cmd: (Optional) You don't need to fill this param if your docker entry point script already writes output to the "/path/to/remote_file" file.
                     Or you can override the default docker entry point with this command with output to the /path/to/remote_file
+       - keep_container: (Optional) accepted values: true/false, default: false. If keep_container=true, the remote container will be persisted, else if will be remove after successful dump
+       - get_version_cmd: (Optional) The custom command for checking release version of local and remote file. Note that:
+         - This command must run-able in both local Hub (for checking local file) and remote container (for checking remote file).
+         - "{}" must exist in the command, it will be replace by the data file path when dumper runs,
+            ex: get_version_cmd="md5sum {} | awk '{ print $1 }'" will be run as: md5sum /path/to/remote_file | awk '{ print $1 }' and /path/to/local_file
     Ex:
       - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
       - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
       - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
       - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://CONNECTION_NAME?container_name=CONTAINER_NAME&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)&keep_container=true&get_version_cmd="md5sum {} | awk '{ print $1 }'"
     """
 
     DOCKER_CLIENT_URL = None
     DOCKER_IMAGE = None
+    CONTAINER_NAME = None
     DOCKER_RUN_CUSTOM_CMD = None
+    MAX_PARALLEL_DUMP = 1
+    TIMEOUT = 300
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.container = None
         self.volume = None
+        self.keep_container = False
+        self._source_info = {}
+
+    @property
+    def source_config(self):
+        if not self._source_info:
+            url = self.__class__.SRC_URLS[0]
+            self._source_info = docker_source_info_parser(url)
+        return self._source_info
 
     def prepare_client(self):
         assert type(self.__class__.SRC_URLS) is list, "SRC_URLS should be a list"
         assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
-        url = self.__class__.SRC_URLS[0]
-        source_info = docker_source_info_parser(url)
-        docker_connection = btconfig.DOCKER_CONFIG.get(source_info["connection_name"])
-        self.DOCKER_CLIENT_URL = docker_connection.get("client_url")
-        self.DOCKER_IMAGE = source_info["docker_image"]
-        self.DOCKER_RUN_CUSTOM_CMD = source_info["custom_cmd"]
-        parsed = urlparse.urlparse(docker_connection.get("client_url"))
-        scheme = parsed.scheme
-        self.logger.info(f"Prepare the connection to Docker server {self.DOCKER_CLIENT_URL}")
-        use_ssh_client = False
-        tls_config = None
-        if scheme not in ["tcp", "unix", "http", "https", "ssh"]:
-            raise DumperException(f"Connection scheme {scheme} is not supported")
-        if scheme == "ssh":
-            use_ssh_client = True
-        if scheme == "https":
-            cert_path = docker_connection.get('tls_cert_path')
-            key_path = docker_connection.get('tls_key_path')
-            if not cert_path or not key_path:
-                raise DumperException("Can not connect to the Docker server, missing cert info")
-            tls_config = docker.tls.TLSConfig(client_cert=(cert_path, key_path), verify=False)
+        if not self._state["client"]:
+            docker_connection = btconfig.DOCKER_CONFIG.get(self.source_config["connection_name"])
+            self.DOCKER_CLIENT_URL = docker_connection.get("client_url")
+            self.DOCKER_IMAGE = self.source_config["docker_image"]
+            self.CONTAINER_NAME = self.source_config["container_name"]
+            self.DOCKER_RUN_CUSTOM_CMD = self.source_config["custom_cmd"]
+            self.keep_container = self.source_config["keep_container"]
+            parsed = urlparse.urlparse(docker_connection.get("client_url"))
+            scheme = parsed.scheme
+            self.logger.info(f"Prepare the connection to Docker server {self.DOCKER_CLIENT_URL}")
+            use_ssh_client = False
+            tls_config = None
+            if scheme not in ["tcp", "unix", "http", "https", "ssh"]:
+                raise DumperException(f"Connection scheme {scheme} is not supported")
+            if scheme == "ssh":
+                use_ssh_client = True
+            if scheme == "https":
+                cert_path = docker_connection.get('tls_cert_path')
+                key_path = docker_connection.get('tls_key_path')
+                if not cert_path or not key_path:
+                    raise DumperException("Can not connect to the Docker server, missing cert info")
+                tls_config = docker.tls.TLSConfig(client_cert=(cert_path, key_path), verify=False)
 
-        client = docker.DockerClient(base_url=self.DOCKER_CLIENT_URL, use_ssh_client=use_ssh_client, tls=tls_config)
-        if not client.ping():
-            raise DumperException("Can not connect to the Docker server!")
-        # try:
-        #     client.images.get(self.DOCKER_IMAGE)
-        # except Exception as ex:
-        #     self.logger.exception(ex, exec_info=True)
-        self._state["client"] = client
-        volume_name = self.src_name + get_random_string()
-        self.volume = client.volumes.create(name=volume_name)
-        file_path = source_info['file_path']
-        file_dir = '/'.join(file_path.split("/")[:-1])
-        self.logger.info(f"Start a docker container with the custom command {self.DOCKER_RUN_CUSTOM_CMD}")
-        self.container = client.containers.run(
-            self.DOCKER_IMAGE, command=self.DOCKER_RUN_CUSTOM_CMD,
-            detach=True, auto_remove=False,  # Don't auto remove this container, we need a stopped container when download file
-            volumes={
-                self.volume.name: {'bind': file_dir, 'mode': 'rw'}
-            }
-        )
+            client = docker.DockerClient(base_url=self.DOCKER_CLIENT_URL, use_ssh_client=use_ssh_client, tls=tls_config)
+            if not client.ping():
+                raise DumperException("Can not connect to the Docker server!")
+            self.logger.info("Connected to Docker server")
+            self._state["client"] = client
+        return self._state["client"]
 
     def need_prepare(self):
-        if not self.client or not self.container:
+        if not self.client:
             return True
 
     def set_release(self):
@@ -1947,7 +1952,11 @@ class DockerContainerDumper(BaseDumper):
 
     def release_client(self):
         if self.container:
-            self.container.remove()
+            if not self.keep_container:
+                self.logger.debug(f"Removing container: {self.container.name}")
+                self.container.stop()
+                self.container.wait(timeout=self.TIMEOUT)
+                self.container.remove()
         if self.volume:
             self.volume.remove(force=True)
         if self.client:
@@ -1958,53 +1967,107 @@ class DockerContainerDumper(BaseDumper):
         super().post_dump(*args, **kwargs)
         self.release_client()
 
-    def remote_is_better(self, remotefile, localfile):
-        return True
+    def remote_is_better(self, remote_file, local_file):
+        try:
+            os.stat(local_file)
+        except FileNotFoundError:
+            return True
+        if not self.source_config["container_name"]:
+            return True  # new fresh container, remote is always better
+        try:
+            container = self.client.containers.get(self.source_config["container_name"])
+        except Exception:
+            return True  # exception will be caught in the download step
+        custom_get_version_cmd = self.source_config["get_version_cmd"]
+        if custom_get_version_cmd:
+            if container.status != "running":
+                return True  # we can't execute the cmd in a stop container
+            current_version = os.popen(custom_get_version_cmd.replace("{}", local_file, 1)).read().strip()
+            exit_code, remote_version = container.exec_run(["/usr/bin/sh", "-c",  custom_get_version_cmd.replace("{}", remote_file, 1)])
+            if exit_code != 0:
+                return True  # failed when run cmd check on the remote
+            remote_version = remote_version.decode().strip()
+            if current_version != remote_version:
+                return True
+        return False
+
 
     def get_remote_file(self, url):
-        connection_info = docker_source_info_parser(url)
-        return connection_info["file_path"]
+        return self.source_config["file_path"]
 
-    def waiting_for_remote_file_is_ready(self, remotefile):
-        while self.container.status == "created" or self.container.status != "exited":
-            self.container.reload()  # Load this object from the server again and update attrs with the new data
-            self.logger.info("The container is processing file, please wait ...")
-            time.sleep(1)
-        state = self.container.wait()
-        exit_code = state.get("StatusCode")
-        error = state.get("Error")
-        if exit_code != 0 or error:
-            stderr = self.container.logs(stdout=False)
-            raise DockerContainerException(stderr)
-
-    def create_todump_list(self, force=False):
+    def create_todump_list(self, force=False, **kwargs):
         assert type(self.__class__.SRC_URLS) is list, "SRC_URLS should be a list"
         assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
         self.set_release()  # so we can generate new_data_folder
         for src_url in self.__class__.SRC_URLS:
-            info = docker_source_info_parser(src_url)
-            file_path = info["file_path"]
-            filename = os.path.basename(file_path)
-            new_localfile = os.path.join(self.new_data_folder, filename)
-            self.to_dump.append({"remote": src_url, "local": new_localfile})
+            file_path = self.source_config["file_path"]
+            file_name = os.path.basename(file_path)
+            new_localfile = os.path.join(self.new_data_folder, file_name)
+            try:
+                current_local_file = os.path.join(self.current_data_folder, file_name)
+            except TypeError:
+                # current data folder doesn't even exist
+                current_local_file = new_localfile
+            remote_file = self.get_remote_file(file_path)
+            remote_better = self.remote_is_better(remote_file, current_local_file)
+            if force or current_local_file is None or remote_better:
+                new_localfile = os.path.join(self.new_data_folder, file_name)
+                self.to_dump.append({"remote": src_url, "local": new_localfile})
 
     def prepare_local_folders(self, localfile):
         super().prepare_local_folders(localfile)
         if os.path.isfile(localfile):
             os.unlink(localfile)
 
-    def download(self, urlremotefile, localfile):
-        if self.need_prepare():
-            self.prepare_client()
-        self.prepare_local_folders(localfile)
-        remotefile = self.get_remote_file(urlremotefile)
-        self.waiting_for_remote_file_is_ready(remotefile)
+    def prepare_remote_container(self):
+        if not self.container:
+            if self.DOCKER_IMAGE is not None:
+                self.logger.info(f"Start a docker container with with a never end command: tail -f /dev/null")
+                self.container = self.client.containers.run(
+                    self.DOCKER_IMAGE, command="tail -f /dev/null",  # create a new container with a never end command
+                    detach=True, auto_remove=False,
+                    # Don't auto remove this container, we need a stopped container when download file
+                )
+                self.logger.info("Waiting for container run...")
+                count = 0
+                while self.container.status == "created" and count < self.TIMEOUT:
+                    self.container.reload()  # Load this object from the server again and update attrs with the new data
+                    time.sleep(1)
+            else:
+                self.logger.info(f"Run the container {self.CONTAINER_NAME}")
+                self.container = self.client.containers.get(self.CONTAINER_NAME)
+                if self.container.status != "running":
+                    self.logger.info("Waiting for container run...")
+                    self.container.start()
+                    count = 0
+                    while self.container.status == "created" and count < self.TIMEOUT:
+                        self.container.reload()  # Load this object from the server again and update attrs with the new data
+                        time.sleep(1)
+            self.container.reload()
+            if self.container.status == "exited":
+                raise DockerContainerException("Container is exited")
+
+    def download(self, remote_file_url, local_file):
+        self.prepare_client()
+        self.prepare_remote_container()
+        self.prepare_local_folders(local_file)
+        remote_file = self.get_remote_file(remote_file_url)
+
+        if self.DOCKER_RUN_CUSTOM_CMD:
+            exit_code, output = self.container.exec_run(["/usr/bin/sh", "-c",  self.DOCKER_RUN_CUSTOM_CMD])
+            self.logger.debug(output.decode())
+            if exit_code != 0:
+                self.logger.error(f"Failed to download {remote_file}, non-zero exit code from custom cmd: {exit_code}")
+                self.logger.error(output)
         try:
-            bits, stat = self.container.get_archive(remotefile, encode_stream=True)
+            bits, stat = self.container.get_archive(remote_file, encode_stream=True)
             if stat.get("size", 0) > 0:
-                with open(localfile, "wb") as fp:
+                tmp_file = f"{local_file}.tar"
+                with open(tmp_file, "wb") as fp:
                     for chunk in bits:
                         fp.write(chunk)
-            self.logger.info(f"Successfully download file {remotefile} to {localfile}")
+                untarall(folder=os.path.dirname(local_file), pattern="*.tar")
+            self.logger.info(f"Successfully download file {remote_file} to {local_file}")
         except Exception as ex:
-            self.logger.error(f"Failed to download {remotefile} with exception {ex}", exc_info=True)
+            self.logger.error(f"Failed to download {remote_file} with exception: {ex}", exc_info=True)
+            raise DumperException("Can not download the data file")
