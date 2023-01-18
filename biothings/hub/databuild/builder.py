@@ -1412,13 +1412,24 @@ class BuilderManager(BaseManager):
                 #  finding all builds of all build configs when /whatsnew gets
                 #  requested
                 builds = dbbuild.find({"build_config.name": build_name})
-                builds = sorted(builds, key=lambda e: e["started_at"])
-                if builds:
-                    old = builds[-1]
-                else:
+                builds = sorted(builds, key=lambda e: e["started_at"], reverse=True)
+                if not builds:
                     raise BuilderException(
                         "Can't find a build associated to config '%s'" %
                         build_name)
+
+                # Pickup latest success build
+                old = None
+                for _build in builds:
+                    if _build.get("_meta", {}).get("src"):
+                        old = _build
+                        break
+
+                if not old:
+                    raise BuilderException(
+                        "Can't find a success build associated to config '%s'" %
+                        build_name)
+                    
             else:
                 old = dbbuild.find_one({"_id": old})
             meta_srcs = old.get("_meta", {}).get("src", {})
