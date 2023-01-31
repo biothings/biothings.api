@@ -440,7 +440,7 @@ class BiothingHubMeta(BiothingMetaProp):
     def __add__(self, other):
 
         # combine biothing_type field
-        biothing_type = self.biothing_type,
+        biothing_type = self.biothing_type
         if other.biothing_type != self.biothing_type:
             biothing_type = '__multiple__'
 
