@@ -14,9 +14,9 @@ jobs:
         python-version: [ '3.7', '3.8', '3.9', '3.10', '3.11' ]
     steps:
       - name: Checkout source
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
@@ -28,7 +28,7 @@ jobs:
 
     services:
       Elasticsearch:
-        image: docker.elastic.co/elasticsearch/elasticsearch:7.13.3
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.6.1
         env:
           "discovery.type" : single-node
           "xpack.security.enabled": false
