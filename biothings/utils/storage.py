@@ -77,18 +77,22 @@ class BasicStorage(BaseStorage):
                 doc_li = [d for d in doc_li if self.check_doc_func(d)]
                 yield doc_li
 
-    def process(self, doc_d, batch_size):
+    def process(self, doc_d, batch_size, max_batch_num=None):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         total = 0
+        batch_num = 0
         for doc_li in self.doc_iterator(doc_d,
                                         batch=True,
                                         batch_size=batch_size):
+            if max_batch_num and batch_num >= max_batch_num:
+                break
+            batch_num += 1
             self.temp_collection.insert(doc_li,
                                         manipulate=False,
                                         check_keys=False)
             total += len(doc_li)
-        self.logger.info('Done[%s]' % timesofar(t0))
+        self.logger.info(f"Done[{timesofar(t0)}] with {total} docs")
 
         return total
 
@@ -104,15 +108,19 @@ class MergerStorage(BasicStorage):
 
     merge_func = merge_struct
 
-    def process(self, doc_d, batch_size):
+    def process(self, doc_d, batch_size, max_batch_num=None):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
         aslistofdict = None
         total = 0
+        batch_num = 0
         for doc_li in self.doc_iterator(doc_d,
                                         batch=True,
                                         batch_size=batch_size):
+            if max_batch_num and batch_num >= max_batch_num:
+                break
+            batch_num += 1
             toinsert = len(doc_li)
             nbinsert = 0
             self.logger.info("Inserting %s records ... " % toinsert)
@@ -121,7 +129,7 @@ class MergerStorage(BasicStorage):
                 for d in doc_li:
                     aslistofdict = d.pop("__aslistofdict__", None)
                     bulk.append(InsertOne(d))
-                
+
                 res = self.temp_collection.bulk_write(bulk, ordered=False)
                 nbinsert += res.inserted_count
                 self.logger.info("OK [%s]" % timesofar(tinner))
@@ -164,7 +172,7 @@ class MergerStorage(BasicStorage):
             tinner = time.time()
             total += nbinsert
 
-        self.logger.info('Done[%s]' % timesofar(t0))
+        self.logger.info(f"Done[{timesofar(t0)}] with {total} docs")
 
         return total
 
@@ -194,14 +202,18 @@ class RootKeyMergerStorage(MergerStorage):
 
 
 class IgnoreDuplicatedStorage(BasicStorage):
-    def process(self, iterable, batch_size):
+    def process(self, iterable, batch_size, max_batch_num=None):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
         total = 0
+        batch_num = 0
         for doc_li in self.doc_iterator(iterable,
                                         batch=True,
                                         batch_size=batch_size):
+            if max_batch_num and batch_num >= max_batch_num:
+                break
+            batch_num += 1
             try:
                 bulk = []
                 for d in doc_li:
@@ -228,7 +240,7 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
     You should use IgnoreDuplicatedStorag, which works using batch
     and is thus way faster...
     """
-    def process(self, doc_d, batch_size):
+    def process(self, doc_d, batch_size, max_batch_num=None):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
@@ -236,7 +248,11 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
         cnt = 0
         total = 0
         dups = 0
+        batch_num = 0
         for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=1):
+            if max_batch_num and batch_num >= max_batch_num:
+                break
+            batch_num += 1
             try:
                 self.temp_collection.insert(doc_li,
                                             manipulate=False,
@@ -260,14 +276,18 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
 
 class UpsertStorage(BasicStorage):
     """Insert or update documents, based on _id"""
-    def process(self, iterable, batch_size):
+    def process(self, iterable, batch_size, max_batch_num=None):
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
         total = 0
+        batch_num = 0
         for doc_li in self.doc_iterator(iterable,
                                         batch=True,
                                         batch_size=batch_size):
+            if max_batch_num and batch_num >= max_batch_num:
+                break
+            batch_num += 1
             try:
                 bulk = []
                 for d in doc_li:

@@ -723,9 +723,9 @@ def validate_inspection_data(data: list[FieldInspection]) -> dict[str, FieldInsp
         (but a mixed or single value and an array of same type of values are acceptable,
         or the case of mixed integer and float should be acceptable too)
     """
-    SPACE_PATTERN = r"\s"
+    SPACE_PATTERN = " "
     INVALID_CHARACTERS_PATTERN = r"[^a-zA-Z0-9_.]"
-    NUMBERIC_FIELDS = ["int", "float"]
+    NUMERIC_FIELDS = ["int", "float"]
 
     field_validations = {}
 
@@ -742,13 +742,13 @@ def validate_inspection_data(data: list[FieldInspection]) -> dict[str, FieldInsp
         ):
             continue
 
-        if re.match(SPACE_PATTERN, field_name):
+        if re.search(SPACE_PATTERN, field_name):
             field_validations[field_name].messages.add("field name contains whitespace.")
 
         if field_name != field_name.lower():
             field_validations[field_name].messages.add("field name contains uppercase.")
 
-        if re.match(INVALID_CHARACTERS_PATTERN, field_name):
+        if re.search(INVALID_CHARACTERS_PATTERN, field_name):
             field_validations[field_name].messages.add(
                 "field name contains special character. Only alphanumeric, dot, or underscore are valid."
             )
@@ -760,7 +760,7 @@ def validate_inspection_data(data: list[FieldInspection]) -> dict[str, FieldInsp
             if normalized_type == normalized_existing_type:
                 continue
 
-            if normalized_type in NUMBERIC_FIELDS and normalized_existing_type in NUMBERIC_FIELDS:
+            if normalized_type in NUMERIC_FIELDS and normalized_existing_type in NUMERIC_FIELDS:
                 continue
 
             field_validations[field_name].has_multiple_types = True

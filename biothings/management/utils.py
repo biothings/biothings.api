@@ -175,7 +175,7 @@ def get_custom_mapping_func(working_dir, mapping):
     return func
 
 
-def process_uploader(working_dir, data_folder, main_source, upload_section, logger):
+def process_uploader(working_dir, data_folder, main_source, upload_section, logger, limit):
     parser = upload_section.get("parser")
     parser_kwargs = upload_section.get("parser_kwargs")
     parser_kwargs_serialized = {}
@@ -208,12 +208,17 @@ def process_uploader(working_dir, data_folder, main_source, upload_section, logg
         1,
         data_folder,
         db=src_db,
+        max_batch_num=limit,
     )
     switch_collection(
         src_db,
         temp_collection_name=temp_collection_name,
         collection_name=uploader_fullname,
         logger=logger,
+    )
+    logger.info(
+        f' Upload finished successfully at:\n{" " * 5}DB path: {src_db.dbfile}"\n{" " * 5}'
+        f'Database: {src_db.name}"\n{" " * 5}Collection (table): {uploader_fullname}"'
     )
 
 
@@ -272,7 +277,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate):
 
     def clean_big_nums(k, v):
         # TODO: same with float/double? seems mongo handles more there ?
-        if isinstance(v, int) and v > 2**64:
+        if isinstance(v, int) and v > 2 ** 64:
             return k, math.nan
         else:
             return k, v
@@ -285,22 +290,51 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate):
             for _mode in ["type", "stats"]
         }
     }
-
     if "mapping" in mode:
         df = pd.DataFrame.from_dict(mapping)
         print(25 * "-" + " MAPPING " + 25 * "-")
         print(df.T)
+        print(60 * "-")
         print("\n")
-    if "type" in mode:
-        df = pd.json_normalize(type_and_stats[source_name]["type"])
-        print(25 * "-" + " TYPE " + 25 * "-")
-        print(df)
-        print("\n")
+    report = []
+    problem_summary = {}
     if "stats" in mode:
-        print(25 * "-" + " STATS " + 25 * "-")
-        df = pd.json_normalize(type_and_stats[source_name]["stats"])
+        report = type_and_stats[source_name]["stats"]
+    elif "type" in mode:
+        for item in type_and_stats[source_name]["type"]:
+            item.pop("stats", None)
+            report.append(item)
+    if report:
+        print(
+            f"This is the field type and stats for datasource: {source_name}\n"
+            f"It provides a summary of the data structure, including: a map of all types involved in the data;"
+            f"basic statistics, showing how volumetry fits over data structure.\n"
+            f"The basic statistics include these fields:\n* _count: Total records\n"
+            f"* _max: Maximum value\n* _min: Minimum value\n* _none: number of records have no value"
+        )
+        for field in report:
+            messages = field.pop("messages", [])
+            if messages:
+                field[" "] = "\u26a0"
+            else:
+                field[" "] = ""
+            for message in messages:
+                field_name = field.get("field_name")
+                if field_name == "__root__":
+                    continue
+                if message not in problem_summary:
+                    problem_summary[message] = [field_name]
+                else:
+                    problem_summary[message].append(field_name)
+        df = pd.json_normalize(report)
+        print(25 * "-" + " TYPE & STATS " + 25 * "-")
         print(df)
-        print("\n")
+        print(64 * "-")
+        if problem_summary:
+            print("Warnings:")
+            for key, value in problem_summary.items():
+                print(f"* {key}")
+                print(*value, sep=", ")
 
 
 def get_manifest_content(working_dir):
@@ -320,8 +354,8 @@ def serve(host, port, plugin_name, table_space):
     from .web_app import main
 
     src_db = get_src_db()
-    print(f"Serving data plugin source {plugin_name} on port http://{host}:{port}")
-    asyncio.run(main(port=port, db=src_db, table_space=table_space))
+    print(f"Serving data plugin source: {plugin_name}")
+    asyncio.run(main(host=host, port=port, db=src_db, table_space=table_space))
 
 
 def get_uploaders(working_dir: pathlib.Path):

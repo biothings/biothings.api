@@ -42,7 +42,7 @@ def listing(
             print("\n".join(uploaded_sources))
 
 
-@app.command("clean", help="Download source data to local")
+@app.command("clean", help="Remove selected files from .biothings_hub folder")
 def clean_data(
     dump: bool = typer.Option(False, "--dump", help="Clean dumped files"),  # NOQA: B008
     upload: bool = typer.Option(False, "--upload", help="Clean uploaded sources"),  # NOQA: B008
@@ -82,7 +82,12 @@ def dump_data(
     help="Convert downloaded data from dump step into JSON documents and upload the to the source database",
 )
 def upload_source(
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging")  # NOQA: B008
+    limit: Optional[int] = typer.Option(  # NOQA: B008
+        None,
+        "--limit",
+        help="Can limit the upload to the first limit * 1000 docs (None = no limit, upload all)",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),  # NOQA: B008
 ):
     if verbose:
         logger.setLevel("DEBUG")
@@ -98,7 +103,7 @@ def upload_source(
         upload_sections = [upload_section]
 
     for section in upload_sections:
-        utils.process_uploader(working_dir, data_folder, plugin_name, section, logger)
+        utils.process_uploader(working_dir, data_folder, plugin_name, section, logger, limit)
 
 
 @app.command(
@@ -111,7 +116,7 @@ def inspect(
         help="Your sub source name",
     ),
     mode: Optional[str] = typer.Option(  # NOQA: B008
-        default="mapping,type,stats",
+        default="type,stats",
         help="""
             The inspect mode or list of modes (comma separated) eg. "type,mapping".\n
             Possible values are:\n

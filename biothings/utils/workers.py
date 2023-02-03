@@ -5,7 +5,9 @@ import os
 from biothings.utils.loggers import get_logger
 
 
-def upload_worker(name, storage_class, loaddata_func, col_name, batch_size, batch_num, *args, **kwargs):
+def upload_worker(
+    name, storage_class, loaddata_func, col_name, batch_size, batch_num, *args, **kwargs
+):
     """
     Pickable job launcher, typically running from multiprocessing.
     storage_class will instanciate with col_name, the destination
@@ -13,9 +15,8 @@ def upload_worker(name, storage_class, loaddata_func, col_name, batch_size, batc
     called with `*args`.
     """
     data = []
-    db = None
-    if 'db' in kwargs:
-        db = kwargs.get('db')
+    db = kwargs.get("db", None)
+    max_batch_num = kwargs.get("max_batch_num", None)
     try:
         data = loaddata_func(*args)
         if type(storage_class) is tuple:
@@ -23,7 +24,7 @@ def upload_worker(name, storage_class, loaddata_func, col_name, batch_size, batc
             storage = type(klass_name, storage_class, {})(None, col_name, loggingmod)
         else:
             storage = storage_class(db, col_name, loggingmod)
-        return storage.process(data, batch_size)
+        return storage.process(data, batch_size, max_batch_num)
     except Exception as e:
         logger_name = "%s_batch_%s" % (name, batch_num)
         logger, logfile = get_logger(logger_name)

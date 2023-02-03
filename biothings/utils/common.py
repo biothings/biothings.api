@@ -277,8 +277,7 @@ def find_value_in_doc(dotfield, value, d):
                 return False
             return d[field] == value
         except Exception as ex:
-            print(ex)
-            return None
+            return False
     else:
         try:
             if isinstance(d, list):
@@ -292,7 +291,6 @@ def find_value_in_doc(dotfield, value, d):
                     return False
             return find_value_in_doc(".".join(fields[1:]), value, d[field])
         except Exception as ex:
-            print(ex)
             return False
 
 
