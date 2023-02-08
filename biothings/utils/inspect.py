@@ -4,6 +4,7 @@ In general, do not include utils depending on any third-party modules.
 Note: unittests available in biothings.tests.hub
 """
 import copy
+import enum
 import logging
 import math
 import random
@@ -621,12 +622,12 @@ class FieldInspection:
     field_name: str
     field_type: str
     stats: dict = None
-    messages: list = field(default_factory=list)
+    warnings: list = field(default_factory=list)
 
 
 @dataclass
 class FieldInspectValidation:
-    messages: set = field(default_factory=set)
+    warnings: set() = field(default_factory=set)
     types: set = field(default_factory=set)
     has_multiple_types: bool = False
 
@@ -713,8 +714,8 @@ def flatten_inspection_data(
     return field_inspections
 
 
-def validate_inspection_data(data: list[FieldInspection]) -> dict[str, FieldInspectValidation]:
-    """This function will check and flag any field name which:
+class InspectionValidation:
+    """This class provide a mechanism to validate and flag any field which:
     - contains whitespace
     - contains upper cased letter or special characters
         (lower-cased is recommended, in some cases the upper-case field names are acceptable,
@@ -722,64 +723,120 @@ def validate_inspection_data(data: list[FieldInspection]) -> dict[str, FieldInsp
     - when the type inspection detects more than one types
         (but a mixed or single value and an array of same type of values are acceptable,
         or the case of mixed integer and float should be acceptable too)
+
+    Usage:
+        ```
+        result = InspectionValidation.validate(data)
+        ```
+
+    Adding more rules:
+    - add new code, and message to Warning Enum
+    - add a new staticmethod for validate new rule and named in format: `validate_{warning_code}`
+    - add new rule to docstring.
     """
+
+    class Warning(enum.Enum):
+        W001 = "field name contains whitespace."
+        W002 = "field name contains uppercase."
+        W003 = "field name contains special character. Only alphanumeric, dot, or underscore are valid."
+        W004 = "field name has more than one type."
+
+        def to_dict(self):
+            return {"code": self.name, "message": self.value}
+
     SPACE_PATTERN = " "
     INVALID_CHARACTERS_PATTERN = r"[^a-zA-Z0-9_.]"
     NUMERIC_FIELDS = ["int", "float"]
 
-    field_validations = {}
+    @staticmethod
+    def validate(data: list[FieldInspection]) -> dict[str, FieldInspectValidation]:
+        field_validations: dict[str, FieldInspectValidation] = {}
+        for field_inspection in data:
+            field_name = field_inspection.field_name
+            type = field_inspection.field_type
 
-    for field_inspection in data:
-        field_name = field_inspection.field_name
-        type = field_inspection.field_type
+            if field_name not in field_validations:
+                field_validations[field_name] = FieldInspectValidation()
+            field_validations[field_name].types.add(type)
 
-        if field_name not in field_validations:
-            field_validations[field_name] = FieldInspectValidation()
+            for inspection_warning in InspectionValidation.Warning:
+                if inspection_warning in field_validations[field_name].warnings:
+                    continue
 
-        if (
-            field_validations[field_name].has_multiple_types
-            and field_validations[field_name].messages
-        ):
-            continue
+                validate_method = getattr(
+                    InspectionValidation, f"validate_{inspection_warning.name}", None
+                )
+                if not validate_method:
+                    continue
+                if validate_method(field_inspection, field_validations[field_name]):
+                    continue
+                field_validations[field_name].warnings.add(inspection_warning)
 
-        if re.search(SPACE_PATTERN, field_name):
-            field_validations[field_name].messages.add("field name contains whitespace.")
+        return field_validations
 
-        if field_name != field_name.lower():
-            field_validations[field_name].messages.add("field name contains uppercase.")
+    @staticmethod
+    def validate_W001(
+        field_inspection: FieldInspection,
+        field_validation: FieldInspectValidation,
+    ) -> bool:
+        if re.search(InspectionValidation.SPACE_PATTERN, field_inspection.field_name):
+            return False
+        return True
 
-        if re.search(INVALID_CHARACTERS_PATTERN, field_name):
-            field_validations[field_name].messages.add(
-                "field name contains special character. Only alphanumeric, dot, or underscore are valid."
-            )
+    @staticmethod
+    def validate_W002(
+        field_inspection: FieldInspection,
+        field_validation: FieldInspectValidation,
+    ) -> bool:
+        return field_inspection.field_name == field_inspection.field_name.lower()
 
-        for existing_type in field_validations[field_name].types:
-            normalized_type = type.replace("list of ", "")
+    @staticmethod
+    def validate_W003(
+        field_inspection: FieldInspection,
+        field_validation: FieldInspectValidation,
+    ) -> bool:
+        return not re.search(
+            InspectionValidation.INVALID_CHARACTERS_PATTERN, field_inspection.field_name
+        )
+
+    @staticmethod
+    def validate_W004(
+        field_inspection: FieldInspection,
+        field_validation: FieldInspectValidation,
+    ) -> bool:
+        is_valid = True
+        for existing_type in field_validation.types:
+            normalized_type = field_inspection.field_type.replace("list of ", "")
             normalized_existing_type = existing_type.replace("list of ", "")
 
             if normalized_type == normalized_existing_type:
                 continue
 
-            if normalized_type in NUMERIC_FIELDS and normalized_existing_type in NUMERIC_FIELDS:
+            if (
+                normalized_type in InspectionValidation.NUMERIC_FIELDS
+                and normalized_existing_type in InspectionValidation.NUMERIC_FIELDS
+            ):
                 continue
 
-            field_validations[field_name].has_multiple_types = True
-            field_validations[field_name].messages.add("field name has more than one type.")
+            is_valid = False
+            field_validation.has_multiple_types = True
+            break
 
-        field_validations[field_name].types.add(type)
-
-    return field_validations
+        return is_valid
 
 
 def merge_field_inspections_validations(
     field_inspections: list[FieldInspection],
     field_validations: dict[str, FieldInspectValidation],
 ):
-    """Adding any messages from field_validations to field_inspections with corresponding field name"""
+    """Adding any warnings from field_validations to field_inspections with corresponding field name"""
     for field_inspection in field_inspections:
         field_name = field_inspection.field_name
         field_validation = field_validations.get(field_name, {})
-        field_inspection.messages = list(field_validation.messages)
+        field_inspection.warnings = sorted(
+            [warning.to_dict() for warning in field_validation.warnings],
+            key=lambda warning: warning["code"],
+        )
 
 
 def simplify_inspection_data(field_inspections: list[FieldInspection]) -> list[dict[str, any]]:
@@ -789,6 +846,6 @@ def simplify_inspection_data(field_inspections: list[FieldInspection]) -> list[d
 def flatten_and_validate(data, do_validate=True):
     flattened_data = flatten_inspection_data(data)
     if do_validate:
-        validated_data = validate_inspection_data(flattened_data)
+        validated_data = InspectionValidation.validate(flattened_data)
         merge_field_inspections_validations(flattened_data, validated_data)
     return simplify_inspection_data(flattened_data)
