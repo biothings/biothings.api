@@ -8,13 +8,16 @@ logger = logging.getLogger(__name__)
 
 def reindex(
     src_index: str,
-    src_index_extra_kwargs: Optional[dict] = None,
+
     target_index: Optional[str] = None,
-    target_index_extra_kwargs: Optional[dict] = None,
+
     settings: Optional[dict] = None,
     mappings: Optional[dict] = None,
     alias: Optional[Union[bool, str]] = None,
     delete_src: Optional[bool] = False,
+    src_indexer_kwargs: Optional[dict] = None,
+    target_indexer_kwargs: Optional[dict] = None,
+    reindex_kwargs: Optional[dict] = None,
 ) -> None:
     """
     This helper function helps to reindex an existing index by transferring both the settings, mappings and docs.
@@ -25,9 +28,9 @@ def reindex(
 
     Parameters:
         src_index: name of the src index
-        src_index_extra_kwargs: a dict contains infor to construct ESIndexer for src index
+        src_indexer_kwargs: a dict contains infor to construct ESIndexer for src index
         target_index: name of the new index, use <src_index_name>_reindexed as default if None
-        target_index_extra_kwargs: a dict contains infor to construct ESIndexer for target index
+        target_indexer_kwargs: a dict contains infor to construct ESIndexer for target index
         settings: if provided as a dict, update the settings with the provided dictionary.
                     Otherwise, keep the same from the src_index
         mapping: if provided as a dict, update the settings with the provided mappings.
@@ -45,19 +48,19 @@ def reindex(
 
     # create indexer objects
     logger.info("Create src index obj")
-    src_index_extra_kwargs = src_index_extra_kwargs or {}
-    src_index_obj = ESIndexer(index=src_index, **src_index_extra_kwargs)
-    assert src_index_obj.exists_index(), f"src index '{src_index}' is not exists."
+    src_indexer_kwargs = src_indexer_kwargs or {}
+    src_index_obj = ESIndexer(index=src_index, **src_indexer_kwargs)
+    assert src_index_obj.exists_index(), f"src index '{src_index}' does not exists."
 
     logger.info("Create target index obj")
     target_index = target_index or f"{src_index}_reindexed"
-    target_index_extra_kwargs = target_index_extra_kwargs or {}
-    if "number_of_shards" not in target_index_extra_kwargs:
-        target_index_extra_kwargs["number_of_shards"] = src_index_obj.number_of_shards
-    if "number_of_replicas" not in target_index_extra_kwargs:
-        target_index_extra_kwargs["number_of_replicas"] = src_index_obj.number_of_replicas
-    target_index_obj = ESIndexer(index=target_index, **target_index_extra_kwargs)
-    assert not target_index_obj.exists_index(), f"target index '{target_index}' is exists."
+    target_indexer_kwargs = target_indexer_kwargs or {}
+    if "number_of_shards" not in target_indexer_kwargs:
+        target_indexer_kwargs["number_of_shards"] = src_index_obj.number_of_shards
+    if "number_of_replicas" not in target_indexer_kwargs:
+        target_indexer_kwargs["number_of_replicas"] = src_index_obj.number_of_replicas
+    target_index_obj = ESIndexer(index=target_index, **target_indexer_kwargs)
+    assert not target_index_obj.exists_index(), f"target index '{target_index}' exists."
 
     # clone settings, mappings from src index
     logger.info("Clone src settings, and src_mapping, and update with supplied values")
@@ -72,17 +75,15 @@ def reindex(
 
     # create target index with src settings, mappings
     logger.info("Set target index's settings, mappings")
-    target_index_obj.create_index(mapping=src_mappings)
-    target_index_obj.update_settings(
-        src_settings[src_index_obj._index]["settings"],
-        remove_meta_fields=True,
-        close=True,
+    target_index_obj.create_index(
+        mapping=src_mappings,
+        extra_settings=src_settings[src_index_obj._index]["settings"]
     )
 
     # Reindex from src index to target index
     logger.info("Reindex from src index to target index")
     is_remote = src_index_obj.es_host != target_index_obj.es_host
-    result = target_index_obj.reindex(src_index_obj, is_remote=is_remote)
+    result = target_index_obj.reindex(src_index_obj, is_remote=is_remote, **reindex_kwargs)
 
     logger.info(f"Reindex result: {result}")
 

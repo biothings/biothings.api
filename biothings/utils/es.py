@@ -267,6 +267,7 @@ class ESIndexer:
                 }
             }
             extra_settings = extra_settings or {}
+            self.sanitize_settings(extra_settings)
             body["settings"].update(extra_settings)
             if mapping:
 
@@ -957,6 +958,23 @@ class ESIndexer:
         settings = json.dumps({"index": {"number_of_replicas": number_of_replicas}})
         self.update_settings(settings)
 
+    def sanitize_settings(self, settings):
+        """
+        Clean up settings dictinary to remove those static fields cannot be updated.
+         like: "uuid", "provided_name", "creation_date", "version",
+        settings will be updated  both in-place and returned as well.
+        """
+        setting_fields_to_remove = [
+            "uuid",
+            "provided_name",
+            "creation_date",
+            "version",
+            "number_of_shards",
+        ]
+        for field in setting_fields_to_remove:
+            settings["index"].pop(field, None)
+        return settings
+
     def update_settings(self, settings, close=False, **params):
         """
         Parameters:
@@ -967,15 +985,7 @@ class ESIndexer:
         """
         # Some static fields like: "uuid", "provided_name", "creation_date", "version",
         #   "number_of_shards", which ES doesn't allow update them.
-        setting_fields_to_remove = [
-            "uuid",
-            "provided_name",
-            "creation_date",
-            "version",
-            "number_of_shards",
-        ]
-        for field in setting_fields_to_remove:
-            settings["index"].pop(field, None)
+        self.sanitize_settings(settings)
 
         if close:
             self.close()
@@ -989,7 +999,7 @@ class ESIndexer:
         if close:
             self.open()
 
-    def reindex(self, src_index, is_remote=False):
+    def reindex(self, src_index, is_remote=False, **kwargs):
         """In order to reindex from remote,
         - src es_host must be set to an IP which the current ES host can connect to.
             It means that if 2 indices locate in same host, the es_host can be set to localhost,
@@ -1007,7 +1017,7 @@ class ESIndexer:
             if not host.startswith("http"):
                 host = "http://" + host
             body["source"]["remote"] = {"host": host}
-        return self._es.reindex(body=body)
+        return self._es.reindex(body=body, **kwargs)
 
     def close(self):
         self._es.indices.close(self._index)
