@@ -97,7 +97,7 @@ def capturesESExceptions(func):
             # in our application, AssertionError should be internal
             # the individual components raising the error should instead
             # rasie exceptions like ValueError and TypeError for bad input
-            logging.error("FIXME: Unexpected Assertion Error.")
+            logging.exception("FIXME: Unexpected Assertion Error.", exc_info=exc)
             raise QueryPipelineException(500, str(exc) or "N/A")
 
         except (ValueError, TypeError) as exc:
