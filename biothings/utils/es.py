@@ -957,26 +957,25 @@ class ESIndexer:
         settings = json.dumps({"index": {"number_of_replicas": number_of_replicas}})
         self.update_settings(settings)
 
-    def update_settings(self, settings, remove_meta_fields=False, close=False, **params):
+    def update_settings(self, settings, close=False, **params):
         """
         Parameters:
             - settings: should be valid ES index's settings.
-            - remove_meta_field: Some static fields like: "uuid", "provided_name", "creation_date", "version",
-                "number_of_shards", which ES doesn't allow update them.
             - close: In order to update static settings, the index must be closed first.
 
         Ref: https://www.elastic.co/guide/en/elasticsearch/reference/7.17/index-modules.html#index-modules-settings
         """
-        if remove_meta_fields:
-            remove_fields = [
-                "uuid",
-                "provided_name",
-                "creation_date",
-                "version",
-                "number_of_shards",
-            ]
-            for field in remove_fields:
-                settings["index"].pop(field, None)
+        # Some static fields like: "uuid", "provided_name", "creation_date", "version",
+        #   "number_of_shards", which ES doesn't allow update them.
+        setting_fields_to_remove = [
+            "uuid",
+            "provided_name",
+            "creation_date",
+            "version",
+            "number_of_shards",
+        ]
+        for field in setting_fields_to_remove:
+            settings["index"].pop(field, None)
 
         if close:
             self.close()
