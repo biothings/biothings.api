@@ -1,10 +1,10 @@
-""" 
+"""
     Biothings Web Applications -
-    
+
     define the routes and handlers a supported web framework would consume
     basing on a config file, typically named `config.py`, enhanced by
-    :py:mod:`biothings.web.settings.configs`. 
-    
+    :py:mod:`biothings.web.settings.configs`.
+
     The currently supported web frameworks are
     `Tornado <https://www.tornadoweb.org/en/stable/index.html>`_,
     `Flask <https://flask.palletsprojects.com/en/2.0.x/>`_, and
@@ -12,7 +12,7 @@
 
     The :py:mod:`biothings.web.launcher` can start the compatible HTTP servers
     basing on their interface. And the web applications delegate routes defined
-    in the config file to handlers typically in :py:mod:`biothings.web.handlers`. 
+    in the config file to handlers typically in :py:mod:`biothings.web.handlers`.
 
     +----------------+------------+--------------------------------+
     | Web Framework  | Interface  | Handlers                       |
@@ -93,6 +93,9 @@ class TornadoBiothingsAPI(tornado.web.Application):
         if __SENTRY_INSTALLED__ and biothings.config.SENTRY_CLIENT_KEY:
             sentry_sdk.init(
                 dsn=biothings.config.SENTRY_CLIENT_KEY,
+                # adjust this value to allow sentry to trace transactions:
+                #   https://docs.sentry.io/platforms/python/guides/starlette/configuration/options/#traces-sample-rate
+                traces_sample_rate=0.2,
                 integrations=[TornadoIntegration()]
             )
 
