@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional, Union
 
 from biothings.utils.es import ESIndexer
@@ -8,13 +9,12 @@ logger = logging.getLogger(__name__)
 
 def reindex(
     src_index: str,
-
     target_index: Optional[str] = None,
-
     settings: Optional[dict] = None,
     mappings: Optional[dict] = None,
     alias: Optional[Union[bool, str]] = None,
     delete_src: Optional[bool] = False,
+    task_check_interval: Optional[int] = 15,
     src_indexer_kwargs: Optional[dict] = None,
     target_indexer_kwargs: Optional[dict] = None,
     reindex_kwargs: Optional[dict] = None,
@@ -28,9 +28,9 @@ def reindex(
 
     Parameters:
         src_index: name of the src index
-        src_indexer_kwargs: a dict contains infor to construct ESIndexer for src index
+
         target_index: name of the new index, use <src_index_name>_reindexed as default if None
-        target_indexer_kwargs: a dict contains infor to construct ESIndexer for target index
+
         settings: if provided as a dict, update the settings with the provided dictionary.
                     Otherwise, keep the same from the src_index
         mapping: if provided as a dict, update the settings with the provided mappings.
@@ -38,7 +38,15 @@ def reindex(
         alias: if True, switch the alias from src_index to target_index.
                 If src_index has no alias, apply the <src_index_name> as the alias;
                 if a string value, apply it as the alias instead
-        delete_src: If True, delete the src_index after everything is done
+        delete_src: If True, delete the src_index after everything is done,
+        task_check_interval: the interval to check reindex job status, default is 15s
+        src_indexer_kwargs: a dict contains infor to construct ESIndexer for src index
+        target_indexer_kwargs: a dict contains infor to construct ESIndexer for target index
+        reindex_kwargs: a dict contains extra parameters passed to reindex, e.g. {"timeout": "5m",
+                        "slices": 10}. see
+        https://www.elastic.co/guide/en/elasticsearch/reference/7.17/docs-reindex.html#docs-reindex-api-query-params
+                        for available parameters. Note that "wait_for_completion" parameter
+                        will always be set to False, so we will run reindex asynchronously
 
     Returns:
         None
@@ -51,6 +59,18 @@ def reindex(
     src_indexer_kwargs = src_indexer_kwargs or {}
     src_index_obj = ESIndexer(index=src_index, **src_indexer_kwargs)
     assert src_index_obj.exists_index(), f"src index '{src_index}' does not exists."
+    # clone settings, mappings from src index
+    logger.info("Clone src settings, and src_mapping, and update with supplied values")
+    src_settings = src_index_obj.get_settings(src_index_obj._index) or {}
+    src_mappings = src_index_obj.get_mapping() or {}
+    src_index_obj.number_of_shards = src_settings.get("number_of_shards", 1)
+    src_index_obj.number_of_replicas = src_settings.get("number_of_replicas", 0)
+
+    # update src settings, mappings with supplied values.
+    if settings:
+        src_settings.update(**settings)
+    if mappings:
+        src_mappings.update(**mappings)
 
     logger.info("Create target index obj")
     target_index = target_index or f"{src_index}_reindexed"
@@ -62,17 +82,6 @@ def reindex(
     target_index_obj = ESIndexer(index=target_index, **target_indexer_kwargs)
     assert not target_index_obj.exists_index(), f"target index '{target_index}' exists."
 
-    # clone settings, mappings from src index
-    logger.info("Clone src settings, and src_mapping, and update with supplied values")
-    src_settings = src_index_obj.get_settings(src_index_obj._index) or {}
-    src_mappings = src_index_obj.get_mapping() or {}
-
-    # update src settings, mappings with supplied values.
-    if settings:
-        src_settings.update(**settings)
-    if mappings:
-        src_mappings.update(**mappings)
-
     # create target index with src settings, mappings
     logger.info("Set target index's settings, mappings")
     target_index_obj.create_index(
@@ -83,22 +92,41 @@ def reindex(
     # Reindex from src index to target index
     logger.info("Reindex from src index to target index")
     is_remote = src_index_obj.es_host != target_index_obj.es_host
+    reindex_kwargs = reindex_kwargs or {}
+    # always run reindex asynchronously, otherwise reindex method below tends to be timeout eventually
+    reindex_kwargs["wait_for_completion"] = False
     result = target_index_obj.reindex(src_index_obj, is_remote=is_remote, **reindex_kwargs)
-
-    logger.info(f"Reindex result: {result}")
+    # result: {'task': '4ohWVeJGQVq5lZCNJgkPag:149689'}
+    task_id = result.get("task")
+    logger.info("Reindex job started with the task id of %s", task_id)
+    # check task status till it's completed
+    while 1:
+        task_obj = target_index_obj._es.tasks.get(task_id)
+        task_status = task_obj.get("task", {}).get("status", {})
+        logger.info(
+            "\t[Progress] completed: %s, batches: %s, created: %s",
+            task_obj.get("completed"), task_status.get("batches"), task_status.get("created")
+        )
+        if task_obj.get("completed", False) is True:
+            break
+        time.sleep(task_check_interval)
 
     # Refresh and flush target index
     logger.info("Flush and refresh target index")
     target_index_obj.flush_and_refresh()
 
     # Check doc counts to make sure src_index, new index are equals
-    logger.info(
-        "Assert number of docs in target index must be equal to number of docs in src index"
-    )
-    count_src_docs = src_index_obj.count()
+    if "max_docs" in reindex_kwargs:
+        # if max_docs is set, the target_index will only contain that number of docs
+        count_src_docs = reindex_kwargs["max_docs"]
+    else:
+        count_src_docs = src_index_obj.count()
     count_target_docs = target_index_obj.count()
-    if count_src_docs != count_target_docs:
-        raise Exception("Number of docs in target index not equal to number of docs in src index")
+    assert count_src_docs == count_target_docs, \
+           "Number of docs in target index not equal to number of docs in src index"
+    logger.info(
+        "Verified number of docs in target index is equal to number of docs in src index"
+    )
 
     # Set target index's alias
     if alias:
