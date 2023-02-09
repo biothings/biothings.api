@@ -89,7 +89,7 @@ async def main(host, port, db, table_space):
         print(f"http://{host}:{port}/{route.strip('/')}/")
         print(f"http://{host}:{port}/{route.strip('/')}?from=0&size=10")
         print(
-            f"http://{host}:{port}/{route.strip('/')}?q=field1_name:value1 AND field2_name:value2"
+            f"http://{host}:{port}/{route.strip('/')}?q='field1_name:value1 AND field2_name:value2'"
         )
         print(f"http://{host}:{port}/{route.strip('/')}/<doc_id>")
     app.listen(port, address=host)
