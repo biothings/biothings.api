@@ -277,7 +277,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate):
 
     def clean_big_nums(k, v):
         # TODO: same with float/double? seems mongo handles more there ?
-        if isinstance(v, int) and v > 2 ** 64:
+        if isinstance(v, int) and v > 2**64:
             return k, math.nan
         else:
             return k, v
@@ -313,19 +313,20 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate):
             f"* _max: Maximum value\n* _min: Minimum value\n* _none: number of records have no value"
         )
         for field in report:
-            messages = field.pop("messages", [])
-            if messages:
+            warnings = field.pop("warnings", [])
+            if warnings:
                 field[" "] = "\u26a0"
             else:
                 field[" "] = ""
-            for message in messages:
+            for warning in warnings:
                 field_name = field.get("field_name")
                 if field_name == "__root__":
                     continue
-                if message not in problem_summary:
-                    problem_summary[message] = [field_name]
+                warning_key = f"{warning['code']}: {warning['message']}"
+                if warning_key not in problem_summary:
+                    problem_summary[warning_key] = [field_name]
                 else:
-                    problem_summary[message].append(field_name)
+                    problem_summary[warning_key].append(field_name)
         df = pd.json_normalize(report)
         print(25 * "-" + " TYPE & STATS " + 25 * "-")
         print(df)
@@ -387,12 +388,11 @@ def do_clean_dumped_files(working_dir):
     if not os.listdir(data_folder):
         print("Empty folder!")
     else:
-        print(f"There are dumped files by {plugin_name}:\n")
+        print(f"There are all files dumped by {plugin_name}:\n")
         print("\n".join(os.listdir(data_folder)))
-        delete = typer.confirm("Are you sure you want to delete them?")
+        delete = typer.confirm("Do you want to delete them?")
         if not delete:
             raise typer.Abort()
-        print("Deleting...")
         remove_files_in_folder(data_folder)
         print("Deleted")
 
@@ -405,12 +405,11 @@ def do_clean_uploaded_sources(working_dir):
     if not uploaded_sources:
         print("Empty sources!")
     else:
-        print(f"There are uploaded sources by {plugin_name}:\n")
+        print(f"There are all sources uploaded by {plugin_name}:\n")
         print("\n".join(uploaded_sources))
-        delete = typer.confirm("Are you sure you want to delete them?")
+        delete = typer.confirm("Do you want to drop them?")
         if not delete:
             raise typer.Abort()
-        print("Deleting...")
         for source in uploaded_sources:
             src_db[source].drop()
-        print("Deleted")
+        print("All sources are dropped")

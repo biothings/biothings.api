@@ -27,14 +27,14 @@ def listing(
     plugin_name = working_dir.name
     data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
     if dump:
-        print(f"There are dumped files by {plugin_name}:\n")
+        print(f"There are all files dumped by {plugin_name}:\n")
         if not os.listdir(data_folder):
             print("Empty file!")
         print("\n".join(os.listdir(data_folder)))
     if upload:
         uploaders = utils.get_uploaders(working_dir)
         src_db = get_src_db()
-        print(f"There are uploaded sources by {plugin_name}:\n")
+        print(f"There are all sources uploaded by {plugin_name}:\n")
         uploaded_sources = [item for item in src_db.collection_names() if item in uploaders]
         if not uploaded_sources:
             print("Empty source!")
@@ -58,7 +58,7 @@ def clean_data(
         utils.do_clean_uploaded_sources(working_dir)
 
 
-@app.command("dump", help="Download source data to local")
+@app.command("dump", help="Download source data files to local")
 def dump_data(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging")  # NOQA: B008
 ):
@@ -187,9 +187,9 @@ def serve(
     http://host:port/<your source name>/start=10&limit=10\n
     - You can filter out this doc by:\n
     http://host:port/<your source name>/?key.a.b=1 (find all docs that have nested dict keys a.b)\n
-    http://host:port/<your source name>/?key.x.[].y=3 (find all docs that have mixed type dict-list)\n
-    http://host:port/<your source name>/?key.x.[].z=4\n
-    http://host:port/<your source name>/?key.x.[]=5\n
+    http://host:port/<your source name>/?key.x.y=3 (find all docs that have mixed type dict-list)\n
+    http://host:port/<your source name>/?key.x.z=4\n
+    http://host:port/<your source name>/?key.x=5\n
     - Or you can retrieve this doc by: http://host:port/<your source name>/123/\n
     """
     if verbose:

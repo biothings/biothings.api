@@ -215,13 +215,12 @@ class Collection(object):
         if args and len(args) == 1 and isinstance(args[0], dict) and len(args[0]) > 0:
             # it's key/value search, let's iterate
             for doc in self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall():
-                found = False
+                found = []
                 doc = json.loads(doc[0])
                 for k, v in args[0].items():
-                    found = find_value_in_doc(k, v, doc)
-                    if found:
-                        break
-                if found:
+                    _found = find_value_in_doc(k, v, doc)
+                    found.append(_found)
+                if all(found):
                     if "find_one" in kwargs:
                         return doc
                     else:
@@ -239,6 +238,37 @@ class Collection(object):
                 end = start + kwargs.get('limit', 0)
                 return results[start: end]
             return results
+        else:
+            raise NotImplementedError("find: args=%s kwargs=%s" % (repr(args), repr(kwargs)))
+
+    def find_with_count(self, *args, **kwargs):
+        results = []
+        if args and len(args) == 1 and isinstance(args[0], dict) and len(args[0]) > 0:
+            # it's key/value search, let's iterate
+            for doc in self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall():
+                found = []
+                doc = json.loads(doc[0])
+                for k, v in args[0].items():
+                    _found = find_value_in_doc(k, v, doc)
+                    found.append(_found)
+                if all(found):
+                    if "find_one" in kwargs:
+                        return doc
+                    else:
+                        results.append(doc)
+            if 'limit' in kwargs:
+                start = kwargs.get('start', 0)
+                end = start + kwargs.get('limit', 0)
+                return results[start: end], len(results)
+            return results, len(results)
+        elif not args or len(args) == 1 and len(args[0]) == 0:
+            # nothing or empty dict
+            results = [json.loads(doc[0]) for doc in self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall()]
+            if 'limit' in kwargs:
+                start = kwargs.get('start', 0)
+                end = start + kwargs.get('limit', 0)
+                return results[start: end], len(results)
+            return results, len(results)
         else:
             raise NotImplementedError("find: args=%s kwargs=%s" % (repr(args), repr(kwargs)))
 

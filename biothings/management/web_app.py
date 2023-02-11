@@ -49,24 +49,39 @@ class EntriesHandler(BaseHandler):
         limit = self.get_argument("size", 10, True)
         query_string = self.get_argument("q", "", True)
         query_params = {
-            key_value.split(":")[0].strip(): key_value.split(":")[1].strip()
+            key_value.split(":", 1)[0]
+            .strip()
+            .strip('"')
+            .strip("'"): key_value.split(":", 1)[1]
+            .strip()
+            .strip('"')
+            .strip("'")
             for key_value in query_string.split("AND")
-            if key_value
+            if key_value and len(key_value.split(":", 1)) == 2
         }
         if limit:
             limit = int(limit)
             start = int(start)
-            entries = src_cols.find(query_params, start=start, limit=limit)
+            entries, total_hit = src_cols.find_with_count(query_params, start=start, limit=limit)
         else:
-            entries = src_cols.find(query_params)
+            entries, total_hit = src_cols.find_with_count(query_params)
         if not entries:
             entries = []
 
-        self.write(to_json(entries))
+        self.write(
+            to_json(
+                {
+                    "from": start,
+                    "end": start + len(entries),
+                    "total_hit": total_hit,
+                    "entries": entries,
+                }
+            )
+        )
 
 
 class Application(tornado.web.Application):
-    def __init__(self, db, table_space):
+    def __init__(self, db, table_space, **settings):
         self.db = db
         self.table_space = table_space
         handlers = [
@@ -74,14 +89,12 @@ class Application(tornado.web.Application):
             (r"/([^/]+)/?", EntriesHandler),
             (r"/([^/]+)/([^/]+)/?", EntryHandler),
         ]
-        settings = dict(
-            debug=True,
-        )
+        settings.update({"debug": True})
         super().__init__(handlers, **settings)
 
 
 async def main(host, port, db, table_space):
-    app = Application(db, table_space)
+    app = Application(db, table_space, **{"static_path": "static"})
     print(f"Listening on http://{host}:{port}")
     print(f"There are all available routes:\nhttp://{host}:{port}/")
     list_routes, detail_routes = await get_available_routes(db, table_space)
