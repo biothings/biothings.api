@@ -817,6 +817,19 @@ def get_hub_reloader(*args, **kwargs):
         import tornado.autoreload  # noqa
 
         logging.info("Using Hub reloader based on tornado.autoreload")
+
+        def ensure_run_task(func):
+            def wrapper():
+                result = func()
+                if isinstance(result, asyncio.Future):
+                    asyncio.get_event_loop().run_until_complete(result)
+
+            return wrapper
+
+        if kwargs.get("reload_func"):
+            logging.info("Decorator reload_func to ensure it can be run")
+            kwargs["reload_func"] = ensure_run_task(kwargs["reload_func"])
+
         return TornadoAutoReloadHubReloader(*args, **kwargs)
     else:
         logging.info("USE_RELOADER not set (or False), won't monitor for changes")
