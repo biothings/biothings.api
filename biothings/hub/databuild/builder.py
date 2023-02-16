@@ -1282,6 +1282,8 @@ class BuilderManager(BaseManager):
                 }
             if status == "failed":
                 q["jobs.status"] = "failed"
+            if status == "canceled":
+                q["jobs.status"] = "canceled"
         return q
 
     def list_merge(self, build_config=None, only_archived=False):
