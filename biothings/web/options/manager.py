@@ -7,7 +7,7 @@ import orjson
 import logging
 import re
 from collections import UserDict, abc, defaultdict, namedtuple
-from functools import partial
+from datetime import datetime as dt
 from pprint import pformat
 from types import MappingProxyType
 
@@ -460,13 +460,16 @@ class Existentialist():
 
         return obj
 
+
 class Validator():
     """
         Describes the requirement of
         the existance of an argument.
         {
             "enum": <container>,
-            "max": <int>
+            "max": <int>,
+            "min": <int>,
+            "date_format": <str>,
         }
     """
 
@@ -477,9 +480,13 @@ class Validator():
         self.strict = defdict.get('strict', True)
         self.enum = defdict.get('enum', ())
         self.max = defdict.get('max')
+        self.min = defdict.get('min')
+        self.date_format = defdict.get('date_format')
 
         assert isinstance(self.enum, abc.Container)
         assert isinstance(self.max, (int, type(None)))
+        assert isinstance(self.min, (int, type(None)))
+        assert isinstance(self.date_format, (str, type(None)))
 
     def validate(self, obj):
 
@@ -495,6 +502,14 @@ class Validator():
             elif isinstance(obj, (int, float, complex)):
                 self._check_num_max(obj)
 
+        if self.min:
+            if isinstance(obj, (list, tuple, set)):
+                self._check_list_min(obj)
+            elif isinstance(obj, (int, float, complex)):
+                self._check_num_min(obj)
+
+        if self.date_format and isinstance(obj, str):
+            self._check_date_format(obj)
         return obj
 
     def _in_enum(self, value):
@@ -526,6 +541,30 @@ class Validator():
                 keyword=self.keyword,
                 max=self.max,
                 num=num)
+
+    def _check_list_min(self, container):
+        if len(container) > self.min:
+            raise OptionError(
+                keyword=self.keyword,
+                min=self.min,
+                size=len(container)
+            )
+
+    def _check_num_min(self, num):
+        if isinstance(num, bool):
+            return
+
+        if num < self.min:
+            raise OptionError(
+                keyword=self.keyword,
+                min=self.min,
+                num=num)
+
+    def _check_date_format(self, value):
+        try:
+            dt.strptime(value, self.date_format)
+        except Exception:
+            raise OptionError(keyword=self.keyword, date_format=self.date_format, num=value)
 
 # For Future Work
 # ------------------
