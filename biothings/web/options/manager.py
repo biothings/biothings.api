@@ -2,14 +2,14 @@
 Request Argument Standardization
 """
 
-import copy
-import orjson
 import logging
 import re
-from collections import UserDict, abc, defaultdict, namedtuple
+from collections import UserDict, abc, defaultdict
 from datetime import datetime as dt
 from pprint import pformat
 from types import MappingProxyType
+
+import orjson
 
 try:
     from re import Pattern  # py>=3.7
@@ -25,7 +25,6 @@ from biothings.utils.common import dotdict, split_ids
 
 
 class OptionError(ValueError):
-
     def __init__(self, reason=None, **kwargs):
         super().__init__()
         self.info = {"reason": reason}
@@ -37,11 +36,12 @@ class OptionError(ValueError):
     def __str__(self):
         return f"OptionError({pformat(self.info)})"
 
-class Converter():
+
+class Converter:
     """
-        A generic HTTP request argument processing unit.
-        Only perform one level of validation at this moment.
-        The strict switch controls the type conversion rules.
+    A generic HTTP request argument processing unit.
+    Only perform one level of validation at this moment.
+    The strict switch controls the type conversion rules.
     """
 
     def __init__(self, **kwargs):
@@ -66,14 +66,11 @@ class Converter():
 
         for pattern, repl in translations:
             if isinstance(pattern, Pattern):
-                self.translations.append(
-                    (pattern, repl))
+                self.translations.append((pattern, repl))
             elif isinstance(pattern, tuple):
-                self.translations.append(
-                    (re.compile(*pattern), repl))
+                self.translations.append((re.compile(*pattern), repl))
             elif isinstance(pattern, str):
-                self.translations.append(
-                    (re.compile(pattern), repl))
+                self.translations.append((re.compile(pattern), repl))
             else:  # https://docs.python.org/3/library/re.html#re.compile
                 raise TypeError("Invalid Regex Pattern.")
 
@@ -83,7 +80,7 @@ class Converter():
     @classmethod
     def subclasses(cls, kwargs):
         for kls in cls.__subclasses__():
-            name = kls.__name__[:-len("ArgCvter")]
+            name = kls.__name__[: -len("ArgCvter")]
             yield name.lower(), kls(**kwargs)
 
     def convert(self, value):
@@ -129,13 +126,13 @@ class Converter():
 
     @staticmethod
     def str_to_bool(val):
-        """ Interpret string representation of bool values. """
+        """Interpret string representation of bool values."""
         assert isinstance(val, str)
         try:  # if it is a number
             return float(val) > 0
         except ValueError:
             pass  # process as keywords
-        return val.lower() in ('1', 'true', 'yes', 'y', 't')
+        return val.lower() in ("1", "true", "yes", "y", "t")
 
     # Opinion on str -> list
     #
@@ -152,7 +149,7 @@ class Converter():
 
     @staticmethod
     def str_to_list(val):
-        """ Cast Biothings-style str to list. """
+        """Cast Biothings-style str to list."""
         try:  # core splitting algorithm
             lst = split_ids(str(val))
         except ValueError as err:
@@ -160,7 +157,7 @@ class Converter():
         return lst
 
     def str_to_int(self, val):
-        """ Convert a numerical string to an integer. """
+        """Convert a numerical string to an integer."""
         assert isinstance(val, str)
         if not self.strict:
             val = self.to_type(val, float)
@@ -178,40 +175,43 @@ class Converter():
             raise OptionError(f"Expect type {type_.__name__}.")
         return result
 
+
 class PathArgCvter(Converter):
     """
-        Dedicated argument converter for path arguments.
-        Correspond to arguments received in tornado for
-            RequestHandler.path_args
-            RequestHandler.path_kwargs
-        See https://www.tornadoweb.org/en/stable/web.html
+    Dedicated argument converter for path arguments.
+    Correspond to arguments received in tornado for
+        RequestHandler.path_args
+        RequestHandler.path_kwargs
+    See https://www.tornadoweb.org/en/stable/web.html
     """
+
 
 class QueryArgCvter(Converter):
     """
-        Dedicated argument converter for url query arguments.
-        Correspond to arguments received in tornado from
-            RequestHandler.get_query_argument
-        See https://www.tornadoweb.org/en/stable/web.html
+    Dedicated argument converter for url query arguments.
+    Correspond to arguments received in tornado from
+        RequestHandler.get_query_argument
+    See https://www.tornadoweb.org/en/stable/web.html
     """
 
     @classmethod
     def str_to_bool(cls, val):
-        """ Biothings-style str to bool interpretation """
+        """Biothings-style str to bool interpretation"""
         # empty string indicates the presence of its key
         # we consider this to be a positive boolean value
         # this is especially useful in url when the user
         # may specify endpoint?op1&op2&op3 in which case
         # it makes sense to consider their keys true.
-        return super().str_to_bool(val) or val.lower() == ''
+        return super().str_to_bool(val) or val.lower() == ""
+
 
 class FormArgCvter(Converter):
     """
-        Dedicated argument converter for HTTP body arguments.
-        Additionally support JSON seriealization format as values.
-        Correspond to arguments received in tornado from
-            RequestHandler.get_body_argument
-        See https://www.tornadoweb.org/en/stable/web.html
+    Dedicated argument converter for HTTP body arguments.
+    Additionally support JSON seriealization format as values.
+    Correspond to arguments received in tornado from
+        RequestHandler.get_body_argument
+    See https://www.tornadoweb.org/en/stable/web.html
     """
 
     def __init__(self, **kwargs):
@@ -247,21 +247,22 @@ class FormArgCvter(Converter):
             return super().convert_to(value, to_type)
         return self.to_type(value, to_type)
 
+
 class JsonArgCvter(Converter):
     """
-        Dedicated argument converter for JSON HTTP bodys.
-        Here it is used for dict JSON objects, with their
-        first level keys considered as parameters and
-        their values considered as arguments to process.
+    Dedicated argument converter for JSON HTTP bodys.
+    Here it is used for dict JSON objects, with their
+    first level keys considered as parameters and
+    their values considered as arguments to process.
 
-        May correspond to this tornado implementation:
-        https://www.tornadoweb.org/en/stable/web.html#input
+    May correspond to this tornado implementation:
+    https://www.tornadoweb.org/en/stable/web.html#input
     """
 
     def convert_to(self, value, to_type):
 
         if isinstance(value, to_type):
-            return value   # type matches
+            return value  # type matches
 
         if self.strict:
             # since JSON support value types
@@ -278,7 +279,7 @@ class JsonArgCvter(Converter):
     def to_type(self, val, type_):
 
         if issubclass(type_, (list, tuple, set)) and not self.strict:
-            val = (val, )  # "abc" -> ["abc"] instead of ["a", "b", "c"]
+            val = (val,)  # "abc" -> ["abc"] instead of ["a", "b", "c"]
 
         return super().to_type(val, type_)
 
@@ -293,15 +294,18 @@ class ReqResult(dotdict):
     def __str__(self):
         return f"ReqResult({pformat(self)})"
 
-class ReqArgs():
 
-    class Path():
-
-        def __init__(self, args=(), kwargs={}):
+class ReqArgs:
+    class Path:
+        def __init__(self, args=None, kwargs=None):
+            if args is None:
+                args = ()
+            if kwargs is None:
+                kwargs = {}
             assert isinstance(args, (tuple, list))
             assert isinstance(kwargs, dict)
-            self.args = args or ()
-            self.kwargs = kwargs or {}
+            self.args = args
+            self.kwargs = kwargs
 
         def __getitem__(self, key):
             try:
@@ -319,9 +323,7 @@ class ReqArgs():
             lines = []
             for src in ("args", "kwargs"):
                 if getattr(self, src):
-                    lines.append("{}={}".format(
-                        src, str(getattr(self, src))
-                    ))
+                    lines.append("{}={}".format(src, str(getattr(self, src))))
             return "Path(" + ", ".join(lines) + (")")
 
     def __init__(self, path=None, query=None, form=None, json_=None):
@@ -347,9 +349,9 @@ class ReqArgs():
             raise TypeError("Unknown Locator.")
 
         if order is None:
-            order = ('path', 'query', 'form', 'json')
+            order = ("path", "query", "form", "json")
         elif isinstance(order, str):
-            order = (order, )
+            order = (order,)
         elif not isinstance(order, abc.Iterable):
             raise TypeError("Unknown Order.")
 
@@ -370,27 +372,25 @@ class ReqArgs():
         lines = []
         for src in ("path", "query", "form", "json"):
             if getattr(self, src):
-                lines.append("{}={}".format(
-                    src, str(getattr(self, src))
-                ))
+                lines.append("{}={}".format(src, str(getattr(self, src))))
         return "ReqArgs(" + ",\n".join(lines) + (")")
 
 
-class Locator():
+class Locator:
     """
-        Describes the location of an argument in ReqArgs.
-        {
-            "keyword": <str>,
-            "path": <int or str>,
-            "alias": <str or [<str>, ...]>
-        }
+    Describes the location of an argument in ReqArgs.
+    {
+        "keyword": <str>,
+        "path": <int or str>,
+        "alias": <str or [<str>, ...]>
+    }
     """
 
     def __init__(self, defdict):
 
-        self.keyword = defdict.get('keyword')
-        self.path = defdict.get('path')
-        aliases = defdict.get('alias', [])
+        self.keyword = defdict.get("keyword")
+        self.path = defdict.get("path")
+        aliases = defdict.get("alias", [])
 
         assert isinstance(self.path, (str, int, type(None)))
         assert isinstance(self.keyword, (str, type(None)))
@@ -424,28 +424,33 @@ class Locator():
                 return dic[alias]
         return None
 
-class Existentialist():
+
+class Existentialist:
     """
-        Describes the requirement of
-        the existance of an argument.
-        {
-            "default": <object>,
-            "required": <bool>,
-        }
+    Describes the requirement of
+    the existance of an argument.
+    {
+        "default": <object>,
+        "required": <bool>,
+    }
     """
 
     def __init__(self, defdict):
 
         self._defdict = MappingProxyType(defdict)
-        self.keyword = defdict.get('keyword')
-        self.required = bool(defdict.get('required'))
-        self.default = defdict.get('default')
+        self.keyword = defdict.get("keyword")
+        self.required = bool(defdict.get("required"))
+        self.default = defdict.get("default")
 
         if self.default and self.required:
             logging.warning(
-                ("A default value is set for parameter '%s' "
-                 "while 'required' is set to True, making it"
-                 "ineffective."), self.keyword)
+                (
+                    "A default value is set for parameter '%s' "
+                    "while 'required' is set to True, making it"
+                    "ineffective."
+                ),
+                self.keyword,
+            )
 
     def inquire(self, obj):
 
@@ -454,34 +459,35 @@ class Existentialist():
                 raise OptionError(
                     missing=self.keyword,
                     keyword=None,  # empty this field
-                    alias=self._defdict.get('alias'))
+                    alias=self._defdict.get("alias"),
+                )
 
             obj = self.default
 
         return obj
 
 
-class Validator():
+class Validator:
     """
-        Describes the requirement of
-        the existance of an argument.
-        {
-            "enum": <container>,
-            "max": <int>,
-            "min": <int>,
-            "date_format": <str>,
-        }
+    Describes the requirement of
+    the existance of an argument.
+    {
+        "enum": <container>,
+        "max": <int>,
+        "min": <int>,
+        "date_format": <str>,
+    }
     """
 
     def __init__(self, defdict):
 
         self._defdict = MappingProxyType(defdict)
-        self.keyword = defdict.get('keyword')
-        self.strict = defdict.get('strict', True)
-        self.enum = defdict.get('enum', ())
-        self.max = defdict.get('max')
-        self.min = defdict.get('min')
-        self.date_format = defdict.get('date_format')
+        self.keyword = defdict.get("keyword")
+        self.strict = defdict.get("strict", True)
+        self.enum = defdict.get("enum", ())
+        self.max = defdict.get("max")
+        self.min = defdict.get("min")
+        self.date_format = defdict.get("date_format")
 
         assert isinstance(self.enum, abc.Container)
         assert isinstance(self.max, (int, type(None)))
@@ -492,9 +498,8 @@ class Validator():
 
         if self.enum and not self._in_enum(obj):
             raise OptionError(
-                keyword=self.keyword,
-                allowed=self.enum,
-                alias=self._defdict.get('alias'))
+                keyword=self.keyword, allowed=self.enum, alias=self._defdict.get("alias")
+            )
 
         if self.max:
             if isinstance(obj, (list, tuple, set)):
@@ -525,11 +530,7 @@ class Validator():
     def _check_list_max(self, container):
 
         if len(container) > self.max:
-            raise OptionError(
-                keyword=self.keyword,
-                max=self.max,
-                size=len(container)
-            )
+            raise OptionError(keyword=self.keyword, max=self.max, size=len(container))
 
     def _check_num_max(self, num):
 
@@ -537,34 +538,25 @@ class Validator():
             return
 
         if num > self.max:
-            raise OptionError(
-                keyword=self.keyword,
-                max=self.max,
-                num=num)
+            raise OptionError(keyword=self.keyword, max=self.max, num=num)
 
     def _check_list_min(self, container):
         if len(container) > self.min:
-            raise OptionError(
-                keyword=self.keyword,
-                min=self.min,
-                size=len(container)
-            )
+            raise OptionError(keyword=self.keyword, min=self.min, size=len(container))
 
     def _check_num_min(self, num):
         if isinstance(num, bool):
             return
 
         if num < self.min:
-            raise OptionError(
-                keyword=self.keyword,
-                min=self.min,
-                num=num)
+            raise OptionError(keyword=self.keyword, min=self.min, num=num)
 
     def _check_date_format(self, value):
         try:
             dt.strptime(value, self.date_format)
         except Exception:
             raise OptionError(keyword=self.keyword, date_format=self.date_format, num=value)
+
 
 # For Future Work
 # ------------------
@@ -594,18 +586,19 @@ class Validator():
 # For more about OpenAPI-compatible JSON Schema:
 # https://swagger.io/specification/#schema-object
 
+
 class Option(UserDict):
     """
-        A parameter for end applications to consume.
-        Find the value of it in the desired *location*.
+    A parameter for end applications to consume.
+    Find the value of it in the desired *location*.
 
-        For example:
-        {
-            "keyword": "q",
-            "location": ("query", "form", "json"),
-            "default": "__all__",
-            "type": "str"
-        }
+    For example:
+    {
+        "keyword": "q",
+        "location": ("query", "form", "json"),
+        "default": "__all__",
+        "type": "str"
+    }
     """
 
     def __init__(self, *args, **kwargs):
@@ -632,10 +625,7 @@ class Option(UserDict):
         # ---------------------------
 
         # find the user input
-        val, loc = reqargs.lookup(
-            locator=self._locater,
-            order=self.order,
-            src=True)
+        val, loc = reqargs.lookup(locator=self._locater, order=self.order, src=True)
 
         if val is None:
             val = self._exists.inquire(val)
@@ -648,17 +638,18 @@ class Option(UserDict):
 
         return val
 
+
 class OptionSet(UserDict):
     """
-        A collection of options that a specific endpoint consumes.
-        Divided into *groups* and by the *request methods*.
+    A collection of options that a specific endpoint consumes.
+    Divided into *groups* and by the *request methods*.
 
-        For example:
-        {
-            "*":{"raw":{...},"size":{...},"dotfield":{...}},
-            "GET":{"q":{...},"from":{...},"sort":{...}},
-            "POST":{"q":{...},"scopes":{...}}
-        }
+    For example:
+    {
+        "*":{"raw":{...},"size":{...},"dotfield":{...}},
+        "GET":{"q":{...},"from":{...},"sort":{...}},
+        "POST":{"q":{...},"scopes":{...}}
+    }
     """
 
     def __init__(self, *args, **kwargs):
@@ -691,7 +682,7 @@ class OptionSet(UserDict):
                         self.groups.add(option["group"])
 
         wildcards = self.optset.get("*", {})
-        for method, options in self.optset.items():
+        for _method, options in self.optset.items():
             for keyword, option in wildcards.items():
                 options.setdefault(keyword, option)
 
@@ -714,8 +705,8 @@ class OptionSet(UserDict):
                 raise err  # with helpful info
 
             if val is not None:
-                if 'group' in option:
-                    group = option['group']
+                if "group" in option:
+                    group = option["group"]
                     if isinstance(group, str):
                         result[group][keyword] = val
                     else:  # assume iterable
@@ -723,7 +714,7 @@ class OptionSet(UserDict):
                             result[_group][keyword] = val
                 else:  # top level keywords
                     result[keyword] = val
-            elif 'default' in option:  # explicit None
+            elif "default" in option:  # explicit None
                 result[keyword] = None
 
         # make sure all named groups exist
@@ -732,6 +723,7 @@ class OptionSet(UserDict):
                 result[group] = {}
 
         return ReqResult(result)
+
 
 class OptionsManager(UserDict):
     """
