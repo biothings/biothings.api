@@ -1280,10 +1280,8 @@ class BuilderManager(BaseManager):
                 q["jobs.status"] = {
                     "$not": {"$in": ["failed", "canceled"]}
                 }
-            if status == "failed":
-                q["jobs.status"] = "failed"
-            if status == "canceled":
-                q["jobs.status"] = "canceled"
+            elif status in ["failed", "canceled"]:
+                q["jobs.status"] = status
         return q
 
     def list_merge(self, build_config=None, only_archived=False):
