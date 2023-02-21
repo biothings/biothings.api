@@ -5,6 +5,7 @@ In general, do not include utils depending on any third-party modules.
 import asyncio
 import base64
 import concurrent.futures
+import fnmatch
 import glob
 import gzip
 import hashlib
@@ -256,16 +257,22 @@ def get_dotfield_value(dotfield, d):
 
 def find_value_in_doc(dotfield, value, doc):
     """
-    Explore mixed dictionary d using dotfield notation and return value.
+    Explore mixed dictionary using dotfield notation and return value.
+    Stringify before search
+    Support wildcard searching
+    The comparison is case-sensitive
     Example::
 
-        d = {"a":{"b": "1"},"x":[{"y": "3", "z": "4"}, "5"]}.
-        d = ["a", {"b": "1"}, {"x":[{"y": "3", "z": "4"}, "5"]}].
-        find_value_in_doc("a.b", "1", d) => True
-        find_value_in_doc("x.y", "3", d) => True
-        find_value_in_doc("x", "5", d) => True
-        find_value_in_doc("a.b", "c", d) => False
-        find_value_in_doc("a", "c", d) => False
+    X = {"a":{"b": "1"},"x":[{"y": "3", "z": "4"}, "5"]}
+    Y = ["a", {"b": "1"}, {"x":[{"y": "3", "z": "4"}, "5"]}]
+    Z = ["a", {"b": "1"}, {"x":[{"y": "34567", "z": "4"}, "5"]}]
+    assert find_value_in_doc("a.b", "1", X)
+    assert find_value_in_doc("x.y", "3", X)
+    assert find_value_in_doc("x.y", "3*7", Z)
+    assert find_value_in_doc("x.y", "34567", Z)
+    assert find_value_in_doc("x", "5", Y)
+    assert find_value_in_doc("a.b", "c", X) is False
+    assert find_value_in_doc("a", "c", X) is False
     """
 
     if dotfield == "":
@@ -289,7 +296,9 @@ def find_value_in_doc(dotfield, value, doc):
     else:
         if fields:
             return False
-        return str(value) == str(doc)
+        if doc is None and value is not None:
+            return False
+        return fnmatch.fnmatchcase(doc, value)
 
 def split_ids(q):
     '''
