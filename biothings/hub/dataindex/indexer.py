@@ -785,9 +785,14 @@ class IndexManager(BaseManager):
                     except elasticsearch.exceptions.ConnectionError:
                         ...  # keep the hard-coded place-holders info
                     else:  # replace the index key with remote info
-                        conf["env"][name]["index"] = [{
-                            "index": k, "aliases": list(v["aliases"].keys()),
-                        } for k, v in indices.items()]
+                        conf["env"][name]["index"] = [
+                            {
+                                "index": k,
+                                "aliases": list(v["aliases"].keys()),
+                                "doc_type": v["mappings"]["_meta"]["biothing_type"]
+                            }
+                            for k, v in indices.items()
+                        ]
             return conf
 
         if remote:
