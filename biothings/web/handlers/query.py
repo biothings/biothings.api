@@ -149,10 +149,10 @@ class MetadataSourceHandler(BaseQueryHandler):
                 if field.startswith('_'):
                     meta.pop(field, None)
 
-        meta = self.extras(meta)  # override here
+        meta = await self.extras(meta)  # override here
         self.finish(dict(sorted(meta.items())))
 
-    def extras(self, _meta):
+    async def extras(self, _meta):
         """
         Override to add app specific metadata.
         """
