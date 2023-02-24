@@ -152,6 +152,9 @@ DOCKER_CONFIG = {
         "tls_cert_path": None,
         "tls_key_path": None,
         "client_url": ""
+    },
+    "localhost": {
+        "client_url": "unix://var/run/docker.sock"
     }
 }
 

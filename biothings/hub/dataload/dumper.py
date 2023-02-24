@@ -2054,11 +2054,12 @@ class DockerContainerDumper(BaseDumper):
         remote_file = self.get_remote_file(remote_file_url)
 
         if self.DOCKER_RUN_CUSTOM_CMD:
-            exit_code, output = self.container.exec_run(["/usr/bin/sh", "-c",  self.DOCKER_RUN_CUSTOM_CMD])
+            exit_code, output = self.container.exec_run(["sh", "-c",  self.DOCKER_RUN_CUSTOM_CMD])
             self.logger.debug(output.decode())
             if exit_code != 0:
                 self.logger.error(f"Failed to download {remote_file}, non-zero exit code from custom cmd: {exit_code}")
                 self.logger.error(output)
+                raise DumperException(f"Can not run the custom command {self.DOCKER_RUN_CUSTOM_CMD}")
         try:
             bits, stat = self.container.get_archive(remote_file, encode_stream=True)
             if stat.get("size", 0) > 0:
