@@ -25,6 +25,9 @@ class Repository():
     def delete(self):
         self.client.snapshot.delete_repository(self.name)
 
+    def verify(self):
+        return self.client.snapshot.verify_repository(self.name)
+
     def __str__(self):
         return (
             f"<Repository {'READY' if self.exists() else 'MISSING'}"

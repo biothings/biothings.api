@@ -68,9 +68,10 @@ class CloudStorage():
 
 class Bucket():
 
-    def __init__(self, client, bucket):
+    def __init__(self, client, bucket, region=None):
         self.client = client  # boto3.S3.Client [X]
         self.bucket = bucket  # bucket name
+        self.region = region
 
     def exists(self):
         bucket = self.client.Bucket(self.bucket)
@@ -237,7 +238,7 @@ class SnapshotEnv():
 
     def pre_snapshot(self, cfg, index, snapshot):
 
-        bucket = Bucket(self.cloud, cfg.bucket)
+        bucket = Bucket(self.cloud, cfg.bucket, cfg["region"])
         repo = Repository(self.client, cfg.repo)
 
         self.logger.info(bucket)
