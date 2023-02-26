@@ -1838,9 +1838,11 @@ class DockerContainerDumper(BaseDumper):
     Triggers a docker container (typically runs on a different server) to run and generate the output file, and then stop the container.
     The dumper class will then get the processed file(s) and send it to the Uploader as normal files to the data source folder
     This dumper will do the following steps:
-     - Start a container if it stopped or create a new container if container_name param is not provided
+     - Start a container if it stopped or create a new container if container_name param is not provided.
+        - Note that: this dumper will override the ENTRYPOINT instruction if it exist in the Dockerfile and change to "tail -f /dev/null" command
+     - Run the exec_command inside this container. This command MUST block the dumper until the data file is completely prepare,
+       It will guarantees that the remote file is ready for downloading.
      - Run the get_version_cmd inside this container - if it provided
-     - Run the custom_cmd inside this container - if it provided
      - Download the remote file via Docker API, extract the downloaded .tar file
      - Remove the above container and volume after successfully downloading - if keep_container=true
 
@@ -1853,7 +1855,7 @@ class DockerContainerDumper(BaseDumper):
             - A TLS key pair is generated on the Hub server and placed inside the same data plugin folder or the data source folder
 
     The data_url should match the following format:
-        docker://CONNECTION_NAME?image=DOCKER_IMAGE&tag=TAG&path=/path/to/remote_file&custom_cmd="this is custom command"&container_name=CONTAINER_NAME&keep_container=true&get_version_cmd="cmd"
+        docker://CONNECTION_NAME?image=DOCKER_IMAGE&tag=TAG&path=/path/to/remote_file&exec_command="this is custom command"&container_name=CONTAINER_NAME&keep_container=true&get_version_cmd="cmd"
 
     All info about Docker client connection MUST BE defined in the `config.py` file, under the DOCKER_CONFIG key, Ex:
         DOCKER_CONFIG = {
@@ -1872,7 +1874,7 @@ class DockerContainerDumper(BaseDumper):
        - container_name: (Optional) If this param is provided, the `image` param will be discard when dumper run.
        - path: (Required) path to the remote file inside the Docker container
        - tag: (Optional) the image tag
-       - custom_cmd: (Optional) You don't need to fill this param if your docker entry point script already writes output to the "/path/to/remote_file" file.
+       - exec_command: (Required) You don't need to fill this param if your docker entry point script already writes output to the "/path/to/remote_file" file.
                     Or you can override the default docker entry point with this command with output to the /path/to/remote_file
        - keep_container: (Optional) accepted values: true/false, default: false. If keep_container=true, the remote container will be persisted, else if will be remove after successful dump
        - get_version_cmd: (Optional) The custom command for checking release version of local and remote file. Note that:
@@ -1880,19 +1882,19 @@ class DockerContainerDumper(BaseDumper):
          - "{}" must exist in the command, it will be replace by the data file path when dumper runs,
             ex: get_version_cmd="md5sum {} | awk '{ print $1 }'" will be run as: md5sum /path/to/remote_file | awk '{ print $1 }' and /path/to/local_file
     Ex:
-      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://CONNECTION_NAME?container_name=CONTAINER_NAME&path=/path/to/remote_file(inside the container)&custom_cmd="run something with output is written to -O /path/to/remote_file (inside the container)&keep_container=true&get_version_cmd="md5sum {} | awk '{ print $1 }'"
+      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)"
+      - docker://CONNECTION_NAME?container_name=CONTAINER_NAME&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)&keep_container=true&get_version_cmd="md5sum {} | awk '{ print $1 }'"
     """
 
     DOCKER_CLIENT_URL = None
     DOCKER_IMAGE = None
     CONTAINER_NAME = None
-    DOCKER_RUN_CUSTOM_CMD = None
+    EXEC_COMMAND = None
     MAX_PARALLEL_DUMP = 1
     TIMEOUT = 300
 
@@ -1918,13 +1920,15 @@ class DockerContainerDumper(BaseDumper):
             self.DOCKER_CLIENT_URL = docker_connection.get("client_url")
             self.DOCKER_IMAGE = self.source_config["docker_image"]
             self.CONTAINER_NAME = self.source_config["container_name"]
-            self.DOCKER_RUN_CUSTOM_CMD = self.source_config["custom_cmd"]
+            self.EXEC_COMMAND = self.source_config["exec_command"]
             self.keep_container = self.source_config["keep_container"]
             parsed = urlparse.urlparse(docker_connection.get("client_url"))
             scheme = parsed.scheme
             self.logger.info(f"Prepare the connection to Docker server {self.DOCKER_CLIENT_URL}")
             use_ssh_client = False
             tls_config = None
+            if not self.EXEC_COMMAND:
+                raise DumperException(f"Missing the require parameter (EXEC_COMMAND/exec_command)")
             if scheme not in ["tcp", "unix", "http", "https", "ssh"]:
                 raise DumperException(f"Connection scheme {scheme} is not supported")
             if scheme == "ssh":
@@ -1983,7 +1987,7 @@ class DockerContainerDumper(BaseDumper):
             if container.status != "running":
                 return True  # we can't execute the cmd in a stop container
             current_version = os.popen(custom_get_version_cmd.replace("{}", local_file, 1)).read().strip()
-            exit_code, remote_version = container.exec_run(["/usr/bin/sh", "-c",  custom_get_version_cmd.replace("{}", remote_file, 1)])
+            exit_code, remote_version = container.exec_run(["sh", "-c",  custom_get_version_cmd.replace("{}", remote_file, 1)])
             if exit_code != 0:
                 return True  # failed when run cmd check on the remote
             remote_version = remote_version.decode().strip()
@@ -2022,9 +2026,9 @@ class DockerContainerDumper(BaseDumper):
     def prepare_remote_container(self):
         if not self.container:
             if self.DOCKER_IMAGE is not None:
-                self.logger.info(f"Start a docker container with with a never end command: tail -f /dev/null")
+                self.logger.info(f"Start a docker container with the ENTRYPOINT: tail -f /dev/null")
                 self.container = self.client.containers.run(
-                    self.DOCKER_IMAGE, command="tail -f /dev/null",  # create a new container with a never end command
+                    self.DOCKER_IMAGE, entrypoint="tail -f /dev/null",  # create a new container with a never end entrypoint
                     detach=True, auto_remove=False,
                     # Don't auto remove this container, we need a stopped container when download file
                 )
@@ -2053,13 +2057,15 @@ class DockerContainerDumper(BaseDumper):
         self.prepare_local_folders(local_file)
         remote_file = self.get_remote_file(remote_file_url)
 
-        if self.DOCKER_RUN_CUSTOM_CMD:
-            exit_code, output = self.container.exec_run(["sh", "-c",  self.DOCKER_RUN_CUSTOM_CMD])
+        if self.EXEC_COMMAND:
+            exit_code, output = self.container.exec_run(["sh", "-c",  self.EXEC_COMMAND])
             self.logger.debug(output.decode())
             if exit_code != 0:
                 self.logger.error(f"Failed to download {remote_file}, non-zero exit code from custom cmd: {exit_code}")
                 self.logger.error(output)
-                raise DumperException(f"Can not run the custom command {self.DOCKER_RUN_CUSTOM_CMD}")
+                raise DumperException(f"Can not run the custom command {self.EXEC_COMMAND}")
+        else:
+            raise DockerContainerException("The exec_command parameter is must be defined")
         try:
             bits, stat = self.container.get_archive(remote_file, encode_stream=True)
             if stat.get("size", 0) > 0:

@@ -77,13 +77,13 @@ def json_array_parser(
 def docker_source_info_parser(url):
     """
     :param url: file url include docker connection string
-        format: docker://CONNECTION_NAME?image=DOCKER_IMAGE&tag=TAG&custom_cmd="python run.py"&path=/path/to/file
+        format: docker://CONNECTION_NAME?image=DOCKER_IMAGE&tag=TAG&exec_command="python run.py"&path=/path/to/file
         the CONNECTION_NAME must be defined in the biothings Hub config.
         example:
-        docker://CONNECTION_NAME?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
-        docker://CONNECTION_NAME?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
-        docker://CONNECTION_NAME?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
-        docker"//CONNECTION_NAME?image=docker_image&tag=docker_tag&custom_cmd="python run.py"&path=/path/to/file
+        docker://CONNECTION_NAME?image=docker_image&tag=docker_tag&exec_command="python run.py"&path=/path/to/file
+        docker://CONNECTION_NAME?image=docker_image&tag=docker_tag&exec_command="python run.py"&path=/path/to/file
+        docker://CONNECTION_NAME?image=docker_image&tag=docker_tag&exec_command="python run.py"&path=/path/to/file
+        docker"//CONNECTION_NAME?image=docker_image&tag=docker_tag&exec_command="python run.py"&path=/path/to/file
     :return:
 
     """
@@ -91,7 +91,7 @@ def docker_source_info_parser(url):
     query = dict(parse_qsl(parsed.query))
     image = query.get("image")
     image_tag = query.get("tag")
-    custom_cmd = query.get("custom_cmd")
+    exec_command = query.get("exec_command")
     keep_container = query.get("keep_container")
     container_name = query.get("container_name")
     get_version_cmd = query.get("get_version_cmd")
@@ -99,8 +99,8 @@ def docker_source_info_parser(url):
         keep_container = True
     else:
         keep_container = False
-    if custom_cmd:
-        custom_cmd = custom_cmd.strip('"')
+    if exec_command:
+        exec_command = exec_command.strip('"')
     if get_version_cmd:
         get_version_cmd = get_version_cmd.strip('"')
     if not image_tag:
@@ -110,7 +110,7 @@ def docker_source_info_parser(url):
     return {
         "docker_image": docker_image,
         "file_path": file_path,
-        "custom_cmd": custom_cmd,
+        "exec_command": exec_command,
         "connection_name": parsed.netloc,
         "container_name": container_name,
         "keep_container": keep_container,
