@@ -31,6 +31,7 @@ biothings.web.handlers.ESRequestHandler
 
 import logging
 from collections import Counter
+from inspect import iscoroutinefunction
 from types import CoroutineType
 
 from biothings.utils import serializer
@@ -149,7 +150,11 @@ class MetadataSourceHandler(BaseQueryHandler):
                 if field.startswith('_'):
                     meta.pop(field, None)
 
-        meta = await self.extras(meta)  # override here
+        if (iscoroutinefunction(self.extras)):
+            meta = await self.extras(meta)
+        else:
+            meta = self.extras(meta)
+
         self.finish(dict(sorted(meta.items())))
 
     async def extras(self, _meta):
