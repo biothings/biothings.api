@@ -95,7 +95,7 @@ def docker_source_info_parser(url):
     keep_container = query.get("keep_container")
     container_name = query.get("container_name")
     get_version_cmd = query.get("get_version_cmd")
-    if keep_container == "true":
+    if keep_container and keep_container.lower() in ["true", "yes", "1", "y"]:
         keep_container = True
     else:
         keep_container = False
@@ -114,5 +114,5 @@ def docker_source_info_parser(url):
         "connection_name": parsed.netloc,
         "container_name": container_name,
         "keep_container": keep_container,
-        "get_version_cmd": get_version_cmd
+        "get_version_cmd": get_version_cmd,
     }

@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Tup
 import docker
 
 import orjson
+from docker.errors import APIError
 
 from biothings import config as btconfig
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, renderer as job_renderer
@@ -1840,11 +1841,15 @@ class DockerContainerDumper(BaseDumper):
     This dumper will do the following steps:
      - Start a container if it stopped or create a new container if container_name param is not provided.
         - Note that: this dumper will override the ENTRYPOINT instruction if it exist in the Dockerfile and change to "tail -f /dev/null" command
+        - When the container_name and image is provided together, the dumper will try to run the container_name.
+          If this container name does not exist, the dumper will start a new container with the provided image name.
      - Run the exec_command inside this container. This command MUST block the dumper until the data file is completely prepare,
        It will guarantees that the remote file is ready for downloading.
      - Run the get_version_cmd inside this container - if it provided
      - Download the remote file via Docker API, extract the downloaded .tar file
-     - Remove the above container and volume after successfully downloading - if keep_container=true
+     - if keep_container=false: Remove the above container after successfully downloading
+       Else: leave the container running
+
 
     These are supported connection types from the Hub server to the remote Docker host server:
       - ssh: Prerequisite: the SSH Key-Based Authentication is configured
@@ -1883,12 +1888,11 @@ class DockerContainerDumper(BaseDumper):
             ex: get_version_cmd="md5sum {} | awk '{ print $1 }'" will be run as: md5sum /path/to/remote_file | awk '{ print $1 }' and /path/to/local_file
     Ex:
       - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)"
-      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)"
       - docker://CONNECTION_NAME?container_name=CONTAINER_NAME&path=/path/to/remote_file(inside the container)&exec_command="run something with output is written to -O /path/to/remote_file (inside the container)&keep_container=true&get_version_cmd="md5sum {} | awk '{ print $1 }'"
+      - docker://localhost?image=dockstore_dumper&path=/data/dockstore_crawled/data.ndjson&exec_command="/home/biothings/run-dockstore.sh"&keep_container=1
+      - docker://localhost?image=dockstore_dumper&tag=latest&path=/data/dockstore_crawled/data.ndjson&exec_command="/home/biothings/run-dockstore.sh"&keep_container=True
+      - docker://localhost?image=praqma/network-multitool&tag=latest&path=/tmp/annotations.zip&exec_command="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"&keep_container=false&get_version_cmd="md5sum {} | awk '{ print $1 }'"
+      - docker://localhost?container_name=<YOUR CONTAINER NAME>&path=/tmp/annotations.zip&exec_command="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"&keep_container=true&get_version_cmd="md5sum {} | awk '{ print $1 }'"
     """
 
     DOCKER_CLIENT_URL = None
@@ -1901,7 +1905,6 @@ class DockerContainerDumper(BaseDumper):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.container = None
-        self.volume = None
         self.keep_container = False
         self._source_info = {}
 
@@ -1929,6 +1932,8 @@ class DockerContainerDumper(BaseDumper):
             tls_config = None
             if not self.EXEC_COMMAND:
                 raise DumperException(f"Missing the require parameter (EXEC_COMMAND/exec_command)")
+            if not self.DOCKER_IMAGE and not self.CONTAINER_NAME:
+                raise DumperException(f"Either DOCKER_IMAGE or CONTAINER_NAME must be defined in the data plugin")
             if scheme not in ["tcp", "unix", "http", "https", "ssh"]:
                 raise DumperException(f"Connection scheme {scheme} is not supported")
             if scheme == "ssh":
@@ -1961,8 +1966,6 @@ class DockerContainerDumper(BaseDumper):
                 self.container.stop()
                 self.container.wait(timeout=self.TIMEOUT)
                 self.container.remove()
-        if self.volume:
-            self.volume.remove(force=True)
         if self.client:
             self.client.close()
             self.client = None
@@ -2025,28 +2028,31 @@ class DockerContainerDumper(BaseDumper):
 
     def prepare_remote_container(self):
         if not self.container:
-            if self.DOCKER_IMAGE is not None:
-                self.logger.info(f"Start a docker container with the ENTRYPOINT: tail -f /dev/null")
-                self.container = self.client.containers.run(
-                    self.DOCKER_IMAGE, entrypoint="tail -f /dev/null",  # create a new container with a never end entrypoint
-                    detach=True, auto_remove=False,
-                    # Don't auto remove this container, we need a stopped container when download file
-                )
-                self.logger.info("Waiting for container run...")
+            try:
+                self.container = self.client.containers.get(self.CONTAINER_NAME)
+            except APIError as err:
+                self.logger.exception(err)
+                raise DockerContainerException("Docker APIError")
+            except Exception:
+                if self.DOCKER_IMAGE:
+                    if self.CONTAINER_NAME:
+                        self.logger.info(f"Can not find container name {self.CONTAINER_NAME}, try to start a new one.")
+                    self.logger.info(f"Start a docker container with the ENTRYPOINT: tail -f /dev/null")
+                    self.container = self.client.containers.run(
+                        self.DOCKER_IMAGE, entrypoint="tail -f /dev/null", # create a new container with a never end entrypoint
+                        detach=True, auto_remove=False
+                    )
+
+            if self.container.status != "running":
+                self.logger.info("Waiting for the container ...")
+                self.container.start()
                 count = 0
-                while self.container.status == "created" and count < self.TIMEOUT:
+                while self.container.status not in ["running", "exited"] and count < self.TIMEOUT:
+                    count += 1
                     self.container.reload()  # Load this object from the server again and update attrs with the new data
                     time.sleep(1)
             else:
-                self.logger.info(f"Run the container {self.CONTAINER_NAME}")
-                self.container = self.client.containers.get(self.CONTAINER_NAME)
-                if self.container.status != "running":
-                    self.logger.info("Waiting for container run...")
-                    self.container.start()
-                    count = 0
-                    while self.container.status == "created" and count < self.TIMEOUT:
-                        self.container.reload()  # Load this object from the server again and update attrs with the new data
-                        time.sleep(1)
+                self.logger.info(f"The container {self.CONTAINER_NAME} is running now!")
             self.container.reload()
             if self.container.status == "exited":
                 raise DockerContainerException("Container is exited")
@@ -2058,12 +2064,13 @@ class DockerContainerDumper(BaseDumper):
         remote_file = self.get_remote_file(remote_file_url)
 
         if self.EXEC_COMMAND:
+            self.logger.info(f"Exec the command: sh -c {self.EXEC_COMMAND}")
             exit_code, output = self.container.exec_run(["sh", "-c",  self.EXEC_COMMAND])
             self.logger.debug(output.decode())
             if exit_code != 0:
                 self.logger.error(f"Failed to download {remote_file}, non-zero exit code from custom cmd: {exit_code}")
                 self.logger.error(output)
-                raise DumperException(f"Can not run the custom command {self.EXEC_COMMAND}")
+                raise DumperException(f"Can not execute the command: {self.EXEC_COMMAND}")
         else:
             raise DockerContainerException("The exec_command parameter is must be defined")
         try:
