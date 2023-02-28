@@ -157,7 +157,7 @@ class MetadataSourceHandler(BaseQueryHandler):
 
         self.finish(dict(sorted(meta.items())))
 
-    async def extras(self, _meta):
+    def extras(self, _meta):
         """
         Override to add app specific metadata.
         """
