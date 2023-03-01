@@ -1116,6 +1116,7 @@ class HubServer(object):
         if self.managers.get("dump_manager"):
             self.commands["dump"] = self.managers["dump_manager"].dump_src
             self.commands["dump_all"] = self.managers["dump_manager"].dump_all
+            self.commands["mark_dump_success"] = self.managers["dump_manager"].mark_success
         # upload commands
         if self.managers.get("upload_manager"):
             self.commands["upload"] = self.managers["upload_manager"].upload_src
@@ -1511,6 +1512,9 @@ class HubServer(object):
         if "dump" in cmdnames:
             self.api_endpoints["source"].append(
                 EndpointDefinition(name="dump", method="put", suffix="dump")
+            )
+            self.api_endpoints["source"].append(
+                EndpointDefinition(name="mark_dump_success", method="put", suffix="mark_dump_success")
             )
         if "upload" in cmdnames:
             self.api_endpoints["source"].append(

@@ -423,6 +423,14 @@ class BaseDumper(object):
             if self.client:
                 self.release_client()
 
+    def mark_success(self):
+        '''
+        Mark the datasource as successful dumped.
+        It's useful in case the datasource is unstable, and need to be manually downloaded.
+        '''
+        self.register_status("success")
+        self.logger.info("Done!")
+
     def get_predicates(self):
         """
         Return a list of predicates (functions returning true/false, as in math logic)
@@ -1443,6 +1451,18 @@ class DumperManager(BaseSourceManager):
         except Exception as e:
             logging.error("Error while dumping '%s': %s" % (src, e))
             raise
+
+    def mark_success(self, src):
+        if src in self.register:
+            klasses = self.register[src]
+        else:
+            raise DumperException(
+                "Can't find '%s' in registered sources (whether as main or sub-source)" % src
+            )
+        for _, klass in enumerate(klasses):
+            inst = self.create_instance(klass)
+            inst.mark_success()
+
 
     def call(self, src, method_name, *args, **kwargs):
         """
