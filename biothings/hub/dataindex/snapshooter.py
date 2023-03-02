@@ -246,7 +246,7 @@ class SnapshotEnv():
         return future
 
     def pre_snapshot(self, cfg, index, snapshot, **kwargs):
-        bucket = Bucket(self.cloud, cfg.bucket, cfg["region"])
+        bucket = Bucket(self.cloud, cfg.bucket, region=cfg["region"])
         repo = Repository(self.client, cfg.repo)
 
         self.logger.info(bucket)
@@ -264,9 +264,11 @@ class SnapshotEnv():
             self.logger.info(repo)
 
         try:
-            repo.verify()
-        except TransportError as ex:
-            raise RepoVerificationFailed({"error": ex.error, "detail": ex.info['error']})
+            repo.verify(config=cfg)
+        except Exception as ex:
+            if isinstance(ex, TransportError):
+                raise RepoVerificationFailed({"error": ex.error, "detail": ex.info['error']})
+            raise RepoVerificationFailed({"error": "repository_verification_exception", "detail": ex.args})
 
         return {
             "__REPLACE__": True,

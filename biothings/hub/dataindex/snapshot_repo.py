@@ -25,8 +25,30 @@ class Repository():
     def delete(self):
         self.client.snapshot.delete_repository(self.name)
 
-    def verify(self):
-        return self.client.snapshot.verify_repository(self.name)
+    def verify(self, config):
+        """A repository is consider properly setup and working, when:
+        - passes verification of ElasticSearch
+        - it's settings must match with the snapshot's config.
+        """
+
+        # Check if the repo pass ElasticSearch's verification
+        self.client.snapshot.verify_repository(self.name)
+
+        # Check if the repo's settings match with the snapshot's config
+        repo_settings = self.client.snapshot.get_repository(self.name)[self.name]
+        incorrect_data = {}
+        
+        config["settings"]["bucket"] = "Test"
+        config["type"] = "test tpe"
+
+        for field in ["type", "settings"]:
+            if config[field] != repo_settings[field]:
+                incorrect_data[field] = {"config": config[field], "repo": repo_settings[field]}
+        if incorrect_data:
+            raise Exception({
+                "message": "the repository's settings is not match with snapshot config.",
+                "detail": incorrect_data,
+            })
 
     def __str__(self):
         return (
