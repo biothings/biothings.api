@@ -9,12 +9,13 @@ from functools import partial
 
 import boto3
 from biothings import config as btconfig
-from biothings.hub import SNAPSHOOTER_CATEGORY, SNAPSHOTMANAGER_CATEGORY
+from biothings.hub import SNAPSHOOTER_CATEGORY
 from biothings.hub.databuild.buildconfig import AutoBuildConfig
 from biothings.hub.datarelease import set_pending_to_release_note
 from biothings.utils.common import merge
 from biothings.utils.hub import template_out
 from biothings.utils.hub_db import get_src_build
+from biothings.utils.exceptions import RepositoryVerificationFailed
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
 from elasticsearch import Elasticsearch
@@ -26,12 +27,6 @@ from . import snapshot_cleanup as cleaner
 from . import snapshot_registrar as registrar
 from .snapshot_repo import Repository
 from .snapshot_task import Snapshot
-
-
-class RepoVerificationFailed(Exception):
-    def __str__(self):
-        return json.dumps(self.args)
-
 
 class ProcessInfo():
     """
@@ -224,7 +219,7 @@ class SnapshotEnv():
                 try:
                     dx = await job
                     dx = StepResult(dx)
-                except RepoVerificationFailed as ex:
+                except RepositoryVerificationFailed as ex:
                     self.logger.exception(ex)
                     state.failed(snapshot, detail=ex.args)
                     raise ex
@@ -265,10 +260,8 @@ class SnapshotEnv():
 
         try:
             repo.verify(config=cfg)
-        except Exception as ex:
-            if isinstance(ex, TransportError):
-                raise RepoVerificationFailed({"error": ex.error, "detail": ex.info['error']})
-            raise RepoVerificationFailed({"error": "repository_verification_exception", "detail": ex.args})
+        except TransportError as tex:
+            raise RepositoryVerificationFailed({"error": tex.error, "detail": tex.info['error']})
 
         return {
             "__REPLACE__": True,

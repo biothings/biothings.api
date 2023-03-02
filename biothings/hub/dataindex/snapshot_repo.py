@@ -1,6 +1,8 @@
 
 import elasticsearch
 
+from biothings.utils.exceptions import RepositoryVerificationFailed
+
 
 class Repository():
 
@@ -37,17 +39,18 @@ class Repository():
         # Check if the repo's settings match with the snapshot's config
         repo_settings = self.client.snapshot.get_repository(self.name)[self.name]
         incorrect_data = {}
-        
-        config["settings"]["bucket"] = "Test"
-        config["type"] = "test tpe"
 
         for field in ["type", "settings"]:
             if config[field] != repo_settings[field]:
                 incorrect_data[field] = {"config": config[field], "repo": repo_settings[field]}
+
         if incorrect_data:
-            raise Exception({
-                "message": "the repository's settings is not match with snapshot config.",
-                "detail": incorrect_data,
+            raise RepositoryVerificationFailed({
+                "error": "repository_verification_exception",
+                "detail": {
+                    "message": "the repository's settings is not match with snapshot config.",
+                    "diff": incorrect_data,
+                },
             })
 
     def __str__(self):
