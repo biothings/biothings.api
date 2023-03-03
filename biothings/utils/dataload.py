@@ -10,7 +10,7 @@ import os
 import os.path
 import json
 from collections.abc import Mapping
-from collections import OrderedDict
+from collections import OrderedDict, Counter
 from functools import total_ordering
 
 from .common import open_anyfile, is_str, safewfile, anyfile
@@ -385,12 +385,7 @@ def listsort(a_list, by, reverse=False, cmp=None, key=None):
 
 def list_itemcnt(a_list):
     """Return number of occurrence for each item in the list."""
-    item_count = {}
-    for item in a_list:
-        if item not in item_count:
-            item_count[item] = a_list.count(item)
-
-    return list(item_count.items())
+    return list(Counter(a_list).items())
 
 
 def alwayslist(value):
