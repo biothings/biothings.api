@@ -11,11 +11,14 @@ from ftplib import FTP
 from functools import partial
 from urllib import parse as urlparse
 
-import pandas as pd
 import requests
 import typer
 import yaml
 from orjson import orjson
+from rich import box, print as rprint
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
 import biothings.utils.inspect as btinspect
 from biothings.utils import es, storage
@@ -216,10 +219,6 @@ def process_uploader(working_dir, data_folder, main_source, upload_section, logg
         collection_name=uploader_fullname,
         logger=logger,
     )
-    logger.info(
-        f' Upload finished successfully at:\n{" " * 5}DB path: {src_db.dbfile}"\n{" " * 5}'
-        f'Database: {src_db.name}"\n{" " * 5}Collection (table): {uploader_fullname}"'
-    )
 
 
 def process_inspect(source_name, mode, limit, merge, logger, do_validate):
@@ -290,14 +289,20 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate):
             for _mode in ["type", "stats"]
         }
     }
-    if "mapping" in mode:
-        df = pd.DataFrame.from_dict(mapping)
-        print(25 * "-" + " MAPPING " + 25 * "-")
-        print(df.T)
-        print(60 * "-")
-        print("\n")
+    mapping_table = None
+    if "mapping" in mode and mapping:
+        mapping_table = Table(
+            title="[bold green]MAPPING[/bold green]",
+            box=box.SQUARE_DOUBLE_HEAD,
+            expand=False,
+            show_lines=True,
+        )
+        mapping_table.add_column("Field name", justify="left", style="cyan")
+        mapping_table.add_column("Info", justify="left", style="green")
+        for key, value in mapping.items():
+            mapping_table.add_row(str(key), json.dumps(value))
     report = []
-    problem_summary = {}
+    problem_summary = []
     if "stats" in mode:
         report = type_and_stats[source_name]["stats"]
     elif "type" in mode:
@@ -305,37 +310,67 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate):
             item.pop("stats", None)
             report.append(item)
     if report:
-        print(
-            f"This is the field type and stats for datasource: {source_name}\n"
-            f"It provides a summary of the data structure, including: a map of all types involved in the data;"
+        panel = Panel(
+            f"This is the field type and stats for datasource: [bold green]{source_name}[/bold green]\n"
+            f"It provides a summary of the data structure, including: a map of all types involved in the data;\n"
             f"basic statistics, showing how volumetry fits over data structure.\n"
-            f"The basic statistics include these fields:\n* _count: Total records\n"
-            f"* _max: Maximum value\n* _min: Minimum value\n* _none: number of records have no value"
+            f"The basic statistics include these fields:\n"
+            f"* [italic]_count[/italic]: Total records\n"
+            f"* [italic]_max[/italic]: Maximum value\n"
+            f"* [italic]_min[/italic]: Minimum value\n"
+            f"* [italic]_none[/italic]: number of records have no value",
+            title=f"[bold green]{source_name}[/bold green]",
+            box=box.HORIZONTALS,
         )
         for field in report:
             warnings = field.pop("warnings", [])
-            if warnings:
-                field[" "] = "\u26a0"
-            else:
-                field[" "] = ""
+            field["warning"] = ""
             for warning in warnings:
                 field_name = field.get("field_name")
                 if field_name == "__root__":
                     continue
-                warning_key = f"{warning['code']}: {warning['message']}"
-                if warning_key not in problem_summary:
-                    problem_summary[warning_key] = [field_name]
-                else:
-                    problem_summary[warning_key].append(field_name)
-        df = pd.json_normalize(report)
-        print(25 * "-" + " TYPE & STATS " + 25 * "-")
-        print(df)
-        print(64 * "-")
+                warning_mgs = f"* [red]{warning['code']}[/red]: {warning['message']}"
+                problem_summary.append(warning_mgs)
+            if warnings:
+                field["warning"] = ",".join(item["code"] for item in warnings)
+
+        table = Table(
+            title="[bold green]TYPE & STATS[/bold green]",
+            box=box.SQUARE_DOUBLE_HEAD,
+            show_lines=True,
+        )
+        table.add_column("Field name", justify="left", style="cyan")
+        table.add_column("Field type", justify="center", style="magenta")
+        table.add_column("Stats._count", justify="right", style="green")
+        table.add_column("Stats._max", justify="right", style="green")
+        table.add_column("Stats._min", justify="right", style="green")
+        table.add_column("Stats._none", justify="right", style="green")
+        table.add_column("Warning", justify="right", style="red")
+        for item in report:
+            if item["field_name"] == "__root__":
+                continue
+            field_name = f'[bold]{item["field_name"]}[/bold]'
+            if item["warning"] != "":
+                field_name += "[red] \u26a0[/red]" * len(item["warning"].split(","))
+            table.add_row(
+                field_name,
+                str(item["field_type"]),
+                str(item["stats"]["_count"]),
+                str(item["stats"]["_max"]),
+                str(item["stats"]["_min"]),
+                str(item["stats"]["_none"]),
+                item["warning"],
+            )
+        problem_panel = None
         if problem_summary:
-            print("Warnings:")
-            for key, value in problem_summary.items():
-                print(f"* {key}")
-                print(*value, sep=", ")
+            problem_panel = Panel("[yellow]Warnings:[/yellow]\n" + "\n".join(problem_summary))
+        console = Console()
+        console.print(panel)
+        if mapping_table:
+            console.print(mapping_table)
+        console.print(table)
+        if problem_panel:
+            console.print(problem_panel)
 
 
 def get_manifest_content(working_dir):
@@ -379,7 +414,7 @@ def remove_files_in_folder(folder_path):
             elif os.path.isdir(file_path):
                 shutil.rmtree(file_path)
         except Exception as e:
-            print("Failed to delete %s. Reason: %s" % (file_path, e))
+            rprint("[red]Failed to delete %s. Reason: %s [/red]" % (file_path, e))
 
 
 def do_clean_dumped_files(working_dir):
@@ -388,13 +423,13 @@ def do_clean_dumped_files(working_dir):
     if not os.listdir(data_folder):
         print("Empty folder!")
     else:
-        print(f"There are all files dumped by {plugin_name}:\n")
+        rprint(f"[green]There are all files dumped by [bold]{plugin_name}[/bold]:[/green]")
         print("\n".join(os.listdir(data_folder)))
         delete = typer.confirm("Do you want to delete them?")
         if not delete:
             raise typer.Abort()
         remove_files_in_folder(data_folder)
-        print("Deleted")
+        rprint("[green]Deleted![/green]")
 
 
 def do_clean_uploaded_sources(working_dir):
@@ -405,11 +440,44 @@ def do_clean_uploaded_sources(working_dir):
     if not uploaded_sources:
         print("Empty sources!")
     else:
-        print(f"There are all sources uploaded by {plugin_name}:\n")
+        rprint(f"[green]There are all sources uploaded by [bold]{plugin_name}[/bold]:[/green]")
         print("\n".join(uploaded_sources))
         delete = typer.confirm("Do you want to drop them?")
         if not delete:
             raise typer.Abort()
         for source in uploaded_sources:
             src_db[source].drop()
-        print("All sources are dropped")
+        rprint("[green]All sources are dropped![/green]")
+
+
+def show_dumped_files(data_folder, plugin_name):
+    console = Console()
+    if not os.path.isdir(data_folder) or not os.listdir(data_folder):
+        console.print(Panel("Empty file!"))
+    else:
+        console.print(
+            Panel(
+                "\n".join(os.listdir(data_folder)),
+                title=f"[green]There are all files dumped by [bold]{plugin_name}[/bold][/green] at {data_folder}",
+                title_align="left",
+            )
+        )
+
+
+def show_uploaded_sources(working_dir, plugin_name):
+    console = Console()
+    uploaders = get_uploaders(working_dir)
+    src_db = get_src_db()
+    uploaded_sources = [item for item in src_db.collection_names() if item in uploaders]
+    if not uploaded_sources:
+        console.print(Panel("Empty source!"))
+    else:
+        console.print(
+            Panel(
+                f'{" " * 5}[bold]DB path:[/bold] {src_db.dbfile}"\n{" " * 5}'
+                f'[bold]Database:[/bold] {src_db.name}"\n{" " * 5}[bold]Collections:[/bold] '
+                + ", ".join(uploaded_sources),
+                title=f"[green]There are all sources uploaded by [bold]{plugin_name}[/bold][/green]",
+                title_align="left",
+            )
+        )

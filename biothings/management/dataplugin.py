@@ -3,10 +3,10 @@ import pathlib
 from typing import Optional
 
 import typer
+from rich import print as rprint
 
 from biothings import config
 from biothings.utils.loggers import setup_default_log
-from biothings.utils.sqlite3 import get_src_db
 
 logger = setup_default_log("dataplugin", config.LOG_FOLDER, "INFO")
 
@@ -25,21 +25,22 @@ def listing(
 ):
     working_dir = pathlib.Path().resolve()
     plugin_name = working_dir.name
+    if not os.path.isfile(f"{working_dir}/manifest.yaml") and not os.path.isfile(
+        f"{working_dir}/manifest.json"
+    ):
+        rprint(
+            "[red]This command must be run inside a data plugin folder. Please go to a data plugin folder and try again! [/red]"
+        )
+        return
     data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
     if dump:
-        print(f"There are all files dumped by {plugin_name}:\n")
-        if not os.listdir(data_folder):
-            print("Empty file!")
-        print("\n".join(os.listdir(data_folder)))
+        utils.show_dumped_files(data_folder, plugin_name)
+        return
     if upload:
-        uploaders = utils.get_uploaders(working_dir)
-        src_db = get_src_db()
-        print(f"There are all sources uploaded by {plugin_name}:\n")
-        uploaded_sources = [item for item in src_db.collection_names() if item in uploaders]
-        if not uploaded_sources:
-            print("Empty source!")
-        else:
-            print("\n".join(uploaded_sources))
+        utils.show_uploaded_sources(working_dir, plugin_name)
+        return
+    utils.show_dumped_files(data_folder, plugin_name)
+    utils.show_uploaded_sources(working_dir, plugin_name)
 
 
 @app.command("clean", help="Remove selected files from .biothings_hub folder")
@@ -75,6 +76,10 @@ def dump_data(
             to_dump["local_file"],
             to_dump["uncompress"],
         )
+    plugin_name = working_dir.name
+    data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
+    rprint("[green]Success![/green]")
+    utils.show_dumped_files(data_folder, plugin_name)
 
 
 @app.command(
@@ -104,6 +109,8 @@ def upload_source(
 
     for section in upload_sections:
         utils.process_uploader(working_dir, data_folder, plugin_name, section, logger, limit)
+    rprint("[green]Success![/green]")
+    utils.show_uploaded_sources(working_dir, plugin_name)
 
 
 @app.command(
@@ -148,19 +155,15 @@ def inspect(
     if verbose:
         logger.setLevel("DEBUG")
     working_dir = pathlib.Path().resolve()
-    plugin_name = working_dir.name
-    working_dir = pathlib.Path().resolve()
-    manifest = utils.get_manifest_content(working_dir)
-    upload_section = manifest.get("uploader")
-    source_name = plugin_name
-    if not upload_section:
-        upload_sections = manifest.get("uploaders")
-        table_space = [item["name"] for item in upload_sections]
-        source_name = sub_source_name
-        if sub_source_name not in table_space:
-            logger.error(f"Your source name {sub_source_name} does not exits")
-            return
-    utils.process_inspect(source_name, mode, limit, merge, logger, validate)
+    table_space = utils.get_uploaders(working_dir)
+    if sub_source_name and sub_source_name not in table_space:
+        rprint(f"[red]Your source name {sub_source_name} does not exits[/red]")
+        return
+    if sub_source_name:
+        utils.process_inspect(sub_source_name, mode, limit, merge, logger, validate)
+    else:
+        for source_name in table_space:
+            utils.process_inspect(source_name, mode, limit, merge, logger, validate)
 
 
 @app.command("serve")

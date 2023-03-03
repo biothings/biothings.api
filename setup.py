@@ -78,7 +78,7 @@ hub_requires = [
     "networkx>=2.1,<2.6",  # datatransform
     "biothings_client>=0.2.6",  # datatransform (api client)
     "typer[all]",  # Lib for building CLI applications
-    "pandas==1.5.1",  # Lib for displaying CLI result as tables
+    "rich",  # Lib for building CLI applications
 ]
 
 # extra requirements to develop biothings
