@@ -3,7 +3,7 @@ Utility functions for parsing flatfiles,
 mapping to JSON, cleaning.
 """
 # see tabfile_feeder(coerce_unicode) if needed
-#from __future__ import unicode_literals
+# from __future__ import unicode_literals
 import itertools
 import csv
 import os
@@ -21,8 +21,7 @@ csv.field_size_limit(10000000)   # default is 131072, too small for some big fil
 
 def dict_sweep(d, vals=None, remove_invalid_list=False):
     """
-    Remove keys whos values are ".", "-", "", "NA", "none", " "
-    and remove empty dictionaries
+    Remove keys whose values are ".", "-", "", "NA", "none", " "; and remove empty dictionaries
 
     Args:
         d (dict): a dictionary
@@ -42,13 +41,13 @@ def dict_sweep(d, vals=None, remove_invalid_list=False):
                 {'site': ['Intron'], 'snp_build': 136}
     """
     # set default supported vals for empty values
-    vals = vals or [".", "-", "", "NA", "none", " ", "Not Available", "unknown"]
+    vals = vals or {".", "-", "", "NA", "none", " ", "Not Available", "unknown"}
     for key, val in list(d.items()):
         if val in vals:
             del d[key]
         elif isinstance(val, list):
             if remove_invalid_list:
-                val = [v for v in val if v not in vals]
+                val = {v for v in val if v not in vals}
                 for item in val:
                     if isinstance(item, dict):
                         dict_sweep(item, vals, remove_invalid_list=remove_invalid_list)
@@ -93,9 +92,11 @@ def to_float(val):
     """convert an input string to int"""
     return safe_type(float, val)
 
+
 def to_int(val):
     """convert an input string to float"""
     return safe_type(int, val)
+
 
 def to_number(val):
     """convert an input string to int/float."""
@@ -111,8 +112,12 @@ def to_number(val):
 
 
 def boolean_convert(d, convert_keys=None, level=0):
-    """Explore document d and specified convert keys to boolean.
-    Use dotfield notation for inner keys"""
+    """
+    Convert values specified by `convert_keys` in document `d` to boolean. Dotfield notation can be used to specify inner keys.
+
+    Note that `None` values are converted to `False` in Python. Use `dict_sweep()` before calling this function if such `False` values are not expected.
+    See https://github.com/biothings/biothings.api/issues/274 for details.
+    """
     convert_keys = convert_keys or []
     for key, val in d.items():
         if isinstance(val, dict):
@@ -129,6 +134,7 @@ def boolean_convert(d, convert_keys=None, level=0):
                 d[key] = to_boolean(val)
     return d
 
+
 def float_convert(d, include_keys=None, exclude_keys=None):
     """Convert elements in a document to floats.
 
@@ -142,6 +148,7 @@ def float_convert(d, include_keys=None, exclude_keys=None):
     :return: generate key, value pairs
     """
     return value_convert_incexcl(d, to_float, include_keys, exclude_keys)
+
 
 def int_convert(d, include_keys=None, exclude_keys=None):
     """Convert elements in a document to integers.
@@ -157,11 +164,12 @@ def int_convert(d, include_keys=None, exclude_keys=None):
     """
     return value_convert_incexcl(d, to_int, include_keys, exclude_keys)
 
+
 def to_boolean(val, true_str=None, false_str=None):
-    """Normlize str value to boolean value"""
+    """Normalize str value to boolean value"""
     # set default true_str and false_str
-    true_str = true_str or ['true', '1', 't', 'y', 'yes', 'Y', 'Yes', 'YES', 1]
-    false_str = false_str or ['false', '0', 'f', 'n', 'N', 'No', 'no', 'NO', 0]
+    true_str = true_str or {'true', '1', 't', 'y', 'yes', 'Y', 'Yes', 'YES', 1}
+    false_str = false_str or {'false', '0', 'f', 'n', 'N', 'No', 'no', 'NO', 0}
     # if type(val)!=str:
     if not isinstance(val, str):
         return bool(val)
@@ -218,29 +226,27 @@ def unique_ids(src_module):
 
 
 def rec_handler(infile, block_end='\n', skip=0, include_block_end=False, as_list=False):
-    '''A generator to return a record (block of text)
-       at once from the infile. The record is separated by
-       one or more empty lines by default.
-       skip can be used to skip top n-th lines
-       if include_block_end is True, the line matching block_end will also be returned.
-       if as_list is True, return a list of lines in one record.
-    '''
-    rec_separator = lambda line: line == block_end
+    """
+    A generator to return a record (block of text) at once from the `infile`.
+    The record is separated by one or more empty lines by default.
+    `skip` can be used to skip top n-th lines if `include_block_end` is True, the line matching block_end will also be returned.
+    If `as_list` is True, return a list of lines in one record.
+    """
     with open_anyfile(infile) as in_f:
         if skip:
             for i in range(skip):
                 in_f.readline()
                 del i
-        for key, group in itertools.groupby(in_f, rec_separator):
+        for key, group in itertools.groupby(in_f, lambda line: line == block_end):
             if not key:
                 if include_block_end:
                     _g = itertools.chain(group, (block_end,))
                 yield list(_g) if as_list else ''.join(_g)
 
 
-#===============================================================================
+# ===============================================================================
 # List Utility functions
-#===============================================================================
+# ===============================================================================
 
 # if dict value is a list of length 1, unlist
 def unlist(d):
@@ -308,8 +314,9 @@ def id_strip(id_list):
         ids.append(_id.rstrip().lstrip())
     return ids
 
+
 def llist(li, sep='\t'):
-    '''Nicely output the list with each item a line.'''
+    """Nicely output the list with each item a line."""
     for x in li:
         if isinstance(x, (li, tuple)):
             xx = sep.join([str(i) for i in x])
@@ -319,41 +326,39 @@ def llist(li, sep='\t'):
 
 
 def listitems(a_list, *idx):
-    '''Return multiple items from list by given indexes.'''
+    """Return multiple items from list by given indexes."""
     if isinstance(a_list, tuple):
-        # return tuple([a_list[i] for i in idx])   # TODO: remove this line
         return tuple(a_list[i] for i in idx)
     else:
         return [a_list[i] for i in idx]
 
 
 def list2dict(a_list, keyitem, alwayslist=False):     # pylint: disable=redefined-outer-name
-    '''Return a dictionary with specified keyitem as key, others as values.
-       keyitem can be an index or a sequence of indexes.
-       For example::
+    """
+    Return a dictionary with specified `keyitem` as key, others as values.
+    `keyitem` can be an index or a sequence of indexes.
+    For example::
 
-            li=[['A','a',1],
-                ['B','a',2],
-                ['A','b',3]]
-            list2dict(li,0)---> {'A':[('a',1),('b',3)],
-                                 'B':('a',2)}
+        li=[['A','a',1],
+            ['B','a',2],
+            ['A','b',3]]
+        list2dict(li,0)---> {'A':[('a',1),('b',3)],
+                             'B':('a',2)}
 
-       If `alwayslist` is True, values are always a list even there is only one item in it::
+    If `alwayslist` is True, values are always a list even there is only one item in it::
 
-            list2dict(li,0,True)---> {'A':[('a',1),('b',3)],
-                                      'B':[('a',2),]}
-    '''
+        list2dict(li,0,True)---> {'A':[('a',1),('b',3)],
+                                  'B':[('a',2),]}
+    """
     _dict = {}
     for x in a_list:
-        if isinstance(keyitem, int):      # single item as key
+        if isinstance(keyitem, int):  # single item as key
             key = x[keyitem]
             value = tuple(x[:keyitem] + x[keyitem + 1:])
         else:
-            # key = tuple([x[i] for i in keyitem])  # TODO: remove this line
             key = tuple(x[i] for i in keyitem)
-            # value = tuple([x[i] for i in range(len(a_list)) if i not in keyitem])  # TODO: remove this line
             value = tuple(x[i] for i in range(len(a_list)) if i not in keyitem)
-        if len(value) == 1:      # single value
+        if len(value) == 1:  # single value
             value = value[0]
         if key not in _dict:
             if alwayslist:
@@ -369,37 +374,27 @@ def list2dict(a_list, keyitem, alwayslist=False):     # pylint: disable=redefine
     return _dict
 
 
-def list_nondup(a_list):
-    # TODO: use set in caller and remove func
-    x = {}
-    for item in a_list:
-        x[item] = None
-    return x.keys()
-
-
 def listsort(a_list, by, reverse=False, cmp=None, key=None):
-    '''Given list is a list of sub(list/tuple.)
-       Return a new list sorted by the ith(given from "by" item)
-       item of each sublist.'''
+    """
+    Given `a_list` is a list of sub(list/tuple.), return a new list sorted by the ith (given from "by" item) item of each sublist.
+    """
     new_li = [(x[by], x) for x in a_list]
     new_li.sort(cmp=cmp, key=key, reverse=reverse)
     return [x[1] for x in new_li]
 
 
 def list_itemcnt(a_list):
-    '''Return number of occurrence for each type of item in the list.'''
-    x = {}
+    """Return number of occurrence for each item in the list."""
+    item_count = {}
     for item in a_list:
-        # TODO= use list.count(value)
-        if item in x:
-            x[item] += 1
-        else:
-            x[item] = 1
-    return [(i, x[i]) for i in x]
+        if item not in item_count:
+            item_count[item] = a_list.count(item)
+
+    return list(item_count.items())
 
 
 def alwayslist(value):
-    """If input value if not a list/tuple type, return it as a single value list."""
+    """If input value is not a list/tuple type, return it as a single value list."""
     if value is None:
         return []
     if isinstance(value, (list, tuple)):
@@ -407,9 +402,10 @@ def alwayslist(value):
     else:
         return [value]
 
-#===============================================================================
+# ===============================================================================
 # File Utility functions
-#===============================================================================
+# ===============================================================================
+
 
 def tabfile_tester(datafile, header=1, sep='\t'):
     reader = csv.reader(anyfile(datafile), delimiter=sep)
@@ -429,7 +425,7 @@ def tabfile_tester(datafile, header=1, sep='\t'):
 
 
 def dupline_seperator(dupline, dup_sep, dup_idx=None, strip=False):
-    '''
+    """
     for a line like this::
 
         a   b1,b2  c1,c2
@@ -449,7 +445,7 @@ def dupline_seperator(dupline, dup_sep, dup_idx=None, strip=False):
 
     if dup_idx is None, try to split on every field.
     if strip is True, also tripe out of extra spaces.
-    '''
+    """
     value_li = list(dupline)
     for idx, value in enumerate(value_li):
         if dup_idx:
@@ -467,11 +463,8 @@ def dupline_seperator(dupline, dup_sep, dup_idx=None, strip=False):
     return itertools.product(*value_li)    # itertools.product fits exactly the purpose here
 
 
-def tabfile_feeder(datafile, header=1, sep='\t',
-                   includefn=None,
-                   coerce_unicode=True,
-                   assert_column_no=None):
-    '''a generator for each row in the file.'''
+def tabfile_feeder(datafile, header=1, sep='\t', includefn=None, coerce_unicode=True, assert_column_no=None):
+    """a generator for each row in the file."""
 
     in_f = anyfile(datafile)
     reader = csv.reader(in_f, delimiter=sep)
@@ -485,8 +478,7 @@ def tabfile_feeder(datafile, header=1, sep='\t',
         for ld in reader:
             if assert_column_no:
                 if len(ld) != assert_column_no:
-                    err = "Unexpected column number:" \
-                          " got {}, should be {}".format(len(ld), assert_column_no)
+                    err = "Unexpected column number: got {}, should be {}".format(len(ld), assert_column_no)
                     raise ValueError(err)
             if not includefn or includefn(ld):
                 lineno += 1
@@ -531,21 +523,17 @@ def tab2dict_iter(datafile, cols, key, alwayslist=False, **kwargs):     # pylint
         bulk = []
         prev_id = None
         for ld in tabfile_feeder(datafile, **kwargs):
-            #print(ld)
             li = listitems(ld, *cols)
-            #print("key %s len bulk %s prev %s" % (li[key],len(bulk),prev_id))
             if prev_id is None or (li[key] == prev_id):
-                #print("\t\tfound same")
+                # print("\t\tfound same")
                 bulk.append(li)
                 prev_id = li[key]
             else:
-                #print("bulk size: %s" % bulk)
                 di = list2dict(bulk, key, alwayslist=alwayslist)
-                bulk = []
+                bulk = []  # TODO why clearing the bulk list here?
                 # changed key, init next bulk
                 bulk.append(li)
                 prev_id = li[key]
-                #print("on yield: %s" % di)
                 yield di
         # flush remaining bulk
         if bulk:
@@ -557,9 +545,10 @@ def tab2dict_iter(datafile, cols, key, alwayslist=False, **kwargs):     # pylint
 
 
 def file_merge(infiles, outfile=None, header=1, verbose=1):
-    '''merge a list of input files with the same format.
-       if header will be removed from the 2nd files in the list.
-    '''
+    """
+    Merge a list of input files with the same format.
+    If `header` is n then the top n lines will be discarded since reading the 2nd file in the list.
+    """
     outfile = outfile or '_merged'.join(os.path.splitext(infiles[0]))
     out_f, outfile = safewfile(outfile)
     if verbose:
@@ -583,12 +572,13 @@ def file_merge(infiles, outfile=None, header=1, verbose=1):
     print("=" * 20)
     print("Done![total %d lines output]" % cnt)
 
-#===============================================================================
+# ===============================================================================
 # Dictionary & other structures Utility functions
-#===============================================================================
+# ===============================================================================
+
 
 # http://stackoverflow.com/questions/12971631/sorting-list-by-an-attribute-that-can-be-none
-# used to sort list with None element (because python3 suddenly decided it wwasn't possible
+# used to sort list with None element (because python3 suddenly decided it wasn't possible
 # anymore. because...)
 # from functools import total_ordering
 @total_ordering
@@ -649,11 +639,10 @@ def traverse_keys(d, include_keys=None, exclude_keys=None):
 
 # from mygene, originally
 def value_convert(_dict, fn, traverse_list=True):
-    '''For each value in _dict, apply fn and then update
-       _dict with return the value.
-       if traverse_list is True and a value is a list,
-       apply fn to each item of the list.
-    '''
+    """
+    For each value in _dict, apply fn and then update _dict with return the value.
+    If `traverse_list` is True and a value is a list, apply `fn` to each item of the list.
+    """
     for k in _dict:
         if traverse_list and isinstance(_dict[k], list):
             _dict[k] = [fn(x) for x in _dict[k]]
@@ -685,8 +674,9 @@ def value_convert_incexcl(d, fn, include_keys=None, exclude_keys=None):
 # closed to value_convert, could be refactored except this one
 # is recursive for dict typed values
 def value_convert_to_number(d, skipped_keys=None):
-    """convert string numbers into integers or floats
-       skip converting certain keys in skipped_keys list"""
+    """
+    Convert string numbers into integers or floats; skip converting certain keys in skipped_keys list.
+    """
     skipped_keys = skipped_keys or []
     for key, val in d.items():
         if isinstance(val, dict):
@@ -695,17 +685,16 @@ def value_convert_to_number(d, skipped_keys=None):
             if isinstance(val, list):
                 d[key] = [to_number(x) if not isinstance(x, dict) else value_convert_to_number(x, skipped_keys) for x in val]
             elif isinstance(val, tuple):
-                # TODO: remove this line
-                # d[key] = tuple([to_number(x) if not isinstance(x, dict) else value_convert_to_number(x, skipped_keys) for x in val])
                 d[key] = tuple(to_number(x) if not isinstance(x, dict) else value_convert_to_number(x, skipped_keys) for x in val)
             else:
                 d[key] = to_number(val)
     return d
 
+
 def dict_convert(_dict, keyfn=None, valuefn=None):
-    '''Return a new dict with each key converted by keyfn (if not None),
+    """Return a new dict with each key converted by keyfn (if not None),
        and each value converted by valuefn (if not None).
-    '''
+    """
     if keyfn is None and valuefn is not None:
         for k in _dict:
             _dict[k] = valuefn(_dict[k])
@@ -719,16 +708,17 @@ def dict_convert(_dict, keyfn=None, valuefn=None):
     else:
         return _dict
 
+
 def updated_dict(_dict, attrs):
-    '''Same as dict.update, but return the updated dictionary.'''
+    """Same as `dict.update`, but return the updated dictionary."""
     out = _dict.copy()
     out.update(attrs)
     return out
 
+
 def update_dict_recur(d, u):
     """
-    Update dict d with dict u's values, recursively
-    (so existing values in d but not in u are kept even if nested)
+    Update dict `d` with dict `u`'s values, recursively (so existing values in `d` but not in `u` are kept even if nested)
     """
     for k, v in u.items():
         if isinstance(v, Mapping):
@@ -738,8 +728,9 @@ def update_dict_recur(d, u):
             d[k] = u[k]
     return d
 
+
 def merge_dict(dict_li, attr_li, missingvalue=None):
-    '''
+    """
     Merging multiple dictionaries into a new one.
     Example::
 
@@ -755,7 +746,7 @@ def merge_dict(dict_li, attr_li, missingvalue=None):
         {'id1': {'number': 100, 'string': 'aaa'},
         'id2': {'number': 200, 'string': 'bbb'},
         'id3': {'number': 'NA', 'string': 'ccc'}}
-    '''
+    """
     dd = dict(zip(attr_li, dict_li))
     key_set = set()
     for attr in dd:
@@ -772,22 +763,20 @@ def merge_dict(dict_li, attr_li, missingvalue=None):
         out_dict[k] = value
     return out_dict
 
+
 def normalized_value(value, sort=True):
-    '''Return a "normalized" value:
+    """Return a "normalized" value:
            1. if a list, remove duplicate and sort it
            2. if a list with one item, convert to that single item only
            3. if a list, remove empty values
            4. otherwise, return value as it is.
-    '''
+    """
     if isinstance(value, list):
         value = [x for x in value if x]   # remove empty values
         try:
             _v = list(set(value))
         except TypeError:
-            #use alternative way
-            # _v = [json.loads(x) for x in set([json.dumps(x) for x in value])]   # TODO: remove this line
             _v = [json.loads(x) for x in {json.dumps(x) for x in value}]
-        # if len(_v) and sort:
         if _v and sort:
             # py3 won't sort dict anymore...
             if isinstance(_v[0], dict):
@@ -806,22 +795,23 @@ def normalized_value(value, sort=True):
 
     return _v
 
+
 def dict_nodup(_dict, sort=True):
     for k in _dict:
         _dict[k] = normalized_value(_dict[k], sort=sort)
     return _dict
 
-def dict_attrmerge(dict_li, removedup=True, sort=True, special_fns=None):
-    '''
-        dict_attrmerge([{'a': 1, 'b':[2,3]},
-                        {'a': [1,2], 'b':[3,5], 'c'=4}])
-        sould return
-             {'a': [1,2], 'b':[2,3,5], 'c'=4}
 
-        special_fns is a dictionary of {attr:  merge_fn}
-         used for some special attr, which need special merge_fn
-         e.g.,   {'uniprot': _merge_uniprot}
-    '''
+def dict_attrmerge(dict_li, removedup=True, sort=True, special_fns=None):
+    """
+    dict_attrmerge([{'a': 1, 'b':[2,3]},
+                    {'a': [1,2], 'b':[3,5], 'c'=4}])
+    should return
+         {'a': [1,2], 'b':[2,3,5], 'c'=4}
+
+    special_fns is a dictionary of {attr:  merge_fn} used for some special attr, which need special merge_fn
+    e.g., {'uniprot': _merge_uniprot}
+    """
     special_fns = special_fns or {}
     out_dict = {}
     keys = []
@@ -847,6 +837,7 @@ def dict_attrmerge(dict_li, removedup=True, sort=True, special_fns=None):
     if removedup:
         out_dict = dict_nodup(out_dict, sort=sort)
     return out_dict
+
 
 def merge_root_keys(doc1, doc2, exclude=None):
     """
@@ -878,6 +869,7 @@ def merge_root_keys(doc1, doc2, exclude=None):
 
     return doc1
 
+
 def dict_apply(d, key, value, sort=True):
     """add value to d[key], append it if key exists
 
@@ -902,43 +894,31 @@ def dict_apply(d, key, value, sort=True):
 
     d[key] = normalized_value(_value, sort=sort)
 
+
 def dict_to_list(gene_d):
-    '''return a list of genedoc from genedoc dictionary and
+    """return a list of genedoc from genedoc dictionary and
        make sure the "_id" field exists.
-    '''
+    """
     doc_li = [updated_dict(gene_d[k], {'_id': str(k)}) for k in sorted(gene_d.keys())]
     return doc_li
 
+
 def merge_struct(v1, v2, aslistofdict=None):
-
-    #print("v1 = %s" % repr(v1))
-    #print("v2 = %s" % repr(v2))
-
     if isinstance(v1, list):
-        #print("v1 is list ", end="")
         if isinstance(v2, list):
-            #print("v2 is list -> extend")
-            #v1.extend(v2)
-            #v1 = list(set(v1))
             v1 = v1 + [x for x in v2 if x not in v1]
         else:
-            #print("v2 not list -> append")
             if v2 not in v1:
                 v1.append(v2)
 
     elif isinstance(v2, list) and isinstance(v1, dict):
-        #return merge_struct(v2,v1)
         if v1 not in v2:
             v2.append(v1)
 
     elif isinstance(v1, dict):
         assert isinstance(v2, dict), "v2 %s not a dict (v1: %s)" % (v2, v1)
-        #print("v1 & v2 is dict")
         for k in list(v1.keys()):
-            #print("v1[%s]" % k)
             if k in v2:
-                #print("%s is both dict -> merge/update v1[%s],v2[%s]" % (k, k, k))
-                #v1.update(merge(v1[k], v2[k]))
                 if aslistofdict == k:
                     v1elem = v1[k]
                     v2elem = v2[k]
@@ -954,13 +934,8 @@ def merge_struct(v1, v2, aslistofdict=None):
                 else:
                     v1[k] = merge_struct(v1[k], v2[k])
             else:
-                #print("%s not in v2 -> update v1 with v2" % k)
-                #print("v2 before %s" % repr(v2))
-                #v1.update(v2)
                 v2[k] = v1[k]
-                #print("v2 after %s" % repr(v2))
         for k in v2:
-            #print("v2[%s]" % k)
             if k in v1:
                 pass  # already done
             else:
@@ -969,35 +944,27 @@ def merge_struct(v1, v2, aslistofdict=None):
     elif isinstance(v1, str) or isinstance(v1, int) or isinstance(v1, float):
         if isinstance(v2, str) or isinstance(v2, int) or isinstance(v2, float):
             if v1 != v2:
-                #print("v1 & v2 not iterable -> list of 2")
                 v1 = [v1, v2]
             else:
                 pass
-                #print("v1 == v2, skip")
         else:
-            #print("v2 iterable, reverse merge")
             return merge_struct(v2, v1)
     else:
         raise TypeError("dunno how to merge type %s" % type(v1))
 
-    #print("return %s" % v1)
     return v1
+
 
 def dict_walk(dictionary, key_func):
     """Recursively apply key_func to dict's keys"""
     if not isinstance(dictionary, dict):
         return dictionary
-    # TODO: remove the following two lines
-    # return dict((key_func(k), dict_walk(v, key_func))
-    #             for k, v in dictionary.items())
     return {key_func(k): dict_walk(v, key_func) for k, v in dictionary.items()}
 
 
 def dict_traverse(d, func, traverse_list=False):
     """
-    Recursively traverse dictionary d, calling func(k,v)
-    for each key/value found. func must return a
-    tuple(new_key,new_value)
+    Recursively traverse dictionary d, calling func(k,v) for each key/value found. func must return a tuple(new_key,new_value)
     """
     try:
         items = sorted(d.items(), key=lambda x: x[0])
