@@ -406,13 +406,11 @@ def tabfile_tester(datafile, header=1, sep='\t'):
     reader = csv.reader(anyfile(datafile), delimiter=sep)
     lineno = 0
     try:
-        for i in range(header):
-            del i
+        for _ in range(header):
             next(reader)
             lineno += 1
 
-        for ld in reader:
-            del ld
+        for _ in reader:
             lineno += 1
     except Exception:
         print("Error at line number:", lineno)
@@ -465,10 +463,9 @@ def tabfile_feeder(datafile, header=1, sep='\t', includefn=None, coerce_unicode=
     reader = csv.reader(in_f, delimiter=sep)
     lineno = 0
     try:
-        for i in range(header):
+        for _ in range(header):
             next(reader)
             lineno += 1
-            del i
 
         for ld in reader:
             if assert_column_no:
@@ -510,33 +507,56 @@ def tab2dict(datafile, cols, key, alwayslist=False, **kwargs):     # pylint: dis
 
 
 def tab2dict_iter(datafile, cols, key, alwayslist=False, **kwargs):     # pylint: disable=redefined-outer-name
+    """
+    Args:
+        cols (array of int): an array of indices (of a list) indicating which element(s) are kept in bulk
+        key (int): an index (of a list) indicating which element is treated as a bulk key
+
+    Iterate `datafile` by row, subset each row (as a list of strings) by `cols`. Adjacent rows sharing the same value at the `key` index are put into one bulk.
+    Each bulk is then transformed to a dict with the value at the `key` index as the dict key.
+
+    E.g. given the following datafile, cols=[0,1,2], and key=1, two bulks are generated:
+
+        key
+    a1	b1	c1  --------------------------------------------------
+    a2	b1	c2  # bulk_1 => {b1: [(a1, c1), (a2, c2), (a3, c3)]} #
+    a3	b1	c3  --------------------------------------------------
+    a4	b2	c4  --------------------------------------------------
+    a5	b2	c5  # bulk_2 => {b2: [(a4, c4), (a5, c5), (a6, c6)]} #
+    a6	b2	c6  --------------------------------------------------
+    """
     if isinstance(datafile, tuple):
         _datafile = datafile[0]
     else:
         _datafile = datafile
-    if os.path.exists(_datafile):
-        bulk = []
-        prev_id = None
-        for ld in tabfile_feeder(datafile, **kwargs):
-            li = listitems(ld, *cols)
-            if prev_id is None or (li[key] == prev_id):
-                # print("\t\tfound same")
-                bulk.append(li)
-                prev_id = li[key]
-            else:
-                di = list2dict(bulk, key, alwayslist=alwayslist)
-                bulk = []  # TODO why clearing the bulk list here?
-                # changed key, init next bulk
-                bulk.append(li)
-                prev_id = li[key]
-                yield di
-        # flush remaining bulk
-        if bulk:
-            di = list2dict(bulk, key, alwayslist=alwayslist)
-            yield di
-    else:
+
+    if not os.path.exists(_datafile):
         print('Error: missing "%s". Skipped!' % os.path.split(_datafile)[1])
         return {}
+
+    bulk = []
+    current_key = None
+    for ld in tabfile_feeder(datafile, **kwargs):
+        li = listitems(ld, *cols)
+        if current_key is None or (li[key] == current_key):
+            # same key, put into bulk
+            bulk.append(li)
+            current_key = li[key]
+        else:
+            # key changed
+            # first step: yield the current bulk
+            di = list2dict(bulk, key, alwayslist=alwayslist)
+            yield di
+
+            # key changed
+            # second step: start a new bulk
+            bulk = [li]
+            current_key = li[key]
+
+    # flush remaining bulk
+    if bulk:
+        di = list2dict(bulk, key, alwayslist=alwayslist)
+        yield di
 
 
 def file_merge(infiles, outfile=None, header=1, verbose=1):
