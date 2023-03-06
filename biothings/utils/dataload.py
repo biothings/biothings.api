@@ -412,6 +412,8 @@ def tabfile_tester(datafile, header=1, sep='\t'):
 
         for _ in reader:
             lineno += 1
+
+        del _
     except Exception:
         print("Error at line number:", lineno)
         raise
