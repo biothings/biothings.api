@@ -65,8 +65,14 @@ class ESQueryBackend():
 
     def execute(self, query, **options):
         assert isinstance(query, Search)
-        index = self.indices[options.get('biothing_type')]
+        index = self.adjust_index()
         return self.client.search(query.to_dict(), index)
+
+    def adjust_index(self, **options):
+            """
+            Override to get specific ES index.
+            """
+            return self.indices[options.get('biothing_type')]
 
 class AsyncESQueryBackend(ESQueryBackend):
     """
@@ -129,7 +135,7 @@ class AsyncESQueryBackend(ESQueryBackend):
                 return res
 
         # everything below require us to know which indices to query
-        index = self.indices[options.get('biothing_type')]
+        index = self.adjust_index()
 
         if isinstance(query, Search):
             if options.get('fetch_all'):
@@ -155,7 +161,6 @@ class AsyncESQueryBackend(ESQueryBackend):
             raise RawResultInterrupt(res)
 
         return res
-
 
 class MongoQueryBackend():
 
