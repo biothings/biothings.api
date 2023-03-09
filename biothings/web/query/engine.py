@@ -70,7 +70,7 @@ class ESQueryBackend():
         index = self.adjust_index()
         return self.client.search(query.to_dict(), index)
 
-    def adjust_index(self):
+    def adjust_index(self, query, **options):
             """
             Override to get specific ES index.
             """
