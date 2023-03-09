@@ -66,6 +66,7 @@ class ESQueryBackend():
     def execute(self, query, **options):
         assert isinstance(query, Search)
         index = self.indices[options.get('biothing_type')]
+        # index can be further adjusted (e.g. based on options) if necessary
         index = self.adjust_index()
         return self.client.search(query.to_dict(), index)
 
