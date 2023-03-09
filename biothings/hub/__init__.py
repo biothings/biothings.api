@@ -332,6 +332,7 @@ class HubServer(object):
         "diff",
         "index",
         "snapshot",
+        "auto_snapshot_cleaner",
         "release",
         "inspect",
         "sync",
@@ -705,6 +706,17 @@ class HubServer(object):
         snapshot_manager.configure(config.SNAPSHOT_CONFIG)
         snapshot_manager.poll("snapshot", snapshot_manager.snapshot_a_build)
         self.managers["snapshot_manager"] = snapshot_manager
+
+    def configure_auto_snapshot_cleaner_manager(self):
+        assert "snapshot" in self.features, "'auto_snapshot_cleaner' feature requires 'snapshot'"
+        from biothings.hub.dataindex.auto_snapshot_cleanup import AutoSnapshotCleanupManager
+
+        auto_snapshot_cleaner_manager = AutoSnapshotCleanupManager(
+            snapshot_manager=self.managers["snapshot_manager"],
+            job_manager=self.managers["job_manager"],
+        )
+        auto_snapshot_cleaner_manager.configure(config.AUTO_SNAPSHOT_CLEANUP_CONFIG)
+        self.managers["auto_snapshot_cleaner_manager"] = auto_snapshot_cleaner_manager
 
     def configure_release_manager(self):
         assert "diff" in self.features, "'release' feature requires 'diff'"
