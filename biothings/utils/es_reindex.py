@@ -98,7 +98,7 @@ def reindex(
     result = target_index_obj.reindex(src_index_obj, is_remote=is_remote, **reindex_kwargs)
     # result: {'task': '4ohWVeJGQVq5lZCNJgkPag:149689'}
     task_id = result.get("task")
-    logger.info("Reindex job started with the task id of %s", task_id)
+    logger.info('Reindex job started [task id: "%s"]:', task_id)
     # check task status till it's completed
     while 1:
         task_obj = target_index_obj._es.tasks.get(task_id)
