@@ -79,6 +79,8 @@ hub_requires = [
     "biothings_client>=0.2.6",  # datatransform (api client)
     "typer[all]",  # Lib for building CLI applications
     "rich",  # Lib for building CLI applications
+    "biothings_client>=0.2.6",  # datatransform (api client),
+    "cryptography==38.0.3", # for generate ssh keys, ssl cert.
 ]
 
 # extra requirements to develop biothings

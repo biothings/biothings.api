@@ -225,6 +225,20 @@ INDEX_CONFIG = {
 # Snapshot environment configuration
 SNAPSHOT_CONFIG = {}
 
+# Auto snapshot cleaner feature will use this configuration to get schedule config for corresponding environment.
+AUTO_SNAPSHOT_CLEANUP_CONFIG = None
+"""
+AUTO_SNAPSHOT_CLEANUP_CONFIG = {
+        "environment_name": {
+            "schedule": "* 0 * * *",      # run daily at 0am UTC
+            "keep": 3,                   # the number of most recent snapshots to keep in one group
+            "group_by": "build_config",  # the attr of which its values form groups
+            "extra_filters": {}          # a set of criterions to limit which snapshots are to be cleaned
+        },
+        ...
+    }
+"""
+
 # reporting diff results, number of IDs to consider (to avoid too much mem usage)
 MAX_REPORTED_IDS = 1000
 # for diff updates, number of IDs randomly picked as examples when rendering the report

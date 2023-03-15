@@ -332,6 +332,7 @@ class HubServer(object):
         "diff",
         "index",
         "snapshot",
+        "auto_snapshot_cleaner",
         "release",
         "inspect",
         "sync",
@@ -705,6 +706,17 @@ class HubServer(object):
         snapshot_manager.configure(config.SNAPSHOT_CONFIG)
         snapshot_manager.poll("snapshot", snapshot_manager.snapshot_a_build)
         self.managers["snapshot_manager"] = snapshot_manager
+
+    def configure_auto_snapshot_cleaner_manager(self):
+        assert "snapshot" in self.features, "'auto_snapshot_cleaner' feature requires 'snapshot'"
+        from biothings.hub.dataindex.auto_snapshot_cleanup import AutoSnapshotCleanupManager
+
+        auto_snapshot_cleaner_manager = AutoSnapshotCleanupManager(
+            snapshot_manager=self.managers["snapshot_manager"],
+            job_manager=self.managers["job_manager"],
+        )
+        auto_snapshot_cleaner_manager.configure(config.AUTO_SNAPSHOT_CLEANUP_CONFIG)
+        self.managers["auto_snapshot_cleaner_manager"] = auto_snapshot_cleaner_manager
 
     def configure_release_manager(self):
         assert "diff" in self.features, "'release' feature requires 'diff'"
@@ -1116,6 +1128,7 @@ class HubServer(object):
         if self.managers.get("dump_manager"):
             self.commands["dump"] = self.managers["dump_manager"].dump_src
             self.commands["dump_all"] = self.managers["dump_manager"].dump_all
+            self.commands["mark_dump_success"] = self.managers["dump_manager"].mark_success
         # upload commands
         if self.managers.get("upload_manager"):
             self.commands["upload"] = self.managers["upload_manager"].upload_src
@@ -1514,6 +1527,9 @@ class HubServer(object):
         if "dump" in cmdnames:
             self.api_endpoints["source"].append(
                 EndpointDefinition(name="dump", method="put", suffix="dump")
+            )
+            self.api_endpoints["source"].append(
+                EndpointDefinition(name="mark_dump_success", method="put", suffix="mark_dump_success")
             )
         if "upload" in cmdnames:
             self.api_endpoints["source"].append(
