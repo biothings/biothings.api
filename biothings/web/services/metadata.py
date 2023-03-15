@@ -447,7 +447,7 @@ class BiothingHubMeta(BiothingMetaProp):
         # take the latest build_date
         # TODO if one of them is None
         build_date = self.build_date
-        if other.build_date > self.build_date:
+        if other.build_date and other.build_date > self.build_date:
             build_date = other.build_date
 
         # combine build_version field
@@ -463,7 +463,8 @@ class BiothingHubMeta(BiothingMetaProp):
         stats = dict(self.stats)
         for key, value in other.stats.items():
             if key in stats:
-                stats[key] += value
+                if isinstance(stats[key], (int, float)) and isinstance(value, (int, float)):
+                    stats[key] += value
             else:  # new key
                 stats[key] = value
 
