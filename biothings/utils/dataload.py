@@ -41,13 +41,13 @@ def dict_sweep(d, vals=None, remove_invalid_list=False):
                 {'site': ['Intron'], 'snp_build': 136}
     """
     # set default supported vals for empty values
-    vals = vals or {".", "-", "", "NA", "none", " ", "Not Available", "unknown"}
+    vals = vals or [".", "-", "", "NA", "none", " ", "Not Available", "unknown"]
     for key, val in list(d.items()):
         if val in vals:
             del d[key]
         elif isinstance(val, list):
             if remove_invalid_list:
-                val = {v for v in val if v not in vals}
+                val = [v for v in val if v not in vals]
                 for item in val:
                     if isinstance(item, dict):
                         dict_sweep(item, vals, remove_invalid_list=remove_invalid_list)
