@@ -1,47 +1,43 @@
-import asyncio
-import json
-import math
 import os
 import pathlib
-import time
 from shutil import copytree
 from typing import Optional
 
 import tornado.template
 import typer
+from rich import print as rprint
 
-import biothings.utils.inspect as btinspect
 from biothings.hub.dataload.dumper import DumperManager
 from biothings.hub.dataload.uploader import UploaderManager, upload_worker
 from biothings.hub.dataplugin.assistant import LocalAssistant
 from biothings.hub.dataplugin.manager import DataPluginManager
-from biothings.utils import es
-from biothings.utils.common import timesofar
-from biothings.utils.dataload import dict_traverse
-from biothings.utils.hub_db import get_data_plugin, get_src_db
+from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.loggers import get_logger
 
+from . import utils
+
 app = typer.Typer(
-    help="""
-        Test locally without the need of docker, mongodb, dedicated hub server, just use local sqlite.\n
-        Require: \n
-            config.py file is created at the current working folder \n
-            tested data plugin folder is placed at the current working folder\n
-    """
+    help="[green]Bootstrap your data plugin as the Hub does but in a synchronized.[/green]\n"
+    "[green]Create your new data plugin with the standard file structure.[/green]\n"
+    "[green]Dumping, uploading, and inspecting your data in synchronize.[/green]\n"
+    "[green]Serving your data as a web service for making simple queries[/green]\n"
+    "[red italic]* Running this command outside of your data plugin[/red italic]",
+    no_args_is_help=True,
+    rich_markup_mode="rich",
 )
 
 
 @app.command("create", help="Create a new data plugin")
 def create_data_plugin(
-    name: Optional[str] = typer.Option(  # NOQA: B008
+    name: Optional[str] = typer.Option(
         default="",
         help="Data plugin name",
         prompt="What's your data plugin name?",
     ),
-    multi_uploaders: bool = typer.Option(  # NOQA: B008
+    multi_uploaders: bool = typer.Option(
         False, "--multi-uploaders", help="Add this option if you want to create multiple uploaders"
     ),
-    parallelizer: bool = typer.Option(  # NOQA: B008
+    parallelizer: bool = typer.Option(
         False, "--parallelizer", help="Using parallelizer or not? Default: No"
     ),
 ):
@@ -108,20 +104,28 @@ def load_plugin(plugin_name):
     help="Download data source to local folder then convert to Json document and upload to the source database",
 )
 def dump_and_upload(
-    plugin_name: Optional[str] = typer.Option(  # NOQA: B008
-        default="",
+    plugin_name: Optional[str] = typer.Option(
+        "",
+        "--name",
+        "-n",
         help="Data plugin name",
         prompt="What's your data plugin name?",
     )
-    # multi_uploaders: bool = typer.Option(  # NOQA: B008
+    # multi_uploaders: bool = typer.Option(
     #     False, "--multi-uploaders", help="Add this option if you want to create multiple uploaders"
     # ),
-    # parallelizer: bool = typer.Option(  # NOQA: B008
+    # parallelizer: bool = typer.Option(
     #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
     # ),
 ):
-    # plugin_name = "pharmgkb"
-    # prepare dumper
+    working_dir = pathlib.Path().resolve()
+    valid_names = [
+        f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")
+    ]
+    if not plugin_name or plugin_name not in valid_names:
+        rprint("[red]Please provide your data plugin name! [/red]")
+        rprint("Choose from:\n    " + "\n    ".join(valid_names))
+        return exit(1)
     dumper_manager, uploader_manager = load_plugin(plugin_name)
     dumper_class = dumper_manager[plugin_name][0]
     uploader_classes = uploader_manager[plugin_name]
@@ -162,17 +166,23 @@ def dump_and_upload(
     help="Giving detailed information about the structure of documents coming from the parser",
 )
 def inspect(
-    plugin_name: Optional[str] = typer.Option(  # NOQA: B008
-        default="",
+    plugin_name: Optional[str] = typer.Option(
+        "",
+        "--name",
+        "-n",
         help="Data plugin name",
         prompt="What's your data plugin name?",
     ),
-    sub_source_name: Optional[str] = typer.Option(  # NOQA: B008
-        default="",
+    sub_source_name: Optional[str] = typer.Option(
+        "",
+        "--sub-source-name",
+        "-s",
         help="Your sub source name",
     ),
-    mode: Optional[str] = typer.Option(  # NOQA: B008
-        default="mapping,type,stats",
+    mode: Optional[str] = typer.Option(
+        "mapping,type,stats",
+        "--mode",
+        "-m",
         help="""
             The inspect mode or list of modes (comma separated) eg. "type,mapping".\n
             Possible values are:\n
@@ -180,140 +190,109 @@ def inspect(
             - "mapping": same as type but also perform test on data so guess best mapping\n
                (eg. check if a string is splitable, etc...). Implies merge=True\n
             - "stats": explore documents and compute basic stats (count,min,max,sum)\n
-            - "deepstats": same as stats but record values and also compute mean,stdev,median (memory intensive...)\n
-            - "jsonschema", same as "type" but returned a json-schema formatted result\n""",
+            """,
     ),
-    limit: Optional[int] = typer.Option(  # NOQA: B008
+    limit: Optional[int] = typer.Option(
         None,
         "--limit",
+        "-l",
         help="""
         can limit the inspection to the x first docs (None = no limit, inspects all)
         """,
     ),
-    merge: Optional[bool] = typer.Option(  # NOQA: B008
+    merge: Optional[bool] = typer.Option(
         False,
         "--merge",
+        "-m",
         help="""
         merge scalar into list when both exist (eg. {"val":..} and [{"val":...}]
         """,
     ),
 ):
+    working_dir = pathlib.Path().resolve()
+    valid_names = [
+        f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")
+    ]
+    if not plugin_name or plugin_name not in valid_names:
+        rprint("[red]Please provide your data plugin name! [/red]")
+        rprint("Choose from:\n    " + "\n    ".join(valid_names))
+        return exit(1)
     logger, logfile = get_logger("inspect")
-    mode = mode.split(",")
-    if "jsonschema" in mode:
-        mode = ["jsonschema", "type"]
     if not limit:
         limit = None
-    sample = None
-    clean = True
     logger.info(
         f"Inspect Data plugin {plugin_name} with sub-source name: {sub_source_name} mode: {mode} limit {limit}"
     )
 
-    t0 = time.time()
-    data_provider = ("src", plugin_name)
-    source_full_name = source_table_name = plugin_name
+    source_full_name = plugin_name
     if sub_source_name:
-        data_provider = ("src", sub_source_name)
         source_full_name = f"{plugin_name}.{sub_source_name}"
-        source_table_name = sub_source_name
-
-    src_db = get_src_db()
     dumper_manager, uploader_manager = load_plugin(plugin_name)
     if len(uploader_manager[source_full_name]) > 1 and not sub_source_name:
-        raise Exception(
-            "This is a multiple uploader data plugin, so 'sub_source_name' option is required!"
+        rprint(
+            "[red]This is a multiple uploaders data plugin, so '--sub-source-name' must be provided![/red]"
         )
-    uploader_cls = uploader_manager[source_full_name][0]
-    registerer_obj = uploader_cls.create(db_conn_info="")
-    registerer_obj.prepare()
-
-    pre_mapping = "mapping" in mode
-    src_cols = src_db[source_table_name]
-    inspected = {}
-    converters, mode = btinspect.get_converters(mode)
-    for m in mode:
-        inspected.setdefault(m, {})
-    cur = src_cols.find()
-    res = btinspect.inspect_docs(
-        cur,
-        mode=mode,
-        clean=clean,
-        merge=merge,
-        logger=logger,
-        pre_mapping=pre_mapping,
-        limit=limit,
-        sample=sample,
-        metadata=False,
-        auto_convert=False,
-    )
-
-    for m in mode:
-        inspected[m] = btinspect.merge_record(inspected[m], res[m], m)
-    for m in mode:
-        if m == "mapping":
-            try:
-                inspected["mapping"] = es.generate_es_mapping(inspected["mapping"])
-                # metadata for mapping only once generated
-                inspected = btinspect.compute_metadata(inspected, m)
-            except es.MappingError as e:
-                inspected["mapping"] = {"pre-mapping": inspected["mapping"], "errors": e.args[1]}
-        else:
-            inspected = btinspect.compute_metadata(inspected, m)
-    btinspect.run_converters(inspected, converters)
-
-    res = btinspect.stringify_inspect_doc(inspected)
-    _map = {"results": res, "data_provider": repr(data_provider), "duration": timesofar(t0)}
-
-    # _map["started_at"] = started_at
-
-    def clean_big_nums(k, v):
-        # TODO: same with float/double? seems mongo handles more there ?
-        if isinstance(v, int) and v > 2**64:
-            return k, math.nan
-        else:
-            return k, v
-
-    dict_traverse(_map, clean_big_nums)
-    print(json.dumps(_map, indent=2))
+        exit(1)
+    table_space = utils.get_uploaders(pathlib.Path(f"{working_dir}/{plugin_name}"))
+    if sub_source_name and sub_source_name not in table_space:
+        rprint(f"[red]Your source name {sub_source_name} does not exits[/red]")
+        exit(1)
+    if sub_source_name:
+        utils.process_inspect(sub_source_name, mode, limit, merge, logger, do_validate=True)
+    else:
+        for source_name in table_space:
+            utils.process_inspect(source_name, mode, limit, merge, logger, do_validate=True)
 
 
 @app.command("serve")
 def serve(
-    plugin_name: Optional[str] = typer.Option(  # NOQA: B008
-        default="",
+    plugin_name: Optional[str] = typer.Option(
+        "",
+        "--name",
+        "-n",
         help="Data plugin name",
         prompt="What's your data plugin name?",
     ),
-    port: Optional[int] = typer.Option(  # NOQA: B008
-        default=9999,
+    host: Optional[str] = typer.Option(
+        "localhost",
+        "--host",
+        help="API server ",
+    ),
+    port: Optional[int] = typer.Option(
+        9999,
+        "--port",
+        "-p",
         help="API server port",
     ),
 ):
     """
-    Run the simple API server for serving documents from above 'dump_and_upload' command, \n
+    Run the simple API server for serving documents from the source database, \n
     Support pagination by using: start=&limit= \n
     Support filtering by document keys, for example:\n
     After run 'dump_and_upload', we have a source_name = "test"\n
     doc = {"_id": "123", "key": {"a":{"b": "1"},"x":[{"y": "3", "z": "4"}, "5"]}}.\n
+    - You can see all available sources on the index page: http://host:port/
     - You can list all docs by:\n
-    http://localhost:9999/tests/\n
-    http://localhost:9999/tests/start=10&limit=10\n
+    http://host:port/<your source name>/\n
+    http://host:port/<your source name>/start=10&limit=10\n
     - You can filter out this doc by:\n
-    http://localhost:9999/tests/?key.a.b=1 (find all docs that have nested dict keys a.b)\n
-    http://localhost:9999/tests/?key.x.[].y=3 (find all docs that have mixed type dict-list)\n
-    http://localhost:9999/tests/?key.x.[].z=4\n
-    http://localhost:9999/tests/?key.x.[]=5\n
-    - Or you can retrieve this doc by: http://localhost:9999/tests/123/\n
+    http://host:port/<your source name>/?key.a.b=1 (find all docs that have nested dict keys a.b)\n
+    http://host:port/<your source name>/?key.x.y=3 (find all docs that have mixed type dict-list)\n
+    http://host:port/<your source name>/?key.x.z=4\n
+    http://host:port/<your source name>/?key.x=5\n
+    - Or you can retrieve this doc by: http://host:port/<your source name>/123/\n
     """
-    src_db = get_src_db()
+    working_dir = pathlib.Path().resolve()
+    valid_names = [
+        f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")
+    ]
+    if not plugin_name or plugin_name not in valid_names:
+        rprint("[red]Please provide your data plugin name! [/red]")
+        rprint("Choose from:\n    " + "\n    ".join(valid_names))
+        return exit(1)
     dumper_manager, uploader_manager = load_plugin(plugin_name)
     uploader_cls = uploader_manager[plugin_name]
     if not isinstance(uploader_cls, list):
         uploader_cls = [uploader_cls]
     table_space = [item.name for item in uploader_cls]
-
-    from .web_app import main
-
-    print(f"Serving data plugin source {plugin_name} on port http://127.0.0.1:{port}")
-    asyncio.run(main(port=port, db=src_db, table_space=table_space))
+    utils.serve(host, port, plugin_name, table_space)

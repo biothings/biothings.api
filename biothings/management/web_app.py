@@ -4,6 +4,7 @@ import tornado.ioloop
 import tornado.locks
 import tornado.options
 import tornado.web
+from rich import print as rprint
 
 from biothings.utils.serializer import to_json
 
@@ -95,16 +96,16 @@ class Application(tornado.web.Application):
 
 async def main(host, port, db, table_space):
     app = Application(db, table_space, **{"static_path": "static"})
-    print(f"Listening on http://{host}:{port}")
-    print(f"There are all available routes:\nhttp://{host}:{port}/")
+    rprint(f"[green]Listening on http://{host}:{port}[/green]")
+    rprint(f"[green]There are all available routes:\n    http://{host}:{port}/[/green]")
     list_routes, detail_routes = await get_available_routes(db, table_space)
     for route in list_routes:
-        print(f"http://{host}:{port}/{route.strip('/')}/")
-        print(f"http://{host}:{port}/{route.strip('/')}?from=0&size=10")
-        print(
-            f"http://{host}:{port}/{route.strip('/')}?q='field1_name:value1 AND field2_name:value2'"
+        rprint(f"    [green]http://{host}:{port}/{route.strip('/')}/[/green]")
+        rprint(f"    [green]http://{host}:{port}/{route.strip('/')}?from=0&size=10[/green]")
+        rprint(
+            f"    [green]http://{host}:{port}/{route.strip('/')}?q='field1_name:value1 AND field2_name:value2'[/green]"
         )
-        print(f"http://{host}:{port}/{route.strip('/')}/<doc_id>")
+        rprint(f"    [green]http://{host}:{port}/{route.strip('/')}/<doc_id>[/green]")
     app.listen(port, address=host)
     shutdown_event = tornado.locks.Event()
     await shutdown_event.wait()

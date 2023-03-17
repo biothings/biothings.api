@@ -14,24 +14,24 @@ logger = setup_default_log("dataplugin", config.LOG_FOLDER, "INFO")
 from . import utils
 
 app = typer.Typer(
-    help="Direct testing under a data plugin folder, no hub needed, simple dump, upload and inspection. data can be stored in a sqlite db"
+    help="[green]A set of commands that you can use for testing your data plugin and make a simple view about your data set.[/green]\n"
+    "[red italic]* Running this command inside of your data plugin[/red italic]",
+    no_args_is_help=True,
 )
 
 
-@app.command("list", help="Listing dumped files or uploaded sources")
+@app.command(
+    name="list",
+    help="Listing dumped files or uploaded sources",
+)
 def listing(
-    dump: bool = typer.Option(False, "--dump", help="Listing dumped files"),  # NOQA: B008
-    upload: bool = typer.Option(False, "--upload", help="Listing uploaded sources"),  # NOQA: B008
+    dump: bool = typer.Option(False, "--dump", help="Listing dumped files"),
+    upload: bool = typer.Option(False, "--upload", help="Listing uploaded sources"),
 ):
     working_dir = pathlib.Path().resolve()
     plugin_name = working_dir.name
-    if not os.path.isfile(f"{working_dir}/manifest.yaml") and not os.path.isfile(
-        f"{working_dir}/manifest.json"
-    ):
-        rprint(
-            "[red]This command must be run inside a data plugin folder. Please go to a data plugin folder and try again! [/red]"
-        )
-        return
+    if not utils.is_valid_working_directory(working_dir):
+        return exit(1)
     data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
     if dump:
         utils.show_dumped_files(data_folder, plugin_name)
@@ -43,29 +43,51 @@ def listing(
     utils.show_uploaded_sources(working_dir, plugin_name)
 
 
-@app.command("clean", help="Remove selected files from .biothings_hub folder")
+@app.command(
+    name="clean",
+    help="Delete all dumped files and drop uploaded sources tables",
+    no_args_is_help=True,
+)
 def clean_data(
-    dump: bool = typer.Option(False, "--dump", help="Clean dumped files"),  # NOQA: B008
-    upload: bool = typer.Option(False, "--upload", help="Clean uploaded sources"),  # NOQA: B008
-    clean_all: bool = typer.Option(False, "--all", help="Clean all"),  # NOQA: B008
+    dump: bool = typer.Option(False, "--dump", help="Delete all dumped files"),
+    upload: bool = typer.Option(False, "--upload", help="Drop uploaded sources tables"),
+    clean_all: bool = typer.Option(
+        False,
+        "--all",
+        help="Delete all dumped files and drop uploaded sources tables",
+    ),
 ):
     working_dir = pathlib.Path().resolve()
+    if not utils.is_valid_working_directory(working_dir):
+        return exit(1)
     if dump:
         utils.do_clean_dumped_files(working_dir)
+        return exit(0)
     if upload:
         utils.do_clean_uploaded_sources(working_dir)
+        return exit(0)
     if clean_all:
         utils.do_clean_dumped_files(working_dir)
         utils.do_clean_uploaded_sources(working_dir)
+        return exit(0)
+    rprint("[red]Please provide at least one option[/red]")
+    return exit(1)
 
 
-@app.command("dump", help="Download source data files to local")
+@app.command(
+    name="dump",
+    help="Download source data files to local",
+)
 def dump_data(
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging")  # NOQA: B008
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Verbose logging", show_default=True
+    )
 ):
     if verbose:
         logger.setLevel("DEBUG")
     working_dir = pathlib.Path().resolve()
+    if not utils.is_valid_working_directory(working_dir):
+        return exit(1)
     manifest = utils.get_manifest_content(working_dir)
     to_dumps = utils.get_todump_list(manifest.get("dumper"))
     for to_dump in to_dumps:
@@ -83,20 +105,22 @@ def dump_data(
 
 
 @app.command(
-    "upload",
+    name="upload",
     help="Convert downloaded data from dump step into JSON documents and upload the to the source database",
 )
 def upload_source(
-    limit: Optional[int] = typer.Option(  # NOQA: B008
+    batch_limit: Optional[int] = typer.Option(
         None,
-        "--limit",
-        help="Can limit the upload to the first limit * 1000 docs (None = no limit, upload all)",
+        "--batch-limit",
+        help="The maximum number of batches that should be uploaded. Batch size is 1000 docs",
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),  # NOQA: B008
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),
 ):
     if verbose:
         logger.setLevel("DEBUG")
     working_dir = pathlib.Path().resolve()
+    if not utils.is_valid_working_directory(working_dir):
+        return exit(1)
     plugin_name = working_dir.name
     local_archive_dir = os.path.join(working_dir, ".biothings_hub")
     data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
@@ -108,21 +132,21 @@ def upload_source(
         upload_sections = [upload_section]
 
     for section in upload_sections:
-        utils.process_uploader(working_dir, data_folder, plugin_name, section, logger, limit)
+        utils.process_uploader(working_dir, data_folder, plugin_name, section, logger, batch_limit)
     rprint("[green]Success![/green]")
     utils.show_uploaded_sources(working_dir, plugin_name)
 
 
 @app.command(
-    "inspect",
+    name="inspect",
     help="Giving detailed information about the structure of documents coming from the parser",
 )
 def inspect(
-    sub_source_name: Optional[str] = typer.Option(  # NOQA: B008
+    sub_source_name: Optional[str] = typer.Option(
         default="",
         help="Your sub source name",
     ),
-    mode: Optional[str] = typer.Option(  # NOQA: B008
+    mode: Optional[str] = typer.Option(
         default="type,stats",
         help="""
             The inspect mode or list of modes (comma separated) eg. "type,mapping".\n
@@ -131,30 +155,31 @@ def inspect(
             - "mapping": same as type but also perform test on data so guess best mapping\n
                (eg. check if a string is splitable, etc...). Implies merge=True\n
             - "stats": explore documents and compute basic stats (count,min,max,sum)\n
-            - "deepstats": same as stats but record values and also compute mean,stdev,median (memory intensive...)\n
-            - "jsonschema", same as "type" but returned a json-schema formatted result\n""",
+            """,
     ),
-    limit: Optional[int] = typer.Option(  # NOQA: B008
+    limit: Optional[int] = typer.Option(
         None,
         "--limit",
         help="Can limit the inspection to the x first docs (None = no limit, inspects all)",
     ),
-    merge: Optional[bool] = typer.Option(  # NOQA: B008
+    merge: Optional[bool] = typer.Option(
         False,
         "--merge",
         help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}]""",
     ),
-    validate: Optional[bool] = typer.Option(  # NOQA: B008
+    validate: Optional[bool] = typer.Option(
         True,
         "--validate",
         help="""Validate data""",
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),  # NOQA: B008
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),
 ):
     """ """
     if verbose:
         logger.setLevel("DEBUG")
     working_dir = pathlib.Path().resolve()
+    if not utils.is_valid_working_directory(working_dir):
+        return exit(1)
     table_space = utils.get_uploaders(working_dir)
     if sub_source_name and sub_source_name not in table_space:
         rprint(f"[red]Your source name {sub_source_name} does not exits[/red]")
@@ -166,17 +191,17 @@ def inspect(
             utils.process_inspect(source_name, mode, limit, merge, logger, validate)
 
 
-@app.command("serve")
+@app.command(name="serve")
 def serve(
-    host: Optional[str] = typer.Option(  # NOQA: B008
+    host: Optional[str] = typer.Option(
         default="localhost",
         help="API server ",
     ),
-    port: Optional[int] = typer.Option(  # NOQA: B008
+    port: Optional[int] = typer.Option(
         default=9999,
         help="API server port",
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),  # NOQA: B008
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),
 ):
     """
     Run the simple API server for serving documents from the source database, \n
@@ -198,6 +223,8 @@ def serve(
     if verbose:
         logger.setLevel("DEBUG")
     working_dir = pathlib.Path().resolve()
+    if not utils.is_valid_working_directory(working_dir):
+        return exit(1)
     table_space = utils.get_uploaders(working_dir)
     data_plugin_name = working_dir.name
     utils.serve(host, port, data_plugin_name, table_space)

@@ -28,6 +28,21 @@ from biothings.utils.sqlite3 import get_src_db
 from biothings.utils.workers import upload_worker
 
 
+def get_uploaded_collections(src_db, uploaders):
+    uploaded_sources = []
+    archived_sources = []
+    temp_sources = []
+    for item in src_db.collection_names():
+        if item in uploaders:
+            uploaded_sources.append(item)
+        for uploader_name in uploaders:
+            if item.startswith(f"{uploader_name}_archive_"):
+                archived_sources.append(item)
+            if item.startswith(f"{uploader_name}_temp_"):
+                temp_sources.append(item)
+    return uploaded_sources, archived_sources, temp_sources
+
+
 def get_todump_list(dumper_section):
     working_dir = pathlib.Path().resolve()
     data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
@@ -178,7 +193,7 @@ def get_custom_mapping_func(working_dir, mapping):
     return func
 
 
-def process_uploader(working_dir, data_folder, main_source, upload_section, logger, limit):
+def process_uploader(working_dir, data_folder, main_source, upload_section, logger, batch_limit):
     parser = upload_section.get("parser")
     parser_kwargs = upload_section.get("parser_kwargs")
     parser_kwargs_serialized = {}
@@ -211,7 +226,7 @@ def process_uploader(working_dir, data_folder, main_source, upload_section, logg
         1,
         data_folder,
         db=src_db,
-        max_batch_num=limit,
+        max_batch_num=batch_limit,
     )
     switch_collection(
         src_db,
@@ -390,7 +405,7 @@ def serve(host, port, plugin_name, table_space):
     from .web_app import main
 
     src_db = get_src_db()
-    print(f"Serving data plugin source: {plugin_name}")
+    rprint(f"[green]Serving data plugin source: {plugin_name}[/green]")
     asyncio.run(main(host=host, port=port, db=src_db, table_space=table_space))
 
 
@@ -436,7 +451,15 @@ def do_clean_uploaded_sources(working_dir):
     plugin_name = working_dir.name
     uploaders = get_uploaders(working_dir)
     src_db = get_src_db()
-    uploaded_sources = [item for item in src_db.collection_names() if item in uploaders]
+    uploaded_sources = []
+    for item in src_db.collection_names():
+        if item in uploaders:
+            uploaded_sources.append(item)
+        for uploader_name in uploaders:
+            if item.startswith(f"{uploader_name}_archive_") or item.startswith(
+                f"{uploader_name}_temp_"
+            ):
+                uploaded_sources.append(item)
     if not uploaded_sources:
         print("Empty sources!")
     else:
@@ -447,7 +470,7 @@ def do_clean_uploaded_sources(working_dir):
             raise typer.Abort()
         for source in uploaded_sources:
             src_db[source].drop()
-        rprint("[green]All sources are dropped![/green]")
+        rprint("[green]All collections are dropped![/green]")
 
 
 def show_dumped_files(data_folder, plugin_name):
@@ -457,8 +480,9 @@ def show_dumped_files(data_folder, plugin_name):
     else:
         console.print(
             Panel(
-                "\n".join(os.listdir(data_folder)),
-                title=f"[green]There are all files dumped by [bold]{plugin_name}[/bold][/green] at {data_folder}",
+                f"[bold]Data Folder: {data_folder}:[/bold]\n- "
+                + "\n- ".join(os.listdir(data_folder)),
+                title=f"[bold]{plugin_name}[/bold]",
                 title_align="left",
             )
         )
@@ -468,16 +492,31 @@ def show_uploaded_sources(working_dir, plugin_name):
     console = Console()
     uploaders = get_uploaders(working_dir)
     src_db = get_src_db()
-    uploaded_sources = [item for item in src_db.collection_names() if item in uploaders]
+    uploaded_sources, archived_sources, temp_sources = get_uploaded_collections(src_db, uploaders)
     if not uploaded_sources:
         console.print(Panel("Empty source!"))
     else:
         console.print(
             Panel(
-                f'{" " * 5}[bold]DB path:[/bold] {src_db.dbfile}"\n{" " * 5}'
-                f'[bold]Database:[/bold] {src_db.name}"\n{" " * 5}[bold]Collections:[/bold] '
-                + ", ".join(uploaded_sources),
-                title=f"[green]There are all sources uploaded by [bold]{plugin_name}[/bold][/green]",
+                f"[green]DB path:[/green] [bold]{src_db.dbfile}[/bold]\n"
+                + f"[green]- Database:[/green] [bold]{src_db.name}[/bold]\n  -[green] Collections:[/green] [bold]"
+                + ", ".join(uploaded_sources)
+                + "[/bold] \n -[green] Archived collections:[/green][bold]\n"
+                + "\n".join(archived_sources)
+                + "[/bold] \n -[green] Temporary collections:[/green][bold]\n"
+                + "\n".join(temp_sources),
+                title=f"[bold]{plugin_name}[/bold]",
                 title_align="left",
             )
         )
+
+
+def is_valid_working_directory(working_dir):
+    if not os.path.isfile(f"{working_dir}/manifest.yaml") and not os.path.isfile(
+        f"{working_dir}/manifest.json"
+    ):
+        rprint(
+            "[red]This command must be run inside a data plugin folder. Please go to a data plugin folder and try again! [/red]"
+        )
+        return False
+    return True

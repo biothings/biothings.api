@@ -6,7 +6,14 @@ import typer
 
 from biothings.utils.common import DummyConfig
 
-cli = typer.Typer()
+CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
+
+cli = typer.Typer(
+    rich_help_panel="Help and Others",
+    rich_markup_mode="rich",
+    context_settings=CONTEXT_SETTINGS,
+    no_args_is_help=True,
+)
 
 logger = logging.getLogger()
 logger.setLevel(level=logging.DEBUG)
@@ -14,13 +21,7 @@ logger.setLevel(level=logging.DEBUG)
 
 @cli.callback()
 def callback():
-    """
-    Biothing Admin CLI app. Available subcommands:\n
-
-    biothings-admin dataplugin --help \n
-    biothings-admin dataplugin-localhub --help \n
-
-    """
+    """[green]Biothings Admin CLI.[/green]"""
 
 
 def main():
@@ -42,5 +43,5 @@ def main():
     from .dataplugin_localhub import app as dataplugin_localhub_app
 
     cli.add_typer(dataplugin_app, name="dataplugin")
-    cli.add_typer(dataplugin_localhub_app, name="dataplugin-localhub")
+    cli.add_typer(dataplugin_localhub_app, name="dataplugin-hub")
     return cli()
