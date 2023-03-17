@@ -1163,6 +1163,7 @@ class HubServer(object):
         if self.managers.get("snapshot_manager"):
             self.commands["snapshot"] = self.managers["snapshot_manager"].snapshot
             self.commands["snapshot_cleanup"] = self.managers["snapshot_manager"].cleanup
+            self.commands["list_snapshots"] = self.managers["snapshot_manager"].list_snapshots
         # data release commands
         if self.managers.get("release_manager"):
             self.commands["create_release_note"] = self.managers[
@@ -1594,6 +1595,10 @@ class HubServer(object):
         if "snapshot" in cmdnames:
             self.api_endpoints["snapshot"] = EndpointDefinition(
                 name="snapshot", method="put", force_bodyargs=True
+            )
+        if "list_snapshots" in cmdnames:
+            self.api_endpoints["list_snapshots"] = EndpointDefinition(
+                name="list_snapshots", method="get"
             )
         if "sync" in cmdnames:
             self.api_endpoints["sync"] = EndpointDefinition(

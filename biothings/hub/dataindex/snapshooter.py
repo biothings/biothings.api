@@ -446,6 +446,11 @@ class SnapshotManager(BaseManager):
     def snapshot_info(self, env=None, remote=False):
         return self.snapshot_config
 
+    def list_snapshots(self, env=None, **filters):
+        return cleaner.find(  # filters support dotfield.
+            get_src_build(), env=env, group_by="build_config", return_db_cols=True, **filters,
+        )
+
     def cleanup(
         self, env=None,  # a snapshot environment describing a repository
         keep=3,  # the number of most recent snapshots to keep in one group
