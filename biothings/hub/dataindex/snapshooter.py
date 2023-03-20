@@ -9,15 +9,17 @@ from functools import partial
 
 import boto3
 from biothings import config as btconfig
-from biothings.hub import SNAPSHOOTER_CATEGORY, SNAPSHOTMANAGER_CATEGORY
+from biothings.hub import SNAPSHOOTER_CATEGORY
 from biothings.hub.databuild.buildconfig import AutoBuildConfig
 from biothings.hub.datarelease import set_pending_to_release_note
 from biothings.utils.common import merge
 from biothings.utils.hub import template_out
 from biothings.utils.hub_db import get_src_build
+from biothings.utils.exceptions import RepositoryVerificationFailed
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
 from elasticsearch import Elasticsearch
+from elasticsearch.exceptions import TransportError
 
 from config import logger as logging
 
@@ -25,7 +27,6 @@ from . import snapshot_cleanup as cleaner
 from . import snapshot_registrar as registrar
 from .snapshot_repo import Repository
 from .snapshot_task import Snapshot
-
 
 class ProcessInfo():
     """
@@ -68,9 +69,10 @@ class CloudStorage():
 
 class Bucket():
 
-    def __init__(self, client, bucket):
+    def __init__(self, client, bucket, region=None):
         self.client = client  # boto3.S3.Client [X]
         self.bucket = bucket  # bucket name
+        self.region = region
 
     def exists(self):
         bucket = self.client.Bucket(self.bucket)
@@ -195,7 +197,7 @@ class SnapshotEnv():
         log_folder = os.path.join(btconfig.LOG_FOLDER, 'build', log_name, "snapshot")
         self.logger, _ = get_logger(index, log_folder=log_folder, force=True)
 
-    def snapshot(self, index, snapshot=None):
+    def snapshot(self, index, snapshot=None, recreate_repo=False):
         self.setup_log(index)
 
         async def _snapshot(snapshot):
@@ -212,12 +214,15 @@ class SnapshotEnv():
                     self.pinfo.get_pinfo(step, snapshot),
                     partial(
                         getattr(self, state.func),
-                        cfg, index, snapshot
+                        cfg, index, snapshot, recreate_repo=recreate_repo
                     ))
                 try:
                     dx = await job
                     dx = StepResult(dx)
-
+                except RepositoryVerificationFailed as ex:
+                    self.logger.exception(ex)
+                    state.failed(snapshot, detail=ex.args)
+                    raise ex
                 except Exception as exc:
                     self.logger.exception(exc)
                     state.failed({}, exc)
@@ -235,13 +240,16 @@ class SnapshotEnv():
         future.add_done_callback(self.logger.debug)
         return future
 
-    def pre_snapshot(self, cfg, index, snapshot):
-
-        bucket = Bucket(self.cloud, cfg.bucket)
+    def pre_snapshot(self, cfg, index, snapshot, **kwargs):
+        bucket = Bucket(self.cloud, cfg.bucket, region=cfg["region"])
         repo = Repository(self.client, cfg.repo)
 
         self.logger.info(bucket)
         self.logger.info(repo)
+
+        if kwargs.get("recreate_repo"):
+            self.logger.info("Delete old repository")
+            repo.delete()
 
         if not repo.exists():
             if not bucket.exists():
@@ -250,6 +258,11 @@ class SnapshotEnv():
             repo.create(**cfg)
             self.logger.info(repo)
 
+        try:
+            repo.verify(config=cfg)
+        except TransportError as tex:
+            raise RepositoryVerificationFailed({"error": tex.error, "detail": tex.info['error']})
+
         return {
             "__REPLACE__": True,
             "conf": {"repository": cfg.data},
@@ -257,7 +270,7 @@ class SnapshotEnv():
             "environment": self.name
         }
 
-    def _snapshot(self, cfg, index, snapshot):
+    def _snapshot(self, cfg, index, snapshot, **kwargs):
 
         snapshot = Snapshot(
             self.client,
@@ -294,7 +307,7 @@ class SnapshotEnv():
             "created_at": datetime.now().astimezone()
         }
 
-    def post_snapshot(self, cfg, index, snapshot):
+    def post_snapshot(self, cfg, index, snapshot, **kwargs):
         build_id = self._doc(index)['_id']
         set_pending_to_release_note(build_id)
         return {}
@@ -388,13 +401,13 @@ class SnapshotManager(BaseManager):
     # Features
     # -----------
 
-    def snapshot(self, snapshot_env, index, snapshot=None):
+    def snapshot(self, snapshot_env, index, snapshot=None, recreate_repo=False):
         """
         Create a snapshot named "snapshot" (or, by default, same name as the index)
         from "index" according to environment definition (repository, etc...) "env".
         """
         env = self.register[snapshot_env]
-        return env.snapshot(index, snapshot)
+        return env.snapshot(index, snapshot, recreate_repo=recreate_repo)
 
     def snapshot_a_build(self, build_doc):
         """
@@ -433,6 +446,11 @@ class SnapshotManager(BaseManager):
     def snapshot_info(self, env=None, remote=False):
         return self.snapshot_config
 
+    def list_snapshots(self, env=None, **filters):
+        return cleaner.find(  # filters support dotfield.
+            get_src_build(), env=env, group_by="build_config", return_db_cols=True, **filters,
+        )
+
     def cleanup(
         self, env=None,  # a snapshot environment describing a repository
         keep=3,  # the number of most recent snapshots to keep in one group
@@ -460,3 +478,30 @@ class SnapshotManager(BaseManager):
 
         # return the number of snapshots successfully deleted
         return cleaner.delete(get_src_build(), snapshots, self)
+
+    def delete_snapshots(self, snapshots_data):
+        async def delete(environment, snapshot_names):
+            return self.cleanup(env=environment, keep=0, dryrun=False, _id={"$in": snapshot_names})
+
+        def done(f):
+            try:
+                # just consume the result to raise exception
+                # if there were an error... (what an api...)
+                f.result()
+                logging.info("success", extra={"notify": True})
+            except Exception as e:
+                logging.exception("failed: %s" % e, extra={"notify": True})
+
+        jobs = []
+        try:
+            for environment, snapshot_names in snapshots_data.items():
+                job = self.job_manager.submit(partial(delete, environment, snapshot_names))
+                jobs.append(job)
+            tasks = asyncio.gather(*jobs)
+            tasks.add_done_callback(done)
+        except Exception as ex:
+            logging.exception(
+                f"Error while deleting snapshots. error: {ex}",
+                extra={"notify": True}
+            )
+        return jobs

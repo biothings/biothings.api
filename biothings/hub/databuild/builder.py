@@ -1271,10 +1271,17 @@ class BuilderManager(BaseManager):
                 "No metadata found for merged collection '%s'" % merge_name)
         self.delete_merged_data(merge_name)
 
-    def get_query_for_list_merge(self, only_archived):
+    def get_query_for_list_merge(self, only_archived, status=None):
         q = {"archived": {"$exists": 0}}
         if only_archived:
             q = {"archived": {"$exists": 1}}
+        if status:
+            if status == "success":
+                q["jobs.status"] = {
+                    "$not": {"$in": ["failed", "canceled"]}
+                }
+            elif status in ["failed", "canceled"]:
+                q["jobs.status"] = status
         return q
 
     def list_merge(self, build_config=None, only_archived=False):
@@ -1634,11 +1641,14 @@ class BuilderManager(BaseManager):
         res["builder_classes"] = bclasses
         return res
 
-    def build_info(self,
-                   id=None,
-                   conf_name=None,
-                   fields=None,
-                   only_archived=False):
+    def build_info(
+        self,
+        id=None,
+        conf_name=None,
+        fields=None,
+        only_archived=False,
+        status=None,
+    ):
         """
         Return build information given an build _id, or all builds
         if _id is None. "fields" can be passed to select which fields
@@ -1648,9 +1658,10 @@ class BuilderManager(BaseManager):
         If id is None, more are filtered:
          - "sources" and some of "build_config"
         only_archived=True will return archived merges only
+        status: will return only successful/failed builds. Can be "success" or "failed"
         """
         res = {}
-        q = self.get_query_for_list_merge(only_archived)
+        q = self.get_query_for_list_merge(only_archived=only_archived, status=status)
         if id is not None:
             q = {"_id": id}
         else:

@@ -332,6 +332,7 @@ class HubServer(object):
         "diff",
         "index",
         "snapshot",
+        "auto_snapshot_cleaner",
         "release",
         "inspect",
         "sync",
@@ -705,6 +706,17 @@ class HubServer(object):
         snapshot_manager.configure(config.SNAPSHOT_CONFIG)
         snapshot_manager.poll("snapshot", snapshot_manager.snapshot_a_build)
         self.managers["snapshot_manager"] = snapshot_manager
+
+    def configure_auto_snapshot_cleaner_manager(self):
+        assert "snapshot" in self.features, "'auto_snapshot_cleaner' feature requires 'snapshot'"
+        from biothings.hub.dataindex.auto_snapshot_cleanup import AutoSnapshotCleanupManager
+
+        auto_snapshot_cleaner_manager = AutoSnapshotCleanupManager(
+            snapshot_manager=self.managers["snapshot_manager"],
+            job_manager=self.managers["job_manager"],
+        )
+        auto_snapshot_cleaner_manager.configure(config.AUTO_SNAPSHOT_CLEANUP_CONFIG)
+        self.managers["auto_snapshot_cleaner_manager"] = auto_snapshot_cleaner_manager
 
     def configure_release_manager(self):
         assert "diff" in self.features, "'release' feature requires 'diff'"
@@ -1116,6 +1128,7 @@ class HubServer(object):
         if self.managers.get("dump_manager"):
             self.commands["dump"] = self.managers["dump_manager"].dump_src
             self.commands["dump_all"] = self.managers["dump_manager"].dump_all
+            self.commands["mark_dump_success"] = self.managers["dump_manager"].mark_success
         # upload commands
         if self.managers.get("upload_manager"):
             self.commands["upload"] = self.managers["upload_manager"].upload_src
@@ -1150,6 +1163,8 @@ class HubServer(object):
         if self.managers.get("snapshot_manager"):
             self.commands["snapshot"] = self.managers["snapshot_manager"].snapshot
             self.commands["snapshot_cleanup"] = self.managers["snapshot_manager"].cleanup
+            self.commands["list_snapshots"] = self.managers["snapshot_manager"].list_snapshots
+            self.commands["delete_snapshots"] = self.managers["snapshot_manager"].delete_snapshots
         # data release commands
         if self.managers.get("release_manager"):
             self.commands["create_release_note"] = self.managers[
@@ -1512,6 +1527,9 @@ class HubServer(object):
             self.api_endpoints["source"].append(
                 EndpointDefinition(name="dump", method="put", suffix="dump")
             )
+            self.api_endpoints["source"].append(
+                EndpointDefinition(name="mark_dump_success", method="put", suffix="mark_dump_success")
+            )
         if "upload" in cmdnames:
             self.api_endpoints["source"].append(
               EndpointDefinition(name="upload", method="put", suffix="upload")
@@ -1578,6 +1596,14 @@ class HubServer(object):
         if "snapshot" in cmdnames:
             self.api_endpoints["snapshot"] = EndpointDefinition(
                 name="snapshot", method="put", force_bodyargs=True
+            )
+        if "list_snapshots" in cmdnames:
+            self.api_endpoints["list_snapshots"] = EndpointDefinition(
+                name="list_snapshots", method="get"
+            )
+        if "delete_snapshots" in cmdnames:
+            self.api_endpoints["delete_snapshots"] = EndpointDefinition(
+                name="delete_snapshots", method="put", force_bodyargs=True
             )
         if "sync" in cmdnames:
             self.api_endpoints["sync"] = EndpointDefinition(
