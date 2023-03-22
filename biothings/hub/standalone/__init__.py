@@ -66,6 +66,10 @@ class AutoHubFeature(object):
 
         return vurls
 
+    def validate_release(self, version_path, force=False):
+        """Check if the release is valid to install. If not, it should raise an Exception to stop the progress"""
+        pass
+
     def install(self, src_name, version="latest", dry=False, force=False, use_no_downtime_method=True):
         """
         Update hub's data up to the given version (default is latest available),
@@ -86,6 +90,8 @@ class AutoHubFeature(object):
                     dobj.target_backend.version, version, version_path)
                 if dry:
                     return version_path
+
+                self.validate_release(version_path=version_path, force=force)
 
                 for step_version in version_path:
                     logging.info("Downloading data for version '%s'", step_version)
