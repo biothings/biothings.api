@@ -131,6 +131,10 @@ class RepositoryConfig(UserDict):
     def bucket(self):
         return self["settings"]["bucket"]
 
+    @property
+    def region(self):
+        return self["settings"]["region"]
+    
     def format(self, doc=None):
         """ Template special values in this config.
 
@@ -241,7 +245,7 @@ class SnapshotEnv():
         return future
 
     def pre_snapshot(self, cfg, index, snapshot, **kwargs):
-        bucket = Bucket(self.cloud, cfg.bucket, region=cfg["region"])
+        bucket = Bucket(self.cloud, cfg.bucket, region=cfg.region)
         repo = Repository(self.client, cfg.repo)
 
         self.logger.info(bucket)
