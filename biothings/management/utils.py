@@ -324,6 +324,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate):
         for item in type_and_stats[source_name]["type"]:
             item.pop("stats", None)
             report.append(item)
+    console = Console()
     if report:
         panel = Panel(
             f"This is the field type and stats for datasource: [bold green]{source_name}[/bold green]\n"
@@ -379,13 +380,14 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate):
         problem_panel = None
         if problem_summary:
             problem_panel = Panel("[yellow]Warnings:[/yellow]\n" + "\n".join(problem_summary))
-        console = Console()
         console.print(panel)
         if mapping_table:
             console.print(mapping_table)
         console.print(table)
         if problem_panel:
             console.print(problem_panel)
+    elif mapping_table:
+        console.print(mapping_table)
 
 
 def get_manifest_content(working_dir):
