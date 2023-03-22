@@ -41,7 +41,7 @@ class _Ele(NamedTuple):  # Cleanup Element
         return dom.toprettyxml(indent=" "*2)
 
 
-def find(collection, env=None, keep=3, group_by=None, **filters):
+def find(collection, env=None, keep=3, group_by=None, return_db_cols=False, **filters):
     if not isinstance(collection, Collection):
         raise NotImplementedError("Require MongoDB Hubdb.")
 
@@ -64,6 +64,9 @@ def find(collection, env=None, keep=3, group_by=None, **filters):
         {'$sort': {'created_at': 1}},
         {'$group': {'_id': group_by, 'items': {"$push": "$$ROOT"}}}
     ]))
+
+    if return_db_cols:
+        return groups
 
     return _Ele.ment(
         "CleanUps", {},

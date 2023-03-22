@@ -446,6 +446,11 @@ class SnapshotManager(BaseManager):
     def snapshot_info(self, env=None, remote=False):
         return self.snapshot_config
 
+    def list_snapshots(self, env=None, **filters):
+        return cleaner.find(  # filters support dotfield.
+            get_src_build(), env=env, group_by="build_config", return_db_cols=True, **filters,
+        )
+
     def cleanup(
         self, env=None,  # a snapshot environment describing a repository
         keep=3,  # the number of most recent snapshots to keep in one group
@@ -473,3 +478,30 @@ class SnapshotManager(BaseManager):
 
         # return the number of snapshots successfully deleted
         return cleaner.delete(get_src_build(), snapshots, self)
+
+    def delete_snapshots(self, snapshots_data):
+        async def delete(environment, snapshot_names):
+            return self.cleanup(env=environment, keep=0, dryrun=False, _id={"$in": snapshot_names})
+
+        def done(f):
+            try:
+                # just consume the result to raise exception
+                # if there were an error... (what an api...)
+                f.result()
+                logging.info("success", extra={"notify": True})
+            except Exception as e:
+                logging.exception("failed: %s" % e, extra={"notify": True})
+
+        jobs = []
+        try:
+            for environment, snapshot_names in snapshots_data.items():
+                job = self.job_manager.submit(partial(delete, environment, snapshot_names))
+                jobs.append(job)
+            tasks = asyncio.gather(*jobs)
+            tasks.add_done_callback(done)
+        except Exception as ex:
+            logging.exception(
+                f"Error while deleting snapshots. error: {ex}",
+                extra={"notify": True}
+            )
+        return jobs
