@@ -359,6 +359,7 @@ class HubServer(object):
         "version_urls": getattr(config, "VERSION_URLS", []),
         "indexer_factory": getattr(config, "AUTOHUB_INDEXER_FACTORY", None),
         "es_host": getattr(config, "AUTOHUB_ES_HOST", None),
+        "validator_class": getattr(config, "AUTOHUB_VALIDATOR_CLASS", None),
     }
 
     def __init__(
@@ -830,6 +831,7 @@ class HubServer(object):
         version_urls = self.autohub_config["version_urls"]
         indexer_factory = self.autohub_config["indexer_factory"]
         es_host = self.autohub_config["es_host"]
+        validator_class = self.autohub_config["validator_class"]
         factory = None
         if indexer_factory:
             assert (
@@ -842,7 +844,9 @@ class HubServer(object):
                 self.logger.error(
                     "Couldn't find indexer factory class from '%s': %s" % (indexer_factory, e)
                 )
-        self.autohub_feature = AutoHubFeature(autohub_managers, version_urls, factory)
+        self.autohub_feature = AutoHubFeature(
+            autohub_managers, version_urls, factory, validator_class=validator_class,
+        )
         try:
             self.autohub_feature.configure()
             self.autohub_feature.configure_auto_release(config)

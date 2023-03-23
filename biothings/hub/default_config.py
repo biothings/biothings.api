@@ -342,6 +342,10 @@ STANDALONE_VERSION = {"branch": "standalone_v2", "commit": None, "date": None}
 # A list of URLs to the versions.json files, which contain data release metadata
 VERSION_URLS = []
 
+# Use this configuration to customize validation logic of the auto hub feature.
+# the AutoHubValidator will be use as default. Any customize class must be extended from it.
+AUTOHUB_VALIDATOR_CLASS = None
+
 # Set to True to skip checking application/biothings version matching, before installing
 # a data release, in version settings like "app_version", "standalone_version", "biothings_version"
 SKIP_CHECK_COMPAT = True
