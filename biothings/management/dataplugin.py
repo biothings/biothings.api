@@ -70,7 +70,7 @@ def clean_data(
         utils.do_clean_dumped_files(working_dir)
         utils.do_clean_uploaded_sources(working_dir)
         return exit(0)
-    rprint("[red]Please provide at least one option[/red]")
+    rprint("[red]Please provide at least one of following option: --dump, --upload, --all[/red]")
     return exit(1)
 
 
@@ -160,6 +160,7 @@ def inspect(
     limit: Optional[int] = typer.Option(
         None,
         "--limit",
+        "-l",
         help="Can limit the inspection to the x first docs (None = no limit, inspects all)",
     ),
     merge: Optional[bool] = typer.Option(

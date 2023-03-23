@@ -422,7 +422,7 @@ def get_uploaders(working_dir: pathlib.Path):
     return table_space
 
 
-def remove_files_in_folder(folder_path):
+def remove_files_in_folder(folder_path, from_hub):
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
         try:
@@ -432,11 +432,19 @@ def remove_files_in_folder(folder_path):
                 shutil.rmtree(file_path)
         except Exception as e:
             rprint("[red]Failed to delete %s. Reason: %s [/red]" % (file_path, e))
+    if from_hub:
+        shutil.rmtree(folder_path)
 
 
-def do_clean_dumped_files(working_dir):
+def do_clean_dumped_files(working_dir, from_hub=False):
     plugin_name = working_dir.name
-    data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
+    if not from_hub:
+        data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
+    else:
+        data_folder = working_dir
+    if not os.path.isdir(data_folder):
+        rprint(f"[red]Data folder {data_folder} not found![/red]")
+        return exit(1)
     if not os.listdir(data_folder):
         print("Empty folder!")
     else:
@@ -445,7 +453,7 @@ def do_clean_dumped_files(working_dir):
         delete = typer.confirm("Do you want to delete them?")
         if not delete:
             raise typer.Abort()
-        remove_files_in_folder(data_folder)
+        remove_files_in_folder(data_folder, from_hub)
         rprint("[green]Deleted![/green]")
 
 
@@ -503,10 +511,10 @@ def show_uploaded_sources(working_dir, plugin_name):
                 f"[green]DB path:[/green] [bold]{src_db.dbfile}[/bold]\n"
                 + f"[green]- Database:[/green] [bold]{src_db.name}[/bold]\n  -[green] Collections:[/green] [bold]"
                 + ", ".join(uploaded_sources)
-                + "[/bold] \n -[green] Archived collections:[/green][bold]\n"
-                + "\n".join(archived_sources)
-                + "[/bold] \n -[green] Temporary collections:[/green][bold]\n"
-                + "\n".join(temp_sources),
+                + "[/bold] \n  -[green] Archived collections:[/green][bold]\n    "
+                + "\n    ".join(archived_sources)
+                + "[/bold] \n -[green] Temporary collections:[/green][bold]\n    "
+                + "\n    ".join(temp_sources),
                 title=f"[bold]{plugin_name}[/bold]",
                 title_align="left",
             )
