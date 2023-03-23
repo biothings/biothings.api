@@ -2,16 +2,18 @@
     This standalone module is originally located at "biothings/standalone" repo.
     It's used for Standalone/Autohub instance.
 """
-import os
-import logging
-import sys
 import asyncio
+import importlib
+import logging
+import os
+import sys
 from copy import deepcopy
 from functools import partial
 
 from biothings import config as btconfig
 from biothings.hub import HubServer
 from biothings.hub.autoupdate import BiothingsDumper, BiothingsUploader
+from biothings.hub.standalone.validators import AutoHubValidator
 from biothings.utils.es import ESIndexer
 from biothings.utils.backend import DocESBackend
 from biothings.utils.loggers import get_logger
@@ -26,8 +28,9 @@ class AutoHubFeature(object):
 
     DEFAULT_DUMPER_CLASS = BiothingsDumper
     DEFAULT_UPLOADER_CLASS = BiothingsUploader
+    DEFAULT_VALIDATOR_CLASS = AutoHubValidator
 
-    def __init__(self, managers, version_urls, indexer_factory=None, *args, **kwargs):
+    def __init__(self, managers, version_urls, indexer_factory=None, validator_class=None, *args, **kwargs):
         """
         version_urls is a list of URLs pointing to versions.json file. The name
         of the data release is taken from the URL (http://...s3.amazon.com/<the_name>/versions.json)
@@ -48,12 +51,29 @@ class AutoHubFeature(object):
 
         When a data release named (from URL) matches an entry, it's used to configured
         which ES backend to target, otherwise the default one is used.
+
+        If validator_class is passed, it'll be used to provide validation methods for installing step.
+        If validator_class is None, the AutoHubValidator will be used as fallback.
+
         """
         super().__init__(*args, **kwargs)
         self.version_urls = self.extract(version_urls)
         self.indexer_factory = indexer_factory
         self.managers = managers
         self.logger, _ = get_logger("autohub")
+
+        if validator_class:
+            if isinstance(validator_class, str):
+                parts = validator_class.split(".")
+                validator_module = ".".join(parts[:-1])
+                validator_class = parts[-1]
+                validator_class = getattr(importlib.import_module(validator_module), validator_class)
+            assert issubclass(validator_class, AutoHubValidator), (
+                "validator_class must be a subclass of biothings.hub.standalone.AutoHubValidator"
+            )
+            self.validator = validator_class(self)
+        else:
+            self.validator = self.DEFAULT_VALIDATOR_CLASS(self)
 
     def extract(self, urls):
         vurls = []
@@ -65,10 +85,6 @@ class AutoHubFeature(object):
                 vurls.append({"name": self.get_folder_name(url), "url": url})
 
         return vurls
-
-    def validate_release(self, version_path, force=False):
-        """Check if the release is valid to install. If not, it should raise an Exception to stop the progress"""
-        pass
 
     def install(self, src_name, version="latest", dry=False, force=False, use_no_downtime_method=True):
         """
@@ -91,7 +107,7 @@ class AutoHubFeature(object):
                 if dry:
                     return version_path
 
-                self.validate_release(version_path=version_path, force=force)
+                self.validator.validate(version_path=version_path, force=force)
 
                 for step_version in version_path:
                     logging.info("Downloading data for version '%s'", step_version)
