@@ -376,10 +376,10 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
             table.add_row(
                 field_name,
                 str(item["field_type"]),
-                str(item["stats"]["_count"]),
-                str(item["stats"]["_max"]),
-                str(item["stats"]["_min"]),
-                str(item["stats"]["_none"]),
+                str(item.get("stats", {}).get("_count", "")),
+                str(item.get("stats", {}).get("_max", "")),
+                str(item.get("stats", {}).get("_min", "")),
+                str(item.get("stats", {}).get("_none", "")),
                 item["warning"],
             )
         problem_panel = None
