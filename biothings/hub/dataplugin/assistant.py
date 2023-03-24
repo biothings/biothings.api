@@ -10,9 +10,11 @@ import textwrap
 import urllib.parse
 from string import Template
 
+# we switched to use black for code formatting
+# from yapf.yapflib import yapf_api
+import black
 import requests
 import yaml
-from yapf.yapflib import yapf_api
 
 from biothings import config as btconfig
 from biothings.hub.dataload.dumper import LastModifiedFTPDumper, LastModifiedHTTPDumper
@@ -32,7 +34,6 @@ class LoaderException(Exception):
 
 
 class BasePluginLoader(object):
-
     loader_type = None  # set in subclass
 
     def __init__(self, plugin_name):
@@ -74,7 +75,6 @@ class BasePluginLoader(object):
 
 
 class ManifestBasedPluginLoader(BasePluginLoader):
-
     loader_type = "manifest"
 
     # should match a _dict_for_***
@@ -505,7 +505,6 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
 
 class AdvancedPluginLoader(BasePluginLoader):
-
     loader_type = "advanced"
 
     def can_load_plugin(self):
@@ -547,7 +546,6 @@ class AdvancedPluginLoader(BasePluginLoader):
 
 
 class BaseAssistant(object):
-
     plugin_type = None  # to be defined in subblass
     data_plugin_manager = None  # set by assistant manager
     dumper_manager = None  # set by assistant manager
@@ -644,7 +642,6 @@ class AssistedUploader(object):
 
 
 class GithubAssistant(BaseAssistant):
-
     plugin_type = "github"
 
     @property
@@ -685,7 +682,6 @@ class GithubAssistant(BaseAssistant):
 
 
 class LocalAssistant(BaseAssistant):
-
     plugin_type = "local"
 
     @property
@@ -925,7 +921,9 @@ class AssistantManager(BaseSourceManager):
             # clear init, we'll append code
             # we use yapf (from Google) as autopep8 (for instance) doesn't give
             # good results in term in indentation (input_type list for keylookup for instance)
-            beauty, _ = yapf_api.FormatCode(dclass.python_code)
+            # switched to use black from yapf
+            # beauty, _ = yapf_api.FormatCode(dclass.python_code)
+            beauty = black.format_str(dclass.python_code, mode=black.Mode())
             with open(dfile, "w") as fout:
                 fout.write(beauty)
             with open(dinit, "a") as fout:
@@ -959,7 +957,9 @@ class AssistantManager(BaseSourceManager):
                 dinit = os.path.join(folder, "__init__.py")
                 mod_name = f"{uclass.__name__.split('_')[1]}_upload"
                 ufile = os.path.join(folder, mod_name + ".py")
-                beauty, _ = yapf_api.FormatCode(uclass.python_code)
+                # switched to use black from yapf
+                # beauty, _ = yapf_api.FormatCode(uclass.python_code)
+                beauty = black.format_str(uclass.python_code, mode=black.Mode())
                 with open(ufile, "w") as fout:
                     fout.write(beauty)
                 with open(dinit, "a") as fout:
@@ -1010,7 +1010,9 @@ class AssistantManager(BaseSourceManager):
             return res
         else:
             ufile = os.path.join(folder, "upload.py")
-            strmap, _ = yapf_api.FormatCode(pprint.pformat(mapping))
+            # switched to use black from yapf
+            # strmap, _ = yapf_api.FormatCode(pprint.pformat(mapping))
+            strmap = black.format_str(pprint.pformat(mapping), mode=black.Mode())
             with open(ufile, "a") as fout:
                 fout.write(
                     """
