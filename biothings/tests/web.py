@@ -78,27 +78,27 @@ import glob
 import inspect
 import json
 import os
+import sys
 from functools import partial
 from typing import Optional, Union
 
 import pytest
 import requests
 import urllib3
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
-
-from biothings.utils.common import traverse
-from biothings.web.launcher import BiothingsAPI
-from biothings.web.settings import configs
 from tornado.ioloop import IOLoop
 from tornado.testing import AsyncHTTPTestCase
 
+import biothings
+from biothings.utils.common import traverse
+from biothings.web.launcher import BiothingsAPI
+from biothings.web.settings import configs
 
-class BiothingsWebTest:
+
+class BiothingsWebTestBase:
     # relative path parsing configuration
-    scheme = 'http'
-    prefix = 'v1'
-    host = ''
+    scheme = "http"
+    prefix = "v1"
+    host = ""
 
     def request(self, path, method='GET', expect=200, **kwargs):
         """
@@ -118,23 +118,19 @@ class BiothingsWebTest:
         Return an absolute url when class var 'host' is defined.
         If not, return a path relative to the host root.
         """
-        scheme = os.getenv("TEST_SCHEME", self.scheme)
-        prefix = os.getenv("TEST_PREFIX", self.prefix).strip('/')
-        host = os.getenv("TEST_HOST", self.host).strip('/')
-
         # already an absolute path
         if path.lower().startswith(("http://", "https://")):
             return path
 
         # path standardization
         if not path.startswith('/'):
-            if prefix:  # append prefix
-                path = '/'.join((prefix, path))
+            if self.prefix:  # append prefix
+                path = '/'.join((self.prefix, path))
             path = '/' + path
 
         # host standardization
-        if host:
-            path = f"{scheme}://{host}{path}"
+        if self.host:
+            path = f"{self.scheme}://{self.host}{path}"
 
         return path
 
@@ -229,7 +225,26 @@ class BiothingsWebTest:
         return value in res_at_key
 
 
-class BiothingsWebAppTest(BiothingsWebTest, AsyncHTTPTestCase):
+class BiothingsWebTest(BiothingsWebTestBase):
+    """
+    """
+    @classmethod
+    def setup_class(cls):
+        """this is the setup method when pytest run tests from this class"""
+        cls.scheme = os.getenv("TEST_SCHEME", cls.scheme)
+        cls.prefix = os.getenv("TEST_PREFIX", cls.prefix).strip('/')
+        cls.host = os.getenv("TEST_HOST", cls.host).strip('/')
+        base_url = f"{cls.scheme}://{cls.host}/{cls.prefix}"
+        msg = f"\n\tTest URL: {base_url}"
+        msg += f"\n\tBioThings SDK Version: {biothings.__version__}"
+        msg += f"\n\tBioThings SDK path: {biothings.__file__}\n"
+        # this stderr output will be suppressed by pytest
+        # but will be shown when --capture=no or -s is passed,
+        # allowing us to see the test url when running tests
+        sys.__stderr__.write(msg)
+
+
+class BiothingsWebAppTest(BiothingsWebTestBase, AsyncHTTPTestCase):
     """
         Starts the tornado application to run tests locally.
         Need a config.py under the test class folder.
@@ -347,7 +362,7 @@ class BiothingsWebAppTest(BiothingsWebTest, AsyncHTTPTestCase):
     # override
     def get_url(self, path):
 
-        path = BiothingsWebTest.get_url(self, path)
+        path = BiothingsWebTestBase.get_url(self, path)
         return AsyncHTTPTestCase.get_url(self, path)
 
 
