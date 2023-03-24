@@ -166,14 +166,16 @@ def inspect(
     merge: Optional[bool] = typer.Option(
         False,
         "--merge",
-        help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}]""",
-    ),
-    validate: Optional[bool] = typer.Option(
-        True,
-        "--validate",
-        help="""Validate data""",
+        "-m",
+        help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}])""",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="The local JSON file path for storing mapping info if you run with mode 'mapping' (absolute path or relative path)",
+    ),
 ):
     """ """
     if verbose:
@@ -186,10 +188,10 @@ def inspect(
         rprint(f"[red]Your source name {sub_source_name} does not exits[/red]")
         return
     if sub_source_name:
-        utils.process_inspect(sub_source_name, mode, limit, merge, logger, validate)
+        utils.process_inspect(sub_source_name, mode, limit, merge, logger, True, output)
     else:
         for source_name in table_space:
-            utils.process_inspect(source_name, mode, limit, merge, logger, validate)
+            utils.process_inspect(source_name, mode, limit, merge, logger, True, output)
 
 
 @app.command(name="serve")

@@ -236,7 +236,7 @@ def process_uploader(working_dir, data_folder, main_source, upload_section, logg
     )
 
 
-def process_inspect(source_name, mode, limit, merge, logger, do_validate):
+def process_inspect(source_name, mode, limit, merge, logger, do_validate, output=None):
     mode = mode.split(",")
     if "jsonschema" in mode:
         mode = ["jsonschema", "type"]
@@ -297,7 +297,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate):
             return k, v
 
     dict_traverse(_map, clean_big_nums)
-    mapping = _map["results"].get("mapping", {}).get(source_name.lower(), {}).get("properties")
+    mapping = _map["results"].get("mapping", {})
     type_and_stats = {
         source_name: {
             _mode: btinspect.flatten_and_validate(_map["results"].get(_mode, {}), do_validate)
@@ -306,16 +306,21 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate):
     }
     mapping_table = None
     if "mapping" in mode and mapping:
-        mapping_table = Table(
-            title="[bold green]MAPPING[/bold green]",
-            box=box.SQUARE_DOUBLE_HEAD,
-            expand=False,
-            show_lines=True,
-        )
-        mapping_table.add_column("Field name", justify="left", style="cyan")
-        mapping_table.add_column("Info", justify="left", style="green")
-        for key, value in mapping.items():
-            mapping_table.add_row(str(key), json.dumps(value))
+        if mapping.get("errors"):
+            mapping_table = f"[red]{mapping.get('errors')}[/red]"
+        else:
+            mapping_table = Table(
+                title="[bold green]MAPPING[/bold green]",
+                box=box.SQUARE_DOUBLE_HEAD,
+                expand=False,
+                show_lines=True,
+            )
+            mapping_table.add_column(
+                f"Sub source name: [bold]{source_name}[/bold]", justify="left", style="cyan"
+            )
+            mapping_table.add_row(
+                json.dumps(mapping, indent=4, separators=(",", ": "), sort_keys=True)
+            )
     report = []
     problem_summary = []
     if "stats" in mode:
@@ -388,6 +393,19 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate):
             console.print(problem_panel)
     elif mapping_table:
         console.print(mapping_table)
+
+    if "mapping" in mode and mapping and output:
+        with open(output, "w+") as fp:
+            current_content = fp.read()
+            if current_content:
+                current_content = json.load(current_content)
+            else:
+                current_content = {}
+            current_content.update(mapping)
+            fp.write(json.dumps(current_content, indent=4, separators=(",", ": "), sort_keys=True))
+            rprint(
+                f"[green]Successful writing the mapping info to the JSON file: [bold]{output}[/bold][/green]"
+            )
 
 
 def get_manifest_content(working_dir):
@@ -486,13 +504,22 @@ def do_clean_uploaded_sources(working_dir):
 def show_dumped_files(data_folder, plugin_name):
     console = Console()
     if not os.path.isdir(data_folder) or not os.listdir(data_folder):
-        console.print(Panel("Empty file!"))
+        console.print(
+            Panel(
+                f"[green]Source:[/green][bold] {plugin_name}[/bold]\n"
+                + f"[green]Data Folder:[/green][bold] {data_folder}:[/bold]\n"
+                + "Empty file!",
+                title="[bold]Dump[/bold]",
+                title_align="left",
+            )
+        )
     else:
         console.print(
             Panel(
-                f"[bold]Data Folder: {data_folder}:[/bold]\n- "
-                + "\n- ".join(os.listdir(data_folder)),
-                title=f"[bold]{plugin_name}[/bold]",
+                f"[green]Source:[/green][bold] {plugin_name}[/bold]\n"
+                + f"[green]Data Folder:[/green][bold] {data_folder}:[/bold]\n    - "
+                + "\n    - ".join(os.listdir(data_folder)),
+                title="[bold]Dump[/bold]",
                 title_align="left",
             )
         )
@@ -504,18 +531,31 @@ def show_uploaded_sources(working_dir, plugin_name):
     src_db = get_src_db()
     uploaded_sources, archived_sources, temp_sources = get_uploaded_collections(src_db, uploaders)
     if not uploaded_sources:
-        console.print(Panel("Empty source!"))
+        console.print(
+            Panel(
+                f"[green]Source:[/green] [bold]{plugin_name}[/bold]\n"
+                + f"[green]DB path:[/green] [bold]{working_dir}/{src_db.dbfile}[/bold]\n"
+                + f"[green]- Database:[/green] [bold]{src_db.name}[/bold]\n"
+                + "Empty source!",
+                title="[bold]Upload[/bold]",
+                title_align="left",
+            )
+        )
     else:
         console.print(
             Panel(
-                f"[green]DB path:[/green] [bold]{src_db.dbfile}[/bold]\n"
-                + f"[green]- Database:[/green] [bold]{src_db.name}[/bold]\n  -[green] Collections:[/green] [bold]"
-                + ", ".join(uploaded_sources)
-                + "[/bold] \n  -[green] Archived collections:[/green][bold]\n    "
-                + "\n    ".join(archived_sources)
-                + "[/bold] \n -[green] Temporary collections:[/green][bold]\n    "
-                + "\n    ".join(temp_sources),
-                title=f"[bold]{plugin_name}[/bold]",
+                f"[green]Source:[/green] [bold]{plugin_name}[/bold]\n"
+                + f"[green]DB path:[/green] [bold]{working_dir}/{src_db.dbfile}[/bold]\n"
+                + f"[green]- Database:[/green] [bold]{src_db.name}[/bold]\n"
+                + "    -[green] Collections:[/green] [bold]\n        "
+                + "\n        ".join(uploaded_sources)
+                + "[/bold] \n"
+                + "    -[green] Archived collections:[/green][bold]\n        "
+                + "\n        ".join(archived_sources)
+                + "[/bold] \n"
+                + "    -[green] Temporary collections:[/green][bold]\n        "
+                + "\n        ".join(temp_sources),
+                title="[bold]Upload[/bold]",
                 title_align="left",
             )
         )

@@ -207,9 +207,13 @@ def inspect(
         False,
         "--merge",
         "-m",
-        help="""
-        merge scalar into list when both exist (eg. {"val":..} and [{"val":...}]
-        """,
+        help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}])""",
+    ),
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="The local JSON file path for storing mapping info if you run with mode 'mapping' (absolute path or relative path)",
     ),
 ):
     working_dir = pathlib.Path().resolve()
@@ -235,16 +239,23 @@ def inspect(
         rprint(
             "[red]This is a multiple uploaders data plugin, so '--sub-source-name' must be provided![/red]"
         )
+        rprint(
+            f"[red]Accepted values of --sub-source-name are: {', '.join(uploader.name for uploader in uploader_manager[source_full_name])}[/red]"
+        )
         exit(1)
     table_space = utils.get_uploaders(pathlib.Path(f"{working_dir}/{plugin_name}"))
     if sub_source_name and sub_source_name not in table_space:
         rprint(f"[red]Your source name {sub_source_name} does not exits[/red]")
         exit(1)
     if sub_source_name:
-        utils.process_inspect(sub_source_name, mode, limit, merge, logger, do_validate=True)
+        utils.process_inspect(
+            sub_source_name, mode, limit, merge, logger, do_validate=True, output=output
+        )
     else:
         for source_name in table_space:
-            utils.process_inspect(source_name, mode, limit, merge, logger, do_validate=True)
+            utils.process_inspect(
+                source_name, mode, limit, merge, logger, do_validate=True, output=output
+            )
 
 
 @app.command(
