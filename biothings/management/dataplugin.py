@@ -15,6 +15,7 @@ from . import utils
 
 app = typer.Typer(
     help="[green]A set of commands that you can use for testing your data plugin and make a simple view about your data set.[/green]\n"
+    "\n\n[red italic]* To override the default biothing.config, please define the config.py at the working directory[red italic]"
     "[red italic]* Running this command inside of your data plugin[/red italic]",
     no_args_is_help=True,
 )

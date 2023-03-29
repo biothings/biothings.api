@@ -21,7 +21,9 @@ app = typer.Typer(
     "[green]Create your new data plugin with the standard file structure.[/green]\n"
     "[green]Dumping, uploading, and inspecting your data in synchronize.[/green]\n"
     "[green]Serving your data as a web service for making simple queries[/green]\n"
-    "[red italic]* Running this command outside of your data plugin[/red italic]",
+    "\n\n[red italic]* To override the default biothing.config, please define the config.py at the working directory[red italic]"
+    "\n[red italic]* Running this command outside of your data plugin[/red italic]"
+    "[red italic] *that mean your working directory contains your data plugin[/red italic]",
     no_args_is_help=True,
     rich_markup_mode="rich",
 )

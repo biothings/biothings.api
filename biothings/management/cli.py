@@ -1,3 +1,5 @@
+import importlib
+import importlib.util
 import logging
 import pathlib
 import sys
@@ -5,6 +7,7 @@ import sys
 import typer
 
 from biothings.utils.common import DummyConfig
+from biothings.utils.configuration import ConfigurationError
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 
@@ -35,7 +38,17 @@ def main():
     _config.DATA_ARCHIVE_ROOT = ".biothings_hub/archive"
     _config.LOG_FOLDER = ".biothings_hub/logs"
     _config.DATA_PLUGIN_FOLDER = f"{working_dir}"
-
+    try:
+        config_mod = importlib.import_module("config")
+        for attr in dir(config_mod):
+            value = getattr(config_mod, attr)
+            if isinstance(value, ConfigurationError):
+                raise ConfigurationError("%s: %s" % (attr, str(value)))
+            setattr(_config, attr, value)
+    except Exception:
+        logger.info(
+            "The config.py does not exists in the working directory, use default biothings.config"
+        )
     sys.modules["config"] = _config
     sys.modules["biothings.config"] = _config
 
