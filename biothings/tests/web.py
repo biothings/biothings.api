@@ -344,7 +344,7 @@ class BiothingsWebAppTest(BiothingsWebTestBase, AsyncHTTPTestCase):
     def get_app(self):
         prefix = self.config.APP_PREFIX
         version = self.config.APP_VERSION
-        self.prefix = f'{prefix}/{version}'
+        self.prefix = f"{prefix}/{version}".strip("/")
         return BiothingsAPI.get_app(self.config)
 
     # override
