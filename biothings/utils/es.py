@@ -955,7 +955,7 @@ class ESIndexer:
     def set_internal_number_of_replicas(self, number_of_replicas=None):
         if not number_of_replicas:
             number_of_replicas = self.number_of_replicas
-        settings = json.dumps({"index": {"number_of_replicas": number_of_replicas}})
+        settings = {"index": {"number_of_replicas": number_of_replicas}}
         self.update_settings(settings)
 
     def sanitize_settings(self, settings):
