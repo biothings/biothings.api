@@ -41,7 +41,7 @@ def dict_sweep(d, vals=None, remove_invalid_list=False):
                 {'site': ['Intron'], 'snp_build': 136}
     """
     # set default supported vals for empty values
-    vals = vals or [".", "-", "", "NA", "none", " ", "Not Available", "unknown"]
+    vals = vals or {".", "-", "", "NA", "none", " ", "Not Available", "unknown"}
     for key, val in list(d.items()):
         if val in vals:
             del d[key]
