@@ -1,5 +1,5 @@
 '''
-Utils to compare two list of gene documents
+Utils to compare two list of gene documents, requires to setup Biothing Hub.
 '''
 import os
 import os.path
@@ -9,72 +9,8 @@ from .backend import DocMongoDBBackend
 from ..hub.databuild.backend import create_backend
 from .es import ESIndexer
 from .jsondiff import make as jsondiff
+from .diff_common import full_diff_doc
 
-
-def diff_doc(doc_1, doc_2, exclude_attrs=['_timestamp']):
-    diff_d = {'update': {},
-              'delete': [],
-              'add': {}}
-    if exclude_attrs:
-        doc_1 = filter_dict(doc_1, exclude_attrs)
-        doc_2 = filter_dict(doc_2, exclude_attrs)
-    for attr in set(doc_1) | set(doc_2):
-        if exclude_attrs and attr in exclude_attrs:
-            continue
-        if attr in doc_1 and attr in doc_2:
-            _v1 = doc_1[attr]
-            _v2 = doc_2[attr]
-            if _v1 != _v2:
-                diff_d['update'][attr] = _v2
-        elif attr in doc_1 and attr not in doc_2:
-            diff_d['delete'].append(attr)
-        else:
-            diff_d['add'][attr] = doc_2[attr]
-    if diff_d['update'] or diff_d['delete'] or diff_d['add']:
-        return diff_d
-
-
-def full_diff_doc(doc_1, doc_2, exclude_attrs=['_timestamp']):
-    diff_d = {'update': {},
-              'delete': [],
-              'add': {}}
-    if exclude_attrs:
-        doc_1 = filter_dict(doc_1, exclude_attrs)
-        doc_2 = filter_dict(doc_2, exclude_attrs)
-    for attr in set(doc_1) | set(doc_2):
-        if exclude_attrs and attr in exclude_attrs:
-            continue
-        if attr in doc_1 and attr in doc_2:
-            _v1 = doc_1[attr]
-            _v2 = doc_2[attr]
-            difffound = False
-            if isinstance(_v1, dict) and isinstance(_v2, dict):
-                if full_diff_doc(_v1, _v2, exclude_attrs):
-                    difffound = True
-            elif isinstance(_v1, list) and isinstance(_v2, list):
-                # there can be unhashable/unordered dict in these lists
-                for i in _v1:
-                    if i not in _v2:
-                        difffound = True
-                        break
-                # check the other way
-                if not difffound:
-                    for i in _v2:
-                        if i not in _v1:
-                            difffound = True
-                            break
-            elif _v1 != _v2:
-                difffound = True
-
-            if difffound:
-                diff_d['update'][attr] = _v2
-
-        elif attr in doc_1 and attr not in doc_2:
-            diff_d['delete'].append(attr)
-        else:
-            diff_d['add'][attr] = doc_2[attr]
-    if diff_d['update'] or diff_d['delete'] or diff_d['add']:
-        return diff_d
 
 def two_docs_iterator(b1, b2, id_list, step=10000, verbose=False):
     t0 = time.time()
@@ -148,8 +84,6 @@ def diff_docs_jsonpatch(b1, b2, ids, fastdiff=False, exclude_attrs=[]):
                 _diff['_id'] = doc1['_id']
                 _updates.append(_diff)
     return _updates
-
-
 
 
 # TODO: move to mongodb backend class

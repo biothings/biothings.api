@@ -3,22 +3,24 @@ This module contains util functions may be shared by both BioThings data-hub and
 In general, do not include utils depending on any third-party modules.
 Note: unittests available in biothings.tests.hub
 """
-import math
-import statistics
-import random
-from collections.abc import Iterable
-import time
-import re
-import logging
 import copy
-from pprint import pformat
+import enum
+import logging
+import math
+import random
+import re
+import statistics
+import time
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from datetime import datetime
+from pprint import pformat
 
 import bson
 
-from biothings.utils.common import timesofar, is_scalar, is_str, splitstr, nan, inf
-from biothings.utils.docs import flatten_doc
+from biothings.utils.common import inf, is_scalar, is_str, nan, splitstr, timesofar
 from biothings.utils.dataload import dict_walk
+from biothings.utils.docs import flatten_doc
 
 
 class BaseMode(object):
@@ -50,16 +52,10 @@ class BaseMode(object):
     def post(self, mapt, mode, clean):
         pass
 
+
 class StatsMode(BaseMode):
 
-    template = {
-        "_stats": {
-            "_min": math.inf,
-            "_max": -math.inf,
-            "_count": 0,
-            "_none": 0
-        }
-    }
+    template = {"_stats": {"_min": math.inf, "_max": -math.inf, "_count": 0, "_none": 0}}
     key = "_stats"
 
     def sumiflist(self, val):
@@ -200,11 +196,8 @@ class IdentifiersMode(RegexMode):
 
 ############################################################################
 
-MODES_MAP = {
-    "stats": StatsMode,
-    "deepstats": DeepStatsMode,
-    "identifiers": IdentifiersMode
-}
+MODES_MAP = {"stats": StatsMode, "deepstats": DeepStatsMode, "identifiers": IdentifiersMode}
+
 
 def get_mode_layer(mode):
     try:
@@ -307,11 +300,11 @@ def inspect(struct, key=None, mapt=None, mode="type", level=0, logger=logging):
                 already_explored_as_list = False
             if False:  # already_explored_as_list:      # TODO: check this
                 mapt[list].setdefault(k, {})
-                typ = inspect(struct[k], key=k, mapt=mapt[list][k], mode=mode, level=level+1)
+                typ = inspect(struct[k], key=k, mapt=mapt[list][k], mode=mode, level=level + 1)
                 mapt[list].update({k: typ})
             else:
                 mapt.setdefault(k, {})
-                typ = inspect(struct[k], key=k, mapt=mapt[k], mode=mode, level=level+1)
+                typ = inspect(struct[k], key=k, mapt=mapt[k], mode=mode, level=level + 1)
 
         if mode_inst:
             mapt.setdefault(mode_inst.key, copy.deepcopy(mode_inst.template[mode_inst.key]))
@@ -320,7 +313,7 @@ def inspect(struct, key=None, mapt=None, mode="type", level=0, logger=logging):
 
         mapl = {}
         for e in struct:
-            typ = inspect(e, key=key, mapt=mapl, mode=mode, level=level+1)
+            typ = inspect(e, key=key, mapt=mapl, mode=mode, level=level + 1)
             mapl.update(typ)
         if mode_inst:
             # here we just report that one document had a list
@@ -369,6 +362,7 @@ def inspect(struct, key=None, mapt=None, mode="type", level=0, logger=logging):
 
     return mapt
 
+
 def merge_scalar_list(mapt, mode):
     # TODO: this looks "strangely" to merge_record... refactoring needed ?
     # if a list is found and other keys at same level are found in that
@@ -396,7 +390,9 @@ def merge_scalar_list(mapt, mode):
                         elif typ == mode_inst.key:
                             mode_inst.merge(mapt[list][e][mode_inst.key], tomerge[mode_inst.key])
                         else:
-                            mode_inst.merge(mapt[list][e][typ][mode_inst.key], tomerge[typ][mode_inst.key])
+                            mode_inst.merge(
+                                mapt[list][e][typ][mode_inst.key], tomerge[typ][mode_inst.key]
+                            )
                 elif mode == "mapping":
                     for typ in tomerge:
                         if typ is str and splitstr in mapt[list][e]:
@@ -431,15 +427,18 @@ def get_converters(modes, logger=logging):
     # should we actually run another mode and then convert the results ?
     if "jsonschema" in modes:
         from biothings.utils.jsonschema import generate_json_schema
+
         # first get schema with mode="type", then convert the results
         # note "type" can't also be specified as jsonschema will replace
         # the results in _map["type"] key
-        converters.append({
-            "output_mode": "jsonschema",
-            "input_mode": "type",
-            "func": generate_json_schema,
-            "delete_input_mode": "type" not in modes
-        })
+        converters.append(
+            {
+                "output_mode": "jsonschema",
+                "input_mode": "type",
+                "func": generate_json_schema,
+                "delete_input_mode": "type" not in modes,
+            }
+        )
         modes.remove("jsonschema")
         if "type" not in modes:
             modes.append("type")
@@ -450,15 +449,29 @@ def get_converters(modes, logger=logging):
 def run_converters(_map, converters, logger=logging):
     # need to convert some results ?
     for converter in converters:
-        logger.info("Finalizing result for mode '%s' using converter %s", converter["output_mode"], converter)
+        logger.info(
+            "Finalizing result for mode '%s' using converter %s",
+            converter["output_mode"],
+            converter,
+        )
         converted = converter["func"](_map[converter["input_mode"]])
         _map[converter["output_mode"]] = converted
         if converter["delete_input_mode"]:
             _map.pop(converter["input_mode"])
 
-def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
-                 pre_mapping=False, limit=None, sample=None, metadata=True,
-                 auto_convert=True):
+
+def inspect_docs(
+    docs,
+    mode="type",
+    clean=True,
+    merge=False,
+    logger=logging,
+    pre_mapping=False,
+    limit=None,
+    sample=None,
+    metadata=True,
+    auto_convert=True,
+):
     """Inspect docs and return a summary of its structure:
 
     Args:
@@ -514,7 +527,12 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
             try:
                 inspect(doc, mapt=_map[m], mode=m)
             except Exception as e:
-                logging.exception("Can't inspect document (_id: %s) because: %s\ndoc: %s", doc.get("_id"), e, pformat("dpc"))
+                logging.exception(
+                    "Can't inspect document (_id: %s) because: %s\ndoc: %s",
+                    doc.get("_id"),
+                    e,
+                    pformat("dpc"),
+                )
                 errors.add(str(e))
         cnt += 1
         if cnt % 10000 == 0:
@@ -541,6 +559,7 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
     if "mapping" in modes and pre_mapping is False:
         # directly generate ES mapping
         import biothings.utils.es as es
+
         try:
             _map["mapping"] = es.generate_es_mapping(_map["mapping"])
             if metadata:
@@ -552,6 +571,7 @@ def inspect_docs(docs, mode="type", clean=True, merge=False, logger=logging,
     elif errors:
         _map["errors"] = errors
     return _map
+
 
 def compute_metadata(mapt, mode):
     if mode == "mapping":
@@ -568,6 +588,7 @@ def typify_inspect_doc(dmap):
     namely actual python types were stringify to be storabled. This function
     does the oposite and restore back python types within the inspect doc
     """
+
     def typify(val):
         if type(val) != type and val.startswith("__type__:"):
             typ = val.replace("__type__:", "")
@@ -580,13 +601,251 @@ def typify_inspect_doc(dmap):
                 return eval(val.replace("__type__:", ""))
         else:
             return val
+
     return dict_walk(dmap, typify)
 
 
 def stringify_inspect_doc(dmap):
     def stringify(val):
         if type(val) == type:
-            return "__type__:%s" % val.__name__  # prevent having dots in the field (not storable in mongo)
+            return (
+                "__type__:%s" % val.__name__
+            )  # prevent having dots in the field (not storable in mongo)
         else:
             return str(val)
+
     return dict_walk(dmap, stringify)
+
+
+@dataclass
+class FieldInspection:
+    field_name: str
+    field_type: str
+    stats: dict = None
+    warnings: list = field(default_factory=list)
+
+
+@dataclass
+class FieldInspectValidation:
+    warnings: set() = field(default_factory=set)
+    types: set = field(default_factory=set)
+    has_multiple_types: bool = False
+
+
+def flatten_inspection_data(
+    data: dict[str, any],
+    current_deep: int = 0,
+    parent_name: str = None,
+    parent_type: str = None,
+) -> list[FieldInspection]:
+    """This function will convert the multiple depth nested inspection data into a flatten list
+    Nested key will be appended with the parent key and seperate with a dot.
+    """
+
+    ROOT_FIELD = "__root__"
+    STATS_FIELD = "_stats"
+    DICT_TYPE = "dict"
+    LIST_TYPE = "list"
+    TYPE_PREFIX = "__type__:"
+
+    field_inspections = []
+    if current_deep == 0:
+        field_inspections.append(
+            FieldInspection(
+                field_name=ROOT_FIELD,
+                field_type=DICT_TYPE,
+                stats=data.get(STATS_FIELD),
+            )
+        )
+
+    for field_name in data:
+        if field_name == STATS_FIELD:
+            continue
+
+        if not field_name.startswith(TYPE_PREFIX):
+            parent_type = DICT_TYPE
+            new_parent_name = field_name
+            if parent_name:
+                new_parent_name = parent_name + "." + field_name
+
+            sub_field_inspections = flatten_inspection_data(
+                data[field_name], current_deep + 1, new_parent_name, parent_type
+            )
+            field_inspections += sub_field_inspections
+            continue
+
+        field_type = field_name.replace(TYPE_PREFIX, "")
+        if field_type == LIST_TYPE:
+            parent_type = LIST_TYPE
+
+            sub_field_inspections = flatten_inspection_data(
+                data[field_name], current_deep + 1, parent_name, parent_type
+            )
+
+            if (
+                len(sub_field_inspections) == 1
+                and sub_field_inspections[0].field_name == parent_name
+            ):
+                field_inspections.append(
+                    FieldInspection(
+                        field_name=parent_name,
+                        field_type=f"{parent_type} of {sub_field_inspections[0].field_type}",
+                        stats=data[field_name].get(STATS_FIELD),
+                    )
+                )
+            else:
+                field_inspections.append(
+                    FieldInspection(
+                        field_name=parent_name,
+                        field_type=parent_type,
+                        stats=data[field_name].get(STATS_FIELD),
+                    )
+                )
+                field_inspections += sub_field_inspections
+        else:
+            field_inspections.append(
+                FieldInspection(
+                    field_name=parent_name,
+                    field_type=field_type,
+                    stats=data[field_name].get(STATS_FIELD),
+                )
+            )
+
+    return field_inspections
+
+
+class InspectionValidation:
+    """This class provide a mechanism to validate and flag any field which:
+    - contains whitespace
+    - contains upper cased letter or special characters
+        (lower-cased is recommended, in some cases the upper-case field names are acceptable,
+        so we should raise it as a warning and let user to confirm it's necessary)
+    - when the type inspection detects more than one types
+        (but a mixed or single value and an array of same type of values are acceptable,
+        or the case of mixed integer and float should be acceptable too)
+
+    Usage:
+        ```
+        result = InspectionValidation.validate(data)
+        ```
+
+    Adding more rules:
+    - add new code, and message to Warning Enum
+    - add a new staticmethod for validate new rule and named in format: `validate_{warning_code}`
+    - add new rule to docstring.
+    """
+
+    class Warning(enum.Enum):
+        W001 = "field name contains whitespace."
+        W002 = "field name contains uppercase."
+        W003 = "field name contains special character. Only alphanumeric, dot, or underscore are valid."
+        W004 = "field name has more than one type."
+
+        def to_dict(self):
+            return {"code": self.name, "message": self.value}
+
+    SPACE_PATTERN = " "
+    INVALID_CHARACTERS_PATTERN = r"[^a-zA-Z0-9_.]"
+    NUMERIC_FIELDS = ["int", "float"]
+
+    @staticmethod
+    def validate(data: list[FieldInspection]) -> dict[str, FieldInspectValidation]:
+        field_validations: dict[str, FieldInspectValidation] = {}
+        for field_inspection in data:
+            field_name = field_inspection.field_name
+            type = field_inspection.field_type
+
+            if field_name not in field_validations:
+                field_validations[field_name] = FieldInspectValidation()
+            field_validations[field_name].types.add(type)
+
+            for inspection_warning in InspectionValidation.Warning:
+                if inspection_warning in field_validations[field_name].warnings:
+                    continue
+
+                validate_method = getattr(
+                    InspectionValidation, f"validate_{inspection_warning.name}", None
+                )
+                if not validate_method:
+                    continue
+                if validate_method(field_inspection, field_validations[field_name]):
+                    continue
+                field_validations[field_name].warnings.add(inspection_warning)
+
+        return field_validations
+
+    @staticmethod
+    def validate_W001(
+        field_inspection: FieldInspection,
+        field_validation: FieldInspectValidation,
+    ) -> bool:
+        if re.search(InspectionValidation.SPACE_PATTERN, field_inspection.field_name):
+            return False
+        return True
+
+    @staticmethod
+    def validate_W002(
+        field_inspection: FieldInspection,
+        field_validation: FieldInspectValidation,
+    ) -> bool:
+        return field_inspection.field_name == field_inspection.field_name.lower()
+
+    @staticmethod
+    def validate_W003(
+        field_inspection: FieldInspection,
+        field_validation: FieldInspectValidation,
+    ) -> bool:
+        return not re.search(
+            InspectionValidation.INVALID_CHARACTERS_PATTERN, field_inspection.field_name
+        )
+
+    @staticmethod
+    def validate_W004(
+        field_inspection: FieldInspection,
+        field_validation: FieldInspectValidation,
+    ) -> bool:
+        is_valid = True
+        for existing_type in field_validation.types:
+            normalized_type = field_inspection.field_type.replace("list of ", "")
+            normalized_existing_type = existing_type.replace("list of ", "")
+
+            if normalized_type == normalized_existing_type:
+                continue
+
+            if (
+                normalized_type in InspectionValidation.NUMERIC_FIELDS
+                and normalized_existing_type in InspectionValidation.NUMERIC_FIELDS
+            ):
+                continue
+
+            is_valid = False
+            field_validation.has_multiple_types = True
+            break
+
+        return is_valid
+
+
+def merge_field_inspections_validations(
+    field_inspections: list[FieldInspection],
+    field_validations: dict[str, FieldInspectValidation],
+):
+    """Adding any warnings from field_validations to field_inspections with corresponding field name"""
+    for field_inspection in field_inspections:
+        field_name = field_inspection.field_name
+        field_validation = field_validations.get(field_name, {})
+        field_inspection.warnings = sorted(
+            [warning.to_dict() for warning in field_validation.warnings],
+            key=lambda warning: warning["code"],
+        )
+
+
+def simplify_inspection_data(field_inspections: list[FieldInspection]) -> list[dict[str, any]]:
+    return [vars(field_inspection) for field_inspection in field_inspections]
+
+
+def flatten_and_validate(data, do_validate=True):
+    flattened_data = flatten_inspection_data(data)
+    if do_validate:
+        validated_data = InspectionValidation.validate(flattened_data)
+        merge_field_inspections_validations(flattened_data, validated_data)
+    return simplify_inspection_data(flattened_data)

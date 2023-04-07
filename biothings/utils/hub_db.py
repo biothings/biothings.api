@@ -19,9 +19,21 @@ from functools import wraps, partial
 from biothings.utils.common import (dump as dumpobj, loadobj,
                                     get_random_string, get_timestamp)
 
+
 def get_hub_db_conn():
-    """Return a Database instance (connection to hub db)"""
+    """Return a DatabaseClient instance (connection to hub db)"""
     raise NotImplementedError()
+
+
+def get_src_conn():
+    """Return a DatabaseClient instance (connection to source db)"""
+    raise NotImplementedError()
+
+
+def get_src_db():
+    """Return a Database instance (connection to source db)"""
+    raise NotImplementedError()
+
 
 def get_src_dump():
     """Return a Collection instance for src_dump collection/table"""
@@ -317,6 +329,8 @@ class ChangeWatcher(object):
 
 def setup(config):
     global get_hub_db_conn
+    global get_src_conn
+    global get_src_db
     global get_src_dump
     global get_src_master
     global get_src_build
@@ -329,6 +343,9 @@ def setup(config):
     global get_source_fullname
     global get_last_command
     get_hub_db_conn = config.hub_db.get_hub_db_conn
+    get_src_conn = config.hub_db.get_src_conn
+    get_src_db = config.hub_db.get_src_db
+
     # use ChangeWatcher on internal collections so we can publish changes in real-time
     get_src_dump = ChangeWatcher.wrap(config.hub_db.get_src_dump)
     get_src_master = ChangeWatcher.wrap(config.hub_db.get_src_master)

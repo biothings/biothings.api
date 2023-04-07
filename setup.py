@@ -77,6 +77,9 @@ hub_requires = [
     "black",  # code formatter
     "requests-aws4auth",  # aws s3 auth requests for autohub
     "networkx>=2.1,<2.6",  # datatransform
+    "biothings_client>=0.2.6",  # datatransform (api client)
+    "typer[all]",  # Lib for building CLI applications
+    "rich",  # Lib for building CLI applications
     "biothings_client>=0.2.6",  # datatransform (api client),
     "cryptography>=38.0.3",  # for generate ssh keys, ssl cert, also required by asyncssh
 ]
@@ -131,5 +134,8 @@ setup(
         "web_extra": web_extra_requires,
         "hub": hub_requires,
         "dev": web_extra_requires + hub_requires + dev_requires + docs_requires,
+    },
+    entry_points={
+        "console_scripts": ["biothings-admin=biothings.management.cli:main"],
     },
 )

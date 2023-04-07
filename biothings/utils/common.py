@@ -5,6 +5,7 @@ In general, do not include utils depending on any third-party modules.
 import asyncio
 import base64
 import concurrent.futures
+import fnmatch
 import glob
 import gzip
 import hashlib
@@ -257,6 +258,52 @@ def get_dotfield_value(dotfield, d):
     else:
         first = fields[0]
         return get_dotfield_value(".".join(fields[1:]), d[first])
+
+
+def find_value_in_doc(dotfield, value, doc):
+    """
+    Explore mixed dictionary using dotfield notation and return value.
+    Stringify before search
+    Support wildcard searching
+    The comparison is case-sensitive
+    Example::
+
+    X = {"a":{"b": "1"},"x":[{"y": "3", "z": "4"}, "5"]}
+    Y = ["a", {"b": "1"}, {"x":[{"y": "3", "z": "4"}, "5"]}]
+    Z = ["a", {"b": "1"}, {"x":[{"y": "34567", "z": "4"}, "5"]}]
+    assert find_value_in_doc("a.b", "1", X)
+    assert find_value_in_doc("x.y", "3", X)
+    assert find_value_in_doc("x.y", "3*7", Z)
+    assert find_value_in_doc("x.y", "34567", Z)
+    assert find_value_in_doc("x", "5", Y)
+    assert find_value_in_doc("a.b", "c", X) is False
+    assert find_value_in_doc("a", "c", X) is False
+    """
+
+    if dotfield == "":
+        fields = []
+    else:
+        fields = dotfield.split(".")
+
+    if isinstance(doc, list):
+        try:
+            for item in doc:
+                found = find_value_in_doc(dotfield, value, item)
+                if found:
+                    return found
+            return False
+        except Exception:
+            return False
+    elif isinstance(doc, dict):
+        if not fields:
+            return False
+        return find_value_in_doc(".".join(fields[1:]), value, doc.get(fields[0]))
+    else:
+        if fields:
+            return False
+        if doc is None and value is not None:
+            return False
+        return fnmatch.fnmatchcase(doc, value)
 
 def split_ids(q):
     '''

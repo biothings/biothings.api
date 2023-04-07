@@ -20,7 +20,7 @@ import psutil
 import biothings.hub  # noqa
 from biothings import config
 from biothings.utils.common import get_random_string, sizeof_fmt, timesofar
-from biothings.utils.mongo import get_src_conn
+from biothings.utils.hub_db import get_src_conn
 
 logger = config.logger
 

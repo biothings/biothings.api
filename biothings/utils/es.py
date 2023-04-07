@@ -511,7 +511,7 @@ class ESIndexer:
                     )
                 )
 
-            return es_cnt
+            return es_cnt  # NOQA B012
 
     def _build_index_sequential(
         self, collection, verbose=False, query=None, bulk=True, update=False, allow_upsert=True
@@ -1170,6 +1170,11 @@ def get_hub_db_conn():
 
 def get_src_conn():
     return get_hub_db_conn()
+
+
+def get_src_db(conn=None):
+    db = Database()
+    return db[db.CONFIG.DATA_SRC_DATABASE]
 
 
 def get_src_dump():

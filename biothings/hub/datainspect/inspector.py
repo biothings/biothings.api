@@ -5,7 +5,7 @@ from functools import partial
 import random
 import math
 
-from biothings.utils.hub_db import get_src_dump, get_source_fullname
+from biothings.utils.hub_db import get_src_dump, get_source_fullname, get_src_build
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.mongo import id_feeder, doc_feeder
@@ -60,6 +60,44 @@ class InspectorManager(BaseManager):
         """Setup and return a logger instance"""
         self.logger, self.logfile = get_logger('inspect')
 
+    def get_backend_provider_info(self, data_provider):
+        data_provider_type, registerer_obj, backend_provider, ups = (None, ) * 4
+
+        if data_provider[0] == "src":
+            data_provider_type = "source"
+            # find src_dump doc
+            # is it a full source name (dot notation) ?
+            fullname = get_source_fullname(data_provider[1])
+            if fullname:
+                # it's a dot-notation
+                src_name = fullname.split(".")[0]
+            else:
+                # no subsource, full source name is the passed name
+                src_name = data_provider[1]
+                fullname = src_name
+            doc = get_src_dump().find_one({"_id": src_name})  # query by main source
+            if not doc:
+                raise InspectorError("Can't find document associated to '%s'" % src_name)
+            # get an uploader instance (used to get the data if type is "uploader"
+            # but also used to update status of the datasource via register_status()
+            ups = self.upload_manager[fullname]  # potentially using dot notation
+            # create uploader
+            registerer_obj = self.upload_manager.create_instance(ups[0])
+            registerer_obj.src_doc = doc
+            backend_provider = data_provider
+        else:
+            try:
+                data_provider_type = "build"
+                registerer_obj = self.build_manager.get_builder(data_provider)
+                registerer_obj.src_build = get_src_build().find_one({"_id": data_provider})
+                if not registerer_obj.src_build:
+                    raise InspectorError("Can't find build associated to '%s'" % data_provider)
+                backend_provider = data_provider
+            except Exception as e:
+                raise InspectorError("Unable to create backend from '%s': %s" % (repr(data_provider), e))
+
+        return data_provider_type, registerer_obj, backend_provider, ups
+
     def inspect(self, data_provider, mode="type", batch_size=10000,
                 limit=None, sample=None, **kwargs):
         """
@@ -96,24 +134,8 @@ class InspectorManager(BaseManager):
         if callable(data_provider):
             raise NotImplementedError("data_provider as callable untested...")
         else:
-            if data_provider[0] == "src":
-                data_provider_type = "source"
-                # find src_dump doc
-                # is it a full source name (dot notation) ?
-                fullname = get_source_fullname(data_provider[1])
-                if fullname:
-                    # it's a dot-notation
-                    src_name = fullname.split(".")[0]
-                else:
-                    # no subsource, full source name is the passed name
-                    src_name = data_provider[1]
-                    fullname = src_name
-                doc = get_src_dump().find_one({"_id": src_name})  # query by main source
-                if not doc:
-                    raise InspectorError("Can't find document associated to '%s'" % src_name)
-                # get an uploader instance (used to get the data if type is "uploader"
-                # but also used to update status of the datasource via register_status()
-                ups = self.upload_manager[fullname]  # potentially using dot notation
+            data_provider_type, registerer_obj, backend_provider, ups = self.get_backend_provider_info(data_provider)
+            if data_provider_type == "source":
                 if len(ups) > 1:
                     # recursively call inspect(), collect and return corresponding tasks
                     self.logger.debug("Multiple uploaders found, running inspector for each of them: %s" % ups)
@@ -124,17 +146,10 @@ class InspectorManager(BaseManager):
                         res.append(r)
                     return res
 
-                assert len(ups) == 1, "More than one uploader found for '%s', not supported (yet), use main_source.source notation" % data_provider[1]
-                # create uploader
-                registerer_obj = self.upload_manager.create_instance(ups[0])
-                backend_provider = data_provider
-            else:
-                try:
-                    data_provider_type = "build"
-                    registerer_obj = self.build_manager.get_builder(data_provider)
-                    backend_provider = data_provider
-                except Exception as e:
-                    raise InspectorError("Unable to create backend from '%s': %s" % (repr(data_provider), e))
+                assert len(ups) == 1, (
+                    "More than one uploader found for '%s', "
+                    "not supported (yet), use main_source.source notation" % data_provider[1]
+                )
 
         got_error = None
         try:
@@ -282,3 +297,26 @@ class InspectorManager(BaseManager):
         except Exception as e:
             self.logger.error("Error while inspecting '%s': %s" % (repr(data_provider), e))
             raise
+
+    def flatten(self, data_provider, mode=["type", "stats"], do_validate=True):
+        if isinstance(mode, str):
+            mode = [mode]
+
+        data_provider_type, registerer_obj, backend_provider, _ = self.get_backend_provider_info(data_provider)
+
+        results = {}
+        if data_provider_type == "source":
+            src_sources_inspect_data = registerer_obj.src_doc["inspect"]["jobs"]
+            for src_source_name, inspect_data in src_sources_inspect_data.items():
+                results[src_source_name] = {
+                    _mode: btinspect.flatten_and_validate(inspect_data["inspect"]["results"].get(_mode) or {}, do_validate)
+                    for _mode in mode
+                }
+        else:
+            inspect_data = registerer_obj.src_build["inspect"]["results"]
+            results[backend_provider] = {
+                _mode: btinspect.flatten_and_validate(inspect_data.get(_mode) or {}, do_validate)
+                for _mode in mode
+            }
+
+        return results
