@@ -51,7 +51,7 @@ HUB_DB_BACKEND = {
 
 # Hub environment (like, prod, dev, ...)
 # Used to generate remote metadata file, like "latest.json", "versions.json"
-# If non-empty, this constant will be used to generate those url, as a prefix 
+# If non-empty, this constant will be used to generate those url, as a prefix
 # with "-" between. So, if "dev", we'll have "dev-latest.json", etc...
 # "" means production
 HUB_ENV = ""
@@ -60,7 +60,7 @@ HUB_ENV = ""
 # List of package paths for active datasources
 ACTIVE_DATASOURCES = []
 
-#* 3. Folders *# 
+#* 3. Folders *#
 # Path to a folder to store all downloaded files, logs, caches, etc...
 DATA_ARCHIVE_ROOT = "/tmp/testhub/datasources"
 
@@ -84,3 +84,25 @@ LOG_FOLDER = os.path.join(DATA_ARCHIVE_ROOT, "logs")
 
 # Provide a default hub logger instance (use setup_default_log(name,log_folder)
 logger = setup_default_log("hub", LOG_FOLDER)
+
+GA4_MEASUREMENT_ID = 'G-XXXXXXXXXX'
+GA4_API_SECRET = 'XtXXXXXXXXXXVw'
+GA4_UID_GENERATOR_VERSION = 1
+
+
+# *****************************************************************************
+# Analytics Settings
+# *****************************************************************************
+
+# Google Analytics Account ID
+
+GA_ACCOUNT = 'UA-123123-1'
+
+# Google Measurement ID
+GA4_MEASUREMENT_ID = 'G-KXzzzzLBN'
+
+# Google API Secret
+GA4_API_SECRET = '62rjfgrzzzzOcf7qNG5JA'
+
+# Google uid gerenator version
+GA4_UID_GENERATOR_VERSION = 2
