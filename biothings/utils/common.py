@@ -18,6 +18,9 @@ import os.path
 import pickle
 import random
 import string
+import urllib.parse
+
+import requests
 import sys
 import time
 import types
@@ -26,6 +29,8 @@ from collections import UserDict, UserList
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from functools import partial
+
+import yaml
 from itertools import islice
 from shlex import shlex
 
@@ -932,3 +937,43 @@ class DummyConfig(types.ModuleType):
         sys.modules["biothings.config"] = DummyConfig('config')
     """
     pass
+
+
+def get_plugin_name_from_local_manifest(path):
+    default_name = os.path.basename(path)
+    manifest_json_path = os.path.join(path, "manifest.json")
+    manifest_yaml_path = os.path.join(path, "manifest.yaml")
+    if os.path.isfile(manifest_json_path):
+        with open(manifest_json_path, "r") as fp:
+            manifest_json = json.loads(fp.read())
+            return manifest_json.get("name", default_name)
+    elif os.path.isfile(manifest_yaml_path):
+        with open(manifest_yaml_path, "r") as fp:
+            manifest_json = yaml.safe_load(fp)
+            return manifest_json.get("name", default_name)
+    else:
+        return None
+
+
+def get_plugin_name_from_remote_manifest(url):
+    split = urllib.parse.urlsplit(url)
+    name = os.path.basename(split.path).replace(".git", "")
+    org_name = os.path.dirname(split.path).strip("/")
+    manifest_json = {}
+    manifest_json_url = f"https://raw.githubusercontent.com/{org_name}/{name}/master/manifest.json"
+    manifest_yaml_url = f"https://raw.githubusercontent.com/{org_name}/{name}/master/manifest.yaml"
+    try:
+        response = requests.get(url=manifest_json_url)
+        manifest_json = json.loads(response.text)
+    except Exception as ex:
+        response = requests.get(url=manifest_yaml_url)
+        manifest_json = json.loads(response.text)
+    finally:
+        name = manifest_json.get('name', name)
+    return name
+
+
+def parse_folder_name_from_url(url):
+    split = urllib.parse.urlsplit(url)
+    folder_name = os.path.basename(split.path).replace(".git", "")
+    return folder_name
