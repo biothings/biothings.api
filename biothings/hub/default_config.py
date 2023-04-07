@@ -141,6 +141,23 @@ AUTO_ARCHIVE_CONFIG = {
 }
 """
 
+# Docker connection configuration
+# client_url should match the following formats:
+# ssh://ubuntu@remote_ip:port
+# unix://var/run/docker.sock
+# http://remote_ip:port
+# https://remote_ip:port
+DOCKER_CONFIG = {
+    "docker1": {
+        "tls_cert_path": None,
+        "tls_key_path": None,
+        "client_url": ""
+    },
+    "localhost": {
+        "client_url": "unix://var/run/docker.sock"
+    }
+}
+
 #* 3. Folders *#
 # Path to a folder to store all downloaded files, logs, caches, etc...
 DATA_ARCHIVE_ROOT = ConfigurationError("Define path to folder which will contain all downloaded data, cache files, etc...")

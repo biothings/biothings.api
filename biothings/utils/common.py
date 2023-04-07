@@ -744,6 +744,18 @@ def untargzall(folder, pattern="*.tar.gz"):
         tf.extractall(folder)
         logging.info("done untargz '%s'", tf.name)
 
+def untarall(folder, pattern="*.tar"):
+    '''
+    untar all ``*.tar`` files in "folder"
+    '''
+    import tarfile
+    for tg in glob.glob(os.path.join(folder, pattern)):
+        tf = tarfile.TarFile(tg)
+        sanitize_tarfile(tf, folder)
+        logging.info("untargz '%s'", tf.name)
+        tf.extractall(folder)
+        logging.info("done untar '%s'", tf.name)
+
 
 def gunzipall(folder, pattern="*.gz"):
     '''
