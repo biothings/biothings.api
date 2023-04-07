@@ -17,8 +17,13 @@ import requests
 import yaml
 
 from biothings import config as btconfig
-from biothings.hub.dataload.dumper import LastModifiedFTPDumper, LastModifiedHTTPDumper
+from biothings.hub.dataload.dumper import (
+    DockerContainerDumper,
+    LastModifiedFTPDumper,
+    LastModifiedHTTPDumper,
+)
 from biothings.hub.dataplugin.manager import GitDataPlugin, ManualDataPlugin
+from biothings.utils import storage
 from biothings.utils.common import (
     get_class_from_classpath,
     get_plugin_name_from_local_manifest,
@@ -28,7 +33,6 @@ from biothings.utils.common import (
 )
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
-from biothings.utils import storage
 from biothings.utils.manager import BaseSourceManager
 
 
@@ -47,6 +51,7 @@ class BasePluginLoader(object):
         self.plugin_name = plugin_name
         self.plugin_path_name = None  # This will be set on loading step
         self.setup_log()
+        self._plugin = None
 
     def setup_log(self):
         """Setup and return a logger instance"""
@@ -56,10 +61,14 @@ class BasePluginLoader(object):
         )
 
     def get_plugin_obj(self):
+        if self._plugin:
+            return self._plugin
+
         dp = get_data_plugin()
         plugin = dp.find_one({"_id": self.plugin_name})
         if not plugin.get("download", {}).get("data_folder"):
             raise LoaderException("Can't find data_folder, not available yet ?")
+        self._plugin = plugin
         return plugin
 
     def invalidate_plugin(self, error):
@@ -90,6 +99,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         "http": LastModifiedHTTPDumper,
         "https": LastModifiedHTTPDumper,
         "ftp": LastModifiedFTPDumper,
+        "docker": DockerContainerDumper,
     }
 
     def _dict_for_base(self, data_url):
@@ -113,6 +123,10 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
     def _dict_for_ftp(self, data_url):
         return self._dict_for_base(data_url)
+
+    def _dict_for_docker(self, data_url):
+        d = self._dict_for_base(data_url)
+        return d
 
     def can_load_plugin(self):
         plugin = self.get_plugin_obj()
@@ -197,9 +211,10 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     + "expecting only one"
                 )
             scheme = schemes.pop()
+            if "docker" in scheme:
+                scheme = "docker"
             klass = dumper_section.get("class")
             confdict = getattr(self, "_dict_for_%s" % scheme)(durls)
-            dumper_class = None
             if klass:
                 dumper_class = get_class_from_classpath(klass)
                 confdict["BASE_CLASSES"] = klass
@@ -250,7 +265,12 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 else:
                     # default: assuming in ..../biothings/hub/dataplugin/
                     curmodpath = os.path.realpath(__file__)
-                    tpl_file = os.path.join(os.path.dirname(curmodpath), "dumper.py.tpl")
+                    if scheme == "docker":
+                        tpl_file = os.path.join(
+                            os.path.dirname(curmodpath), "docker_dumper.py.tpl"
+                        )
+                    else:
+                        tpl_file = os.path.join(os.path.dirname(curmodpath), "dumper.py.tpl")
                 tpl = Template(open(tpl_file).read())
                 confdict["DUMPER_NAME"] = dumper_name
                 confdict["SRC_NAME"] = self.plugin_name

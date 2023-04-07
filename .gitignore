@@ -35,6 +35,7 @@ config.py
 !/tests/hub/hubdb/config.py
 .hubdb
 .hubdb.*
+*.biothings_hub*
 
 # other local files
 .notes/

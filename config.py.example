@@ -60,6 +60,22 @@ HUB_ENV = ""
 # List of package paths for active datasources
 ACTIVE_DATASOURCES = []
 
+# Docker connection configuration
+# client_url should match the following formats:
+# ssh://ubuntu@remote_ip:port
+# unix://var/run/docker.sock
+# http://remote_ip:port
+# https://remote_ip:port
+DOCKER_CONFIG = {
+    "connection_name_1": {
+        "tls_cert_path": "/path/to/cert.pem",
+        "tls_key_path": "/path/to/key.pem",
+        "client_url": "https://remote-docker-host:port"
+    },
+    "connection_name_2": {
+        "client_url": "ssh://user@remote-docker-host"
+    },
+}
 #* 3. Folders *#
 # Path to a folder to store all downloaded files, logs, caches, etc...
 DATA_ARCHIVE_ROOT = "/tmp/testhub/datasources"
