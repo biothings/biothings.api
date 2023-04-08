@@ -15,7 +15,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pprint import pformat
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import bson
 
@@ -629,7 +629,7 @@ def flatten_inspection_data(
     current_deep: int = 0,
     parent_name: str = None,
     parent_type: str = None,
-) -> list[FieldInspection]:
+) -> List[FieldInspection]:  # for py3.9+, we can use list[FieldInspection] directly without importing List
     """This function will convert the multiple depth nested inspection data into a flatten list
     Nested key will be appended with the parent key and seperate with a dot.
     """
@@ -738,8 +738,8 @@ class InspectionValidation:
     NUMERIC_FIELDS = ["int", "float"]
 
     @staticmethod
-    def validate(data: list[FieldInspection]) -> dict[str, FieldInspectValidation]:
-        field_validations: dict[str, FieldInspectValidation] = {}
+    def validate(data: List[FieldInspection]) -> Dict[str, FieldInspectValidation]:
+        field_validations: Dict[str, FieldInspectValidation] = {}
         for field_inspection in data:
             field_name = field_inspection.field_name
             type = field_inspection.field_type
@@ -811,8 +811,8 @@ class InspectionValidation:
 
 
 def merge_field_inspections_validations(
-    field_inspections: list[FieldInspection],
-    field_validations: dict[str, FieldInspectValidation],
+    field_inspections: List[FieldInspection],
+    field_validations: Dict[str, FieldInspectValidation],
 ):
     """Adding any warnings from field_validations to field_inspections with corresponding field name"""
     for field_inspection in field_inspections:
@@ -824,7 +824,7 @@ def merge_field_inspections_validations(
         )
 
 
-def simplify_inspection_data(field_inspections: list[FieldInspection]) -> list[dict[str, any]]:
+def simplify_inspection_data(field_inspections: List[FieldInspection]) -> List[Dict[str, Any]]:
     return [vars(field_inspection) for field_inspection in field_inspections]
 
 
