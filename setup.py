@@ -150,7 +150,7 @@ setup(
         "cli": hubcore_requires + cli_requires,
         "docker": docker_requires,
         "docker_ssh": docker_ssh_requires,
-        "dev": web_extra_requires + hub_requires + docker_requires + dev_requires + docs_requires,
+        "dev": web_extra_requires + hubcore_requires + hub_requires + docker_requires + dev_requires + docs_requires,
     },
     entry_points={
         "console_scripts": ["biothings-admin=biothings.management.cli:main"],
