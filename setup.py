@@ -35,9 +35,7 @@ if COMMIT_HASH or NUM_COMMITS:
 
 # very minimal requirement for running biothings.web
 install_requires = [
-    "boto3",
     "requests>=2.21.0",
-    "requests-aws4auth",  # for AWS OpenSearch connection
     'tornado==6.1.0; python_version < "3.7.0"',
     'tornado==6.2.0; python_version >= "3.7.0"',
     "gitpython>=3.1.0",
@@ -54,6 +52,13 @@ web_extra_requires = [
     "msgpack>=0.6.1",  # support format=msgpack
     "sentry-sdk>=1.5.3",  # new sentry package
 ]
+
+# extra requirements for biothings.web to use AWS OpenSearch
+opensearch_requires = [
+    "boto3",  # for AWS OpenSearch connection
+    "requests-aws4auth",  # for AWS OpenSearch connection
+]
+
 
 # minimal requirements for running biothings.hub, e.g. in CLI mode
 hubcore_requires = [
@@ -80,6 +85,7 @@ hub_requires = hubcore_requires + [
     # 'orjson>=3.5.2',    # this is a faster json lib support inf/nan and datetime
     # "yapf",  # code reformatter, better results than autopep8
     "black",  # code formatter
+    "boto3",  # for aws S3 access
     "requests-aws4auth",  # aws s3 auth requests for autohub
     "networkx>=2.1,<2.6",  # datatransform
     "biothings_client>=0.2.6",  # datatransform (api client)
@@ -146,6 +152,7 @@ setup(
     install_requires=install_requires,
     extras_require={
         "web_extra": web_extra_requires,
+        "opensearch": opensearch_requires,
         "hub": hub_requires + cli_requires,
         "cli": hubcore_requires + cli_requires,
         "docker": docker_requires,
