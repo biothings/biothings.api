@@ -112,10 +112,10 @@ class BiothingsDumper(HTTPDumper):
         """
         Example:
         [{
-            'host': 'es6.mygene.info:9200', 
-            'index': 'mygene_allspecies_20200823_ufkwdv79', 
-            'index_alias': 'mygene_allspecies', 
-            'version': '20200906', 
+            'host': 'es6.mygene.info:9200',
+            'index': 'mygene_allspecies_20200823_ufkwdv79',
+            'index_alias': 'mygene_allspecies',
+            'version': '20200906',
             'count': 38729977
         }]
         """
@@ -153,7 +153,7 @@ class BiothingsDumper(HTTPDumper):
                 bucket_name = m.groups()[0]
             else:
                 raise DumperException(
-                    "Can't extract bucket name from URL '%s'" % remote_url)
+                    "Can't extract bucket name from URL '%s'" % remoteurl)
 
             return self.auth_download(bucket_name, key, localfile, headers)
         else:
@@ -548,11 +548,11 @@ class BiothingsDumper(HTTPDumper):
         Display all available versions.
         Example:
         [{
-            'build_version': '20171003', 
-            'url': 'https://biothings-releases.s3.amazonaws.com:443/mygene.info/20171003.json', 
-            'release_date': '2017-10-06T11:58:39.749357', 
-            'require_version': None, 
-            'target_version': '20171003', 
+            'build_version': '20171003',
+            'url': 'https://biothings-releases.s3.amazonaws.com:443/mygene.info/20171003.json',
+            'release_date': '2017-10-06T11:58:39.749357',
+            'require_version': None,
+            'target_version': '20171003',
             'type': 'full'
         }, ...]
         """
