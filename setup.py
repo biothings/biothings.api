@@ -37,7 +37,7 @@ if COMMIT_HASH or NUM_COMMITS:
 install_requires = [
     "boto3",
     "requests>=2.21.0",
-    "requests-aws4auth",
+    "requests-aws4auth",    # for AWS OpenSearch connection
     'tornado==6.1.0; python_version < "3.7.0"',
     'tornado==6.2.0; python_version >= "3.7.0"',
     "gitpython>=3.1.0",
@@ -78,13 +78,20 @@ hub_requires = [
     "requests-aws4auth",  # aws s3 auth requests for autohub
     "networkx>=2.1,<2.6",  # datatransform
     "biothings_client>=0.2.6",  # datatransform (api client)
-    "typer[all]",  # Lib for building CLI applications
-    "rich",  # Lib for building CLI applications
     "cryptography>=38.0.3", # for generate ssh keys, ssl cert.
-    "docker",  # Docker SDK for Python
-    "paramiko==2.12.0",  # Implementation of the SSHv2 protocol for Python
 ]
 
+cli_requires = [
+    "typer[all]>=0.7.0",  # required for CLI, also install rich package with [all]
+]
+
+docker_requires =[
+    "docker>=6.0.1",  # Docker SDK for Python, required for dockerdumper support
+]
+
+docker_ssh_requires =[
+    "docker[ssh]>=6.0.1",  # install paramiko, only required when connecting docker using the ssh:// protocol
+]
 # extra requirements to develop biothings
 dev_requires = [
     "pytest",
@@ -133,8 +140,11 @@ setup(
     install_requires=install_requires,
     extras_require={
         "web_extra": web_extra_requires,
-        "hub": hub_requires,
-        "dev": web_extra_requires + hub_requires + dev_requires + docs_requires,
+        "hub": hub_requires + cli_requires,
+        "cli": cli_requires,
+        "docker": docker_requires,
+        "docker_ssh": docker_ssh_requires,
+        "dev": web_extra_requires + hub_requires + docker_requires + dev_requires + docs_requires,
     },
     entry_points={
         "console_scripts": ["biothings-admin=biothings.management.cli:main"],

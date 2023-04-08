@@ -10,17 +10,21 @@ import pprint
 import re
 import stat
 import subprocess
-
 import time
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 from datetime import datetime, timezone
 from functools import partial
 from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Tuple, Union
-import docker
+
+try:
+    import docker
+    from docker.errors import NotFound, NullResource
+    docker_avail = True
+except ImportError:
+    docker_avail = False
 
 import orjson
-from docker.errors import NotFound, NullResource
 
 from biothings import config as btconfig
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, renderer as job_renderer
@@ -1922,6 +1926,8 @@ class DockerContainerDumper(BaseDumper):
     TIMEOUT = 300
 
     def __init__(self, *args, **kwargs):
+        if not docker_avail:
+            raise ImportError("\"docker\" package is required for \"DockerContainerDumper\" class.")
         super().__init__(*args, **kwargs)
         self.container = None
         self.keep_container = False
