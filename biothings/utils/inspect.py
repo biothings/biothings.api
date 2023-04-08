@@ -15,6 +15,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pprint import pformat
+from typing import Any, Dict
 
 import bson
 
@@ -24,7 +25,6 @@ from biothings.utils.docs import flatten_doc
 
 
 class BaseMode(object):
-
     # dict storing the actual specific values the mode deals with
     template = {}
     # key under which values are stored for this mode
@@ -54,7 +54,6 @@ class BaseMode(object):
 
 
 class StatsMode(BaseMode):
-
     template = {"_stats": {"_min": math.inf, "_max": -math.inf, "_count": 0, "_none": 0}}
     key = "_stats"
 
@@ -109,7 +108,6 @@ class StatsMode(BaseMode):
 
 
 class DeepStatsMode(StatsMode):
-
     template = {"_stats": {"_min": math.inf, "_max": -math.inf, "_count": 0, "__vals": []}}
     key = "_stats"
 
@@ -142,7 +140,6 @@ class DeepStatsMode(StatsMode):
 
 
 class RegexMode(BaseMode):
-
     # list of {"re":"...","info":...}, if regex matches, then content
     # in "info" is used in report
     matchers = []
@@ -175,7 +172,6 @@ class RegexMode(BaseMode):
 
 
 class IdentifiersMode(RegexMode):
-
     key = "_ident"
     # set this to a list of dict coming from http://identifiers.org/rest/collections
     ids = None
@@ -310,7 +306,6 @@ def inspect(struct, key=None, mapt=None, mode="type", level=0, logger=logging):
             mapt.setdefault(mode_inst.key, copy.deepcopy(mode_inst.template[mode_inst.key]))
             mode_inst.report(1, mapt, struct)
     elif type(struct) == list:
-
         mapl = {}
         for e in struct:
             typ = inspect(e, key=key, mapt=mapl, mode=mode, level=level + 1)
@@ -390,9 +385,7 @@ def merge_scalar_list(mapt, mode):
                         elif typ == mode_inst.key:
                             mode_inst.merge(mapt[list][e][mode_inst.key], tomerge[mode_inst.key])
                         else:
-                            mode_inst.merge(
-                                mapt[list][e][typ][mode_inst.key], tomerge[typ][mode_inst.key]
-                            )
+                            mode_inst.merge(mapt[list][e][typ][mode_inst.key], tomerge[typ][mode_inst.key])
                 elif mode == "mapping":
                     for typ in tomerge:
                         if typ is str and splitstr in mapt[list][e]:
@@ -608,9 +601,7 @@ def typify_inspect_doc(dmap):
 def stringify_inspect_doc(dmap):
     def stringify(val):
         if type(val) == type:
-            return (
-                "__type__:%s" % val.__name__
-            )  # prevent having dots in the field (not storable in mongo)
+            return "__type__:%s" % val.__name__  # prevent having dots in the field (not storable in mongo)
         else:
             return str(val)
 
@@ -633,7 +624,8 @@ class FieldInspectValidation:
 
 
 def flatten_inspection_data(
-    data: dict[str, any],
+    # data: dict[str, any],       # This only works for Python 3.9+
+    data: Dict[str, Any],
     current_deep: int = 0,
     parent_name: str = None,
     parent_type: str = None,
@@ -682,10 +674,7 @@ def flatten_inspection_data(
                 data[field_name], current_deep + 1, parent_name, parent_type
             )
 
-            if (
-                len(sub_field_inspections) == 1
-                and sub_field_inspections[0].field_name == parent_name
-            ):
+            if len(sub_field_inspections) == 1 and sub_field_inspections[0].field_name == parent_name:
                 field_inspections.append(
                     FieldInspection(
                         field_name=parent_name,
@@ -763,9 +752,7 @@ class InspectionValidation:
                 if inspection_warning in field_validations[field_name].warnings:
                     continue
 
-                validate_method = getattr(
-                    InspectionValidation, f"validate_{inspection_warning.name}", None
-                )
+                validate_method = getattr(InspectionValidation, f"validate_{inspection_warning.name}", None)
                 if not validate_method:
                     continue
                 if validate_method(field_inspection, field_validations[field_name]):
@@ -795,9 +782,7 @@ class InspectionValidation:
         field_inspection: FieldInspection,
         field_validation: FieldInspectValidation,
     ) -> bool:
-        return not re.search(
-            InspectionValidation.INVALID_CHARACTERS_PATTERN, field_inspection.field_name
-        )
+        return not re.search(InspectionValidation.INVALID_CHARACTERS_PATTERN, field_inspection.field_name)
 
     @staticmethod
     def validate_W004(
