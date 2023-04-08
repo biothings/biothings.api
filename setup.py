@@ -61,7 +61,7 @@ hubcore_requires = [
 ]
 
 # extra requirements to run a full biothings.hub
-hub_requires = [
+hub_requires = hubcore_requires + [
     "beautifulsoup4",  # used in dumper.GoogleDriveDumper
     "aiocron==1.8",  # setup scheduled jobs
     "aiohttp==3.8.3",  # elasticsearch requires aiohttp>=3,<4
@@ -146,11 +146,11 @@ setup(
     install_requires=install_requires,
     extras_require={
         "web_extra": web_extra_requires,
-        "hub": hubcore_requires + hub_requires + cli_requires,
+        "hub": hub_requires + cli_requires,
         "cli": hubcore_requires + cli_requires,
         "docker": docker_requires,
         "docker_ssh": docker_ssh_requires,
-        "dev": web_extra_requires + hubcore_requires + hub_requires + docker_requires + dev_requires + docs_requires,
+        "dev": web_extra_requires + hub_requires + cli_requires + docker_requires + dev_requires + docs_requires,
     },
     entry_points={
         "console_scripts": ["biothings-admin=biothings.management.cli:main"],
