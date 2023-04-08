@@ -4,7 +4,12 @@ import logging
 import pathlib
 import sys
 
-import typer
+try:
+    import typer
+
+    typer_avail = True
+except ImportError:
+    typer_avail = False
 
 from biothings.utils.common import DummyConfig
 from biothings.utils.configuration import ConfigurationError
@@ -28,6 +33,9 @@ def callback():
 
 
 def main():
+    if not typer_avail:
+        logger.error('"typer" package is required for CLI feature. Use "pip install typer[all]" to install.')
+        return
     working_dir = pathlib.Path().resolve()
     _config = DummyConfig("config")
     _config.HUB_DB_BACKEND = {
@@ -46,9 +54,7 @@ def main():
                 raise ConfigurationError("%s: %s" % (attr, str(value)))
             setattr(_config, attr, value)
     except Exception:
-        logger.info(
-            "The config.py does not exists in the working directory, use default biothings.config"
-        )
+        logger.info("The config.py does not exists in the working directory, use default biothings.config")
     sys.modules["config"] = _config
     sys.modules["biothings.config"] = _config
 
