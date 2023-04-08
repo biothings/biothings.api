@@ -37,7 +37,7 @@ if COMMIT_HASH or NUM_COMMITS:
 install_requires = [
     "boto3",
     "requests>=2.21.0",
-    "requests-aws4auth",    # for AWS OpenSearch connection
+    "requests-aws4auth",  # for AWS OpenSearch connection
     'tornado==6.1.0; python_version < "3.7.0"',
     'tornado==6.2.0; python_version >= "3.7.0"',
     "gitpython>=3.1.0",
@@ -55,13 +55,18 @@ web_extra_requires = [
     "sentry-sdk>=1.5.3",  # new sentry package
 ]
 
-# extra requirements to run biothings.hub
+# minimal requirements for running biothings.hub, e.g. in CLI mode
+hubcore_requires = [
+    "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
+]
+
+# extra requirements to run a full biothings.hub
 hub_requires = [
     "beautifulsoup4",  # used in dumper.GoogleDriveDumper
     "aiocron==1.8",  # setup scheduled jobs
     "aiohttp==3.8.3",  # elasticsearch requires aiohttp>=3,<4
     "asyncssh==2.11.0",  # needs libffi-dev installed (apt-get)
-    "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
+    # "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
     "psutil",
     "jsonpointer",  # for utils.jsonpatch
     "IPython",  # for interactive hub console
@@ -78,18 +83,19 @@ hub_requires = [
     "requests-aws4auth",  # aws s3 auth requests for autohub
     "networkx>=2.1,<2.6",  # datatransform
     "biothings_client>=0.2.6",  # datatransform (api client)
-    "cryptography>=38.0.3", # for generate ssh keys, ssl cert.
+    "cryptography>=38.0.3",  # for generate ssh keys, ssl cert.
 ]
 
+# minimal requirements for to run biothings CLI
 cli_requires = [
     "typer[all]>=0.7.0",  # required for CLI, also install rich package with [all]
 ]
 
-docker_requires =[
+docker_requires = [
     "docker>=6.0.1",  # Docker SDK for Python, required for dockerdumper support
 ]
 
-docker_ssh_requires =[
+docker_ssh_requires = [
     "docker[ssh]>=6.0.1",  # install paramiko, only required when connecting docker using the ssh:// protocol
 ]
 # extra requirements to develop biothings
@@ -140,8 +146,8 @@ setup(
     install_requires=install_requires,
     extras_require={
         "web_extra": web_extra_requires,
-        "hub": hub_requires + cli_requires,
-        "cli": cli_requires,
+        "hub": hubcore_requires + hub_requires + cli_requires,
+        "cli": hubcore_requires + cli_requires,
         "docker": docker_requires,
         "docker_ssh": docker_ssh_requires,
         "dev": web_extra_requires + hub_requires + docker_requires + dev_requires + docs_requires,

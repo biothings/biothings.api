@@ -17,7 +17,11 @@ from collections import OrderedDict, UserDict
 from functools import partial
 from pprint import pformat
 
-from IPython import InteractiveShell
+try:
+    from IPython import InteractiveShell
+except ImportError:
+    # Suppress import error when we just run CLI
+    InteractiveShell = object
 
 import biothings.utils.aws as aws
 from biothings import config
@@ -94,7 +98,6 @@ class CommandDefinition(dict):
 
 
 class HubShell(InteractiveShell):
-
     launched_commands = {}
     pending_outputs = {}
     cmd_cnt = None
@@ -145,8 +148,7 @@ class HubShell(InteractiveShell):
                         self.hidden[name] = cmd.get("hidden", False) or hidden
                     except KeyError as e:
                         raise CommandError(
-                            "Could not register command because missing '%s' in definition: %s"
-                            % (e, cmd)
+                            "Could not register command because missing '%s' in definition: %s" % (e, cmd)
                         )
                 else:
                     self.commands[name] = cmd
@@ -326,15 +328,11 @@ class HubShell(InteractiveShell):
             logging.debug("Can't extract command from %s, can't register", cmd)
             return result
         # also, never register non-callable command
-        if not force and (
-            not callable(self.extra_ns.get(cmdname)) or self.tracked.get(cmdname, True) is False
-        ):
+        if not force and (not callable(self.extra_ns.get(cmdname)) or self.tracked.get(cmdname, True) is False):
             return result
 
         cmdnum = self.__class__.cmd_cnt
-        cmdinfo = CommandInformation(
-            cmd=cmd, jobs=result, started_at=time.time(), id=cmdnum, is_done=False
-        )
+        cmdinfo = CommandInformation(cmd=cmd, jobs=result, started_at=time.time(), id=cmdnum, is_done=False)
         assert cmdnum not in self.__class__.launched_commands
         # register
         self.__class__.launched_commands[cmdnum] = cmdinfo
@@ -351,9 +349,7 @@ class HubShell(InteractiveShell):
             and type(result[0]) == asyncio.tasks.Task
         ):
             # it's asyncio related
-            result = (
-                type(result) != list and [result] or result
-            )  # TODO: cleanup and confirm this line
+            result = type(result) != list and [result] or result  # TODO: cleanup and confirm this line
             cmdinfo["jobs"] = result
             return cmdinfo
         else:
@@ -370,9 +366,7 @@ class HubShell(InteractiveShell):
         self.shellog.input(line)
         origline = line  # keep what's been originally entered
         # poor man's singleton...
-        if line in [
-            j["cmd"] for j in self.__class__.launched_commands.values() if not j.get("is_done")
-        ]:
+        if line in [j["cmd"] for j in self.__class__.launched_commands.values() if not j.get("is_done")]:
             raise AlreadyRunningException("Command '%s' is already running\n" % repr(line))
         # is it a hub command, in which case, intercept and run the actual declared cmd
         # IMPORTANT !!! this is where we allow the command or not when secure=True IMPORTANT !!!
@@ -474,10 +468,7 @@ class HubShell(InteractiveShell):
             has_err = is_done and [True for j in info["jobs"] if j.exception()] or None
             localoutputs = (
                 is_done
-                and (
-                    [str(j.exception()) for j in info["jobs"] if j.exception()]
-                    or [j.result() for j in info["jobs"]]
-                )
+                and ([str(j.exception()) for j in info["jobs"] if j.exception()] or [j.result() for j in info["jobs"]])
                 or None
             )
             if is_done:
@@ -600,9 +591,7 @@ def template_out(field, confdict):
     return field
 
 
-def publish_data_version(
-    s3_bucket, s3_folder, version_info, update_latest=True, aws_key=None, aws_secret=None
-):
+def publish_data_version(s3_bucket, s3_folder, version_info, update_latest=True, aws_key=None, aws_secret=None):
     """
     Update remote files:
         - versions.json: add version_info to the JSON list
@@ -622,9 +611,7 @@ def publish_data_version(
     versionskey = os.path.join(s3_folder, "%s.json" % VERSIONS)
     try:
         versions = json.loads(
-            aws.get_s3_file_contents(
-                versionskey, aws_key=aws_key, aws_secret=aws_secret, s3_bucket=s3_bucket
-            ).decode()
+            aws.get_s3_file_contents(versionskey, aws_key=aws_key, aws_secret=aws_secret, s3_bucket=s3_bucket).decode()
         )
     except (FileNotFoundError, json.JSONDecodeError):
         versions = {"format": "1.0", "versions": []}
@@ -767,9 +754,7 @@ class TornadoAutoReloadHubReloader(BaseHubReloader):
         self.wait = wait
 
     def monitor(self):
-        logging.info(
-            "Monitoring source code in, %s:\n%s", repr(self.paths), pformat(self.watched_files())
-        )
+        logging.info("Monitoring source code in, %s:\n%s", repr(self.paths), pformat(self.watched_files()))
         self.mod.start(self.wait * 1000)  # millis
 
     def add_watch(self, paths):

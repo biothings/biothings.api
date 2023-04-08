@@ -16,25 +16,26 @@ from biothings.utils.configuration import ConfigurationError
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 
-cli = typer.Typer(
-    rich_help_panel="Help and Others",
-    rich_markup_mode="rich",
-    context_settings=CONTEXT_SETTINGS,
-    no_args_is_help=True,
-)
+if typer_avail:
+    cli = typer.Typer(
+        rich_help_panel="Help and Others",
+        rich_markup_mode="rich",
+        context_settings=CONTEXT_SETTINGS,
+        no_args_is_help=True,
+    )
+
+    @cli.callback()
+    def callback():
+        """[green]Biothings Admin CLI.[/green]"""
+
 
 logger = logging.getLogger()
 logger.setLevel(level=logging.DEBUG)
 
 
-@cli.callback()
-def callback():
-    """[green]Biothings Admin CLI.[/green]"""
-
-
 def main():
     if not typer_avail:
-        logger.error('"typer" package is required for CLI feature. Use "pip install typer[all]" to install.')
+        logger.error('Error: "typer" package is required for CLI feature. Use "pip install typer[all]" to install.')
         return
     working_dir = pathlib.Path().resolve()
     _config = DummyConfig("config")
