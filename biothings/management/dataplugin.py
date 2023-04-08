@@ -14,10 +14,11 @@ logger = setup_default_log("dataplugin", config.LOG_FOLDER, "INFO")
 from . import utils
 
 app = typer.Typer(
-    help="[green]A set of commands that you can use for testing your data plugin and make a simple view about your data set.[/green]\n"
-    "\n\n[red italic]* To override the default biothing.config, please define the config.py at the working directory[red italic]"
-    "[red italic]* Running this command inside of your data plugin[/red italic]",
+    help="[green]A set of commands that you can use for testing your data plugin and make simple queries to inspect your parsed data objects.[/green]\n"
+    "\n\n[red italic]* Always run this command inside of your data plugin folder[/red italic]"
+    "\n[red italic]* To override the default biothing.config, please define the config.py at the working directory[red italic]",
     no_args_is_help=True,
+    rich_markup_mode="rich",
 )
 
 
@@ -79,11 +80,7 @@ def clean_data(
     name="dump",
     help="Download source data files to local",
 )
-def dump_data(
-    verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Verbose logging", show_default=True
-    )
-):
+def dump_data(verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging", show_default=True)):
     if verbose:
         logger.setLevel("DEBUG")
     working_dir = pathlib.Path().resolve()

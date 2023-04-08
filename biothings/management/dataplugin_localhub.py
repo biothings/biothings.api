@@ -17,13 +17,13 @@ from biothings.utils.loggers import get_logger
 from . import utils
 
 app = typer.Typer(
-    help="[green]Bootstrap your data plugin as the Hub does but in a synchronized.[/green]\n"
-    "[green]Create your new data plugin with the standard file structure.[/green]\n"
-    "[green]Dumping, uploading, and inspecting your data in synchronize.[/green]\n"
-    "[green]Serving your data as a web service for making simple queries[/green]\n"
-    "\n\n[red italic]* To override the default biothing.config, please define the config.py at the working directory[red italic]"
-    "\n[red italic]* Running this command outside of your data plugin[/red italic]"
-    "[red italic] *that mean your working directory contains your data plugin[/red italic]",
+    help="[green]Bootstrap your data plugin as the Hub does but in a synchronized (one step at a time):[/green]\n"
+    "\n[green]Create your new data plugin in a sub-folder.[/green]"
+    "\n[green]Dumping, uploading, and inspecting your data plugin.[/green]"
+    "\n[green]Serving your data as a web service for making simple queries[/green]"
+    "\n\n[red italic]* Running this command outside of your data plugin[/red italic]"
+    "\n[red italic] * That means your working directory can contains multiple data plugins[/red italic]"
+    "\n[red italic]* To override the default biothing.config, please define the config.py at the working directory[red italic]",
     no_args_is_help=True,
     rich_markup_mode="rich",
 )
@@ -39,9 +39,7 @@ def create_data_plugin(
     multi_uploaders: bool = typer.Option(
         False, "--multi-uploaders", help="Add this option if you want to create multiple uploaders"
     ),
-    parallelizer: bool = typer.Option(
-        False, "--parallelizer", help="Using parallelizer or not? Default: No"
-    ),
+    parallelizer: bool = typer.Option(False, "--parallelizer", help="Using parallelizer or not? Default: No"),
 ):
     working_dir = pathlib.Path().resolve()
     biothing_source_dir = pathlib.Path(__file__).parent.parent.resolve()
@@ -54,9 +52,7 @@ def create_data_plugin(
     # create manifest file
     loader = tornado.template.Loader(plugin_dir)
     parsed_template = (
-        loader.load("manifest.yaml.tpl")
-        .generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer)
-        .decode()
+        loader.load("manifest.yaml.tpl").generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer).decode()
     )
     manifest_file_path = os.path.join(working_dir, name, "manifest.yaml")
     with open(manifest_file_path, "w") as fh:
@@ -121,9 +117,7 @@ def dump_and_upload(
     # ),
 ):
     working_dir = pathlib.Path().resolve()
-    valid_names = [
-        f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")
-    ]
+    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
     if not plugin_name or plugin_name not in valid_names:
         rprint("[red]Please provide your data plugin name! [/red]")
         rprint("Choose from:\n    " + "\n    ".join(valid_names))
@@ -219,9 +213,7 @@ def inspect(
     ),
 ):
     working_dir = pathlib.Path().resolve()
-    valid_names = [
-        f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")
-    ]
+    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
     if not plugin_name or plugin_name not in valid_names:
         rprint("[red]Please provide your data plugin name! [/red]")
         rprint("Choose from:\n    " + "\n    ".join(valid_names))
@@ -229,18 +221,14 @@ def inspect(
     logger, logfile = get_logger("inspect")
     if not limit:
         limit = None
-    logger.info(
-        f"Inspect Data plugin {plugin_name} with sub-source name: {sub_source_name} mode: {mode} limit {limit}"
-    )
+    logger.info(f"Inspect Data plugin {plugin_name} with sub-source name: {sub_source_name} mode: {mode} limit {limit}")
 
     source_full_name = plugin_name
     if sub_source_name:
         source_full_name = f"{plugin_name}.{sub_source_name}"
     dumper_manager, uploader_manager = load_plugin(plugin_name)
     if len(uploader_manager[source_full_name]) > 1 and not sub_source_name:
-        rprint(
-            "[red]This is a multiple uploaders data plugin, so '--sub-source-name' must be provided![/red]"
-        )
+        rprint("[red]This is a multiple uploaders data plugin, so '--sub-source-name' must be provided![/red]")
         rprint(
             f"[red]Accepted values of --sub-source-name are: {', '.join(uploader.name for uploader in uploader_manager[source_full_name])}[/red]"
         )
@@ -250,14 +238,10 @@ def inspect(
         rprint(f"[red]Your source name {sub_source_name} does not exits[/red]")
         exit(1)
     if sub_source_name:
-        utils.process_inspect(
-            sub_source_name, mode, limit, merge, logger, do_validate=True, output=output
-        )
+        utils.process_inspect(sub_source_name, mode, limit, merge, logger, do_validate=True, output=output)
     else:
         for source_name in table_space:
-            utils.process_inspect(
-                source_name, mode, limit, merge, logger, do_validate=True, output=output
-            )
+            utils.process_inspect(source_name, mode, limit, merge, logger, do_validate=True, output=output)
 
 
 @app.command(
@@ -282,9 +266,7 @@ def clean_data(
     ),
 ):
     working_dir = pathlib.Path().resolve()
-    valid_names = [
-        f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")
-    ]
+    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
     if not plugin_name or plugin_name not in valid_names:
         rprint("[red]Please provide your data plugin name! [/red]")
         rprint("Choose from:\n    " + "\n    ".join(valid_names))
@@ -327,9 +309,7 @@ def listing(
     upload: bool = typer.Option(False, "--upload", help="Listing uploaded sources"),
 ):
     working_dir = pathlib.Path().resolve()
-    valid_names = [
-        f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")
-    ]
+    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
     if not plugin_name or plugin_name not in valid_names:
         rprint("[red]Please provide your data plugin name! [/red]")
         rprint("Choose from:\n    " + "\n    ".join(valid_names))
@@ -388,9 +368,7 @@ def serve(
     - Or you can retrieve this doc by: http://host:port/<your source name>/123/\n
     """
     working_dir = pathlib.Path().resolve()
-    valid_names = [
-        f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")
-    ]
+    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
     if not plugin_name or plugin_name not in valid_names:
         rprint("[red]Please provide your data plugin name! [/red]")
         rprint("Choose from:\n    " + "\n    ".join(valid_names))
