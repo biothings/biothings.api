@@ -560,10 +560,10 @@ class ConfigLines(UserList):
 
 class ConfigLine(UserString):
     PATTERNS = (
-        ("hidden", re.compile(r"^#-\s*hide\s*-#\s*$"), lambda m: bool(m)),
-        ("invisible", re.compile(r"^#-\s*invisible\s*-#\s*$"), lambda m: bool(m)),
-        ("readonly", re.compile(r"^#-\s*readonly\s*-#\s*$"), lambda m: bool(m)),
-        ("section", re.compile(r"^#\*\s*(.*)\s*\*#\s*$"), lambda m: m.groups()[0]),
+        ("hidden", re.compile(r"^#\s?-\s*hide\s*-\s?#\s*$"), lambda m: bool(m)),
+        ("invisible", re.compile(r"^#\s?-\s*invisible\s*-\s?#\s*$"), lambda m: bool(m)),
+        ("readonly", re.compile(r"^#\s?-\s*readonly\s*-\s?#\s*$"), lambda m: bool(m)),
+        ("section", re.compile(r"^#\s?\*\s*(.*)\s*\*\s?#\s*$"), lambda m: m.groups()[0]),
         ("description", re.compile(r".*\s*#\s+(.*)$"), lambda m: m.groups()[0]),
     )
 
