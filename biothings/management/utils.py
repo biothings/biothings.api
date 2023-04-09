@@ -107,8 +107,7 @@ def download(logger, schema, remote_url, local_file, uncompress=True):
         res = client.get(remote_url, stream=True, headers={})
         if not res.status_code == 200:
             raise Exception(
-                "Error while downloading '%s' (status: %s, reason: %s)"
-                % (remote_url, res.status_code, res.reason)
+                "Error while downloading '%s' (status: %s, reason: %s)" % (remote_url, res.status_code, res.reason)
             )
         logger.info("Downloading '%s' as '%s'" % (remote_url, local_file))
         fout = open(local_file, "wb")
@@ -160,9 +159,7 @@ def switch_collection(db, temp_collection_name, collection_name, logger):
         if collection_name in db.collection_names():
             # renaming existing collections
             new_name = "_".join([collection_name, "archive", get_timestamp(), get_random_string()])
-            logger.info(
-                f"Renaming collection {collection_name} to {new_name} for archiving purpose."
-            )
+            logger.info(f"Renaming collection {collection_name} to {new_name} for archiving purpose.")
             db[collection_name].rename(new_name, dropTarget=True)
         logger.info(f"Renaming collection {temp_collection_name} to {collection_name}")
         db[temp_collection_name].rename(collection_name)
@@ -315,12 +312,8 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
                 expand=False,
                 show_lines=True,
             )
-            mapping_table.add_column(
-                f"Sub source name: [bold]{source_name}[/bold]", justify="left", style="cyan"
-            )
-            mapping_table.add_row(
-                json.dumps(mapping, indent=4, separators=(",", ": "), sort_keys=True)
-            )
+            mapping_table.add_column(f"Sub source name: [bold]{source_name}[/bold]", justify="left", style="cyan")
+            mapping_table.add_row(json.dumps(mapping, indent=4, separators=(",", ": "), sort_keys=True))
     report = []
     problem_summary = []
     if "stats" in mode:
@@ -403,9 +396,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
                 current_content = {}
             current_content.update(mapping)
             fp.write(json.dumps(current_content, indent=4, separators=(",", ": "), sort_keys=True))
-            rprint(
-                f"[green]Successful writing the mapping info to the JSON file: [bold]{output}[/bold][/green]"
-            )
+            rprint(f"[green]Successful writing the mapping info to the JSON file: [bold]{output}[/bold][/green]")
 
 
 def get_manifest_content(working_dir):
@@ -484,9 +475,7 @@ def do_clean_uploaded_sources(working_dir):
         if item in uploaders:
             uploaded_sources.append(item)
         for uploader_name in uploaders:
-            if item.startswith(f"{uploader_name}_archive_") or item.startswith(
-                f"{uploader_name}_temp_"
-            ):
+            if item.startswith(f"{uploader_name}_archive_") or item.startswith(f"{uploader_name}_temp_"):
                 uploaded_sources.append(item)
     if not uploaded_sources:
         print("Empty sources!")
@@ -562,9 +551,7 @@ def show_uploaded_sources(working_dir, plugin_name):
 
 
 def is_valid_working_directory(working_dir):
-    if not os.path.isfile(f"{working_dir}/manifest.yaml") and not os.path.isfile(
-        f"{working_dir}/manifest.json"
-    ):
+    if not os.path.isfile(f"{working_dir}/manifest.yaml") and not os.path.isfile(f"{working_dir}/manifest.json"):
         rprint(
             "[red]This command must be run inside a data plugin folder. Please go to a data plugin folder and try again! [/red]"
         )

@@ -5,9 +5,7 @@ import os
 from biothings.utils.loggers import get_logger
 
 
-def upload_worker(
-    name, storage_class, loaddata_func, col_name, batch_size, batch_num, *args, **kwargs
-):
+def upload_worker(name, storage_class, loaddata_func, col_name, batch_size, batch_num, *args, **kwargs):
     """
     Pickable job launcher, typically running from multiprocessing.
     storage_class will instanciate with col_name, the destination
@@ -31,8 +29,7 @@ def upload_worker(
         logger.exception(e)
         logger.error(
             "Parameters:\nname=%s\nstorage_class=%s\n" % (name, storage_class)
-            + "loaddata_func=%s\ncol_name=%s\nbatch_size=%s\n"
-            % (loaddata_func, col_name, batch_size)
+            + "loaddata_func=%s\ncol_name=%s\nbatch_size=%s\n" % (loaddata_func, col_name, batch_size)
             + "args=%s" % repr(args)
         )
         import pickle

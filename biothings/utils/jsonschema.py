@@ -6,7 +6,6 @@ from biothings.utils.common import is_str
 
 
 def generate_json_schema(dmap):
-
     scalarmap = {
         str: "string",
         int: "integer",
@@ -79,23 +78,23 @@ def generate_json_schema(dmap):
 
 def test():
     # TODO: Move these test to tests folder, or maybe already moved over? Chunlei
-    from biothings.utils.inspect import typify_inspect_doc, inspect_docs
-
     # can't use assert directly, as we can't ensure the order of types (for instance)
     import biothings.utils.jsondiff
+    from biothings.utils.inspect import inspect_docs, typify_inspect_doc
+
     biothings.utils.jsondiff.UNORDERED_LIST = True
     jsondiff = biothings.utils.jsondiff.make
 
     # object
     td1 = {"i": {"a": 456}}
     s1 = {
-        'properties': {
-            'i': {
-                'properties': {'a': {'type': 'integer'}},
-                'type': 'object'
+        "properties": {
+            "i": {
+                "properties": {"a": {"type": "integer"}},
+                "type": "object",
             }
         },
-        'type': 'object'
+        "type": "object",
     }
     m = inspect_docs([td1], mode="type")["type"]
     gs = generate_json_schema(m)
@@ -103,13 +102,13 @@ def test():
 
     td5 = {"i": [1, 2, 3]}
     s5 = {
-        'properties': {
-            'i': {
-                'items': {'type': 'integer'},
-                'type': 'array'
+        "properties": {
+            "i": {
+                "items": {"type": "integer"},
+                "type": "array",
             }
         },
-        'type': 'object'
+        "type": "object",
     }
     m = inspect_docs([td5], mode="type")["type"]
     gs = generate_json_schema(m)
@@ -118,16 +117,16 @@ def test():
     # array of object
     td2 = {"i": [{"a": 123}]}
     s2 = {
-        'properties': {
-            'i': {
-                'items': {
-                    'properties': {'a': {'type': 'integer'}},
-                    'type': 'object'
+        "properties": {
+            "i": {
+                "items": {
+                    "properties": {"a": {"type": "integer"}},
+                    "type": "object",
                 },
-                'type': 'array'
+                "type": "array",
             }
         },
-        'type': 'object'
+        "type": "object",
     }
     m = inspect_docs([td2], mode="type")["type"]
     gs = generate_json_schema(m)
@@ -136,18 +135,18 @@ def test():
     # object in object
     td3 = {"i": {"a": {"b": 123}}}
     s3 = {
-        'properties': {
-            'i': {
-                'properties': {
-                    'a': {
-                        'properties': {'b': {'type': 'integer'}},
-                        'type': 'object'
+        "properties": {
+            "i": {
+                "properties": {
+                    "a": {
+                        "properties": {"b": {"type": "integer"}},
+                        "type": "object",
                     }
                 },
-                'type': 'object'
+                "type": "object",
             }
         },
-        'type': 'object'
+        "type": "object",
     }
     m = inspect_docs([td3], mode="type")["type"]
     gs = generate_json_schema(m)
@@ -156,13 +155,13 @@ def test():
     # mixed str/float in array
     td6 = {"i": [1, 2, "a"]}
     s6 = {
-        'properties': {
-            'i': {
-                'items': {'type': ['integer', 'string']},
-                'type': 'array'
+        "properties": {
+            "i": {
+                "items": {"type": ["integer", "string"]},
+                "type": "array",
             }
         },
-        'type': 'object'
+        "type": "object",
     }
     m = inspect_docs([td6], mode="type")["type"]
     gs = generate_json_schema(m)
@@ -172,32 +171,32 @@ def test():
     td1 = {"i": {"a": 456}}
     td2 = {"i": [{"a": 123}]}
     s12 = {
-        'properties': {
-            'i': {
-                'items': {
-                    'properties': {'a': {'type': 'integer'}},
-                    'type': 'object'
+        "properties": {
+            "i": {
+                "items": {
+                    "properties": {"a": {"type": "integer"}},
+                    "type": "object",
                 },
-                'properties': {'a': {'type': 'integer'}},
-                'type': ['array', 'object']
+                "properties": {"a": {"type": "integer"}},
+                "type": ["array", "object"],
             }
         },
-        'type': 'object'
+        "type": "object",
     }
     m = inspect_docs([td1, td2], mode="type")["type"]
     gs = generate_json_schema(m)
     assert jsondiff(gs, s12) == [], "%s  !=\n%s" % (gs, s12)
 
     # list of integer (list of things which are not objects)
-    td4 = {'a': [5, 5, 3]}
+    td4 = {"a": [5, 5, 3]}
     s4 = {
-        'properties': {
-            'a': {
-                'items': {'type': 'integer'},
-                'type': 'array'
+        "properties": {
+            "a": {
+                "items": {"type": "integer"},
+                "type": "array",
             }
         },
-        'type': 'object'
+        "type": "object",
     }
     m = inspect_docs([td4], mode="type")["type"]
     gs = generate_json_schema(m)
@@ -205,16 +204,16 @@ def test():
 
     td7 = {"i": {"a": 1, "b": 2}}
     s7 = {
-        'type': 'object',
-        'properties': {
-            'i': {
-                'type': 'object',
-                'properties': {
-                    'a': {'type': 'integer'},
-                    'b': {'type': 'integer'}
-                }
+        "type": "object",
+        "properties": {
+            "i": {
+                "type": "object",
+                "properties": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
             }
-        }
+        },
     }
     m = inspect_docs([td7], mode="type")["type"]
     gs = generate_json_schema(m)
@@ -224,13 +223,13 @@ def test():
     td81 = {"i": 1}
     td82 = {"i": [2, 3]}
     s812 = {
-        'properties': {
-            'i': {
-                'items': {'type': 'integer'},
-                'type': ['array', 'integer']
+        "properties": {
+            "i": {
+                "items": {"type": "integer"},
+                "type": ["array", "integer"],
             }
         },
-        'type': 'object'
+        "type": "object",
     }
     m = inspect_docs([td81, td82], mode="type")["type"]
     gs = generate_json_schema(m)

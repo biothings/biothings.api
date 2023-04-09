@@ -27,9 +27,7 @@ class BaseHandler(tornado.web.RequestHandler):
 
 class HomeHandler(BaseHandler):
     async def get(self):
-        list_routes, detail_routes = await get_available_routes(
-            self.application.db, self.application.table_space
-        )
+        list_routes, detail_routes = await get_available_routes(self.application.db, self.application.table_space)
         self.write(to_json(list_routes + detail_routes))
 
 

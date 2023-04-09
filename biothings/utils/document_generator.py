@@ -18,9 +18,7 @@ template = """{directive} {name}{signature}
 def generate_command_documentations(filepath, commands):
     from biothings.hub import HubCommands
 
-    assert isinstance(
-        commands, (dict, HubCommands)
-    ), "commands must be a HubCommands instance, or dict"
+    assert isinstance(commands, (dict, HubCommands)), "commands must be a HubCommands instance, or dict"
 
     command_docs = []
 

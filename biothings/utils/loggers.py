@@ -1,29 +1,30 @@
 import asyncio
 import datetime
-import logging
-from logging.handlers import TimedRotatingFileHandler
-import os
 import gzip
+import logging
+import os
 from collections import OrderedDict, UserList
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
 from itertools import chain
+from logging.handlers import TimedRotatingFileHandler
 from threading import Thread
-from typing import NamedTuple, Union
 from types import MethodType
+from typing import NamedTuple, Union
+
 import requests
 
-
-LOG_FORMAT_STRING = '%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s'
+LOG_FORMAT_STRING = "%(asctime)s [%(process)d:%(threadName)s] - %(name)s - %(levelname)s -- %(message)s"
 DATEFMT = "%H:%M:%S"
+
 
 class GZipRotator:
     def __call__(self, source, dest):
         os.rename(source, dest)
-        f_in = open(dest, 'rb')
-        f_out = gzip.open("%s.gz" % dest, 'wb')
+        f_in = open(dest, "rb")
+        f_out = gzip.open("%s.gz" % dest, "wb")
         f_out.writelines(f_in)
         f_out.close()
         f_in.close()
@@ -61,9 +62,7 @@ def setup_default_log(default_logger_name, log_folder, level=logging.DEBUG):
     return logger
 
 
-def get_logger(
-    logger_name, log_folder=None, handlers=("console", "file", "slack"), timestamp=None, force=False
-):
+def get_logger(logger_name, log_folder=None, handlers=("console", "file", "slack"), timestamp=None, force=False):
     """
     Configure a logger object from logger_name and return (logger, logfile)
     """
@@ -86,7 +85,7 @@ def get_logger(
     if "slack" in handlers and getattr(btconfig, "SLACK_WEBHOOK", None):
         nh = SlackHandler(
             btconfig.SLACK_WEBHOOK,
-            getattr(btconfig, "SLACK_MENTIONS", [])
+            getattr(btconfig, "SLACK_MENTIONS", []),
         )
         nh.setFormatter(fmt)
         nh.name = "slack"
@@ -102,23 +101,22 @@ def get_logger(
 
 
 class EventRecorder(logging.StreamHandler):
-
     def __init__(self, *args, **kwargs):
         super(EventRecorder, self).__init__(*args, **kwargs)
         from biothings.utils.hub_db import get_event
+
         self.eventcol = get_event()
 
     def emit(self, record):
         async def aioemit(msg):
             def recorded(f):
                 res = f.result()
-            fut = loop.run_in_executor(
-                None,
-                partial(self.eventcol.save, msg)
-            )
+
+            fut = loop.run_in_executor(None, partial(self.eventcol.save, msg))
             fut.add_done_callback(recorded)
             await fut
             return fut
+
         if record.__dict__.get("notify") or record.__dict__.get("event"):
             try:
                 loop = asyncio.get_event_loop()
@@ -129,7 +127,7 @@ class EventRecorder(logging.StreamHandler):
                     "level": record.levelname,
                     "name": record.name,
                     "pid": record.process,
-                    "pname": record.processName
+                    "pname": record.processName,
                 }
                 fut = aioemit(msg)
                 asyncio.ensure_future(fut)
@@ -156,12 +154,13 @@ class WSLogHandler(logging.StreamHandler):
             "msg": msg,
             "logger": record.name,
             "level": record.levelname,
-            "ts": datetime.datetime.now().isoformat()
+            "ts": datetime.datetime.now().isoformat(),
         }
 
     def emit(self, record):
         self.count += 1
         self.listener.read(self.payload(record))
+
 
 class WSShellHandler(WSLogHandler):
     """
@@ -170,16 +169,13 @@ class WSShellHandler(WSLogHandler):
     """
 
     def payload(self, record):
-        types = {
-            ShellLogger.INPUT: "input",
-            ShellLogger.OUTPUT: "output"
-        }
+        types = {ShellLogger.INPUT: "input", ShellLogger.OUTPUT: "output"}
         return {
             "_id": self.count,
             "op": "shell",
             "cmd": record.msg,
             "type": types.get(record.levelno, "unknown"),
-            "ts": datetime.datetime.now().isoformat()
+            "ts": datetime.datetime.now().isoformat(),
         }
 
 
@@ -219,6 +215,7 @@ class Squares(Enum):
     DEBUG = ":white_large_square:"
     NOTSET = ""
 
+
 class Colors(Enum):
     CRITICAL = "#7b0099"
     ERROR = "danger"  # red
@@ -227,24 +224,25 @@ class Colors(Enum):
     DEBUG = "#a1a1a1"
     NOTSET = "#d6d2d2"
 
+
 @dataclass
-class Range():
+class Range:
     start: Union[int, float] = 0  # inclusive
-    end: Union[int, float] = float('inf')  # exclusive
+    end: Union[int, float] = float("inf")  # exclusive
+
 
 class Record(NamedTuple):
     range: Range
     value: Enum
 
-class LookUpList(UserList):
 
+class LookUpList(UserList):
     def __init__(self, initlist):
         super().__init__(initlist)
         assert all(isinstance(x, Record) for x in self.data)
         assert all(isinstance(x.range, Range) for x in self.data)
 
     def find_index(self, val):
-
         l, r = 0, len(self.data)
         while l < r:
             mid = (l + r) // 2
@@ -258,82 +256,71 @@ class LookUpList(UserList):
                 return mid
 
     def find(self, val):
-
         index = self.find_index(val)
         if index is not None:
             return self.data[index].value
 
 
-ICONS = LookUpList([
-    Record(Range(float('-inf'), logging.DEBUG), Squares.NOTSET),
-    Record(Range(logging.DEBUG, logging.INFO), Squares.DEBUG),
-    Record(Range(logging.INFO, logging.WARNING), Squares.INFO),
-    Record(Range(logging.WARNING, logging.ERROR), Squares.WARNING),
-    Record(Range(logging.ERROR, logging.CRITICAL), Squares.ERROR),
-    Record(Range(logging.CRITICAL, float('inf')), Squares.CRITICAL)
-])
+ICONS = LookUpList(
+    [
+        Record(Range(float("-inf"), logging.DEBUG), Squares.NOTSET),
+        Record(Range(logging.DEBUG, logging.INFO), Squares.DEBUG),
+        Record(Range(logging.INFO, logging.WARNING), Squares.INFO),
+        Record(Range(logging.WARNING, logging.ERROR), Squares.WARNING),
+        Record(Range(logging.ERROR, logging.CRITICAL), Squares.ERROR),
+        Record(Range(logging.CRITICAL, float("inf")), Squares.CRITICAL),
+    ]
+)
 
-COLORS = LookUpList([
-    Record(Range(float('-inf'), logging.DEBUG), Colors.NOTSET),
-    Record(Range(logging.DEBUG, logging.INFO), Colors.DEBUG),
-    Record(Range(logging.INFO, logging.WARNING), Colors.INFO),
-    Record(Range(logging.WARNING, logging.ERROR), Colors.WARNING),
-    Record(Range(logging.ERROR, logging.CRITICAL), Colors.ERROR),
-    Record(Range(logging.CRITICAL, float('inf')), Colors.CRITICAL)
-])
+COLORS = LookUpList(
+    [
+        Record(Range(float("-inf"), logging.DEBUG), Colors.NOTSET),
+        Record(Range(logging.DEBUG, logging.INFO), Colors.DEBUG),
+        Record(Range(logging.INFO, logging.WARNING), Colors.INFO),
+        Record(Range(logging.WARNING, logging.ERROR), Colors.WARNING),
+        Record(Range(logging.ERROR, logging.CRITICAL), Colors.ERROR),
+        Record(Range(logging.CRITICAL, float("inf")), Colors.CRITICAL),
+    ]
+)
 
-class SlackMessage():
 
+class SlackMessage:
     def __init__(self):
         self._blocks = []
         self._attachments = []
 
     def markdown(self, text, prefixes=(), suffixes=()):
         text = text.strip()
-        text = ' '.join((*filter(None, prefixes), text))
-        text = ' '.join((text, *filter(None, suffixes)))
+        text = " ".join((*filter(None, prefixes), text))
+        text = " ".join((text, *filter(None, suffixes)))
         if text:
             # empty value causes 400
             # error in slack API
-            self._blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": text
-                }
-            })
+            self._blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
 
     def plaintext(self, text, color):
         text = text.strip()
         if text:
             # empty value causes 400
             # error in slack API
-            self._attachments.append({
-                "text": text,
-                "color": color
-            })
+            self._attachments.append({"text": text, "color": color})
 
     def build(self):
-        return deepcopy({
-            "blocks": self._blocks,
-            "attachments": self._attachments
-        })
+        return deepcopy({"blocks": self._blocks, "attachments": self._attachments})
 
 
 class ReceiverGroup(UserList):
-
     def __init__(self, initlist=None):
         super().__init__(initlist or [])
         self.prev = None
         self.range = Range()
 
-class SlackMentionPolicy():
 
+class SlackMentionPolicy:
     # TODO Support string representation
     # of a level throughout this class
 
     def __init__(self, policy):
-
         if isinstance(policy, dict):
             assert all(isinstance(lvl, int) for lvl in policy.keys())
             assert all(isinstance(m, (list, tuple)) for m in policy.values())
@@ -343,23 +330,16 @@ class SlackMentionPolicy():
             # one logging level considering how logging
             # propagation works?
 
-            self._policy = OrderedDict(sorted(
-                (level, ReceiverGroup(receivers))
-                for level, receivers in policy.items()
-            ))
+            self._policy = OrderedDict(sorted((level, ReceiverGroup(receivers)) for level, receivers in policy.items()))
 
         elif isinstance(policy, (tuple, list)):
             assert all(isinstance(m, str) for m in policy)
             assert len(set(policy)) == len(policy)
 
-            self._policy = OrderedDict({
-                logging.ERROR: ReceiverGroup(policy)
-            })
+            self._policy = OrderedDict({logging.ERROR: ReceiverGroup(policy)})
 
         elif isinstance(policy, str):
-            self._policy = OrderedDict({
-                logging.ERROR: ReceiverGroup([policy])
-            })
+            self._policy = OrderedDict({logging.ERROR: ReceiverGroup([policy])})
 
         else:  # see test cases for supported values.
             raise TypeError("Unsupported Slack Mentions.")
@@ -412,7 +392,6 @@ class SlackMentionPolicy():
 
 
 class SlackHandler(logging.StreamHandler):
-
     def __init__(self, webhook, mentions):
         super(SlackHandler, self).__init__()
         self.webhook = webhook
@@ -427,11 +406,13 @@ class SlackHandler(logging.StreamHandler):
         res.raise_for_status()
 
     def emit(self, record):
-
         if record.__dict__.get("notify"):
-
             Thread(
                 target=SlackHandler.send,  # blocking
-                args=(self.webhook, self.format(record),
-                      record.levelno, self.mentions.mentions(record.levelno))
+                args=(
+                    self.webhook,
+                    self.format(record),
+                    record.levelno,
+                    self.mentions.mentions(record.levelno),
+                ),
             ).start()

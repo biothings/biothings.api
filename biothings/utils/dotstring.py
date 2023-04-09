@@ -24,9 +24,9 @@ def last_element(d, key_list):
         try:
             t = d[k]
         except KeyError:
-            return    # key does not exist
+            return  # key does not exist
         except TypeError:
-            return    # not sub-scriptable
+            return  # not sub-scriptable
         if isinstance(t, dict):
             yield from last_element(t, key_list)
         elif isinstance(t, list):
@@ -45,6 +45,7 @@ def key_value(dictionary, key):
     :param key: key that specifies a value in the dictionary
     :return: generator for values that match the given key
     """
+
     def safe_ref(k, d):
         if d:
             try:
@@ -54,7 +55,7 @@ def key_value(dictionary, key):
 
     if not is_str(key):
         raise TypeError("key argument must of be of type 'str'")
-    key_list = key.split('.')
+    key_list = key.split(".")
     for k, le in last_element(dictionary, key_list):
         yield safe_ref(k, le)
 
@@ -67,6 +68,7 @@ def set_key_value(dictionary, key, value):
     :param key: key that specifies an element in the dictionary
     :return: dictionary after changes have been made
     """
+
     def safe_assign(k, d):
         if d:
             try:
@@ -76,7 +78,7 @@ def set_key_value(dictionary, key, value):
 
     if not is_str(key):
         raise TypeError("key argument must of be of type 'str'")
-    key_list = key.split('.')
+    key_list = key.split(".")
     for k, le in last_element(dictionary, key_list):
         safe_assign(k, le)
     return dictionary
@@ -91,7 +93,7 @@ def remove_key(dictionary, key):
     """
     if not is_str(key):
         raise TypeError("key argument must of be of type 'str'")
-    key_list = key.split('.')
+    key_list = key.split(".")
     for k, le in last_element(dictionary, key_list):
         try:
             del le[k]

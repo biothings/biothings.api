@@ -1,18 +1,16 @@
-'''
+"""
 Utils to compare two list of gene documents, no require to setup Biothings Hub.
-'''
+"""
 import json
 import time
 
-from .common import timesofar, filter_dict
+from .common import filter_dict, timesofar
 
 
 def diff_doc(doc_1, doc_2, exclude_attrs=None):
-    exclude_attrs = exclude_attrs or ['_timestamp']
+    exclude_attrs = exclude_attrs or ["_timestamp"]
 
-    diff_d = {'update': {},
-              'delete': [],
-              'add': {}}
+    diff_d = {"update": {}, "delete": [], "add": {}}
     if exclude_attrs:
         doc_1 = filter_dict(doc_1, exclude_attrs)
         doc_2 = filter_dict(doc_2, exclude_attrs)
@@ -23,21 +21,19 @@ def diff_doc(doc_1, doc_2, exclude_attrs=None):
             _v1 = doc_1[attr]
             _v2 = doc_2[attr]
             if _v1 != _v2:
-                diff_d['update'][attr] = _v2
+                diff_d["update"][attr] = _v2
         elif attr in doc_1 and attr not in doc_2:
-            diff_d['delete'].append(attr)
+            diff_d["delete"].append(attr)
         else:
-            diff_d['add'][attr] = doc_2[attr]
-    if diff_d['update'] or diff_d['delete'] or diff_d['add']:
+            diff_d["add"][attr] = doc_2[attr]
+    if diff_d["update"] or diff_d["delete"] or diff_d["add"]:
         return diff_d
 
 
 def full_diff_doc(doc_1, doc_2, exclude_attrs=None):
-    exclude_attrs = exclude_attrs or ['_timestamp']
+    exclude_attrs = exclude_attrs or ["_timestamp"]
 
-    diff_d = {'update': {},
-              'delete': [],
-              'add': {}}
+    diff_d = {"update": {}, "delete": [], "add": {}}
     if exclude_attrs:
         doc_1 = filter_dict(doc_1, exclude_attrs)
         doc_2 = filter_dict(doc_2, exclude_attrs)
@@ -67,13 +63,13 @@ def full_diff_doc(doc_1, doc_2, exclude_attrs=None):
                 difffound = True
 
             if difffound:
-                diff_d['update'][attr] = _v2
+                diff_d["update"][attr] = _v2
 
         elif attr in doc_1 and attr not in doc_2:
-            diff_d['delete'].append(attr)
+            diff_d["delete"].append(attr)
         else:
-            diff_d['add'][attr] = doc_2[attr]
-    if diff_d['update'] or diff_d['delete'] or diff_d['add']:
+            diff_d["add"][attr] = doc_2[attr]
+    if diff_d["update"] or diff_d["delete"] or diff_d["add"]:
         return diff_d
 
 
@@ -83,39 +79,33 @@ def two_docs_iterator(docs1, docs2, id_list, step=10000, verbose=False):
     for i in range(0, n, step):
         t1 = time.time()
         if verbose:
-            print("Processing %d-%d documents..." % (i + 1, min(i + step, n)), end='')
-        _ids = id_list[i:i+step]
-        iter1 = sorted(
-            [doc for doc in docs1 if doc["_id"] in _ids],
-            key=lambda a: a["_id"]
-        )
-        iter2 = sorted(
-            [doc for doc in docs2 if doc["_id"] in _ids],
-            key=lambda a: a["_id"]
-        )
+            print("Processing %d-%d documents..." % (i + 1, min(i + step, n)), end="")
+        _ids = id_list[i : i + step]
+        iter1 = sorted([doc for doc in docs1 if doc["_id"] in _ids], key=lambda a: a["_id"])
+        iter2 = sorted([doc for doc in docs2 if doc["_id"] in _ids], key=lambda a: a["_id"])
         for doc1, doc2 in zip(iter1, iter2):
             yield doc1, doc2
         if verbose:
-            print('Done.[%.1f%%,%s]' % (i*100./n, timesofar(t1)))
+            print("Done.[%.1f%%,%s]" % (i * 100.0 / n, timesofar(t1)))
     if verbose:
-        print("="*20)
-        print('Finished.[total time: %s]' % timesofar(t0))
+        print("=" * 20)
+        print("Finished.[total time: %s]" % timesofar(t0))
 
 
 def diff_docs(docs1, docs2, ids, fastdiff=False, diff_func=full_diff_doc):
-    '''if fastdiff is True, only compare the whole doc,
-       do not traverse into each attributes.
-    '''
+    """if fastdiff is True, only compare the whole doc,
+    do not traverse into each attributes.
+    """
     _updates = []
     for doc1, doc2 in two_docs_iterator(docs1, docs2, ids):
-        assert doc1['_id'] == doc2['_id'], repr((ids, len(ids)))
+        assert doc1["_id"] == doc2["_id"], repr((ids, len(ids)))
         if fastdiff:
             if doc1 != doc2:
-                _updates.append({'_id': doc1['_id']})
+                _updates.append({"_id": doc1["_id"]})
         else:
             _diff = diff_func(doc1, doc2)
             if _diff:
-                _diff['_id'] = doc1['_id']
+                _diff["_id"] = doc1["_id"]
                 _updates.append(_diff)
     return _updates
 
@@ -154,7 +144,7 @@ def normalize_document(docs):
 
 
 def get_id_set(docs):
-    ids = [doc['_id'] for doc in docs]
+    ids = [doc["_id"] for doc in docs]
     return set(ids)
 
 
@@ -195,9 +185,7 @@ def diff_collections(docs1, docs2):
     if len(id_in_2) > 0:
         _adds = sorted(id_in_2)
 
-    changes = {'update': _updates,
-               'delete': _deletes,
-               'add': _adds}
+    changes = {"update": _updates, "delete": _deletes, "add": _adds}
     return changes
 
 

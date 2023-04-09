@@ -1,12 +1,12 @@
+import json
 import os
 import sqlite3
-import json
 from functools import wraps
 
-from biothings.utils.hub_db import IDatabase
-from biothings.utils.dotfield import parse_dot_fields
+from biothings.utils.common import find_value_in_doc, json_serial
 from biothings.utils.dataload import update_dict_recur
-from biothings.utils.common import json_serial, find_value_in_doc
+from biothings.utils.dotfield import parse_dot_fields
+from biothings.utils.hub_db import IDatabase
 
 config = None
 
@@ -18,12 +18,14 @@ def requires_config(func):
         if not config:
             try:
                 from biothings import config as config_mod
+
                 config = config_mod
             except ImportError:
                 raise Exception("call biothings.config_for_app() first")
         return func(*args, **kwargs)
 
     return func_wrapper
+
 
 @requires_config
 def get_hub_db_conn():
@@ -46,8 +48,7 @@ def get_src_db():
 @requires_config
 def get_src_dump():
     conn = get_hub_db_conn()
-    return conn[config.DATA_HUB_DB_DATABASE][
-        getattr(config, "DATA_SRC_DUMP_COLLECTION", "src_dump")]
+    return conn[config.DATA_HUB_DB_DATABASE][getattr(config, "DATA_SRC_DUMP_COLLECTION", "src_dump")]
 
 
 @requires_config
@@ -63,8 +64,7 @@ def get_src_build():
 
 def get_src_build_config():
     conn = get_hub_db_conn()
-    return conn[config.DATA_HUB_DB_DATABASE][
-        config.DATA_SRC_BUILD_COLLECTION + "_config"]
+    return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_BUILD_COLLECTION + "_config"]
 
 
 def get_data_plugin():
@@ -84,14 +84,12 @@ def get_cmd():
 
 def get_event():
     conn = get_hub_db_conn()
-    return conn[config.DATA_HUB_DB_DATABASE][
-        getattr(config, "EVENT_COLLECTION", "event")]
+    return conn[config.DATA_HUB_DB_DATABASE][getattr(config, "EVENT_COLLECTION", "event")]
 
 
 def get_hub_config():
     conn = get_hub_db_conn()
-    return conn[config.DATA_HUB_DB_DATABASE][
-        getattr(config, "HUB_CONFIG_COLLECTION", "hub_config")]
+    return conn[config.DATA_HUB_DB_DATABASE][getattr(config, "HUB_CONFIG_COLLECTION", "hub_config")]
 
 
 def get_last_command():
@@ -148,10 +146,12 @@ class Database(IDatabase):
         return self[colname]
 
     def create_if_needed(self, table):
-        existings = [tname[0] for tname in self.get_conn().execute(
-            "SELECT name FROM sqlite_master WHERE type='table' and " + "name = ?",
-            (table,)
-        ).fetchall()]
+        existings = [
+            tname[0]
+            for tname in self.get_conn()
+            .execute("SELECT name FROM sqlite_master WHERE type='table' and " + "name = ?", (table,))
+            .fetchall()
+        ]
         if table not in existings:
             # TODO: injection...
             self.get_conn().execute("CREATE TABLE %s (_id TEXT PRIMARY KEY, document TEXT)" % table).fetchone()
@@ -179,7 +179,6 @@ class DatabaseClient(IDatabase):
 
 
 class Collection(object):
-
     def __init__(self, colname, db):
         self.colname = colname
         self.db = db
@@ -198,7 +197,11 @@ class Collection(object):
     def find_one(self, *args, **kwargs):
         if args and len(args) == 1 and isinstance(args[0], dict):
             if len(args[0]) == 1 and "_id" in args[0]:
-                strdoc = self.get_conn().execute("SELECT document FROM %s WHERE _id = ?" % self.colname, (args[0]["_id"],)).fetchone()
+                strdoc = (
+                    self.get_conn()
+                    .execute("SELECT document FROM %s WHERE _id = ?" % self.colname, (args[0]["_id"],))
+                    .fetchone()
+                )
                 if strdoc:
                     return json.loads(strdoc[0])
                 else:
@@ -225,18 +228,21 @@ class Collection(object):
                         return doc
                     else:
                         results.append(doc)
-            if 'limit' in kwargs:
-                start = kwargs.get('start', 0)
-                end = start + kwargs.get('limit', 0)
-                return results[start: end]
+            if "limit" in kwargs:
+                start = kwargs.get("start", 0)
+                end = start + kwargs.get("limit", 0)
+                return results[start:end]
             return results
         elif not args or len(args) == 1 and len(args[0]) == 0:
             # nothing or empty dict
-            results = [json.loads(doc[0]) for doc in self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall()]
-            if 'limit' in kwargs:
-                start = kwargs.get('start', 0)
-                end = start + kwargs.get('limit', 0)
-                return results[start: end]
+            results = [
+                json.loads(doc[0])
+                for doc in self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall()
+            ]
+            if "limit" in kwargs:
+                start = kwargs.get("start", 0)
+                end = start + kwargs.get("limit", 0)
+                return results[start:end]
             return results
         else:
             raise NotImplementedError("find: args=%s kwargs=%s" % (repr(args), repr(kwargs)))
@@ -256,18 +262,21 @@ class Collection(object):
                         return doc
                     else:
                         results.append(doc)
-            if 'limit' in kwargs:
-                start = kwargs.get('start', 0)
-                end = start + kwargs.get('limit', 0)
-                return results[start: end], len(results)
+            if "limit" in kwargs:
+                start = kwargs.get("start", 0)
+                end = start + kwargs.get("limit", 0)
+                return results[start:end], len(results)
             return results, len(results)
         elif not args or len(args) == 1 and len(args[0]) == 0:
             # nothing or empty dict
-            results = [json.loads(doc[0]) for doc in self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall()]
-            if 'limit' in kwargs:
-                start = kwargs.get('start', 0)
-                end = start + kwargs.get('limit', 0)
-                return results[start: end], len(results)
+            results = [
+                json.loads(doc[0])
+                for doc in self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall()
+            ]
+            if "limit" in kwargs:
+                start = kwargs.get("start", 0)
+                end = start + kwargs.get("limit", 0)
+                return results[start:end], len(results)
             return results, len(results)
         else:
             raise NotImplementedError("find: args=%s kwargs=%s" % (repr(args), repr(kwargs)))
@@ -277,7 +286,7 @@ class Collection(object):
         with self.get_conn() as conn:
             conn.execute(
                 "INSERT INTO %s (_id,document) VALUES (?,?)" % self.colname,
-                (doc["_id"], json.dumps(doc, default=json_serial))
+                (doc["_id"], json.dumps(doc, default=json_serial)),
             ).fetchone()
             conn.commit()
 
@@ -286,7 +295,7 @@ class Collection(object):
             for doc in docs:
                 conn.execute(
                     "INSERT INTO %s (_id,document) VALUES (?,?)" % self.colname,
-                    (doc["_id"], json.dumps(doc, default=json_serial))
+                    (doc["_id"], json.dumps(doc, default=json_serial)),
                 ).fetchone()
                 conn.commit()
 
@@ -296,7 +305,9 @@ class Collection(object):
         return Cursor(len(doc_objs))
 
     def update_one(self, query, what, upsert=False):
-        assert len(what) == 1 and ("$set" in what or "$unset" in what or "$push" in what), "$set/$unset/$push operators not found"
+        assert len(what) == 1 and (
+            "$set" in what or "$unset" in what or "$push" in what
+        ), "$set/$unset/$push operators not found"
         doc = self.find_one(query)
         if doc:
             if "$set" in what:
@@ -328,7 +339,7 @@ class Collection(object):
             with self.get_conn() as conn:
                 conn.execute(
                     "UPDATE %s SET document = ? WHERE _id = ?" % self.colname,
-                    (json.dumps(doc, default=json_serial), doc["_id"])
+                    (json.dumps(doc, default=json_serial), doc["_id"]),
                 )
                 conn.commit()
         else:
@@ -342,7 +353,7 @@ class Collection(object):
             with self.get_conn() as conn:
                 conn.execute(
                     "UPDATE %s SET document = ? WHERE _id = ?" % self.colname,
-                    (json.dumps(doc, default=json_serial), orig["_id"])
+                    (json.dumps(doc, default=json_serial), orig["_id"]),
                 )
                 conn.commit()
         elif upsert:

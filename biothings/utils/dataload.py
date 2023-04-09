@@ -2,21 +2,22 @@
 Utility functions for parsing flatfiles,
 mapping to JSON, cleaning.
 """
+import csv
+
 # see tabfile_feeder(coerce_unicode) if needed
 # from __future__ import unicode_literals
 import itertools
-import csv
+import json
 import os
 import os.path
-import json
+from collections import Counter, OrderedDict
 from collections.abc import Mapping
-from collections import OrderedDict, Counter
 from functools import total_ordering
 
-from .common import open_anyfile, is_str, safewfile, anyfile
+from .common import anyfile, is_str, open_anyfile, safewfile
 from .dotstring import key_value, set_key_value
 
-csv.field_size_limit(10000000)   # default is 131072, too small for some big files
+csv.field_size_limit(10000000)  # default is 131072, too small for some big files
 
 
 def dict_sweep(d, vals=None, remove_invalid_list=False):
@@ -125,11 +126,11 @@ def boolean_convert(d, convert_keys=None, level=0):
         if key in [ak.split(".")[level] for ak in convert_keys if len(ak.split(".")) > level]:
             if isinstance(val, list) or isinstance(val, tuple):
                 if val and isinstance(val[0], dict):
-                    d[key] = [boolean_convert(v, convert_keys, level+1) for v in val]
+                    d[key] = [boolean_convert(v, convert_keys, level + 1) for v in val]
                 else:
                     d[key] = [to_boolean(x) for x in val]
             elif isinstance(val, dict) or isinstance(val, OrderedDict):
-                d[key] = boolean_convert(val, convert_keys, level+1)
+                d[key] = boolean_convert(val, convert_keys, level + 1)
             else:
                 d[key] = to_boolean(val)
     return d
@@ -168,8 +169,8 @@ def int_convert(d, include_keys=None, exclude_keys=None):
 def to_boolean(val, true_str=None, false_str=None):
     """Normalize str value to boolean value"""
     # set default true_str and false_str
-    true_str = true_str or {'true', '1', 't', 'y', 'yes', 'Y', 'Yes', 'YES', 1}
-    false_str = false_str or {'false', '0', 'f', 'n', 'N', 'No', 'no', 'NO', 0}
+    true_str = true_str or {"true", "1", "t", "y", "yes", "Y", "Yes", "YES", 1}
+    false_str = false_str or {"false", "0", "f", "n", "N", "No", "no", "NO", 0}
     # if type(val)!=str:
     if not isinstance(val, str):
         return bool(val)
@@ -218,14 +219,14 @@ def merge_duplicate_rows(rows, db):
 def unique_ids(src_module):
     i = src_module.load_data()
     out = list(i)
-    id_list = [a['_id'] for a in out if a]
+    id_list = [a["_id"] for a in out if a]
     myset = set(id_list)
     print(len(out), "Documents produced")
     print(len(myset), "Unique IDs")
     return out
 
 
-def rec_handler(infile, block_end='\n', skip=0, include_block_end=False, as_list=False):
+def rec_handler(infile, block_end="\n", skip=0, include_block_end=False, as_list=False):
     """
     A generator to return a record (block of text) at once from the `infile`.
     The record is separated by one or more empty lines by default.
@@ -241,7 +242,7 @@ def rec_handler(infile, block_end='\n', skip=0, include_block_end=False, as_list
             if not key:
                 if include_block_end:
                     _g = itertools.chain(group, (block_end,))
-                yield list(_g) if as_list else ''.join(_g)
+                yield list(_g) if as_list else "".join(_g)
 
 
 # ===============================================================================
@@ -274,6 +275,7 @@ def unlist_incexcl(d, include_keys=None, exclude_keys=None):
     :param exclude_keys: exclude all other keys except these keys (optional)
     :return: generate key, value pairs
     """
+
     def unlist_helper(d, include_keys=None, exclude_keys=None, keys=None):
         include_keys = include_keys or []
         exclude_keys = exclude_keys or []
@@ -282,7 +284,7 @@ def unlist_incexcl(d, include_keys=None, exclude_keys=None):
             for key, val in d.items():
                 if isinstance(val, list):
                     if len(val) == 1:
-                        path = '.'.join(keys + [key])
+                        path = ".".join(keys + [key])
                         if include_keys:
                             if path in include_keys:
                                 d[key] = val[0]
@@ -290,6 +292,7 @@ def unlist_incexcl(d, include_keys=None, exclude_keys=None):
                             d[key] = val[0]
                 elif isinstance(val, dict):
                     unlist_helper(val, include_keys, exclude_keys, keys + [key])
+
     unlist_helper(d, include_keys, exclude_keys, [])
     return d
 
@@ -315,7 +318,7 @@ def id_strip(id_list):
     return ids
 
 
-def llist(li, sep='\t'):
+def llist(li, sep="\t"):
     """Nicely output the list with each item a line."""
     for x in li:
         if isinstance(x, (li, tuple)):
@@ -333,7 +336,7 @@ def listitems(a_list, *idx):
         return [a_list[i] for i in idx]
 
 
-def list2dict(a_list, keyitem, alwayslist=False):     # pylint: disable=redefined-outer-name
+def list2dict(a_list, keyitem, alwayslist=False):  # pylint: disable=redefined-outer-name
     """
     Return a dictionary with specified `keyitem` as key, others as values.
     `keyitem` can be an index or a sequence of indexes.
@@ -354,7 +357,7 @@ def list2dict(a_list, keyitem, alwayslist=False):     # pylint: disable=redefine
     for x in a_list:
         if isinstance(keyitem, int):  # single item as key
             key = x[keyitem]
-            value = tuple(x[:keyitem] + x[keyitem + 1:])
+            value = tuple(x[:keyitem] + x[keyitem + 1 :])
         else:
             key = tuple(x[i] for i in keyitem)
             value = tuple(x[i] for i in range(len(a_list)) if i not in keyitem)
@@ -362,13 +365,17 @@ def list2dict(a_list, keyitem, alwayslist=False):     # pylint: disable=redefine
             value = value[0]
         if key not in _dict:
             if alwayslist:
-                _dict[key] = [value, ]
+                _dict[key] = [
+                    value,
+                ]
             else:
                 _dict[key] = value
         else:
             current_value = _dict[key]
             if not isinstance(current_value, list):
-                current_value = [current_value, ]
+                current_value = [
+                    current_value,
+                ]
             current_value.append(value)
             _dict[key] = current_value
     return _dict
@@ -397,12 +404,13 @@ def alwayslist(value):
     else:
         return [value]
 
+
 # ===============================================================================
 # File Utility functions
 # ===============================================================================
 
 
-def tabfile_tester(datafile, header=1, sep='\t'):
+def tabfile_tester(datafile, header=1, sep="\t"):
     reader = csv.reader(anyfile(datafile), delimiter=sep)
     lineno = 0
     try:
@@ -455,10 +463,10 @@ def dupline_seperator(dupline, dup_sep, dup_idx=None, strip=False):
             if strip:
                 value = [x.strip() for x in value]
         value_li[idx] = value
-    return itertools.product(*value_li)    # itertools.product fits exactly the purpose here
+    return itertools.product(*value_li)  # itertools.product fits exactly the purpose here
 
 
-def tabfile_feeder(datafile, header=1, sep='\t', includefn=None, coerce_unicode=True, assert_column_no=None):
+def tabfile_feeder(datafile, header=1, sep="\t", includefn=None, coerce_unicode=True, assert_column_no=None):
     """a generator for each row in the file."""
 
     in_f = anyfile(datafile)
@@ -496,19 +504,21 @@ def tab2list(datafile, cols, **kwargs):
         return {}
 
 
-def tab2dict(datafile, cols, key, alwayslist=False, **kwargs):     # pylint: disable=redefined-outer-name
+def tab2dict(datafile, cols, key, alwayslist=False, **kwargs):  # pylint: disable=redefined-outer-name
     if isinstance(datafile, tuple):
         _datafile = datafile[0]
     else:
         _datafile = datafile
     if os.path.exists(_datafile):
-        return list2dict([listitems(ld, *cols) for ld in tabfile_feeder(datafile, **kwargs)], key, alwayslist=alwayslist)
+        return list2dict(
+            [listitems(ld, *cols) for ld in tabfile_feeder(datafile, **kwargs)], key, alwayslist=alwayslist
+        )
     else:
         print('Error: missing "%s". Skipped!' % os.path.split(_datafile)[1])
         return {}
 
 
-def tab2dict_iter(datafile, cols, key, alwayslist=False, **kwargs):     # pylint: disable=redefined-outer-name
+def tab2dict_iter(datafile, cols, key, alwayslist=False, **kwargs):  # pylint: disable=redefined-outer-name
     """
     Args:
         cols (array of int): an array of indices (of a list) indicating which element(s) are kept in bulk
@@ -566,13 +576,13 @@ def file_merge(infiles, outfile=None, header=1, verbose=1):
     Merge a list of input files with the same format.
     If `header` is n then the top n lines will be discarded since reading the 2nd file in the list.
     """
-    outfile = outfile or '_merged'.join(os.path.splitext(infiles[0]))
+    outfile = outfile or "_merged".join(os.path.splitext(infiles[0]))
     out_f, outfile = safewfile(outfile)
     if verbose:
         print("Merging...")
     cnt = 0
     for i, fn in enumerate(infiles):
-        print(os.path.split(fn)[1], '...', end='')
+        print(os.path.split(fn)[1], "...", end="")
         line_no = 0
         in_f = anyfile(fn)
         if i > 0:
@@ -588,6 +598,7 @@ def file_merge(infiles, outfile=None, header=1, verbose=1):
     out_f.close()
     print("=" * 20)
     print("Done![total %d lines output]" % cnt)
+
 
 # ===============================================================================
 # Dictionary & other structures Utility functions
@@ -649,7 +660,7 @@ def traverse_keys(d, include_keys=None, exclude_keys=None):
                     yield k, val
     else:
         for kl, val in traverse_helper(d, []):
-            key = '.'.join(kl)
+            key = ".".join(kl)
             if key not in exclude_keys:
                 yield key, val
 
@@ -700,9 +711,13 @@ def value_convert_to_number(d, skipped_keys=None):
             value_convert_to_number(val, skipped_keys)
         if key not in skipped_keys:
             if isinstance(val, list):
-                d[key] = [to_number(x) if not isinstance(x, dict) else value_convert_to_number(x, skipped_keys) for x in val]
+                d[key] = [
+                    to_number(x) if not isinstance(x, dict) else value_convert_to_number(x, skipped_keys) for x in val
+                ]
             elif isinstance(val, tuple):
-                d[key] = tuple(to_number(x) if not isinstance(x, dict) else value_convert_to_number(x, skipped_keys) for x in val)
+                d[key] = tuple(
+                    to_number(x) if not isinstance(x, dict) else value_convert_to_number(x, skipped_keys) for x in val
+                )
             else:
                 d[key] = to_number(val)
     return d
@@ -710,7 +725,7 @@ def value_convert_to_number(d, skipped_keys=None):
 
 def dict_convert(_dict, keyfn=None, valuefn=None):
     """Return a new dict with each key converted by keyfn (if not None),
-       and each value converted by valuefn (if not None).
+    and each value converted by valuefn (if not None).
     """
     if keyfn is None and valuefn is not None:
         for k in _dict:
@@ -783,13 +798,13 @@ def merge_dict(dict_li, attr_li, missingvalue=None):
 
 def normalized_value(value, sort=True):
     """Return a "normalized" value:
-           1. if a list, remove duplicate and sort it
-           2. if a list with one item, convert to that single item only
-           3. if a list, remove empty values
-           4. otherwise, return value as it is.
+    1. if a list, remove duplicate and sort it
+    2. if a list with one item, convert to that single item only
+    3. if a list, remove empty values
+    4. otherwise, return value as it is.
     """
     if isinstance(value, list):
-        value = [x for x in value if x]   # remove empty values
+        value = [x for x in value if x]  # remove empty values
         try:
             _v = list(set(value))
         except TypeError:
@@ -890,13 +905,13 @@ def merge_root_keys(doc1, doc2, exclude=None):
 def dict_apply(d, key, value, sort=True):
     """add value to d[key], append it if key exists
 
-        >>> d = {'a': 1}
-        >>> dict_apply(d, 'a', 2)
-         {'a': [1, 2]}
-        >>> dict_apply(d, 'a', 3)
-         {'a': [1, 2, 3]}
-        >>> dict_apply(d, 'b', 2)
-         {'a': 1, 'b': 2}
+    >>> d = {'a': 1}
+    >>> dict_apply(d, 'a', 2)
+     {'a': [1, 2]}
+    >>> dict_apply(d, 'a', 3)
+     {'a': [1, 2, 3]}
+    >>> dict_apply(d, 'b', 2)
+     {'a': 1, 'b': 2}
     """
     if key in d:
         _value = d[key]
@@ -914,9 +929,9 @@ def dict_apply(d, key, value, sort=True):
 
 def dict_to_list(gene_d):
     """return a list of genedoc from genedoc dictionary and
-       make sure the "_id" field exists.
+    make sure the "_id" field exists.
     """
-    doc_li = [updated_dict(gene_d[k], {'_id': str(k)}) for k in sorted(gene_d.keys())]
+    doc_li = [updated_dict(gene_d[k], {"_id": str(k)}) for k in sorted(gene_d.keys())]
     return doc_li
 
 

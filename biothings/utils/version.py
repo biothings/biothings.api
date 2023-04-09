@@ -1,6 +1,7 @@
-''' Functions to return versions of things. '''
+""" Functions to return versions of things. """
 import functools
 import logging
+
 # import pip
 import os
 import re
@@ -8,40 +9,39 @@ import shlex
 import sys
 from subprocess import DEVNULL, check_output
 
-from git import (GitCommandError, InvalidGitRepositoryError,
-                 NoSuchPathError, Repo)
+from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 import biothings
 from biothings.utils.dataload import dict_sweep
 
 
 def get_python_version():
-    ''' Get a list of python packages installed and their versions. '''
+    """Get a list of python packages installed and their versions."""
     try:
         output = check_output(f'{sys.executable or "python3"} -m pip list', shell=True, stderr=DEVNULL)
-        return output.decode('utf-8').replace('\r', '').split('\n')[2: -1]
+        return output.decode("utf-8").replace("\r", "").split("\n")[2:-1]
     except Exception:
         return []
 
 
 @functools.lru_cache()
 def get_biothings_commit():
-    ''' Gets the biothings commit information. '''
+    """Gets the biothings commit information."""
     try:
-        with open(os.path.join(os.path.dirname(biothings.__file__), '.git-info'), 'r', encoding="utf-8") as git_file:
-            lines = [ln.strip('\n') for ln in git_file.readlines()]
+        with open(os.path.join(os.path.dirname(biothings.__file__), ".git-info"), "r", encoding="utf-8") as git_file:
+            lines = [ln.strip("\n") for ln in git_file.readlines()]
             return {
-                'repository-url': lines[0],
-                'commit-hash': lines[1],
-                'master-commits': lines[2],
-                'version': biothings.__version__
+                "repository-url": lines[0],
+                "commit-hash": lines[1],
+                "master-commits": lines[2],
+                "version": biothings.__version__,
             }
     except Exception:
         return {
-            'repository-url': '',
-            'commit-hash': '',
-            'master-commits': '',
-            'version': biothings.__version__
+            "repository-url": "",
+            "commit-hash": "",
+            "master-commits": "",
+            "version": biothings.__version__,
         }
 
 
@@ -50,8 +50,8 @@ def get_repository_information(app_dir=None):
     """
     Get the repository information for the local repository, if it exists.
     """
-    commit_hash = ''
-    repository_url = ''
+    commit_hash = ""
+    repository_url = ""
 
     if app_dir:
         app_dir = os.path.abspath(app_dir)
@@ -59,20 +59,20 @@ def get_repository_information(app_dir=None):
         try:
             args = shlex.split("git rev-parse HEAD")
             output = check_output(args, cwd=app_dir, stderr=DEVNULL)
-            commit_hash = output.decode('utf-8').strip('\n')
+            commit_hash = output.decode("utf-8").strip("\n")
         except Exception:
             pass
 
         try:
             args = shlex.split("git config --get remote.origin.url")
             output = check_output(args, cwd=app_dir, stderr=DEVNULL)
-            repository_url = output.decode('utf-8').strip('\n')
+            repository_url = output.decode("utf-8").strip("\n")
         except Exception:
             pass
 
     codebase = {
-        'repository-url': repository_url,
-        'commit-hash': commit_hash
+        "repository-url": repository_url,
+        "commit-hash": commit_hash,
     }
     return codebase
 
@@ -80,12 +80,12 @@ def get_repository_information(app_dir=None):
 def get_python_exec_version():
     """return Python version"""
     return {
-        'version': sys.version,
-        'version_info': {
+        "version": sys.version,
+        "version_info": {
             "major": sys.version_info[0],
             "minor": sys.version_info[1],
-            "micro": sys.version_info[2]
-        }
+            "micro": sys.version_info[2],
+        },
     }
 
 
@@ -93,10 +93,10 @@ def get_python_exec_version():
 def get_software_info(app_dir=None):
     """return current application info"""
     return {
-        'python-package-info': get_python_version(),
-        'codebase': get_repository_information(app_dir=app_dir),
-        'biothings': get_biothings_commit(),
-        'python-info': get_python_exec_version(),
+        "python-package-info": get_python_version(),
+        "codebase": get_repository_information(app_dir=app_dir),
+        "biothings": get_biothings_commit(),
+        "python-info": get_python_exec_version(),
     }
 
 
@@ -151,7 +151,7 @@ def check_new_version(folder, max_commits=10):
             for remote in repo.remotes:
                 remote.fetch()
         # now identify new commits
-        new_commits = [commit for commit in tracking.commit.iter_items(repo, f'{head.path}..{tracking.path}')]
+        new_commits = [commit for commit in tracking.commit.iter_items(repo, f"{head.path}..{tracking.path}")]
         if new_commits:
             new_info = {
                 "latest": new_commits[0].hexsha[:6],
@@ -160,8 +160,10 @@ def check_new_version(folder, max_commits=10):
                         "hash": c.hexsha[:6],
                         "url": repo_url and os.path.join(repo_url, "commit", c.hexsha) or None,
                         "date": c.committed_datetime.isoformat(),
-                        "message": c.message
-                    } for c in new_commits][:max_commits],
+                        "message": c.message,
+                    }
+                    for c in new_commits
+                ][:max_commits],
                 "total": len(new_commits),
             }
     except Exception as err:
@@ -196,16 +198,10 @@ def get_version(folder):
         commitdate = "unknown"
 
     try:
-        return {"branch": repo.active_branch.name,
-                "commit": commit,
-                "date": commitdate,
-                "giturl": url}
+        return {"branch": repo.active_branch.name, "commit": commit, "date": commitdate, "giturl": url}
     except Exception as err:
         logging.warning("can't determine app version, assuming HEAD detached': %s", err)
-        return {"branch": "HEAD detached",
-                "commit": commit,
-                "date": commitdate,
-                "giturl": url}
+        return {"branch": "HEAD detached", "commit": commit, "date": commitdate, "giturl": url}
 
 
 def set_versions(config, app_folder):
@@ -227,6 +223,7 @@ def set_versions(config, app_folder):
     # biothings_version: version of BioThings SDK
     if not hasattr(config, "BIOTHINGS_VERSION"):
         import biothings
+
         # .../biothings.api/biothings/__init__.py
         bt_folder, _bt = os.path.split(os.path.split(os.path.realpath(biothings.__file__))[0])
         if not os.path.exists(bt_folder):
@@ -235,11 +232,11 @@ def set_versions(config, app_folder):
         config.BIOTHINGS_VERSION = get_version(bt_folder)
         config.biothings_folder = bt_folder
     else:
-        logging.info("biothings_version '%s' forced in configuration file",
-                     config.BIOTHINGS_VERSION)
+        logging.info("biothings_version '%s' forced in configuration file", config.BIOTHINGS_VERSION)
 
-    logging.info("Running app_version=%s with biothings_version=%s",
-                 repr(config.APP_VERSION), repr(config.BIOTHINGS_VERSION))
+    logging.info(
+        "Running app_version=%s with biothings_version=%s", repr(config.APP_VERSION), repr(config.BIOTHINGS_VERSION)
+    )
 
 
 def get_source_code_info(src_file):
@@ -299,8 +296,7 @@ def get_source_code_info(src_file):
         info = dict_sweep(info)
         # rebuild URL to that file
         if "github.com" in repo_url:
-            info["url"] = os.path.join(re.sub(r"\.git$", "", repo_url),
-                                       "tree", _hash, rel_src_file)
+            info["url"] = os.path.join(re.sub(r"\.git$", "", repo_url), "tree", _hash, rel_src_file)
 
         return info
 

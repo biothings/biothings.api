@@ -22,9 +22,7 @@ def ndjson_parser(
             NDJSON files that matches the filename patterns
     """
     if patterns is None:
-        raise TypeError(
-            "Must provide keyword argument patterns to" "match files for NDJSON Parser"
-        )
+        raise TypeError("Must provide keyword argument patterns to" "match files for NDJSON Parser")
 
     def ndjson_parser_func(data_folder):
         work_dir = pathlib.Path(data_folder)
@@ -54,9 +52,7 @@ def json_array_parser(
         parser_func
     """
     if patterns is None:
-        raise TypeError(
-            "Must provide keyword argument patterns to" "match files for JSON Array Parser"
-        )
+        raise TypeError("Must provide keyword argument patterns to" "match files for JSON Array Parser")
 
     def json_array_parser(data_folder):
         work_dir = pathlib.Path(data_folder)

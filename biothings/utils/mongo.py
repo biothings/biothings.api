@@ -1,21 +1,32 @@
-import time, logging, os, io, glob, datetime, inspect
-import dateutil.parser as dtparser
-from collections.abc import Iterable
-from functools import wraps
-from pymongo import MongoClient, DESCENDING
-from pymongo.database import Database as PymongoDatabase
-from pymongo.collection import Collection as PymongoCollection
-from pymongo.errors import AutoReconnect
-from functools import partial
+import datetime
+import glob
+import inspect
+import io
+import logging
+import os
+import time
 from collections import defaultdict
+from collections.abc import Iterable
+from functools import partial, wraps
+
 import bson
+import dateutil.parser as dtparser
+from pymongo import DESCENDING, MongoClient
+from pymongo.collection import Collection as PymongoCollection
+from pymongo.database import Database as PymongoDatabase
+from pymongo.errors import AutoReconnect
 
-
-from biothings.utils.common import timesofar, get_random_string, iter_n, \
-                                   open_compressed_file, get_compressed_outfile, \
-                                   dotdict
 from biothings.utils.backend import DocESBackend, DocMongoBackend
-from biothings.utils.hub_db import IDatabase, ChangeWatcher
+from biothings.utils.common import (
+    dotdict,
+    get_compressed_outfile,
+    get_random_string,
+    iter_n,
+    open_compressed_file,
+    timesofar,
+)
+from biothings.utils.hub_db import ChangeWatcher, IDatabase
+
 # stub, until set to real config module
 config = None
 
@@ -46,6 +57,7 @@ def handle_autoreconnect(cls_instance, func):
                 time.sleep(SLEEP_TIME)
 
         raise MaxRetryAutoReconnectException()
+
     return inner
 
 
@@ -68,16 +80,19 @@ class MaxRetryAutoReconnectException(AutoReconnect):
 class DummyCollection(dotdict):
     def count(self):
         return None
+
     def drop(self):
         pass
-    def __getitem__(self,what):
-        return DummyCollection() # ???
+
+    def __getitem__(self, what):
+        return DummyCollection()  # ???
 
 
 class DummyDatabase(dotdict):
     def collection_names(self):
         return []
-    def __getitem__(self,what):
+
+    def __getitem__(self, what):
         return DummyCollection()
 
 
@@ -106,10 +121,10 @@ class Collection(HandleAutoReconnectMixin, PymongoCollection):
             return self.delete_one(spec_or_id, **kwargs)
 
     def save(self, doc, *args, **kwargs):
-        if '_id' in doc:
+        if "_id" in doc:
             kwargs["upsert"] = True
-            self.replace_one({'_id': doc['_id']}, doc, *args, **kwargs)
-            return doc['_id']
+            self.replace_one({"_id": doc["_id"]}, doc, *args, **kwargs)
+            return doc["_id"]
         else:
             res = self.insert_one(doc, *args, **kwargs)
             return res.inserted_id
@@ -141,15 +156,17 @@ class DatabaseClient(HandleAutoReconnectMixin, MongoClient, IDatabase):
 
 def requires_config(func):
     @wraps(func)
-    def func_wrapper(*args,**kwargs):
+    def func_wrapper(*args, **kwargs):
         global config
         if not config:
             try:
                 from biothings import config as config_mod
+
                 config = config_mod
             except ImportError:
                 raise Exception("call biothings.config_for_app() first")
-        return func(*args,**kwargs)
+        return func(*args, **kwargs)
+
     return func_wrapper
 
 
@@ -157,14 +174,14 @@ def requires_config(func):
 def get_conn(server, port):
     try:
         if config.DATA_SRC_SERVER_USERNAME and config.DATA_SRC_SERVER_PASSWORD:
-            uri = "mongodb://{}:{}@{}:{}".format(config.DATA_SRC_SERVER_USERNAME,
-                                                 config.DATA_SRC_SERVER_PASSWORD,
-                                                 server, port)
+            uri = "mongodb://{}:{}@{}:{}".format(
+                config.DATA_SRC_SERVER_USERNAME, config.DATA_SRC_SERVER_PASSWORD, server, port
+            )
         else:
             uri = "mongodb://{}:{}".format(server, port)
         conn = DatabaseClient(uri)
         return conn
-    except (AttributeError,ValueError) as e:
+    except (AttributeError, ValueError) as e:
         # missing config variables (or invalid), we'll pretend it's a dummy access to mongo
         # (dummy here means there really shouldn't be any call to get_conn()
         # but mongo is too much tied to the code and needs more work to
@@ -177,75 +194,90 @@ def get_hub_db_conn():
     conn = DatabaseClient(config.HUB_DB_BACKEND["uri"])
     return conn
 
+
 @requires_config
 def get_src_conn():
-    return get_conn(config.DATA_SRC_SERVER, getattr(config,"DATA_SRC_PORT",27017))
+    return get_conn(config.DATA_SRC_SERVER, getattr(config, "DATA_SRC_PORT", 27017))
+
 
 @requires_config
 def get_src_db(conn=None):
     conn = conn or get_src_conn()
     return conn[config.DATA_SRC_DATABASE]
 
+
 @requires_config
 def get_src_master(conn=None):
     conn = conn or get_hub_db_conn()
     return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_MASTER_COLLECTION]
 
+
 @requires_config
 def get_src_dump(conn=None):
     conn = conn or get_hub_db_conn()
-    return conn[config.DATA_HUB_DB_DATABASE][getattr(config,"DATA_SRC_DUMP_COLLECTION","src_dump")]
+    return conn[config.DATA_HUB_DB_DATABASE][getattr(config, "DATA_SRC_DUMP_COLLECTION", "src_dump")]
+
 
 @requires_config
 def get_src_build(conn=None):
     conn = conn or get_hub_db_conn()
     return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
 
+
 @requires_config
 def get_src_build_config(conn=None):
     conn = conn or get_hub_db_conn()
     return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_BUILD_COLLECTION + "_config"]
+
 
 @requires_config
 def get_data_plugin(conn=None):
     conn = conn or get_hub_db_conn()
     return conn[config.DATA_HUB_DB_DATABASE][config.DATA_PLUGIN_COLLECTION]
 
+
 @requires_config
 def get_api(conn=None):
     conn = conn or get_hub_db_conn()
     return conn[config.DATA_HUB_DB_DATABASE][config.API_COLLECTION]
+
 
 @requires_config
 def get_cmd(conn=None):
     conn = conn or get_hub_db_conn()
     return conn[config.DATA_HUB_DB_DATABASE][config.CMD_COLLECTION]
 
+
 @requires_config
 def get_event(conn=None):
     conn = conn or get_hub_db_conn()
-    return conn[config.DATA_HUB_DB_DATABASE][getattr(config,"EVENT_COLLECTION","event")]
+    return conn[config.DATA_HUB_DB_DATABASE][getattr(config, "EVENT_COLLECTION", "event")]
+
 
 @requires_config
 def get_hub_config(conn=None):
     conn = conn or get_hub_db_conn()
-    return conn[config.DATA_HUB_DB_DATABASE][getattr(config,"HUB_CONFIG_COLLECTION","hub_config")]
+    return conn[config.DATA_HUB_DB_DATABASE][getattr(config, "HUB_CONFIG_COLLECTION", "hub_config")]
+
 
 @requires_config
 def get_last_command(conn=None):
     cmd = get_cmd(conn)
-    cur = cmd.find({},{"_id":1}).sort("_id",DESCENDING).limit(1)
+    cur = cmd.find({}, {"_id": 1}).sort("_id", DESCENDING).limit(1)
     return next(cur)
+
 
 @requires_config
 def get_target_conn():
     if config.DATA_TARGET_SERVER_USERNAME and config.DATA_TARGET_SERVER_PASSWORD:
-        uri = "mongodb://{}:{}@{}:{}".format(config.DATA_TARGET_SERVER_USERNAME,
-                                             config.DATA_TARGET_SERVER_PASSWORD,
-                                             config.DATA_TARGET_SERVER,
-                                             config.DATA_TARGET_PORT)
+        uri = "mongodb://{}:{}@{}:{}".format(
+            config.DATA_TARGET_SERVER_USERNAME,
+            config.DATA_TARGET_SERVER_PASSWORD,
+            config.DATA_TARGET_SERVER,
+            config.DATA_TARGET_PORT,
+        )
     else:
-        uri = "mongodb://{}:{}".format(config.DATA_TARGET_SERVER,config.DATA_TARGET_PORT)
+        uri = "mongodb://{}:{}".format(config.DATA_TARGET_SERVER, config.DATA_TARGET_PORT)
     conn = DatabaseClient(uri)
     return conn
 
@@ -261,6 +293,7 @@ def get_target_master(conn=None):
     conn = conn or get_target_conn()
     return conn[config.DATA_TARGET_DATABASE][config.DATA_TARGET_MASTER_COLLECTION]
 
+
 @requires_config
 def get_source_fullname(col_name):
     """
@@ -271,14 +304,20 @@ def get_source_fullname(col_name):
     # "sources" in config is a list a collection names. src_dump _id is the name of the
     # resource but can have sub-resources with different collection names. We need
     # to query inner keys upload.job.*.step, which always contains the collection name
-    info = src_dump.find_one({"$where":"function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}}" % col_name})
+    info = src_dump.find_one(
+        {
+            "$where": 'function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == "%s") return this;}}}'
+            % col_name
+        }
+    )
     if info:
         name = info["_id"]
         if name != col_name:
             # col_name was a sub-source name
-            return "%s.%s" % (name,col_name)
+            return "%s.%s" % (name, col_name)
         else:
             return name
+
 
 def get_source_fullnames(col_names):
     main_sources = set()
@@ -288,15 +327,17 @@ def get_source_fullnames(col_names):
             main_sources.add(main_source)
     return list(main_sources)
 
-def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None, batch_callback=None,
-               fields=None, logger=logging):
-    '''A iterator for returning docs in a collection, with batch query.
-       additional filter query can be passed via "query", e.g.,
-       doc_feeder(collection, query={'taxid': {'$in': [9606, 10090, 10116]}})
-       batch_callback is a callback function as fn(cnt, t), called after every batch
-       fields is optional parameter passed to find to restrict fields to return.
-    '''
-    if isinstance(collection,DocMongoBackend):
+
+def doc_feeder(
+    collection, step=1000, s=None, e=None, inbatch=False, query=None, batch_callback=None, fields=None, logger=logging
+):
+    """A iterator for returning docs in a collection, with batch query.
+    additional filter query can be passed via "query", e.g.,
+    doc_feeder(collection, query={'taxid': {'$in': [9606, 10090, 10116]}})
+    batch_callback is a callback function as fn(cnt, t), called after every batch
+    fields is optional parameter passed to find to restrict fields to return.
+    """
+    if isinstance(collection, DocMongoBackend):
         collection = collection.target_collection
     cur = collection.find(query, no_cursor_timeout=True, projection=fields)
     n = collection.count_documents(query or {})
@@ -334,15 +375,15 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
                     pass
                     ##logger.info('Nothing to do...')
                 if batch_callback:
-                    batch_callback(cnt, time.time()-t1)
+                    batch_callback(cnt, time.time() - t1)
                 if cnt < e:
                     t1 = time.time()
                     ##logger.info("Processing %d-%d documents..." % (cnt + 1, min(cnt + step, e)))
         if inbatch and doc_li:
-            #Important: need to yield the last batch here
+            # Important: need to yield the last batch here
             yield doc_li
 
-        #print 'Done.[%s]' % timesofar(t1)
+        # print 'Done.[%s]' % timesofar(t1)
         if n:
             pass
             ##logger.info('Done.[%.1f%%,%s]' % (cnt * 100. / n, timesofar(t1)))
@@ -356,29 +397,29 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
 
 
 def get_cache_filename(col_name):
-    cache_folder = getattr(config,"CACHE_FOLDER",None)
+    cache_folder = getattr(config, "CACHE_FOLDER", None)
     if not cache_folder:
-        return # we don't even use cache, forget it
-    cache_format = getattr(config,"CACHE_FORMAT",None)
-    cache_file = os.path.join(config.CACHE_FOLDER,col_name)
+        return  # we don't even use cache, forget it
+    cache_format = getattr(config, "CACHE_FORMAT", None)
+    cache_file = os.path.join(config.CACHE_FOLDER, col_name)
     cache_file = cache_format and (cache_file + ".%s" % cache_format) or cache_file
     return cache_file
 
 
-def invalidate_cache(col_name,col_type="src"):
+def invalidate_cache(col_name, col_type="src"):
     if col_type == "src":
         src_dump = get_src_dump()
         if not "." in col_name:
             fullname = get_source_fullname(col_name)
         assert fullname, "Can't resolve source '%s' (does it exist ?)" % col_name
 
-        main,sub = fullname.split(".")
-        doc = src_dump.find_one({"_id":main})
+        main, sub = fullname.split(".")
+        doc = src_dump.find_one({"_id": main})
         assert doc, "No such source '%s'" % main
-        assert doc.get("upload",{}).get("jobs",{}).get(sub), "No such sub-source '%s'" % sub
+        assert doc.get("upload", {}).get("jobs", {}).get(sub), "No such sub-source '%s'" % sub
         # this will make the cache too old
         doc["upload"]["jobs"][sub]["started_at"] = datetime.datetime.now()
-        src_dump.update_one({"_id":main},{"$set" : {"upload.jobs.%s.started_at" % sub:datetime.datetime.now()}})
+        src_dump.update_one({"_id": main}, {"$set": {"upload.jobs.%s.started_at" % sub: datetime.datetime.now()}})
     elif col_type == "target":
         # just delete the cache file
         cache_file = get_cache_filename(col_name)
@@ -392,27 +433,28 @@ def invalidate_cache(col_name,col_type="src"):
 # TODO: this func deals with different backend, should not be in bt.utils.mongo
 # and doc_feeder should do the same as this function regarding backend support
 @requires_config
-def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
-              force_use=False, force_build=False, validate_only=False):
+def id_feeder(
+    col, batch_size=1000, build_cache=True, logger=logging, force_use=False, force_build=False, validate_only=False
+):
     """Return an iterator for all _ids in collection "col"
-       Search for a valid cache file if available, if not
-       return a doc_feeder for that collection. Valid cache is
-       a cache file that is newer than the collection.
-       "db" can be "target" or "src".
-       "build_cache" True will build a cache file as _ids are fetched,
-       if no cache file was found
-       "force_use" True will use any existing cache file and won't check whether
-       it's valid of not.
-       "force_build" True will build a new cache even if current one exists
-       and is valid.
-       "validate_only" will directly return [] if the cache is valid (convenient
-       way to check if the cache is valid)
+    Search for a valid cache file if available, if not
+    return a doc_feeder for that collection. Valid cache is
+    a cache file that is newer than the collection.
+    "db" can be "target" or "src".
+    "build_cache" True will build a cache file as _ids are fetched,
+    if no cache file was found
+    "force_use" True will use any existing cache file and won't check whether
+    it's valid of not.
+    "force_build" True will build a new cache even if current one exists
+    and is valid.
+    "validate_only" will directly return [] if the cache is valid (convenient
+    way to check if the cache is valid)
     """
     src_db = get_src_db()
     ts = None
     found_meta = True
 
-    if isinstance(col,DocMongoBackend):
+    if isinstance(col, DocMongoBackend):
         col = col.target_collection
 
     try:
@@ -421,11 +463,16 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             if not info:
                 logger.warning("Can't find information for target collection '%s'" % col.name)
             else:
-                ts = info.get("_meta",{}).get("build_date")
+                ts = info.get("_meta", {}).get("build_date")
                 ts = ts and dtparser.parse(ts).timestamp()
         elif col.database.name == config.DATA_SRC_DATABASE:
             src_dump = get_src_dump()
-            info = src_dump.find_one({"$where":"function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == \"%s\") return this;}}}" % col.name})
+            info = src_dump.find_one(
+                {
+                    "$where": 'function() {if(this.upload) {for(var index in this.upload.jobs) {if(this.upload.jobs[index].step == "%s") return this;}}}'
+                    % col.name
+                }
+            )
             if not info:
                 logger.warning("Can't find information for source collection '%s'" % col.name)
             else:
@@ -437,23 +484,23 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
     except KeyError:
         logger.warning("Couldn't find timestamp in database for '%s'" % col.name)
     except Exception as e:
-        logger.info("%s is not a mongo collection, _id cache won't be built (error: %s)" % (col,e))
+        logger.info("%s is not a mongo collection, _id cache won't be built (error: %s)" % (col, e))
         build_cache = False
 
     # try to find a cache file
     use_cache = False
     cache_file = None
-    cache_format = getattr(config,"CACHE_FORMAT",None)
-    if found_meta and getattr(config,"CACHE_FOLDER",None):
+    cache_format = getattr(config, "CACHE_FORMAT", None)
+    if found_meta and getattr(config, "CACHE_FOLDER", None):
         cache_file = get_cache_filename(col.name)
         try:
             # size of empty file differs depending on compression
-            empty_size = {None:0,"xz":32,"gzip":25,"bz2":14}
+            empty_size = {None: 0, "xz": 32, "gzip": 25, "bz2": 14}
             if force_build:
                 logger.warning("Force building cache file")
                 use_cache = False
             # check size, delete if invalid
-            elif os.path.getsize(cache_file) <= empty_size.get(cache_format,32):
+            elif os.path.getsize(cache_file) <= empty_size.get(cache_format, 32):
                 logger.warning("Cache file exists but is empty, delete it")
                 os.remove(cache_file)
             elif force_use:
@@ -464,14 +511,14 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
                 if ts and mt >= ts:
                     dtmt = datetime.datetime.fromtimestamp(mt).isoformat()
                     dtts = datetime.datetime.fromtimestamp(ts).isoformat()
-                    logging.debug("Cache is valid, modiftime_cache:%s >= col_timestamp:%s" % (dtmt,dtts))
+                    logging.debug("Cache is valid, modiftime_cache:%s >= col_timestamp:%s" % (dtmt, dtts))
                     use_cache = True
                 else:
                     logger.info("Cache is too old, discard it")
         except FileNotFoundError:
             pass
     if use_cache:
-        logger.debug("Found valid cache file for '%s': %s" % (col.name,cache_file))
+        logger.debug("Found valid cache file for '%s': %s" % (col.name, cache_file))
         if validate_only:
             logging.debug("Only validating cache, now return")
             return []
@@ -480,43 +527,46 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
                 iocache = io.TextIOWrapper(cache_in)
             else:
                 iocache = cache_in
-            for ids in iter_n(iocache,batch_size):
+            for ids in iter_n(iocache, batch_size):
                 yield [_id.strip() for _id in ids if _id.strip()]
     else:
         logger.debug("No cache file found (or invalid) for '%s', use doc_feeder" % col.name)
         cache_out = None
         cache_temp = None
-        if getattr(config,"CACHE_FOLDER",None) and config.CACHE_FOLDER and build_cache:
+        if getattr(config, "CACHE_FOLDER", None) and config.CACHE_FOLDER and build_cache:
             if not os.path.exists(config.CACHE_FOLDER):
                 os.makedirs(config.CACHE_FOLDER)
             cache_temp = "%s._tmp_" % cache_file
             # clean aborted cache file generation
-            for tmpcache in glob.glob(os.path.join(config.CACHE_FOLDER,"%s*" % cache_temp)):
+            for tmpcache in glob.glob(os.path.join(config.CACHE_FOLDER, "%s*" % cache_temp)):
                 logger.info("Removing aborted cache file '%s'" % tmpcache)
                 os.remove(tmpcache)
             # use temp file and rename once done
-            cache_temp = "%s%s" % (cache_temp,get_random_string())
-            cache_out = get_compressed_outfile(cache_temp,compress=cache_format)
+            cache_temp = "%s%s" % (cache_temp, get_random_string())
+            cache_out = get_compressed_outfile(cache_temp, compress=cache_format)
             logger.info("Building cache file '%s'" % cache_temp)
         else:
             logger.info("Can't build cache, cache not allowed or no cache folder")
             build_cache = False
         if isinstance(col, PymongoCollection):
-            doc_feeder_func = partial(doc_feeder,col, step=batch_size, inbatch=True, fields={"_id":1})
-        elif isinstance(col,DocMongoBackend):
-            doc_feeder_func = partial(doc_feeder,col.target_collection, step=batch_size, inbatch=True, fields={"_id":1})
-        elif isinstance(col,DocESBackend):
+            doc_feeder_func = partial(doc_feeder, col, step=batch_size, inbatch=True, fields={"_id": 1})
+        elif isinstance(col, DocMongoBackend):
+            doc_feeder_func = partial(
+                doc_feeder, col.target_collection, step=batch_size, inbatch=True, fields={"_id": 1}
+            )
+        elif isinstance(col, DocESBackend):
             # get_id_list directly return the _id, wrap it to match other
             # doc_feeder_func returned vals. Also return a batch of id
             def wrap_id():
                 ids = []
                 for _id in col.get_id_list(step=batch_size):
-                    ids.append({"_id":_id})
+                    ids.append({"_id": _id})
                     if len(ids) >= batch_size:
                         yield ids
                         ids = []
                 if ids:
                     yield ids
+
             doc_feeder_func = partial(wrap_id)
         else:
             raise Exception("Unknown backend %s" % col)
@@ -534,7 +584,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging,
             cache_out.close()
             cache_final = os.path.splitext(cache_temp)[0]
             try:
-                os.rename(cache_temp,cache_final)
+                os.rename(cache_temp, cache_final)
             except Exception as e:
                 logger.exception("Couldn't set final cache filename, building cache failed")
 
@@ -543,7 +593,8 @@ def check_document_size(doc):
     """
     Return True if doc isn't too large for mongo DB
     """
-    return len(bson.BSON.encode(doc)) < 16777216 #16*1024*1024
+    return len(bson.BSON.encode(doc)) < 16777216  # 16*1024*1024
+
 
 def get_previous_collection(new_id):
     """
@@ -558,20 +609,27 @@ def get_previous_collection(new_id):
     # TODO: this is not compatible with a generic hub_db backend
     # TODO: this should return a collection with status=success
     col = get_src_build()
-    doc = col.find_one({"_id":new_id})
+    doc = col.find_one({"_id": new_id})
     assert doc, "No build document found for '%s'" % new_id
     assert "build_config" in doc, "No build configuration found for document '%s'" % new_id
     assert doc["build_config"]["name"] == doc["build_config"]["_id"]
     confname = doc["build_config"]["name"]
-    docs = get_src_build().find({
-        "$and":[
-            {"started_at":{"$lte":doc["started_at"]}},
-            {"build_config.name":confname},
-            {"archived":{"$exists":0}},
-            ]},
-        {"_id":1}).sort([("started_at",-1)]).limit(2)
+    docs = (
+        get_src_build()
+        .find(
+            {
+                "$and": [
+                    {"started_at": {"$lte": doc["started_at"]}},
+                    {"build_config.name": confname},
+                    {"archived": {"$exists": 0}},
+                ]
+            },
+            {"_id": 1},
+        )
+        .sort([("started_at", -1)])
+        .limit(2)
+    )
     _ids = [d["_id"] for d in docs]
     assert len(_ids) == 2, "Expecting 2 collection _ids, got: %s" % _ids
     assert _ids[0] == new_id, "Can't find collection _id '%s'" % new_id
     return _ids[1]
-
