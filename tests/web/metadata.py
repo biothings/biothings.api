@@ -1,6 +1,8 @@
-from biothings.web.services.metadata import *
-from biothings.web import connections
 from pprint import pprint as print
+
+from biothings.web import connections
+from biothings.web.services.metadata import *
+
 
 def test_es():
     client = connections.get_es_client("localhost:9200")
@@ -13,11 +15,12 @@ def test_es():
     print(metadata.biothing_mappings)
     print(metadata.biothing_licenses)
 
+
 def test_mongo():
     client = connections.get_mongo_client("mongodb://su05:27017/genedoc")
     collections = {
         "old": "mygene_allspecies_20210510_yqynv8db",
-        "new": "mygene_allspecies_20210517_04usbghm"
+        "new": "mygene_allspecies_20210517_04usbghm",
     }
 
     metadata = BiothingsMongoMetadata(collections, client)

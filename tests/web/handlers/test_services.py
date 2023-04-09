@@ -1,22 +1,20 @@
-'''
+"""
     Test Metadata Endpoint
 
     GET /v1/metadata
     GET /v1/metadata/fields
 
-'''
+"""
 
 from time import sleep
 
 from biothings.tests.web import BiothingsWebAppTest
-
 from setup import setup_es  # pylint: disable=unused-import
 
 
 class TestMetadata(BiothingsWebAppTest):
-
     def test_00_meta(self):
-        """ GET /v1/metadata
+        """GET /v1/metadata
         {
             "biothing_type": "gene",
             "build_date": "2020-01-19T02:00:00.027534",
@@ -25,11 +23,11 @@ class TestMetadata(BiothingsWebAppTest):
             "stats": { ... }
         }
         """
-        res = self.request('/v1/metadata').json()
-        assert res['biothing_type'] == 'gene'
+        res = self.request("/v1/metadata").json()
+        assert res["biothing_type"] == "gene"
 
     def test_01_meta_dev(self):
-        """ GET /v1/metadata?dev
+        """GET /v1/metadata?dev
         {
             "biothing_type": "gene",
             "build_date": "2020-01-19T02:00:00.027534",
@@ -48,11 +46,11 @@ class TestMetadata(BiothingsWebAppTest):
             ...
         }
         """
-        res = self.request('/v1/metadata?dev').json()
-        assert 'software' in res
+        res = self.request("/v1/metadata?dev").json()
+        assert "software" in res
 
     def test_10_field(self):
-        """ GET /v1/metadata/fields
+        """GET /v1/metadata/fields
         {
             ...
             "refseq": { ... }
@@ -63,24 +61,24 @@ class TestMetadata(BiothingsWebAppTest):
             ...
         }
         """
-        res = self.request('/v1/metadata/fields').json()
-        assert not res['refseq.genomic']['index']
+        res = self.request("/v1/metadata/fields").json()
+        assert not res["refseq.genomic"]["index"]
 
     def test_11_field_search(self):
-        """ GET /v1/metadata/fields?search=HGNC
+        """GET /v1/metadata/fields?search=HGNC
         {
             "HGNC": { ... },
             "pantherdb.HGNC": { ... },
             "pantherdb.ortholog.HGNC": { ... }
         }
         """
-        res = self.request('/v1/metadata/fields?search=HGNC').json()
+        res = self.request("/v1/metadata/fields?search=HGNC").json()
         assert res
         for key in res:
-            assert 'HGNC' in key
+            assert "HGNC" in key
 
     def test_12_field_prefix(self):
-        """ GET /v1/metadata/fields?prefix=accession
+        """GET /v1/metadata/fields?prefix=accession
         {
             "accession": { ... },
             "accession.genomic": { ... },
@@ -90,13 +88,13 @@ class TestMetadata(BiothingsWebAppTest):
             "accession_agg": { ... }
         }
         """
-        res = self.request('/v1/metadata/fields?prefix=accession').json()
+        res = self.request("/v1/metadata/fields?prefix=accession").json()
         assert res
         for key in res:
-            assert key.startswith('accession')
+            assert key.startswith("accession")
+
 
 class TestMetadataLicense(BiothingsWebAppTest):
-
     def _wait(self):
         try:
             self.wait(timeout=3)
@@ -104,7 +102,7 @@ class TestMetadataLicense(BiothingsWebAppTest):
             pass
 
     def test_20_license(self):
-        """ GET /v1/gene/12566?fields=pantherdb.uniprot_kb
+        """GET /v1/gene/12566?fields=pantherdb.uniprot_kb
         {
             "_id": "12566",
             "_version": 1,
@@ -117,11 +115,11 @@ class TestMetadataLicense(BiothingsWebAppTest):
         }
         """
         self._wait()  # for internal metadata refresh
-        res = self.request('/v1/gene/12566?fields=pantherdb.uniprot_kb').json()
-        assert res['pantherdb']['_license'] == "http://pantherdb.org/tou.jsp"
+        res = self.request("/v1/gene/12566?fields=pantherdb.uniprot_kb").json()
+        assert res["pantherdb"]["_license"] == "http://pantherdb.org/tou.jsp"
 
     def test_21_license_transform(self):
-        """ GET /v1/gene/12566?fields=interpro
+        """GET /v1/gene/12566?fields=interpro
         {
             "_id": "12566",
             "_version": 1,
@@ -137,12 +135,12 @@ class TestMetadataLicense(BiothingsWebAppTest):
         }
         """
         self._wait()  # for internal metadata refresh
-        res = self.request('/v1/gene/12566?fields=interpro').json()
-        for dic in res['interpro']:
-            assert dic['_license'] == "http://pantherdb.org/tou.jsp"
+        res = self.request("/v1/gene/12566?fields=interpro").json()
+        for dic in res["interpro"]:
+            assert dic["_license"] == "http://pantherdb.org/tou.jsp"
 
     def test_22_license_transform(self):
-        """ GET /v1/gene/12566?fields=pantherdb.ortholog
+        """GET /v1/gene/12566?fields=pantherdb.ortholog
         {
             "_id": "12566",
             "_version": 1,
@@ -159,13 +157,12 @@ class TestMetadataLicense(BiothingsWebAppTest):
             }
         """
         self._wait()  # for internal metadata refresh
-        res = self.request('/v1/gene/12566?fields=pantherdb.ortholog').json()
-        for dic in res['pantherdb']['ortholog']:
-            assert dic['_license'] == "http://pantherdb.org/tou.jsp"
+        res = self.request("/v1/gene/12566?fields=pantherdb.ortholog").json()
+        for dic in res["pantherdb"]["ortholog"]:
+            assert dic["_license"] == "http://pantherdb.org/tou.jsp"
 
 
 class TestStatus(BiothingsWebAppTest):
-
     def test_01_get(self):
         """
         GET /status
@@ -192,11 +189,10 @@ class TestStatus(BiothingsWebAppTest):
             }
         }
         """
-        res = self.request('/status').json()
-        assert res['success']
-        res = self.request('/status?dev').json()
-        assert res['document']['found']
+        res = self.request("/status").json()
+        assert res["success"]
+        res = self.request("/status?dev").json()
+        assert res["document"]["found"]
 
     def test_02_head(self):
-
-        self.request('/status', method='HEAD')
+        self.request("/status", method="HEAD")

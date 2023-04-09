@@ -1,4 +1,5 @@
 import pytest
+
 from biothings.web.options import *
 
 cvt = Converter()
@@ -6,12 +7,14 @@ itt = Converter(strict=False)
 
 # ONLY TEST A FEW BASIC DATA TYPES
 
-#--------------
+# --------------
 #    Common
-#--------------
+# --------------
+
 
 def test_common_to_str():
     assert cvt("test", str) == "test"
+
 
 def test_common_to_bool():
     assert cvt("true", bool) is True
@@ -28,6 +31,7 @@ def test_common_to_bool():
     assert itt("-1.2", bool) is False
     assert itt("2.0", bool) is True
 
+
 def test_common_to_int():
     assert cvt("0", int) == 0
     assert cvt("1", int) == 1
@@ -40,6 +44,7 @@ def test_common_to_int():
     with pytest.raises(OptionError):
         cvt("not_a_number", int)
 
+
 def test_common_to_float():
     one = cvt("1.0", float)
     assert isinstance(one, float)
@@ -48,27 +53,32 @@ def test_common_to_float():
     assert isinstance(one, float)
     assert one == 1.0
 
+
 def test_common_to_list():
     # may need more comprehensive testing
-    assert cvt('CDK2 CDK3', list) == ['CDK2', 'CDK3']
-    assert cvt('"CDK2 CDK3"\n CDK4', list) == ['CDK2 CDK3', 'CDK4']
+    assert cvt("CDK2 CDK3", list) == ["CDK2", "CDK3"]
+    assert cvt('"CDK2 CDK3"\n CDK4', list) == ["CDK2 CDK3", "CDK4"]
 
-#--------------
+
+# --------------
 #   PathArgs
-#--------------
+# --------------
 
 # No additional tests necessary.
 
-#--------------
+# --------------
 #   QueryArgs
-#--------------
+# --------------
+
 
 def test_query_to_bool():
-    assert QueryArgCvter()('', bool)  # MARK A
+    assert QueryArgCvter()("", bool)  # MARK A
 
-#--------------
+
+# --------------
 #   BodyArgs
-#--------------
+# --------------
+
 
 def test_body_with_jsoninput():
     cvt = FormArgCvter(jsoninput=True)
@@ -78,15 +88,18 @@ def test_body_with_jsoninput():
     assert cvt('{"a":"b"}', dict) == {"a": "b"}
     assert cvt("[1,2,3]", list) == [1, 2, 3]
 
+
 def test_body_without_jsoninput():
     cvt = FormArgCvter()
     itt = FormArgCvter(strict=False)
     assert cvt("123", list) == ["123"]
     assert itt("123", list) == ["123"]
 
-#--------------
+
+# --------------
 #   JsonArgs
-#--------------
+# --------------
+
 
 def test_json_strict():
     cvt = JsonArgCvter()
@@ -99,6 +112,7 @@ def test_json_strict():
         cvt("{}", dict)
     with pytest.raises(OptionError):
         cvt("abc", list)  # MARK B
+
 
 def test_json_nonstrict():
     itt = JsonArgCvter(strict=False)

@@ -16,30 +16,29 @@ import os
 
 from biothings.utils.loggers import setup_default_log
 
-
-#* 7. Hub Internals *#
+# * 7. Hub Internals *#
 # Define hostname for source database
-DATA_SRC_SERVER = 'localhost'
+DATA_SRC_SERVER = "localhost"
 # Define port for source database
 DATA_SRC_PORT = 27017
 # Define name for source database
-DATA_SRC_DATABASE = 'testhub_src'
+DATA_SRC_DATABASE = "testhub_src"
 # Define username for source database connection (or None if not needed)
-DATA_SRC_SERVER_USERNAME = ''
+DATA_SRC_SERVER_USERNAME = ""
 # Define password for source database connection (or None if not needed)
-DATA_SRC_SERVER_PASSWORD = ''
+DATA_SRC_SERVER_PASSWORD = ""
 
 # Target (merged collection) database connection
 # Define hostname for target database (merged collections)
-DATA_TARGET_SERVER = 'localhost'
+DATA_TARGET_SERVER = "localhost"
 # Define port for target database (merged collections)
 DATA_TARGET_PORT = 27017
 # Define name for target database (merged collections)
-DATA_TARGET_DATABASE = 'testhub'
+DATA_TARGET_DATABASE = "testhub"
 # Define username for target database connection (or None if not needed)
-DATA_TARGET_SERVER_USERNAME = ''
+DATA_TARGET_SERVER_USERNAME = ""
 # Define password for target database connection (or None if not needed)
-DATA_TARGET_SERVER_PASSWORD = ''
+DATA_TARGET_SERVER_PASSWORD = ""
 
 # Define Hub DB connection
 # Internal backend. Default to mongodb
@@ -56,11 +55,11 @@ HUB_DB_BACKEND = {
 # "" means production
 HUB_ENV = ""
 
-#* 2. Datasources *#
+# * 2. Datasources *#
 # List of package paths for active datasources
 ACTIVE_DATASOURCES = []
 
-#* 3. Folders *#
+# * 3. Folders *#
 # Path to a folder to store all downloaded files, logs, caches, etc...
 DATA_ARCHIVE_ROOT = "/tmp/testhub/datasources"
 

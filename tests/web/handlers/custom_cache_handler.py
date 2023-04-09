@@ -5,20 +5,17 @@ class CustomCacheHandler(BaseAPIHandler):
     cache = 999
 
     async def get(self):
-
         res = {
             "success": True,
-            "status": "yellow"
+            "status": "yellow",
         }
         self.finish(res)
 
 
 class DefautlAPIHandler(BaseAPIHandler):
     async def get(self):
-
         res = {
             "success": True,
-            "status": "yellow"
+            "status": "yellow",
         }
         self.finish(res)
-

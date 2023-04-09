@@ -88,7 +88,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
         }
         """
         res = self.request(
-            "/v1/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=10", expect=400
+            "/v1/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=10",
+            expect=400,
         ).json()
         assert res["success"] is False
 
@@ -539,7 +540,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
         }
         """
         res = self.request(
-            "/v1/query?q=1017&dotfield" "&allow_null=accession.translation.__test__"
+            "/v1/query?q=1017&dotfield" "&allow_null=accession.translation.__test__",
         ).json()
         hit = res["hits"][0]
         assert hit["accession.translation.__test__"] == []
@@ -760,7 +761,6 @@ class TestQueryString(BiothingsWebAppTest):
 
 
 class TestQueryMatch(BiothingsWebAppTest):
-
     # nested match
     # https://github.com/biothings/biothings.api/issues/49
 
@@ -897,10 +897,7 @@ class TestQueryMatch(BiothingsWebAppTest):
 
         assert isinstance(res, dict)
         assert res["max_total"] > 10
-        assert (
-            "1 query terms return > 10 hits, using from=10 to retrieve the remaining hits"
-            == res["msg"]
-        )
+        assert "1 query terms return > 10 hits, using from=10 to retrieve the remaining hits" == res["msg"]
         assert len(res["hits"]) == 10
 
     def test_24_with_total_hasnot_msg(self):

@@ -1,20 +1,19 @@
-'''
+"""
     Test Annotation Endpoint
 
     GET  /<biothing_type>/<id>
     POST /<biothing_type>
 
-'''
+"""
 from biothings.tests.web import BiothingsWebAppTest
 from setup import setup_es  # pylint: disable=unused-import
 
 
 class TestAnnotationGET(BiothingsWebAppTest):
-
     ### Query Builder Keywords ###
 
     def test_00_hit(self):
-        """ GET /v1/gene/1017
+        """GET /v1/gene/1017
         {
             "HGNC": "1771",
             "MIM": "116953",
@@ -23,40 +22,40 @@ class TestAnnotationGET(BiothingsWebAppTest):
             ...
         }
         """
-        res = self.request('/v1/gene/1017').json()
-        assert res['HGNC'] == '1771'
-        assert '_version' in res
+        res = self.request("/v1/gene/1017").json()
+        assert res["HGNC"] == "1771"
+        assert "_version" in res
 
     def test_01_miss(self):
-        """ GET /v1/gene/0
+        """GET /v1/gene/0
         {
             "success": false,
             "error": "Not Found"
         }
         """
-        res = self.request('/v1/gene/0', expect=404).json()
-        assert 'Not Found' in res['error']
+        res = self.request("/v1/gene/0", expect=404).json()
+        assert "Not Found" in res["error"]
 
     ### Query Backend Keywords ###
 
     def test_10_fields(self):
-        """ GET /v1/gene/1017?fields=symbol
+        """GET /v1/gene/1017?fields=symbol
         {
             "_id": "1017",
             "_version": 1
             "symbol": "CDK2"
         }
         """
-        res = self.request('/v1/gene/1017?fields=symbol').json()
+        res = self.request("/v1/gene/1017?fields=symbol").json()
         assert len(res) == 3
-        assert '_id' in res
-        assert '_version' in res
-        assert 'symbol' in res
+        assert "_id" in res
+        assert "_version" in res
+        assert "symbol" in res
 
     ### Workflow Control Keywords ###
 
     def test_20_raw(self):
-        """ GET /v1/gene/1017?raw
+        """GET /v1/gene/1017?raw
         {
             "took": 8,
             "timed_out": false,
@@ -76,12 +75,12 @@ class TestAnnotationGET(BiothingsWebAppTest):
             }
         }
         """
-        res = self.request('/v1/gene/1017?raw').json()
-        assert '_shards' in res
-        assert res['hits']['hits'][0]['_id'] == "1017"
+        res = self.request("/v1/gene/1017?raw").json()
+        assert "_shards" in res
+        assert res["hits"]["hits"][0]["_id"] == "1017"
 
     def test_21_rawquery(self):
-        """ GET /v1/gene/1017?rawquery
+        """GET /v1/gene/1017?rawquery
         {
             "query": {
                 "multi_match": {
@@ -94,11 +93,11 @@ class TestAnnotationGET(BiothingsWebAppTest):
             }
         }
         """
-        res = self.request('/v1/gene/1017?rawquery').json()
-        assert res['query']['multi_match']['query'] == "1017"
+        res = self.request("/v1/gene/1017?rawquery").json()
+        assert res["query"]["multi_match"]["query"] == "1017"
 
     def test_22_format_yaml(self):
-        """ GET /v1/gene/102812112?format=yaml
+        """GET /v1/gene/102812112?format=yaml
         _id: '102812112'
         accession:
             genomic:
@@ -106,11 +105,11 @@ class TestAnnotationGET(BiothingsWebAppTest):
             - NW_006408551.1
         ...
         """
-        res = self.request('/v1/gene/102812112?format=yaml').text
+        res = self.request("/v1/gene/102812112?format=yaml").text
         assert res.startswith("_id: '102812112'")
 
     def test_23_format_html(self):
-        """ GET /v1/gene/102812112?format=html
+        """GET /v1/gene/102812112?format=html
         _id: '101952537'
         accession:
             genomic:
@@ -118,14 +117,14 @@ class TestAnnotationGET(BiothingsWebAppTest):
             - NW_006408551.1
         ...
         """
-        res = self.request('/v1/gene/102812112?format=html').text
-        assert res.strip().startswith('<!DOCTYPE html>')
-        assert 'AMDV01086628.1' in res
+        res = self.request("/v1/gene/102812112?format=html").text
+        assert res.strip().startswith("<!DOCTYPE html>")
+        assert "AMDV01086628.1" in res
 
     ### Result Transform Keywords ###
 
     def test_30_dotfield(self):
-        """ GET /v1/gene/102812112?dotfield
+        """GET /v1/gene/102812112?dotfield
         {
             "_id": "102812112",
             "accession.genomic": [
@@ -139,12 +138,12 @@ class TestAnnotationGET(BiothingsWebAppTest):
             ...
         }
         """
-        res = self.request('/v1/gene/102812112?dotfield').json()
+        res = self.request("/v1/gene/102812112?dotfield").json()
         assert "accession.genomic" in res
         assert "accession.protein" in res
 
     def test_31_sorted(self):
-        """ GET /v1/gene/102812112?_sorted=false
+        """GET /v1/gene/102812112?_sorted=false
         {
             "_id": "102812112",
             "_version": 1
@@ -157,14 +156,14 @@ class TestAnnotationGET(BiothingsWebAppTest):
             ...
         }
         """
-        keys = iter(self.request('/v1/gene/102812112?_sorted=false').json().keys())
-        assert next(keys) == '_id'
-        assert next(keys) == '_version'
-        assert next(keys) == 'taxid'
-        assert next(keys) == 'symbol'
+        keys = iter(self.request("/v1/gene/102812112?_sorted=false").json().keys())
+        assert next(keys) == "_id"
+        assert next(keys) == "_version"
+        assert next(keys) == "taxid"
+        assert next(keys) == "symbol"
 
     def test_32_always_list(self):
-        """ GET /v1/gene/102812112?always_list=symbol,taxid
+        """GET /v1/gene/102812112?always_list=symbol,taxid
         {
             "_id": "102812112",
             "taxid": [
@@ -176,12 +175,12 @@ class TestAnnotationGET(BiothingsWebAppTest):
             ...
         }
         """
-        res = self.request('/v1/gene/102812112?always_list=symbol,taxid').json()
-        assert isinstance(res['symbol'], list)
-        assert isinstance(res['taxid'], list)
+        res = self.request("/v1/gene/102812112?always_list=symbol,taxid").json()
+        assert isinstance(res["symbol"], list)
+        assert isinstance(res["taxid"], list)
 
     def test_33_allow_null(self):
-        """ GET /v1/gene/102812112?allow_null=_uid,_index
+        """GET /v1/gene/102812112?allow_null=_uid,_index
         {
             "_id": "102812112",
             "_index": null,
@@ -193,30 +192,29 @@ class TestAnnotationGET(BiothingsWebAppTest):
             ...
         }
         """
-        res = self.request('/v1/gene/102812112?allow_null=_uid,_index').json()
-        assert res['_uid'] is None
-        assert res['_index'] is None
+        res = self.request("/v1/gene/102812112?allow_null=_uid,_index").json()
+        assert res["_uid"] is None
+        assert res["_index"] is None
 
 
 class TestAnnotationPOST(BiothingsWebAppTest):
-
     def request(self, *args, **kwargs):
-        method = kwargs.pop('method', 'POST')
+        method = kwargs.pop("method", "POST")
         return super().request(method=method, *args, **kwargs)
 
     def test_00_id_not_provided(self):
-        """ POST /v1/gene
+        """POST /v1/gene
         {
             "success": false,
             "error": "Bad Request",
             "missing": "ids"
         }
         """
-        res = self.request('/v1/gene', expect=400).json()
-        assert 'error' in res
+        res = self.request("/v1/gene", expect=400).json()
+        assert "error" in res
 
     def test_01_id_miss(self):
-        """ POST /v1/gene
+        """POST /v1/gene
         {
             "ids": ["11"]
         }
@@ -227,12 +225,12 @@ class TestAnnotationPOST(BiothingsWebAppTest):
             }
         ]
         """
-        res = self.request('/v1/gene', json={"ids": ["11"]}).json()
-        assert res[0]['query'] == '11'
-        assert res[0]['notfound']
+        res = self.request("/v1/gene", json={"ids": ["11"]}).json()
+        assert res[0]["query"] == "11"
+        assert res[0]["notfound"]
 
     def test_02_id_hit(self):
-        """ POST /v1/gene
+        """POST /v1/gene
         {
             "ids": ["1017"]
         }
@@ -248,12 +246,12 @@ class TestAnnotationPOST(BiothingsWebAppTest):
             }
         ]
         """
-        res = self.request('/v1/gene', json={"ids": ["1017"]}).json()
-        assert res[0]['query'] == '1017'
-        assert res[0]['taxid'] == 9606
+        res = self.request("/v1/gene", json={"ids": ["1017"]}).json()
+        assert res[0]["query"] == "1017"
+        assert res[0]["taxid"] == 9606
 
     def test_03_ids(self):
-        """ POST /v1/gene
+        """POST /v1/gene
         {
             "ids": ["1017", "11"]
         }
@@ -273,14 +271,14 @@ class TestAnnotationPOST(BiothingsWebAppTest):
             }
         ]
         """
-        res = self.request('/v1/gene', json={"ids": ["1017", "11"]}).json()
-        assert res[0]['query'] == '1017'
-        assert res[0]['taxid'] == 9606
-        assert res[1]['query'] == '11'
-        assert res[1]['notfound']
+        res = self.request("/v1/gene", json={"ids": ["1017", "11"]}).json()
+        assert res[0]["query"] == "1017"
+        assert res[0]["taxid"] == 9606
+        assert res[1]["query"] == "11"
+        assert res[1]["notfound"]
 
     def test_10_form_encoded(self):
-        """ POST /v1/gene
+        """POST /v1/gene
         ids=1017%2C11
         [
             {
@@ -298,14 +296,14 @@ class TestAnnotationPOST(BiothingsWebAppTest):
             }
         ]
         """
-        res = self.request('/v1/gene', data={"ids": "1017,11"}).json()
-        assert res[0]['query'] == '1017'
-        assert res[0]['taxid'] == 9606
-        assert res[1]['query'] == '11'
-        assert res[1]['notfound']
+        res = self.request("/v1/gene", data={"ids": "1017,11"}).json()
+        assert res[0]["query"] == "1017"
+        assert res[0]["taxid"] == 9606
+        assert res[1]["query"] == "11"
+        assert res[1]["notfound"]
 
     def test_11_json_type_str(self):
-        """ POST /v1/gene
+        """POST /v1/gene
         {
             "ids": "1017" # instead of a list
         }
@@ -319,12 +317,12 @@ class TestAnnotationPOST(BiothingsWebAppTest):
             }
         ]
         """
-        res = self.request('/v1/gene', json={"ids": "1017"}).json()
-        assert res[0]['query'] == '1017'
-        assert res[0]['taxid'] == 9606
+        res = self.request("/v1/gene", json={"ids": "1017"}).json()
+        assert res[0]["query"] == "1017"
+        assert res[0]["taxid"] == 9606
 
     def test_12_json_type_int(self):
-        """ POST /v1/gene
+        """POST /v1/gene
         {
             "ids": 2    # number instead of string
         }
@@ -339,12 +337,12 @@ class TestAnnotationPOST(BiothingsWebAppTest):
         # we try to preserve its original data type so that
         # it is easier to programtically match the results
         # to the original queires sent in a batch request
-        res = self.request('/v1/gene', json={"ids": 2}).json()
-        assert res[0]['query'] == 2
-        assert res[0]['notfound']
+        res = self.request("/v1/gene", json={"ids": 2}).json()
+        assert res[0]["query"] == 2
+        assert res[0]["notfound"]
 
     def test_13_json_invalid(self):
-        """ POST /v1/gene
+        """POST /v1/gene
         {
             "ids": { "ISCW006791" } # malformat
         }
@@ -354,9 +352,12 @@ class TestAnnotationPOST(BiothingsWebAppTest):
         }
         """
         res = self.request(
-            path='/v1/gene', data='{"ids":{"ISCW006791"}}'.encode(),
-            headers={"Content-Type": "application/json"}, expect=400).json()
-        assert not res['success']
-        assert res['error'] == "Invalid JSON body."
+            path="/v1/gene",
+            data='{"ids":{"ISCW006791"}}'.encode(),
+            headers={"Content-Type": "application/json"},
+            expect=400,
+        ).json()
+        assert not res["success"]
+        assert res["error"] == "Invalid JSON body."
 
     # TODO Add multiple hit test case

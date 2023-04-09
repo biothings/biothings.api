@@ -1,9 +1,8 @@
+from authn_provider import DummyCookieAuthProvider
 from tornado.web import HTTPError
 
-from biothings.web.handlers.base import BaseAPIHandler
 from biothings.web.auth.authn import BioThingsAuthnMixin
-
-from authn_provider import DummyCookieAuthProvider
+from biothings.web.handlers.base import BaseAPIHandler
 
 
 class BaseUserIdHandler(BioThingsAuthnMixin, BaseAPIHandler):
@@ -15,7 +14,7 @@ class BaseUserIdHandler(BioThingsAuthnMixin, BaseAPIHandler):
             header = self.get_www_authenticate_header()
             if header:
                 self.clear()
-                self.set_header('WWW-Authenticate', header)
+                self.set_header("WWW-Authenticate", header)
                 self.set_status(401, "Unauthorized")
                 self.finish()
             else:
@@ -23,4 +22,4 @@ class BaseUserIdHandler(BioThingsAuthnMixin, BaseAPIHandler):
 
 
 class SpecialCookieUserIdHandler(BaseUserIdHandler):
-    AUTHN_PROVIDERS = [(DummyCookieAuthProvider, {'cookie_name': 'USR'})]
+    AUTHN_PROVIDERS = [(DummyCookieAuthProvider, {"cookie_name": "USR"})]

@@ -1,10 +1,9 @@
 import unittest
-from biothings.hub.datatransform.datatransform_api import DataTransformMyChemInfo
-from biothings.hub.datatransform.datatransform_api import DataTransformMyGeneInfo
+
+from biothings.hub.datatransform.datatransform_api import DataTransformMyChemInfo, DataTransformMyGeneInfo
 
 
 class TestDataTransformAPI(unittest.TestCase):
-
     def test_mycheminfo(self):
         """
         Test of IDLookupMyChemInfo
@@ -16,22 +15,23 @@ class TestDataTransformAPI(unittest.TestCase):
             def load_document(doc_lst):
                 for d in doc_lst:
                     yield d
-            doc_lst = [{'_id': question}]
+
+            doc_lst = [{"_id": question}]
             res_lst = load_document(doc_lst)
             res = next(res_lst)
-            self.assertEqual(res['_id'], answer)
+            self.assertEqual(res["_id"], answer)
 
         # Examples - paracetamol (acetaminophen)
-        _MyChemInfoSingleDoc('chebi', ['inchikey'], 'CHEBI:46195', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
-        _MyChemInfoSingleDoc('unii', ['inchikey'], '362O9ITL9D', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
-        _MyChemInfoSingleDoc('drugbank', ['inchikey'], 'DB00316', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
-        _MyChemInfoSingleDoc('chembl', ['inchikey'], 'CHEMBL112', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
-        _MyChemInfoSingleDoc('pubchem', ['inchikey'], 'CID1983', 'RZVAJINKPMORJF-UHFFFAOYSA-N')
+        _MyChemInfoSingleDoc("chebi", ["inchikey"], "CHEBI:46195", "RZVAJINKPMORJF-UHFFFAOYSA-N")
+        _MyChemInfoSingleDoc("unii", ["inchikey"], "362O9ITL9D", "RZVAJINKPMORJF-UHFFFAOYSA-N")
+        _MyChemInfoSingleDoc("drugbank", ["inchikey"], "DB00316", "RZVAJINKPMORJF-UHFFFAOYSA-N")
+        _MyChemInfoSingleDoc("chembl", ["inchikey"], "CHEMBL112", "RZVAJINKPMORJF-UHFFFAOYSA-N")
+        _MyChemInfoSingleDoc("pubchem", ["inchikey"], "CID1983", "RZVAJINKPMORJF-UHFFFAOYSA-N")
 
         # Other examples
-        _MyChemInfoSingleDoc('chebi', ['inchikey'], 'CHEBI:63599', 'GIUYCYHIANZCFB-FJFJXFQQSA-N')
-        _MyChemInfoSingleDoc('inchikey', ['pubchem'], 'ATBDZSAENDYQDW-UHFFFAOYSA-N', 'CID4080429')
-        _MyChemInfoSingleDoc('inchikey', ['unii'], 'ATBDZSAENDYQDW-UHFFFAOYSA-N', '18MXK3D6DB')
+        _MyChemInfoSingleDoc("chebi", ["inchikey"], "CHEBI:63599", "GIUYCYHIANZCFB-FJFJXFQQSA-N")
+        _MyChemInfoSingleDoc("inchikey", ["pubchem"], "ATBDZSAENDYQDW-UHFFFAOYSA-N", "CID4080429")
+        _MyChemInfoSingleDoc("inchikey", ["unii"], "ATBDZSAENDYQDW-UHFFFAOYSA-N", "18MXK3D6DB")
 
     def test_mygeneinfo(self):
         """
@@ -44,17 +44,18 @@ class TestDataTransformAPI(unittest.TestCase):
             def load_document(doc_lst):
                 for d in doc_lst:
                     yield d
-            doc_lst = [{'_id': question}]
+
+            doc_lst = [{"_id": question}]
             res_lst = load_document(doc_lst)
             res = next(res_lst)
-            self.assertEqual(res['_id'], answer)
+            self.assertEqual(res["_id"], answer)
 
-        _MyGeneInfoSingleDoc('ensembl', ['symbol'], 'ENSG00000123374', 'CDK2')
-        _MyGeneInfoSingleDoc('entrezgene', ['symbol'], '1017', 'CDK2')
-        _MyGeneInfoSingleDoc('uniprot', ['symbol'], 'P24941', 'CDK2')
+        _MyGeneInfoSingleDoc("ensembl", ["symbol"], "ENSG00000123374", "CDK2")
+        _MyGeneInfoSingleDoc("entrezgene", ["symbol"], "1017", "CDK2")
+        _MyGeneInfoSingleDoc("uniprot", ["symbol"], "P24941", "CDK2")
 
         # Test multiple output types (uniprot will be skipped)
-        _MyGeneInfoSingleDoc('entrezgene', ['uniprot', 'ensembl', 'symbol'], '105864946', 'ENSMICG00000026391')
+        _MyGeneInfoSingleDoc("entrezgene", ["uniprot", "ensembl", "symbol"], "105864946", "ENSMICG00000026391")
 
     def test_mygene_one2many(self):
         """
@@ -63,13 +64,14 @@ class TestDataTransformAPI(unittest.TestCase):
         :return:
         """
 
-        doc_lst = [{'_id': 'CDK2'}]
-        @DataTransformMyGeneInfo('symbol', ['ensembl'], skip_on_failure=True)
+        doc_lst = [{"_id": "CDK2"}]
+
+        @DataTransformMyGeneInfo("symbol", ["ensembl"], skip_on_failure=True)
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
 
-        res_lst = load_document('data/folder/')
+        res_lst = load_document("data/folder/")
         res_cnt = sum(1 for _ in res_lst)
         # assert that at least 5 elements are returned
         self.assertGreater(res_cnt, 5)
@@ -93,69 +95,72 @@ class TestDataTransformAPI(unittest.TestCase):
             644672,
             643382,
             348013,
-            2707400000 # broken on purpose
+            2707400000,  # broken on purpose
         ]
         doc_lst = []
         for e in input:
-            doc_lst.append({'_id': e})
+            doc_lst.append({"_id": e})
 
         answers = [
-            'TIMMDC1',
-            'TMEM160',
-            'ZP4',
-            'TMEM110-MUSTN1',
-            'SURF4',
-            'TMEM87B',
-            'CLDN25',
-            'TMEM253',
-            'TMEM255B',
+            "TIMMDC1",
+            "TMEM160",
+            "ZP4",
+            "TMEM110-MUSTN1",
+            "SURF4",
+            "TMEM87B",
+            "CLDN25",
+            "TMEM253",
+            "TMEM255B",
             # The last key was not converted
-            2707400000
+            2707400000,
         ]
 
         # Test a list being passed with 10 documents
-        @DataTransformMyGeneInfo('entrezgene', ['symbol'])
+        @DataTransformMyGeneInfo("entrezgene", ["symbol"])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
 
-        res_lst = load_document('data/folder/')
+        res_lst = load_document("data/folder/")
         res_cnt = 0
         for res in res_lst:
             res_cnt += 1
-            if not res['_id'] in answers:
-                print(res['_id'])
-            self.assertTrue(res['_id'] in answers)
+            if not res["_id"] in answers:
+                print(res["_id"])
+            self.assertTrue(res["_id"] in answers)
         self.assertEqual(res_cnt, 10)
 
     def test_strangecases(self):
-
-        doc_lst = [{'_id': 'CDK2'}]
+        doc_lst = [{"_id": "CDK2"}]
 
         # with self.assertRaises(ValueError):
         with self.assertRaises(ValueError):
-            @DataTransformMyGeneInfo('entrezgene', ['undefined'])
+
+            @DataTransformMyGeneInfo("entrezgene", ["undefined"])
             def load_document(data_folder):
                 for d in doc_lst:
                     yield d
 
         # Non-string input-type
         with self.assertRaises(ValueError):
-            @DataTransformMyGeneInfo(None, ['undefined'])
+
+            @DataTransformMyGeneInfo(None, ["undefined"])
             def load_document(data_folder):
                 for d in doc_lst:
                     yield d
 
         # Non-list output-type
         with self.assertRaises(ValueError):
-            @DataTransformMyGeneInfo('entrezgene', 'symbol')
+
+            @DataTransformMyGeneInfo("entrezgene", "symbol")
             def load_document(data_folder):
                 for d in doc_lst:
                     yield d
 
         # output-type with a non-string
         with self.assertRaises(ValueError):
-            @DataTransformMyGeneInfo('entrezgene', [None])
+
+            @DataTransformMyGeneInfo("entrezgene", [None])
             def load_document(data_folder):
                 for d in doc_lst:
                     yield d
@@ -166,13 +171,14 @@ class TestDataTransformAPI(unittest.TestCase):
         :return:
         """
 
-        doc_lst = [{'_id': 'CID1983'}, {'_id': None}, {'id': 'CID1983'}]
-        @DataTransformMyChemInfo('pubchem', ['inchikey'], skip_on_failure=True)
+        doc_lst = [{"_id": "CID1983"}, {"_id": None}, {"id": "CID1983"}]
+
+        @DataTransformMyChemInfo("pubchem", ["inchikey"], skip_on_failure=True)
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
 
-        res_lst = load_document('data/folder/')
+        res_lst = load_document("data/folder/")
         res_cnt = sum(1 for _ in res_lst)
         self.assertEqual(res_cnt, 1)
 
@@ -187,20 +193,20 @@ class TestDataTransformAPI(unittest.TestCase):
         inchi2 = "InChI=1S/C8H9NO2/c1-6(10)9-7-2-4-8(11)5-3-7/h2-5,11H,1H3,(H,9,10)"
 
         doc_lst = [
-            {'_id': inchi1},
-            {'_id': inchi2},
+            {"_id": inchi1},
+            {"_id": inchi2},
         ]
 
-        @DataTransformMyChemInfo('inchi', ['inchikey'])
+        @DataTransformMyChemInfo("inchi", ["inchikey"])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
 
         res_lst = load_document(doc_lst)
         res = next(res_lst)
-        self.assertEqual(res['_id'], 'USNINKBPBVKHHZ-CYUUQNCZSA-L')
+        self.assertEqual(res["_id"], "USNINKBPBVKHHZ-CYUUQNCZSA-L")
         res = next(res_lst)
-        self.assertEqual(res['_id'], 'RZVAJINKPMORJF-UHFFFAOYSA-N')
+        self.assertEqual(res["_id"], "RZVAJINKPMORJF-UHFFFAOYSA-N")
 
     def test_input_source_fields(self):
         """
@@ -212,51 +218,57 @@ class TestDataTransformAPI(unittest.TestCase):
 
         doc_lst = [
             {
-                '_id': 'test1_acetomenaphin',
-                'pharmgkb': {
-                    'inchi': 'InChI=1S/C8H9NO2/c1-6(10)9-7-2-4-8(11)5-3-7/h2-5,11H,1H3,(H,9,10)'
-                }
+                "_id": "test1_acetomenaphin",
+                "pharmgkb": {"inchi": "InChI=1S/C8H9NO2/c1-6(10)9-7-2-4-8(11)5-3-7/h2-5,11H,1H3,(H,9,10)"},
             },
             {
-                '_id': 'test2_statin',
-                'pharmgkb': {
-                    'xref': {
-                        'drugbank_id': 'DB01076'
+                "_id": "test2_statin",
+                "pharmgkb": {
+                    "xref": {
+                        "drugbank_id": "DB01076",
                     }
-                }
+                },
             },
             {
-                '_id': 'test3_LithiumCarbonate',
-                'pharmgkb': {
-                    'xref': {
-                        'pubchem_cid': 'CID11125'
+                "_id": "test3_LithiumCarbonate",
+                "pharmgkb": {
+                    "xref": {
+                        "pubchem_cid": "CID11125",
                     }
-                }
+                },
             },
             {
-                '_id': 'test4_IBUPROFEN',
-                'pharmgkb': {
-                    'xref': {
-                        'chembl_id': 'CHEMBL521'
+                "_id": "test4_IBUPROFEN",
+                "pharmgkb": {
+                    "xref": {
+                        "chembl_id": "CHEMBL521",
                     }
-                }
-            }
+                },
+            },
         ]
 
-        @DataTransformMyChemInfo([('inchi', 'pharmgkb.inchi'), ('drugbank', 'pharmgkb.xref.drugbank_id'), ('pubchem', 'pharmgkb.xref.pubchem_cid'), ('chembl', 'pharmgkb.xref.chembl_id')], ['inchikey'])
+        @DataTransformMyChemInfo(
+            [
+                ("inchi", "pharmgkb.inchi"),
+                ("drugbank", "pharmgkb.xref.drugbank_id"),
+                ("pubchem", "pharmgkb.xref.pubchem_cid"),
+                ("chembl", "pharmgkb.xref.chembl_id"),
+            ],
+            ["inchikey"],
+        )
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
 
-        res_lst = load_document('data/folder/')
+        res_lst = load_document("data/folder/")
         r = next(res_lst)
-        self.assertEqual(r['_id'], 'RZVAJINKPMORJF-UHFFFAOYSA-N')
+        self.assertEqual(r["_id"], "RZVAJINKPMORJF-UHFFFAOYSA-N")
         r = next(res_lst)
-        self.assertEqual(r['_id'], 'XUKUURHRXDUEBC-KAYWLYCHSA-N')
+        self.assertEqual(r["_id"], "XUKUURHRXDUEBC-KAYWLYCHSA-N")
         r = next(res_lst)
-        self.assertEqual(r['_id'], 'XGZVUEUWXADBQD-UHFFFAOYSA-L')
+        self.assertEqual(r["_id"], "XGZVUEUWXADBQD-UHFFFAOYSA-L")
         r = next(res_lst)
-        self.assertEqual(r['_id'], 'HEFNNWSXXWATRW-UHFFFAOYSA-N')
+        self.assertEqual(r["_id"], "HEFNNWSXXWATRW-UHFFFAOYSA-N")
 
     def test_long_doc_lst(self):
         """
@@ -268,85 +280,85 @@ class TestDataTransformAPI(unittest.TestCase):
         # Long document list - created manually for a unique test
         doc_lst = [
             {
-                '_id': 'test1',
-                'inchikey': 'SHXWCVYOXRDMCX-UHFFFAOYSA-N',
+                "_id": "test1",
+                "inchikey": "SHXWCVYOXRDMCX-UHFFFAOYSA-N",
             },
             {
-                '_id': 'test2',
-                'inchikey': 'CXHDSLQCNYLQND-XQRIHRDZSA-N',
+                "_id": "test2",
+                "inchikey": "CXHDSLQCNYLQND-XQRIHRDZSA-N",
             },
             {
                 # this test document should still be returned
-                '_id': 'test3',
+                "_id": "test3",
             },
             {
-                '_id': 'test4',
-                'inchikey': 'XMYKNCNAZKMVQN-NYYWCZLTSA-N',
+                "_id": "test4",
+                "inchikey": "XMYKNCNAZKMVQN-NYYWCZLTSA-N",
             },
             {
-                '_id': 'test5',
-                'inchikey': 'FMGSKLZLMKYGDP-USOAJAOKSA-N',
+                "_id": "test5",
+                "inchikey": "FMGSKLZLMKYGDP-USOAJAOKSA-N",
             },
             {
-                '_id': 'test6',
-                'inchikey': 'YAFGHMIAFYQSCF-UHFFFAOYSA-N',
+                "_id": "test6",
+                "inchikey": "YAFGHMIAFYQSCF-UHFFFAOYSA-N",
             },
             {
                 # This document should be converted to InchiKey
                 # XUKUURHRXDUEBC-KAYWLYCHSA-N
-                '_id': 'test7',
-                'drugbank': 'DB01076'
+                "_id": "test7",
+                "drugbank": "DB01076",
             },
             {
-                '_id': 'test8',
-                'inchikey': 'RXRZOKQPANIEDW-KQYNXXCUSA-N',
+                "_id": "test8",
+                "inchikey": "RXRZOKQPANIEDW-KQYNXXCUSA-N",
             },
             {
-                '_id': 'test9',
-                'inchikey': 'BNQDCRGUHNALGH-UHFFFAOYSA-N',
+                "_id": "test9",
+                "inchikey": "BNQDCRGUHNALGH-UHFFFAOYSA-N",
             },
             {
-                '_id': 'test10',
-                'inchikey': 'CGVWPQOFHSAKRR-NDEPHWFRSA-N',
+                "_id": "test10",
+                "inchikey": "CGVWPQOFHSAKRR-NDEPHWFRSA-N",
             },
             {
-                '_id': 'test11',
-                'inchikey': 'PCZHWPSNPWAQNF-LMOVPXPDSA-K',
+                "_id": "test11",
+                "inchikey": "PCZHWPSNPWAQNF-LMOVPXPDSA-K",
             },
             {
-                '_id': 'test12',
-                'inchikey': 'FABUFPQFXZVHFB-CFWQTKTJSA-N',
+                "_id": "test12",
+                "inchikey": "FABUFPQFXZVHFB-CFWQTKTJSA-N",
             },
         ]
 
         answers = [
-            'SHXWCVYOXRDMCX-UHFFFAOYSA-N',
-            'CXHDSLQCNYLQND-XQRIHRDZSA-N',
-            'test3',
-            'XMYKNCNAZKMVQN-NYYWCZLTSA-N',
-            'FMGSKLZLMKYGDP-USOAJAOKSA-N',
-            'YAFGHMIAFYQSCF-UHFFFAOYSA-N',
-            'XUKUURHRXDUEBC-KAYWLYCHSA-N',
-            'RXRZOKQPANIEDW-KQYNXXCUSA-N',
-            'BNQDCRGUHNALGH-UHFFFAOYSA-N',
-            'CGVWPQOFHSAKRR-NDEPHWFRSA-N',
-            'PCZHWPSNPWAQNF-LMOVPXPDSA-K',
-            'FABUFPQFXZVHFB-CFWQTKTJSA-N',
+            "SHXWCVYOXRDMCX-UHFFFAOYSA-N",
+            "CXHDSLQCNYLQND-XQRIHRDZSA-N",
+            "test3",
+            "XMYKNCNAZKMVQN-NYYWCZLTSA-N",
+            "FMGSKLZLMKYGDP-USOAJAOKSA-N",
+            "YAFGHMIAFYQSCF-UHFFFAOYSA-N",
+            "XUKUURHRXDUEBC-KAYWLYCHSA-N",
+            "RXRZOKQPANIEDW-KQYNXXCUSA-N",
+            "BNQDCRGUHNALGH-UHFFFAOYSA-N",
+            "CGVWPQOFHSAKRR-NDEPHWFRSA-N",
+            "PCZHWPSNPWAQNF-LMOVPXPDSA-K",
+            "FABUFPQFXZVHFB-CFWQTKTJSA-N",
         ]
 
         # Test a list being passed with 12 documents
-        @DataTransformMyChemInfo([('inchikey', 'inchikey'), ('drugbank', 'drugbank')], ['inchikey'])
+        @DataTransformMyChemInfo([("inchikey", "inchikey"), ("drugbank", "drugbank")], ["inchikey"])
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
 
-        res_lst = load_document('data/folder/')
+        res_lst = load_document("data/folder/")
         res_cnt = 0
         for res in res_lst:
             res_cnt += 1
-            if not res['_id'] in answers:
-                print(res['_id'])
-            self.assertTrue(res['_id'] in answers)
+            if not res["_id"] in answers:
+                print(res["_id"])
+            self.assertTrue(res["_id"] in answers)
         self.assertEqual(res_cnt, 12)
 
     def test_skip_w_regex(self):
@@ -355,14 +367,13 @@ class TestDataTransformAPI(unittest.TestCase):
         :return:
         """
 
-        doc_lst = [{'_id': 'CID1983xyz'}]
+        doc_lst = [{"_id": "CID1983xyz"}]
 
-        @DataTransformMyChemInfo('pubchem', ['inchikey'], skip_on_failure=True, skip_w_regex='CID')
+        @DataTransformMyChemInfo("pubchem", ["inchikey"], skip_on_failure=True, skip_w_regex="CID")
         def load_document(data_folder):
             for d in doc_lst:
                 yield d
 
-        res_lst = load_document('data/folder/')
+        res_lst = load_document("data/folder/")
         res = next(res_lst)
-        self.assertEqual(res['_id'], 'CID1983xyz')
-
+        self.assertEqual(res["_id"], "CID1983xyz")

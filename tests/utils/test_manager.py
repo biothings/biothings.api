@@ -1,10 +1,10 @@
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
-from biothings.utils.manager import JobManager
 from biothings.utils.common import get_loop
+from biothings.utils.manager import JobManager
 
 
-class TestJobManager():
+class TestJobManager:
     def test_init_with_default_executor(self):
         # Given
         loop = get_loop()
@@ -22,7 +22,9 @@ class TestJobManager():
 
         # Action
         manager = JobManager(
-            loop, process_queue=process_executor, thread_queue=thread_executor
+            loop,
+            process_queue=process_executor,
+            thread_queue=thread_executor,
         )
 
         # Asserts

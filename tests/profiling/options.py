@@ -15,12 +15,13 @@ def timethis(func):
         start = time.perf_counter()
         r = func(*args, **kwargs)
         end = time.perf_counter()
-        print('{}.{} : {}'.format(func.__module__, func.__name__, end-start))
+        print("{}.{} : {}".format(func.__module__, func.__name__, end - start))
         return r
+
     return wrapper
 
-class Request:
 
+class Request:
     def __init__(self, method, reqargs):
         self.method = method
         self.reqargs = reqargs
@@ -56,7 +57,7 @@ _REQUESTS = (
     ("POST", (None, {"format": "yaml"}, {"q": "cdk2,cdk3"})),
     ("POST", (None, {"format": "yaml"}, None, {"q": ["cdk2"]})),
     ("POST", (None, {"format": "html"}, {"q": "cdk2 cdk3 cdk9"})),
-    ("POST", (None, {"format": "html"}, {"q": LONG_IDS}))
+    ("POST", (None, {"format": "html"}, {"q": LONG_IDS})),
 )
 
 REQUESTS = (Request(*request) for request in _REQUESTS)
@@ -65,11 +66,13 @@ try:
 except TypeError:
     OPTIONSET = OptionSet(QUERY_KWARGS, (), ())
 
+
 @timethis
 def main():
     for _ in range(100000000):
         for request in REQUESTS:
             OPTIONSET.parse(*request.get_new_calling_signature())
+
 
 def test():
     for request in REQUESTS:

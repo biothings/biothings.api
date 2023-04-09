@@ -1,4 +1,5 @@
 import pytest
+
 from biothings.web.options import Option, OptionError, ReqArgs
 
 
@@ -6,14 +7,13 @@ def test_01():
     reqargs = (
         ReqArgs.Path(
             args=("gene", "1017"),
-            kwargs={
-                "host": "mygene.info",
-                "version": "v3"}),
+            kwargs={"host": "mygene.info", "version": "v3"},
+        ),
         {
             "size": "10",
             "dotfield": "true",
-            "format": "json"
-        }
+            "format": "json",
+        },
     )
 
     opt = Option({"keyword": "doc_type", "path": 0})
@@ -40,18 +40,18 @@ def test_01():
     opt = Option({"keyword": "userquery", "type": str})
     assert opt.parse(reqargs) is None
 
-def test_02():
 
+def test_02():
     reqargs = ReqArgs(
         query={
             "size": "10",
-            "format": "html"
+            "format": "html",
         },
         json_={
             "q": "cdk2",
             "scopes": ["ensembl", "entrez"],
-            "format": "json"
-        }
+            "format": "json",
+        },
     )
 
     opt = Option({"keyword": "size", "type": int})
@@ -96,13 +96,15 @@ def test_02():
     opt = Option({"keyword": "scopes", "type": list})
     assert opt.parse(reqargs) == ["ensembl", "entrez"]
 
-def test_03():
 
-    reqargs = ReqArgs(form={
-        "ids": "cdk,cdk2",
-        "scopes": "symbol",
-        "size": 10
-    })
+def test_03():
+    reqargs = ReqArgs(
+        form={
+            "ids": "cdk,cdk2",
+            "scopes": "symbol",
+            "size": 10,
+        }
+    )
 
     opt = Option({"keyword": "scopes", "type": list})
     assert opt.parse(reqargs) == ["symbol"]

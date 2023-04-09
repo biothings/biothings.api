@@ -1,7 +1,7 @@
-
-import os
 import logging
-from dummy_config import HUB_DB_BACKEND, DATA_HUB_DB_DATABASE
+import os
+
+from dummy_config import DATA_HUB_DB_DATABASE, HUB_DB_BACKEND
 
 LOGGER = logging.getLogger(__name__)
 
