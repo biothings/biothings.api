@@ -1,7 +1,7 @@
 from pprint import pprint as print
 
 from biothings.web import connections
-from biothings.web.services.metadata import *
+from biothings.web.services.metadata import BiothingsESMetadata, BiothingsMongoMetadata
 
 
 def test_es():

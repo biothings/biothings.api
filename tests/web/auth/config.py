@@ -1,5 +1,5 @@
-from authn_provider import *
-from handlers import *
+from authn_provider import DummyBearerAuthProvider, DummyCookieAuthProvider
+from handlers import BaseUserIdHandler, SpecialCookieUserIdHandler
 
 APP_LIST = [
     (r"/user1", BaseUserIdHandler),

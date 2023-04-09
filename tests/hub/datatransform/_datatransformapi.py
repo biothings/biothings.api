@@ -145,7 +145,7 @@ class TestDataTransformAPI(unittest.TestCase):
         with self.assertRaises(ValueError):
 
             @DataTransformMyGeneInfo(None, ["undefined"])
-            def load_document(data_folder):
+            def load_document(data_folder):  # noqa F811
                 for d in doc_lst:
                     yield d
 
@@ -153,7 +153,7 @@ class TestDataTransformAPI(unittest.TestCase):
         with self.assertRaises(ValueError):
 
             @DataTransformMyGeneInfo("entrezgene", "symbol")
-            def load_document(data_folder):
+            def load_document(data_folder):  # noqa F811
                 for d in doc_lst:
                     yield d
 
@@ -161,7 +161,7 @@ class TestDataTransformAPI(unittest.TestCase):
         with self.assertRaises(ValueError):
 
             @DataTransformMyGeneInfo("entrezgene", [None])
-            def load_document(data_folder):
+            def load_document(data_folder):  # noqa F811
                 for d in doc_lst:
                     yield d
 
@@ -189,7 +189,7 @@ class TestDataTransformAPI(unittest.TestCase):
         This is used in several mychem.info parsers.
         :return:
         """
-        inchi1 = "InChI=1S/C19H25N3O7S/c1-19(2)14(17(26)27)22-15(30-19)13(18(28)29-9-11(20)16(24)25)21-12(23)8-10-6-4-3-5-7-10/h3-7,11,13-15,22H,8-9,20H2,1-2H3,(H,21,23)(H,24,25)(H,26,27)/p-2/t11-,13-,14-,15+/m0/s1"
+        inchi1 = "InChI=1S/C19H25N3O7S/c1-19(2)14(17(26)27)22-15(30-19)13(18(28)29-9-11(20)16(24)25)21-12(23)8-10-6-4-3-5-7-10/h3-7,11,13-15,22H,8-9,20H2,1-2H3,(H,21,23)(H,24,25)(H,26,27)/p-2/t11-,13-,14-,15+/m0/s1"  # noqa E501
         inchi2 = "InChI=1S/C8H9NO2/c1-6(10)9-7-2-4-8(11)5-3-7/h2-5,11H,1H3,(H,9,10)"
 
         doc_lst = [

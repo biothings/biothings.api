@@ -9,7 +9,7 @@ class InspectorTest(object):
     def test_01_not_order_specific(self):
         d1 = {"id": "124", "lofd": [{"val": 34.3}, {"ul": "bla"}], "d": {"start": 134, "end": 5543}}
         d2 = {"id": "5", "lofd": {"oula": "mak", "val": 34}, "d": {"start": 134, "end": 5543}}
-        d3 = {"id": "890", "lofd": [{"val": 34}], "d": {"start": 134, "end": 5543}}
+        # d3 = {"id": "890", "lofd": [{"val": 34}], "d": {"start": 134, "end": 5543}}
 
         # merge either ways in the same
         m12 = inspect_docs([d1, d2])["type"]
@@ -172,13 +172,13 @@ class InspectorTest(object):
         # bla is a different type here
         md3 = {"_id": "5678", "vals": {"bla": 1234}}
         m = inspect_docs([md1, md2], mode="mapping", pre_mapping=True)["mapping"]  # "mapping" implies merge=True
-        assert not "bla" in m["vals"]
+        assert "bla" not in m["vals"]
         assert m["vals"][list]["bla"] == {splitstr: {}}, m["vals"][list]["bla"]  # splittable str from md2 merge to list
         m = inspect_docs([md1, md3], mode="mapping", pre_mapping=True)["mapping"]
-        assert not "bla" in m["vals"]
+        assert "bla" not in m["vals"]
         assert m["vals"][list]["bla"] == {int: {}, str: {}}  # keep as both types
         m = inspect_docs([md1, md2, md3], mode="mapping", pre_mapping=True)["mapping"]
-        assert not "bla" in m["vals"]
+        assert "bla" not in m["vals"]
         assert m["vals"][list]["bla"] == {int: {}, splitstr: {}}, m["vals"][list][
             "bla"
         ]  # splittable kept + merge int to keep both types
@@ -254,6 +254,7 @@ class InspectorTest(object):
             "_id": "101241878",
         }
         m = inspect_docs([d1, d1, d2, d2], mode="stats")["stats"]
+        del m
         # no test, but just run
 
     def test_12_merge_deeply_nested(self):
@@ -288,7 +289,7 @@ class InspectorTest(object):
 
     def test_13_merge_with_splitstr(self):
         # merge_scalar_list when str split involved (?) in list of list
-        doc = {"_id": "1", "f": ["b", ["a 0", "b 1"]]}
+        # doc = {"_id": "1", "f": ["b", ["a 0", "b 1"]]}
         # merge list of str and splitstr
         docb = {"_id": "1", "f": ["a 0"]}
         docg = {"_id": "1", "f": ["a0"]}

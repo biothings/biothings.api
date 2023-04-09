@@ -1,5 +1,5 @@
 import json
-from os.path import *
+from os.path import dirname, join
 
 import biothings.utils.jsondiff as jsondiff
 import biothings.utils.jsonpatch as jsonpatch

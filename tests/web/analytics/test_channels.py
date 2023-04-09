@@ -1,6 +1,6 @@
 from tornado.httpclient import HTTPClient
 
-from biothings.web.analytics.channels import *
+from biothings.web.analytics.channels import GA4Channel, GAChannel
 from biothings.web.analytics.events import GAEvent
 
 

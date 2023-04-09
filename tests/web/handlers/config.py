@@ -3,7 +3,7 @@
 """
 import os
 
-from custom_cache_handler import *
+from custom_cache_handler import CustomCacheHandler, DefautlAPIHandler
 
 from biothings.web.settings.default import APP_LIST, QUERY_KWARGS
 

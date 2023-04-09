@@ -35,8 +35,8 @@ def test_01_override_value(config):
 
 def test_02_override_desc(config):
     assert config["E"]["value"] == "heu"  # new value
-    assert config["E"]["desc"] == None  # E not in default_config, skipping override metadata
-    assert config["E"]["section"] == None  # E not in default_config, skipping override metadata
+    assert config["E"]["desc"] is None  # E not in default_config, skipping override metadata
+    assert config["E"]["section"] is None  # E not in default_config, skipping override metadata
 
 
 #

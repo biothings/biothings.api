@@ -1,5 +1,18 @@
 from biothings.web import connections
-from biothings.web.query import *
+from biothings.web.query import (
+    ESQueryBackend,
+    ESQueryBuilder,
+    ESQueryPipeline,
+    ESResultFormatter,
+    MongoQueryBackend,
+    MongoQueryBuilder,
+    MongoQueryPipeline,
+    MongoResultFormatter,
+    SQLQueryBackend,
+    SQLQueryBuilder,
+    SQLQueryPipeline,
+    SQLResultFormatter,
+)
 
 
 def test_mongo():

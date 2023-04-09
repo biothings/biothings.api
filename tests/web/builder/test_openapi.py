@@ -2,7 +2,7 @@ from copy import deepcopy
 
 import pytest
 
-from biothings.web.options.openapi import *
+from biothings.web.options.openapi import OpenAPIContext, OpenAPIDocumentBuilder, OpenAPIPathItemContext
 
 _base_document = {
     "openapi": "3.0.3",

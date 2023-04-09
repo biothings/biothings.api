@@ -1,4 +1,4 @@
-from biothings.web.query import *
+from biothings.web.query import ESResultFormatter
 
 
 def test_es_1():

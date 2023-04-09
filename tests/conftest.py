@@ -6,4 +6,4 @@
 """
 
 # make sure hub is config before testing.
-import biothings.hub
+import biothings.hub  # noqa: F401

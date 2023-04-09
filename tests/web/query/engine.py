@@ -1,7 +1,5 @@
-from pprint import pprint as print
-
 from biothings.web import connections
-from biothings.web.query.engine import *
+from biothings.web.query.engine import ESQueryBackend
 
 
 def test_adjust_index_overrided():

@@ -1,4 +1,6 @@
-from biothings.utils.loggers import *
+import logging
+
+from biothings.utils.loggers import SlackHandler, SlackMentionPolicy
 
 
 def test_msg_builder():

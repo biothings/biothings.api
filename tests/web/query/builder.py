@@ -1,6 +1,6 @@
 from pprint import pprint as print
 
-from biothings.web.query.builder import *
+from biothings.web.query.builder import ESQueryBuilder, MongoQueryBuilder, SQLQueryBuilder
 
 
 def test_sql():

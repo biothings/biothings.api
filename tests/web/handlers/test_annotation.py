@@ -6,11 +6,13 @@
 
 """
 from biothings.tests.web import BiothingsWebAppTest
-from setup import setup_es  # pylint: disable=unused-import
+
+# import setup_es to make sure the ES index is setup
+from setup import setup_es  # pylint: disable=unused-import   # noqa: F401
 
 
 class TestAnnotationGET(BiothingsWebAppTest):
-    ### Query Builder Keywords ###
+    # ### Query Builder Keywords ###
 
     def test_00_hit(self):
         """GET /v1/gene/1017
@@ -36,7 +38,7 @@ class TestAnnotationGET(BiothingsWebAppTest):
         res = self.request("/v1/gene/0", expect=404).json()
         assert "Not Found" in res["error"]
 
-    ### Query Backend Keywords ###
+    # ### Query Backend Keywords ###
 
     def test_10_fields(self):
         """GET /v1/gene/1017?fields=symbol
@@ -52,7 +54,7 @@ class TestAnnotationGET(BiothingsWebAppTest):
         assert "_version" in res
         assert "symbol" in res
 
-    ### Workflow Control Keywords ###
+    # ### Workflow Control Keywords ###
 
     def test_20_raw(self):
         """GET /v1/gene/1017?raw
@@ -121,7 +123,7 @@ class TestAnnotationGET(BiothingsWebAppTest):
         assert res.strip().startswith("<!DOCTYPE html>")
         assert "AMDV01086628.1" in res
 
-    ### Result Transform Keywords ###
+    # ### Result Transform Keywords ###
 
     def test_30_dotfield(self):
         """GET /v1/gene/102812112?dotfield

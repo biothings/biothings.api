@@ -1,7 +1,7 @@
 import asyncio
 
 from biothings.web import connections
-from biothings.web.services.health import *
+from biothings.web.services.health import ESHealth
 
 
 def test_es_async_1():

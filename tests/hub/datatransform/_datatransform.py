@@ -262,7 +262,7 @@ class TestDataTransform(unittest.TestCase):
         with self.assertRaises(ValueError):
 
             @KeyLookup(graph_simple, "a", ["d-invalid", "e"], skip_on_failure=True)
-            def load_document(data_folder):
+            def load_document(data_folder):  # noqa F811
                 doc_lst = [{"_id": "a:1234"}, {"_id": "a:invalid"}, {"_id": "a:1234"}]
                 for d in doc_lst:
                     yield d
@@ -271,7 +271,7 @@ class TestDataTransform(unittest.TestCase):
         with self.assertRaises(ValueError):
 
             @KeyLookup(graph_invalid, "a", ["d-invalid", "e"], skip_on_failure=True)
-            def load_document(data_folder):
+            def load_document(data_folder):  # noqa F811
                 doc_lst = [{"_id": "a:1234"}, {"_id": "a:invalid"}, {"_id": "a:1234"}]
                 for d in doc_lst:
                     yield d

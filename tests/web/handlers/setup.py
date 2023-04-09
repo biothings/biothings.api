@@ -59,10 +59,10 @@ def setup_es():
     dirname = os.path.dirname(__file__)
 
     server_major_version = client.info()["version"]["number"].split(".")[0]
-    client_major_version = str(elasticsearch.__version__[0])
 
     # NOTE: Temporary comment to bypass this check.
     # Because we still use elasticsearch library ver under 8
+    # client_major_version = str(elasticsearch.__version__[0])
     # if server_major_version != client_major_version:
     #     pytest.exit('ES version does not match its python library.')
 

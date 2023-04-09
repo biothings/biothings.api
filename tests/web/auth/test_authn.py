@@ -1,7 +1,5 @@
 import random
 
-import pytest
-
 from biothings.tests.web import BiothingsWebAppTest
 
 

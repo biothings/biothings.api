@@ -6,10 +6,10 @@
 
 """
 
-from time import sleep
-
 from biothings.tests.web import BiothingsWebAppTest
-from setup import setup_es  # pylint: disable=unused-import
+
+# import setup_es to make sure the ES index is setup
+from setup import setup_es  # pylint: disable=unused-import   # noqa: F401
 
 
 class TestMetadata(BiothingsWebAppTest):
@@ -98,7 +98,7 @@ class TestMetadataLicense(BiothingsWebAppTest):
     def _wait(self):
         try:
             self.wait(timeout=3)
-        except:
+        except Exception:
             pass
 
     def test_20_license(self):

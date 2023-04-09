@@ -1,6 +1,6 @@
 from pprint import pprint as print
 
-from biothings.web.analytics.events import *
+from biothings.web.analytics.events import Event, GAEvent
 
 # validator
 # https://ga-dev-tools.web.app/hit-builder/

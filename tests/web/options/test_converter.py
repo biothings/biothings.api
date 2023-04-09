@@ -1,6 +1,6 @@
 import pytest
 
-from biothings.web.options import *
+from biothings.web.options import Converter, FormArgCvter, JsonArgCvter, OptionError, QueryArgCvter
 
 cvt = Converter()
 itt = Converter(strict=False)
@@ -103,7 +103,7 @@ def test_body_without_jsoninput():
 
 def test_json_strict():
     cvt = JsonArgCvter()
-    cvt(3, int) == 3
+    assert cvt(3, int) == 3
     with pytest.raises(OptionError):
         cvt(3.3, int)
     with pytest.raises(OptionError):

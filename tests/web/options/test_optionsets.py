@@ -1,6 +1,4 @@
-import pytest
-
-from biothings.web.options import OptionError, OptionsManager
+from biothings.web.options import OptionsManager
 
 
 def test_01():
